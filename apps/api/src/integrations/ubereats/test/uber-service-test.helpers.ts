@@ -1,5 +1,5 @@
-import type { UberMenuAvailabilityService } from '../application/menu/uber-menu-availability.service';
-import type { UberMenuPublishService } from '../application/menu/uber-menu-publish.service';
+import type { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
+import type { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
 import type { SyncUberStoreStatusUseCase } from '../application/merchant/uber-merchant-provisioning.service';
 import type { ImportUberOrderUseCase } from '../application/orders/uber-order.use-cases';
 import { SyncUberOrderStatusUseCase } from '../application/orders/uber-order.use-cases';
@@ -16,14 +16,14 @@ const missing = <T>(): T => undefined as T;
 export function createUberOperationsPrismaAdapter(
   prisma: ConstructorParameters<typeof UberOperationsPrismaAdapter>[0],
   orders?: UberOrderSyncPort,
-  menu?: UberMenuAvailabilityService,
+  menu?: UberMenuAvailabilityUseCase,
   store?: SyncUberStoreStatusUseCase,
 ) {
   return new UberOperationsPrismaAdapter(
     prisma,
     orders ? new SyncUberOrderStatusUseCase(orders) : missing(),
-    missing<UberMenuPublishService>(),
-    menu ?? missing<UberMenuAvailabilityService>(),
+    missing<PublishUberMenuUseCase>(),
+    menu ?? missing<UberMenuAvailabilityUseCase>(),
     store ?? missing<SyncUberStoreStatusUseCase>(),
     new UberPrismaAccessService(prisma),
   );
@@ -33,7 +33,7 @@ export function createReceiveUberWebhookUseCase(
   prisma: ConstructorParameters<typeof UberPrismaAccessService>[0],
   config: UberConfigService,
   orders: ImportUberOrderUseCase,
-  menu?: UberMenuPublishService,
+  menu?: PublishUberMenuUseCase,
 ) {
   void orders;
   void menu;

@@ -4,9 +4,9 @@ import { join } from 'node:path';
 describe('UberEatsModule focused use-case contract', () => {
   const source = readFileSync(join(__dirname, 'ubereats.module.ts'), 'utf8');
   const publicUseCases = [
-    'UberMenuDraftService',
-    'UberMenuPublishService',
-    'UberMenuAvailabilityService',
+    'UberMenuDraftUseCase',
+    'PublishUberMenuUseCase',
+    'UberMenuAvailabilityUseCase',
     'RequestUberOrderActionUseCase',
     'SyncUberOrderStatusUseCase',
     'ListPendingUberOrdersQuery',

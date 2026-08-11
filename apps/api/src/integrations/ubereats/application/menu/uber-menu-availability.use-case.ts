@@ -5,7 +5,7 @@ import {
 } from '../ports/uber-use-case.ports';
 /** Synchronizes availability with the stable menu-node id as idempotency key. */
 @Injectable()
-export class UberMenuAvailabilityService {
+export class UberMenuAvailabilityUseCase {
   constructor(
     @Inject(UBER_MENU_AVAILABILITY_PORT)
     private readonly availability: UberMenuAvailabilityPort,

@@ -17,11 +17,11 @@ import {
   UBER_MENU_PUBLISH_COMMAND,
   type UberMenuPublishCommandPort,
 } from '../../application/ports/uber-menu-publication.ports';
-import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
+import { UberAuthService } from '../uber-api/uber-token.provider';
 import {
   UberConfigService,
   type UberMenuConfig,
-} from '../../infrastructure/config/uber-config.service';
+} from '../config/uber-config.service';
 import {
   normalizeUberStoreId,
   redactUberLogText,
@@ -44,8 +44,8 @@ import type { UberMerchantConnectionRecord } from '../../domain/merchant/uber-me
 import type { ParsedUberOrderItem } from '../../domain/orders/uber-order.types';
 import { toUberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
-import { UberPrismaAccessService } from '../../infrastructure/persistence/uber-prisma-access.service';
-import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
+import { UberPrismaAccessService } from '../persistence/uber-prisma-access.service';
+import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import {
   composeUberDisplayName,
   buildUberUploadMenuPayload,
@@ -57,10 +57,10 @@ import {
   summarizeUberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
 
-import { UberTelemetryService } from '../../infrastructure/observability/uber-telemetry.service';
+import { UberTelemetryService } from '../observability/uber-telemetry.service';
 
 @Injectable()
-export class UberMenuPrismaAdapter {
+export class UberMenuDraftAdapter {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly telemetry: UberTelemetryService;
 

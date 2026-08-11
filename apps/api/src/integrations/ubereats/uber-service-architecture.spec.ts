@@ -51,26 +51,9 @@ describe('Uber Eats bounded-context architecture', () => {
       productionOnly: true,
     });
 
-    // Temporary, file-specific debt ledger. Delete each entry as its legacy
-    // facade is split; never replace these with a directory/pattern exemption.
-    const legacyFacadeExceptions: Readonly<Record<string, readonly string[]>> =
-      {
-        'uber-menu-prisma.adapter.ts': ['uber-api import'],
-        'uber-order-prisma.adapter.ts': [
-          'uber-api import',
-          'application service/use-case import',
-          'UberHttpClient',
-          // Order-detail import remains in the legacy facade; order-action HTTP
-          // execution has moved to UberOrderActionGatewayAdapter.
-          'HTTP request call',
-        ],
-      };
     const violations: string[] = [];
     const report = (filePath: string, rule: string) => {
-      const filename = relative(persistenceRoot, filePath);
-      if (!legacyFacadeExceptions[filename]?.includes(rule)) {
-        violations.push(`${filename} -> ${rule}`);
-      }
+      violations.push(`${relative(persistenceRoot, filePath)} -> ${rule}`);
     };
 
     for (const file of persistenceFiles) {
@@ -216,9 +199,9 @@ describe('Uber Eats bounded-context architecture', () => {
 
   it('keeps focused use cases behind application-owned ports', () => {
     for (const path of [
-      'application/menu/uber-menu-draft.service.ts',
-      'application/menu/uber-menu-publish.service.ts',
-      'application/menu/uber-menu-availability.service.ts',
+      'application/menu/uber-menu-draft.use-case.ts',
+      'application/menu/publish-uber-menu.use-case.ts',
+      'application/menu/uber-menu-availability.use-case.ts',
       'application/orders/uber-order.use-cases.ts',
       'application/operations/uber-operations.use-cases.ts',
     ]) {
@@ -227,7 +210,7 @@ describe('Uber Eats bounded-context architecture', () => {
           (file) => file.path === join(BOUNDED_CONTEXT_ROOT, path),
         )?.source ?? '';
       expect(source).not.toMatch(/PrismaService|UberHttpClient/);
-      expect(source).toMatch(/PORT/);
+      expect(source).toMatch(/(?:PORT|REPOSITORY|GATEWAY)/);
     }
   });
 

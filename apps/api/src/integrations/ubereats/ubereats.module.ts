@@ -14,17 +14,16 @@ import { UberHttpClient } from './infrastructure/uber-api/uber-http.client';
 import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
-import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
+import { UberMenuDraftAdapter } from './infrastructure/menu/uber-menu-draft.adapter';
 import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
-import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
+import { UberOrderSyncAdapter } from './infrastructure/orders/uber-order-sync.adapter';
 import { UberOrderImportPrismaAdapter } from './infrastructure/persistence/uber-order-import-prisma.adapter';
 import { UberOrderDetailGatewayAdapter } from './infrastructure/uber-api/uber-order-detail.gateway';
 import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberOrderActionGatewayAdapter } from './infrastructure/uber-api/uber-order-action.gateway';
-import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
+import { UberMenuDraftUseCase } from './application/menu/uber-menu-draft.use-case';
 import { UberMenuDraftConfigUseCase } from './application/menu/uber-menu-draft-config.use-case';
-import { UberMenuPublishService } from './application/menu/uber-menu-publish.service';
-import { UberMenuAvailabilityService } from './application/menu/uber-menu-availability.service';
+import { UberMenuAvailabilityUseCase } from './application/menu/uber-menu-availability.use-case';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
@@ -75,8 +74,6 @@ import { UBER_UNIT_OF_WORK } from './application/ports/uber-persistence.ports';
 import {
   UBER_MENU_AVAILABILITY_PORT,
   UBER_MENU_DRAFT_PORT,
-  UBER_MENU_PUBLISH_PORT,
-  UBER_ORDER_ACTION_PORT,
   UBER_ORDER_IMPORT_PORT,
   UBER_ORDER_SYNC_PORT,
 } from './application/ports/uber-use-case.ports';
@@ -265,13 +262,13 @@ import {
     ReceiveUberWebhookUseCase,
     ProcessUberWebhookInboxUseCase,
     HandleUberMerchantWebhookHandler,
-    UberOrderPrismaAdapter,
+    UberOrderSyncAdapter,
     UberOrderImportPrismaAdapter,
     {
       provide: UBER_ORDER_IMPORT_REPOSITORY,
       useExisting: UberOrderImportPrismaAdapter,
     },
-    { provide: UBER_ORDER_SYNC_PORT, useExisting: UberOrderPrismaAdapter },
+    { provide: UBER_ORDER_SYNC_PORT, useExisting: UberOrderSyncAdapter },
     UberOrderActionService,
     UberOrderStatusSyncService,
     UberOrderOutboxService,
@@ -282,14 +279,13 @@ import {
     ExecuteUberOrderActionWorker,
     SyncUberOrderStatusUseCase,
     ListPendingUberOrdersQuery,
-    UberMenuPrismaAdapter,
-    { provide: UBER_MENU_DRAFT_PORT, useExisting: UberMenuPrismaAdapter },
-    { provide: UBER_MENU_PUBLISH_PORT, useExisting: UberMenuPrismaAdapter },
+    UberMenuDraftAdapter,
+    { provide: UBER_MENU_DRAFT_PORT, useExisting: UberMenuDraftAdapter },
     {
       provide: UBER_MENU_AVAILABILITY_PORT,
-      useExisting: UberMenuPrismaAdapter,
+      useExisting: UberMenuDraftAdapter,
     },
-    UberMenuDraftService,
+    UberMenuDraftUseCase,
     UberMenuRepository,
     {
       provide: UBER_MENU_DRAFT_QUERY_PORT,
@@ -300,7 +296,6 @@ import {
       useExisting: UberMenuRepository,
     },
     UberMenuDraftConfigUseCase,
-    UberMenuPublishService,
     PublishUberMenuUseCase,
     { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
     ConfirmUberMenuPublicationUseCase,
@@ -311,7 +306,7 @@ import {
       provide: MENU_NOTIFICATION_REPOSITORY,
       useExisting: UberMenuNotificationPrismaRepository,
     },
-    UberMenuAvailabilityService,
+    UberMenuAvailabilityUseCase,
     UberOAuthTokenAdapter,
     { provide: UBER_OAUTH_TOKEN, useExisting: UberOAuthTokenAdapter },
     UberMerchantApiAdapter,
@@ -358,10 +353,10 @@ import {
     RequestUberOrderActionUseCase,
     SyncUberOrderStatusUseCase,
     ListPendingUberOrdersQuery,
-    UberMenuDraftService,
+    UberMenuDraftUseCase,
     UberMenuDraftConfigUseCase,
-    UberMenuPublishService,
-    UberMenuAvailabilityService,
+    PublishUberMenuUseCase,
+    UberMenuAvailabilityUseCase,
     StartUberOAuthUseCase,
     CompleteUberOAuthUseCase,
     DiscoverUberStoresUseCase,

@@ -13,12 +13,10 @@ import type {
 } from '../../domain/menu/uber-menu.types';
 
 export const UBER_MENU_DRAFT_PORT = Symbol('UBER_MENU_DRAFT_PORT');
-export const UBER_MENU_PUBLISH_PORT = Symbol('UBER_MENU_PUBLISH_PORT');
 export const UBER_MENU_AVAILABILITY_PORT = Symbol(
   'UBER_MENU_AVAILABILITY_PORT',
 );
 export const UBER_ORDER_IMPORT_PORT = Symbol('UBER_ORDER_IMPORT_PORT');
-export const UBER_ORDER_ACTION_PORT = Symbol('UBER_ORDER_ACTION_PORT');
 export const UBER_ORDER_SYNC_PORT = Symbol('UBER_ORDER_SYNC_PORT');
 export interface UberMenuDraftPort {
   listUberItemChannelConfigs(storeId?: string): Promise<any>;
@@ -45,9 +43,6 @@ export interface UberMenuDraftPort {
   ): Promise<any>;
   getUberMenuDraftDiff(storeId?: string): Promise<any>;
 }
-export interface UberMenuPublishPort {
-  publishUberMenu(input: PublishMenuInput): Promise<any>;
-}
 export interface UberMenuAvailabilityPort {
   syncUberMenuItemAvailability(input: SyncAvailabilityInput): Promise<any>;
   syncUberOptionItemAvailability(
@@ -62,22 +57,8 @@ export interface UberOrderImportPort {
     ordering?: UberEventOrdering,
   ): Promise<void>;
 }
-export interface UberOrderActionPort {
-  acceptUberOrder(id: string): Promise<any>;
-  denyUberOrder(
-    id: string,
-    reasonCode: string,
-    reasonDetail?: string,
-  ): Promise<any>;
-  retryReadyForPickup(id: string): Promise<any>;
-  processPendingUberOrderActions(limit?: number): Promise<any>;
-  getReadyForPickupAction(id: string): Promise<any>;
-}
 export interface UberOrderSyncPort {
   syncOrderStatusToUber(id: string, status: UberOrderStatus): Promise<any>;
   listPendingUberOrders(): Promise<any>;
   getPendingUberOrdersSummary(): Promise<any>;
 }
-export type UberOrderWorkflowPort = UberOrderImportPort &
-  UberOrderActionPort &
-  UberOrderSyncPort;
