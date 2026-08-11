@@ -1,0 +1,4 @@
+{
+  "error": "invalid_client",
+  "error_description": "Synthetic fixture: client authentication failed"
+}

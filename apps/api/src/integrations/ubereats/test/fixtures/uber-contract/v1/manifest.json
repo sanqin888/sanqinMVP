@@ -1,0 +1,6 @@
+{
+  "contract_version": "v1",
+  "uber_api_paths": ["/oauth/v2/token", "/v1/eats/stores", "/v1/eats/orders", "/v1/delivery/order", "/v2/eats/order", "/v2/eats/stores"],
+  "synthetic_only": true,
+  "upgrade_rule": "Create a new version directory and update requirement-matrix.md and its validation test in the same change."
+}
