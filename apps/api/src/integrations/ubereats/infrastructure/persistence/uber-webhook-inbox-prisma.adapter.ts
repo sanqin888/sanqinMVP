@@ -10,7 +10,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberConfigService } from '../config/uber-config.service';
-import { UberTelemetryService } from '../observability/uber-telemetry.service';
+import { UberTelemetryService } from './uber-telemetry.service';
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {

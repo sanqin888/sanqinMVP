@@ -44,7 +44,7 @@ import type { UberMerchantConnectionRecord } from '../../domain/merchant/uber-me
 import type { ParsedUberOrderItem } from '../../domain/orders/uber-order.types';
 import { toUberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
-import { UberPrismaAccessService } from '../persistence/uber-prisma-access.service';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import {
   composeUberDisplayName,
@@ -57,7 +57,7 @@ import {
   summarizeUberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
 
-import { UberTelemetryService } from '../observability/uber-telemetry.service';
+import { UberTelemetryService } from './uber-telemetry.service';
 
 @Injectable()
 export class UberMenuDraftAdapter {

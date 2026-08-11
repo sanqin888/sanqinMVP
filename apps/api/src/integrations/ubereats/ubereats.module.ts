@@ -17,9 +17,9 @@ import { UberConfigService } from './infrastructure/config/uber-config.service';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ReplayUnsupportedUberWebhooksUseCase } from './application/orders/replay-unsupported-uber-webhooks.use-case';
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
-import { UberMenuDraftAdapter } from './infrastructure/menu/uber-menu-draft.adapter';
+import { UberMenuDraftAdapter } from './infrastructure/persistence/uber-menu-draft.adapter';
 import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
-import { UberOrderSyncAdapter } from './infrastructure/orders/uber-order-sync.adapter';
+import { UberOrderSyncAdapter } from './infrastructure/persistence/uber-order-sync.adapter';
 import { UberOrderImportPrismaAdapter } from './infrastructure/persistence/uber-order-import-prisma.adapter';
 import { UberOrderDetailGatewayAdapter } from './infrastructure/uber-api/uber-order-detail.gateway';
 import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
@@ -40,7 +40,7 @@ import {
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
 } from './application/merchant/uber-merchant-provisioning.service';
-import { UberOperationsPrismaAdapter } from './infrastructure/operations/uber-operations-prisma.adapter';
+import { UberOperationsPrismaAdapter } from './infrastructure/persistence/uber-operations-prisma.adapter';
 import {
   CreateUberOpsTicketUseCase,
   GenerateUberReconciliationReportUseCase,
@@ -48,7 +48,7 @@ import {
   RetryUberOpsTicketUseCase,
   UBER_OPERATIONS_PORT,
 } from './application/operations/uber-operations.use-cases';
-import { UberPrismaAccessService } from './infrastructure/persistence/uber-prisma-access.service';
+import { UBER_PERSISTENCE_INTERNAL_PROVIDERS } from './infrastructure/persistence/uber-persistence.providers';
 import { UberOrderActionService } from './application/orders/uber-order-action.service';
 import { UberOrderOutboxService } from './application/orders/uber-order-outbox.service';
 import { UberOrderStatusSyncService } from './application/orders/uber-order-status-sync.service';
@@ -72,7 +72,7 @@ import {
   UberStoreGateway,
   UberMerchantResourceGateway,
 } from './infrastructure/uber-api/uber-resource.gateways';
-import { UberTelemetryService } from './infrastructure/observability/uber-telemetry.service';
+import { UberTelemetryService } from './infrastructure/persistence/uber-telemetry.service';
 import { UBER_UNIT_OF_WORK } from './application/ports/uber-persistence.ports';
 import {
   UBER_MENU_AVAILABILITY_PORT,
@@ -195,7 +195,7 @@ const UBER_EATS_HTTP_METADATA = {
       provide: UberCredentialVaultService,
       useFactory: () => new UberCredentialVaultService(process.env),
     },
-    UberPrismaAccessService,
+    ...UBER_PERSISTENCE_INTERNAL_PROVIDERS,
     PrismaUberWebhookInboxAdapter,
     PrismaUberOrderActionAdapter,
     PrismaUberMerchantConnectionAdapter,

@@ -22,7 +22,7 @@ describe('Uber credential schema boundary', () => {
     const source = [
       'infrastructure/persistence/uber-merchant-persistence.adapter.ts',
       'infrastructure/persistence/uber-prisma.adapters.ts',
-      'infrastructure/menu/uber-menu-draft.adapter.ts',
+      'infrastructure/persistence/uber-menu-draft.adapter.ts',
     ]
       .map((file) => readFileSync(resolve(__dirname, file), 'utf8'))
       .join('\n');
