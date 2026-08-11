@@ -39,9 +39,11 @@ describe('Uber Eats persistence architecture', () => {
       ].some((token) => specifier.includes(token)),
     );
     const leakedDelegateTypes = files.flatMap((file) =>
-      [...file.source.matchAll(/\bPrisma\.[A-Z]\w*(?:Delegate|Args|GetPayload)\b/g)].map(
-        (match) => formatSourceViolation(root, file, match[0]),
-      ),
+      [
+        ...file.source.matchAll(
+          /\bPrisma\.[A-Z]\w*(?:Delegate|Args|GetPayload)\b/g,
+        ),
+      ].map((match) => formatSourceViolation(root, file, match[0])),
     );
 
     expect([...forbiddenImports, ...leakedDelegateTypes]).toEqual([]);
