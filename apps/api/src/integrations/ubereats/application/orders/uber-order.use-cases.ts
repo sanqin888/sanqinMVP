@@ -202,12 +202,20 @@ export class RequestUberOrderActionUseCase {
   async getReadyForPickupAction(id: string) {
     return this.present(await this.actions.request(id, 'READY_FOR_PICKUP'));
   }
-  private present(intent: { taskId: string; created: boolean }) {
+  private present(intent: { taskId: string; created: boolean }): {
+    ok: boolean;
+    id: string;
+    actionId: string;
+    status: string;
+    retryable: boolean;
+    duplicate: boolean;
+    lastError: string | null;
+  } {
     return {
       ok: false,
       id: intent.taskId,
       actionId: intent.taskId,
-      status: 'PENDING' as const,
+      status: 'PENDING',
       retryable: true,
       duplicate: !intent.created,
       lastError: null,
