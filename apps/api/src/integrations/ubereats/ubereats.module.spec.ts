@@ -37,4 +37,33 @@ describe('UberEatsModule focused use-case contract', () => {
     expect(httpMetadata).not.toContain('UberWebhookInboxWorkerAdapter');
     expect(workerMetadata).toContain('UberWebhookInboxWorkerAdapter');
   });
+
+  it('production worker root imports the explicit worker composition only', () => {
+    const workerRoot = readFileSync(
+      join(__dirname, '..', '..', 'ubereats-worker.module.ts'),
+      'utf8',
+    );
+    expect(workerRoot).toContain('imports: [UberEatsModule.withWorkers()]');
+    expect(workerRoot).not.toMatch(/controllers\s*:/);
+    expect(workerRoot).not.toContain('AppModule');
+  });
+
+  it('worker entrypoint fails closed when enablement is missing', () => {
+    const entrypoint = readFileSync(
+      join(__dirname, '..', '..', 'ubereats-worker.main.ts'),
+      'utf8',
+    );
+    expect(entrypoint).toContain("env.UBER_EATS_WORKER_ENABLED !== 'true'");
+    expect(entrypoint).toContain('throw new Error');
+  });
+
+  it('deployment explicitly separates API and worker enablement', () => {
+    const compose = readFileSync(
+      join(__dirname, '..', '..', '..', '..', '..', 'docker-compose.yml'),
+      'utf8',
+    );
+    expect(compose).toContain('UBER_EATS_WORKER_ENABLED: "false"');
+    expect(compose).toContain('UBER_EATS_WORKER_ENABLED: "true"');
+    expect(compose).toContain('dist/ubereats-worker.main.js');
+  });
 });
