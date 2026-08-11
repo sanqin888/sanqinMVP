@@ -41,8 +41,9 @@ describe('UberCredentialVaultService', () => {
     expect(rotatingVault.decrypt(rotated)).toBe('refresh-secret');
 
     const modified = JSON.parse(rotated) as { tag: string };
-    const replacement = modified.tag.endsWith('A') ? 'B' : 'A';
-    modified.tag = `${modified.tag.slice(0, -1)}${replacement}`;
+    const modifiedTag = Buffer.from(modified.tag, 'base64url');
+    modifiedTag[0] ^= 1;
+    modified.tag = modifiedTag.toString('base64url');
     expect(() => rotatingVault.decrypt(JSON.stringify(modified))).toThrow();
   });
 
