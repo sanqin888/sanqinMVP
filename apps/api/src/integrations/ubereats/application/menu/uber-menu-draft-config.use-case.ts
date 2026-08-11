@@ -1,7 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
 import {
-  UBER_MENU_DRAFT_COMMAND_PORT,
-  UBER_MENU_DRAFT_QUERY_PORT,
   type UberMenuDraftCommandPort,
   type UberMenuDraftMutationResult,
   type UberMenuDraftQueryPort,
@@ -28,12 +25,9 @@ const requireChanges = (changes: object): void => {
 };
 
 /** Public application boundary for editing the small, channel-specific draft configuration. */
-@Injectable()
 export class UberMenuDraftConfigUseCase {
   constructor(
-    @Inject(UBER_MENU_DRAFT_QUERY_PORT)
     private readonly queries: UberMenuDraftQueryPort,
-    @Inject(UBER_MENU_DRAFT_COMMAND_PORT)
     private readonly commands: UberMenuDraftCommandPort,
   ) {}
 

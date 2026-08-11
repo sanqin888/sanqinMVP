@@ -5,11 +5,9 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 
-import {
-  ClaimAndExecuteUberOrderActionsUseCase,
-  ClaimAndProcessUberWebhookInboxUseCase,
-  ConfirmUberMenuPublicationsUseCase,
-} from '../../application/workers/uber-background-task.use-cases';
+import { ClaimAndExecuteUberOrderActionsUseCase } from '../../application/orders/claim-and-execute-uber-order-actions.use-case';
+import { ClaimAndProcessUberWebhookInboxUseCase } from '../../application/orders/claim-and-process-uber-webhook-inbox.use-case';
+import { ConfirmUberMenuPublicationsUseCase } from '../../application/menu/confirm-uber-menu-publications.use-case';
 import {
   UberConfigService,
   type UberWorkerKind,

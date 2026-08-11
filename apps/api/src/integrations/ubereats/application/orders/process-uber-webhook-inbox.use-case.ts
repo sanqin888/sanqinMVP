@@ -1,4 +1,3 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { parseUberOrderNotificationV1 } from '../../contracts/events/uber-order-notification.v1';
 import { parseUberMenuNotificationV1 } from '../../contracts/events/uber-menu-notification.v1';
@@ -6,8 +5,6 @@ import { normalizeUberEventType } from '../../domain/shared/uber-integration.uti
 import { UberMenuNotificationHandler } from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 import {
-  UBER_TELEMETRY_PORT,
-  UBER_WEBHOOK_INBOX_PORT,
   type UberTelemetryPort,
   type UberWebhookInboxItem,
   type UberWebhookInboxPort,
@@ -19,15 +16,13 @@ import {
 } from '../errors/uber-application.error';
 
 /** Application use case that receives and routes durable webhook events. */
-@Injectable()
 export class ProcessUberWebhookInboxUseCase {
   constructor(
-    @Inject(UBER_WEBHOOK_INBOX_PORT)
     private readonly inbox: UberWebhookInboxPort,
     private readonly orders: ImportUberOrderUseCase,
     private readonly menu: UberMenuNotificationHandler,
     private readonly merchant: HandleUberMerchantWebhookHandler,
-    @Inject(UBER_TELEMETRY_PORT) private readonly telemetry: UberTelemetryPort,
+    private readonly telemetry: UberTelemetryPort,
   ) {}
 
   async execute(limit = 50): Promise<number> {

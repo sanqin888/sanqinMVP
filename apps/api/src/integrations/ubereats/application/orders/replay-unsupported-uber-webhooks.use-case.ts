@@ -1,11 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
-import {
-  UBER_WEBHOOK_INBOX_PORT,
-  type UberWebhookInboxPort,
-} from '../ports/uber-order-processing.ports';
+import { type UberWebhookInboxPort } from '../ports/uber-order-processing.ports';
 
 /** Administrator operation used only after the deployed contract supports a quarantined type. */
-@Injectable()
 export class ReplayUnsupportedUberWebhooksUseCase {
   private static readonly BUSINESS_VERSION = 'v1';
   private static readonly SUPPORTED_EVENT_TYPES = [
@@ -24,10 +19,7 @@ export class ReplayUnsupportedUberWebhooksUseCase {
     'store.status.changed',
   ];
 
-  constructor(
-    @Inject(UBER_WEBHOOK_INBOX_PORT)
-    private readonly inbox: UberWebhookInboxPort,
-  ) {}
+  constructor(private readonly inbox: UberWebhookInboxPort) {}
 
   execute(eventIds: string[]): Promise<number> {
     const selected = [

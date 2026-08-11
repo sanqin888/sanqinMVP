@@ -1,4 +1,3 @@
-import { Inject, Injectable } from '@nestjs/common';
 import type {
   CreateOpsTicketInput,
   GenerateReconciliationReportInput,
@@ -83,44 +82,28 @@ export interface UberOperationsPort {
     status?: UberOpsTicketStatus,
   ): Promise<any>;
 }
-@Injectable()
 export class GenerateUberReconciliationReportUseCase {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
+  constructor(private readonly operations: UberOperationsPort) {}
   execute(input: GenerateReconciliationReportInput) {
     return this.operations.generateReconciliationReport(input);
   }
 }
-@Injectable()
 export class CreateUberOpsTicketUseCase {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
+  constructor(private readonly operations: UberOperationsPort) {}
   execute(command: CreateUberOpsTicketCommand) {
     return this.operations.createOpsTicket(
       mapCreateUberOpsTicketCommand(command),
     );
   }
 }
-@Injectable()
 export class RetryUberOpsTicketUseCase {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
+  constructor(private readonly operations: UberOperationsPort) {}
   execute(id: string) {
     return this.operations.retryOpsTicket(id);
   }
 }
-@Injectable()
 export class QueryUberOperationsSummary {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
+  constructor(private readonly operations: UberOperationsPort) {}
   listReports(storeId?: string, limit?: number) {
     return this.operations.listReconciliationReports(storeId, limit);
   }

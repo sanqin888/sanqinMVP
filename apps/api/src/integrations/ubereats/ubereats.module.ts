@@ -132,11 +132,9 @@ import {
   PrismaUberUnitOfWork,
   PrismaUberWebhookInboxAdapter,
 } from './infrastructure/persistence/uber-prisma.adapters';
-import {
-  ClaimAndExecuteUberOrderActionsUseCase,
-  ClaimAndProcessUberWebhookInboxUseCase,
-  ConfirmUberMenuPublicationsUseCase,
-} from './application/workers/uber-background-task.use-cases';
+import { ClaimAndExecuteUberOrderActionsUseCase } from './application/orders/claim-and-execute-uber-order-actions.use-case';
+import { ClaimAndProcessUberWebhookInboxUseCase } from './application/orders/claim-and-process-uber-webhook-inbox.use-case';
+import { ConfirmUberMenuPublicationsUseCase } from './application/menu/confirm-uber-menu-publications.use-case';
 import {
   UberMenuPublishConfirmationWorkerAdapter,
   UberOrderActionWorkerAdapter,
@@ -267,10 +265,57 @@ const UBER_EATS_HTTP_METADATA = {
     { provide: UBER_MENU_GATEWAY, useExisting: UberMenuGatewayAdapter },
     UberMenuImageProbeAdapter,
     { provide: UBER_MENU_IMAGE_PROBE, useExisting: UberMenuImageProbeAdapter },
-    ReceiveUberWebhookUseCase,
-    ProcessUberWebhookInboxUseCase,
-    ReplayUnsupportedUberWebhooksUseCase,
-    HandleUberMerchantWebhookHandler,
+    {
+      provide: ReceiveUberWebhookUseCase,
+      inject: [
+        UBER_WEBHOOK_INBOX_PORT,
+        UBER_WEBHOOK_SIGNATURE_VERIFIER,
+        UBER_TELEMETRY_PORT,
+      ],
+      useFactory: (
+        inbox: UberWebhookInboxPrismaAdapter,
+        signatures: HmacUberWebhookSignatureVerifier,
+        telemetry: UberTelemetryService,
+      ) => new ReceiveUberWebhookUseCase(inbox, signatures, telemetry),
+    },
+    {
+      provide: ProcessUberWebhookInboxUseCase,
+      inject: [
+        UBER_WEBHOOK_INBOX_PORT,
+        ImportUberOrderUseCase,
+        UberMenuNotificationHandler,
+        HandleUberMerchantWebhookHandler,
+        UBER_TELEMETRY_PORT,
+      ],
+      useFactory: (
+        inbox: UberWebhookInboxPrismaAdapter,
+        orders: ImportUberOrderUseCase,
+        menu: UberMenuNotificationHandler,
+        merchant: HandleUberMerchantWebhookHandler,
+        telemetry: UberTelemetryService,
+      ) =>
+        new ProcessUberWebhookInboxUseCase(
+          inbox,
+          orders,
+          menu,
+          merchant,
+          telemetry,
+        ),
+    },
+    {
+      provide: ReplayUnsupportedUberWebhooksUseCase,
+      inject: [UBER_WEBHOOK_INBOX_PORT],
+      useFactory: (inbox: UberWebhookInboxPrismaAdapter) =>
+        new ReplayUnsupportedUberWebhooksUseCase(inbox),
+    },
+    {
+      provide: HandleUberMerchantWebhookHandler,
+      inject: [UBER_WEBHOOK_INBOX_PORT, UBER_TELEMETRY_PORT],
+      useFactory: (
+        inbox: UberWebhookInboxPrismaAdapter,
+        telemetry: UberTelemetryService,
+      ) => new HandleUberMerchantWebhookHandler(inbox, telemetry),
+    },
     UberOrderSyncAdapter,
     UberOrderImportPrismaAdapter,
     {
@@ -278,23 +323,89 @@ const UBER_EATS_HTTP_METADATA = {
       useExisting: UberOrderImportPrismaAdapter,
     },
     { provide: UBER_ORDER_SYNC_PORT, useExisting: UberOrderSyncAdapter },
-    UberOrderActionService,
-    UberOrderStatusSyncService,
-    UberOrderOutboxService,
-    ImportUberOrderUseCase,
+    {
+      provide: UberOrderActionService,
+      inject: [UBER_ORDER_ACTION_REPOSITORY, UBER_ORDER_ACTION_COMMAND_GATEWAY],
+      useFactory: (
+        repository: UberOrderActionPrismaAdapter,
+        gateway: UberOrderActionGatewayAdapter,
+      ) => new UberOrderActionService(repository, gateway),
+    },
+    {
+      provide: UberOrderStatusSyncService,
+      inject: [UBER_ORDER_STATUS_AUDIT_PORT],
+      useFactory: (audit: UberOrderStatusAuditPrismaAdapter) =>
+        new UberOrderStatusSyncService(audit),
+    },
+    {
+      provide: UberOrderOutboxService,
+      inject: [UBER_ORDER_OUTBOX_PORT],
+      useFactory: (outbox: UberOrderOutboxPrismaAdapter) =>
+        new UberOrderOutboxService(outbox),
+    },
+    {
+      provide: ImportUberOrderUseCase,
+      inject: [
+        UBER_ORDER_IMPORT_REPOSITORY,
+        UBER_ORDER_DETAIL_GATEWAY,
+        UberOrderActionService,
+      ],
+      useFactory: (
+        repository: UberOrderImportPrismaAdapter,
+        gateway: UberOrderDetailGatewayAdapter,
+        actions: UberOrderActionService,
+      ) => new ImportUberOrderUseCase(repository, gateway, actions),
+    },
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
-    CancelUberOrderUseCase,
-    RequestUberOrderActionUseCase,
-    ExecuteUberOrderActionWorker,
-    SyncUberOrderStatusUseCase,
-    ListPendingUberOrdersQuery,
+    {
+      provide: CancelUberOrderUseCase,
+      inject: [
+        UBER_ORDER_IMPORT_REPOSITORY,
+        UBER_ORDER_DETAIL_GATEWAY,
+        UberOrderActionService,
+      ],
+      useFactory: (
+        repository: UberOrderImportPrismaAdapter,
+        gateway: UberOrderDetailGatewayAdapter,
+        actions: UberOrderActionService,
+      ) => new CancelUberOrderUseCase(repository, gateway, actions),
+    },
+    {
+      provide: RequestUberOrderActionUseCase,
+      inject: [UberOrderActionService],
+      useFactory: (actions: UberOrderActionService) =>
+        new RequestUberOrderActionUseCase(actions),
+    },
+    {
+      provide: ExecuteUberOrderActionWorker,
+      inject: [UberOrderActionService],
+      useFactory: (actions: UberOrderActionService) =>
+        new ExecuteUberOrderActionWorker(actions),
+    },
+    {
+      provide: SyncUberOrderStatusUseCase,
+      inject: [UBER_ORDER_SYNC_PORT],
+      useFactory: (orders: UberOrderSyncAdapter) =>
+        new SyncUberOrderStatusUseCase(orders),
+    },
+    {
+      provide: ListPendingUberOrdersQuery,
+      inject: [UBER_ORDER_SYNC_PORT],
+      useFactory: (orders: UberOrderSyncAdapter) =>
+        new ListPendingUberOrdersQuery(orders),
+    },
     UberMenuDraftAdapter,
     { provide: UBER_MENU_DRAFT_PORT, useExisting: UberMenuDraftAdapter },
     {
       provide: UBER_MENU_AVAILABILITY_PORT,
       useExisting: UberMenuDraftAdapter,
     },
-    UberMenuDraftUseCase,
+    {
+      provide: UberMenuDraftUseCase,
+      inject: [UBER_MENU_DRAFT_PORT],
+      useFactory: (drafts: UberMenuDraftAdapter) =>
+        new UberMenuDraftUseCase(drafts),
+    },
     UberMenuRepository,
     {
       provide: UBER_MENU_DRAFT_QUERY_PORT,
@@ -304,18 +415,59 @@ const UBER_EATS_HTTP_METADATA = {
       provide: UBER_MENU_DRAFT_COMMAND_PORT,
       useExisting: UberMenuRepository,
     },
-    UberMenuDraftConfigUseCase,
-    PublishUberMenuUseCase,
+    {
+      provide: UberMenuDraftConfigUseCase,
+      inject: [UBER_MENU_DRAFT_QUERY_PORT, UBER_MENU_DRAFT_COMMAND_PORT],
+      useFactory: (queries: UberMenuRepository, commands: UberMenuRepository) =>
+        new UberMenuDraftConfigUseCase(queries, commands),
+    },
+    {
+      provide: PublishUberMenuUseCase,
+      inject: [
+        UBER_MENU_SNAPSHOT_REPOSITORY,
+        UBER_MENU_PUBLICATION_REPOSITORY,
+        UBER_MENU_GATEWAY,
+        UBER_MENU_IMAGE_PROBE,
+      ],
+      useFactory: (
+        snapshots: UberMenuSnapshotPrismaAdapter,
+        publications: UberMenuPublicationPrismaAdapter,
+        gateway: UberMenuGatewayAdapter,
+        images: UberMenuImageProbeAdapter,
+      ) => new PublishUberMenuUseCase(snapshots, publications, gateway, images),
+    },
     { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
-    ConfirmUberMenuPublicationUseCase,
-    RecoverTimedOutMenuPublicationsUseCase,
-    UberMenuNotificationHandler,
+    {
+      provide: ConfirmUberMenuPublicationUseCase,
+      inject: [UBER_MENU_PUBLICATION_REPOSITORY, UBER_MENU_GATEWAY],
+      useFactory: (
+        publications: UberMenuPublicationPrismaAdapter,
+        gateway: UberMenuGatewayAdapter,
+      ) => new ConfirmUberMenuPublicationUseCase(publications, gateway),
+    },
+    {
+      provide: RecoverTimedOutMenuPublicationsUseCase,
+      inject: [UBER_MENU_PUBLICATION_REPOSITORY],
+      useFactory: (publications: UberMenuPublicationPrismaAdapter) =>
+        new RecoverTimedOutMenuPublicationsUseCase(publications),
+    },
+    {
+      provide: UberMenuNotificationHandler,
+      inject: [MENU_NOTIFICATION_REPOSITORY],
+      useFactory: (repository: UberMenuNotificationPrismaRepository) =>
+        new UberMenuNotificationHandler(repository),
+    },
     UberMenuNotificationPrismaRepository,
     {
       provide: MENU_NOTIFICATION_REPOSITORY,
       useExisting: UberMenuNotificationPrismaRepository,
     },
-    UberMenuAvailabilityUseCase,
+    {
+      provide: UberMenuAvailabilityUseCase,
+      inject: [UBER_MENU_AVAILABILITY_PORT],
+      useFactory: (availability: UberMenuDraftAdapter) =>
+        new UberMenuAvailabilityUseCase(availability),
+    },
     UberOAuthTokenAdapter,
     { provide: UBER_OAUTH_TOKEN, useExisting: UberOAuthTokenAdapter },
     UberMerchantApiAdapter,
@@ -341,42 +493,268 @@ const UBER_EATS_HTTP_METADATA = {
       provide: UBER_OPERATIONS_ALERT_REPOSITORY,
       useExisting: UberOperationsAlertPrismaAdapter,
     },
-    StartUberOAuthUseCase,
-    CompleteUberOAuthUseCase,
-    DiscoverUberStoresUseCase,
-    MapUberStoreUseCase,
-    ProvisionUberStoreUseCase,
-    DeprovisionUberStoreUseCase,
-    SyncUberStoreStatusUseCase,
+    {
+      provide: StartUberOAuthUseCase,
+      inject: [UBER_OAUTH_TOKEN, UBER_OAUTH_STATE_REPOSITORY],
+      useFactory: (
+        tokens: UberOAuthTokenAdapter,
+        states: UberOAuthStatePrismaAdapter,
+      ) => new StartUberOAuthUseCase(tokens, states),
+    },
+    {
+      provide: CompleteUberOAuthUseCase,
+      inject: [
+        UBER_OAUTH_TOKEN,
+        UBER_OAUTH_STATE_REPOSITORY,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+      ],
+      useFactory: (
+        tokens: UberOAuthTokenAdapter,
+        states: UberOAuthStatePrismaAdapter,
+        connections: UberMerchantConnectionPrismaAdapter,
+      ) => new CompleteUberOAuthUseCase(tokens, states, connections),
+    },
+    {
+      provide: DiscoverUberStoresUseCase,
+      inject: [
+        UBER_MERCHANT_API,
+        UBER_OAUTH_TOKEN,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberMerchantApiAdapter,
+        tokens: UberOAuthTokenAdapter,
+        connections: UberMerchantConnectionPrismaAdapter,
+        mappings: UberStoreMappingPrismaAdapter,
+      ) => new DiscoverUberStoresUseCase(api, tokens, connections, mappings),
+    },
+    {
+      provide: MapUberStoreUseCase,
+      inject: [UBER_STORE_MAPPING_REPOSITORY],
+      useFactory: (mappings: UberStoreMappingPrismaAdapter) =>
+        new MapUberStoreUseCase(mappings),
+    },
+    {
+      provide: ProvisionUberStoreUseCase,
+      inject: [
+        UBER_STORE_API,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberMerchantApiAdapter,
+        connections: UberMerchantConnectionPrismaAdapter,
+        mappings: UberStoreMappingPrismaAdapter,
+      ) => new ProvisionUberStoreUseCase(api, connections, mappings),
+    },
+    {
+      provide: DeprovisionUberStoreUseCase,
+      useFactory: () => new DeprovisionUberStoreUseCase(),
+    },
+    {
+      provide: SyncUberStoreStatusUseCase,
+      inject: [
+        UBER_STORE_API,
+        UBER_STORE_MAPPING_REPOSITORY,
+        UBER_OPERATIONS_ALERT_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberMerchantApiAdapter,
+        mappings: UberStoreMappingPrismaAdapter,
+        alerts: UberOperationsAlertPrismaAdapter,
+      ) => new SyncUberStoreStatusUseCase(api, mappings, alerts),
+    },
     UberOperationsPrismaAdapter,
     { provide: UBER_OPERATIONS_PORT, useExisting: UberOperationsPrismaAdapter },
-    GenerateUberReconciliationReportUseCase,
-    CreateUberOpsTicketUseCase,
-    RetryUberOpsTicketUseCase,
-    QueryUberOperationsSummary,
+    {
+      provide: GenerateUberReconciliationReportUseCase,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new GenerateUberReconciliationReportUseCase(operations),
+    },
+    {
+      provide: CreateUberOpsTicketUseCase,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new CreateUberOpsTicketUseCase(operations),
+    },
+    {
+      provide: RetryUberOpsTicketUseCase,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new RetryUberOpsTicketUseCase(operations),
+    },
+    {
+      provide: QueryUberOperationsSummary,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new QueryUberOperationsSummary(operations),
+    },
   ],
   exports: [
     UberAuthService,
     BrowserWriteCsrfGuard,
-    ReceiveUberWebhookUseCase,
-    RequestUberOrderActionUseCase,
-    SyncUberOrderStatusUseCase,
-    ListPendingUberOrdersQuery,
-    UberMenuDraftUseCase,
-    UberMenuDraftConfigUseCase,
-    PublishUberMenuUseCase,
-    UberMenuAvailabilityUseCase,
-    StartUberOAuthUseCase,
-    CompleteUberOAuthUseCase,
-    DiscoverUberStoresUseCase,
-    MapUberStoreUseCase,
-    ProvisionUberStoreUseCase,
-    DeprovisionUberStoreUseCase,
-    SyncUberStoreStatusUseCase,
-    GenerateUberReconciliationReportUseCase,
-    CreateUberOpsTicketUseCase,
-    RetryUberOpsTicketUseCase,
-    QueryUberOperationsSummary,
+    {
+      provide: ReceiveUberWebhookUseCase,
+      inject: [
+        UBER_WEBHOOK_INBOX_PORT,
+        UBER_WEBHOOK_SIGNATURE_VERIFIER,
+        UBER_TELEMETRY_PORT,
+      ],
+      useFactory: (
+        inbox: UberWebhookInboxPrismaAdapter,
+        signatures: HmacUberWebhookSignatureVerifier,
+        telemetry: UberTelemetryService,
+      ) => new ReceiveUberWebhookUseCase(inbox, signatures, telemetry),
+    },
+    {
+      provide: RequestUberOrderActionUseCase,
+      inject: [UberOrderActionService],
+      useFactory: (actions: UberOrderActionService) =>
+        new RequestUberOrderActionUseCase(actions),
+    },
+    {
+      provide: SyncUberOrderStatusUseCase,
+      inject: [UBER_ORDER_SYNC_PORT],
+      useFactory: (orders: UberOrderSyncAdapter) =>
+        new SyncUberOrderStatusUseCase(orders),
+    },
+    {
+      provide: ListPendingUberOrdersQuery,
+      inject: [UBER_ORDER_SYNC_PORT],
+      useFactory: (orders: UberOrderSyncAdapter) =>
+        new ListPendingUberOrdersQuery(orders),
+    },
+    {
+      provide: UberMenuDraftUseCase,
+      inject: [UBER_MENU_DRAFT_PORT],
+      useFactory: (drafts: UberMenuDraftAdapter) =>
+        new UberMenuDraftUseCase(drafts),
+    },
+    {
+      provide: UberMenuDraftConfigUseCase,
+      inject: [UBER_MENU_DRAFT_QUERY_PORT, UBER_MENU_DRAFT_COMMAND_PORT],
+      useFactory: (queries: UberMenuRepository, commands: UberMenuRepository) =>
+        new UberMenuDraftConfigUseCase(queries, commands),
+    },
+    {
+      provide: PublishUberMenuUseCase,
+      inject: [
+        UBER_MENU_SNAPSHOT_REPOSITORY,
+        UBER_MENU_PUBLICATION_REPOSITORY,
+        UBER_MENU_GATEWAY,
+        UBER_MENU_IMAGE_PROBE,
+      ],
+      useFactory: (
+        snapshots: UberMenuSnapshotPrismaAdapter,
+        publications: UberMenuPublicationPrismaAdapter,
+        gateway: UberMenuGatewayAdapter,
+        images: UberMenuImageProbeAdapter,
+      ) => new PublishUberMenuUseCase(snapshots, publications, gateway, images),
+    },
+    {
+      provide: UberMenuAvailabilityUseCase,
+      inject: [UBER_MENU_AVAILABILITY_PORT],
+      useFactory: (availability: UberMenuDraftAdapter) =>
+        new UberMenuAvailabilityUseCase(availability),
+    },
+    {
+      provide: StartUberOAuthUseCase,
+      inject: [UBER_OAUTH_TOKEN, UBER_OAUTH_STATE_REPOSITORY],
+      useFactory: (
+        tokens: UberOAuthTokenAdapter,
+        states: UberOAuthStatePrismaAdapter,
+      ) => new StartUberOAuthUseCase(tokens, states),
+    },
+    {
+      provide: CompleteUberOAuthUseCase,
+      inject: [
+        UBER_OAUTH_TOKEN,
+        UBER_OAUTH_STATE_REPOSITORY,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+      ],
+      useFactory: (
+        tokens: UberOAuthTokenAdapter,
+        states: UberOAuthStatePrismaAdapter,
+        connections: UberMerchantConnectionPrismaAdapter,
+      ) => new CompleteUberOAuthUseCase(tokens, states, connections),
+    },
+    {
+      provide: DiscoverUberStoresUseCase,
+      inject: [
+        UBER_MERCHANT_API,
+        UBER_OAUTH_TOKEN,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberMerchantApiAdapter,
+        tokens: UberOAuthTokenAdapter,
+        connections: UberMerchantConnectionPrismaAdapter,
+        mappings: UberStoreMappingPrismaAdapter,
+      ) => new DiscoverUberStoresUseCase(api, tokens, connections, mappings),
+    },
+    {
+      provide: MapUberStoreUseCase,
+      inject: [UBER_STORE_MAPPING_REPOSITORY],
+      useFactory: (mappings: UberStoreMappingPrismaAdapter) =>
+        new MapUberStoreUseCase(mappings),
+    },
+    {
+      provide: ProvisionUberStoreUseCase,
+      inject: [
+        UBER_STORE_API,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberMerchantApiAdapter,
+        connections: UberMerchantConnectionPrismaAdapter,
+        mappings: UberStoreMappingPrismaAdapter,
+      ) => new ProvisionUberStoreUseCase(api, connections, mappings),
+    },
+    {
+      provide: DeprovisionUberStoreUseCase,
+      useFactory: () => new DeprovisionUberStoreUseCase(),
+    },
+    {
+      provide: SyncUberStoreStatusUseCase,
+      inject: [
+        UBER_STORE_API,
+        UBER_STORE_MAPPING_REPOSITORY,
+        UBER_OPERATIONS_ALERT_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberMerchantApiAdapter,
+        mappings: UberStoreMappingPrismaAdapter,
+        alerts: UberOperationsAlertPrismaAdapter,
+      ) => new SyncUberStoreStatusUseCase(api, mappings, alerts),
+    },
+    {
+      provide: GenerateUberReconciliationReportUseCase,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new GenerateUberReconciliationReportUseCase(operations),
+    },
+    {
+      provide: CreateUberOpsTicketUseCase,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new CreateUberOpsTicketUseCase(operations),
+    },
+    {
+      provide: RetryUberOpsTicketUseCase,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new RetryUberOpsTicketUseCase(operations),
+    },
+    {
+      provide: QueryUberOperationsSummary,
+      inject: [UBER_OPERATIONS_PORT],
+      useFactory: (operations: UberOperationsPrismaAdapter) =>
+        new QueryUberOperationsSummary(operations),
+    },
   ],
 } satisfies Omit<DynamicModule, 'module'>;
 
@@ -400,9 +778,29 @@ export class UberEatsModule {
         OrderEventsBus,
         OrderIngestionService,
         ...UBER_EATS_HTTP_METADATA.providers,
-        ClaimAndProcessUberWebhookInboxUseCase,
-        ClaimAndExecuteUberOrderActionsUseCase,
-        ConfirmUberMenuPublicationsUseCase,
+        {
+          provide: ClaimAndProcessUberWebhookInboxUseCase,
+          inject: [ProcessUberWebhookInboxUseCase],
+          useFactory: (inbox: ProcessUberWebhookInboxUseCase) =>
+            new ClaimAndProcessUberWebhookInboxUseCase(inbox),
+        },
+        {
+          provide: ClaimAndExecuteUberOrderActionsUseCase,
+          inject: [ExecuteUberOrderActionWorker],
+          useFactory: (actions: ExecuteUberOrderActionWorker) =>
+            new ClaimAndExecuteUberOrderActionsUseCase(actions),
+        },
+        {
+          provide: ConfirmUberMenuPublicationsUseCase,
+          inject: [
+            ConfirmUberMenuPublicationUseCase,
+            RecoverTimedOutMenuPublicationsUseCase,
+          ],
+          useFactory: (
+            confirmations: ConfirmUberMenuPublicationUseCase,
+            recovery: RecoverTimedOutMenuPublicationsUseCase,
+          ) => new ConfirmUberMenuPublicationsUseCase(confirmations, recovery),
+        },
         UberWebhookInboxWorkerAdapter,
         UberOrderActionWorkerAdapter,
         UberMenuPublishConfirmationWorkerAdapter,
