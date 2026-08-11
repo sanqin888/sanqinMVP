@@ -20,6 +20,10 @@
 `fixtures/` 只保存虚构、最小化 payload。禁止加入真实顾客姓名、电话、邮箱、
 地址、门店身份或任何 access/refresh token；契约测试会扫描常见敏感字段。
 
+Uber 原始 HTTP schema 另存于 `fixtures/uber-contract/v1/`，不得用 application/domain
+类型替代 wire fixture。能力、scope、webhook 与实现/测试的完整关联见
+`requirement-matrix.md`；升级版本必须新增 fixture 版本并同步更新矩阵和门禁测试。
+
 ## Webhook 签名契约核对（2026-08-10 UTC）
 
 > **Dashboard 核对状态：受阻。** 当前执行环境没有 Uber Developer Dashboard 的已登录会话或应用凭据，因此无法冒充账户所有者登录，也不能声称已经看到该应用获批 Eats 产品的私有配置。上线负责人必须在该应用的 **Webhooks / Primary webhook URL** 页面复核下表，尤其是 signing key 来源与轮换行为；复核前本实现依据 Uber 官方公开页面的当前说明，而不是未经证实的 Dashboard 截图。
