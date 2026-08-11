@@ -192,7 +192,11 @@ describe('OrdersService', () => {
     };
 
     notificationService = {
-      notifyOrderReady: jest.fn(),
+      notifyOrderReady: jest.fn().mockResolvedValue({
+        ok: true,
+        finalChannel: 'sms',
+        attemptedChannels: ['sms'],
+      }),
       notifyDeliveryDispatchFailed: jest.fn().mockResolvedValue({ ok: true }),
     };
 
@@ -229,6 +233,9 @@ describe('OrdersService', () => {
   });
 
   it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {
+    const logSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'making',
@@ -269,6 +276,69 @@ describe('OrdersService', () => {
       locale: 'en',
       userId: null,
     });
+    expect(logSpy).toHaveBeenCalledWith({
+      event: 'order_ready_notification_completed',
+      orderId: 'order-pickup-ready',
+      orderStableId: 'cordpickupready001',
+      finalChannel: 'sms',
+      attemptedChannels: ['sms'],
+      ok: true,
+    });
+  });
+
+  it('logs email failure followed by successful SMS fallback', async () => {
+    const logSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    notificationService.notifyOrderReady.mockResolvedValueOnce({
+      ok: true,
+      finalChannel: 'sms',
+      attemptedChannels: ['email', 'sms'],
+      fallbackReason: 'provider rejected customer@example.com',
+    });
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date(),
+        makingAt: new Date(),
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: 'order-fallback',
+        orderStableId: 'cordfallback001',
+        clientRequestId: null,
+        contactEmail: 'customer@example.com',
+        contactPhone: '+14165550000',
+        contactName: 'Fallback',
+        userId: null,
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      metadataJson: {
+        verifiedContacts: {
+          email: 'customer@example.com',
+          phone: '+14165550000',
+        },
+      },
+    });
+
+    await service.updateStatusInternal(
+      '12121212-1212-1212-1212-121212121212',
+      'ready',
+    );
+    await new Promise<void>((resolve) => process.nextTick(resolve));
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'order_ready_notification_completed',
+        orderId: 'order-fallback',
+        finalChannel: 'sms',
+        attemptedChannels: ['email', 'sms'],
+        ok: true,
+        failureReason: 'provider rejected [redacted-email]',
+      }),
+    );
   });
 
   it('prefers the checkout email over a different member email', async () => {
@@ -399,11 +469,104 @@ describe('OrdersService', () => {
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
     expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'No contact channel available; notification skipped for order order-pickup-ready-no-contact',
-      ),
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: 'order_ready_notification_completed',
+      orderId: 'order-pickup-ready-no-contact',
+      orderStableId: 'cordpickupready003',
+      finalChannel: null,
+      attemptedChannels: [],
+      ok: false,
+      failureReason: 'no_trusted_contact',
+    });
+  });
+
+  it('logs a redacted structured failure when template rendering throws', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    notificationService.notifyOrderReady.mockRejectedValueOnce(
+      new Error('template failed for private@example.com +1 416 555 9999'),
     );
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date(),
+        makingAt: new Date(),
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: 'order-template-error',
+        orderStableId: 'cordtemplate001',
+        clientRequestId: null,
+        contactEmail: null,
+        contactPhone: '+14165550000',
+        contactName: 'Private',
+        userId: null,
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+    prisma.checkoutIntent.findFirst.mockResolvedValue({
+      metadataJson: { verifiedContacts: { phone: '+14165550000' } },
+    });
+
+    await service.updateStatusInternal(
+      '13131313-1313-1313-1313-131313131313',
+      'ready',
+    );
+    await new Promise<void>((resolve) => process.nextTick(resolve));
+
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: 'order_ready_notification_completed',
+      orderId: 'order-template-error',
+      orderStableId: 'cordtemplate001',
+      finalChannel: null,
+      attemptedChannels: [],
+      ok: false,
+      failureReason: 'template failed for [redacted-email] [redacted-phone]',
+    });
+  });
+
+  it('logs a structured failure when the contact database query throws', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'making',
+        paidAt: new Date(),
+        makingAt: new Date(),
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: 'order-db-error',
+        orderStableId: 'corddberror001',
+        clientRequestId: null,
+        contactEmail: null,
+        contactPhone: null,
+        contactName: null,
+        userId: null,
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+    prisma.checkoutIntent.findFirst.mockRejectedValueOnce(
+      new Error('database unavailable'),
+    );
+
+    await service.updateStatusInternal(
+      '14141414-1414-1414-1414-141414141414',
+      'ready',
+    );
+    await new Promise<void>((resolve) => process.nextTick(resolve));
+
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: 'order_ready_notification_completed',
+      orderId: 'order-db-error',
+      orderStableId: 'corddberror001',
+      finalChannel: null,
+      attemptedChannels: [],
+      ok: false,
+      failureReason: 'database unavailable',
+    });
   });
 
   it('does not send order-ready notification when delivery order is marked ready', async () => {
