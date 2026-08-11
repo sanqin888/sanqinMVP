@@ -22,6 +22,7 @@ import {
 import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
 import { PrintPosPayloadService } from '../print-pos-payload.service';
+import { resolveConfiguredStoreId } from '../../common/store-id';
 
 @Injectable()
 export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
@@ -126,14 +127,17 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    if (!order.storeId) {
+    let storeId = order.storeId;
+    if (!storeId) {
       this.logger.error({
         event: 'accepted_print_store_missing',
         orderId: order.id,
         orderStableId: order.orderStableId,
         reason: 'STORE_ID_MISSING',
       });
-      return;
+      // Compatibility only: orders created before store ownership was
+      // persisted still follow the deployment's controlled POS route.
+      storeId = resolveConfiguredStoreId();
     }
 
     let printPayload: PrintPosPayloadDto;
@@ -147,7 +151,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         event: 'accepted_print_payload_failed',
         orderId: order.id,
         orderStableId: order.orderStableId,
-        storeId: order.storeId,
+        storeId,
         reason: 'PAYLOAD_BUILD_FAILED',
         errorType: error instanceof Error ? error.name : 'UnknownError',
       });
@@ -159,14 +163,14 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       const job = await this.posGateway.sendPrintJob({
         orderId: order.id,
         orderStableId: order.orderStableId,
-        storeId: order.storeId,
+        storeId,
         kind: 'AUTO',
         data: { ...printPayload, targets },
       });
       this.logger.log({
         event: 'accepted_print_job_created',
         orderStableId: order.orderStableId,
-        storeId: order.storeId,
+        storeId,
         jobId: job.jobId,
         targets,
       });
@@ -175,7 +179,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         event: 'accepted_print_job_failed',
         orderId: order.id,
         orderStableId: order.orderStableId,
-        storeId: order.storeId,
+        storeId,
         reason: 'PRINT_JOB_CREATE_FAILED',
         errorType: error instanceof Error ? error.name : 'UnknownError',
       });
@@ -229,7 +233,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }
     // Orders created before store mapping was persisted have a null storeId.
     // Keep their established reprint route compatible with the configured POS.
-    const storeId = order.storeId ?? process.env.STORE_ID ?? 'default_store';
+    const storeId = order.storeId ?? resolveConfiguredStoreId();
     if (!order.storeId) {
       this.logger.warn({
         event: 'reprint_legacy_store_fallback',

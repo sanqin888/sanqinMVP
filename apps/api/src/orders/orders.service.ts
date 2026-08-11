@@ -62,6 +62,7 @@ import { EmailService } from '../email/email.service';
 import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
+import { resolveConfiguredStoreId } from '../common/store-id';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -2046,6 +2047,7 @@ export class OrdersService {
       amountCents: number;
       creditCardSurchargeCents: number;
       paymentTotalCents: number;
+      storeId: string | null;
     } | null = null;
 
     if (requiresCheckoutIntentVerification) {
@@ -2118,12 +2120,24 @@ export class OrdersService {
         amountCents: intent.amountCents,
         creditCardSurchargeCents: surchargeCents,
         paymentTotalCents: intent.amountCents + surchargeCents,
+        storeId:
+          typeof intentMeta?.serverVerifiedStoreId === 'string' &&
+          intentMeta.serverVerifiedStoreId.trim()
+            ? intentMeta.serverVerifiedStoreId.trim()
+            : null,
       };
       idempotencyKey = idempotencyKey ?? intent.referenceId;
     }
 
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
     const paidAt = new Date();
+    // Website orders never take their routing identity from the request DTO.
+    // Prefer the store stamped into the verified checkout context; cash and
+    // legacy checkout flows use the deployment's controlled single-store config.
+    const storeId =
+      dto.channel === Channel.web
+        ? (verifiedCheckoutIntent?.storeId ?? resolveConfiguredStoreId())
+        : undefined;
 
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
@@ -2578,6 +2592,7 @@ export class OrdersService {
                 ...(stableKey ? { orderStableId: stableKey } : {}),
                 clientRequestId,
                 channel: dto.channel,
+                ...(storeId ? { storeId } : {}),
                 fulfillmentType: dto.fulfillmentType,
                 contactName,
                 contactEmail,

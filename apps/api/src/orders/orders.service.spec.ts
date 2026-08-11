@@ -536,11 +536,48 @@ describe('OrdersService', () => {
     expect(prisma.order.create).toHaveBeenCalled();
     const createMock = prisma.order.create as jest.Mock<
       unknown,
-      [{ data: { contactEmail?: string | null } }]
+      [{ data: { contactEmail?: string | null; storeId?: string | null } }]
     >;
     expect(createMock.mock.calls[0]?.[0].data.contactEmail).toBe(
       'guest@example.com',
     );
+    expect(createMock.mock.calls[0]?.[0].data.storeId).toBeTruthy();
+  });
+
+  it('网站订单仅使用服务端门店配置而忽略客户端任意 storeId', async () => {
+    const originalStoreId = process.env.STORE_ID;
+    process.env.STORE_ID = 'server-store';
+    prisma.order.create.mockResolvedValue({
+      id: 'order-store-routing',
+      orderStableId: 'stable-store-routing',
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: new Date(),
+      paymentMethod: 'CASH',
+      items: [],
+    });
+
+    try {
+      await service.create({
+        channel: 'web',
+        fulfillmentType: 'pickup',
+        contactName: 'Store Customer',
+        paymentMethod: 'CASH',
+        items: [],
+        storeId: 'client-controlled-store',
+      } as CreateOrderInput & { storeId: string });
+
+      expect(prisma.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ storeId: 'server-store' }) as unknown,
+        }),
+      );
+    } finally {
+      if (originalStoreId === undefined) delete process.env.STORE_ID;
+      else process.env.STORE_ID = originalStoreId;
+    }
   });
 
   it('emits paid-verified event for priority orders', () => {

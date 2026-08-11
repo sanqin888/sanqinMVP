@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from './pos-device.guard';
 import { PosGateway } from './pos.gateway';
+import { resolveConfiguredStoreId } from '../common/store-id';
 
 @Controller('pos/summary')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -55,7 +56,7 @@ export class PosSummaryController {
     });
 
     this.posGateway.sendPrintSummary(
-      storeId ?? process.env.STORE_ID ?? 'default_store',
+      storeId?.trim() || resolveConfiguredStoreId(),
       {
         ...data,
         breakdownType,
