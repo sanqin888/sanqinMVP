@@ -5,6 +5,17 @@ export const UBER_MERCHANT_API = Symbol('UBER_MERCHANT_API');
 export const UBER_STORE_API = Symbol('UBER_STORE_API');
 export const UBER_OAUTH_TOKEN = Symbol('UBER_OAUTH_TOKEN');
 export const UBER_ORDER_ACTION_GATEWAY = Symbol('UBER_ORDER_ACTION_GATEWAY');
+export const UBER_ORDER_DETAIL_GATEWAY = Symbol('UBER_ORDER_DETAIL_GATEWAY');
+
+/** Reads the Uber order resource and exposes only its domain payload. */
+export interface UberOrderDetailGatewayPort {
+  fetchOrderDetail(input: {
+    resourceHref: string;
+    eventType: string;
+    eventId: string;
+    resourceId: string | null;
+  }): Promise<unknown>;
+}
 
 export type UberOAuthTokens = {
   accessToken: string;

@@ -17,6 +17,8 @@ import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-rec
 import { UberMenuPrismaAdapter } from './infrastructure/persistence/uber-menu-prisma.adapter';
 import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
 import { UberOrderPrismaAdapter } from './infrastructure/persistence/uber-order-prisma.adapter';
+import { UberOrderImportPrismaAdapter } from './infrastructure/persistence/uber-order-import-prisma.adapter';
+import { UberOrderDetailGatewayAdapter } from './infrastructure/uber-api/uber-order-detail.gateway';
 import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberOrderActionGatewayAdapter } from './infrastructure/uber-api/uber-order-action.gateway';
 import { UberMenuDraftService } from './application/menu/uber-menu-draft.service';
@@ -82,7 +84,10 @@ import {
   UBER_MENU_DRAFT_COMMAND_PORT,
   UBER_MENU_DRAFT_QUERY_PORT,
 } from './application/ports/uber-menu-draft.ports';
-import { UBER_ORDER_ACTION_GATEWAY } from './application/ports/uber-api.ports';
+import {
+  UBER_ORDER_ACTION_GATEWAY,
+  UBER_ORDER_DETAIL_GATEWAY,
+} from './application/ports/uber-api.ports';
 import {
   UBER_MERCHANT_API,
   UBER_OAUTH_TOKEN,
@@ -163,6 +168,7 @@ import {
 import {
   UBER_ORDER_ACTION_COMMAND_GATEWAY,
   UBER_ORDER_ACTION_REPOSITORY,
+  UBER_ORDER_IMPORT_REPOSITORY,
 } from './application/ports/uber-order.ports';
 
 @Module({
@@ -224,6 +230,11 @@ import {
     UberMerchantResourceGateway,
     UberStoreGateway,
     UberOrderGateway,
+    UberOrderDetailGatewayAdapter,
+    {
+      provide: UBER_ORDER_DETAIL_GATEWAY,
+      useExisting: UberOrderDetailGatewayAdapter,
+    },
     UberOrderActionGatewayAdapter,
     {
       provide: UBER_ORDER_ACTION_COMMAND_GATEWAY,
@@ -255,12 +266,17 @@ import {
     ProcessUberWebhookInboxUseCase,
     HandleUberMerchantWebhookHandler,
     UberOrderPrismaAdapter,
-    { provide: UBER_ORDER_IMPORT_PORT, useExisting: UberOrderPrismaAdapter },
+    UberOrderImportPrismaAdapter,
+    {
+      provide: UBER_ORDER_IMPORT_REPOSITORY,
+      useExisting: UberOrderImportPrismaAdapter,
+    },
     { provide: UBER_ORDER_SYNC_PORT, useExisting: UberOrderPrismaAdapter },
     UberOrderActionService,
     UberOrderStatusSyncService,
     UberOrderOutboxService,
     ImportUberOrderUseCase,
+    { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
     CancelUberOrderUseCase,
     RequestUberOrderActionUseCase,
     ExecuteUberOrderActionWorker,
