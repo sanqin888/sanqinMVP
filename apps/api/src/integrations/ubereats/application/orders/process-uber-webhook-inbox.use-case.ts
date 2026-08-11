@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { parseUberOrderNotificationV1 } from '../../contracts/events/uber-order-notification.v1';
 import { parseUberMenuNotificationV1 } from '../../contracts/events/uber-menu-notification.v1';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
-import { UberMenuPublishService } from '../menu/uber-menu-publish.service';
+import { UberMenuNotificationHandler } from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 import {
   UBER_TELEMETRY_PORT,
@@ -24,7 +24,7 @@ export class ProcessUberWebhookInboxUseCase {
     @Inject(UBER_WEBHOOK_INBOX_PORT)
     private readonly inbox: UberWebhookInboxPort,
     private readonly orders: ImportUberOrderUseCase,
-    private readonly menu: UberMenuPublishService,
+    private readonly menu: UberMenuNotificationHandler,
     private readonly merchant: HandleUberMerchantWebhookHandler,
     @Inject(UBER_TELEMETRY_PORT) private readonly telemetry: UberTelemetryPort,
   ) {}
@@ -71,7 +71,11 @@ export class ProcessUberWebhookInboxUseCase {
               message: 'Uber 菜单 webhook payload 无效',
               operation: 'webhook.route-menu',
             });
-          await this.menu.processWebhookEvent(eventType, eventId, menu);
+          await this.menu.handle({
+            resourceId: menu.resourceId,
+            status: menu.status,
+            failures: menu.failures,
+          });
           break;
         }
         case 'store.provisioned':

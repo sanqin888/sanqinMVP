@@ -1,6 +1,5 @@
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
-import type { UberMenuNotificationEventV1 } from '../../contracts/events/uber-menu-notification.v1';
 import type { UberEventOrdering } from './uber-order-processing.ports';
 import type {
   PublishMenuInput,
@@ -48,12 +47,6 @@ export interface UberMenuDraftPort {
 }
 export interface UberMenuPublishPort {
   publishUberMenu(input: PublishMenuInput): Promise<any>;
-  recoverTimedOutPublications(timeoutMs?: number): Promise<number>;
-  processWebhookEvent(
-    eventType: string,
-    eventId: string,
-    payload: UberMenuNotificationEventV1,
-  ): Promise<void>;
 }
 export interface UberMenuAvailabilityPort {
   syncUberMenuItemAvailability(input: SyncAvailabilityInput): Promise<any>;

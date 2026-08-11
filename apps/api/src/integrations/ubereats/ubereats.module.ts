@@ -138,6 +138,12 @@ import {
 import { HandleUberMerchantWebhookHandler } from './application/merchant/uber-merchant-webhook.handler';
 import { PublishUberMenuUseCase } from './application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from './application/menu/confirm-uber-menu-publication.use-case';
+import { RecoverTimedOutMenuPublicationsUseCase } from './application/menu/recover-timed-out-menu-publications.use-case';
+import {
+  MENU_NOTIFICATION_REPOSITORY,
+  UberMenuNotificationHandler,
+} from './application/menu/uber-menu-notification.handler';
+import { UberMenuNotificationPrismaRepository } from './infrastructure/persistence/uber-menu-notification-prisma.repository';
 import { UberMenuSnapshotPrismaAdapter } from './infrastructure/persistence/uber-menu-snapshot-prisma.adapter';
 import { UberMenuPublicationPrismaAdapter } from './infrastructure/persistence/uber-menu-publication-prisma.adapter';
 import {
@@ -267,6 +273,13 @@ import {
     PublishUberMenuUseCase,
     { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
     ConfirmUberMenuPublicationUseCase,
+    RecoverTimedOutMenuPublicationsUseCase,
+    UberMenuNotificationHandler,
+    UberMenuNotificationPrismaRepository,
+    {
+      provide: MENU_NOTIFICATION_REPOSITORY,
+      useExisting: UberMenuNotificationPrismaRepository,
+    },
     UberMenuAvailabilityService,
     UberOAuthTokenAdapter,
     { provide: UBER_OAUTH_TOKEN, useExisting: UberOAuthTokenAdapter },

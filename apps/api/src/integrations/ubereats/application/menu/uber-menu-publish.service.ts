@@ -12,18 +12,10 @@ export class UberMenuPublishService {
     private readonly publications: UberMenuPublishPort,
     @Optional() private readonly publishMenu?: PublishUberMenuUseCase,
   ) {}
-  recoverTimedOutPublications(timeoutMs?: number) {
-    return this.publications.recoverTimedOutPublications(timeoutMs);
-  }
   publishUberMenu(...args: Parameters<UberMenuPublishPort['publishUberMenu']>) {
     return (
       this.publishMenu?.execute(...args) ??
       this.publications.publishUberMenu(...args)
     );
-  }
-  processWebhookEvent(
-    ...args: Parameters<UberMenuPublishPort['processWebhookEvent']>
-  ) {
-    return this.publications.processWebhookEvent(...args);
   }
 }

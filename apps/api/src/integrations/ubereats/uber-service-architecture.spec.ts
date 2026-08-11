@@ -55,14 +55,7 @@ describe('Uber Eats bounded-context architecture', () => {
     // facade is split; never replace these with a directory/pattern exemption.
     const legacyFacadeExceptions: Readonly<Record<string, readonly string[]>> =
       {
-        'uber-menu-prisma.adapter.ts': [
-          'uber-api import',
-          'UberHttpClient',
-          'UberImageValidator',
-          'new UberImageValidator',
-          'HTTP request call',
-          'setTimeout/publication confirmation polling',
-        ],
+        'uber-menu-prisma.adapter.ts': ['uber-api import'],
         'uber-order-prisma.adapter.ts': [
           'uber-api import',
           'application service/use-case import',
