@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   formatSourceViolation,
@@ -10,6 +10,51 @@ import {
 
 const SOURCE_ROOT = resolve(__dirname, '../..');
 const BOUNDED_CONTEXT_ROOT = resolve(__dirname);
+const PUBLIC_ENTRY_FILES = [
+  'public-api.ts',
+  'ubereats.module.ts',
+  'worker.ts',
+] as const;
+const ALLOWED_TOP_LEVEL_DIRECTORIES = [
+  'api',
+  'application',
+  'contracts',
+  'domain',
+  'infrastructure',
+  'test',
+] as const;
+const INTERNAL_LAYERS = [
+  'api',
+  'application',
+  'contracts',
+  'domain',
+  'infrastructure',
+  'providers',
+] as const;
+const WHITE_BOX_TEST_FILES = new Set([
+  'api/operations.controller.spec.ts',
+  'api/ubereats-exception.filter.spec.ts',
+  'application/orders/uber-order-outbox.service.spec.ts',
+  'application/orders/uber-order.use-cases.spec.ts',
+  'application/orders/uber-webhook.service.spec.ts',
+  'application/shared/uber-domain-error.mapper.spec.ts',
+  'contracts/responses/ubereats.responses.spec.ts',
+  'domain/menu/uber-menu-diff.service.spec.ts',
+  'infrastructure/crypto/uber-webhook-signature-verifier.spec.ts',
+  'infrastructure/uber-api/uber-gateways.wire.contract.spec.ts',
+  'test/contract-matrix.spec.ts',
+  'test/contract-matrix.ts',
+  'test/uber-api-test.helpers.ts',
+  'test/uber-contract-fixtures.spec.ts',
+  'test/uber-sandbox.smoke.spec.ts',
+  'test/uber-service-test.helpers.ts',
+  'uber-credential-schema.spec.ts',
+  'uber-rate-limiter-composition.spec.ts',
+  'ubereats.module.spec.ts',
+]);
+const EXTERNAL_WHITE_BOX_TEST_FILES = new Set([
+  'admin/menu/admin-menu.service.spec.ts',
+]);
 const LAYERS = [
   'api',
   'application',
@@ -22,8 +67,7 @@ type Layer = (typeof LAYERS)[number];
 
 const layerOf = (path: string): Layer | undefined =>
   path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
-  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts') ||
-  path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, 'providers')}${sep}`)
+  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
     ? 'composition-root'
     : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
       ? 'contracts'
@@ -52,6 +96,68 @@ describe('Uber Eats bounded-context architecture', () => {
     productionOnly: true,
   });
   const allSourceFiles = scanTypeScript(SOURCE_ROOT, { productionOnly: true });
+
+  it('allows only the designed top-level directories and public entry files', () => {
+    const entries = readdirSync(BOUNDED_CONTEXT_ROOT, {
+      withFileTypes: true,
+    });
+    const unexpected = entries
+      .filter((entry: { isDirectory(): boolean; name: string }) =>
+        entry.isDirectory()
+          ? !ALLOWED_TOP_LEVEL_DIRECTORIES.includes(
+              entry.name as (typeof ALLOWED_TOP_LEVEL_DIRECTORIES)[number],
+            )
+          : entry.name.endsWith('.ts') &&
+            !entry.name.endsWith('.spec.ts') &&
+            !PUBLIC_ENTRY_FILES.includes(
+              entry.name as (typeof PUBLIC_ENTRY_FILES)[number],
+            ),
+      )
+      .map((entry: { name: string }) => entry.name)
+      .sort();
+
+    expect(unexpected).toEqual([]);
+  });
+
+  it('reserves cross-layer production imports for ubereats.module.ts', () => {
+    const violations = boundedContextFiles.flatMap((file) => {
+      const importedLayers = new Set(
+        importSpecifiers(file.source).flatMap((specifier) =>
+          INTERNAL_LAYERS.filter((layer) =>
+            new RegExp(`(?:^|/)${layer}(?:/|$)`).test(specifier),
+          ),
+        ),
+      );
+      const spansCompositionLayers = [
+        'api',
+        'application',
+        'infrastructure',
+      ].every((layer) =>
+        importedLayers.has(layer as (typeof INTERNAL_LAYERS)[number]),
+      );
+      return spansCompositionLayers &&
+        file.path !== join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts')
+        ? [relative(BOUNDED_CONTEXT_ROOT, file.path)]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it('allows only the composition root and worker runtime Nest modules', () => {
+    const declarations = boundedContextFiles.flatMap((file) =>
+      [
+        ...file.source.matchAll(/@Module\s*\([\s\S]*?\)\s*export class (\w+)/g),
+      ].map(
+        (match) => `${relative(BOUNDED_CONTEXT_ROOT, file.path)}#${match[1]}`,
+      ),
+    );
+
+    expect(declarations.sort()).toEqual([
+      'ubereats.module.ts#UberEatsModule',
+      'worker.ts#UberEatsWorkerEntryModule',
+    ]);
+  });
 
   it('keeps persistence adapters permanently limited to database I/O', () => {
     const persistenceRoot = join(
@@ -116,18 +222,6 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
-  it('forbids callers outside UberEats from importing its infrastructure', () => {
-    const externalFiles = allSourceFiles.filter(
-      ({ path }) => !path.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`),
-    );
-
-    expect(
-      importViolations(externalFiles, SOURCE_ROOT, (specifier) =>
-        /integrations\/ubereats\/infrastructure(?:\/|$)/.test(specifier),
-      ),
-    ).toEqual([]);
-  });
-
   it('requires external callers to use explicit UberEats public entries', () => {
     const externalFiles = allSourceFiles.filter(
       ({ path }) => !path.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`),
@@ -135,49 +229,66 @@ describe('Uber Eats bounded-context architecture', () => {
 
     expect(
       importViolations(externalFiles, SOURCE_ROOT, (specifier) =>
-        /integrations\/ubereats\/(?:application|domain|modules|composition)(?:\/|$)/.test(
+        /integrations\/ubereats\/(?:api|application|domain|contracts|infrastructure|providers)(?:\/|$)/.test(
           specifier,
         ),
       ),
     ).toEqual([]);
   });
 
-  it('has no transitional modules or composition source trees', () => {
+  it('applies a separate public-entry policy to tests', () => {
+    const allTypeScriptFiles = scanTypeScript(SOURCE_ROOT);
+    const testFiles = allTypeScriptFiles.filter(
+      ({ path }) =>
+        path.endsWith('.spec.ts') ||
+        path.includes(`${BOUNDED_CONTEXT_ROOT}${sep}test${sep}`),
+    );
+    const violations: string[] = [];
+
+    for (const file of testFiles) {
+      const isInsideContext = file.path.startsWith(
+        `${BOUNDED_CONTEXT_ROOT}${sep}`,
+      );
+      const relativePath = relative(
+        isInsideContext ? BOUNDED_CONTEXT_ROOT : SOURCE_ROOT,
+        file.path,
+      );
+      for (const specifier of importSpecifiers(file.source)) {
+        const deepExternalImport =
+          /integrations\/ubereats\/(?:api|application|domain|contracts|infrastructure|providers)(?:\/|$)/.test(
+            specifier,
+          );
+        if (
+          !isInsideContext &&
+          deepExternalImport &&
+          !EXTERNAL_WHITE_BOX_TEST_FILES.has(relativePath)
+        ) {
+          violations.push(`${relativePath} -> ${specifier}`);
+          continue;
+        }
+        if (!isInsideContext || WHITE_BOX_TEST_FILES.has(relativePath))
+          continue;
+
+        const importedLayer = INTERNAL_LAYERS.some((layer) =>
+          new RegExp(`(?:^|/)${layer}(?:/|$)`).test(specifier),
+        );
+        if (!importedLayer || !specifier.startsWith('.')) continue;
+        const importedPath = resolve(dirname(file.path), specifier);
+        if (dirname(importedPath) !== dirname(file.path)) {
+          violations.push(`${relativePath} -> ${specifier}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it('has no transitional module, provider, composition, or facade trees', () => {
     expect(
-      ['modules', 'composition'].filter((path) =>
+      ['providers', 'modules', 'composition', 'facade'].filter((path) =>
         existsSync(join(BOUNDED_CONTEXT_ROOT, path)),
       ),
     ).toEqual([]);
-  });
-
-  it('uses capability provider catalogs instead of Nest feature modules', () => {
-    const providerFiles = scanTypeScript(
-      join(BOUNDED_CONTEXT_ROOT, 'providers'),
-      { productionOnly: true },
-    );
-
-    expect(
-      providerFiles.map(({ path }) => relative(BOUNDED_CONTEXT_ROOT, path)),
-    ).toEqual([
-      'providers/infrastructure.providers.ts',
-      'providers/menu.providers.ts',
-      'providers/merchant.providers.ts',
-      'providers/operations.providers.ts',
-      'providers/orders.providers.ts',
-    ]);
-    for (const file of providerFiles) {
-      expect(file.source).not.toMatch(/@Module\s*\(/);
-      expect(file.source).not.toMatch(/export class .*Module/);
-    }
-  });
-
-  it('locates the controller-free worker composition with its adapters', () => {
-    expect(
-      [
-        'infrastructure/workers/ubereats-worker.module.ts',
-        'infrastructure/workers/uber-worker-health.service.ts',
-      ].every((path) => existsSync(join(BOUNDED_CONTEXT_ROOT, path))),
-    ).toBe(true);
   });
 
   it.each(['crypto', 'uber-api', 'workers'] as const)(
@@ -225,14 +336,6 @@ describe('Uber Eats bounded-context architecture', () => {
       '../../application/menu/confirm-uber-menu-publications.use-case',
       './uber-worker-config.service',
     ]);
-  });
-
-  it('keeps the worker lifecycle module free of concrete infrastructure wiring', () => {
-    const file = boundedContextFiles.find(({ path }) =>
-      path.endsWith('infrastructure/workers/ubereats-worker.module.ts'),
-    );
-    expect(file).toBeDefined();
-    expect(file!.source).not.toMatch(/PrismaModule|persistence\/|uber-api\//);
   });
 
   it('keeps capability ports vertical and forbids aggregate port facades', () => {

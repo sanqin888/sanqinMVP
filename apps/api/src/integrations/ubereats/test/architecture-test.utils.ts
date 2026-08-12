@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 export type SourceFile = { path: string; source: string };
 
@@ -12,7 +12,11 @@ export const scanTypeScript = (
     const path = join(root, entry.name);
     if (entry.isDirectory()) return scanTypeScript(path, options);
     if (!entry.isFile() || !path.endsWith('.ts')) return [];
-    if (options.productionOnly && path.includes('.spec.')) return [];
+    if (
+      options.productionOnly &&
+      (path.includes('.spec.') || path.includes(`${sep}test${sep}`))
+    )
+      return [];
     return [{ path, source: readFileSync(path, 'utf8') }];
   });
 

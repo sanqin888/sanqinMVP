@@ -10,10 +10,8 @@ import {
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
 import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
-import { UberEatsWorkerLifecycleModule } from './infrastructure/workers/ubereats-worker.module';
 import {
   UBER_EATS_COMPOSITION_PROVIDERS,
-  UberEatsCompositionModule,
   UberEatsModule,
 } from './ubereats.module';
 import { UberEatsWorkerEntryModule } from './worker';
@@ -24,7 +22,7 @@ const metadata = <T>(module: object, key: string): T[] => {
 };
 
 describe('UberEats compositions', () => {
-  it('keeps HTTP controllers exclusively in the API composition', () => {
+  it('keeps HTTP controllers exclusively in the single composition root', () => {
     expect(metadata(UberEatsModule, MODULE_METADATA.CONTROLLERS)).toEqual([
       UberEatsOAuthController,
       UberEatsWebhookController,
@@ -33,30 +31,25 @@ describe('UberEats compositions', () => {
       UberEatsOperationsController,
     ]);
     expect(
-      metadata(UberEatsWorkerLifecycleModule, MODULE_METADATA.CONTROLLERS),
+      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.CONTROLLERS),
     ).toEqual([]);
   });
 
   it('does not start polling workers in the API composition', () => {
     const apiProviders = metadata(UberEatsModule, MODULE_METADATA.PROVIDERS);
-    const compositionProviders = metadata(
-      UberEatsCompositionModule,
-      MODULE_METADATA.PROVIDERS,
+    expect(apiProviders).not.toContain(UberWebhookInboxWorkerAdapter);
+    expect(apiProviders).not.toContain(UberOrderActionWorkerAdapter);
+    expect(apiProviders).not.toContain(
+      UberMenuPublishConfirmationWorkerAdapter,
     );
-
-    for (const providers of [apiProviders, compositionProviders]) {
-      expect(providers).not.toContain(UberWebhookInboxWorkerAdapter);
-      expect(providers).not.toContain(UberOrderActionWorkerAdapter);
-      expect(providers).not.toContain(UberMenuPublishConfirmationWorkerAdapter);
-    }
     expect(metadata(UberEatsModule, MODULE_METADATA.IMPORTS)).not.toContain(
       UberEatsWorkerEntryModule,
     );
   });
 
-  it('defines adapter and use-case tokens once in the public composition wiring', () => {
+  it('defines adapter and use-case tokens once in the single composition root', () => {
     const providers = metadata<unknown>(
-      UberEatsCompositionModule,
+      UberEatsModule,
       MODULE_METADATA.PROVIDERS,
     );
     const providerToken = (provider: unknown): unknown =>
@@ -69,9 +62,9 @@ describe('UberEats compositions', () => {
     expect(new Set(tokens).size).toBe(tokens.length);
   });
 
-  it('keeps the worker module limited to lifecycle providers', () => {
+  it('keeps Worker as a runtime entry over the single composition root', () => {
     expect(
-      metadata(UberEatsWorkerLifecycleModule, MODULE_METADATA.PROVIDERS),
+      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.PROVIDERS),
     ).toEqual([
       UberWebhookInboxWorkerAdapter,
       UberOrderActionWorkerAdapter,
@@ -79,7 +72,10 @@ describe('UberEats compositions', () => {
       UberWorkerHealthService,
     ]);
     expect(
-      metadata(UberEatsWorkerLifecycleModule, MODULE_METADATA.IMPORTS),
-    ).toEqual([UberEatsCompositionModule]);
+      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.IMPORTS),
+    ).toEqual([UberEatsModule]);
+    expect(
+      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.EXPORTS),
+    ).toEqual([UberWorkerHealthService]);
   });
 });
