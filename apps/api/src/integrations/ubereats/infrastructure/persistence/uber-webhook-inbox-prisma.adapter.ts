@@ -10,6 +10,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberConfigService } from '../config/uber-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
+import { UberApplicationError } from '../../application/errors/uber-application.error';
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
@@ -218,7 +219,13 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       data: {
         status: dead ? 'DEAD' : 'FAILED',
         errorSummary: summary || 'unknown error',
-        structuredError: { message: summary, retryable },
+        structuredError: {
+          message: summary,
+          retryable,
+          ...(error instanceof UberApplicationError
+            ? { code: error.code, operation: error.operation }
+            : {}),
+        },
         nextRetryAt: dead
           ? null
           : new Date(

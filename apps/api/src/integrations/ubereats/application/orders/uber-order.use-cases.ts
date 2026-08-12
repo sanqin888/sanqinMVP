@@ -16,6 +16,27 @@ import {
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
+import { UberApplicationError } from '../errors/uber-application.error';
+
+const POS_EXTERNAL_STORE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** A recoverable configuration failure: operators can repair the mapping and replay the inbox. */
+export class UberOrderStoreMappingError extends UberApplicationError {
+  constructor(
+    code: string,
+    readonly uberStoreId: string,
+    readonly eventId: string,
+    readonly externalOrderId: string,
+  ) {
+    super(
+      'business-conflict',
+      code,
+      `${code}: event=${eventId}; uberStore=${uberStoreId}; externalOrder=${externalOrderId}`,
+      'order.store-mapping.validate',
+      true,
+    );
+  }
+}
 
 /** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
 export class ImportUberOrderUseCase {
@@ -65,22 +86,49 @@ export class ImportUberOrderUseCase {
         });
       return;
     }
-    const storeMapping = order.uberStoreId
-      ? await this.storeMappings.findMapping(order.uberStoreId)
-      : null;
-    const posStoreId = storeMapping?.posExternalStoreId?.trim();
-    if (!posStoreId) {
-      await this.actions.request(order.externalOrderId, 'DENY', {
-        reasonCode: 'INVALID_ORDER',
-        reasonDetail: `门店映射不存在或未配置 POS 门店标识: ${order.uberStoreId ?? 'unknown'}`,
-      });
-      return;
-    }
+    const uberStoreId = order.uberStoreId?.trim();
+    if (!uberStoreId)
+      throw new UberOrderStoreMappingError(
+        'UBER_STORE_ID_MISSING',
+        'unknown',
+        eventId,
+        order.externalOrderId,
+      );
+    const storeMapping = await this.storeMappings.findMapping(uberStoreId);
+    if (!storeMapping)
+      throw new UberOrderStoreMappingError(
+        'UBER_STORE_MAPPING_NOT_FOUND',
+        uberStoreId,
+        eventId,
+        order.externalOrderId,
+      );
+    if (!storeMapping.isProvisioned)
+      throw new UberOrderStoreMappingError(
+        'UBER_STORE_MAPPING_NOT_PROVISIONED',
+        uberStoreId,
+        eventId,
+        order.externalOrderId,
+      );
+    const posStoreId = storeMapping.posExternalStoreId?.trim();
+    if (!posStoreId)
+      throw new UberOrderStoreMappingError(
+        'UBER_POS_STORE_ID_MISSING',
+        uberStoreId,
+        eventId,
+        order.externalOrderId,
+      );
+    if (!POS_EXTERNAL_STORE_ID_PATTERN.test(posStoreId))
+      throw new UberOrderStoreMappingError(
+        'UBER_POS_STORE_ID_INVALID',
+        uberStoreId,
+        eventId,
+        order.externalOrderId,
+      );
     const externalIds = order.items
       .map((item) => item.externalItemId)
       .filter((id): id is string => !!id);
     const mappings = await this.repository.findMenuMappings(
-      order.uberStoreId ?? '',
+      uberStoreId,
       externalIds,
     );
     const byId = new Map(mappings.map((item) => [item.externalItemId, item]));
