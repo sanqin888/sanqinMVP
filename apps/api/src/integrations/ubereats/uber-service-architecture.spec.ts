@@ -16,15 +16,14 @@ const LAYERS = [
   'contracts',
   'domain',
   'infrastructure',
-  'composition',
+  'composition-root',
 ] as const;
 type Layer = (typeof LAYERS)[number];
 
 const layerOf = (path: string): Layer | undefined =>
   path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
-  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats-capabilities.module.ts') ||
   path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
-    ? 'composition'
+    ? 'composition-root'
     : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
       ? 'contracts'
       : LAYERS.find((layer) =>
@@ -37,13 +36,13 @@ const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   contracts: ['contracts', 'domain'],
   domain: ['domain'],
   infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
-  composition: [
+  'composition-root': [
     'api',
     'application',
     'contracts',
     'domain',
     'infrastructure',
-    'composition',
+    'composition-root',
   ],
 };
 
@@ -53,7 +52,7 @@ describe('Uber Eats bounded-context architecture', () => {
   });
   const allSourceFiles = scanTypeScript(SOURCE_ROOT, { productionOnly: true });
 
-  it('keeps persistence adapters limited to database I/O during facade migration', () => {
+  it('keeps persistence adapters permanently limited to database I/O', () => {
     const persistenceRoot = join(
       BOUNDED_CONTEXT_ROOT,
       'infrastructure/persistence',
@@ -139,6 +138,44 @@ describe('Uber Eats bounded-context architecture', () => {
           specifier,
         ),
       ),
+    ).toEqual([]);
+  });
+
+  it('has no transitional modules or composition source trees', () => {
+    expect(
+      ['modules', 'composition'].filter((path) =>
+        existsSync(join(BOUNDED_CONTEXT_ROOT, path)),
+      ),
+    ).toEqual([]);
+  });
+
+  it('has one composition root and no aggregate compatibility facade', () => {
+    expect(existsSync(join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts'))).toBe(
+      true,
+    );
+    expect(
+      [
+        'ubereats-capabilities.module.ts',
+        'ubereats.facade.ts',
+        'ubereats-facade.ts',
+      ].filter((path) => existsSync(join(BOUNDED_CONTEXT_ROOT, path))),
+    ).toEqual([]);
+  });
+
+  it('exposes only bounded-context public entries to external callers', () => {
+    const externalFiles = allSourceFiles.filter(
+      ({ path }) => !path.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`),
+    );
+    expect(
+      importViolations(externalFiles, SOURCE_ROOT, (specifier) => {
+        const match = specifier.match(/integrations\/ubereats(?:\/(.*))?$/);
+        return Boolean(
+          match &&
+          match[1] !== 'public-api' &&
+          match[1] !== 'ubereats.module' &&
+          match[1] !== 'worker',
+        );
+      }),
     ).toEqual([]);
   });
 
