@@ -49,7 +49,6 @@ import {
   QueryUberOperationsSummary,
   RetryUberOpsTicketUseCase,
 } from '../application/operations/uber-operations.use-cases';
-import { UBER_PERSISTENCE_INTERNAL_PROVIDERS } from '../infrastructure/persistence/uber-persistence.providers';
 import { UberOrderActionService } from '../application/orders/uber-order-action.service';
 import { UberOrderOutboxService } from '../application/orders/uber-order-outbox.service';
 import { UberOrderStatusSyncService } from '../application/orders/uber-order-status-sync.service';
@@ -72,7 +71,6 @@ import {
   UberMerchantResourceGateway,
 } from '../infrastructure/uber-api/uber-resource.gateways';
 import { UberTelemetryService } from '../infrastructure/persistence/uber-telemetry.service';
-import { UBER_UNIT_OF_WORK } from '../application/ports/uber-persistence.ports';
 import {
   UBER_MENU_AVAILABILITY_PORT,
   UBER_MENU_DRAFT_PORT,
@@ -138,15 +136,6 @@ import {
 } from '../infrastructure/persistence/uber-order-outbox-prisma.adapter';
 import { UberWebhookInboxPrismaAdapter } from '../infrastructure/persistence/uber-webhook-inbox-prisma.adapter';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
-import {
-  PrismaUberMenuPublishAdapter,
-  PrismaUberOAuthStateAdapter,
-  PrismaUberOperationsTicketAdapter,
-  PrismaUberOrderActionAdapter,
-  PrismaUberUnitOfWork,
-  PrismaUberWebhookInboxAdapter,
-} from '../infrastructure/persistence/uber-prisma.adapters';
-
 import { HandleUberMerchantWebhookHandler } from '../application/merchant/uber-merchant-webhook.handler';
 import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from '../application/menu/confirm-uber-menu-publication.use-case';
@@ -186,14 +175,6 @@ export const UBER_EATS_INTERNAL_PROVIDERS = [
     provide: UberCredentialVaultService,
     useFactory: () => new UberCredentialVaultService(process.env),
   },
-  ...UBER_PERSISTENCE_INTERNAL_PROVIDERS,
-  PrismaUberWebhookInboxAdapter,
-  PrismaUberOrderActionAdapter,
-  PrismaUberOAuthStateAdapter,
-  PrismaUberMenuPublishAdapter,
-  PrismaUberOperationsTicketAdapter,
-  PrismaUberUnitOfWork,
-  { provide: UBER_UNIT_OF_WORK, useExisting: PrismaUberUnitOfWork },
   UberTelemetryService,
   { provide: UBER_TELEMETRY_PORT, useExisting: UberTelemetryService },
   UberOrderOutboxPrismaAdapter,

@@ -9,7 +9,6 @@ import type {
 import type { UberJsonValue } from '../../application/ports/uber-persistence.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberConfigService } from '../config/uber-config.service';
 
@@ -19,7 +18,6 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
   private readonly logger = new Logger(UberOrderOutboxPrismaAdapter.name);
   constructor(
     private readonly prisma: PrismaService,
-    private readonly prismaAccess: UberPrismaAccessService,
     private readonly config: UberConfigService,
   ) {}
 
@@ -30,7 +28,7 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
   ) {
     const businessVersion = 'v1';
     const taskId = `${externalOrderId}:${action}`;
-    return this.prismaAccess.uberOrderActionRepository.upsert({
+    return this.prisma.uberOrderAction.upsert({
       where: { externalOrderId_action: { externalOrderId, action } },
       create: {
         externalOrderId,
@@ -83,21 +81,19 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
   }
 
   async markSucceeded(item: UberOrderOutboxItem): Promise<boolean> {
-    const result = await this.prismaAccess.uberOrderActionRepository.updateMany(
-      {
-        where: {
-          id: item.taskId,
-          status: 'PROCESSING',
-          leaseToken: item.leaseToken,
-        },
-        data: {
-          status: 'SUCCEEDED',
-          retryable: false,
-          leaseToken: null,
-          leaseExpiresAt: null,
-        },
+    const result = await this.prisma.uberOrderAction.updateMany({
+      where: {
+        id: item.taskId,
+        status: 'PROCESSING',
+        leaseToken: item.leaseToken,
       },
-    );
+      data: {
+        status: 'SUCCEEDED',
+        retryable: false,
+        leaseToken: null,
+        leaseExpiresAt: null,
+      },
+    });
     return this.verifyLease(result.count, item);
   }
 
@@ -105,24 +101,22 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
     item: UberOrderOutboxItem,
     error: unknown,
   ): Promise<boolean> {
-    const result = await this.prismaAccess.uberOrderActionRepository.updateMany(
-      {
-        where: {
-          id: item.taskId,
-          status: 'PROCESSING',
-          leaseToken: item.leaseToken,
-        },
-        data: {
-          status: 'FAILED',
-          lastError:
-            error instanceof Error
-              ? error.message.slice(0, 500)
-              : String(error).slice(0, 500),
-          leaseToken: null,
-          leaseExpiresAt: null,
-        },
+    const result = await this.prisma.uberOrderAction.updateMany({
+      where: {
+        id: item.taskId,
+        status: 'PROCESSING',
+        leaseToken: item.leaseToken,
       },
-    );
+      data: {
+        status: 'FAILED',
+        lastError:
+          error instanceof Error
+            ? error.message.slice(0, 500)
+            : String(error).slice(0, 500),
+        leaseToken: null,
+        leaseExpiresAt: null,
+      },
+    });
     return this.verifyLease(result.count, item);
   }
 

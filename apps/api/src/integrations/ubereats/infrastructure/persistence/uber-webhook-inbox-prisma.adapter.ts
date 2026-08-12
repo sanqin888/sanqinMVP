@@ -7,7 +7,6 @@ import type {
 } from '../../application/ports/uber-order-processing.ports';
 import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberConfigService } from '../config/uber-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
@@ -19,7 +18,6 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly access: UberPrismaAccessService,
     private readonly config: UberConfigService,
     @Optional() telemetry?: UberTelemetryService,
   ) {
@@ -33,7 +31,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   }): Promise<boolean> {
     try {
       const businessVersion = 'v1';
-      await this.access.uberWebhookInboxRepository.create({
+      await this.prisma.uberWebhookInbox.create({
         data: {
           ...input,
           status: 'PENDING',
@@ -134,7 +132,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       }));
   }
   async markSucceeded(item: UberWebhookInboxItem): Promise<void> {
-    await this.access.uberWebhookInboxRepository.updateMany({
+    await this.prisma.uberWebhookInbox.updateMany({
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -160,7 +158,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       businessVersion: string;
     },
   ): Promise<void> {
-    await this.access.uberWebhookInboxRepository.updateMany({
+    await this.prisma.uberWebhookInbox.updateMany({
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -201,7 +199,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     error: unknown,
     retryable: boolean,
   ): Promise<void> {
-    const current = await this.access.uberWebhookInboxRepository.findUnique({
+    const current = await this.prisma.uberWebhookInbox.findUnique({
       where: { eventId: item.eventId },
       select: { attemptCount: true },
     });
@@ -211,7 +209,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     const summary = redactUberLogText(
       error instanceof Error ? error.message : String(error),
     ).slice(0, 500);
-    await this.access.uberWebhookInboxRepository.updateMany({
+    await this.prisma.uberWebhookInbox.updateMany({
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -240,7 +238,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     storeId: string,
     isProvisioned: boolean,
   ): Promise<boolean> {
-    const result = await this.access.uberStoreMappingRepository.updateMany({
+    const result = await this.prisma.uberStoreMapping.updateMany({
       where: { uberStoreId: storeId },
       data: { isProvisioned, provisionedAt: isProvisioned ? new Date() : null },
     });

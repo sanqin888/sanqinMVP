@@ -35,7 +35,6 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
     };
     const adapter = new UberWebhookInboxPrismaAdapter(
       prisma as never,
-      {} as never,
       { workerLeaseDurationMs: 30_000 } as never,
     );
 
@@ -81,7 +80,6 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
     };
     const adapter = new UberWebhookInboxPrismaAdapter(
       prisma as never,
-      {} as never,
       { workerLeaseDurationMs: 30_000 } as never,
       telemetry as never,
     );

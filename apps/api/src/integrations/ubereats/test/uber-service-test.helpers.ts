@@ -4,20 +4,24 @@ import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-re
 import type { UberWebhookInboxPort } from '../application/ports/uber-order-processing.ports';
 import type { UberConfigService } from '../infrastructure/config/uber-config.service';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
-import { UberPrismaAccessService } from '../infrastructure/persistence/uber-prisma-access.service';
+
+type WebhookInboxTestPrisma = {
+  uberWebhookInbox: {
+    create(input: { data: Record<string, unknown> }): Promise<unknown>;
+  };
+};
 
 export function createReceiveUberWebhookUseCase(
-  prisma: ConstructorParameters<typeof UberPrismaAccessService>[0],
+  prisma: WebhookInboxTestPrisma,
   config: UberConfigService,
   orders: ImportUberOrderUseCase,
   menu?: PublishUberMenuUseCase,
 ) {
   void orders;
   void menu;
-  const access = new UberPrismaAccessService(prisma);
   const inbox: UberWebhookInboxPort = {
     async enqueue(input) {
-      await access.uberWebhookInboxRepository.create({
+      await prisma.uberWebhookInbox.create({
         data: { ...input, status: 'PENDING', payload: input.payload as never },
       });
       return true;

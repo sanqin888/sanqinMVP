@@ -40,7 +40,6 @@ import type { UberMerchantConnectionRecord } from '../../domain/merchant/uber-me
 import type { ParsedUberOrderItem } from '../../domain/orders/uber-order.types';
 import { toUberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
-import { UberPrismaAccessService } from './uber-prisma-access.service';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import {
   composeUberDisplayName,
@@ -72,7 +71,6 @@ export class UberMenuDraftGateway {
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
     @Inject(UberConfigService) private readonly config: UberMenuConfig,
-    private readonly prismaAccess: UberPrismaAccessService,
     @Inject(UBER_MENU_PUBLISH_COMMAND)
     private readonly publishMenu: UberMenuPublishCommandPort,
     @Optional()
@@ -289,7 +287,7 @@ export class UberMenuDraftGateway {
     const payloadValidation = validateUberMenuPayload(payload);
     const summary = this.summarizePublishGraph(normalized.graph);
     const lastPublishedVersion =
-      await this.prismaAccess.uberMenuPublishRepository.findFirst({
+      await this.prisma.uberMenuPublishVersion.findFirst({
         where: { storeId: normalizedStoreId },
         orderBy: { createdAt: 'desc' },
         select: {
@@ -767,15 +765,14 @@ export class UberMenuDraftGateway {
   async getUberMenuDraftDiff(storeId?: string) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
     const draft = await this.getUberMenuDraft(normalizedStoreId);
-    const lastSuccess =
-      await this.prismaAccess.uberMenuPublishRepository.findFirst({
-        where: {
-          storeId: normalizedStoreId,
-          status: UberMenuPublishStatus.SUCCEEDED,
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true, requestPayload: true, payload: true },
-      });
+    const lastSuccess = await this.prisma.uberMenuPublishVersion.findFirst({
+      where: {
+        storeId: normalizedStoreId,
+        status: UberMenuPublishStatus.SUCCEEDED,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true, requestPayload: true, payload: true },
+    });
     const [itemConfigs, optionConfigs] = await Promise.all([
       this.prisma.uberItemChannelConfig.findMany({
         where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
@@ -928,7 +925,7 @@ export class UberMenuDraftGateway {
         });
       } catch (error) {
         const message = this.summarizeWebhookError(error);
-        await this.prismaAccess.uberOpsTicketRepository.create({
+        await this.prisma.uberOpsTicket.create({
           data: {
             storeId: config.storeId,
             type: UberOpsTicketType.MENU_PUBLISH,
@@ -1061,8 +1058,7 @@ export class UberMenuDraftGateway {
       };
     }
 
-    const merchantConnection =
-      this.prismaAccess.uberMerchantConnectionRepository;
+    const merchantConnection = this.prisma.uberMerchantConnection;
     const row = merchantUberUserId?.trim()
       ? await merchantConnection?.findUnique({
           where: { merchantUberUserId: merchantUberUserId.trim() },
@@ -1132,8 +1128,7 @@ export class UberMenuDraftGateway {
   private async upsertMerchantConnection(
     input: UberMerchantConnectionRecord,
   ): Promise<UberMerchantConnectionRecord> {
-    const merchantConnection =
-      this.prismaAccess.uberMerchantConnectionRepository;
+    const merchantConnection = this.prisma.uberMerchantConnection;
 
     const encryptedAccessToken = this.credentialVault.encrypt(
       input.accessToken,
@@ -1983,7 +1978,7 @@ export class UberMenuDraftGateway {
     id: string,
     responsePayload: Record<string, unknown>,
   ) {
-    await this.prismaAccess.uberMenuPublishRepository.update({
+    await this.prisma.uberMenuPublishVersion.update({
       where: { id },
       data: {
         status: UberMenuPublishStatus.SUCCEEDED,
@@ -2000,7 +1995,7 @@ export class UberMenuDraftGateway {
     errorMessage: string,
     errors: UberMenuPublishError[] = [],
   ) {
-    await this.prismaAccess.uberMenuPublishRepository.update({
+    await this.prisma.uberMenuPublishVersion.update({
       where: { id },
       data: {
         status: UberMenuPublishStatus.FAILED,
