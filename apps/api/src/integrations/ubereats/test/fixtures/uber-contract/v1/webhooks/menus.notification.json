@@ -1,0 +1,20 @@
+{
+  "event_type": "menus.notification",
+  "resource_href": "https://api.uber.com/v2/eats/stores/store-redacted/menu",
+  "meta": {
+    "resource_id": "publication-redacted",
+    "user_id": "store-redacted"
+  },
+  "data": {
+    "status": "FAILED",
+    "failure_info": {
+      "errors": [
+        {
+          "code": "INVALID_MENU",
+          "path": "menus[0]",
+          "message": "Synthetic menu validation failure"
+        }
+      ]
+    }
+  }
+}

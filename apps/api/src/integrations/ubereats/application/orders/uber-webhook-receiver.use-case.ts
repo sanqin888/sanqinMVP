@@ -23,14 +23,10 @@ export class ReceiveUberWebhookUseCase {
   ) {}
 
   async execute(input: UberWebhookInput): Promise<void> {
-    const bytes =
-      typeof input.rawBody === 'string'
-        ? new TextEncoder().encode(input.rawBody)
-        : input.rawBody;
     this.signatures.verify({
       version: 'hmac-sha256-hex-v1',
       headers: input.headers,
-      rawBody: bytes,
+      rawBody: input.rawBody,
     });
     let parsed: ReturnType<typeof parseUberWebhookEnvelope>;
     try {

@@ -127,24 +127,22 @@ describe('Uber webhook event domain parser', () => {
     ).toBe('legacy-1');
   });
 
-  it('supports legacy menu correlation and error field locations', () => {
+  it('parses the frozen Uber menu notification wire locations', () => {
     expect(
-      parseUberMenuNotificationV1({
-        meta: { user_id: 'store-1', resource_id: 'publication-1' },
-        data: {
-          status: 'failed',
-          errors: [
-            { code: 'INVALID', field_path: 'menus[0]', description: 'bad' },
-          ],
-        },
-      }),
+      parseUberMenuNotificationV1(fixture('menus.notification')),
     ).toMatchObject({
       version: 1,
       family: 'menu',
-      storeId: 'store-1',
-      resourceId: 'publication-1',
+      storeId: 'store-redacted',
+      resourceId: 'publication-redacted',
       status: 'FAILED',
-      failures: [{ code: 'INVALID', path: 'menus[0]', message: 'bad' }],
+      failures: [
+        {
+          code: 'INVALID_MENU',
+          path: 'menus[0]',
+          message: 'Synthetic menu validation failure',
+        },
+      ],
     });
   });
 
@@ -153,9 +151,8 @@ describe('Uber webhook event domain parser', () => {
     (status) => {
       expect(
         parseUberMenuNotificationV1({
+          meta: { user_id: 'store-1', resource_id: 'publication-1' },
           data: {
-            store_id: 'store-1',
-            resource_id: 'publication-1',
             status,
           },
         })?.status,
@@ -166,10 +163,29 @@ describe('Uber webhook event domain parser', () => {
   it('rejects menu notifications with a status outside the domain lifecycle', () => {
     expect(
       parseUberMenuNotificationV1({
+        meta: { user_id: 'store-1', resource_id: 'publication-1' },
+        data: {
+          status: 'cancelled',
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it('rejects removed internal migration identifier and menu locations', () => {
+    expect(
+      parseUberWebhookEnvelopeV1({
+        ...envelope,
+        resource_id: 'order-1',
+        meta: { resource_id: 'store-1' },
+      }),
+    ).toBeNull();
+    expect(
+      parseUberMenuNotificationV1({
         data: {
           store_id: 'store-1',
           resource_id: 'publication-1',
-          status: 'cancelled',
+          status: 'FAILED',
+          errors: [{ field_path: 'menus[0]', description: 'bad' }],
         },
       }),
     ).toBeNull();
