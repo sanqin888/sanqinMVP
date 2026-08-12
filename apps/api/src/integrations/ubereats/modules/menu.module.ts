@@ -35,6 +35,7 @@ import {
 import {
   type UberMenuGatewayPort,
   type UberMenuImageProbePort,
+  type UberMenuPublishCommandPort,
   type UberMenuPublicationRepositoryPort,
   type UberMenuSnapshotRepositoryPort,
   UBER_MENU_GATEWAY,
@@ -47,11 +48,16 @@ import {
   UBER_MENU_UNIT_OF_WORK,
   type UberMenuUnitOfWork,
 } from '../application/ports/uber-menu-repositories.ports';
+import { UBER_MENU_AVAILABILITY_PORT } from '../application/ports/uber-use-case.ports';
 import {
-  type UberMenuAvailabilityPort,
-  UBER_MENU_AVAILABILITY_PORT,
-} from '../application/ports/uber-use-case.ports';
-import { UberMenuAvailabilityGateway } from '../infrastructure/menu/uber-menu-availability.gateway';
+  type UberMenuAvailabilityCommandPort,
+  type UberMenuAvailabilityQueryPort,
+  UBER_MENU_AVAILABILITY_COMMAND,
+  UBER_MENU_AVAILABILITY_QUERY,
+} from '../application/ports/uber-menu-availability.ports';
+import type { UberTelemetryPort } from '../application/ports/uber-order-processing.ports';
+import { UBER_TELEMETRY_PORT } from '../application/ports/uber-order-processing.ports';
+import { UberMenuAvailabilityPrismaAdapter } from '../infrastructure/persistence/uber-menu-availability-prisma.adapter';
 import { PrismaUberMenuUnitOfWork } from '../infrastructure/persistence/uber-menu-draft.repositories';
 import { UberMenuNotificationPrismaRepository } from '../infrastructure/persistence/uber-menu-notification-prisma.repository';
 import { UberMenuPublicationPrismaAdapter } from '../infrastructure/persistence/uber-menu-publication-prisma.adapter';
@@ -91,10 +97,14 @@ export const UBER_EATS_MENU_PROVIDERS = [
     provide: UBER_MENU_REFERENCE_QUERY_PORT,
     useExisting: UberMenuDraftGateway,
   },
-  UberMenuAvailabilityGateway,
+  UberMenuAvailabilityPrismaAdapter,
   {
-    provide: UBER_MENU_AVAILABILITY_PORT,
-    useExisting: UberMenuAvailabilityGateway,
+    provide: UBER_MENU_AVAILABILITY_QUERY,
+    useExisting: UberMenuAvailabilityPrismaAdapter,
+  },
+  {
+    provide: UBER_MENU_AVAILABILITY_COMMAND,
+    useExisting: UberMenuAvailabilityPrismaAdapter,
   },
   UberMenuDraftQueryPrismaRepository,
   UberMenuDraftCommandPrismaRepository,
@@ -206,9 +216,22 @@ export const UBER_EATS_MENU_PROVIDERS = [
   },
   {
     provide: UberMenuAvailabilityUseCase,
-    inject: [UBER_MENU_AVAILABILITY_PORT],
-    useFactory: (availability: UberMenuAvailabilityPort) =>
-      new UberMenuAvailabilityUseCase(availability),
+    inject: [
+      UBER_MENU_AVAILABILITY_QUERY,
+      UBER_MENU_AVAILABILITY_COMMAND,
+      UBER_MENU_PUBLISH_COMMAND,
+      UBER_TELEMETRY_PORT,
+    ],
+    useFactory: (
+      queries: UberMenuAvailabilityQueryPort,
+      commands: UberMenuAvailabilityCommandPort,
+      publish: UberMenuPublishCommandPort,
+      telemetry: UberTelemetryPort,
+    ) => new UberMenuAvailabilityUseCase(queries, commands, publish, telemetry),
+  },
+  {
+    provide: UBER_MENU_AVAILABILITY_PORT,
+    useExisting: UberMenuAvailabilityUseCase,
   },
 ];
 
