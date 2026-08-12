@@ -16,13 +16,22 @@ import { UberEatsOrdersModule } from './modules/orders.module';
 import { UberEatsHttpModule } from './modules/ubereats-http.module';
 import { UberEatsInternalInfrastructureModule } from './modules/ubereats-internal-infrastructure.module';
 
-const metadata = <T>(module: object, key: string): T[] =>
-  Reflect.getMetadata(key, module) ?? [];
+const metadata = <T>(module: object, key: string): T[] => {
+  const value: unknown = Reflect.getMetadata(key, module);
+  return Array.isArray(value) ? (value as T[]) : [];
+};
 
 const providerTokens = (module: object) =>
-  metadata<unknown>(module, MODULE_METADATA.PROVIDERS).map((provider: any) =>
-    typeof provider === 'function' ? provider : provider.provide,
-  );
+  metadata<unknown>(module, MODULE_METADATA.PROVIDERS).map((provider) => {
+    if (
+      typeof provider === 'object' &&
+      provider !== null &&
+      'provide' in provider
+    ) {
+      return provider.provide;
+    }
+    return provider;
+  });
 
 describe('Uber Eats Nest module metadata', () => {
   const controllers = [

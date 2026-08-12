@@ -64,11 +64,9 @@ describe('UberEatsExceptionFilter', () => {
       HttpStatus.BAD_REQUEST,
     ],
   ])('does not collapse %s into HTTP 400', (_name, error, expected) => {
-    expect(error).toMatchObject({
-      code: expect.any(String),
-      operation: expect.any(String),
-      retryable: expect.any(Boolean),
-    });
+    expect(typeof error.code).toBe('string');
+    expect(typeof error.operation).toBe('string');
+    expect(typeof error.retryable).toBe('boolean');
     expect([null, 401, 429, 503]).toContain(error.upstreamStatus);
     expect(present(error)).toBe(expected);
   });
