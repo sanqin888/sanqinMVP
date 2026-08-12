@@ -182,10 +182,15 @@ describe('PosOrdersService', () => {
     });
     const { service, orders, uberEats } = setup(ready);
     uberEats.getReadyForPickupAction.mockResolvedValue({
-      id: 'ready_action',
+      ok: false,
+      actionId: 'ready_action',
       status: 'FAILED',
       retryable: true,
-      lastError: 'timeout',
+      error: {
+        code: 'UNKNOWN',
+        message: 'timeout',
+        retryable: true,
+      },
     });
 
     await expect(service.advance('order_1')).resolves.toMatchObject({

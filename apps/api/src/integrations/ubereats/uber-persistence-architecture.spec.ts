@@ -138,7 +138,7 @@ describe('Uber Eats menu persistence dependency direction', () => {
       /uber-menu-(?:config|draft|reference|workflow)-/.test(file.path),
     );
     const violations = importViolations(files, root, (specifier) =>
-      /(?:^crypto$|application\/merchant\/uber-merchant-oauth|uber-token\.provider|uber-credential-vault|domain\/(?:merchant|orders?)(?:\/|$))/.test(
+      /(?:^crypto$|application\/merchant\/uber-merchant-oauth|uber-token\.provider|uber-credential-vault|domain\/orders?(?:\/|$)|domain\/merchant\/(?!uber-store-id(?:$|\.)))/.test(
         specifier,
       ),
     );

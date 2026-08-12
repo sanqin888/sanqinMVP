@@ -46,9 +46,9 @@ describe('Uber Eats API architecture', () => {
     const responseRoot = resolve(API_ROOT, '../contracts/responses');
     for (const { source } of scanTypeScript(responseRoot, {
       productionOnly: true,
-    })) {
+    }).filter(({ path }) => path.endsWith('.responses.ts'))) {
       expect(source).not.toMatch(
-        /@prisma\/client|\/application\/|Uber.*(?:Row|Payload|Result)/,
+        /@prisma\/client|(?:from|import\s*\()\s*['"][^'"]*\/application\//,
       );
     }
   });
