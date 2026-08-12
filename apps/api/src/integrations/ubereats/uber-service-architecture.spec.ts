@@ -67,7 +67,8 @@ type Layer = (typeof LAYERS)[number];
 
 const layerOf = (path: string): Layer | undefined =>
   path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
-  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
+  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts') ||
+  path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, 'infrastructure/nest')}${sep}`)
     ? 'composition-root'
     : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
       ? 'contracts'
@@ -135,8 +136,12 @@ describe('Uber Eats bounded-context architecture', () => {
       ].every((layer) =>
         importedLayers.has(layer as (typeof INTERNAL_LAYERS)[number]),
       );
+      const isCompositionDeclaration = file.path.startsWith(
+        `${join(BOUNDED_CONTEXT_ROOT, 'infrastructure/nest')}${sep}`,
+      );
       return spansCompositionLayers &&
-        file.path !== join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts')
+        file.path !== join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') &&
+        !isCompositionDeclaration
         ? [relative(BOUNDED_CONTEXT_ROOT, file.path)]
         : [];
     });
@@ -144,7 +149,7 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
-  it('allows only the composition root and worker runtime Nest modules', () => {
+  it('allows only ubereats.module.ts to declare a Nest module', () => {
     const declarations = boundedContextFiles.flatMap((file) =>
       [
         ...file.source.matchAll(/@Module\s*\([\s\S]*?\)\s*export class (\w+)/g),
@@ -153,10 +158,54 @@ describe('Uber Eats bounded-context architecture', () => {
       ),
     );
 
-    expect(declarations.sort()).toEqual([
-      'ubereats.module.ts#UberEatsModule',
-      'worker.ts#UberEatsWorkerEntryModule',
-    ]);
+    expect(declarations).toEqual(['ubereats.module.ts#UberEatsModule']);
+  });
+
+  it('keeps Nest wiring as root-only, independent declarations', () => {
+    const wiringRoot = join(BOUNDED_CONTEXT_ROOT, 'infrastructure/nest');
+    const wiringFiles = scanTypeScript(wiringRoot, { productionOnly: true });
+    const wiringPaths = new Set(wiringFiles.map((file) => file.path));
+    const violations: string[] = [];
+
+    for (const file of boundedContextFiles) {
+      for (const specifier of importSpecifiers(file.source)) {
+        if (!specifier.includes('infrastructure/nest/')) continue;
+        if (file.path !== join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts')) {
+          violations.push(
+            `${relative(BOUNDED_CONTEXT_ROOT, file.path)} -> ${specifier}`,
+          );
+        }
+      }
+    }
+
+    for (const file of wiringFiles) {
+      if (/@Module\s*\(|\bOnModule(?:Init|Destroy)\b/.test(file.source)) {
+        violations.push(
+          `${relative(BOUNDED_CONTEXT_ROOT, file.path)} -> runtime Nest behavior`,
+        );
+      }
+      for (const specifier of importSpecifiers(file.source)) {
+        const target = resolve(
+          dirname(file.path),
+          specifier.endsWith('.ts') ? specifier : `${specifier}.ts`,
+        );
+        if (wiringPaths.has(target)) {
+          violations.push(
+            `${relative(BOUNDED_CONTEXT_ROOT, file.path)} -> wiring dependency ${specifier}`,
+          );
+        }
+      }
+      const exports = [
+        ...file.source.matchAll(/export\s+(?:const|class|function)\s+(\w+)/g),
+      ].map((match) => match[1]);
+      if (exports.length !== 1 || !/^create\w+Wiring$/.test(exports[0])) {
+        violations.push(
+          `${relative(BOUNDED_CONTEXT_ROOT, file.path)} -> exports ${exports.join(', ')}`,
+        );
+      }
+    }
+
+    expect(violations).toEqual([]);
   });
 
   it('keeps persistence adapters permanently limited to database I/O', () => {

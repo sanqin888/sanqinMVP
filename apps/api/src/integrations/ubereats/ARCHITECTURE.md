@@ -4,8 +4,8 @@
 `infrastructure/`、`contracts/` 与 `test/`。根目录只保留架构测试以及三个明确入口：
 
 - `ubereats.module.ts`：**唯一 composition root**，负责组装全部 adapter、port、use case
-  和 HTTP controller；不得再建立 feature module 聚合层或第二个 facade module。
-- `worker.ts`：专用 Worker 进程的唯一入口，只导出启动 Worker 所需的 module 与健康检查；
+  和 HTTP controller；不得再建立 feature module 聚合层或第二个 facade module。只有该文件可以形成 Nest composition root；允许它导入 `infrastructure/nest/` 下无状态、无 `@Module()` 装饰器的分区 wiring declarations。
+- `worker.ts`：专用 Worker 进程的唯一入口，只导出启动 Worker 所需的 provider declarations 与健康检查；
   进程 bootstrap 从该文件导入，不得深层导入 `infrastructure/workers/`。
 - `public-api.ts`：该 bounded context 面向其他业务上下文的唯一公共能力入口，只公开稳定
   token、port 和跨上下文 DTO；外部代码不得导入内部实现。
@@ -28,6 +28,13 @@
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、
 `contracts/`、`infrastructure/` 或任何内部文件。
+
+## Nest composition declarations
+
+- `infrastructure/nest/` 只承载 Nest 技术装配声明，不属于 domain、application、业务 facade 或公共 API。
+- 每个 `*.wiring.ts` 只能导出一个返回 `Provider[]` 的 `createXWiring()` 构建入口；不得包含 `@Module()`、生命周期钩子或导出业务实现。
+- wiring 文件只能由 `ubereats.module.ts` 导入，业务代码不得导入它们；wiring 文件之间也不得互相导入，跨分区协作只通过 provider token 的 `inject` 声明，并由 composition root 保证完整注册。
+- `ubereats.module.ts` 必须显式列出对外稳定 token，不得通过 wiring 文件提供的 exports 数组隐藏公共边界。
 
 ## Infrastructure 子边界
 

@@ -1,4 +1,4 @@
-import { presentAvailabilitySync } from './public-contract.mappers';
+import { presentAvailabilitySync } from './public-contract.mapper';
 
 describe('public contract mappers', () => {
   it.each(['PENDING', 'SYNCED'] as const)(
