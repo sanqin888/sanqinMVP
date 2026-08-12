@@ -1,5 +1,13 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- typed framework/Prisma test doubles cross a dynamic boundary */
 import { Injectable } from '@nestjs/common';
+import {
+  Prisma,
+  UberMenuPublishStatus,
+  UberOpsTicketPriority,
+  UberOpsTicketStatus,
+  UberOpsTicketType,
+  UberOrderActionStatus,
+  UberWebhookInboxStatus,
+} from '@prisma/client';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
@@ -20,6 +28,131 @@ import type {
 const json = (value: unknown): UberJsonValue | null =>
   value == null ? null : (JSON.parse(JSON.stringify(value)) as UberJsonValue);
 
+type WebhookInboxRow = Prisma.UberWebhookInboxGetPayload<object>;
+type OrderActionRow = Prisma.UberOrderActionGetPayload<object>;
+type MenuPublishRow = Prisma.UberMenuPublishVersionGetPayload<object>;
+type OperationsTicketRow = Prisma.UberOpsTicketGetPayload<object>;
+
+const toPrismaJson = (
+  value: Exclude<UberJsonValue, null>,
+): Prisma.InputJsonValue => {
+  if (Array.isArray(value)) {
+    return value.map((item) => (item === null ? null : toPrismaJson(item)));
+  }
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        item === null ? null : toPrismaJson(item),
+      ]),
+    );
+  }
+  return value;
+};
+
+const toNullablePrismaJson = (
+  value: UberJsonValue | null,
+): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput =>
+  value === null ? Prisma.JsonNull : toPrismaJson(value);
+
+function toWebhookInboxStatus(status: string): UberWebhookInboxStatus {
+  switch (status) {
+    case 'PENDING':
+      return UberWebhookInboxStatus.PENDING;
+    case 'PROCESSING':
+      return UberWebhookInboxStatus.PROCESSING;
+    case 'PROCESSED':
+      return UberWebhookInboxStatus.PROCESSED;
+    case 'FAILED':
+      return UberWebhookInboxStatus.FAILED;
+    case 'DEAD':
+      return UberWebhookInboxStatus.DEAD;
+    default:
+      throw new Error(`Unsupported Uber webhook inbox status: ${status}`);
+  }
+}
+
+function toOrderActionStatus(status: string): UberOrderActionStatus {
+  switch (status) {
+    case 'PENDING':
+      return UberOrderActionStatus.PENDING;
+    case 'PROCESSING':
+      return UberOrderActionStatus.PROCESSING;
+    case 'SUCCEEDED':
+      return UberOrderActionStatus.SUCCEEDED;
+    case 'FAILED':
+      return UberOrderActionStatus.FAILED;
+    case 'DEAD':
+      return UberOrderActionStatus.DEAD;
+    default:
+      throw new Error(`Unsupported Uber order action status: ${status}`);
+  }
+}
+
+function toMenuPublishStatus(status: string): UberMenuPublishStatus {
+  switch (status) {
+    case 'SUBMITTED':
+      return UberMenuPublishStatus.SUBMITTED;
+    case 'SUCCEEDED':
+      return UberMenuPublishStatus.SUCCEEDED;
+    case 'FAILED':
+      return UberMenuPublishStatus.FAILED;
+    default:
+      throw new Error(`Unsupported Uber menu publish status: ${status}`);
+  }
+}
+
+function toOpsTicketType(type: string): UberOpsTicketType {
+  switch (type) {
+    case 'ORDER_STATUS_SYNC':
+      return UberOpsTicketType.ORDER_STATUS_SYNC;
+    case 'STORE_STATUS_SYNC':
+      return UberOpsTicketType.STORE_STATUS_SYNC;
+    case 'MENU_PUBLISH':
+      return UberOpsTicketType.MENU_PUBLISH;
+    case 'MENU_ITEM_AVAILABILITY':
+      return UberOpsTicketType.MENU_ITEM_AVAILABILITY;
+    case 'RECONCILIATION':
+      return UberOpsTicketType.RECONCILIATION;
+    default:
+      throw new Error(`Unsupported Uber operations ticket type: ${type}`);
+  }
+}
+
+function toOpsTicketStatus(status: string): UberOpsTicketStatus {
+  switch (status) {
+    case 'OPEN':
+      return UberOpsTicketStatus.OPEN;
+    case 'IN_PROGRESS':
+      return UberOpsTicketStatus.IN_PROGRESS;
+    case 'RESOLVED':
+      return UberOpsTicketStatus.RESOLVED;
+    case 'IGNORED':
+      return UberOpsTicketStatus.IGNORED;
+    case 'CLOSED':
+      return UberOpsTicketStatus.CLOSED;
+    default:
+      throw new Error(`Unsupported Uber operations ticket status: ${status}`);
+  }
+}
+
+function toOpsTicketPriority(priority: string): UberOpsTicketPriority {
+  switch (priority) {
+    case 'LOW':
+      return UberOpsTicketPriority.LOW;
+    case 'MEDIUM':
+      return UberOpsTicketPriority.MEDIUM;
+    case 'HIGH':
+      return UberOpsTicketPriority.HIGH;
+    case 'CRITICAL':
+      return UberOpsTicketPriority.CRITICAL;
+    default:
+      throw new Error(
+        `Unsupported Uber operations ticket priority: ${priority}`,
+      );
+  }
+}
+
 @Injectable()
 export class PrismaUberWebhookInboxAdapter implements UberWebhookInboxPort {
   constructor(private readonly prisma: PrismaService) {}
@@ -35,15 +168,15 @@ export class PrismaUberWebhookInboxAdapter implements UberWebhookInboxPort {
       create: {
         eventId: event.eventId,
         eventType: 'unknown',
-        status: event.status as never,
+        status: toWebhookInboxStatus(event.status),
         attemptCount: event.attemptCount,
-        payload: event.payload as never,
+        payload: toNullablePrismaJson(event.payload),
         processedAt: event.processedAt,
       },
       update: {
-        status: event.status as never,
+        status: toWebhookInboxStatus(event.status),
         attemptCount: event.attemptCount,
-        payload: event.payload as never,
+        payload: toNullablePrismaJson(event.payload),
         processedAt: event.processedAt,
       },
     });
@@ -59,7 +192,7 @@ export class PrismaUberWebhookInboxAdapter implements UberWebhookInboxPort {
       ).count === 1
     );
   }
-  private map(row: any): UberWebhookInbox {
+  private map(row: WebhookInboxRow): UberWebhookInbox {
     return {
       id: row.id,
       eventId: row.eventId,
@@ -116,15 +249,15 @@ export class PrismaUberOrderActionAdapter implements UberOrderActionPort {
       await this.prisma.uberOrderAction.update({
         where: { id },
         data: {
-          status: status as never,
-          response: result as never,
+          status: toOrderActionStatus(status),
+          response: toNullablePrismaJson(result),
           leaseExpiresAt: null,
           completedAt: new Date(),
         },
       }),
     );
   }
-  private map(row: any): UberOrderAction {
+  private map(row: OrderActionRow): UberOrderAction {
     return {
       id: row.id,
       orderId: row.externalOrderId,
@@ -137,7 +270,6 @@ export class PrismaUberOrderActionAdapter implements UberOrderActionPort {
   }
 }
 
-@Injectable()
 @Injectable()
 export class PrismaUberOAuthStateAdapter implements UberOAuthStatePort {
   constructor(private readonly prisma: PrismaService) {}
@@ -234,7 +366,7 @@ export class PrismaUberMenuPublishAdapter implements UberMenuPublishPort {
         create: {
           id: value.id,
           storeId: value.storeId,
-          status: value.status as never,
+          status: toMenuPublishStatus(value.status),
           totalItems: 0,
           changedItems: 0,
           checksum: value.payloadHash,
@@ -248,14 +380,14 @@ export class PrismaUberMenuPublishAdapter implements UberMenuPublishPort {
           }),
         },
         update: {
-          status: value.status as never,
+          status: toMenuPublishStatus(value.status),
           checksum: value.payloadHash,
-          errorDetails: value.error as never,
+          errorDetails: toNullablePrismaJson(value.error),
         },
       }),
     );
   }
-  private map(row: any): UberMenuPublishAttempt {
+  private map(row: MenuPublishRow): UberMenuPublishAttempt {
     return {
       id: row.id,
       storeId: row.storeId,
@@ -282,22 +414,22 @@ export class PrismaUberOperationsTicketAdapter implements UberOperationsTicketPo
         create: {
           id: value.id,
           storeId: value.storeId ?? 'default',
-          type: value.type as never,
-          status: value.status as never,
-          priority: value.priority as never,
+          type: toOpsTicketType(value.type),
+          status: toOpsTicketStatus(value.status),
+          priority: toOpsTicketPriority(value.priority),
           title: value.title,
-          context: value.context as never,
+          context: toNullablePrismaJson(value.context),
         },
         update: {
-          status: value.status as never,
-          priority: value.priority as never,
+          status: toOpsTicketStatus(value.status),
+          priority: toOpsTicketPriority(value.priority),
           title: value.title,
-          context: value.context as never,
+          context: toNullablePrismaJson(value.context),
         },
       }),
     );
   }
-  private map(row: any): UberOperationsTicket {
+  private map(row: OperationsTicketRow): UberOperationsTicket {
     return {
       id: row.id,
       storeId: row.storeId,
