@@ -22,7 +22,6 @@ export type UberWebhookVerificationInput = {
 
 export type UberWebhookInput = {
   headers: Readonly<Record<string, UberWebhookHeaderValue>>;
-  /** @deprecated The service always parses the signed rawBody instead. */
-  body?: unknown;
-  rawBody: string | Uint8Array;
+  /** HTTP 层未经解析、重排或重新序列化的请求正文字节。 */
+  rawBody: Uint8Array;
 };

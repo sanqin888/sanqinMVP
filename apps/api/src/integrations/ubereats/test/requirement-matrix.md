@@ -11,6 +11,11 @@ service/workflow、`modules/`、`composition/` 与 capabilities/facade 聚合入
 context 永久只能经 `public-api.ts` 使用业务能力，并分别经 `ubereats.module.ts` 或
 `worker.ts` 完成 API/Worker 进程装配。
 
+Webhook 的公开接收边界只接受 headers 与未经解析的 `rawBody` 字节。曾供本系统迁移使用的
+已解析 `body`、envelope 顶层 `resource_id`，以及 menu `data.store_id`、
+`data.resource_id`、`data.errors[].field_path/description` 不属于 Uber v1 wire contract，
+已经删除且不提供长期兼容。下表及 manifest 所列位置才是必须长期兼容的 wire shape。
+
 ## 核对边界（2026-08-12 UTC）
 
 本次核对以 Uber Developers 正式页面 **Authentication**、**Uber Eats API**、
@@ -51,7 +56,7 @@ webhook URL、订阅事件和 signing key 来源。任何未复核项不得标�
 | ---------------------- | ---- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `orders.notification`  | v1   | 标准 envelope：`event_type`, `resource_href`, `meta.resource_id`（order）, `meta.user_id`（store）；`event_id` 可选 | 独立 lifecycle parser；拉取/导入订单并保存 ordering metadata                                       | `v1/webhooks/orders.notification.json`; `ubereats-events.contract.spec.ts` |
 | `orders.cancel`        | v1   | 标准 envelope；resource 是被取消 order                                                                              | 独立 cancellation parser；进入订单导入/状态机，不复用 notification parser                          | `v1/webhooks/orders.cancel.json`; `ubereats-events.contract.spec.ts`       |
-| `menus.notification`   | v1   | menu notification 的 `meta.user_id`, `meta.resource_id`, `data.status`（失败时 `data.errors[]`）                    | 独立 menu parser；确认发布结果                                                                     | `v1/menu/confirmation.json`; events contract test                          |
+| `menus.notification`   | v1   | menu notification 的 `meta.user_id`, `meta.resource_id`, `data.status`（失败时 `data.failure_info.errors[]`）       | 独立 menu parser；确认发布结果                                                                     | `v1/webhooks/menus.notification.json`; events contract test                |
 | `store.provisioned`    | v1   | 标准 envelope；`meta.resource_id` 是 store                                                                          | 独立 provisioning parser；本地 `isProvisioned=true` + 脱敏 telemetry                               | `v1/webhooks/store.provisioned.json`; events contract test                 |
 | `store.deprovisioned`  | v1   | 同 provisioning schema                                                                                              | 独立 provisioning parser；本地 `isProvisioned=false` + 脱敏 telemetry                              | `v1/webhooks/store.deprovisioned.json`; events contract test               |
 | `store.status.changed` | v1   | 标准 envelope；`meta.resource_id` 是 store；status 为附加 wire 字段                                                 | 独立 status parser；**明确 quarantine**，不标记成功、不只写 telemetry；待本地状态映射获批后 replay | `v1/webhooks/store.status.changed.json`; events + worker contract tests    |

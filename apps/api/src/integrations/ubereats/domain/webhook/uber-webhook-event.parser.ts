@@ -85,8 +85,8 @@ export function parseUberMenuNotificationV1(payload: unknown) {
   const root = webhookObject(payload);
   const data = webhookObject(root?.data);
   const meta = webhookObject(root?.meta);
-  const storeId = webhookText(data?.store_id, meta?.user_id);
-  const resourceId = webhookText(data?.resource_id, meta?.resource_id);
+  const storeId = webhookText(meta?.user_id);
+  const resourceId = webhookText(meta?.resource_id);
   const status = webhookText(data?.status)?.toUpperCase();
   if (
     !storeId ||
@@ -96,11 +96,7 @@ export function parseUberMenuNotificationV1(payload: unknown) {
   )
     return null;
   const failure = webhookObject(data?.failure_info);
-  const errors = Array.isArray(failure?.errors)
-    ? failure.errors
-    : Array.isArray(data?.errors)
-      ? data.errors
-      : [];
+  const errors = Array.isArray(failure?.errors) ? failure.errors : [];
   return {
     version: 1,
     family: 'menu',
@@ -111,10 +107,8 @@ export function parseUberMenuNotificationV1(payload: unknown) {
       const error = webhookObject(entry);
       return {
         code: webhookText(error?.code) ?? 'UBER_MENU_ERROR',
-        path: webhookText(error?.path, error?.field_path),
-        message:
-          webhookText(error?.message, error?.description) ??
-          'Uber 未提供错误说明',
+        path: webhookText(error?.path),
+        message: webhookText(error?.message) ?? 'Uber 未提供错误说明',
       };
     }),
   } satisfies UberMenuNotificationEventV1;

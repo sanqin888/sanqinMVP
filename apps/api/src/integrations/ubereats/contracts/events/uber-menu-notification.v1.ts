@@ -3,10 +3,18 @@ import type { UberMenuNotificationStatus } from '../../domain/webhook/uber-webho
 /** V1 wire status is currently identical to the domain lifecycle vocabulary. */
 export type UberMenuNotificationStatusV1 = UberMenuNotificationStatus;
 
-/** Uber-owned menu notification wire shape (legacy locations remain optional). */
+/** Uber-owned menu notification wire shape frozen by the v1 contract fixture. */
 export interface UberMenuNotificationPayloadV1 {
-  data?: Record<string, unknown>;
-  meta?: Record<string, unknown>;
+  data?: {
+    status?: unknown;
+    failure_info?: { errors?: unknown };
+    [key: string]: unknown;
+  };
+  meta?: {
+    user_id?: unknown;
+    resource_id?: unknown;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 

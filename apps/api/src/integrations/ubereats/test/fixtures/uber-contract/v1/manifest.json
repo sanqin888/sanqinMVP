@@ -11,6 +11,7 @@
   "synthetic_only": true,
   "upgrade_rule": "Create a new version directory and update requirement-matrix.md and its validation test in the same change.",
   "webhook_fixtures": [
+    "webhooks/menus.notification.json",
     "webhooks/orders.notification.json",
     "webhooks/orders.cancel.json",
     "webhooks/store.provisioned.json",

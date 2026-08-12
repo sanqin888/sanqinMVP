@@ -35,7 +35,7 @@ const inbox = () => ({
 const signed = (body: unknown) => {
   const rawBody = JSON.stringify(body);
   return {
-    rawBody,
+    rawBody: new TextEncoder().encode(rawBody),
     headers: {
       'x-uber-signature': createHmac('sha256', signingKey)
         .update(rawBody)
@@ -90,8 +90,7 @@ describe('Uber webhook use cases', () => {
         event_type: 'orders.notification',
         event_id: 'evt-order-ordered',
         resource_href: 'https://api.uber.com/v2/eats/order/order-1',
-        resource_id: 'order-1',
-        meta: { resource_id: 'store-1', user_id: 'user-1' },
+        meta: { resource_id: 'order-1', user_id: 'store-1' },
         event_time: '2026-08-10T12:00:00.000Z',
         resource_version: '42',
         sequence_number: '7',
@@ -303,8 +302,7 @@ describe('Uber webhook use cases', () => {
       event_type: 'orders.notification',
       event_id: 'evt-order-1',
       resource_href: 'https://api.uber.com/v2/eats/order/order-1',
-      resource_id: 'order-1',
-      meta: { resource_id: 'store-1', user_id: 'user-1' },
+      meta: { resource_id: 'order-1', user_id: 'store-1' },
     };
 
     await service.execute(signed(body));
@@ -356,7 +354,7 @@ describe('Uber webhook use cases', () => {
 
     await expect(
       service.execute({
-        rawBody: '{}',
+        rawBody: new TextEncoder().encode('{}'),
         headers: { 'x-uber-signature': '0'.repeat(64) },
       }),
     ).rejects.toThrow('Uber webhook signature is invalid');
