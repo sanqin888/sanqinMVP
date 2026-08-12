@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment -- typed framework/Prisma test doubles cross a dynamic boundary */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { acceptanceMatrix, ContractDomain } from './contract-matrix';
