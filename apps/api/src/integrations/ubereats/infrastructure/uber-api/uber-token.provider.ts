@@ -8,6 +8,19 @@ import {
   type UberRateLimiterPort,
 } from '../../application/ports/uber-rate-limiter.port';
 
+export type UberAuthHttpPort = Pick<UberHttpClient, 'request'>;
+export type UberAuthConfigPort = Pick<
+  UberConfigService,
+  | 'clientId'
+  | 'clientSecret'
+  | 'defaultAppScopes'
+  | 'defaultMerchantScopes'
+  | 'authorizeEndpoint'
+  | 'redirectUri'
+  | 'tokenEndpoint'
+  | 'operationWeight'
+>;
+
 type UberTokenResponse = {
   access_token?: string;
   expires_in?: number;
@@ -57,8 +70,12 @@ export class UberAuthService {
   >();
 
   constructor(
-    @Optional() private readonly httpClient = new UberHttpClient(),
-    @Optional() private readonly config = new UberConfigService(),
+    @Optional()
+    @Inject(UberHttpClient)
+    private readonly httpClient: UberAuthHttpPort = new UberHttpClient(),
+    @Optional()
+    @Inject(UberConfigService)
+    private readonly config: UberAuthConfigPort = new UberConfigService(),
     @Optional()
     @Inject(UBER_RATE_LIMITER_PORT)
     private readonly limiter?: UberRateLimiterPort,

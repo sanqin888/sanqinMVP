@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type {
   UberMenuGatewayPort,
   UberMenuImage,
@@ -9,7 +9,10 @@ import { UberImageValidator } from './uber-image.validator';
 
 @Injectable()
 export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
-  constructor(private readonly gateway: UberMenuGateway) {}
+  constructor(
+    @Inject(UberMenuGateway)
+    private readonly gateway: Pick<UberMenuGateway, 'request'>,
+  ) {}
   async uploadMenu(input: Parameters<UberMenuGatewayPort['uploadMenu']>[0]) {
     const response = await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,

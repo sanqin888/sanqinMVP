@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type {
   UberOrderActionGatewayPort,
   UberOrderDenial,
@@ -19,7 +19,10 @@ export class UberOrderCommandError extends Error {
 /** Owns Uber endpoints, wire payloads and HTTP outcome semantics. */
 @Injectable()
 export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort {
-  constructor(private readonly gateway: UberOrderGateway) {}
+  constructor(
+    @Inject(UberOrderGateway)
+    private readonly gateway: Pick<UberOrderGateway, 'executeAction'>,
+  ) {}
 
   accept(input: { externalOrderId: string; idempotencyKey: string }) {
     return this.execute(input, 'ACCEPT', {});

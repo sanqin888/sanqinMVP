@@ -1,17 +1,21 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { isIP } from 'net';
 import { lookup } from 'dns/promises';
 import {
   UberApiGatewayTransport,
   type UberGatewayRequest,
   type UberResourceGateway,
+  type UberGatewayTransportPort,
 } from './uber-api.gateway';
 import type { UberOrderActionGatewayPort } from '../../application/ports/uber-api.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 
 abstract class PrefixGateway implements UberResourceGateway {
   protected abstract readonly prefixes: readonly string[];
-  constructor(protected readonly transport: UberApiGatewayTransport) {}
+  constructor(
+    @Inject(UberApiGatewayTransport)
+    protected readonly transport: UberGatewayTransportPort,
+  ) {}
 
   request<T = Record<string, unknown>>(
     request: UberGatewayRequest,
@@ -49,7 +53,7 @@ export class UberOrderGateway
   ] as const;
 
   constructor(
-    transport: UberApiGatewayTransport,
+    transport: UberGatewayTransportPort,
     private readonly config: { resourceHrefAllowedOrigins: string },
   ) {
     super(transport);

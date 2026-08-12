@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await -- mocked fetch and JSON fixtures deliberately enter through the wire boundary */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { UberHttpClient, UberApiError } from './uber-http.client';
@@ -6,7 +5,16 @@ import { UberMerchantApiAdapter } from './uber-merchant-api.adapter';
 import { UberMenuGatewayAdapter } from './uber-menu-publication.adapter';
 import { UberOrderActionGatewayAdapter } from './uber-order-action.gateway';
 import { UberOrderDetailGatewayAdapter } from './uber-order-detail.gateway';
-import { UberAuthService } from './uber-token.provider';
+import {
+  UberAuthService,
+  type UberAuthConfigPort,
+  type UberAuthHttpPort,
+} from './uber-token.provider';
+import type { UberTelemetryPort } from '../../application/ports/uber-order-processing.ports';
+import {
+  createUberTransportFake,
+  uberHttpResult,
+} from '../../test/uber-api-test.helpers';
 import {
   UberMenuGateway,
   UberMerchantResourceGateway,
@@ -23,23 +31,20 @@ const fixture = (path: string) =>
 
 describe('Uber gateways wire contract v1', () => {
   it('OAuth client credentials request fixes method, content type, grant and scope', async () => {
-    const http = {
-      request: jest.fn().mockResolvedValue({
+    const http: jest.Mocked<UberAuthHttpPort> = {
+      request: jest.fn<UberAuthHttpPort['request']>().mockResolvedValue({
         response: new Response(
           JSON.stringify(fixture('oauth/token-success.json')),
         ),
         data: fixture('oauth/token-success.json'),
       }),
     };
-    const auth = new UberAuthService(
-      http as never,
-      {
-        clientId: 'fixture-client-id',
-        clientSecret: 'fixture-client-secret',
-        defaultAppScopes: 'eats.store eats.order',
-        tokenEndpoint: 'https://auth.uber.com/oauth/v2/token',
-      } as never,
-    );
+    const auth = new UberAuthService(http, {
+      clientId: 'fixture-client-id',
+      clientSecret: 'fixture-client-secret',
+      defaultAppScopes: 'eats.store eats.order',
+      tokenEndpoint: 'https://auth.uber.com/oauth/v2/token',
+    } satisfies UberAuthConfigPort);
     await expect(auth.getAccessToken('eats.store eats.order')).resolves.toBe(
       'fixture-not-a-real-token',
     );
@@ -63,11 +68,11 @@ describe('Uber gateways wire contract v1', () => {
   });
 
   it('discovery and provisioning own their Uber wire paths, scope and body', async () => {
-    const transport = { request: jest.fn() };
+    const transport = createUberTransportFake();
     transport.request
       .mockResolvedValueOnce(fixture('stores/discovery.json'))
       .mockResolvedValueOnce(fixture('stores/provision-response.json'));
-    const adapter = new UberMerchantApiAdapter(transport as never);
+    const adapter = new UberMerchantApiAdapter(transport);
 
     await adapter.discoverStores('fixture-merchant-token');
     await adapter.provisionStore(
@@ -99,14 +104,9 @@ describe('Uber gateways wire contract v1', () => {
   });
 
   it('store status has a write scope and stable idempotency key', async () => {
-    const transport = {
-      inspect: jest.fn().mockResolvedValue({
-        response: new Response('{}', { status: 200 }),
-        data: {},
-        text: '{}',
-      }),
-    };
-    const adapter = new UberMerchantApiAdapter(transport as never);
+    const transport = createUberTransportFake();
+    transport.inspect.mockResolvedValue(uberHttpResult(200));
+    const adapter = new UberMerchantApiAdapter(transport);
     await adapter.writeStatus('store/1', { status: 'ONLINE' }, 'status:key:v1');
     expect(transport.inspect).toHaveBeenCalledWith({
       path: '/v1/eats/stores/store%2F1/status',
@@ -120,19 +120,19 @@ describe('Uber gateways wire contract v1', () => {
   });
 
   it('menu upload and confirmation use dedicated wire DTO fixtures', async () => {
-    const request = jest
-      .fn()
+    const transport = createUberTransportFake();
+    transport.request
       .mockResolvedValueOnce(fixture('menu/upload-response.json'))
       .mockResolvedValueOnce(fixture('menu/confirmation.json'));
-    const adapter = new UberMenuGatewayAdapter({ request } as never);
+    const adapter = new UberMenuGatewayAdapter(transport);
     const wireMenu = fixture('menu/upload-request.json');
     await adapter.uploadMenu({
       storeId: 'store/1',
       payload: wireMenu,
       idempotencyKey: 'menu:store-1:v1',
-    } as never);
+    });
     await adapter.getMenuPublicationStatus({ storeId: 'store/1' });
-    expect(request.mock.calls.map(([value]) => value)).toEqual([
+    expect(transport.request.mock.calls.map(([value]) => value)).toEqual([
       {
         path: '/v2/eats/stores/store%2F1/menus',
         scope: 'eats.store',
@@ -164,7 +164,7 @@ describe('Uber gateways wire contract v1', () => {
         .mockResolvedValue({ ok: true, status: 200 });
       const adapter = new UberOrderActionGatewayAdapter({
         executeAction,
-      } as never);
+      });
       const common = {
         externalOrderId: 'order/1',
         idempotencyKey: `${method}:v1`,
@@ -204,9 +204,12 @@ describe('Uber gateways wire contract v1', () => {
       const inspect = jest
         .fn()
         .mockResolvedValue({ response: new Response('{}'), data: {} });
-      const gateway = new UberOrderGateway({ inspect } as never, {
-        resourceHrefAllowedOrigins: 'https://api.uber.com',
-      });
+      const gateway = new UberOrderGateway(
+        { request: jest.fn(), inspect },
+        {
+          resourceHrefAllowedOrigins: 'https://api.uber.com',
+        },
+      );
       await gateway.executeAction('order/1', action, {}, `${action}:v1`);
       expect(inspect).toHaveBeenCalledWith({
         path,
@@ -234,10 +237,10 @@ describe('Uber gateways wire contract v1', () => {
         text: JSON.stringify(fixture('errors/unauthorized.json')),
       }),
     };
-    const adapter = new UberOrderDetailGatewayAdapter(
-      gateway as never,
-      { workflowLog: jest.fn() } as never,
-    );
+    const adapter = new UberOrderDetailGatewayAdapter(gateway, {
+      workflowLog:
+        jest.fn<Pick<UberTelemetryPort, 'workflowLog'>['workflowLog']>(),
+    });
     await expect(
       adapter.fetchOrderDetail({
         resourceHref: 'https://api.uber.com/v2/eats/order/order-1',
@@ -258,12 +261,12 @@ describe('Uber gateways wire contract v1', () => {
     });
   });
 
-  it('resource gateways reject cross-capability paths before transport', async () => {
-    const transport = { request: jest.fn() };
+  it('resource gateways reject cross-capability paths before transport', () => {
+    const transport = createUberTransportFake();
     for (const gateway of [
-      new UberMerchantResourceGateway(transport as never),
-      new UberStoreGateway(transport as never),
-      new UberMenuGateway(transport as never),
+      new UberMerchantResourceGateway(transport),
+      new UberStoreGateway(transport),
+      new UberMenuGateway(transport),
     ]) {
       expect(() =>
         gateway.request({

@@ -51,13 +51,26 @@ export interface UberResourceGateway {
   request<T = Record<string, unknown>>(request: UberGatewayRequest): Promise<T>;
 }
 
+export type UberGatewayHttpPort = Pick<
+  UberHttpClient,
+  'request' | 'ensureSuccess'
+>;
+export type UberGatewayAuthPort = Pick<
+  UberAuthService,
+  'getAccessToken' | 'forceRefreshAccessToken'
+>;
+export type UberGatewayTransportPort = Pick<
+  UberApiGatewayTransport,
+  'request' | 'inspect'
+>;
+
 @Injectable()
 export class UberApiGatewayTransport {
   private readonly logger = new AppLogger(UberApiGatewayTransport.name);
 
   constructor(
-    private readonly http: UberHttpClient,
-    private readonly auth: UberAuthService,
+    @Inject(UberHttpClient) private readonly http: UberGatewayHttpPort,
+    @Inject(UberAuthService) private readonly auth: UberGatewayAuthPort,
     private readonly config: UberApiConfig & Partial<UberRateLimitConfig>,
     @Optional()
     @Inject(UBER_RATE_LIMITER_PORT)

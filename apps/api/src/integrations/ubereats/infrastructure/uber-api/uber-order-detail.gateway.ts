@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   UberNonRetryableUpstreamError,
   UberTransientUpstreamError,
@@ -14,8 +14,12 @@ import { UberOrderGateway } from './uber-resource.gateways';
 @Injectable()
 export class UberOrderDetailGatewayAdapter implements UberOrderDetailGatewayPort {
   constructor(
-    private readonly gateway: UberOrderGateway,
-    private readonly telemetry: UberTelemetryPort,
+    @Inject(UberOrderGateway)
+    private readonly gateway: Pick<
+      UberOrderGateway,
+      'pathFromResourceHref' | 'inspect'
+    >,
+    private readonly telemetry: Pick<UberTelemetryPort, 'workflowLog'>,
   ) {}
 
   async fetchOrderDetail(input: {
