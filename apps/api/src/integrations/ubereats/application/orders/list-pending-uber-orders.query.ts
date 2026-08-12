@@ -1,13 +1,26 @@
-import type { UberOrderSyncRepositoryPort } from '../ports/uber-order-sync.ports';
+import type {
+  UberOrderSyncRepositoryPort,
+  UberPendingOrder,
+} from '../ports/uber-order-sync.ports';
+
+export type PendingUberOrdersResult = {
+  count: number;
+  items: UberPendingOrder[];
+};
+
+export type PendingUberOrdersSummary = {
+  count: number;
+  updatedAt: Date | null;
+};
 
 /** Read-only pending order views; no transaction or persistence vocabulary leaks out. */
 export class ListPendingUberOrdersQuery {
   constructor(private readonly orders: UberOrderSyncRepositoryPort) {}
-  async list() {
+  async list(): Promise<PendingUberOrdersResult> {
     const items = await this.orders.listPending(100);
     return { count: items.length, items };
   }
-  summary() {
+  summary(): Promise<PendingUberOrdersSummary> {
     return this.orders.pendingSummary();
   }
 }
