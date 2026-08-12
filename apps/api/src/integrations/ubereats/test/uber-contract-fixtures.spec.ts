@@ -1,6 +1,18 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return -- JSON.parse is the contract boundary under test */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+
+const parseJson = (text: string): unknown => {
+  const value: unknown = JSON.parse(text);
+  return value;
+};
+
+const hasContractVersion = (
+  value: unknown,
+): value is { contract_version: string } =>
+  typeof value === 'object' &&
+  value !== null &&
+  'contract_version' in value &&
+  typeof value.contract_version === 'string';
 
 const root = join(__dirname, 'fixtures/uber-contract/v1');
 const files = (directory: string): string[] =>
@@ -45,7 +57,9 @@ describe('versioned Uber wire fixtures', () => {
   it('contains parseable synthetic JSON and no plausible credential or customer PII', () => {
     for (const path of files(root)) {
       const text = readFileSync(path, 'utf8');
-      expect(() => JSON.parse(text)).not.toThrow();
+      expect(() => {
+        parseJson(text);
+      }).not.toThrow();
       expect(text).not.toMatch(/Bearer\s+[A-Za-z0-9._~-]{12,}/i);
       expect(text).not.toMatch(/(?:sk|prod|live)[_-][A-Za-z0-9_-]{12,}/i);
       expect(text).not.toMatch(
@@ -55,9 +69,13 @@ describe('versioned Uber wire fixtures', () => {
   });
 
   it('pins documentation to the same contract version', () => {
-    const manifest = JSON.parse(
+    const manifest: unknown = parseJson(
       readFileSync(join(root, 'manifest.json'), 'utf8'),
-    ) as { contract_version: string };
+    );
+    expect(hasContractVersion(manifest)).toBe(true);
+    if (!hasContractVersion(manifest)) {
+      throw new Error('Uber contract manifest must contain contract_version');
+    }
     const matrix = readFileSync(
       join(__dirname, 'requirement-matrix.md'),
       'utf8',

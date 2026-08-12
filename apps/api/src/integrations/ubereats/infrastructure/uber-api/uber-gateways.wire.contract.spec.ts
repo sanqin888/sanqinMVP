@@ -23,11 +23,16 @@ import {
 } from './uber-resource.gateways';
 
 const fixtureRoot = join(__dirname, '../../test/fixtures/uber-contract/v1');
-const fixture = (path: string) =>
-  JSON.parse(readFileSync(join(fixtureRoot, path), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const fixture = (path: string): Record<string, unknown> => {
+  const value: unknown = JSON.parse(
+    readFileSync(join(fixtureRoot, path), 'utf8'),
+  );
+  if (!isJsonObject(value)) throw new Error(`Expected object fixture: ${path}`);
+  return value;
+};
 
 describe('Uber gateways wire contract v1', () => {
   it('OAuth client credentials request fixes method, content type, grant and scope', async () => {
