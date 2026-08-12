@@ -25,6 +25,16 @@ export type UberOrderEventCursor = {
   sequence: number | null;
 };
 
+/** Durable command written in the same transaction as the imported order. */
+export type UberOrderImportActionIntent = {
+  externalOrderId: string;
+  action: Extract<UberOrderActionName, 'ACCEPT' | 'DENY'>;
+  idempotencyKey: string;
+  businessVersion: string;
+  reasonCode: string | null;
+  reasonDetail: string | null;
+};
+
 export interface UberOrderImportRepositoryPort {
   findMenuMappings(
     storeId: string,
@@ -41,8 +51,13 @@ export interface UberOrderImportRepositoryPort {
     cursor: UberOrderEventCursor;
     menuMappings: UberOrderMenuMapping[];
     cancellation: UberOrderCancellationDecision | null;
+    actionIntent: UberOrderImportActionIntent | null;
     receivedAt: Date;
-  }): Promise<{ orderId: string; created: boolean }>;
+  }): Promise<{
+    orderId: string;
+    created: boolean;
+    action: { taskId: string; created: boolean } | null;
+  }>;
 }
 
 export type UberOrderActionTask = {

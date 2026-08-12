@@ -12,6 +12,7 @@ import {
   validateUberOrderAmounts,
 } from '../../domain/orders/uber-order-payload.parser';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
+import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 
 /** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
 export class ImportUberOrderUseCase {
@@ -83,29 +84,36 @@ export class ImportUberOrderUseCase {
         Math.abs(expected - item.baseUnitPriceCents) > 1
       );
     });
-    if (mismatch || validateUberOrderAmounts(order).hasMaterialVariance) {
-      await this.actions.request(order.externalOrderId, 'DENY', {
-        reasonCode: 'PRICE_MISMATCH',
-        reasonDetail: '订单金额与已发布菜单不一致',
-      });
-      return;
-    }
+    const denial =
+      mismatch || validateUberOrderAmounts(order).hasMaterialVariance
+        ? {
+            reasonCode: 'PRICE_MISMATCH',
+            reasonDetail: '订单金额与已发布菜单不一致',
+          }
+        : null;
     const cancellation = this.cancellation(normalizedEventType, order);
+    const decision = cancellation
+      ? null
+      : {
+          externalOrderId: order.externalOrderId,
+          action: denial ? ('DENY' as const) : ('ACCEPT' as const),
+          idempotencyKey: UberOrderStateMachine.idempotencyKey(
+            order.externalOrderId,
+            denial ? 'DENY' : 'ACCEPT',
+          ),
+          businessVersion: 'v1',
+          reasonCode: denial?.reasonCode ?? null,
+          reasonDetail: denial?.reasonDetail ?? null,
+        };
     await this.repository.saveImportedOrder({
       order,
       eventType: normalizedEventType,
       cursor,
       menuMappings: mappings,
       cancellation,
+      actionIntent: decision,
       receivedAt: new Date(),
     });
-    // Deliberately outside the import transaction. A failed enqueue leaves the
-    // committed order replayable; the duplicate branch retries this intent.
-    await this.requestDecision(
-      order.externalOrderId,
-      normalizedEventType,
-      cancellation,
-    );
   }
 
   processWebhookEvent(
