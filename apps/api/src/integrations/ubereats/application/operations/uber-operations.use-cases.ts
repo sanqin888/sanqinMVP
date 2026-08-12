@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { UberValidationError } from '../errors/uber-application.error';
 import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
 import {
   UberOpsTicketPriority,
@@ -50,6 +50,13 @@ export type CreateUberOpsTicketCommand = Omit<
     excludedOptionChoiceStableIds?: string[];
   };
 };
+
+const invalidOperationsInput = (message: string): UberValidationError =>
+  new UberValidationError({
+    code: 'UBER_OPERATIONS_INPUT_INVALID',
+    message,
+    operation: 'operations.validate',
+  });
 
 /** Stable facade contract consumed by delivery adapters. */
 export interface UberOperationsPort {
@@ -181,14 +188,12 @@ export class CreateUberOpsTicketUseCase {
       input.externalOrderId &&
       !(await this.orders.exists(input.externalOrderId))
     )
-      throw new BadRequestException(
-        `Uber 订单 ${input.externalOrderId} 不存在`,
-      );
+      throw invalidOperationsInput(`Uber 订单 ${input.externalOrderId} 不存在`);
     if (
       input.menuItemStableId &&
       !(await this.menuItems.exists(input.menuItemStableId))
     )
-      throw new BadRequestException(`菜单项 ${input.menuItemStableId} 不存在`);
+      throw invalidOperationsInput(`菜单项 ${input.menuItemStableId} 不存在`);
     const ticket = await this.tickets.create({
       storeId,
       type: input.type,
@@ -221,7 +226,7 @@ export class RetryUberOpsTicketUseCase {
   async execute(id: string): Promise<UberOpsTicketRetryResult> {
     const ticket = await this.unitOfWork.transaction(async ({ tickets }) => {
       const found = await tickets.find(id);
-      if (!found) throw new BadRequestException(`工单 ${id} 不存在`);
+      if (!found) throw invalidOperationsInput(`工单 ${id} 不存在`);
       await tickets.markInProgress(id);
       return found;
     });
@@ -229,7 +234,7 @@ export class RetryUberOpsTicketUseCase {
     try {
       if (ticket.type === UberOpsTicketType.ORDER_STATUS_SYNC) {
         if (!ticket.externalOrderId)
-          throw new BadRequestException('订单状态同步工单缺少 externalOrderId');
+          throw invalidOperationsInput('订单状态同步工单缺少 externalOrderId');
         await this.orderStatusSync.execute(
           ticket.externalOrderId,
           parseOrderContext(ticket.context).targetStatus,
@@ -245,7 +250,7 @@ export class RetryUberOpsTicketUseCase {
         );
       else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId)
-          throw new BadRequestException('商品状态工单缺少 menuItemStableId');
+          throw invalidOperationsInput('商品状态工单缺少 menuItemStableId');
         await this.menuAvailability.syncUberMenuItemAvailability({
           storeId: ticket.storeId,
           menuItemStableId: ticket.menuItemStableId,
@@ -311,7 +316,7 @@ export class QueryUberOperationsSummary {
 
 const requireContext = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new BadRequestException('工单缺少合法的结构化 context');
+    throw invalidOperationsInput('工单缺少合法的结构化 context');
   return value as Record<string, unknown>;
 };
 const parseOrderContext = (value: unknown): OrderStatusSyncContext => {
@@ -319,7 +324,7 @@ const parseOrderContext = (value: unknown): OrderStatusSyncContext => {
   if (
     !Object.values(UberOrderStatus).includes(c.targetStatus as UberOrderStatus)
   )
-    throw new BadRequestException('订单状态同步工单的 targetStatus 非法');
+    throw invalidOperationsInput('订单状态同步工单的 targetStatus 非法');
   return { targetStatus: c.targetStatus as UberOrderStatus };
 };
 const parseAvailabilityContext = (
@@ -327,15 +332,15 @@ const parseAvailabilityContext = (
 ): MenuItemAvailabilityContext => {
   const c = requireContext(value);
   if (typeof c.isAvailable !== 'boolean')
-    throw new BadRequestException('商品状态工单缺少布尔值 isAvailable');
+    throw invalidOperationsInput('商品状态工单缺少布尔值 isAvailable');
   return { isAvailable: c.isAvailable };
 };
 const parseStoreContext = (value: unknown): StoreStatusSyncContext => {
   const c = requireContext(value);
   if (typeof c.uberStoreId !== 'string' || !c.uberStoreId.trim())
-    throw new BadRequestException('门店状态工单缺少 uberStoreId');
+    throw invalidOperationsInput('门店状态工单缺少 uberStoreId');
   if (c.targetStatus !== 'ONLINE' && c.targetStatus !== 'PAUSED')
-    throw new BadRequestException('门店状态工单的 targetStatus 非法');
+    throw invalidOperationsInput('门店状态工单的 targetStatus 非法');
   return {
     uberStoreId: c.uberStoreId,
     targetStatus: c.targetStatus,
@@ -351,7 +356,7 @@ const parsePublishContext = (value: unknown): MenuPublishContext => {
     !publish.storeId.trim() ||
     publish.dryRun !== false
   )
-    throw new BadRequestException('菜单发布工单缺少完整的 publish 参数');
+    throw invalidOperationsInput('菜单发布工单缺少完整的 publish 参数');
   return {
     ...(typeof c.versionId === 'string' ? { versionId: c.versionId } : {}),
     publish: publish as MenuPublishContext['publish'],
@@ -366,7 +371,7 @@ const parseTicketContext = (type: UberOpsTicketType, value: unknown) => {
     return parseStoreContext(value);
   if (type === UberOpsTicketType.MENU_PUBLISH)
     return parsePublishContext(value);
-  throw new BadRequestException('不支持的工单类型');
+  throw invalidOperationsInput('不支持的工单类型');
 };
 const reportRange = (startValue?: string, endValue?: string) => {
   const rangeEnd = endValue ? new Date(endValue) : new Date();
@@ -374,8 +379,8 @@ const reportRange = (startValue?: string, endValue?: string) => {
     ? new Date(startValue)
     : new Date(rangeEnd.getTime() - 86400000);
   if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime()))
-    throw new BadRequestException('对账时间范围格式不正确');
+    throw invalidOperationsInput('对账时间范围格式不正确');
   if (rangeStart >= rangeEnd)
-    throw new BadRequestException('对账时间范围不合法：start 必须早于 end');
+    throw invalidOperationsInput('对账时间范围不合法：start 必须早于 end');
   return { rangeStart, rangeEnd };
 };

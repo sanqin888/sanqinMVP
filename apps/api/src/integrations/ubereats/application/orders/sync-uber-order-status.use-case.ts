@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { UberValidationError } from '../errors/uber-application.error';
 import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
 import type { UberTelemetryPort } from '../ports/uber-order-processing.ports';
 import type {
@@ -8,7 +8,7 @@ import type {
 } from '../ports/uber-order-sync.ports';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
-import { toUberEatsHttpException } from '../uber-domain-error.mapper';
+import { toUberEatsApplicationError } from '../uber-domain-error.mapper';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 
 /** Records durable action intent and queues delivery without exposing storage concepts. */
@@ -33,13 +33,15 @@ export class SyncUberOrderStatusUseCase {
     }
     const action = this.statusSync.actionFor(status);
     if (!action)
-      throw new BadRequestException(
-        `本地状态 ${status} 没有 Uber 文档支持的外部动作`,
-      );
+      throw new UberValidationError({
+        code: 'UBER_ORDER_STATUS_ACTION_UNSUPPORTED',
+        message: `本地状态 ${status} 没有 Uber 文档支持的外部动作`,
+        operation: 'order.status-sync',
+      });
     try {
       UberOrderStateMachine.assertCanRequestAction(order.status, action);
     } catch (error) {
-      throw toUberEatsHttpException(error);
+      throw toUberEatsApplicationError(error);
     }
     await this.unitOfWork.recordActionIntent({
       externalOrderId,

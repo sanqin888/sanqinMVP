@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { UberValidationError } from '../errors/uber-application.error';
 import {
   GenerateUberReconciliationReportUseCase,
   QueryUberOperationsSummary,
@@ -58,7 +58,7 @@ describe('Uber operations application workflows', () => {
     );
     await expect(
       useCase.execute({ rangeStart: '2026-01-02', rangeEnd: '2026-01-01' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(UberValidationError);
   });
 
   it('normalizes operation queries and caps report limit', async () => {

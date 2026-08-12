@@ -33,7 +33,14 @@ const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   contracts: ['contracts', 'domain'],
   domain: ['domain'],
   infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
-  composition: ['api', 'application', 'contracts', 'domain', 'infrastructure'],
+  composition: [
+    'api',
+    'application',
+    'contracts',
+    'domain',
+    'infrastructure',
+    'composition',
+  ],
 };
 
 describe('Uber Eats bounded-context architecture', () => {

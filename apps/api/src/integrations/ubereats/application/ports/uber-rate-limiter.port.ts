@@ -21,6 +21,24 @@ export interface UberRateLimiterPort {
   acquire(request: UberRateLimitRequest): Promise<UberRateLimitLease>;
 }
 
+/** Metrics required by rate-limiter adapters, independent of persistence. */
+export interface UberRateLimiterMetricsPort {
+  increment(
+    name: 'ubereats_rate_limit_rejected_total' | 'ubereats_api_429_total',
+    labels?: Record<string, string>,
+  ): void;
+  observe(
+    name: 'ubereats_rate_limit_wait_ms',
+    value: number,
+    labels?: Record<string, string>,
+  ): void;
+  gauge(
+    name: 'ubereats_rate_limit_queue_depth',
+    value: number,
+    labels?: Record<string, string>,
+  ): void;
+}
+
 export class UberRateLimitRejectedError extends Error {
   constructor(
     readonly reason: 'queue_full' | 'wait_timeout',
