@@ -92,15 +92,20 @@ describe('Uber Eats persistence architecture', () => {
 });
 
 describe('Uber Eats menu persistence dependency direction', () => {
+  const menuPrismaPersistenceFiles = () => {
+    const persistenceRoot = join(__dirname, 'infrastructure', 'persistence');
+
+    return scanTypeScript(persistenceRoot, { productionOnly: true }).filter(
+      (file) =>
+        /uber-menu-(?:workflow-prisma\.repository|.+-prisma\.(?:adapter|repository))\.ts$/.test(
+          file.path,
+        ),
+    );
+  };
+
   it('does not import application use cases, publication implementations, or Uber API services', () => {
     const root = join(__dirname);
-    const files = scanTypeScript(join(root, 'infrastructure', 'persistence'), {
-      productionOnly: true,
-    }).filter((file) =>
-      /uber-menu-(?:draft\.repositories|repository|snapshot-prisma|publication-prisma)/.test(
-        file.path,
-      ),
-    );
+    const files = menuPrismaPersistenceFiles();
     const violations = importViolations(files, root, (specifier) =>
       /application\/menu\/.*use-case|uber-api\/uber-menu-publication|uber-api\/uber-token/.test(
         specifier,
@@ -112,13 +117,11 @@ describe('Uber Eats menu persistence dependency direction', () => {
 
   it('keeps menu draft persistence independent from merchant credentials and order mapping', () => {
     const root = join(__dirname);
-    const files = scanTypeScript(join(root, 'infrastructure', 'persistence'), {
-      productionOnly: true,
-    }).filter((file) =>
-      /uber-menu-(?:config|draft|reference)-/.test(file.path),
+    const files = menuPrismaPersistenceFiles().filter((file) =>
+      /uber-menu-(?:config|draft|reference|workflow)-/.test(file.path),
     );
     const violations = importViolations(files, root, (specifier) =>
-      /(?:^crypto$|uber-token\.provider|uber-credential-vault|domain\/merchant|domain\/orders)/.test(
+      /(?:^crypto$|application\/merchant\/uber-merchant-oauth|uber-token\.provider|uber-credential-vault|domain\/(?:merchant|orders?)(?:\/|$))/.test(
         specifier,
       ),
     );
@@ -131,5 +134,48 @@ describe('Uber Eats menu persistence dependency direction', () => {
     );
 
     expect([...violations, ...leakedHelpers]).toEqual([]);
+  });
+
+  it('binds each menu draft port to its dedicated Prisma adapter', () => {
+    const moduleFile = scanTypeScript(join(__dirname, 'modules'), {
+      productionOnly: true,
+    }).find((file) => file.path.endsWith('menu.module.ts'));
+    expect(moduleFile).toBeDefined();
+
+    const draftPortBindings = Object.fromEntries(
+      [
+        ...moduleFile!.source.matchAll(
+          /provide:\s*(UBER_MENU_(?:CONFIG_(?:QUERY|WRITE)|DRAFT_(?:READ|MUTATION|DIFF)|REFERENCE_QUERY)_PORT),\s*useExisting:\s*(\w+)/g,
+        ),
+      ].map((match) => [match[1], match[2]]),
+    );
+
+    expect(draftPortBindings).toEqual({
+      UBER_MENU_CONFIG_QUERY_PORT: 'UberMenuConfigQueryPrismaAdapter',
+      UBER_MENU_CONFIG_WRITE_PORT: 'UberMenuConfigWritePrismaAdapter',
+      UBER_MENU_DRAFT_READ_PORT: 'UberMenuDraftReadPrismaAdapter',
+      UBER_MENU_DRAFT_MUTATION_PORT: 'UberMenuDraftMutationPrismaAdapter',
+      UBER_MENU_DRAFT_DIFF_PORT: 'UberMenuDraftDiffPrismaAdapter',
+      UBER_MENU_REFERENCE_QUERY_PORT: 'UberMenuReferenceQueryPrismaAdapter',
+    });
+  });
+
+  it('does not restore the retired aggregate menu draft persistence gateway', () => {
+    const root = join(__dirname);
+    const files = scanTypeScript(root, { productionOnly: true });
+    const violations = files.flatMap((file) => {
+      const fileViolations = file.path.endsWith(
+        'uber-menu-workflow-prisma.repository.ts',
+      )
+        ? [formatSourceViolation(root, file, 'retired workflow repository')]
+        : [];
+      const typeViolations = [
+        ...file.source.matchAll(/\bUberMenuDraftGateway\b/g),
+      ].map((match) => formatSourceViolation(root, file, match[0]));
+
+      return [...fileViolations, ...typeViolations];
+    });
+
+    expect(violations).toEqual([]);
   });
 });
