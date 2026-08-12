@@ -86,7 +86,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
 
   async saveImportedOrder(
     input: Parameters<UberOrderImportRepositoryPort['saveImportedOrder']>[0],
-  ): Promise<{ orderId: string; created: boolean }> {
+  ): ReturnType<UberOrderImportRepositoryPort['saveImportedOrder']> {
     const mapping = new Map(
       input.menuMappings.map((item) => [item.externalItemId, item]),
     );
@@ -117,6 +117,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       },
     }));
     const targetStatus = UberOrderStateMachine.eventStatus(input.eventType);
+    let savedAction: { taskId: string; created: boolean } | null = null;
     const saved = await this.ingestion.ingest(
       {
         channel: Channel.ubereats,
@@ -162,6 +163,24 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         emitPaidLifecycleEvent: false,
       },
       async (tx, order) => {
+        if (input.actionIntent) {
+          // skipDuplicates emits ON CONFLICT DO NOTHING, so a concurrent replay
+          // remains usable inside this transaction instead of aborting it.
+          const inserted = await tx.uberOrderAction.createMany({
+            data: {
+              ...input.actionIntent,
+              status: 'PENDING',
+              retryable: true,
+              nextRetryAt: input.receivedAt,
+            },
+            skipDuplicates: true,
+          });
+          const action = await tx.uberOrderAction.findUniqueOrThrow({
+            where: { idempotencyKey: input.actionIntent.idempotencyKey },
+            select: { id: true },
+          });
+          savedAction = { taskId: action.id, created: inserted.count === 1 };
+        }
         if (input.cancellation) {
           await tx.uberOrderCancellation.upsert({
             where: { eventId: input.cursor.eventId },
@@ -217,7 +236,11 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         });
       },
     );
-    return { orderId: saved.orderId, created: saved.action === 'created' };
+    return {
+      orderId: saved.orderId,
+      created: saved.action === 'created',
+      action: savedAction,
+    };
   }
 
   private toPrismaStatus(status: string | null): OrderStatus {
