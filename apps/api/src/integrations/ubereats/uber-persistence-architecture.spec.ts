@@ -109,4 +109,27 @@ describe('Uber Eats menu persistence dependency direction', () => {
 
     expect(violations).toEqual([]);
   });
+
+  it('keeps menu draft persistence independent from merchant credentials and order mapping', () => {
+    const root = join(__dirname);
+    const files = scanTypeScript(join(root, 'infrastructure', 'persistence'), {
+      productionOnly: true,
+    }).filter((file) =>
+      /uber-menu-(?:config|draft|reference)-/.test(file.path),
+    );
+    const violations = importViolations(files, root, (specifier) =>
+      /(?:^crypto$|uber-token\.provider|uber-credential-vault|domain\/merchant|domain\/orders)/.test(
+        specifier,
+      ),
+    );
+    const leakedHelpers = files.flatMap((file) =>
+      [
+        ...file.source.matchAll(
+          /\b(?:resolveMerchantConnection|upsertMerchantConnection|assertUberStoreTimezone|resolveUberProductStableId|buildUberNodeId)\b/g,
+        ),
+      ].map((match) => formatSourceViolation(root, file, match[0])),
+    );
+
+    expect([...violations, ...leakedHelpers]).toEqual([]);
+  });
 });
