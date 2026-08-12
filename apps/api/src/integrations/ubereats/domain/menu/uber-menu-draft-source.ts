@@ -23,7 +23,7 @@ export interface UberMenuDraftCategorySource {
   id: string;
   stableId: string;
   nameEn: string;
-  nameZh: string;
+  nameZh: string | null;
   sortOrder: number;
   isActive: boolean;
 }
@@ -32,7 +32,7 @@ export interface UberMenuDraftItemSource {
   stableId: string;
   categoryId: string;
   nameEn: string;
-  nameZh: string;
+  nameZh: string | null;
   basePriceCents: number;
   isAvailable: boolean;
   sortOrder: number;
@@ -44,7 +44,7 @@ export interface UberMenuDraftItemSource {
 export interface UberMenuDraftModifierTemplateSource {
   stableId: string;
   nameEn: string;
-  nameZh: string;
+  nameZh: string | null;
   defaultMinSelect: number;
   defaultMaxSelect: number | null;
   isAvailable: boolean;
@@ -52,7 +52,7 @@ export interface UberMenuDraftModifierTemplateSource {
   options: Array<{
     stableId: string;
     nameEn: string;
-    nameZh: string;
+    nameZh: string | null;
     priceDeltaCents: number;
     isAvailable: boolean;
     sortOrder: number;
