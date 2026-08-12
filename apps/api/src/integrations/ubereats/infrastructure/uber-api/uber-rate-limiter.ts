@@ -6,8 +6,8 @@ import {
   type UberRateLimitLease,
   type UberRateLimiterPort,
   type UberRateLimitRequest,
-} from '../../application/ports/uber-rate-limiter.port';
-export * from '../../application/ports/uber-rate-limiter.port';
+} from '../../application/shared/uber-rate-limiter.port';
+export * from '../../application/shared/uber-rate-limiter.port';
 
 type Waiter = {
   request: UberRateLimitRequest;

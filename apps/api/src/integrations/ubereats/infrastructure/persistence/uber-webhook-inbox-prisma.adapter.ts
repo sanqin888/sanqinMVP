@@ -4,13 +4,13 @@ import { randomUUID } from 'crypto';
 import type {
   UberWebhookInboxItem,
   UberWebhookInboxPort,
-} from '../../application/ports/uber-order-processing.ports';
+} from '../../application/orders/uber-order-processing.ports';
 import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
+import { buildUberIdempotencyKey } from '../../application/orders/uber-idempotency-key';
 import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
-import { UberApplicationError } from '../../application/errors/uber-application.error';
+import { UberApplicationError } from '../../application/shared/uber-application.error';
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {

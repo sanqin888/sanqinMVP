@@ -7,12 +7,12 @@ import {
   type UberResourceGateway,
   type UberGatewayTransportPort,
 } from './uber-api.gateway';
-import type { UberOrderActionGatewayPort } from '../../application/ports/uber-api.ports';
+import type { UberOrderActionGatewayPort } from '../../application/merchant/uber-merchant-api.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import {
   UberTransientUpstreamError,
   UberValidationError,
-} from '../../application/errors/uber-application.error';
+} from '../../application/shared/uber-application.error';
 
 const invalidResource = (code: string, message: string, operation: string) =>
   new UberValidationError({

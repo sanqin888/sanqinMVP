@@ -2,13 +2,13 @@ import type {
   UberOrderCancelEventV1,
   UberOrderNotificationEventV1,
 } from '../../domain/webhook/uber-webhook-event.parser';
-import type { UberEventOrdering } from '../ports/uber-order-processing.ports';
+import type { UberEventOrdering } from './uber-order-processing.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 import {
   type UberOrderEventCursor,
   type UberOrderImportRepositoryPort,
-} from '../ports/uber-order.ports';
-import { type UberOrderDetailGatewayPort } from '../ports/uber-api.ports';
+} from './uber-order.ports';
+import { type UberOrderDetailGatewayPort } from './uber-order-api.ports';
 import {
   UberOrderPayloadParser,
   validateUberOrderAmounts,
@@ -16,7 +16,7 @@ import {
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
-import { UberApplicationError } from '../errors/uber-application.error';
+import { UberApplicationError } from '../shared/uber-application.error';
 
 const POS_EXTERNAL_STORE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 

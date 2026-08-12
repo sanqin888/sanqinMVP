@@ -1,8 +1,8 @@
-import { UberValidationError } from '../errors/uber-application.error';
+import { UberValidationError } from '../shared/uber-application.error';
 import {
   type UberMerchantApiPort,
   type UberOAuthTokenPort,
-} from '../ports/uber-api.ports';
+} from '../merchant/uber-merchant-api.ports';
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberStoreMappingRepositoryPort,

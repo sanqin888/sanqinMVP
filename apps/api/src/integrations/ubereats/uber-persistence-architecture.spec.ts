@@ -55,9 +55,9 @@ describe('Uber Eats persistence architecture', () => {
 
   it('keeps application ports free of any and generated Prisma types', () => {
     const root = join(__dirname);
-    const files = scanTypeScript(join(root, 'application', 'ports'), {
+    const files = scanTypeScript(join(root, 'application'), {
       productionOnly: true,
-    });
+    }).filter(({ path }) => /\.ports?\.ts$/.test(path));
     const violations = files.flatMap((file) =>
       [
         ...file.source.matchAll(/\bany\b/g),

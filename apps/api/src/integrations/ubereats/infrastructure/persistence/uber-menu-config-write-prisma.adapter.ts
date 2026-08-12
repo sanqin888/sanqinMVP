@@ -1,6 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type { UberMenuConfigWritePort } from '../../application/ports/uber-menu-draft.ports';
+import type { UberMenuConfigWritePort } from '../../application/menu/uber-menu-draft.ports';
 import type {
   UpsertOptionItemConfigInput,
   UpsertPriceBookItemInput,

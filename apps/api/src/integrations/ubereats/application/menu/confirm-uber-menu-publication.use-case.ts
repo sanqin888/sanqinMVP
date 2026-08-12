@@ -1,7 +1,7 @@
 import {
   type UberMenuGatewayPort,
   type UberMenuPublicationRepositoryPort,
-} from '../ports/uber-menu-publication.ports';
+} from './uber-menu-publication.ports';
 
 export class ConfirmUberMenuPublicationUseCase {
   constructor(

@@ -1,5 +1,5 @@
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
-import { type UberOrderOutboxPort } from '../ports/uber-order-processing.ports';
+import { type UberOrderOutboxPort } from './uber-order-processing.ports';
 
 /** Selects retryable action rows and reconstructs their idempotent request payloads. */
 export class UberOrderOutboxService {

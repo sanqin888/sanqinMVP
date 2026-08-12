@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type { UberMenuReferenceQueryPort } from '../../application/ports/uber-menu-draft.ports';
+import type { UberMenuReferenceQueryPort } from '../../application/menu/uber-menu-draft.ports';
 
 @Injectable()
 export class UberMenuReferenceQueryPrismaAdapter implements UberMenuReferenceQueryPort {

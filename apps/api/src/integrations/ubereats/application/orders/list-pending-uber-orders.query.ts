@@ -1,7 +1,7 @@
 import type {
   UberOrderSyncRepositoryPort,
   UberPendingOrder,
-} from '../ports/uber-order-sync.ports';
+} from './uber-order-sync.ports';
 
 export type PendingUberOrdersResult = {
   count: number;

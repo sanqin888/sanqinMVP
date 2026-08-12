@@ -235,6 +235,21 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(file!.source).not.toMatch(/PrismaModule|persistence\/|uber-api\//);
   });
 
+  it('keeps capability ports vertical and forbids aggregate port facades', () => {
+    expect(existsSync(join(BOUNDED_CONTEXT_ROOT, 'application', 'ports'))).toBe(
+      false,
+    );
+
+    const aggregatePortFiles = boundedContextFiles
+      .filter(({ path }) => path.includes(`${sep}application${sep}`))
+      .map(({ path }) => relative(BOUNDED_CONTEXT_ROOT, path))
+      .filter((path) =>
+        /(?:^|\/)ports\.ts$|aggregate.*\.ports?\.ts$/.test(path),
+      );
+
+    expect(aggregatePortFiles).toEqual([]);
+  });
+
   it('has one composition root and no aggregate compatibility facade', () => {
     expect(existsSync(join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts'))).toBe(
       true,

@@ -8,7 +8,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberMenuAvailabilityCommandPort,
   UberMenuAvailabilityQueryPort,
-} from '../../application/ports/uber-menu-availability.ports';
+} from '../../application/menu/uber-menu-availability.ports';
 
 @Injectable()
 export class UberMenuAvailabilityPrismaAdapter

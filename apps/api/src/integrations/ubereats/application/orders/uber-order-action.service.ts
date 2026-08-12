@@ -4,7 +4,7 @@ import {
   type UberOrderActionGatewayPort,
   type UberOrderActionRepositoryPort,
   type UberOrderActionTask,
-} from '../ports/uber-order.ports';
+} from './uber-order.ports';
 
 export class UberOrderActionService {
   constructor(

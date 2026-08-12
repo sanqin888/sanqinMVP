@@ -3,7 +3,7 @@ import { AppLogger } from '../../../../common/app-logger';
 import {
   UberApplicationError,
   type UberErrorCategory,
-} from '../../application/errors/uber-application.error';
+} from '../../application/shared/uber-application.error';
 
 export type UberRequestKind = 'token' | 'api' | 'orderDetail' | 'imageProbe';
 

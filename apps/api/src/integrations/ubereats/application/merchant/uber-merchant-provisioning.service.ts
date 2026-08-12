@@ -1,12 +1,12 @@
-import { UberValidationError } from '../errors/uber-application.error';
-import { type UberStoreApiPort } from '../ports/uber-api.ports';
+import { UberValidationError } from '../shared/uber-application.error';
+import { type UberStoreApiPort } from '../merchant/uber-merchant-api.ports';
 import { createHash } from 'crypto';
-import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
+import { buildUberIdempotencyKey } from '../orders/uber-idempotency-key';
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberStoreMappingRepositoryPort,
 } from './uber-merchant-persistence.ports';
-import type { UberOperationsAlertRepositoryPort } from '../ports/uber-operations-alert.ports';
+import type { UberOperationsAlertRepositoryPort } from '../operations/uber-operations-alert.ports';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;

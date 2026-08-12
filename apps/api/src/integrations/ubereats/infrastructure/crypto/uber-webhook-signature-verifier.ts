@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { UberWebhookSignatureVerifier } from '../../application/ports/uber-order-processing.ports';
-import { UberAuthenticationError } from '../../application/errors/uber-application.error';
+import type { UberWebhookSignatureVerifier } from '../../application/orders/uber-order-processing.ports';
+import { UberAuthenticationError } from '../../application/shared/uber-application.error';
 import {
   UberCryptoConfigService,
   type UberWebhookSigningSecrets,

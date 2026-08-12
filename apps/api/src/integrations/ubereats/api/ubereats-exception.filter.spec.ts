@@ -5,7 +5,7 @@ import {
   UberRateLimitedError,
   UberTransientUpstreamError,
   UberValidationError,
-} from '../application/errors/uber-application.error';
+} from '../application/shared/uber-application.error';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
 describe('UberEatsExceptionFilter', () => {

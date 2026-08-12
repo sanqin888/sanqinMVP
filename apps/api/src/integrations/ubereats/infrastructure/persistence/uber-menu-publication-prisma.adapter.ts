@@ -6,7 +6,7 @@ import type {
   UberMenuPublicationAttempt,
   UberMenuPublicationLease,
   UberMenuPublicationRepositoryPort,
-} from '../../application/ports/uber-menu-publication.ports';
+} from '../../application/menu/uber-menu-publication.ports';
 
 type PublicationRow = Prisma.UberMenuPublishVersionGetPayload<object>;
 

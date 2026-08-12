@@ -1,14 +1,14 @@
-import { UberValidationError } from '../errors/uber-application.error';
-import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
-import type { UberTelemetryPort } from '../ports/uber-order-processing.ports';
+import { UberValidationError } from '../shared/uber-application.error';
+import { buildUberIdempotencyKey } from '../orders/uber-idempotency-key';
+import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type {
   UberOrderActionQueuePort,
   UberOrderSyncRepositoryPort,
   UberOrderSyncUnitOfWorkPort,
-} from '../ports/uber-order-sync.ports';
+} from './uber-order-sync.ports';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
-import { toUberEatsApplicationError } from '../uber-domain-error.mapper';
+import { toUberEatsApplicationError } from '../shared/uber-domain-error.mapper';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
 
 /** Records durable action intent and queues delivery without exposing storage concepts. */

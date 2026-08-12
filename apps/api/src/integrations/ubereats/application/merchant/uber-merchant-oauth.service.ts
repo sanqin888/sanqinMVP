@@ -6,9 +6,9 @@ import {
   UberOAuthTemporaryError,
   UberOAuthTerminalError,
   isUberApplicationError,
-} from '../errors/uber-application.error';
+} from '../shared/uber-application.error';
 import { randomBytes } from 'crypto';
-import { type UberOAuthTokenPort } from '../ports/uber-api.ports';
+import { type UberOAuthTokenPort } from '../merchant/uber-merchant-api.ports';
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberOAuthStatePort,

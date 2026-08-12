@@ -1,3 +1,7 @@
+import {
+  type UberTelemetryPort,
+  UBER_TELEMETRY_PORT,
+} from '../application/shared/uber-telemetry.port';
 import type { Provider } from '@nestjs/common';
 import { UBER_EATS_STORE_STATUS_SYNC } from '../public-api';
 import {
@@ -21,7 +25,7 @@ import {
   UBER_MERCHANT_API,
   UBER_OAUTH_TOKEN,
   UBER_STORE_API,
-} from '../application/ports/uber-api.ports';
+} from '../application/merchant/uber-merchant-api.ports';
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberOAuthStatePort,
@@ -33,13 +37,11 @@ import {
 import {
   type UberOperationsAlertRepositoryPort,
   UBER_OPERATIONS_ALERT_REPOSITORY,
-} from '../application/ports/uber-operations-alert.ports';
+} from '../application/operations/uber-operations-alert.ports';
 import {
-  type UberTelemetryPort,
   type UberWebhookInboxPort,
-  UBER_TELEMETRY_PORT,
   UBER_WEBHOOK_INBOX_PORT,
-} from '../application/ports/uber-order-processing.ports';
+} from '../application/orders/uber-order-processing.ports';
 import {
   UberMerchantConnectionPrismaAdapter,
   UberOAuthStatePrismaAdapter,

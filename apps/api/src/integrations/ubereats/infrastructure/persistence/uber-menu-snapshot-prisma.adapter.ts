@@ -3,7 +3,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberMenuPublishSnapshot,
   UberMenuSnapshotRepositoryPort,
-} from '../../application/ports/uber-menu-publication.ports';
+} from '../../application/menu/uber-menu-publication.ports';
 
 /** Prisma rows are translated here; the application boundary only sees stable menu DTOs. */
 @Injectable()

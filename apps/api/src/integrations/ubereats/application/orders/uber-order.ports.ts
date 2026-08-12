@@ -3,6 +3,8 @@ import type {
   UberOrderActionName,
   UberOrderStatus,
 } from '../../domain/orders/uber-order.types';
+import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
+import type { UberEventOrdering } from './uber-order-processing.ports';
 
 export type UberOrderMenuMapping = {
   externalItemId: string;
@@ -152,3 +154,13 @@ export const UBER_ORDER_STATUS_REPOSITORY = Symbol(
 );
 export const UBER_ORDER_STATUS_GATEWAY = Symbol('UBER_ORDER_STATUS_GATEWAY');
 export const UBER_ORDER_TRANSACTION = Symbol('UBER_ORDER_TRANSACTION');
+
+export const UBER_ORDER_IMPORT_PORT = Symbol('UBER_ORDER_IMPORT_PORT');
+export interface UberOrderImportPort {
+  processWebhookEvent(
+    eventType: string,
+    eventId: string,
+    payload: UberOrderNotificationEventV1,
+    ordering?: UberEventOrdering,
+  ): Promise<void>;
+}

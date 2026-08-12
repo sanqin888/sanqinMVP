@@ -3,7 +3,7 @@ import type {
   UberMenuGatewayPort,
   UberMenuImage,
   UberMenuImageProbePort,
-} from '../../application/ports/uber-menu-publication.ports';
+} from '../../application/menu/uber-menu-publication.ports';
 import { UberMenuGateway } from './uber-resource.gateways';
 import { UberImageValidator } from './uber-image.validator';
 

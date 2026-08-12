@@ -3,7 +3,7 @@ import {
   UberBusinessConflictError,
   UberTransientUpstreamError,
   UberValidationError,
-} from '../application/errors/uber-application.error';
+} from '../application/shared/uber-application.error';
 import { UberEatsOperationsController } from './operations.controller';
 
 describe('UberEatsOperationsController contract', () => {

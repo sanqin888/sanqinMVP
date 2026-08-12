@@ -1,4 +1,4 @@
-import type { UberRateLimiterPort } from '../application/ports/uber-rate-limiter.port';
+import type { UberRateLimiterPort } from '../application/shared/uber-rate-limiter.port';
 import type {
   UberGatewayAuthPort,
   UberGatewayHttpPort,

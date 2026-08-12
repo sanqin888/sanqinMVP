@@ -5,7 +5,7 @@ import {
 } from './uber-order.use-cases';
 import { UberOrderActionService } from './uber-order-action.service';
 import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
-import type { UberOrderImportRepositoryPort } from '../ports/uber-order.ports';
+import type { UberOrderImportRepositoryPort } from './uber-order.ports';
 
 type ImportedOrderInput = Parameters<
   UberOrderImportRepositoryPort['saveImportedOrder']

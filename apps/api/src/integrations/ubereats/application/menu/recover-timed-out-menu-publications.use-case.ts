@@ -1,4 +1,4 @@
-import { type UberMenuPublicationRepositoryPort } from '../ports/uber-menu-publication.ports';
+import { type UberMenuPublicationRepositoryPort } from './uber-menu-publication.ports';
 
 /** Application policy for deciding when an unconfirmed publication is stale. */
 export class RecoverTimedOutMenuPublicationsUseCase {

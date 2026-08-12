@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type {
   UberOrderActionGatewayPort,
   UberOrderDenial,
-} from '../../application/ports/uber-order.ports';
+} from '../../application/orders/uber-order.ports';
 import { UberOrderGateway } from './uber-resource.gateways';
 
 export class UberOrderCommandError extends Error {
