@@ -14,7 +14,7 @@ import {
   UBER_EATS_COMPOSITION_PROVIDERS,
   UberEatsModule,
 } from './ubereats.module';
-import { UberEatsWorkerEntryModule } from './worker';
+import { UBER_EATS_WORKER_PROVIDERS } from './worker';
 
 const metadata = <T>(module: object, key: string): T[] => {
   const value: unknown = Reflect.getMetadata(key, module);
@@ -30,9 +30,6 @@ describe('UberEats compositions', () => {
       UberEatsMenuController,
       UberEatsOperationsController,
     ]);
-    expect(
-      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.CONTROLLERS),
-    ).toEqual([]);
   });
 
   it('does not start polling workers in the API composition', () => {
@@ -42,9 +39,12 @@ describe('UberEats compositions', () => {
     expect(apiProviders).not.toContain(
       UberMenuPublishConfirmationWorkerAdapter,
     );
-    expect(metadata(UberEatsModule, MODULE_METADATA.IMPORTS)).not.toContain(
-      UberEatsWorkerEntryModule,
-    );
+    expect(UBER_EATS_WORKER_PROVIDERS).toEqual([
+      UberWebhookInboxWorkerAdapter,
+      UberOrderActionWorkerAdapter,
+      UberMenuPublishConfirmationWorkerAdapter,
+      UberWorkerHealthService,
+    ]);
   });
 
   it('defines adapter and use-case tokens once in the single composition root', () => {
@@ -62,20 +62,12 @@ describe('UberEats compositions', () => {
     expect(new Set(tokens).size).toBe(tokens.length);
   });
 
-  it('keeps Worker as a runtime entry over the single composition root', () => {
-    expect(
-      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.PROVIDERS),
-    ).toEqual([
+  it('keeps worker lifecycle providers outside the HTTP composition', () => {
+    expect(UBER_EATS_WORKER_PROVIDERS).toEqual([
       UberWebhookInboxWorkerAdapter,
       UberOrderActionWorkerAdapter,
       UberMenuPublishConfirmationWorkerAdapter,
       UberWorkerHealthService,
     ]);
-    expect(
-      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.IMPORTS),
-    ).toEqual([UberEatsModule]);
-    expect(
-      metadata(UberEatsWorkerEntryModule, MODULE_METADATA.EXPORTS),
-    ).toEqual([UberWorkerHealthService]);
   });
 });
