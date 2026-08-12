@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
-import { summarizeUberDebugResponse } from '../../domain/shared/uber-integration.utils';
+import { summarizeUberDebugResponse } from '../shared/uber-log.utils';
 import type {
   UberMerchantApiPort,
   UberOAuthTokenPort,

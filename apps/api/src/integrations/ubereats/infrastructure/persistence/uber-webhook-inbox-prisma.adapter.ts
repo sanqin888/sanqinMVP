@@ -5,7 +5,7 @@ import type {
   UberWebhookInboxItem,
   UberWebhookInboxPort,
 } from '../../application/orders/uber-order-processing.ports';
-import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
+import { redactUberLogText } from '../shared/uber-log.utils';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { buildUberIdempotencyKey } from '../../application/orders/uber-idempotency-key';
 import { UberWorkerConfigService } from '../workers/uber-worker-config.service';

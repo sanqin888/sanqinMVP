@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { UberMenuPublishStatus } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type { UberMenuConfigQueryPort } from '../../application/menu/uber-menu-draft.ports';
-import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
+import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 
 @Injectable()
 export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort {

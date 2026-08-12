@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { normalizeUberEventType } from '../shared/uber-integration.utils';
+import { normalizeUberEventType } from '../webhook/uber-event-type';
 import { UberOrderActionNotAllowedError } from './uber-order.errors';
 import {
   UberOrderStatus,

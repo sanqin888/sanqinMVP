@@ -19,7 +19,7 @@ import {
 } from '../../domain/menu/uber-menu-draft.projector';
 import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import { validateUberBusinessSchedule } from '../../domain/menu/uber-business-schedule.validator';
-import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
+import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 import { UberMenuDraftSourcePrismaRepository } from './uber-menu-draft.repositories';
 
 const uberMenuValidation = (message: string) =>

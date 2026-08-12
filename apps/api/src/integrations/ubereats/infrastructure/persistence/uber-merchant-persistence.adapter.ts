@@ -13,7 +13,7 @@ import type {
   UberStoreMappingRepositoryPort,
 } from '../../application/merchant/uber-merchant-persistence.ports';
 import type { UberOperationsAlertRepositoryPort } from '../../application/operations/uber-operations-alert.ports';
-import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
+import { redactUberLogText } from '../shared/uber-log.utils';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import { UberTelemetryService } from './uber-telemetry.service';
 
