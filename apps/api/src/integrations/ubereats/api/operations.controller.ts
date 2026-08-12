@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
-import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
+import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import { executeUberMutation } from '../contracts/responses/ubereats.responses';
 import {
   UberAdminWrite,
