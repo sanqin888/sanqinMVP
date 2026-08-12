@@ -1,73 +1,170 @@
-export type UberMenuItemDraft = {
-  storeId: string;
-  stableId: string;
+import type {
+  UpdateDraftGroupInput,
+  UpdateDraftItemInput,
+  UpdateDraftOptionInput,
+  UpsertOptionItemConfigInput,
+  UpsertPriceBookItemInput,
+} from '../../domain/menu/uber-menu.types';
+import type {
+  UberMenuDraftDiffResult,
+  UberMenuDraftResult,
+} from '../../domain/menu/uber-menu-diff.types';
+
+export type {
+  UberMenuDraftDiffResult,
+  UberMenuDraftEdgeDto,
+  UberMenuDraftResult,
+} from '../../domain/menu/uber-menu-diff.types';
+
+export const UBER_MENU_CONFIG_QUERY_PORT = Symbol(
+  'UBER_MENU_CONFIG_QUERY_PORT',
+);
+export const UBER_MENU_CONFIG_WRITE_PORT = Symbol(
+  'UBER_MENU_CONFIG_WRITE_PORT',
+);
+export const UBER_MENU_DRAFT_READ_PORT = Symbol('UBER_MENU_DRAFT_READ_PORT');
+export const UBER_MENU_DRAFT_MUTATION_PORT = Symbol(
+  'UBER_MENU_DRAFT_MUTATION_PORT',
+);
+export const UBER_MENU_DRAFT_DIFF_PORT = Symbol('UBER_MENU_DRAFT_DIFF_PORT');
+export const UBER_MENU_REFERENCE_QUERY_PORT = Symbol(
+  'UBER_MENU_REFERENCE_QUERY_PORT',
+);
+
+export type UberMenuItemReference = { stableId: string };
+export type UberOptionChoiceReference = { stableId: string };
+export type UberProvisionedStoreMapping = {
+  uberStoreId: string;
+  rawPayload: unknown;
+};
+export type UberBusinessScheduleRecord = {
+  timezone: string | null;
+  salesTaxRate: number | null;
+  hours: Array<{
+    weekday: number;
+    openMinutes: number | null;
+    closeMinutes: number | null;
+    isClosed: boolean;
+  }>;
+};
+
+export interface UberMenuReferenceQueryPort {
+  findMenuItemByStableId(
+    stableId: string,
+  ): Promise<UberMenuItemReference | null>;
+  findOptionChoiceByStableId(
+    stableId: string,
+  ): Promise<UberOptionChoiceReference | null>;
+  findProvisionedStoreMapping(
+    storeId: string,
+  ): Promise<UberProvisionedStoreMapping | null>;
+  readBusinessSchedule(): Promise<UberBusinessScheduleRecord | null>;
+}
+
+export type UberItemChannelConfigDto = {
+  menuItemStableId: string;
   priceCents: number;
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;
+  externalItemId: string | null;
+  externalCategoryId: string | null;
+  lastPublishedAt: Date | null;
+  lastPublishError: string | null;
+  updatedAt: Date;
 };
-
-export type UberMenuOptionDraft = {
-  storeId: string;
-  stableId: string;
+export type UberOptionItemConfigDto = {
+  optionChoiceStableId: string;
   priceDeltaCents: number;
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;
+  externalItemId: string | null;
+  lastPublishedAt: Date | null;
+  lastPublishError: string | null;
+  updatedAt: Date;
 };
-
-export type UpdateUberMenuItemDraft = Partial<
-  Pick<
-    UberMenuItemDraft,
-    'priceCents' | 'isAvailable' | 'displayName' | 'displayDescription'
-  >
->;
-
-export type UpdateUberMenuGroupDraft = {
-  displayName?: string | null;
-  minSelect?: number;
-  maxSelect?: number;
-  isActive?: boolean;
+export type UberPublishedMenuItemDto = {
+  publishVersionId: string;
+  uberStoreId: string;
+  uberItemId: string;
+  menuItemStableId: string;
+  publishedPriceCents: number;
+  publishedIsAvailable: boolean;
+  publishedName: string;
+  publishedAt: Date;
+  publishVersion: { versionStableId: string; status: string };
 };
-
-export type UpdateUberMenuOptionDraft = Partial<
-  Pick<
-    UberMenuOptionDraft,
-    'priceDeltaCents' | 'isAvailable' | 'displayName' | 'displayDescription'
-  >
->;
-
-export type UberMenuDraftMutationResult = {
-  entity: 'item' | 'group' | 'option';
+export type UberMenuConfigListResult<T> = {
   storeId: string;
-  stableId: string;
-  updated: true;
+  count: number;
+  items: T[];
+};
+export type UberMenuConfigWriteResult<T> = {
+  ok: boolean;
+  storeId: string;
+  item: T;
+};
+export type UberDraftMutationResult<TConfig> = {
+  ok: boolean;
+  storeId: string;
+  config: TConfig;
+  warnings: string[];
+} & ({ itemId: string } | { groupId: string } | { optionItemId: string });
+export type UberDraftBindingResult = {
+  ok: boolean;
+  storeId: string;
+  optionItemId: string;
+  groupId: string;
+  deletedCount?: number;
 };
 
-export const UBER_MENU_DRAFT_QUERY_PORT = Symbol('UBER_MENU_DRAFT_QUERY_PORT');
-export const UBER_MENU_DRAFT_COMMAND_PORT = Symbol(
-  'UBER_MENU_DRAFT_COMMAND_PORT',
-);
-
-export interface UberMenuDraftQueryPort {
-  listItemConfigs(storeId: string): Promise<UberMenuItemDraft[]>;
-  listOptionConfigs(storeId: string): Promise<UberMenuOptionDraft[]>;
+export interface UberMenuConfigQueryPort {
+  listUberItemChannelConfigs(
+    storeId?: string,
+  ): Promise<UberMenuConfigListResult<UberItemChannelConfigDto>>;
+  listUberPublishedMenuItems(
+    storeId?: string,
+  ): Promise<UberMenuConfigListResult<UberPublishedMenuItemDto>>;
+  listUberOptionItemConfigs(
+    storeId?: string,
+  ): Promise<UberMenuConfigListResult<UberOptionItemConfigDto>>;
 }
-
-export interface UberMenuDraftCommandPort {
-  updateItem(
-    storeId: string,
-    stableId: string,
-    changes: UpdateUberMenuItemDraft,
-  ): Promise<void>;
-  updateGroup(
-    storeId: string,
-    stableId: string,
-    changes: UpdateUberMenuGroupDraft,
-  ): Promise<void>;
-  updateOption(
-    storeId: string,
-    stableId: string,
-    changes: UpdateUberMenuOptionDraft,
-  ): Promise<void>;
+export interface UberMenuConfigWritePort {
+  upsertUberItemChannelConfig(
+    input: UpsertPriceBookItemInput,
+  ): Promise<UberMenuConfigWriteResult<UberItemChannelConfigDto>>;
+  upsertUberOptionItemConfig(
+    input: UpsertOptionItemConfigInput,
+  ): Promise<UberMenuConfigWriteResult<UberOptionItemConfigDto>>;
+}
+export interface UberMenuDraftReadPort {
+  getUberMenuDraft(storeId?: string): Promise<UberMenuDraftResult>;
+}
+export interface UberMenuDraftMutationPort {
+  updateUberDraftItem(
+    id: string,
+    input: UpdateDraftItemInput,
+  ): Promise<UberDraftMutationResult<UberItemChannelConfigDto>>;
+  updateUberDraftGroup(
+    id: string,
+    input: UpdateDraftGroupInput,
+  ): Promise<UberDraftMutationResult<Record<string, unknown>>>;
+  updateUberDraftOption(
+    id: string,
+    input: UpdateDraftOptionInput,
+  ): Promise<UberDraftMutationResult<UberOptionItemConfigDto>>;
+  bindUberDraftOptionChildGroup(
+    optionId: string,
+    childGroupId: string,
+    storeId?: string,
+  ): Promise<UberDraftBindingResult>;
+  unbindUberDraftOptionChildGroup(
+    optionId: string,
+    childGroupId: string,
+    storeId?: string,
+  ): Promise<UberDraftBindingResult>;
+}
+export interface UberMenuDraftDiffPort {
+  getUberMenuDraftDiff(storeId?: string): Promise<UberMenuDraftDiffResult>;
 }

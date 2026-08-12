@@ -3,7 +3,7 @@ import {
   decodeDraftEdgeKey,
   extractPublishedSnapshotFromPayload,
 } from './uber-menu-diff.service';
-import type { UberMenuDraftResult } from '../../application/ports/uber-menu-draft-workflow.ports';
+import type { UberMenuDraftResult } from '../../application/ports/uber-menu-draft.ports';
 
 describe('Uber menu diff service', () => {
   it('tolerates an unparseable historical payload', () => {

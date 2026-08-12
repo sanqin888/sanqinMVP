@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { LoadUberMenuWorkflowUseCase } from '../application/menu/load-uber-menu-workflow.use-case';
 import { UberMenuDraftUseCase } from '../application/menu/uber-menu-draft.use-case';
-import { UberMenuDraftConfigUseCase } from '../application/menu/uber-menu-draft-config.use-case';
 import { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
 import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from '../application/menu/confirm-uber-menu-publication.use-case';
@@ -25,12 +24,6 @@ import {
   UBER_MENU_DRAFT_DIFF_PORT,
   UBER_MENU_DRAFT_MUTATION_PORT,
   UBER_MENU_DRAFT_READ_PORT,
-} from '../application/ports/uber-menu-draft-workflow.ports';
-import {
-  type UberMenuDraftCommandPort,
-  type UberMenuDraftQueryPort,
-  UBER_MENU_DRAFT_COMMAND_PORT,
-  UBER_MENU_DRAFT_QUERY_PORT,
 } from '../application/ports/uber-menu-draft.ports';
 import {
   type UberMenuGatewayPort,
@@ -68,10 +61,6 @@ import { UberMenuDraftReadPrismaAdapter } from '../infrastructure/persistence/ub
 import { UberMenuDraftMutationPrismaAdapter } from '../infrastructure/persistence/uber-menu-draft-mutation-prisma.adapter';
 import { UberMenuDraftDiffPrismaAdapter } from '../infrastructure/persistence/uber-menu-draft-diff-prisma.adapter';
 import { UberMenuReferenceQueryPrismaAdapter } from '../infrastructure/persistence/uber-menu-reference-query-prisma.adapter';
-import {
-  UberMenuDraftCommandPrismaRepository,
-  UberMenuDraftQueryPrismaRepository,
-} from '../infrastructure/persistence/uber-menu.repository';
 import {
   UberMenuGatewayAdapter,
   UberMenuImageProbeAdapter,
@@ -122,16 +111,6 @@ export const UBER_EATS_MENU_PROVIDERS = [
     provide: UBER_MENU_AVAILABILITY_COMMAND,
     useExisting: UberMenuAvailabilityPrismaAdapter,
   },
-  UberMenuDraftQueryPrismaRepository,
-  UberMenuDraftCommandPrismaRepository,
-  {
-    provide: UBER_MENU_DRAFT_QUERY_PORT,
-    useExisting: UberMenuDraftQueryPrismaRepository,
-  },
-  {
-    provide: UBER_MENU_DRAFT_COMMAND_PORT,
-    useExisting: UberMenuDraftCommandPrismaRepository,
-  },
   PrismaUberMenuUnitOfWork,
   { provide: UBER_MENU_UNIT_OF_WORK, useExisting: PrismaUberMenuUnitOfWork },
   UberMenuSnapshotPrismaAdapter,
@@ -179,14 +158,6 @@ export const UBER_EATS_MENU_PROVIDERS = [
         draftDiffs,
         references,
       ),
-  },
-  {
-    provide: UberMenuDraftConfigUseCase,
-    inject: [UBER_MENU_DRAFT_QUERY_PORT, UBER_MENU_DRAFT_COMMAND_PORT],
-    useFactory: (
-      queries: UberMenuDraftQueryPort,
-      commands: UberMenuDraftCommandPort,
-    ) => new UberMenuDraftConfigUseCase(queries, commands),
   },
   {
     provide: LoadUberMenuWorkflowUseCase,
@@ -253,7 +224,6 @@ export const UBER_EATS_MENU_PROVIDERS = [
 
 export const UBER_EATS_MENU_EXPORTS = [
   UberMenuDraftUseCase,
-  UberMenuDraftConfigUseCase,
   PublishUberMenuUseCase,
   ConfirmUberMenuPublicationUseCase,
   RecoverTimedOutMenuPublicationsUseCase,
