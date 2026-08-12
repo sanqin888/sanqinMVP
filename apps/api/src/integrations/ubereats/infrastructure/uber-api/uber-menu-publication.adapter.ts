@@ -15,6 +15,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
       scope: 'eats.store',
       operation: 'uber.menu.upload',
+      partitionKey: input.storeId,
       method: 'PUT',
       json: input.payload as unknown as Record<string, unknown>,
       idempotencyKey: input.idempotencyKey,
@@ -31,6 +32,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
       scope: 'eats.store',
       operation: 'uber.menu.read',
+      partitionKey: input.storeId,
       method: 'GET',
     });
     const raw = this.string(response.status)?.toUpperCase();

@@ -115,7 +115,9 @@ export class UberOrderGateway
       method: 'POST',
       operation: `uber.order.${action.toLowerCase()}`,
       scope: 'eats.order',
-      partitionKey: externalOrderId,
+      // The action API does not carry a store id; coordinate it at the merchant
+      // partition rather than incorrectly creating one quota per order.
+      partitionKey: 'merchant:app',
       json: payload,
       idempotencyKey,
     });

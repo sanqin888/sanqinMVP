@@ -29,6 +29,9 @@ export type UberMetricName =
   | 'ubereats_outbox_oldest_age_seconds'
   | 'ubereats_api_latency_ms'
   | 'ubereats_api_429_total'
+  | 'ubereats_rate_limit_rejected_total'
+  | 'ubereats_rate_limit_queue_depth'
+  | 'ubereats_rate_limit_wait_ms'
   | 'ubereats_api_5xx_total'
   | 'ubereats_api_timeout_total'
   | 'ubereats_oauth_refresh_failed_total'
@@ -76,6 +79,7 @@ const LABEL_ALLOWLIST = new Set([
   'eventType',
   'failureCategory',
   'queue',
+  'reason',
 ]);
 const SECRET_KEY =
   /(token|authorization|signature|secret|password|cookie|rawBody|payload|phone|address)/i;

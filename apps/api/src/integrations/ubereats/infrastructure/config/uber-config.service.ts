@@ -357,7 +357,18 @@ export class UberConfigService {
     env: UberEnvironment,
   ): Readonly<Record<string, number>> {
     const raw = this.read(env, 'UBER_EATS_API_OPERATION_WEIGHTS');
-    if (!raw) return {};
+    const defaults = {
+      'uber.oauth.token': 1,
+      'uber.order.accept': 1,
+      'uber.order.deny': 1,
+      'uber.order.ready_for_pickup': 1,
+      'uber.order.detail': 1,
+      'uber.menu.upload': 10,
+      'uber.menu.read': 1,
+      'uber.store.list': 1,
+      'uber.store.status': 1,
+    };
+    if (!raw) return Object.freeze(defaults);
     try {
       const parsed: unknown = JSON.parse(raw);
       if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
@@ -371,7 +382,10 @@ export class UberConfigService {
         )
           throw new Error();
       }
-      return Object.freeze(parsed as Record<string, number>);
+      return Object.freeze({
+        ...defaults,
+        ...(parsed as Record<string, number>),
+      });
     } catch {
       throw new Error(
         'Uber 配置 UBER_EATS_API_OPERATION_WEIGHTS 必须是值为正整数的 JSON 对象',

@@ -59,10 +59,9 @@ import { SyncUberOrderStatusUseCase } from './application/orders/sync-uber-order
 import { ListPendingUberOrdersQuery } from './application/orders/list-pending-uber-orders.query';
 import { UberCredentialVaultService } from './infrastructure/crypto/uber-credential-vault.service';
 import { UberApiGatewayTransport } from './infrastructure/uber-api/uber-api.gateway';
-import {
-  ProcessUberRateLimiter,
-  UBER_RATE_LIMITER_PORT,
-} from './infrastructure/uber-api/uber-rate-limiter';
+import { ProcessUberRateLimiter } from './infrastructure/uber-api/uber-rate-limiter';
+import { UBER_RATE_LIMITER_PORT } from './application/ports/uber-rate-limiter.port';
+import { createUberRateLimiter } from './infrastructure/uber-api/uber-rate-limiter.factory';
 import {
   UberMenuGateway,
   UberOrderGateway,
@@ -216,8 +215,12 @@ export const UBER_EATS_INTERNAL_PROVIDERS = [
   },
   UberAuthService,
   UberHttpClient,
-  ProcessUberRateLimiter,
-  { provide: UBER_RATE_LIMITER_PORT, useExisting: ProcessUberRateLimiter },
+  {
+    provide: UBER_RATE_LIMITER_PORT,
+    inject: [UberConfigService, UberTelemetryService],
+    useFactory: (config: UberConfigService, metrics: UberTelemetryService) =>
+      createUberRateLimiter(process.env, config, metrics),
+  },
   UberApiGatewayTransport,
   UberMerchantResourceGateway,
   UberStoreGateway,
