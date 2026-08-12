@@ -31,4 +31,18 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'warn',
     },
   },
+  {
+    files: ['src/integrations/ubereats/infrastructure/persistence/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "MemberExpression[property.name='$queryRawUnsafe'], MemberExpression[property.name='$executeRawUnsafe']",
+          message:
+            'Uber Eats persistence must use parameterized Prisma tagged templates.',
+        },
+      ],
+    },
+  },
 );
