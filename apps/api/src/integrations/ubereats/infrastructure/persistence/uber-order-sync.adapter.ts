@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Optional,
-} from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   Channel,
   OrderStatus,
@@ -40,7 +35,8 @@ import { UberOrderStatusSyncService } from '../../application/orders/uber-order-
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
 import { UberOrderGateway } from '../uber-api/uber-resource.gateways';
-import { toUberEatsHttpException } from '../../application/uber-domain-error.mapper';
+import { toUberEatsApplicationError } from '../../application/uber-domain-error.mapper';
+import { UberValidationError } from '../../application/errors/uber-application.error';
 import { toUberOrderStatus } from './uber-order-status.mapper';
 
 import { UberTelemetryService } from './uber-telemetry.service';
@@ -97,9 +93,12 @@ export class UberOrderSyncAdapter {
 
     const action = this.statusSyncService.actionFor(status);
     if (!action) {
-      throw new BadRequestException(
-        `本地状态 ${status} 没有 Uber 文档支持的外部动作`,
-      );
+      throw new UberValidationError({
+        code: 'UBER_ORDER_STATUS_UNSUPPORTED',
+        message: `本地状态 ${status} 没有 Uber 文档支持的外部动作`,
+        operation: 'order.status.sync',
+        upstreamStatus: null,
+      });
     }
 
     try {
@@ -108,7 +107,7 @@ export class UberOrderSyncAdapter {
         action,
       );
     } catch (error) {
-      throw toUberEatsHttpException(error);
+      throw toUberEatsApplicationError(error);
     }
 
     // Commit only the durable intent. A confirmed worker response owns the

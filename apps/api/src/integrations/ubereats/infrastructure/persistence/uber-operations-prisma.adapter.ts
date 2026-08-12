@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { UberValidationError } from '../../application/errors/uber-application.error';
 import {
   Channel,
   OrderStatus,
@@ -30,6 +31,14 @@ import { SyncUberOrderStatusUseCase } from '../../application/orders/uber-order.
 import { UberPrismaAccessService } from './uber-prisma-access.service';
 
 import { UberTelemetryService } from './uber-telemetry.service';
+
+const uberOperationsValidation = (message: string) =>
+  new UberValidationError({
+    code: 'UBER_OPERATIONS_INPUT_INVALID',
+    message,
+    operation: 'operations.validate',
+    upstreamStatus: null,
+  });
 
 @Injectable()
 export class UberOperationsPrismaAdapter {
@@ -292,7 +301,7 @@ export class UberOperationsPrismaAdapter {
     });
 
     if (!ticket) {
-      throw new BadRequestException(`工单 ${ticketStableId} 不存在`);
+      throw uberOperationsValidation(`工单 ${ticketStableId} 不存在`);
     }
 
     let errorMessage: string | null = null;
@@ -305,7 +314,9 @@ export class UberOperationsPrismaAdapter {
 
       if (ticket.type === UberOpsTicketType.ORDER_STATUS_SYNC) {
         if (!ticket.externalOrderId) {
-          throw new BadRequestException('订单状态同步工单缺少 externalOrderId');
+          throw uberOperationsValidation(
+            '订单状态同步工单缺少 externalOrderId',
+          );
         }
         const context = this.parseOrderStatusSyncContext(ticket.context);
         await this.orderStatusSync.execute(
@@ -322,7 +333,7 @@ export class UberOperationsPrismaAdapter {
         await this.menuPublish.execute(context.publish);
       } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId) {
-          throw new BadRequestException('商品状态工单缺少 menuItemStableId');
+          throw uberOperationsValidation('商品状态工单缺少 menuItemStableId');
         }
         const context = this.parseMenuItemAvailabilityContext(ticket.context);
         await this.menuAvailability.syncUberMenuItemAvailability({
@@ -391,12 +402,12 @@ export class UberOperationsPrismaAdapter {
       return this.parseMenuPublishContext(
         value,
       ) as unknown as Prisma.JsonObject;
-    throw new BadRequestException('不支持的工单类型');
+    throw uberOperationsValidation('不支持的工单类型');
   }
 
   private requireContext(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value))
-      throw new BadRequestException('工单缺少合法的结构化 context');
+      throw uberOperationsValidation('工单缺少合法的结构化 context');
     return value as Record<string, unknown>;
   }
 
@@ -405,7 +416,7 @@ export class UberOperationsPrismaAdapter {
     if (
       !Object.values(OrderStatus).includes(context.targetStatus as OrderStatus)
     )
-      throw new BadRequestException('订单状态同步工单的 targetStatus 非法');
+      throw uberOperationsValidation('订单状态同步工单的 targetStatus 非法');
     return { targetStatus: context.targetStatus as OrderStatus };
   }
 
@@ -414,16 +425,16 @@ export class UberOperationsPrismaAdapter {
   ): MenuItemAvailabilityContext {
     const context = this.requireContext(value);
     if (typeof context.isAvailable !== 'boolean')
-      throw new BadRequestException('商品状态工单缺少布尔值 isAvailable');
+      throw uberOperationsValidation('商品状态工单缺少布尔值 isAvailable');
     return { isAvailable: context.isAvailable };
   }
 
   private parseStoreStatusSyncContext(value: unknown): StoreStatusSyncContext {
     const context = this.requireContext(value);
     if (typeof context.uberStoreId !== 'string' || !context.uberStoreId.trim())
-      throw new BadRequestException('门店状态工单缺少 uberStoreId');
+      throw uberOperationsValidation('门店状态工单缺少 uberStoreId');
     if (context.targetStatus !== 'ONLINE' && context.targetStatus !== 'PAUSED')
-      throw new BadRequestException('门店状态工单的 targetStatus 非法');
+      throw uberOperationsValidation('门店状态工单的 targetStatus 非法');
     return {
       uberStoreId: context.uberStoreId,
       targetStatus: context.targetStatus,
@@ -442,7 +453,7 @@ export class UberOperationsPrismaAdapter {
       !publish.storeId.trim() ||
       publish.dryRun !== false
     )
-      throw new BadRequestException('菜单发布工单缺少完整的 publish 参数');
+      throw uberOperationsValidation('菜单发布工单缺少完整的 publish 参数');
     const arrayKeys = [
       'excludedCategoryIds',
       'excludedGroupIds',
@@ -457,11 +468,11 @@ export class UberOperationsPrismaAdapter {
             (item) => typeof item === 'string',
           ))
       )
-        throw new BadRequestException(`菜单发布工单的 ${key} 非法`);
+        throw uberOperationsValidation(`菜单发布工单的 ${key} 非法`);
     }
     for (const key of ['timezoneConfirmed', 'taxRateConfirmed'] as const) {
       if (publish[key] !== undefined && typeof publish[key] !== 'boolean')
-        throw new BadRequestException(`菜单发布工单的 ${key} 非法`);
+        throw uberOperationsValidation(`菜单发布工单的 ${key} 非法`);
     }
     return {
       ...(typeof context.versionId === 'string'
@@ -478,11 +489,11 @@ export class UberOperationsPrismaAdapter {
       : new Date(end.getTime() - 24 * 60 * 60 * 1000);
 
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      throw new BadRequestException('对账时间范围格式不正确');
+      throw uberOperationsValidation('对账时间范围格式不正确');
     }
 
     if (start >= end) {
-      throw new BadRequestException('对账时间范围不合法：start 必须早于 end');
+      throw uberOperationsValidation('对账时间范围不合法：start 必须早于 end');
     }
 
     return {
@@ -500,7 +511,7 @@ export class UberOperationsPrismaAdapter {
     });
 
     if (!row) {
-      throw new BadRequestException(`Uber 订单 ${externalOrderId} 不存在`);
+      throw uberOperationsValidation(`Uber 订单 ${externalOrderId} 不存在`);
     }
   }
 
@@ -515,7 +526,7 @@ export class UberOperationsPrismaAdapter {
     });
 
     if (!menuItem) {
-      throw new BadRequestException(`菜单项 ${menuItemStableId} 不存在`);
+      throw uberOperationsValidation(`菜单项 ${menuItemStableId} 不存在`);
     }
   }
 }

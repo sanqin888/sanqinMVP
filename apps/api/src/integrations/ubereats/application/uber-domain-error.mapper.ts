@@ -45,6 +45,3 @@ export function toUberEatsApplicationError(
     { cause: error },
   );
 }
-
-/** @deprecated use toUberEatsApplicationError. */
-export const toUberEatsHttpException = toUberEatsApplicationError;

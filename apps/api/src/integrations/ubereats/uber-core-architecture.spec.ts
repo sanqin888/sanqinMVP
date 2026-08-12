@@ -12,6 +12,26 @@ const CORE_ROOTS = [
 ];
 
 describe('Uber Eats framework-independent core architecture', () => {
+  it('keeps Nest HTTP exceptions out of core and infrastructure production code', () => {
+    const roots = [...CORE_ROOTS, resolve(UBER_EATS_ROOT, 'infrastructure')];
+    for (const root of roots) {
+      for (const { path, source } of scanTypeScript(root, {
+        productionOnly: true,
+      })) {
+        const nestImports = source.matchAll(
+          /import\s*{([^}]*)}\s*from\s*['"]@nestjs\/common['"]/gs,
+        );
+        for (const match of nestImports) {
+          expect({ path, imported: match[1] }).not.toEqual(
+            expect.objectContaining({
+              imported: expect.stringMatching(/\b\w*Exception\b/),
+            }),
+          );
+        }
+      }
+    }
+  });
+
   it.each(CORE_ROOTS)(
     '%s does not depend on frameworks or adapters',
     (root) => {
