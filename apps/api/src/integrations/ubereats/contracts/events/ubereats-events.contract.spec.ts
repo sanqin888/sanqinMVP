@@ -14,9 +14,18 @@ const envelope = {
   meta: { resource_id: 'order-1', user_id: 'store-1' },
 };
 
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const parseJsonObject = (text: string): Record<string, unknown> => {
+  const value: unknown = JSON.parse(text);
+  if (!isJsonObject(value)) throw new Error('Expected a JSON object fixture');
+  return value;
+};
+
 describe('Uber events v1 contract', () => {
-  const fixture = (name: string): unknown =>
-    JSON.parse(
+  const fixture = (name: string): Record<string, unknown> =>
+    parseJsonObject(
       readFileSync(
         join(
           __dirname,

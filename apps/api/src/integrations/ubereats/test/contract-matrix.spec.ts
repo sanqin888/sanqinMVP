@@ -4,6 +4,15 @@ import { join } from 'node:path';
 import { acceptanceMatrix, ContractDomain } from './contract-matrix';
 import { parseUberWebhookEnvelopeV1 } from '../contracts/events/uber-webhook-envelope.v1';
 
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const parseJsonObject = (text: string): Record<string, unknown> => {
+  const value: unknown = JSON.parse(text);
+  if (!isJsonObject(value)) throw new Error('Expected a JSON object fixture');
+  return value;
+};
+
 const domains: ContractDomain[] = [
   'merchant',
   'webhook',
@@ -71,7 +80,7 @@ describe('Uber Eats sanitized payload fixtures', () => {
     '%s contains no real identity, address, credential or token field',
     (file) => {
       const text = readFileSync(join(fixtureDirectory, file), 'utf8');
-      const payload = JSON.parse(text) as unknown;
+      const payload = parseJsonObject(text);
 
       expect(payload).toBeDefined();
       expect(text).not.toMatch(
@@ -84,7 +93,7 @@ describe('Uber Eats sanitized payload fixtures', () => {
 
 describe('Uber Eats webhook contract matrix payload compatibility', () => {
   it('keeps the webhook fixture compatible with the versioned envelope', () => {
-    const payload = JSON.parse(
+    const payload = parseJsonObject(
       readFileSync(join(__dirname, 'fixtures/webhook-order.json'), 'utf8'),
     );
     expect(parseUberWebhookEnvelopeV1(payload)).toMatchObject({ version: 1 });
