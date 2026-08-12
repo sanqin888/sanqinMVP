@@ -23,6 +23,40 @@ export const UBER_MENU_DRAFT_MUTATION_PORT = Symbol(
   'UBER_MENU_DRAFT_MUTATION_PORT',
 );
 export const UBER_MENU_DRAFT_DIFF_PORT = Symbol('UBER_MENU_DRAFT_DIFF_PORT');
+export const UBER_MENU_REFERENCE_QUERY_PORT = Symbol(
+  'UBER_MENU_REFERENCE_QUERY_PORT',
+);
+
+export type UberMenuItemReference = { stableId: string };
+export type UberOptionChoiceReference = { stableId: string };
+export type UberProvisionedStoreMapping = {
+  uberStoreId: string;
+  rawPayload: unknown;
+};
+export type UberBusinessScheduleRecord = {
+  timezone: string | null;
+  salesTaxRate: number | null;
+  hours: Array<{
+    weekday: number;
+    openMinutes: number | null;
+    closeMinutes: number | null;
+    isClosed: boolean;
+  }>;
+};
+
+/** Persistence lookups deliberately contain no not-found business decisions. */
+export interface UberMenuReferenceQueryPort {
+  findMenuItemByStableId(
+    stableId: string,
+  ): Promise<UberMenuItemReference | null>;
+  findOptionChoiceByStableId(
+    stableId: string,
+  ): Promise<UberOptionChoiceReference | null>;
+  findProvisionedStoreMapping(
+    storeId: string,
+  ): Promise<UberProvisionedStoreMapping | null>;
+  readBusinessSchedule(): Promise<UberBusinessScheduleRecord | null>;
+}
 
 export type UberItemChannelConfigDto = {
   menuItemStableId: string;
