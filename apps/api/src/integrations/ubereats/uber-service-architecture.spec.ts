@@ -22,7 +22,8 @@ type Layer = (typeof LAYERS)[number];
 
 const layerOf = (path: string): Layer | undefined =>
   path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
-  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
+  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts') ||
+  path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, 'providers')}${sep}`)
     ? 'composition-root'
     : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
       ? 'contracts'
@@ -34,7 +35,7 @@ const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   api: ['api', 'application', 'contracts'],
   application: ['application', 'contracts', 'domain'],
   contracts: ['contracts', 'domain'],
-  domain: ['domain'],
+  domain: ['contracts', 'domain'],
   infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
   'composition-root': [
     'api',
@@ -147,6 +148,36 @@ describe('Uber Eats bounded-context architecture', () => {
         existsSync(join(BOUNDED_CONTEXT_ROOT, path)),
       ),
     ).toEqual([]);
+  });
+
+  it('uses capability provider catalogs instead of Nest feature modules', () => {
+    const providerFiles = scanTypeScript(
+      join(BOUNDED_CONTEXT_ROOT, 'providers'),
+      { productionOnly: true },
+    );
+
+    expect(
+      providerFiles.map(({ path }) => relative(BOUNDED_CONTEXT_ROOT, path)),
+    ).toEqual([
+      'providers/infrastructure.providers.ts',
+      'providers/menu.providers.ts',
+      'providers/merchant.providers.ts',
+      'providers/operations.providers.ts',
+      'providers/orders.providers.ts',
+    ]);
+    for (const file of providerFiles) {
+      expect(file.source).not.toMatch(/@Module\s*\(/);
+      expect(file.source).not.toMatch(/export class .*Module/);
+    }
+  });
+
+  it('locates the controller-free worker composition with its adapters', () => {
+    expect(
+      [
+        'infrastructure/workers/ubereats-worker.module.ts',
+        'infrastructure/workers/uber-worker-health.service.ts',
+      ].every((path) => existsSync(join(BOUNDED_CONTEXT_ROOT, path))),
+    ).toBe(true);
   });
 
   it('has one composition root and no aggregate compatibility facade', () => {

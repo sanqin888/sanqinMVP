@@ -1,6 +1,5 @@
-import { Module } from '@nestjs/common';
+import type { Provider } from '@nestjs/common';
 import { UBER_EATS_STORE_STATUS_SYNC } from '../public-api';
-import { PrismaModule } from '../../../prisma/prisma.module';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
@@ -55,9 +54,8 @@ import {
   UberMerchantResourceGateway,
   UberStoreGateway,
 } from '../infrastructure/uber-api/uber-resource.gateways';
-import { UberEatsInternalInfrastructureModule } from './ubereats-internal-infrastructure.module';
 
-export const UBER_EATS_MERCHANT_PROVIDERS = [
+export const UBER_EATS_MERCHANT_PROVIDERS: Provider[] = [
   UberMerchantResourceGateway,
   UberStoreGateway,
   UberOAuthTokenAdapter,
@@ -178,10 +176,3 @@ export const UBER_EATS_MERCHANT_EXPORTS = [
   UBER_EATS_STORE_STATUS_SYNC,
   HandleUberMerchantWebhookHandler,
 ];
-
-@Module({
-  imports: [PrismaModule, UberEatsInternalInfrastructureModule],
-  providers: UBER_EATS_MERCHANT_PROVIDERS,
-  exports: UBER_EATS_MERCHANT_EXPORTS,
-})
-export class UberEatsMerchantModule {}

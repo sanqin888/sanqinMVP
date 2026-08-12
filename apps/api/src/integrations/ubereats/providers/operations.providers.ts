@@ -1,5 +1,4 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../../prisma/prisma.module';
+import type { Provider } from '@nestjs/common';
 import {
   CreateUberOpsTicketUseCase,
   GenerateUberReconciliationReportUseCase,
@@ -33,12 +32,8 @@ import {
   UberOrderOperationsPrismaRepository,
   UberReconciliationPrismaRepository,
 } from '../infrastructure/persistence/uber-operations-prisma.repositories';
-import { UberEatsInternalInfrastructureModule } from './ubereats-internal-infrastructure.module';
-import { UberEatsMenuModule } from './menu.module';
-import { UberEatsMerchantModule } from './merchant.module';
-import { UberEatsOrdersModule } from './orders.module';
 
-export const UBER_EATS_OPERATIONS_PROVIDERS = [
+export const UBER_EATS_OPERATIONS_PROVIDERS: Provider[] = [
   UberOrderOperationsPrismaRepository,
   {
     provide: UBER_ORDER_OPERATIONS_REPOSITORY,
@@ -143,16 +138,3 @@ export const UBER_EATS_OPERATIONS_EXPORTS = [
   RetryUberOpsTicketUseCase,
   QueryUberOperationsSummary,
 ];
-
-@Module({
-  imports: [
-    PrismaModule,
-    UberEatsInternalInfrastructureModule,
-    UberEatsOrdersModule,
-    UberEatsMenuModule,
-    UberEatsMerchantModule,
-  ],
-  providers: UBER_EATS_OPERATIONS_PROVIDERS,
-  exports: UBER_EATS_OPERATIONS_EXPORTS,
-})
-export class UberEatsOperationsModule {}

@@ -1,8 +1,4 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../../prisma/prisma.module';
-import { AuthModule } from '../../../auth/auth.module';
-import { MessagingModule } from '../../../messaging/messaging.module';
-import { OrdersModule } from '../../../orders/orders.module';
+import type { Provider } from '@nestjs/common';
 import { BrowserWriteCsrfGuard } from '../api/ubereats-csrf.guard';
 import { UBER_RATE_LIMITER_PORT } from '../application/ports/uber-rate-limiter.port';
 import {
@@ -20,7 +16,7 @@ import { UberHttpClient } from '../infrastructure/uber-api/uber-http.client';
 import { createUberRateLimiter } from '../infrastructure/uber-api/uber-rate-limiter.factory';
 import { UberAuthService } from '../infrastructure/uber-api/uber-token.provider';
 
-const INTERNAL_INFRASTRUCTURE_PROVIDERS = [
+export const UBER_EATS_INFRASTRUCTURE_PROVIDERS: Provider[] = [
   {
     provide: UberConfigService,
     useFactory: () => new UberConfigService(process.env),
@@ -52,22 +48,3 @@ const INTERNAL_INFRASTRUCTURE_PROVIDERS = [
   UberAuthService,
   UberApiGatewayTransport,
 ];
-
-/** Shared implementation details. Feature modules can consume only these explicit exports. */
-@Module({
-  imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
-  providers: INTERNAL_INFRASTRUCTURE_PROVIDERS,
-  exports: [
-    UberConfigService,
-    UberCredentialVaultService,
-    BrowserWriteCsrfGuard,
-    UberAuthService,
-    UberHttpClient,
-    UberApiGatewayTransport,
-    UBER_RATE_LIMITER_PORT,
-    UBER_TELEMETRY_PORT,
-    UBER_WEBHOOK_INBOX_PORT,
-    UBER_WEBHOOK_SIGNATURE_VERIFIER,
-  ],
-})
-export class UberEatsInternalInfrastructureModule {}

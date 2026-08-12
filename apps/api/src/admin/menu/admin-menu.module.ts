@@ -5,10 +5,10 @@ import { AdminMenuController } from './admin-menu.controller';
 import { AdminMenuService } from './admin-menu.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthModule } from '../../auth/auth.module';
-import { UberEatsCapabilitiesModule } from '../../integrations/ubereats/ubereats-capabilities.module';
+import { UberEatsModule } from '../../integrations/ubereats/ubereats.module';
 
 @Module({
-  imports: [AuthModule, UberEatsCapabilitiesModule],
+  imports: [AuthModule, UberEatsModule],
   controllers: [AdminMenuController],
   providers: [AdminMenuService, PrismaService],
   exports: [AdminMenuService],
