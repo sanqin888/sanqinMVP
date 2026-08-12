@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment -- typed framework/Prisma test doubles cross a dynamic boundary */
 import { Body, Controller, Get, Param, Post, UseFilters } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 

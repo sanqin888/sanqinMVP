@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Prisma types are generated in the build environment */
 import { Injectable } from '@nestjs/common';
 import { Channel, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';

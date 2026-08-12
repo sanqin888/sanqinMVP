@@ -19,12 +19,10 @@ describe('Uber operations application workflows', () => {
     };
     const reports = {
       countFailedSyncEvents: jest.fn().mockResolvedValue(2),
-      save: jest
-        .fn()
-        .mockResolvedValue({
-          reportStableId: 'report-1',
-          createdAt: new Date('2026-01-02'),
-        }),
+      save: jest.fn().mockResolvedValue({
+        reportStableId: 'report-1',
+        createdAt: new Date('2026-01-02'),
+      }),
     };
     const tickets = { countOpen: jest.fn().mockResolvedValue(1) };
     const useCase = new GenerateUberReconciliationReportUseCase(

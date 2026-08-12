@@ -21,18 +21,16 @@ describe('split Uber menu repositories field mapping', () => {
             ]),
         },
         menuItem: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                stableId: 'i',
-                nameEn: 'Soup',
-                basePriceCents: 500,
-                isAvailable: true,
-                category: { stableId: 'c' },
-                id: 'db-id',
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              stableId: 'i',
+              nameEn: 'Soup',
+              basePriceCents: 500,
+              isAvailable: true,
+              category: { stableId: 'c' },
+              id: 'db-id',
+            },
+          ]),
         },
       }),
     );
@@ -54,19 +52,17 @@ describe('split Uber menu repositories field mapping', () => {
     const repository = new UberItemChannelConfigPrismaRepository(
       db({
         uberItemChannelConfig: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                storeId: 's',
-                menuItemStableId: 'i',
-                priceCents: 10,
-                isAvailable: true,
-                displayName: null,
-                displayDescription: null,
-                id: 'db-id',
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              storeId: 's',
+              menuItemStableId: 'i',
+              priceCents: 10,
+              isAvailable: true,
+              displayName: null,
+              displayDescription: null,
+              id: 'db-id',
+            },
+          ]),
         },
       }),
     );
@@ -86,19 +82,17 @@ describe('split Uber menu repositories field mapping', () => {
     const repository = new UberModifierConfigPrismaRepository(
       db({
         uberModifierGroupConfig: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                storeId: 's',
-                templateGroupStableId: 'g',
-                displayName: 'Size',
-                minSelect: 1,
-                maxSelect: 1,
-                isActive: true,
-                id: 'db-id',
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              storeId: 's',
+              templateGroupStableId: 'g',
+              displayName: 'Size',
+              minSelect: 1,
+              maxSelect: 1,
+              isActive: true,
+              id: 'db-id',
+            },
+          ]),
         },
       }),
     );
@@ -118,17 +112,15 @@ describe('split Uber menu repositories field mapping', () => {
     const repository = new UberModifierBindingPrismaRepository(
       db({
         uberOptionChildGroupBinding: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                storeId: 's',
-                parentOptionChoiceStableId: 'o',
-                childTemplateGroupStableId: 'g',
-                isBound: true,
-                createdAt: new Date(0),
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              storeId: 's',
+              parentOptionChoiceStableId: 'o',
+              childTemplateGroupStableId: 'g',
+              isBound: true,
+              createdAt: new Date(0),
+            },
+          ]),
         },
       }),
     );
@@ -146,26 +138,22 @@ describe('split Uber menu repositories field mapping', () => {
     const repository = new UberBusinessSchedulePrismaRepository(
       db({
         businessConfig: {
-          findUnique: jest
-            .fn()
-            .mockResolvedValue({
-              timezone: 'Asia/Shanghai',
-              salesTaxRate: 0.1,
-              id: 1,
-            }),
+          findUnique: jest.fn().mockResolvedValue({
+            timezone: 'Asia/Shanghai',
+            salesTaxRate: 0.1,
+            id: 1,
+          }),
         },
         businessHour: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                weekday: 1,
-                openMinutes: 60,
-                closeMinutes: 120,
-                isClosed: false,
-                id: 9,
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              weekday: 1,
+              openMinutes: 60,
+              closeMinutes: 120,
+              isClosed: false,
+              id: 9,
+            },
+          ]),
         },
       }),
     );
@@ -182,16 +170,14 @@ describe('split Uber menu repositories field mapping', () => {
     const repository = new UberMenuStoreMappingPrismaRepository(
       db({
         uberStoreMapping: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue({
-              uberStoreId: 'u',
-              merchantUberUserId: 'm',
-              posExternalStoreId: 's',
-              isProvisioned: true,
-              rawPayload: { location: { time_zone: 'America/Toronto' } },
-              id: 'db-id',
-            }),
+          findFirst: jest.fn().mockResolvedValue({
+            uberStoreId: 'u',
+            merchantUberUserId: 'm',
+            posExternalStoreId: 's',
+            isProvisioned: true,
+            rawPayload: { location: { time_zone: 'America/Toronto' } },
+            id: 'db-id',
+          }),
         },
       }),
     );

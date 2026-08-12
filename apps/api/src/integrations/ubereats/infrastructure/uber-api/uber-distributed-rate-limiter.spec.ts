@@ -7,6 +7,7 @@ class SharedAtomicStore implements UberAtomicCommandStore {
   active = new Set<string>();
   cooldown = 0;
   async eval(script: string, _keys: string[], args: Array<string | number>) {
+    await Promise.resolve();
     if (script.includes('ZRANGEBYSCORE')) {
       const now = Number(args[0]);
       if (now < this.cooldown || this.active.size >= Number(args[3]))
