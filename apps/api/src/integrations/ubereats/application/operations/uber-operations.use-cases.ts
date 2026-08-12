@@ -32,12 +32,6 @@ import type { UberMenuAvailabilityUseCase } from '../menu/uber-menu-availability
 import type { SyncUberStoreStatusUseCase } from '../merchant/uber-merchant-provisioning.service';
 import type { SyncUberOrderStatusUseCase } from '../orders/sync-uber-order-status.use-case';
 
-/** Read models exposed by the application facade to delivery adapters. */
-export type UberOperationsPage<T> = UberPage<T>;
-export type UberOperationsTicketView = UberOpsTicket;
-export type UberReconciliationReportView = UberReconciliationReport;
-export type UberOperationsSummaryView = UberOperationsCountSummary;
-
 export type CreateUberOpsTicketCommand = Omit<
   CreateOpsTicketInput,
   'context'
@@ -64,31 +58,6 @@ const invalidOperationsInput = (message: string): UberValidationError =>
     operation: 'operations.validate',
   });
 
-/** Stable facade contract consumed by delivery adapters. */
-export interface UberOperationsPort {
-  generateReconciliationReport(
-    input: GenerateReconciliationReportInput,
-  ): Promise<UberReconciliationReportResult>;
-  listReconciliationReports(
-    storeId?: string,
-    limit?: number,
-  ): Promise<UberPage<UberReconciliationReport>>;
-  getReconciliationSummary(
-    storeId?: string,
-  ): Promise<UberOperationsCountSummary>;
-  createOpsTicket(
-    input: CreateUberOpsTicketCommand,
-  ): Promise<UberOpsTicketCreated>;
-  listOpsTickets(
-    storeId?: string,
-    status?: UberOpsTicketStatus,
-  ): Promise<UberPage<UberOpsTicket>>;
-  getOpsTicketsSummary(
-    storeId?: string,
-    status?: UberOpsTicketStatus,
-  ): Promise<UberOperationsCountSummary>;
-  retryOpsTicket(ticketStableId: string): Promise<UberOpsTicketRetryResult>;
-}
 export const mapCreateUberOpsTicketCommand = (
   command: CreateUberOpsTicketCommand,
 ): CreateOpsTicketInput => {
