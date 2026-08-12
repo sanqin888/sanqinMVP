@@ -70,3 +70,23 @@ describe('Uber Eats persistence architecture', () => {
     expect(violations).toEqual([]);
   });
 });
+
+describe('Uber Eats menu persistence dependency direction', () => {
+  it('does not import application use cases, publication implementations, or Uber API services', () => {
+    const root = join(__dirname);
+    const files = scanTypeScript(join(root, 'infrastructure', 'persistence'), {
+      productionOnly: true,
+    }).filter((file) =>
+      /uber-menu-(?:draft\.repositories|repository|snapshot-prisma|publication-prisma)/.test(
+        file.path,
+      ),
+    );
+    const violations = importViolations(files, root, (specifier) =>
+      /application\/menu\/.*use-case|uber-api\/uber-menu-publication|uber-api\/uber-token/.test(
+        specifier,
+      ),
+    );
+
+    expect(violations).toEqual([]);
+  });
+});

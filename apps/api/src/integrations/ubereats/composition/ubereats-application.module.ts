@@ -10,8 +10,12 @@ import { UberConfigService } from '../infrastructure/config/uber-config.service'
 import { ProcessUberWebhookInboxUseCase } from '../application/orders/process-uber-webhook-inbox.use-case';
 import { ReplayUnsupportedUberWebhooksUseCase } from '../application/orders/replay-unsupported-uber-webhooks.use-case';
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
-import { UberMenuDraftAdapter } from '../infrastructure/persistence/uber-menu-draft.adapter';
-import { UberMenuRepository } from '../infrastructure/persistence/uber-menu.repository';
+import { UberMenuDraftGateway } from '../infrastructure/persistence/uber-menu-workflow-prisma.repository';
+import { UberMenuAvailabilityGateway } from '../infrastructure/menu/uber-menu-availability.gateway';
+import {
+  UberMenuDraftCommandPrismaRepository,
+  UberMenuDraftQueryPrismaRepository,
+} from '../infrastructure/persistence/uber-menu.repository';
 import { PrismaUberMenuUnitOfWork } from '../infrastructure/persistence/uber-menu-draft.repositories';
 import { UBER_MENU_UNIT_OF_WORK } from '../application/ports/uber-menu-repositories.ports';
 import { LoadUberMenuWorkflowUseCase } from '../application/menu/load-uber-menu-workflow.use-case';
@@ -411,19 +415,21 @@ export const UBER_EATS_INTERNAL_PROVIDERS = [
     useFactory: (orders: UberOrderSyncPrismaRepository) =>
       new ListPendingUberOrdersQuery(orders),
   },
-  UberMenuDraftAdapter,
-  { provide: UBER_MENU_DRAFT_PORT, useExisting: UberMenuDraftAdapter },
+  UberMenuDraftGateway,
+  UberMenuAvailabilityGateway,
+  { provide: UBER_MENU_DRAFT_PORT, useExisting: UberMenuDraftGateway },
   {
     provide: UBER_MENU_AVAILABILITY_PORT,
-    useExisting: UberMenuDraftAdapter,
+    useExisting: UberMenuAvailabilityGateway,
   },
   {
     provide: UberMenuDraftUseCase,
     inject: [UBER_MENU_DRAFT_PORT],
-    useFactory: (drafts: UberMenuDraftAdapter) =>
+    useFactory: (drafts: UberMenuDraftGateway) =>
       new UberMenuDraftUseCase(drafts),
   },
-  UberMenuRepository,
+  UberMenuDraftQueryPrismaRepository,
+  UberMenuDraftCommandPrismaRepository,
   PrismaUberMenuUnitOfWork,
   { provide: UBER_MENU_UNIT_OF_WORK, useExisting: PrismaUberMenuUnitOfWork },
   {
@@ -434,17 +440,19 @@ export const UBER_EATS_INTERNAL_PROVIDERS = [
   },
   {
     provide: UBER_MENU_DRAFT_QUERY_PORT,
-    useExisting: UberMenuRepository,
+    useExisting: UberMenuDraftQueryPrismaRepository,
   },
   {
     provide: UBER_MENU_DRAFT_COMMAND_PORT,
-    useExisting: UberMenuRepository,
+    useExisting: UberMenuDraftCommandPrismaRepository,
   },
   {
     provide: UberMenuDraftConfigUseCase,
     inject: [UBER_MENU_DRAFT_QUERY_PORT, UBER_MENU_DRAFT_COMMAND_PORT],
-    useFactory: (queries: UberMenuRepository, commands: UberMenuRepository) =>
-      new UberMenuDraftConfigUseCase(queries, commands),
+    useFactory: (
+      queries: UberMenuDraftQueryPrismaRepository,
+      commands: UberMenuDraftCommandPrismaRepository,
+    ) => new UberMenuDraftConfigUseCase(queries, commands),
   },
   {
     provide: PublishUberMenuUseCase,
@@ -490,7 +498,7 @@ export const UBER_EATS_INTERNAL_PROVIDERS = [
   {
     provide: UberMenuAvailabilityUseCase,
     inject: [UBER_MENU_AVAILABILITY_PORT],
-    useFactory: (availability: UberMenuDraftAdapter) =>
+    useFactory: (availability: UberMenuAvailabilityGateway) =>
       new UberMenuAvailabilityUseCase(availability),
   },
   UberOAuthTokenAdapter,
