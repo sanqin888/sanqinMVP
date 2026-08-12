@@ -7,7 +7,10 @@ import {
   type UberWebhookInboxItem,
   type UberWebhookInboxPort,
 } from '../ports/uber-order-processing.ports';
-import { ImportUberOrderUseCase } from './uber-order.use-cases';
+import {
+  ImportUberOrderUseCase,
+  UberOrderStoreMappingError,
+} from './uber-order.use-cases';
 import {
   UberApplicationError,
   UberValidationError,
@@ -85,6 +88,22 @@ export class ProcessUberWebhookInboxUseCase {
       const retryable =
         error instanceof UberApplicationError ? error.retryable : true;
       await this.inbox.markFailed(item, error, retryable);
+      if (error instanceof UberOrderStoreMappingError) {
+        await this.telemetry.captureEvent(
+          'ubereats_order_store_mapping_alert',
+          {
+            priority: 'high',
+            code: error.code,
+            uberStoreId: error.uberStoreId,
+            eventId: error.eventId,
+            externalOrderId: error.externalOrderId,
+          },
+        );
+        this.telemetry.workflowLog(
+          'error',
+          `HIGH: Uber order store mapping requires operator action (${error.code})`,
+        );
+      }
       if (retryable)
         this.telemetry.workflowLog('error', 'webhook processing failed');
     }
