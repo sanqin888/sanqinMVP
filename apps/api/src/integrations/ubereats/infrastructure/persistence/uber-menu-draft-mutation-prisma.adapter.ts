@@ -1,7 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/errors/uber-application.error';
-import type { UberMenuDraftMutationPort } from '../../application/ports/uber-menu-draft-workflow.ports';
+import type { UberMenuDraftMutationPort } from '../../application/ports/uber-menu-draft.ports';
 import type {
   UpdateDraftGroupInput,
   UpdateDraftItemInput,

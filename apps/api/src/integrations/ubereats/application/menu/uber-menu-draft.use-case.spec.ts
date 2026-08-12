@@ -1,5 +1,5 @@
 import { UberMenuDraftUseCase } from './uber-menu-draft.use-case';
-import type { UberMenuDraftReadPort } from '../ports/uber-menu-draft-workflow.ports';
+import type { UberMenuDraftReadPort } from '../ports/uber-menu-draft.ports';
 
 describe('UberMenuDraftUseCase', () => {
   it('delegates getUberMenuDraft to the menu workflow boundary', async () => {

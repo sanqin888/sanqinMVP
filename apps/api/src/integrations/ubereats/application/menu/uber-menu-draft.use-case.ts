@@ -5,7 +5,7 @@ import type {
   UberMenuDraftMutationPort,
   UberMenuDraftReadPort,
   UberMenuReferenceQueryPort,
-} from '../ports/uber-menu-draft-workflow.ports';
+} from '../ports/uber-menu-draft.ports';
 import { UberValidationError } from '../errors/uber-application.error';
 
 /** Draft read/write and diff use cases. Every write is committed by the port in one transaction. */
