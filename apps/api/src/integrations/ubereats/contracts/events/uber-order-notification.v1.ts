@@ -16,10 +16,6 @@ export function parseUberOrderNotificationV1(
   payload: unknown,
 ): UberOrderNotificationEventV1 | null {
   const event = parseUberWebhookEnvelopeV1(payload);
-  if (!event || !isOrderEventType(event.eventType)) return null;
+  if (!event || event.eventType !== 'orders.notification') return null;
   return { ...event, family: 'order' };
-}
-
-export function isOrderEventType(eventType: string): boolean {
-  return /^orders?[._]/i.test(eventType.trim());
 }
