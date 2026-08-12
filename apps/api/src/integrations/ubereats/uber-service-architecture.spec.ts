@@ -22,6 +22,7 @@ type Layer = (typeof LAYERS)[number];
 
 const layerOf = (path: string): Layer | undefined =>
   path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
+  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats-capabilities.module.ts') ||
   path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
     ? 'composition'
     : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
