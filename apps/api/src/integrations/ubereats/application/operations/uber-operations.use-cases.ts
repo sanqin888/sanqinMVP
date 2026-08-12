@@ -32,6 +32,12 @@ import type { UberMenuAvailabilityUseCase } from '../menu/uber-menu-availability
 import type { SyncUberStoreStatusUseCase } from '../merchant/uber-merchant-provisioning.service';
 import type { SyncUberOrderStatusUseCase } from '../orders/sync-uber-order-status.use-case';
 
+/** Read models exposed by the application facade to delivery adapters. */
+export type UberOperationsPage<T> = UberPage<T>;
+export type UberOperationsTicketView = UberOpsTicket;
+export type UberReconciliationReportView = UberReconciliationReport;
+export type UberOperationsSummaryView = UberOperationsCountSummary;
+
 export type CreateUberOpsTicketCommand = Omit<
   CreateOpsTicketInput,
   'context'
