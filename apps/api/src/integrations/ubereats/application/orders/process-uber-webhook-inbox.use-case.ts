@@ -1,6 +1,9 @@
 import { createHash } from 'crypto';
 import { parseUberOrderNotificationV1 } from '../../contracts/events/uber-order-notification.v1';
 import { parseUberMenuNotificationV1 } from '../../contracts/events/uber-menu-notification.v1';
+import { parseUberOrderCancelV1 } from '../../contracts/events/uber-order-cancel.v1';
+import { parseUberStoreProvisioningV1 } from '../../contracts/events/uber-store-provisioning.v1';
+import { parseUberStoreStatusChangedV1 } from '../../contracts/events/uber-store-status.v1';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 import { UberMenuNotificationHandler } from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
@@ -35,15 +38,7 @@ export class ProcessUberWebhookInboxUseCase {
     const { eventId, eventType, payload } = item;
     try {
       switch (normalizeUberEventType(eventType)) {
-        case 'orders.notification':
-        case 'orders.accepted':
-        case 'orders.in_progress':
-        case 'orders.making':
-        case 'orders.ready_for_pickup':
-        case 'orders.completed':
-        case 'orders.cancelled':
-        case 'orders.cancel':
-        case 'orders.rejected': {
+        case 'orders.notification': {
           const order = parseUberOrderNotificationV1(payload);
           if (!order)
             throw new UberValidationError({
@@ -55,6 +50,22 @@ export class ProcessUberWebhookInboxUseCase {
             eventType,
             eventId,
             order,
+            this.extractOrdering(payload),
+          );
+          break;
+        }
+        case 'orders.cancel': {
+          const cancellation = parseUberOrderCancelV1(payload);
+          if (!cancellation)
+            throw new UberValidationError({
+              code: 'UBER_ORDER_WEBHOOK_INVALID',
+              message: 'Uber 订单取消 webhook envelope 无效',
+              operation: 'webhook.route-order-cancel',
+            });
+          await this.orders.execute(
+            eventType,
+            eventId,
+            cancellation,
             this.extractOrdering(payload),
           );
           break;
@@ -76,31 +87,27 @@ export class ProcessUberWebhookInboxUseCase {
         }
         case 'store.provisioned':
         case 'store.deprovisioned': {
+          if (!parseUberStoreProvisioningV1(payload))
+            throw new UberValidationError({
+              code: 'UBER_WEBHOOK_INVALID',
+              message: 'Uber 门店 provisioning webhook envelope 无效',
+              operation: 'webhook.route-store-provisioning',
+            });
           await this.merchant.execute(eventType, eventId, payload);
           break;
         }
-        case 'store.status.changed':
-          await this.merchant.execute(eventType, eventId, payload);
-          break;
+        case 'store.status.changed': {
+          if (!parseUberStoreStatusChangedV1(payload))
+            throw new UberValidationError({
+              code: 'UBER_WEBHOOK_INVALID',
+              message: 'Uber 门店状态 webhook envelope 无效',
+              operation: 'webhook.route-store-status',
+            });
+          await this.quarantine(item, 'high');
+          return;
+        }
         default: {
-          const safeSummary = this.safeEventSummary(item);
-          await this.inbox.markUnsupported(item, {
-            code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
-            eventType,
-            safeSummary,
-            businessVersion: item.businessVersion,
-          });
-          await this.telemetry.captureEvent('ubereats_webhook_unsupported', {
-            priority: 'high',
-            eventType,
-            eventId,
-            safeSummary,
-            businessVersion: item.businessVersion,
-          });
-          this.telemetry.workflowLog(
-            'error',
-            'HIGH: unsupported Uber webhook quarantined',
-          );
+          await this.quarantine(item, 'high');
           return;
         }
       }
@@ -112,6 +119,30 @@ export class ProcessUberWebhookInboxUseCase {
       if (retryable)
         this.telemetry.workflowLog('error', 'webhook processing failed');
     }
+  }
+
+  private async quarantine(
+    item: UberWebhookInboxItem,
+    priority: 'high',
+  ): Promise<void> {
+    const safeSummary = this.safeEventSummary(item);
+    await this.inbox.markUnsupported(item, {
+      code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
+      eventType: item.eventType,
+      safeSummary,
+      businessVersion: item.businessVersion,
+    });
+    await this.telemetry.captureEvent('ubereats_webhook_unsupported', {
+      priority,
+      eventType: item.eventType,
+      eventId: item.eventId,
+      safeSummary,
+      businessVersion: item.businessVersion,
+    });
+    this.telemetry.workflowLog(
+      'error',
+      'HIGH: unsupported Uber webhook quarantined',
+    );
   }
 
   private safeEventSummary(item: UberWebhookInboxItem): string {

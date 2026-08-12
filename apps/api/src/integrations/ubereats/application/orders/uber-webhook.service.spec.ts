@@ -19,6 +19,7 @@ import { UberConfigService } from '../../infrastructure/config/uber-config.servi
 import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
 import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.helpers';
+import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>
@@ -43,12 +44,44 @@ const signed = (body: unknown) => {
 };
 
 describe('Uber webhook use cases', () => {
+  it.each([
+    ['store.provisioned', true],
+    ['store.deprovisioned', false],
+  ] as const)(
+    '将 %s 的标准 envelope 更新到本地 provisioning 状态',
+    async (eventType, value) => {
+      const inboxPort = {
+        setStoreProvisioned: jest.fn().mockResolvedValue(true),
+      };
+      const telemetry = {
+        captureEvent: jest.fn().mockResolvedValue(undefined),
+        workflowLog: jest.fn(),
+      };
+      const handler = new HandleUberMerchantWebhookHandler(
+        inboxPort as never,
+        telemetry,
+      );
+
+      await handler.execute(eventType, 'evt-store', {
+        event_type: eventType,
+        event_id: 'evt-store',
+        resource_href: 'https://api.uber.com/v1/eats/stores/store-1',
+        meta: { resource_id: 'store-1', user_id: 'org-1' },
+      });
+
+      expect(inboxPort.setStoreProvisioned).toHaveBeenCalledWith(
+        'store-1',
+        value,
+      );
+    },
+  );
+
   it('routes Uber ordering metadata to the order use case', async () => {
     const item = {
       eventId: 'evt-order-ordered',
-      eventType: 'orders.ready_for_pickup',
+      eventType: 'orders.notification',
       payload: {
-        event_type: 'orders.ready_for_pickup',
+        event_type: 'orders.notification',
         event_id: 'evt-order-ordered',
         resource_href: 'https://api.uber.com/v2/eats/order/order-1',
         resource_id: 'order-1',
@@ -156,7 +189,11 @@ describe('Uber webhook use cases', () => {
     const item = {
       eventId: 'evt-store',
       eventType: 'store.provisioned',
-      payload: { resource_id: 'store-1' },
+      payload: {
+        event_type: 'store.provisioned',
+        resource_href: 'https://api.uber.com/v1/eats/stores/store-1',
+        meta: { resource_id: 'store-1', user_id: 'org-1' },
+      },
       leaseToken: 'lease',
       idempotencyKey: 'key',
       businessVersion: 'v1',
@@ -188,6 +225,48 @@ describe('Uber webhook use cases', () => {
     );
     expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
     expect(inboxPort.markUnsupported).not.toHaveBeenCalled();
+  });
+
+  it('明确隔离 store.status.changed，既不调用 merchant 也不标记成功', async () => {
+    const item = {
+      eventId: 'evt-status',
+      eventType: 'store.status.changed',
+      payload: {
+        event_type: 'store.status.changed',
+        resource_href: 'https://api.uber.com/v1/eats/stores/store-1/status',
+        meta: { resource_id: 'store-1', user_id: 'org-1' },
+        status: 'ONLINE',
+      },
+      leaseToken: 'lease',
+      idempotencyKey: 'key',
+      businessVersion: 'v1',
+    };
+    const inboxPort = {
+      claimDue: jest.fn().mockResolvedValue([item]),
+      markSucceeded: jest.fn(),
+      markUnsupported: jest.fn().mockResolvedValue(undefined),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
+      markFailed: jest.fn(),
+      enqueue: jest.fn(),
+      setStoreProvisioned: jest.fn(),
+    };
+    const merchant = { execute: jest.fn() };
+    const worker = new ProcessUberWebhookInboxUseCase(
+      inboxPort,
+      {} as never,
+      {} as never,
+      merchant as never,
+      { captureEvent: jest.fn(), workflowLog: jest.fn() },
+    );
+
+    await worker.execute();
+
+    expect(inboxPort.markUnsupported).toHaveBeenCalledWith(
+      item,
+      expect.objectContaining({ code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED' }),
+    );
+    expect(merchant.execute).not.toHaveBeenCalled();
+    expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
   });
 
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {

@@ -1,5 +1,10 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { parseUberMenuNotificationV1 } from './uber-menu-notification.v1';
+import { parseUberOrderCancelV1 } from './uber-order-cancel.v1';
 import { parseUberOrderNotificationV1 } from './uber-order-notification.v1';
+import { parseUberStoreProvisioningV1 } from './uber-store-provisioning.v1';
+import { parseUberStoreStatusChangedV1 } from './uber-store-status.v1';
 import { parseUberWebhookEnvelopeV1 } from './uber-webhook-envelope.v1';
 
 const envelope = {
@@ -10,6 +15,18 @@ const envelope = {
 };
 
 describe('Uber events v1 contract', () => {
+  const fixture = (name: string): unknown =>
+    JSON.parse(
+      readFileSync(
+        join(
+          __dirname,
+          '../../test/fixtures/uber-contract/v1/webhooks',
+          `${name}.json`,
+        ),
+        'utf8',
+      ),
+    );
+
   it('normalizes the external envelope without leaking snake_case DTO fields', () => {
     expect(parseUberWebhookEnvelopeV1(envelope)).toEqual({
       version: 1,
@@ -40,6 +57,54 @@ describe('Uber events v1 contract', () => {
     const duplicate = parseUberOrderNotificationV1({ ...envelope });
     expect(duplicate?.eventId).toBe(first?.eventId);
     expect(duplicate).toEqual(first);
+  });
+
+  it('uses a dedicated parser for the official order cancellation shape', () => {
+    expect(parseUberOrderCancelV1(fixture('orders.cancel'))).toMatchObject({
+      version: 1,
+      family: 'order-cancel',
+      eventType: 'orders.cancel',
+      resourceId: 'order-redacted',
+    });
+    expect(parseUberOrderNotificationV1(fixture('orders.cancel'))).toBeNull();
+  });
+
+  it.each([
+    ['store.provisioned', true],
+    ['store.deprovisioned', false],
+  ] as const)(
+    'parses %s as a versioned provisioning contract',
+    (name, value) => {
+      expect(parseUberStoreProvisioningV1(fixture(name))).toMatchObject({
+        version: 1,
+        family: 'store-provisioning',
+        eventType: name,
+        storeId: 'store-redacted',
+        provisioned: value,
+      });
+    },
+  );
+
+  it('parses store status independently from provisioning', () => {
+    const payload = fixture('store.status.changed');
+    expect(parseUberStoreStatusChangedV1(payload)).toMatchObject({
+      version: 1,
+      family: 'store-status',
+      storeId: 'store-redacted',
+    });
+    expect(parseUberStoreProvisioningV1(payload)).toBeNull();
+  });
+
+  it('accepts the versioned lifecycle fixture only as orders.notification', () => {
+    expect(
+      parseUberOrderNotificationV1(fixture('orders.notification')),
+    ).toMatchObject({ family: 'order', eventType: 'orders.notification' });
+    expect(
+      parseUberOrderNotificationV1({
+        ...envelope,
+        event_type: 'orders.ready_for_pickup',
+      }),
+    ).toBeNull();
   });
 
   it('accepts old envelope id and ignores additive fields for compatibility', () => {

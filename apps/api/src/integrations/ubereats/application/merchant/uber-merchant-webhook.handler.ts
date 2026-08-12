@@ -1,8 +1,5 @@
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
-import {
-  webhookObject,
-  webhookText,
-} from '../../domain/webhook/uber-webhook-envelope';
+import { parseUberStoreProvisioningV1 } from '../../contracts/events/uber-store-provisioning.v1';
 import {
   type UberTelemetryPort,
   type UberWebhookInboxPort,
@@ -24,18 +21,9 @@ export class HandleUberMerchantWebhookHandler {
       normalized === 'store.provisioned' ||
       normalized === 'store.deprovisioned'
     ) {
-      const root = webhookObject(payload);
-      const data = webhookObject(root?.data);
-      const storeId = webhookText(
-        root?.store_id,
-        data?.store_id,
-        webhookObject(data?.store)?.id,
-      );
-      if (storeId)
-        await this.inbox.setStoreProvisioned(
-          storeId,
-          normalized === 'store.provisioned',
-        );
+      const event = parseUberStoreProvisioningV1(payload);
+      if (event)
+        await this.inbox.setStoreProvisioned(event.storeId, event.provisioned);
     }
     await this.telemetry.captureEvent(
       `ubereats_${normalized.replaceAll('.', '_')}`,

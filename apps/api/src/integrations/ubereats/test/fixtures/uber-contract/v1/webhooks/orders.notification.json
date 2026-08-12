@@ -1,0 +1,6 @@
+{
+  "event_id": "fixture-order-notification-v1",
+  "event_type": "orders.notification",
+  "resource_href": "https://api.uber.com/v2/eats/order/order-redacted",
+  "meta": { "resource_id": "order-redacted", "user_id": "store-redacted" }
+}

@@ -1,0 +1,7 @@
+{
+  "event_id": "fixture-store-status-v1",
+  "event_type": "store.status.changed",
+  "resource_href": "https://api.uber.com/v1/eats/stores/store-redacted/status",
+  "meta": { "resource_id": "store-redacted", "user_id": "org-redacted" },
+  "status": "ONLINE"
+}

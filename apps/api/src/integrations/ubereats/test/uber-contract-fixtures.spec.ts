@@ -34,6 +34,11 @@ describe('versioned Uber wire fixtures', () => {
       'stores/discovery.json',
       'stores/provision-request.json',
       'stores/provision-response.json',
+      'webhooks/orders.cancel.json',
+      'webhooks/orders.notification.json',
+      'webhooks/store.deprovisioned.json',
+      'webhooks/store.provisioned.json',
+      'webhooks/store.status.changed.json',
     ]);
   });
 
