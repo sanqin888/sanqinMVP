@@ -61,6 +61,12 @@ import {
 
 import { UberMenuDraftSourcePrismaRepository } from './uber-menu-draft.repositories';
 import { emptyUberMenuDraftFilters } from '../../domain/menu/uber-menu-draft-source';
+import {
+  buildDraftCategories,
+  buildUberDraftEdges,
+  buildUberDraftTreeNodes,
+} from '../../domain/menu/uber-menu-draft.projector';
+import { buildUberMenuDraftDiff } from '../../domain/menu/uber-menu-diff.service';
 import { UberTelemetryService } from './uber-telemetry.service';
 
 const uberMenuValidation = (message: string) =>
@@ -323,124 +329,13 @@ export class UberMenuDraftGateway
         },
       });
 
-    const buildDraftCategories = (
-      groups: Array<{
-        id: string;
-        title: string;
-        minSelect: number;
-        maxSelect: number;
-        optionItemIds: string[];
-      }>,
-      items: Array<{
-        id: string;
-        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
-        sourceStableId: string;
-        title: string;
-        description: string | null;
-        priceCents: number;
-        isAvailable: boolean;
-        modifierGroupIds: string[];
-        imageUrl: string | null;
-      }>,
-    ) => {
-      const groupMap = new Map(groups.map((group) => [group.id, group]));
-      const itemMap = new Map(items.map((item) => [item.id, item]));
-      return graph.categories.map((category) => ({
-        id: category.id,
-        name: category.title,
-        items: category.entities
-          .map((itemId) => itemMap.get(itemId))
-          .filter((item): item is NonNullable<typeof item> => Boolean(item))
-          .filter((item) => item.sourceType === 'MENU_ITEM')
-          .map((item) => ({
-            id: item.id,
-            sourceMenuItemStableId: item.sourceStableId,
-            displayName: item.title,
-            displayDescription: item.description,
-            priceCents: item.priceCents,
-            isAvailable: item.isAvailable,
-            imageUrl: item.imageUrl,
-            groups: item.modifierGroupIds
-              .map((groupId) => {
-                const group = groupMap.get(groupId);
-                if (!group) return null;
-                return {
-                  id: group.id,
-                  name: group.title,
-                  minSelect: group.minSelect,
-                  maxSelect: group.maxSelect,
-                  options: group.optionItemIds
-                    .map((optionItemId) => itemMap.get(optionItemId))
-                    .filter((option): option is NonNullable<typeof option> =>
-                      Boolean(option),
-                    )
-                    .map((option) => ({
-                      id: option.id,
-                      sourceOptionChoiceStableId: option.sourceStableId,
-                      displayName: option.title,
-                      priceDeltaCents: option.priceCents,
-                      isAvailable: option.isAvailable,
-                      childGroups: option.modifierGroupIds
-                        .map((childGroupId) => {
-                          const childGroup = groupMap.get(childGroupId);
-                          return childGroup
-                            ? {
-                                id: childGroup.id,
-                                name: childGroup.title,
-                                minSelect: childGroup.minSelect,
-                                maxSelect: childGroup.maxSelect,
-                              }
-                            : null;
-                        })
-                        .filter(
-                          (
-                            childGroup,
-                          ): childGroup is {
-                            id: string;
-                            name: string;
-                            minSelect: number;
-                            maxSelect: number;
-                          } => Boolean(childGroup),
-                        ),
-                    })),
-                };
-              })
-              .filter(
-                (
-                  group,
-                ): group is {
-                  id: string;
-                  name: string;
-                  minSelect: number;
-                  maxSelect: number;
-                  options: Array<{
-                    id: string;
-                    sourceOptionChoiceStableId: string;
-                    displayName: string;
-                    priceDeltaCents: number;
-                    isAvailable: boolean;
-                    childGroups: Array<{
-                      id: string;
-                      name: string;
-                      minSelect: number;
-                      maxSelect: number;
-                    }>;
-                  }>;
-                } => Boolean(group),
-              ),
-          })),
-      }));
-    };
-    const uberDraftCategories = buildDraftCategories(
-      normalized.graph.groups,
-      normalized.graph.items,
-    );
-    const sourceDraftCategories = buildDraftCategories(
-      graph.sourceGroups,
-      graph.sourceItems,
-    );
-    const uberDraftTreeNodes =
-      this.buildUberDraftTreeNodes(uberDraftCategories);
+    const uberDraftCategories = buildDraftCategories(normalized.graph);
+    const sourceDraftCategories = buildDraftCategories({
+      categories: graph.categories,
+      groups: graph.sourceGroups,
+      items: graph.sourceItems,
+    });
+    const uberDraftTreeNodes = buildUberDraftTreeNodes(uberDraftCategories);
 
     return {
       storeId: normalizedStoreId,
@@ -460,7 +355,7 @@ export class UberMenuDraftGateway
         categories: normalized.graph.categories,
         items: normalized.graph.items,
         groups: normalized.graph.groups,
-        edges: this.buildUberDraftEdges(normalized.graph),
+        edges: buildUberDraftEdges(normalized.graph),
         tree: {
           categories: uberDraftCategories,
         },
@@ -804,80 +699,17 @@ export class UberMenuDraftGateway
         select: { optionChoiceStableId: true },
       }),
     ]);
-    const publishedMenuItemSet = new Set(
-      itemConfigs.map((item) => item.menuItemStableId),
-    );
-    const publishedOptionSet = new Set(
-      optionConfigs.map((item) => item.optionChoiceStableId),
-    );
-
-    const changedItems = draft.uberDraft.items.filter((item) => item.hasDelta);
-    const addedItems = changedItems.filter(
-      (item) =>
-        (item.sourceType === 'MENU_ITEM' &&
-          !publishedMenuItemSet.has(item.sourceStableId)) ||
-        (item.sourceType === 'OPTION_ITEM' &&
-          !publishedOptionSet.has(item.sourceStableId)),
-    );
-    const draftItemIdSet = new Set(
-      draft.uberDraft.items.map((item) => item.id),
-    );
-    const draftGroupIdSet = new Set(
-      draft.uberDraft.groups.map((group) => group.id),
-    );
-    const draftEdgeSet = new Set(
-      draft.uberDraft.edges.map(
-        (edge) => `${edge.type}:${edge.from}->${edge.to}`,
-      ),
-    );
-    const publishedSnapshot = this.extractPublishedSnapshotFromPayload(
-      lastSuccess?.requestPayload ?? lastSuccess?.payload ?? null,
-    );
-
-    return {
+    return buildUberMenuDraftDiff({
       storeId: normalizedStoreId,
+      draft,
       lastPublishedAt: lastSuccess?.createdAt ?? null,
-      addedItems: addedItems.map((item) => item.sourceStableId),
-      modifiedItems: changedItems.map((item) => ({
-        sourceType: item.sourceType,
-        stableId: item.sourceStableId,
-        priceCents: item.priceCents,
-        isAvailable: item.isAvailable,
-      })),
-      deletedItems: Array.from(publishedSnapshot.itemIds).filter(
-        (itemId) => !draftItemIdSet.has(itemId),
+      publishedPayload:
+        lastSuccess?.requestPayload ?? lastSuccess?.payload ?? null,
+      publishedMenuItemIds: itemConfigs.map((item) => item.menuItemStableId),
+      publishedOptionItemIds: optionConfigs.map(
+        (item) => item.optionChoiceStableId,
       ),
-      addedGroups: draft.uberDraft.groups
-        .filter((group) => group.optionItemIds.length > 0)
-        .map((group) => group.sourceStableId),
-      modifiedGroups: draft.uberDraft.groups
-        .filter((group) => group.minSelect > 0 || group.maxSelect > 1)
-        .map((group) => ({
-          stableId: group.sourceStableId,
-          minSelect: group.minSelect,
-          maxSelect: group.maxSelect,
-        })),
-      deletedGroups: Array.from(publishedSnapshot.groupIds).filter(
-        (groupId) => !draftGroupIdSet.has(groupId),
-      ),
-      hierarchyChanges: draft.uberDraft.edges,
-      deletedEdges: Array.from(publishedSnapshot.edgeKeys)
-        .filter((edgeKey) => !draftEdgeSet.has(edgeKey))
-        .map((edgeKey) => this.decodeDraftEdgeKey(edgeKey))
-        .filter((edge): edge is { from: string; to: string; type: string } =>
-          Boolean(edge),
-        ),
-      priceChanges: changedItems.map((item) => ({
-        sourceType: item.sourceType,
-        stableId: item.sourceStableId,
-        priceCents: item.priceCents,
-      })),
-      availabilityChanges: changedItems.map((item) => ({
-        sourceType: item.sourceType,
-        stableId: item.sourceStableId,
-        isAvailable: item.isAvailable,
-      })),
-    };
+    });
   }
 
   async publishUberMenu(input: PublishMenuInput) {
@@ -1196,48 +1028,6 @@ export class UberMenuDraftGateway
    */
   /** Validate the final wire payload. Both preview and upload must pass here. */
 
-  private buildModifierFlatteningReport(
-    graph: {
-      items: Array<{ id: string; priceCents: number }>;
-      groups: Array<{
-        id: string;
-        minSelect: number;
-        maxSelect: number;
-        optionItemIds: string[];
-      }>;
-    },
-    mappings: Array<{
-      sourceOptionChoiceStableId: string;
-      compositeOptionItemId: string;
-      sourcePath: string[];
-    }>,
-  ) {
-    const priceById = new Map(
-      graph.items.map((item) => [item.id, item.priceCents]),
-    );
-    return {
-      reference:
-        'Uber example menu payload: modifier_options reference ITEM ids',
-      optionIdSemantics: 'modifier_options[].id === items[].id',
-      groups: graph.groups.map((group) => ({
-        groupId: group.id,
-        minPermitted: group.minSelect,
-        maxPermitted: group.maxSelect,
-        optionCount: group.optionItemIds.length,
-        valid:
-          group.minSelect >= 0 &&
-          group.minSelect <= group.maxSelect &&
-          group.maxSelect <= group.optionItemIds.length &&
-          group.optionItemIds.every((id) => priceById.has(id)),
-      })),
-      combinations: mappings.map((mapping) => ({
-        ...mapping,
-        combinedPriceCents:
-          priceById.get(mapping.compositeOptionItemId) ?? null,
-      })),
-    };
-  }
-
   private async getUberMenuSchedule(): Promise<{
     timezone: string;
     serviceAvailability: UberServiceAvailability[];
@@ -1317,183 +1107,6 @@ export class UberMenuDraftGateway
       location?.timezone,
       location?.time_zone,
     );
-  }
-
-  private buildUberDraftEdges(graph: {
-    categories: Array<{ id: string; entities: string[] }>;
-    items: Array<{ id: string; modifierGroupIds: string[] }>;
-    groups: Array<{ id: string; optionItemIds: string[] }>;
-  }) {
-    const edges: Array<{ from: string; to: string; type: string }> = [];
-    for (const category of graph.categories) {
-      for (const itemId of category.entities) {
-        edges.push({ from: category.id, to: itemId, type: 'CATEGORY_ITEM' });
-      }
-    }
-    for (const item of graph.items) {
-      for (const groupId of item.modifierGroupIds) {
-        edges.push({ from: item.id, to: groupId, type: 'ITEM_GROUP' });
-      }
-    }
-    for (const group of graph.groups) {
-      for (const optionItemId of group.optionItemIds) {
-        edges.push({ from: group.id, to: optionItemId, type: 'GROUP_OPTION' });
-      }
-    }
-    return edges;
-  }
-
-  private buildUberDraftTreeNodes(
-    categories: Array<{
-      id: string;
-      name: string;
-      items: Array<{
-        id: string;
-        sourceMenuItemStableId: string;
-        displayName: string;
-        priceCents: number;
-        isAvailable: boolean;
-        groups: Array<{
-          id: string;
-          name: string;
-          minSelect: number;
-          maxSelect: number;
-          options: Array<{
-            id: string;
-            sourceOptionChoiceStableId: string;
-            displayName: string;
-            priceDeltaCents: number;
-            isAvailable: boolean;
-            childGroups: Array<{
-              id: string;
-              name: string;
-              minSelect: number;
-              maxSelect: number;
-            }>;
-          }>;
-        }>;
-      }>;
-    }>,
-  ) {
-    return categories.map((category) => ({
-      id: category.id,
-      type: 'category',
-      name: category.name,
-      sourceStableId: category.id,
-      source: 'AUTO-MAPPED',
-      children: category.items.map((item) => ({
-        id: item.id,
-        type: 'item',
-        name: item.displayName,
-        sourceStableId: item.sourceMenuItemStableId,
-        source: 'AUTO-MAPPED',
-        priceCents: item.priceCents,
-        isAvailable: item.isAvailable,
-        children: item.groups.map((group) => ({
-          id: group.id,
-          type: 'group',
-          name: group.name,
-          sourceStableId: group.id,
-          source: 'AUTO-MAPPED',
-          minSelect: group.minSelect,
-          maxSelect: group.maxSelect,
-          children: group.options.map((option) => ({
-            id: option.id,
-            type: 'option',
-            name: option.displayName,
-            sourceStableId: option.sourceOptionChoiceStableId,
-            source: 'AUTO-MAPPED',
-            priceDeltaCents: option.priceDeltaCents,
-            isAvailable: option.isAvailable,
-            childGroupIds: option.childGroups.map(
-              (childGroup) => childGroup.id,
-            ),
-            children: option.childGroups.map((childGroup) => ({
-              id: childGroup.id,
-              type: 'group',
-              name: childGroup.name,
-              sourceStableId: childGroup.id,
-              source: 'AUTO-MAPPED',
-              minSelect: childGroup.minSelect,
-              maxSelect: childGroup.maxSelect,
-            })),
-          })),
-        })),
-      })),
-    }));
-  }
-
-  private extractPublishedSnapshotFromPayload(payload: unknown) {
-    const itemIds = new Set<string>();
-    const groupIds = new Set<string>();
-    const edgeKeys = new Set<string>();
-    const root = this.asObject(payload);
-    if (!root) {
-      return { itemIds, groupIds, edgeKeys };
-    }
-
-    const categories = Array.isArray(root.categories) ? root.categories : [];
-    const items = Array.isArray(root.items) ? root.items : [];
-    const modifierGroups = Array.isArray(root.modifier_groups)
-      ? root.modifier_groups
-      : [];
-
-    for (const rawCategory of categories) {
-      const category = this.asObject(rawCategory);
-      const categoryId = this.readString(category?.id);
-      const entities = Array.isArray(category?.entities)
-        ? category.entities
-        : [];
-      if (!categoryId) continue;
-      for (const entity of entities) {
-        const entityRef = this.asObject(entity);
-        const itemId =
-          this.readString(entityRef?.id) ?? this.readString(entity);
-        if (!itemId) continue;
-        edgeKeys.add(`CATEGORY_ITEM:${categoryId}->${itemId}`);
-      }
-    }
-
-    for (const rawItem of items) {
-      const item = this.asObject(rawItem);
-      const itemId = this.readString(item?.id);
-      if (!itemId) continue;
-      itemIds.add(itemId);
-      const groupIdsInItem = Array.isArray(item?.modifier_group_ids)
-        ? item.modifier_group_ids
-        : [];
-      for (const groupIdRaw of groupIdsInItem) {
-        const groupId = this.readString(groupIdRaw);
-        if (!groupId) continue;
-        edgeKeys.add(`ITEM_GROUP:${itemId}->${groupId}`);
-      }
-    }
-
-    for (const rawGroup of modifierGroups) {
-      const group = this.asObject(rawGroup);
-      const groupId = this.readString(group?.id);
-      if (!groupId) continue;
-      groupIds.add(groupId);
-      const options = Array.isArray(group?.modifier_options)
-        ? group.modifier_options
-        : [];
-      for (const rawOption of options) {
-        const option = this.asObject(rawOption);
-        const optionId = this.readString(option?.id);
-        if (!optionId) continue;
-        edgeKeys.add(`GROUP_OPTION:${groupId}->${optionId}`);
-      }
-    }
-
-    return { itemIds, groupIds, edgeKeys };
-  }
-
-  private decodeDraftEdgeKey(edgeKey: string) {
-    const [type, relation] = edgeKey.split(':');
-    if (!type || !relation) return null;
-    const [from, to] = relation.split('->');
-    if (!from || !to) return null;
-    return { type, from, to };
   }
 
   private async markMenuPublishVersionSuccess(
