@@ -24,7 +24,7 @@ import {
   ValidationArguments,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import { UBER_RESOURCE_ID_PATTERN } from '../../domain/shared/uber-resource-id';
+import { UBER_RESOURCE_ID_PATTERN } from '../uber-resource-id';
 /** Stable public API values. These deliberately do not expose persistence enums. */
 export const OrderStatus = {
   pending: 'pending',

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
 
-import { normalizeUberResourceId } from '../../domain/shared/uber-resource-id';
+import { normalizeUberResourceId } from '../../contracts/uber-resource-id';
 
 @Injectable()
 export class ResourceIdPipe implements PipeTransform<unknown, string> {
