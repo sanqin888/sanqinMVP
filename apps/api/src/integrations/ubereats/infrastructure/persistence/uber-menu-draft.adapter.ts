@@ -975,7 +975,9 @@ export class UberMenuDraftAdapter {
     return { status, stores };
   }
 
-  async syncUberOptionItemAvailability(input: SyncOptionAvailabilityInput) {
+  async syncUberOptionItemAvailability(
+    input: SyncOptionAvailabilityInput,
+  ): Promise<UberAvailabilitySyncResult> {
     await this.ensureOptionChoiceExists(input.optionChoiceStableId);
 
     const requestedStoreId = input.storeId?.trim();
@@ -989,11 +991,7 @@ export class UberMenuDraftAdapter {
     if (mappings.length === 0) {
       throw new BadRequestException('未找到已 provision 的 Uber 门店');
     }
-    const stores: Array<{
-      storeId: string;
-      uberStoreId: string;
-      versionStableId?: string;
-    }> = [];
+    const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const mapping of mappings) {
       await this.prisma.uberOptionItemConfig.upsert({
         where: {
@@ -1022,6 +1020,7 @@ export class UberMenuDraftAdapter {
       stores.push({
         storeId: mapping.uberStoreId,
         uberStoreId: mapping.uberStoreId,
+        status: 'PENDING',
         versionStableId: published.versionStableId,
       });
     }
@@ -1037,8 +1036,7 @@ export class UberMenuDraftAdapter {
     );
 
     return {
-      ok: true,
-      storeId: requestedStoreId ?? null,
+      status: 'PENDING',
       stores,
     };
   }
@@ -1160,7 +1158,7 @@ export class UberMenuDraftAdapter {
         connectedAt: input.connectedAt,
       } as never,
     });
-    return { ...input, encryptedAccessToken, encryptedRefreshToken };
+    return input;
   }
 
   private async buildUberMenuGraph(storeId: string, uberStoreId: string) {
