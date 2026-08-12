@@ -12,9 +12,7 @@ import type {
 
 /** The only persistence boundary used by menu draft application services. */
 @Injectable()
-export class UberMenuRepository
-  implements UberMenuDraftQueryPort, UberMenuDraftCommandPort
-{
+export class UberMenuDraftQueryPrismaRepository implements UberMenuDraftQueryPort {
   constructor(private readonly prisma: PrismaService) {}
   async listItemConfigs(storeId: string): Promise<UberMenuItemDraft[]> {
     const rows = await this.prisma.uberItemChannelConfig.findMany({
@@ -62,6 +60,12 @@ export class UberMenuRepository
       displayDescription: row.displayDescription,
     }));
   }
+}
+
+/** Prisma command adapter for draft mutations; never exposes a Prisma delegate. */
+@Injectable()
+export class UberMenuDraftCommandPrismaRepository implements UberMenuDraftCommandPort {
+  constructor(private readonly prisma: PrismaService) {}
   async updateItem(
     storeId: string,
     stableId: string,

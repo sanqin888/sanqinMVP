@@ -1,7 +1,10 @@
 import type { PrismaService } from '../../../../prisma/prisma.service';
-import { UberMenuRepository } from './uber-menu.repository';
+import {
+  UberMenuDraftCommandPrismaRepository,
+  UberMenuDraftQueryPrismaRepository,
+} from './uber-menu.repository';
 
-describe('UberMenuRepository contract', () => {
+describe('Uber menu repository contracts', () => {
   it('maps Prisma rows to an application DTO without persistence-only fields', async () => {
     const findMany = jest
       .fn<
@@ -41,7 +44,7 @@ describe('UberMenuRepository contract', () => {
         },
       ]);
     const prisma = { uberItemChannelConfig: { findMany } };
-    const repository = new UberMenuRepository(
+    const repository = new UberMenuDraftQueryPrismaRepository(
       prisma as unknown as PrismaService,
     );
 
@@ -66,7 +69,7 @@ describe('UberMenuRepository contract', () => {
   it('maps command fields explicitly and does not expose the delegate result', async () => {
     const update = jest.fn().mockResolvedValue({ id: 'prisma-id' });
     const prisma = { uberOptionItemConfig: { update } };
-    const repository = new UberMenuRepository(
+    const repository = new UberMenuDraftCommandPrismaRepository(
       prisma as unknown as PrismaService,
     );
 

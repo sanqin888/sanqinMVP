@@ -60,7 +60,7 @@ import {
 import { UberTelemetryService } from './uber-telemetry.service';
 
 @Injectable()
-export class UberMenuDraftAdapter {
+export class UberMenuDraftGateway {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly telemetry: UberTelemetryService;
 
