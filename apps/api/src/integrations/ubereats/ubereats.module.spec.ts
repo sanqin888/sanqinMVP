@@ -7,10 +7,11 @@ const read = (...parts: string[]) =>
 describe('Uber Eats composition roots', () => {
   const httpRoot = read('ubereats.module.ts');
   const httpModule = read('modules', 'ubereats-http.module.ts');
-  const workerModule = read(
-    'composition', 'ubereats-worker.module.ts',
+  const workerModule = read('composition', 'ubereats-worker.module.ts');
+  const applicationModule = read(
+    'composition',
+    'ubereats-application.module.ts',
   );
-  const applicationModule = read('composition', 'ubereats-application.module.ts');
 
   it('organizes HTTP capabilities as explicit internal modules', () => {
     for (const capability of ['Merchant', 'Orders', 'Menu', 'Operations']) {
