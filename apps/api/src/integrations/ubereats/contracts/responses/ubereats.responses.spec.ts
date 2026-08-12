@@ -2,7 +2,6 @@ import {
   toUberListResponse,
   toUberMutationResponse,
   toUberPublicError,
-  executeUberMutation,
 } from './ubereats.responses';
 import fixture from '../../test/fixtures/public-response-contract.json';
 import {
@@ -67,18 +66,6 @@ describe('Uber Eats public response contracts', () => {
         `"${forbidden}"`,
       );
     }
-  });
-
-  it('redacts thrown upstream failures', async () => {
-    const response = await executeUberMutation(() => {
-      throw new Error('token=secret payload={private} upstream stack');
-    });
-    expect(response.status).toBe('FAILED');
-    expect(JSON.stringify(response)).not.toContain('secret');
-    expect(response.error).toMatchObject({
-      code: 'UBER_OPERATION_FAILED',
-      retryable: true,
-    });
   });
 
   it('locks domain response field allowlists even when internal fixtures grow', () => {

@@ -2,6 +2,7 @@ import {
   UBER_PUBLIC_CONTRACT_VERSION,
   toUberListResponse,
   toUberMutationResponse,
+  type UberOperationStatus,
 } from '../contracts/responses/ubereats.responses';
 import type {
   UberOperationMutationResponse,
@@ -81,5 +82,7 @@ export const presentOperationsSummary = (result: {
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };
-export const presentOperationMutation = (): UberOperationMutationResponse =>
-  toUberMutationResponse();
+export const presentOperationMutation = (
+  operationId: string,
+  status: UberOperationStatus = 'SUCCEEDED',
+): UberOperationMutationResponse => toUberMutationResponse(status, operationId);
