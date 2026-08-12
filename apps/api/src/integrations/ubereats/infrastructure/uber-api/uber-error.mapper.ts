@@ -1,4 +1,4 @@
-import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
+import { redactUberLogText } from '../shared/uber-log.utils';
 
 export function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)

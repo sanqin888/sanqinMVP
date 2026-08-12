@@ -1,5 +1,5 @@
-import type { UberOrderStatus } from '../orders/uber-order.types';
-import type { UberStoreScopedInput } from '../menu/uber-menu.types';
+import type { UberStoreScopedInput } from '../../domain/menu/uber-menu.types';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 export type OrderStatusSyncContext = { targetStatus: UberOrderStatus };
 export const UberOpsTicketPriority = {

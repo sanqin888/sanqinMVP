@@ -1,6 +1,6 @@
 import { UberValidationError } from '../shared/uber-application.error';
 import { toUberEatsApplicationError } from '../shared/uber-domain-error.mapper';
-import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
+import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 import {
   UberOpsTicketPriority,
   UberOpsTicketStatus,
@@ -18,7 +18,7 @@ import {
   type UberOpsTicket,
   type UberReconciliationReport,
   type UberReconciliationReportResult,
-} from '../../domain/operations/uber-operations.types';
+} from './uber-operations.types';
 import { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type {

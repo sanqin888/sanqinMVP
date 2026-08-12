@@ -13,7 +13,7 @@ import {
   UberOrderPayloadParser,
   validateUberOrderAmounts,
 } from '../../domain/orders/uber-order-payload.parser';
-import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
+import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import { UberApplicationError } from '../shared/uber-application.error';

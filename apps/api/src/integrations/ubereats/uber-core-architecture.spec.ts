@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -12,6 +13,38 @@ const CORE_ROOTS = [
 ];
 
 describe('Uber Eats framework-independent core architecture', () => {
+  it('only contains explicitly designed domain subdirectories', () => {
+    const domainRoot = resolve(UBER_EATS_ROOT, 'domain');
+    const allowedSubdomains = [
+      'menu',
+      'merchant',
+      'orders',
+      'shared',
+      'webhook',
+    ];
+    const actualSubdomains = readdirSync(domainRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+    expect(actualSubdomains).toEqual(
+      allowedSubdomains.filter((name) => actualSubdomains.includes(name)),
+    );
+  });
+
+  it('prevents domain shared from depending back on a concrete subdomain', () => {
+    const domainRoot = resolve(UBER_EATS_ROOT, 'domain');
+    const sharedFiles = scanTypeScript(domainRoot, {
+      productionOnly: true,
+    }).filter(({ path }) => path.startsWith(resolve(domainRoot, 'shared')));
+
+    expect(
+      importViolations(sharedFiles, UBER_EATS_ROOT, (specifier) =>
+        /(?:^|\/)(?:menu|merchant|orders|webhook)(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
+
   it('keeps domain independent from contracts', () => {
     const domain = scanTypeScript(resolve(UBER_EATS_ROOT, 'domain'), {
       productionOnly: true,

@@ -13,7 +13,7 @@ import type {
   UberOrderOperationsRepositoryPort,
   UberReconciliationRepositoryPort,
 } from '../../application/operations/uber-operations.ports';
-import type { UberOpsTicketStatus } from '../../domain/operations/uber-operations.types';
+import type { UberOpsTicketStatus } from '../../application/operations/uber-operations.types';
 import {
   toDomainTicketPriority,
   toDomainTicketStatus,

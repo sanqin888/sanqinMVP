@@ -6,7 +6,7 @@ import type {
   UberOpsTicketStatus,
   UberOpsTicketType,
   UberReconciliationReport,
-} from '../../domain/operations/uber-operations.types';
+} from './uber-operations.types';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 export type UberReconciliationOrder = {

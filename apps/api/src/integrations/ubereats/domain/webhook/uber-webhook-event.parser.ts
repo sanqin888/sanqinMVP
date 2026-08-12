@@ -1,4 +1,4 @@
-import { normalizeUberEventType } from '../shared/uber-integration.utils';
+import { normalizeUberEventType } from './uber-event-type';
 import {
   parseUberWebhookEnvelopeV1,
   webhookObject,

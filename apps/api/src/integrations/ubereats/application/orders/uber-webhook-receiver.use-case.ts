@@ -7,7 +7,7 @@ import {
   UberWebhookEnvelopeError,
 } from '../../domain/webhook/uber-webhook-envelope';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
-import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
+import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import { UberValidationError } from '../shared/uber-application.error';
 import {
   type UberWebhookInboxPort,

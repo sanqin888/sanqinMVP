@@ -5,7 +5,7 @@ import type {
   UpsertOptionItemConfigInput,
   UpsertPriceBookItemInput,
 } from '../../domain/menu/uber-menu.types';
-import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
+import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 import { UberTelemetryService } from './uber-telemetry.service';
 
 @Injectable()
