@@ -1,5 +1,4 @@
-import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
-import { parseUberStoreProvisioningV1 } from '../../contracts/events/uber-store-provisioning.v1';
+import type { UberStoreProvisioningEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
 import {
   type UberTelemetryPort,
   type UberWebhookInboxPort,
@@ -12,22 +11,13 @@ export class HandleUberMerchantWebhookHandler {
   ) {}
 
   async execute(
-    eventType: string,
     eventId: string,
-    payload: unknown,
+    event: UberStoreProvisioningEventV1,
   ): Promise<void> {
-    const normalized = normalizeUberEventType(eventType);
-    if (
-      normalized === 'store.provisioned' ||
-      normalized === 'store.deprovisioned'
-    ) {
-      const event = parseUberStoreProvisioningV1(payload);
-      if (event)
-        await this.inbox.setStoreProvisioned(event.storeId, event.provisioned);
-    }
+    await this.inbox.setStoreProvisioned(event.storeId, event.provisioned);
     await this.telemetry.captureEvent(
-      `ubereats_${normalized.replaceAll('.', '_')}`,
-      { eventType, eventId },
+      `ubereats_${event.eventType.replaceAll('.', '_')}`,
+      { eventType: event.eventType, eventId },
     );
   }
 }

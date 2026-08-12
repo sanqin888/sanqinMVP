@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { acceptanceMatrix, ContractDomain } from './contract-matrix';
-import { parseUberWebhookEnvelopeV1 } from '../contracts/events/uber-webhook-envelope.v1';
+import { parseUberWebhookEnvelopeV1 } from '../domain/webhook/uber-webhook-envelope';
 
 const isJsonObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

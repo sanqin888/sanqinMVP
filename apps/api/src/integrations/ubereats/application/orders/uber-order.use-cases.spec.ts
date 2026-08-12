@@ -4,7 +4,7 @@ import {
   RequestUberOrderActionUseCase,
 } from './uber-order.use-cases';
 import { UberOrderActionService } from './uber-order-action.service';
-import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
+import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
 
 const notification = {
   resourceId: 'order-1',

@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 
 import {
   formatSourceViolation,
@@ -46,5 +46,24 @@ describe('Uber Eats contracts architecture', () => {
           /(?:^|\/)prisma(?:\/|$)/i.test(specifier),
       ),
     ).toEqual([]);
+  });
+
+  it('only describes wire shapes, never domain transitions or workflow dispatch', () => {
+    const forbiddenBehavior =
+      /\b(?:parseUber(?:Order|Menu|Store)|dispatchUber|markSucceeded|markFailed|setStoreProvisioned|provisioned\s*:|family\s*:)\b|\bswitch\s*\(/;
+    const violations = productionFiles.flatMap((file) =>
+      file.path.startsWith(`events${sep}`) &&
+      forbiddenBehavior.test(file.source)
+        ? [
+            formatSourceViolation(
+              CONTRACTS_ROOT,
+              file,
+              'domain normalization, state transition, or workflow dispatch',
+            ),
+          ]
+        : [],
+    );
+
+    expect(violations).toEqual([]);
   });
 });
