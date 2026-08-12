@@ -1,4 +1,5 @@
 import { UberValidationError } from '../errors/uber-application.error';
+import { toUberEatsApplicationError } from '../uber-domain-error.mapper';
 import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
 import {
   UberOpsTicketPriority,
@@ -205,7 +206,7 @@ export class RetryUberOpsTicketUseCase {
       await tickets.markInProgress(id);
       return found;
     });
-    let errorMessage: string | null = null;
+    let retryError: unknown;
     try {
       if (ticket.type === UberOpsTicketType.ORDER_STATUS_SYNC) {
         if (!ticket.externalOrderId)
@@ -233,8 +234,13 @@ export class RetryUberOpsTicketUseCase {
         });
       }
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'unknown_error';
+      retryError = error;
     }
+    const errorMessage = retryError
+      ? retryError instanceof Error
+        ? retryError.message
+        : 'unknown_error'
+      : null;
     const updated = await this.unitOfWork.transaction(({ tickets }) =>
       tickets.finishRetry(id, errorMessage),
     );
@@ -244,6 +250,7 @@ export class RetryUberOpsTicketUseCase {
       retryCount: updated.retryCount,
       ...(updated.lastError ? { lastError: updated.lastError } : {}),
     });
+    if (retryError) throw toUberEatsApplicationError(retryError);
     return { ok: !updated.lastError, ...updated };
   }
 }
