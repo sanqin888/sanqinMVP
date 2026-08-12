@@ -24,18 +24,22 @@ import {
 } from './uber-operations-enum.mapper';
 import { toUberOrderStatus } from './uber-order-status.mapper';
 
-type ReconciliationRow = {
-  reportStableId: string;
-  rangeStart: Date;
-  rangeEnd: Date;
-  totalOrders: number;
-  totalAmountCents: number;
-  syncedOrders: number;
-  pendingOrders: number;
-  failedSyncEvents: number;
-  discrepancyOrders: number;
-  createdAt: Date;
-};
+const reconciliationSelect = {
+  reportStableId: true,
+  rangeStart: true,
+  rangeEnd: true,
+  totalOrders: true,
+  totalAmountCents: true,
+  syncedOrders: true,
+  pendingOrders: true,
+  failedSyncEvents: true,
+  discrepancyOrders: true,
+  createdAt: true,
+} satisfies Prisma.UberReconciliationReportSelect;
+
+type ReconciliationRow = Prisma.UberReconciliationReportGetPayload<{
+  select: typeof reconciliationSelect;
+}>;
 
 export const mapReconciliationRow = (row: ReconciliationRow) => ({
   reportStableId: row.reportStableId,
@@ -50,20 +54,24 @@ export const mapReconciliationRow = (row: ReconciliationRow) => ({
   createdAt: row.createdAt,
 });
 
-type TicketRow = {
-  ticketStableId: string;
-  storeId: string;
-  type: Parameters<typeof toDomainTicketType>[0];
-  status: Parameters<typeof toDomainTicketStatus>[0];
-  priority: Parameters<typeof toDomainTicketPriority>[0];
-  title: string;
-  externalOrderId: string | null;
-  menuItemStableId: string | null;
-  retryCount: number;
-  lastError: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
+const ticketSelect = {
+  ticketStableId: true,
+  storeId: true,
+  type: true,
+  status: true,
+  priority: true,
+  title: true,
+  externalOrderId: true,
+  menuItemStableId: true,
+  retryCount: true,
+  lastError: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.UberOpsTicketSelect;
+
+type TicketRow = Prisma.UberOpsTicketGetPayload<{
+  select: typeof ticketSelect;
+}>;
 
 export const mapOpsTicketRow = (row: TicketRow) => ({
   ticketStableId: row.ticketStableId,
@@ -144,18 +152,7 @@ export class UberReconciliationPrismaRepository implements UberReconciliationRep
       where: { storeId },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      select: {
-        reportStableId: true,
-        rangeStart: true,
-        rangeEnd: true,
-        totalOrders: true,
-        totalAmountCents: true,
-        syncedOrders: true,
-        pendingOrders: true,
-        failedSyncEvents: true,
-        discrepancyOrders: true,
-        createdAt: true,
-      },
+      select: reconciliationSelect,
     });
     return rows.map(mapReconciliationRow);
   }
@@ -213,25 +210,12 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
       },
       orderBy: [{ status: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
       take: 200,
-      select: {
-        ticketStableId: true,
-        storeId: true,
-        type: true,
-        status: true,
-        priority: true,
-        title: true,
-        externalOrderId: true,
-        menuItemStableId: true,
-        retryCount: true,
-        lastError: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: ticketSelect,
     });
     return rows.map(mapOpsTicketRow);
   }
   async summary(storeId: string, status?: UberOpsTicketStatus) {
-    const where = {
+    const where: Prisma.UberOpsTicketWhereInput = {
       storeId,
       ...(status ? { status: toPrismaTicketStatus(status) } : {}),
     };
