@@ -15,7 +15,6 @@ import {
 import { SyncUberOrderStatusUseCase } from '../application/orders/sync-uber-order-status.use-case';
 import { ListPendingUberOrdersQuery } from '../application/orders/list-pending-uber-orders.query';
 import {
-  type UberOrderActionGatewayPort,
   type UberOrderDetailGatewayPort,
   UBER_ORDER_ACTION_GATEWAY,
   UBER_ORDER_DETAIL_GATEWAY,
@@ -40,6 +39,7 @@ import {
   UBER_ORDER_SYNC_UNIT_OF_WORK,
 } from '../application/ports/uber-order-sync.ports';
 import {
+  type UberOrderActionGatewayPort,
   type UberOrderActionRepositoryPort,
   type UberOrderImportRepositoryPort,
   UBER_ORDER_ACTION_COMMAND_GATEWAY,
