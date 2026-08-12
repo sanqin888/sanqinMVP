@@ -12,6 +12,9 @@ import { ReplayUnsupportedUberWebhooksUseCase } from './application/orders/repla
 import { ReceiveUberWebhookUseCase } from './application/orders/uber-webhook-receiver.use-case';
 import { UberMenuDraftAdapter } from './infrastructure/persistence/uber-menu-draft.adapter';
 import { UberMenuRepository } from './infrastructure/persistence/uber-menu.repository';
+import { PrismaUberMenuUnitOfWork } from './infrastructure/persistence/uber-menu-draft.repositories';
+import { UBER_MENU_UNIT_OF_WORK } from './application/ports/uber-menu-repositories.ports';
+import { LoadUberMenuWorkflowUseCase } from './application/menu/load-uber-menu-workflow.use-case';
 import {
   UberOrderSyncPrismaRepository,
   UberOrderSyncPrismaUnitOfWork,
@@ -419,6 +422,14 @@ export const UBER_EATS_INTERNAL_PROVIDERS = [
       new UberMenuDraftUseCase(drafts),
   },
   UberMenuRepository,
+  PrismaUberMenuUnitOfWork,
+  { provide: UBER_MENU_UNIT_OF_WORK, useExisting: PrismaUberMenuUnitOfWork },
+  {
+    provide: LoadUberMenuWorkflowUseCase,
+    inject: [UBER_MENU_UNIT_OF_WORK],
+    useFactory: (unitOfWork: PrismaUberMenuUnitOfWork) =>
+      new LoadUberMenuWorkflowUseCase(unitOfWork),
+  },
   {
     provide: UBER_MENU_DRAFT_QUERY_PORT,
     useExisting: UberMenuRepository,
