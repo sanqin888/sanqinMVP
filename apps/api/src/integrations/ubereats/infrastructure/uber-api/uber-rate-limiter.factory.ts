@@ -1,5 +1,5 @@
 import { UberConfigService } from '../config/uber-config.service';
-import { UberTelemetryService } from '../persistence/uber-telemetry.service';
+import type { UberRateLimiterMetricsPort } from '../../application/ports/uber-rate-limiter.port';
 import { ProcessUberRateLimiter } from './uber-rate-limiter';
 import {
   DistributedUberRateLimiter,
@@ -9,7 +9,7 @@ import {
 export function createUberRateLimiter(
   env: NodeJS.ProcessEnv,
   config: UberConfigService,
-  metrics: UberTelemetryService,
+  metrics: UberRateLimiterMetricsPort,
 ) {
   const mode = env.UBER_EATS_RATE_LIMITER_MODE;
   if (mode !== 'process' && mode !== 'distributed')

@@ -3,7 +3,7 @@ import { UberEatsHttpModule } from './modules/ubereats-http.module';
 import {
   UBER_EATS_PUBLIC_PROVIDERS,
   UberEatsApplicationModule,
-} from './ubereats-application.module';
+} from './composition/ubereats-application.module';
 
 /** HTTP composition root. Polling is enabled only by importing the worker module. */
 @Module({
