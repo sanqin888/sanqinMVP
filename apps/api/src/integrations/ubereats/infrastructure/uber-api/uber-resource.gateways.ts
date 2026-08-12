@@ -7,7 +7,7 @@ import {
   type UberResourceGateway,
   type UberGatewayTransportPort,
 } from './uber-api.gateway';
-import type { UberOrderActionGatewayPort } from '../../application/merchant/uber-merchant-api.ports';
+import type { UberOrderActionGatewayPort } from '../../application/orders/uber-order-api.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import {
   UberTransientUpstreamError,

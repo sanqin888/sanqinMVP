@@ -1,26 +1,31 @@
 import type {
   UberEatsAvailabilitySyncResult,
+  UberEatsAvailabilitySyncStatus,
   UberEatsOrderActionResult,
   UberEatsSyncError,
 } from '../public-api';
+import type {
+  UberAvailabilitySyncResult,
+  UberAvailabilitySyncStatus,
+} from '../domain/menu/uber-menu.types';
 
 export const publicSyncError = (
   message: string,
   retryable = true,
 ): UberEatsSyncError => ({ code: 'UNKNOWN', message, retryable });
 
-export const presentAvailabilitySync = (result: {
-  status: 'PENDING' | 'FAILED' | 'SKIPPED_NOT_PUBLISHED';
-  stores: Array<{
-    storeId: string;
-    status: 'PENDING' | 'FAILED' | 'SKIPPED_NOT_PUBLISHED';
-    error?: string;
-  }>;
-}): UberEatsAvailabilitySyncResult => ({
-  status: result.status === 'PENDING' ? 'SYNC_REQUESTED' : result.status,
+const presentAvailabilityStatus = (
+  status: UberAvailabilitySyncStatus,
+): UberEatsAvailabilitySyncStatus =>
+  status === 'PENDING' || status === 'SYNCED' ? 'SYNC_REQUESTED' : status;
+
+export const presentAvailabilitySync = (
+  result: UberAvailabilitySyncResult,
+): UberEatsAvailabilitySyncResult => ({
+  status: presentAvailabilityStatus(result.status),
   stores: result.stores.map((store) => ({
     storeId: store.storeId,
-    status: store.status === 'PENDING' ? 'SYNC_REQUESTED' : store.status,
+    status: presentAvailabilityStatus(store.status),
     ...(store.error ? { error: publicSyncError(store.error) } : {}),
   })),
 });
