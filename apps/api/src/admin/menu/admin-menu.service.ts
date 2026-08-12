@@ -1,6 +1,7 @@
 // apps/api/src/admin/menu/admin-menu.service.ts
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,8 +23,11 @@ import {
 } from '../../common/daily-specials';
 import type { Prisma } from '@prisma/client';
 import { SpecialPricingMode } from '@prisma/client';
-import { UberMenuAvailabilityUseCase } from '../../integrations/ubereats/application/menu/uber-menu-availability.use-case';
-import type { UberAvailabilitySyncResult } from '../../integrations/ubereats/domain/menu/uber-menu.types';
+import {
+  UBER_EATS_MENU_AVAILABILITY,
+  type UberEatsAvailabilitySyncResult,
+  type UberEatsMenuAvailabilityPort,
+} from '../../integrations/ubereats/public-api';
 
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -69,7 +73,8 @@ export class AdminMenuService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly uberEatsService: UberMenuAvailabilityUseCase,
+    @Inject(UBER_EATS_MENU_AVAILABILITY)
+    private readonly uberEatsService: UberEatsMenuAvailabilityPort,
   ) {}
 
   async updateCategory(
@@ -1036,7 +1041,7 @@ export class AdminMenuService {
   private async syncUberMenuItemAvailabilitySafely(
     menuItemStableId: string,
     isAvailable: boolean,
-  ): Promise<UberAvailabilitySyncResult> {
+  ): Promise<UberEatsAvailabilitySyncResult> {
     try {
       return await this.uberEatsService.syncUberMenuItemAvailability({
         menuItemStableId,

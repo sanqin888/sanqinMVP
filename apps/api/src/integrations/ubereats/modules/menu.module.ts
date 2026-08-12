@@ -68,6 +68,7 @@ import {
 import { UberImageValidator } from '../infrastructure/uber-api/uber-image.validator';
 import { UberMenuGateway } from '../infrastructure/uber-api/uber-resource.gateways';
 import { UberEatsInternalInfrastructureModule } from './ubereats-internal-infrastructure.module';
+import { UBER_EATS_MENU_AVAILABILITY } from '../public-api';
 
 export const UBER_EATS_MENU_PROVIDERS = [
   UberMenuGateway,
@@ -220,6 +221,10 @@ export const UBER_EATS_MENU_PROVIDERS = [
     provide: UBER_MENU_AVAILABILITY_PORT,
     useExisting: UberMenuAvailabilityUseCase,
   },
+  {
+    provide: UBER_EATS_MENU_AVAILABILITY,
+    useExisting: UberMenuAvailabilityUseCase,
+  },
 ];
 
 export const UBER_EATS_MENU_EXPORTS = [
@@ -229,6 +234,7 @@ export const UBER_EATS_MENU_EXPORTS = [
   RecoverTimedOutMenuPublicationsUseCase,
   UberMenuNotificationHandler,
   UberMenuAvailabilityUseCase,
+  UBER_EATS_MENU_AVAILABILITY,
 ];
 
 @Module({

@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { NestFactory } from '@nestjs/core';
 
-import { UberWorkerHealthService } from './integrations/ubereats/composition/uber-worker-health.service';
+import { UberWorkerHealthService } from './integrations/ubereats/worker';
 import { UberEatsWorkerModule } from './ubereats-worker.module';
 
 export function assertUberWorkerEnabled(

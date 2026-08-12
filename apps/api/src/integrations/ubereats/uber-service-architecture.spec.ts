@@ -21,11 +21,14 @@ const LAYERS = [
 type Layer = (typeof LAYERS)[number];
 
 const layerOf = (path: string): Layer | undefined =>
-  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts')
+  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
+  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
     ? 'composition'
-    : LAYERS.find((layer) =>
-        path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, layer)}${sep}`),
-      );
+    : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
+      ? 'contracts'
+      : LAYERS.find((layer) =>
+          path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, layer)}${sep}`),
+        );
 
 const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   api: ['api', 'application', 'contracts'],
@@ -120,6 +123,20 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(
       importViolations(externalFiles, SOURCE_ROOT, (specifier) =>
         /integrations\/ubereats\/infrastructure(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
+
+  it('requires external callers to use explicit UberEats public entries', () => {
+    const externalFiles = allSourceFiles.filter(
+      ({ path }) => !path.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`),
+    );
+
+    expect(
+      importViolations(externalFiles, SOURCE_ROOT, (specifier) =>
+        /integrations\/ubereats\/(?:application|domain|modules|composition)(?:\/|$)/.test(
+          specifier,
+        ),
       ),
     ).toEqual([]);
   });
