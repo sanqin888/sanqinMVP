@@ -11,8 +11,176 @@ import type {
   UberMenuRepositoryScope,
   UberMenuUnitOfWork,
 } from '../../application/ports/uber-menu-repositories.ports';
+import type { UberMenuDraftSource } from '../../domain/menu/uber-menu-draft-source';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
+
+/** Owns the Prisma query shape and maps it to the domain graph snapshot. */
+export class UberMenuDraftSourcePrismaRepository {
+  constructor(private readonly db: MenuDb) {}
+
+  async load(
+    storeId: string,
+    uberStoreId: string,
+  ): Promise<UberMenuDraftSource> {
+    const [
+      categories,
+      menuItems,
+      modifierTemplates,
+      itemConfigs,
+      optionConfigs,
+      modifierConfigs,
+      categoryConfigs,
+      childGroupBindings,
+    ] = await Promise.all([
+      this.db.menuCategory.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          sortOrder: true,
+          isActive: true,
+        },
+      }),
+      this.db.menuItem.findMany({
+        where: {
+          deletedAt: null,
+          visibility: 'PUBLIC',
+          publishToUberEats: true,
+        },
+        select: {
+          id: true,
+          stableId: true,
+          categoryId: true,
+          nameEn: true,
+          nameZh: true,
+          basePriceCents: true,
+          isAvailable: true,
+          sortOrder: true,
+          imageUrl: true,
+          ingredientsEn: true,
+          optionGroups: {
+            where: { isEnabled: true },
+            select: {
+              templateGroup: { select: { stableId: true } },
+              sortOrder: true,
+            },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      }),
+      this.db.menuOptionGroupTemplate.findMany({
+        where: { deletedAt: null },
+        select: {
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          defaultMinSelect: true,
+          defaultMaxSelect: true,
+          isAvailable: true,
+          sortOrder: true,
+          options: {
+            where: { deletedAt: null },
+            select: {
+              stableId: true,
+              nameEn: true,
+              nameZh: true,
+              priceDeltaCents: true,
+              isAvailable: true,
+              sortOrder: true,
+              childLinks: {
+                select: {
+                  childOption: {
+                    select: { templateGroup: { select: { stableId: true } } },
+                  },
+                },
+              },
+            },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      }),
+      this.db.uberItemChannelConfig.findMany({
+        where: { storeId },
+        select: {
+          menuItemStableId: true,
+          priceCents: true,
+          isAvailable: true,
+          displayName: true,
+          displayDescription: true,
+        },
+      }),
+      this.db.uberOptionItemConfig.findMany({
+        where: { storeId },
+        select: {
+          optionChoiceStableId: true,
+          priceDeltaCents: true,
+          isAvailable: true,
+          displayName: true,
+          displayDescription: true,
+        },
+      }),
+      this.db.uberModifierGroupConfig.findMany({
+        where: { storeId },
+        select: {
+          templateGroupStableId: true,
+          displayName: true,
+          minSelect: true,
+          maxSelect: true,
+          isActive: true,
+        },
+      }),
+      this.db.uberCategoryConfig.findMany({
+        where: { storeId },
+        select: {
+          menuCategoryStableId: true,
+          displayName: true,
+          sortOrder: true,
+          isActive: true,
+        },
+      }),
+      this.db.uberOptionChildGroupBinding.findMany({
+        where: { storeId },
+        select: {
+          parentOptionChoiceStableId: true,
+          childTemplateGroupStableId: true,
+          isBound: true,
+        },
+      }),
+    ]);
+
+    return {
+      storeId,
+      uberStoreId,
+      categories,
+      menuItems: menuItems.map(({ optionGroups, ...item }) => ({
+        ...item,
+        optionGroups: optionGroups.map((link) => ({
+          templateGroupStableId: link.templateGroup.stableId,
+          sortOrder: link.sortOrder,
+        })),
+      })),
+      modifierTemplates: modifierTemplates.map(({ options, ...template }) => ({
+        ...template,
+        options: options.map(({ childLinks, ...option }) => ({
+          ...option,
+          childTemplateGroupStableIds: childLinks.map(
+            (link) => link.childOption.templateGroup.stableId,
+          ),
+        })),
+      })),
+      itemConfigs,
+      optionConfigs,
+      modifierConfigs,
+      categoryConfigs,
+      childGroupBindings,
+    };
+  }
+}
 const object = (value: unknown) =>
   value && typeof value === 'object'
     ? (value as Record<string, unknown>)

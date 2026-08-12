@@ -6,7 +6,6 @@ import {
   UberOpsTicketType,
   type Prisma,
 } from '@prisma/client';
-import { createHash } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/errors/uber-application.error';
 import type {
@@ -54,11 +53,14 @@ import {
   validateUberMenuPayload,
 } from '../../domain/menu/uber-menu-payload.builder';
 import {
-  flattenNestedModifiersForUber,
+  buildUberMenuGraph,
+  buildUberNodeId,
   validateUberMenuGraph,
   summarizeUberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
 
+import { UberMenuDraftSourcePrismaRepository } from './uber-menu-draft.repositories';
+import { emptyUberMenuDraftFilters } from '../../domain/menu/uber-menu-draft-source';
 import { UberTelemetryService } from './uber-telemetry.service';
 
 const uberMenuValidation = (message: string) =>
@@ -291,7 +293,12 @@ export class UberMenuDraftGateway
     const uberStoreId =
       storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
     const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
-    const normalized = this.normalizeAndValidateUberMenuGraph(graph);
+    const validation = validateUberMenuGraph(graph);
+    const normalized = {
+      graph: validation.graph,
+      warnings: validation.warnings,
+      errors: validation.kind === 'invalid' ? validation.errors : [],
+    };
     const schedule = await this.getUberMenuSchedule();
     const payload = buildUberUploadMenuPayload(
       normalized.graph,
@@ -299,7 +306,7 @@ export class UberMenuDraftGateway
       schedule.taxRatePercentage,
     );
     const payloadValidation = validateUberMenuPayload(payload);
-    const summary = this.summarizePublishGraph(normalized.graph);
+    const summary = summarizeUberMenuGraph(normalized.graph);
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
         where: { storeId: normalizedStoreId },
@@ -1175,473 +1182,10 @@ export class UberMenuDraftGateway
   }
 
   private async buildUberMenuGraph(storeId: string, uberStoreId: string) {
-    const excludedCategoryIds = new Set<string>();
-    const excludedGroupIds = new Set<string>();
-    const excludedMenuItemStableIds = new Set<string>();
-    const excludedOptionChoiceStableIds = new Set<string>();
-    return this.buildUberMenuGraphWithFilters(storeId, uberStoreId, {
-      excludedCategoryIds,
-      excludedGroupIds,
-      excludedMenuItemStableIds,
-      excludedOptionChoiceStableIds,
-    });
-  }
-
-  private async buildUberMenuGraphWithFilters(
-    storeId: string,
-    uberStoreId: string,
-    filters: {
-      excludedCategoryIds: Set<string>;
-      excludedGroupIds: Set<string>;
-      excludedMenuItemStableIds: Set<string>;
-      excludedOptionChoiceStableIds: Set<string>;
-    },
-  ) {
-    const [
-      categories,
-      menuItems,
-      templates,
-      itemConfigs,
-      optionConfigs,
-      modifierGroupConfigs,
-      categoryConfigs,
-      childGroupBindings,
-    ] = await Promise.all([
-      this.prisma.menuCategory.findMany({
-        where: { deletedAt: null },
-        select: {
-          id: true,
-          stableId: true,
-          nameEn: true,
-          nameZh: true,
-          sortOrder: true,
-          isActive: true,
-        },
-      }),
-      this.prisma.menuItem.findMany({
-        where: {
-          deletedAt: null,
-          visibility: 'PUBLIC',
-          publishToUberEats: true,
-        },
-        select: {
-          id: true,
-          stableId: true,
-          categoryId: true,
-          nameEn: true,
-          nameZh: true,
-          basePriceCents: true,
-          isAvailable: true,
-          sortOrder: true,
-          imageUrl: true,
-          ingredientsEn: true,
-          optionGroups: {
-            where: { isEnabled: true },
-            select: {
-              templateGroup: { select: { stableId: true } },
-              sortOrder: true,
-            },
-            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-          },
-        },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-      }),
-      this.prisma.menuOptionGroupTemplate.findMany({
-        where: { deletedAt: null },
-        select: {
-          stableId: true,
-          nameEn: true,
-          nameZh: true,
-          defaultMinSelect: true,
-          defaultMaxSelect: true,
-          isAvailable: true,
-          sortOrder: true,
-          options: {
-            where: { deletedAt: null },
-            select: {
-              stableId: true,
-              nameEn: true,
-              nameZh: true,
-              priceDeltaCents: true,
-              isAvailable: true,
-              sortOrder: true,
-              childLinks: {
-                select: {
-                  childOption: {
-                    select: { templateGroup: { select: { stableId: true } } },
-                  },
-                },
-              },
-            },
-            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-          },
-        },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-      }),
-      this.prisma.uberItemChannelConfig.findMany({
-        where: { storeId },
-        select: {
-          menuItemStableId: true,
-          priceCents: true,
-          isAvailable: true,
-          displayName: true,
-          displayDescription: true,
-        },
-      }),
-      this.prisma.uberOptionItemConfig.findMany({
-        where: { storeId },
-        select: {
-          optionChoiceStableId: true,
-          priceDeltaCents: true,
-          isAvailable: true,
-          displayName: true,
-          displayDescription: true,
-        },
-      }),
-      this.prisma.uberModifierGroupConfig.findMany({
-        where: { storeId },
-        select: {
-          templateGroupStableId: true,
-          displayName: true,
-          minSelect: true,
-          maxSelect: true,
-          isActive: true,
-        },
-      }),
-      this.prisma.uberCategoryConfig.findMany({
-        where: { storeId },
-        select: {
-          menuCategoryStableId: true,
-          displayName: true,
-          sortOrder: true,
-          isActive: true,
-        },
-      }),
-      this.prisma.uberOptionChildGroupBinding.findMany({
-        where: { storeId },
-        select: {
-          parentOptionChoiceStableId: true,
-          childTemplateGroupStableId: true,
-          isBound: true,
-        },
-      }),
-    ]);
-
-    const categoryConfigMap = new Map(
-      categoryConfigs.map((config) => [config.menuCategoryStableId, config]),
-    );
-    const itemConfigMap = new Map(
-      itemConfigs.map((item) => [item.menuItemStableId, item]),
-    );
-    const optionConfigMap = new Map(
-      optionConfigs.map((config) => [config.optionChoiceStableId, config]),
-    );
-    const groupConfigMap = new Map(
-      modifierGroupConfigs.map((config) => [
-        config.templateGroupStableId,
-        config,
-      ]),
-    );
-    const childGroupBindingMap = new Map<
-      string,
-      Array<{ childTemplateGroupStableId: string; isBound: boolean }>
-    >();
-    for (const binding of childGroupBindings) {
-      const list =
-        childGroupBindingMap.get(binding.parentOptionChoiceStableId) ?? [];
-      list.push({
-        childTemplateGroupStableId: binding.childTemplateGroupStableId,
-        isBound: binding.isBound,
-      });
-      childGroupBindingMap.set(binding.parentOptionChoiceStableId, list);
-    }
-    const categoryById = new Map(
-      categories.map((category) => [category.id, category]),
-    );
-
-    const groupDraftMap = new Map<
-      string,
-      {
-        id: string;
-        sourceStableId: string;
-        title: string;
-        minSelect: number;
-        maxSelect: number;
-        isAvailable: boolean;
-        optionItemIds: string[];
-      }
-    >();
-
-    const optionItemDraftMap = new Map<
-      string,
-      {
-        id: string;
-        sourceType: 'OPTION_ITEM';
-        sourceStableId: string;
-        title: string;
-        description: string | null;
-        basePriceCents: number;
-        priceCents: number;
-        isAvailable: boolean;
-        modifierGroupIds: string[];
-        hasDelta: boolean;
-        imageUrl: string | null;
-      }
-    >();
-
-    const itemDrafts: Array<{
-      id: string;
-      sourceType: 'MENU_ITEM';
-      sourceStableId: string;
-      title: string;
-      description: string | null;
-      basePriceCents: number;
-      priceCents: number;
-      isAvailable: boolean;
-      modifierGroupIds: string[];
-      categoryStableId: string;
-      sortOrder: number;
-      hasDelta: boolean;
-      imageUrl: string | null;
-    }> = [];
-
-    for (const template of templates) {
-      const groupConfig = groupConfigMap.get(template.stableId);
-      const groupId = this.buildStableUberNodeId(
-        'group',
-        storeId,
-        template.stableId,
-      );
-      if (filters.excludedGroupIds.has(groupId)) {
-        continue;
-      }
-      const optionItemIds: string[] = [];
-      const minSelect = groupConfig?.minSelect ?? template.defaultMinSelect;
-      const maxSelect =
-        groupConfig?.maxSelect ??
-        template.defaultMaxSelect ??
-        Math.max(template.options.length, minSelect, 1);
-      const groupIsActive = groupConfig?.isActive ?? template.isAvailable;
-      if (!groupIsActive) {
-        continue;
-      }
-
-      for (const choice of template.options) {
-        if (filters.excludedOptionChoiceStableIds.has(choice.stableId)) {
-          continue;
-        }
-        const optionConfig = optionConfigMap.get(choice.stableId);
-        const optionItemId = this.buildStableUberNodeId(
-          'item',
-          storeId,
-          choice.stableId,
-        );
-        const optionAvailable =
-          optionConfig?.isAvailable !== undefined
-            ? optionConfig.isAvailable
-            : choice.isAvailable;
-        const optionPriceCents =
-          optionConfig?.priceDeltaCents ?? choice.priceDeltaCents;
-        const sourceChildGroupStableIds = new Set(
-          choice.childLinks.map(
-            (link) => link.childOption.templateGroup.stableId,
-          ),
-        );
-        const bindings = childGroupBindingMap.get(choice.stableId) ?? [];
-        for (const binding of bindings) {
-          if (binding.isBound) {
-            sourceChildGroupStableIds.add(binding.childTemplateGroupStableId);
-          } else {
-            sourceChildGroupStableIds.delete(
-              binding.childTemplateGroupStableId,
-            );
-          }
-        }
-        const childGroupIds = Array.from(sourceChildGroupStableIds).map(
-          (childTemplateGroupStableId) =>
-            this.buildStableUberNodeId(
-              'group',
-              storeId,
-              childTemplateGroupStableId,
-            ),
-        );
-
-        optionItemIds.push(optionItemId);
-        optionItemDraftMap.set(choice.stableId, {
-          id: optionItemId,
-          sourceType: 'OPTION_ITEM',
-          sourceStableId: choice.stableId,
-          title:
-            optionConfig?.displayName ||
-            composeUberDisplayName(choice.nameEn, choice.nameZh),
-          description: optionConfig?.displayDescription || null,
-          basePriceCents: choice.priceDeltaCents,
-          priceCents: optionPriceCents,
-          isAvailable: optionAvailable,
-          modifierGroupIds: childGroupIds,
-          hasDelta:
-            optionPriceCents !== choice.priceDeltaCents ||
-            optionAvailable !== choice.isAvailable,
-          imageUrl: null,
-        });
-      }
-
-      groupDraftMap.set(template.stableId, {
-        id: groupId,
-        sourceStableId: template.stableId,
-        title:
-          groupConfig?.displayName ||
-          composeUberDisplayName(template.nameEn, template.nameZh),
-        minSelect,
-        maxSelect,
-        isAvailable: template.isAvailable,
-        optionItemIds,
-      });
-    }
-
-    for (const menuItem of menuItems) {
-      if (filters.excludedMenuItemStableIds.has(menuItem.stableId)) {
-        continue;
-      }
-      const itemConfig = itemConfigMap.get(menuItem.stableId);
-      const category = categoryById.get(menuItem.categoryId);
-      if (!category) continue;
-
-      const categoryConfig = categoryConfigMap.get(category.stableId);
-      const categoryActive = categoryConfig?.isActive ?? category.isActive;
-      if (!categoryActive) {
-        continue;
-      }
-
-      const mappedGroupIds = menuItem.optionGroups
-        .map((link) => {
-          const templateStableId = link.templateGroup.stableId;
-          if (!groupDraftMap.has(templateStableId)) return null;
-          return this.buildStableUberNodeId('group', storeId, templateStableId);
-        })
-        .filter((groupId): groupId is string => Boolean(groupId));
-
-      const priceCents = itemConfig?.priceCents ?? menuItem.basePriceCents;
-      const isAvailable =
-        itemConfig?.isAvailable !== undefined
-          ? itemConfig.isAvailable
-          : menuItem.isAvailable;
-
-      itemDrafts.push({
-        id: this.buildStableUberNodeId('item', storeId, menuItem.stableId),
-        sourceType: 'MENU_ITEM',
-        sourceStableId: menuItem.stableId,
-        title:
-          itemConfig?.displayName ||
-          composeUberDisplayName(menuItem.nameEn, menuItem.nameZh),
-        // Website ingredients are reusable English description copy, not a
-        // legally complete allergen declaration. Never emit ingredientsZh.
-        description:
-          itemConfig?.displayDescription?.trim() ||
-          menuItem.ingredientsEn?.trim() ||
-          null,
-        basePriceCents: menuItem.basePriceCents,
-        priceCents,
-        isAvailable,
-        modifierGroupIds: mappedGroupIds,
-        categoryStableId: category.stableId,
-        sortOrder: menuItem.sortOrder,
-        hasDelta:
-          priceCents !== menuItem.basePriceCents ||
-          isAvailable !== menuItem.isAvailable,
-        imageUrl: menuItem.imageUrl,
-      });
-    }
-
-    const categoryDrafts = categories
-      .map((category) => {
-        const categoryId = this.buildStableUberNodeId(
-          'category',
-          storeId,
-          category.stableId,
-        );
-        if (filters.excludedCategoryIds.has(categoryId)) return null;
-        const categoryConfig = categoryConfigMap.get(category.stableId);
-        const categoryActive = categoryConfig?.isActive ?? category.isActive;
-        if (!categoryActive) return null;
-
-        const categoryItemIds = itemDrafts
-          .filter((item) => item.categoryStableId === category.stableId)
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((item) => item.id);
-        if (!categoryItemIds.length) return null;
-
-        return {
-          id: categoryId,
-          sourceStableId: category.stableId,
-          title:
-            categoryConfig?.displayName ||
-            composeUberDisplayName(category.nameEn, category.nameZh),
-          sortOrder: categoryConfig?.sortOrder ?? category.sortOrder,
-          entities: categoryItemIds,
-        };
-      })
-      .filter((category): category is NonNullable<typeof category> =>
-        Boolean(category),
-      )
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-
-    const sourceGroups = Array.from(groupDraftMap.values()).map((group) => ({
-      ...group,
-      optionItemIds: [...group.optionItemIds],
-    }));
-    const sourceOptionItems = Array.from(optionItemDraftMap.values()).map(
-      (item) => ({ ...item, modifierGroupIds: [...item.modifierGroupIds] }),
-    );
-    const flattened = this.flattenNestedModifiersForUber({
-      storeId,
-      groups: sourceGroups,
-      optionItems: sourceOptionItems,
-    });
-
-    return {
-      menuId: this.buildStableUberNodeId('menu', storeId, uberStoreId),
-      categories: categoryDrafts,
-      items: [...itemDrafts, ...flattened.optionItems],
-      groups: flattened.groups,
-      sourceItems: [...itemDrafts, ...sourceOptionItems],
-      sourceGroups,
-      optionMappings: flattened.optionMappings,
-      mappingErrors: flattened.mappingErrors,
-    };
-  }
-
-  /**
-   * Uber Eats modifier options cannot own modifier groups. Convert the internal
-   * nested graph into Uber's flat graph without mutating the source graph.
-   */
-
-  private flattenNestedModifiersForUber(input: {
-    storeId: string;
-    groups: Array<{
-      id: string;
-      sourceStableId: string;
-      title: string;
-      minSelect: number;
-      maxSelect: number;
-      isAvailable: boolean;
-      optionItemIds: string[];
-    }>;
-    optionItems: Array<{
-      id: string;
-      sourceType: 'OPTION_ITEM';
-      sourceStableId: string;
-      title: string;
-      description: string | null;
-      basePriceCents: number;
-      priceCents: number;
-      isAvailable: boolean;
-      modifierGroupIds: string[];
-      hasDelta: boolean;
-      imageUrl: string | null;
-    }>;
-  }) {
-    return flattenNestedModifiersForUber(input);
+    const source = await new UberMenuDraftSourcePrismaRepository(
+      this.prisma,
+    ).load(storeId, uberStoreId);
+    return buildUberMenuGraph(source, emptyUberMenuDraftFilters());
   }
 
   /**
@@ -1650,34 +1194,6 @@ export class UberMenuDraftGateway
    * exclusions, channel availability and nested-option flattening have already
    * taken effect.
    */
-  normalizeAndValidateUberMenuGraph<
-    T extends {
-      categories: Array<{ id: string; entities: string[] }>;
-      items: Array<{
-        id: string;
-        sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
-        sourceStableId: string;
-        isAvailable: boolean;
-        modifierGroupIds: string[];
-      }>;
-      groups: Array<{
-        id: string;
-        sourceStableId: string;
-        minSelect: number;
-        maxSelect: number;
-        optionItemIds: string[];
-      }>;
-      mappingErrors: Array<{ code: string; message: string }>;
-    },
-  >(graph: T) {
-    const result = validateUberMenuGraph(graph as never);
-    return {
-      graph: result.graph as unknown as T,
-      warnings: result.warnings,
-      errors: result.kind === 'invalid' ? result.errors : [],
-    };
-  }
-
   /** Validate the final wire payload. Both preview and upload must pass here. */
 
   private buildModifierFlatteningReport(
@@ -1980,14 +1496,6 @@ export class UberMenuDraftGateway
     return { type, from, to };
   }
 
-  private summarizePublishGraph(graph: {
-    items: Array<{ hasDelta: boolean }>;
-    categories: unknown[];
-    groups: unknown[];
-  }) {
-    return summarizeUberMenuGraph(graph as never);
-  }
-
   private async markMenuPublishVersionSuccess(
     id: string,
     responsePayload: Record<string, unknown>,
@@ -2055,7 +1563,7 @@ export class UberMenuDraftGateway
         });
         const deterministic = localItems.find(
           (candidate) =>
-            this.buildStableUberNodeId(
+            buildUberNodeId(
               'item',
               storeId ?? 'default',
               candidate.stableId,
@@ -2129,15 +1637,6 @@ export class UberMenuDraftGateway
     }
 
     return row.uberStoreId;
-  }
-
-  private buildStableUberNodeId(
-    nodeType: 'menu' | 'item' | 'group' | 'category' | 'publish',
-    storeId: string,
-    sourceStableId: string,
-  ): string {
-    const raw = `${nodeType}:${storeId}:${sourceStableId}`;
-    return `sanq:${createHash('sha1').update(raw).digest('hex').slice(0, 24)}`;
   }
 
   private async ensureMenuItemExists(menuItemStableId: string) {
