@@ -9,6 +9,13 @@ import {
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/errors/uber-application.error';
+import type {
+  UberMenuConfigQueryPort,
+  UberMenuConfigWritePort,
+  UberMenuDraftDiffPort,
+  UberMenuDraftMutationPort,
+  UberMenuDraftReadPort,
+} from '../../application/ports/uber-menu-draft-workflow.ports';
 import {
   UBER_MENU_PUBLISH_COMMAND,
   type UberMenuPublishCommandPort,
@@ -63,7 +70,14 @@ const uberMenuValidation = (message: string) =>
   });
 
 @Injectable()
-export class UberMenuDraftGateway {
+export class UberMenuDraftGateway
+  implements
+    UberMenuConfigQueryPort,
+    UberMenuConfigWritePort,
+    UberMenuDraftReadPort,
+    UberMenuDraftMutationPort,
+    UberMenuDraftDiffPort
+{
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly telemetry: UberTelemetryService;
 

@@ -13,6 +13,18 @@ import {
   UberMenuNotificationHandler,
 } from '../application/menu/uber-menu-notification.handler';
 import {
+  type UberMenuConfigQueryPort,
+  type UberMenuConfigWritePort,
+  type UberMenuDraftDiffPort,
+  type UberMenuDraftMutationPort,
+  type UberMenuDraftReadPort,
+  UBER_MENU_CONFIG_QUERY_PORT,
+  UBER_MENU_CONFIG_WRITE_PORT,
+  UBER_MENU_DRAFT_DIFF_PORT,
+  UBER_MENU_DRAFT_MUTATION_PORT,
+  UBER_MENU_DRAFT_READ_PORT,
+} from '../application/ports/uber-menu-draft-workflow.ports';
+import {
   type UberMenuDraftCommandPort,
   type UberMenuDraftQueryPort,
   UBER_MENU_DRAFT_COMMAND_PORT,
@@ -35,9 +47,7 @@ import {
 } from '../application/ports/uber-menu-repositories.ports';
 import {
   type UberMenuAvailabilityPort,
-  type UberMenuDraftPort,
   UBER_MENU_AVAILABILITY_PORT,
-  UBER_MENU_DRAFT_PORT,
 } from '../application/ports/uber-use-case.ports';
 import { UberMenuAvailabilityGateway } from '../infrastructure/menu/uber-menu-availability.gateway';
 import { PrismaUberMenuUnitOfWork } from '../infrastructure/persistence/uber-menu-draft.repositories';
@@ -61,7 +71,20 @@ export const UBER_EATS_MENU_PROVIDERS = [
   UberMenuGateway,
   UberImageValidator,
   UberMenuDraftGateway,
-  { provide: UBER_MENU_DRAFT_PORT, useExisting: UberMenuDraftGateway },
+  {
+    provide: UBER_MENU_CONFIG_QUERY_PORT,
+    useExisting: UberMenuDraftGateway,
+  },
+  {
+    provide: UBER_MENU_CONFIG_WRITE_PORT,
+    useExisting: UberMenuDraftGateway,
+  },
+  { provide: UBER_MENU_DRAFT_READ_PORT, useExisting: UberMenuDraftGateway },
+  {
+    provide: UBER_MENU_DRAFT_MUTATION_PORT,
+    useExisting: UberMenuDraftGateway,
+  },
+  { provide: UBER_MENU_DRAFT_DIFF_PORT, useExisting: UberMenuDraftGateway },
   UberMenuAvailabilityGateway,
   {
     provide: UBER_MENU_AVAILABILITY_PORT,
@@ -100,8 +123,27 @@ export const UBER_EATS_MENU_PROVIDERS = [
   },
   {
     provide: UberMenuDraftUseCase,
-    inject: [UBER_MENU_DRAFT_PORT],
-    useFactory: (drafts: UberMenuDraftPort) => new UberMenuDraftUseCase(drafts),
+    inject: [
+      UBER_MENU_CONFIG_QUERY_PORT,
+      UBER_MENU_CONFIG_WRITE_PORT,
+      UBER_MENU_DRAFT_READ_PORT,
+      UBER_MENU_DRAFT_MUTATION_PORT,
+      UBER_MENU_DRAFT_DIFF_PORT,
+    ],
+    useFactory: (
+      configQueries: UberMenuConfigQueryPort,
+      configWrites: UberMenuConfigWritePort,
+      draftQueries: UberMenuDraftReadPort,
+      draftMutations: UberMenuDraftMutationPort,
+      draftDiffs: UberMenuDraftDiffPort,
+    ) =>
+      new UberMenuDraftUseCase(
+        configQueries,
+        configWrites,
+        draftQueries,
+        draftMutations,
+        draftDiffs,
+      ),
   },
   {
     provide: UberMenuDraftConfigUseCase,

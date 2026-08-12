@@ -1,56 +1,74 @@
-import { type UberMenuDraftPort } from '../ports/uber-use-case.ports';
+import type {
+  UberMenuConfigQueryPort,
+  UberMenuConfigWritePort,
+  UberMenuDraftDiffPort,
+  UberMenuDraftMutationPort,
+  UberMenuDraftReadPort,
+} from '../ports/uber-menu-draft-workflow.ports';
 
 /** Draft read/write and diff use cases. Every write is committed by the port in one transaction. */
 export class UberMenuDraftUseCase {
-  constructor(private readonly drafts: UberMenuDraftPort) {}
+  constructor(
+    private readonly configQueries: UberMenuConfigQueryPort,
+    private readonly configWrites: UberMenuConfigWritePort,
+    private readonly draftQueries: UberMenuDraftReadPort,
+    private readonly draftMutations: UberMenuDraftMutationPort,
+    private readonly draftDiffs: UberMenuDraftDiffPort,
+  ) {}
   listUberItemChannelConfigs(storeId?: string) {
-    return this.drafts.listUberItemChannelConfigs(storeId);
+    return this.configQueries.listUberItemChannelConfigs(storeId);
   }
   listUberPublishedMenuItems(storeId?: string) {
-    return this.drafts.listUberPublishedMenuItems(storeId);
+    return this.configQueries.listUberPublishedMenuItems(storeId);
   }
   listUberOptionItemConfigs(storeId?: string) {
-    return this.drafts.listUberOptionItemConfigs(storeId);
+    return this.configQueries.listUberOptionItemConfigs(storeId);
   }
   upsertUberItemChannelConfig(
-    input: Parameters<UberMenuDraftPort['upsertUberItemChannelConfig']>[0],
+    input: Parameters<
+      UberMenuConfigWritePort['upsertUberItemChannelConfig']
+    >[0],
   ) {
-    return this.drafts.upsertUberItemChannelConfig(input);
+    return this.configWrites.upsertUberItemChannelConfig(input);
   }
   upsertUberOptionItemConfig(
-    input: Parameters<UberMenuDraftPort['upsertUberOptionItemConfig']>[0],
+    input: Parameters<UberMenuConfigWritePort['upsertUberOptionItemConfig']>[0],
   ) {
-    return this.drafts.upsertUberOptionItemConfig(input);
+    return this.configWrites.upsertUberOptionItemConfig(input);
   }
   getUberMenuDraft(storeId?: string) {
-    return this.drafts.getUberMenuDraft(storeId);
+    return this.draftQueries.getUberMenuDraft(storeId);
   }
   updateUberDraftItem(
-    ...args: Parameters<UberMenuDraftPort['updateUberDraftItem']>
+    ...args: Parameters<UberMenuDraftMutationPort['updateUberDraftItem']>
   ) {
-    return this.drafts.updateUberDraftItem(...args);
+    return this.draftMutations.updateUberDraftItem(...args);
   }
   updateUberDraftGroup(
-    ...args: Parameters<UberMenuDraftPort['updateUberDraftGroup']>
+    ...args: Parameters<UberMenuDraftMutationPort['updateUberDraftGroup']>
   ) {
-    return this.drafts.updateUberDraftGroup(...args);
+    return this.draftMutations.updateUberDraftGroup(...args);
   }
   updateUberDraftOption(
-    ...args: Parameters<UberMenuDraftPort['updateUberDraftOption']>
+    ...args: Parameters<UberMenuDraftMutationPort['updateUberDraftOption']>
   ) {
-    return this.drafts.updateUberDraftOption(...args);
+    return this.draftMutations.updateUberDraftOption(...args);
   }
   bindUberDraftOptionChildGroup(
-    ...args: Parameters<UberMenuDraftPort['bindUberDraftOptionChildGroup']>
+    ...args: Parameters<
+      UberMenuDraftMutationPort['bindUberDraftOptionChildGroup']
+    >
   ) {
-    return this.drafts.bindUberDraftOptionChildGroup(...args);
+    return this.draftMutations.bindUberDraftOptionChildGroup(...args);
   }
   unbindUberDraftOptionChildGroup(
-    ...args: Parameters<UberMenuDraftPort['unbindUberDraftOptionChildGroup']>
+    ...args: Parameters<
+      UberMenuDraftMutationPort['unbindUberDraftOptionChildGroup']
+    >
   ) {
-    return this.drafts.unbindUberDraftOptionChildGroup(...args);
+    return this.draftMutations.unbindUberDraftOptionChildGroup(...args);
   }
   getUberMenuDraftDiff(storeId?: string) {
-    return this.drafts.getUberMenuDraftDiff(storeId);
+    return this.draftDiffs.getUberMenuDraftDiff(storeId);
   }
 }
