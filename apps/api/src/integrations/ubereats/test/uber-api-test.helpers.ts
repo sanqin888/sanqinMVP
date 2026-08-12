@@ -4,10 +4,7 @@ import type {
   UberGatewayHttpPort,
   UberGatewayTransportPort,
 } from '../infrastructure/uber-api/uber-api.gateway';
-import type {
-  UberHttpRequest,
-  UberHttpResult,
-} from '../infrastructure/uber-api/uber-http.client';
+import type { UberHttpResult } from '../infrastructure/uber-api/uber-http.client';
 
 export const uberHttpResult = <T extends Record<string, unknown>>(
   status: number,
@@ -19,25 +16,22 @@ export const uberHttpResult = <T extends Record<string, unknown>>(
 });
 
 export const createUberHttpFake = (): jest.Mocked<UberGatewayHttpPort> => ({
-  request:
-    jest.fn<
-      <T = unknown>(request: UberHttpRequest) => Promise<UberHttpResult<T>>
-    >(),
-  ensureSuccess: jest.fn<UberGatewayHttpPort['ensureSuccess']>(),
+  request: jest.fn(),
+  ensureSuccess: jest.fn(),
 });
 
 export const createUberAuthFake = (): jest.Mocked<UberGatewayAuthPort> => ({
-  getAccessToken: jest.fn<(scope?: string) => Promise<string>>(),
-  forceRefreshAccessToken: jest.fn<(scope?: string) => Promise<string>>(),
+  getAccessToken: jest.fn(),
+  forceRefreshAccessToken: jest.fn(),
 });
 
 export const createUberRateLimiterFake =
   (): jest.Mocked<UberRateLimiterPort> => ({
-    acquire: jest.fn<UberRateLimiterPort['acquire']>(),
+    acquire: jest.fn(),
   });
 
 export const createUberTransportFake =
   (): jest.Mocked<UberGatewayTransportPort> => ({
-    request: jest.fn<UberGatewayTransportPort['request']>(),
-    inspect: jest.fn<UberGatewayTransportPort['inspect']>(),
+    request: jest.fn(),
+    inspect: jest.fn(),
   });
