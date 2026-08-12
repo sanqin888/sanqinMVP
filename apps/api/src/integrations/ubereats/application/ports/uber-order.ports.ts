@@ -37,7 +37,7 @@ export type UberOrderImportActionIntent = {
 
 export interface UberOrderImportRepositoryPort {
   findMenuMappings(
-    storeId: string,
+    uberStoreId: string,
     externalItemIds: string[],
   ): Promise<UberOrderMenuMapping[]>;
   findByExternalOrderId(externalOrderId: string): Promise<{
@@ -47,6 +47,7 @@ export interface UberOrderImportRepositoryPort {
   } | null>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
+    posStoreId: string;
     eventType: string;
     cursor: UberOrderEventCursor;
     menuMappings: UberOrderMenuMapping[];

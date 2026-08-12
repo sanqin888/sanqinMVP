@@ -156,7 +156,7 @@ export type ParsedUberOrder = {
   externalOrderId: string;
   displayId: string | null;
   pickupCode: string | null;
-  storeId?: string | null;
+  uberStoreId?: string | null;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;

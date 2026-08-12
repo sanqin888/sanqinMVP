@@ -29,13 +29,13 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   ) {}
 
   async findMenuMappings(
-    storeId: string,
+    uberStoreId: string,
     externalItemIds: string[],
   ): Promise<UberOrderMenuMapping[]> {
     if (!externalItemIds.length) return [];
     const rows = await this.prisma.uberPublishedMenuItem.findMany({
       where: {
-        uberStoreId: storeId,
+        uberStoreId,
         uberItemId: { in: [...new Set(externalItemIds)] },
         publishVersion: {
           status: {
@@ -124,7 +124,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         paymentMethod: PaymentMethod.UBEREATS,
         externalOrderId: input.order.externalOrderId,
         clientRequestId: `ubereats:${input.order.externalOrderId}`,
-        storeId: input.order.storeId ?? 'default',
+        storeId: input.posStoreId,
         status: this.toPrismaStatus(targetStatus),
         paidAt: input.order.paidAt,
         fulfillmentType:
