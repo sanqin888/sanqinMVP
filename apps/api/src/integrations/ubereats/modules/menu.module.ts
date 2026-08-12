@@ -62,7 +62,12 @@ import { PrismaUberMenuUnitOfWork } from '../infrastructure/persistence/uber-men
 import { UberMenuNotificationPrismaRepository } from '../infrastructure/persistence/uber-menu-notification-prisma.repository';
 import { UberMenuPublicationPrismaAdapter } from '../infrastructure/persistence/uber-menu-publication-prisma.adapter';
 import { UberMenuSnapshotPrismaAdapter } from '../infrastructure/persistence/uber-menu-snapshot-prisma.adapter';
-import { UberMenuDraftGateway } from '../infrastructure/persistence/uber-menu-workflow-prisma.repository';
+import { UberMenuConfigQueryPrismaAdapter } from '../infrastructure/persistence/uber-menu-config-query-prisma.adapter';
+import { UberMenuConfigWritePrismaAdapter } from '../infrastructure/persistence/uber-menu-config-write-prisma.adapter';
+import { UberMenuDraftReadPrismaAdapter } from '../infrastructure/persistence/uber-menu-draft-read-prisma.adapter';
+import { UberMenuDraftMutationPrismaAdapter } from '../infrastructure/persistence/uber-menu-draft-mutation-prisma.adapter';
+import { UberMenuDraftDiffPrismaAdapter } from '../infrastructure/persistence/uber-menu-draft-diff-prisma.adapter';
+import { UberMenuReferenceQueryPrismaAdapter } from '../infrastructure/persistence/uber-menu-reference-query-prisma.adapter';
 import {
   UberMenuDraftCommandPrismaRepository,
   UberMenuDraftQueryPrismaRepository,
@@ -78,24 +83,35 @@ import { UberEatsInternalInfrastructureModule } from './ubereats-internal-infras
 export const UBER_EATS_MENU_PROVIDERS = [
   UberMenuGateway,
   UberImageValidator,
-  UberMenuDraftGateway,
+  UberMenuConfigQueryPrismaAdapter,
+  UberMenuConfigWritePrismaAdapter,
+  UberMenuDraftReadPrismaAdapter,
+  UberMenuDraftMutationPrismaAdapter,
+  UberMenuDraftDiffPrismaAdapter,
+  UberMenuReferenceQueryPrismaAdapter,
   {
     provide: UBER_MENU_CONFIG_QUERY_PORT,
-    useExisting: UberMenuDraftGateway,
+    useExisting: UberMenuConfigQueryPrismaAdapter,
   },
   {
     provide: UBER_MENU_CONFIG_WRITE_PORT,
-    useExisting: UberMenuDraftGateway,
+    useExisting: UberMenuConfigWritePrismaAdapter,
   },
-  { provide: UBER_MENU_DRAFT_READ_PORT, useExisting: UberMenuDraftGateway },
+  {
+    provide: UBER_MENU_DRAFT_READ_PORT,
+    useExisting: UberMenuDraftReadPrismaAdapter,
+  },
   {
     provide: UBER_MENU_DRAFT_MUTATION_PORT,
-    useExisting: UberMenuDraftGateway,
+    useExisting: UberMenuDraftMutationPrismaAdapter,
   },
-  { provide: UBER_MENU_DRAFT_DIFF_PORT, useExisting: UberMenuDraftGateway },
+  {
+    provide: UBER_MENU_DRAFT_DIFF_PORT,
+    useExisting: UberMenuDraftDiffPrismaAdapter,
+  },
   {
     provide: UBER_MENU_REFERENCE_QUERY_PORT,
-    useExisting: UberMenuDraftGateway,
+    useExisting: UberMenuReferenceQueryPrismaAdapter,
   },
   UberMenuAvailabilityPrismaAdapter,
   {
