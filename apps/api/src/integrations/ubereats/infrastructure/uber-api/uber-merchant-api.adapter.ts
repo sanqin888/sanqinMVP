@@ -8,7 +8,10 @@ import type {
   UberOAuthTokenPort,
   UberStoreApiPort,
 } from '../../application/ports/uber-api.ports';
-import { UberApiGatewayTransport } from './uber-api.gateway';
+import {
+  UberApiGatewayTransport,
+  type UberGatewayTransportPort,
+} from './uber-api.gateway';
 import { UberAuthService } from './uber-token.provider';
 import { UberConfigService } from '../config/uber-config.service';
 
@@ -59,7 +62,10 @@ export class UberOAuthTokenAdapter implements UberOAuthTokenPort {
 export class UberMerchantApiAdapter
   implements UberMerchantApiPort, UberStoreApiPort
 {
-  constructor(private readonly transport: UberApiGatewayTransport) {}
+  constructor(
+    @Inject(UberApiGatewayTransport)
+    private readonly transport: UberGatewayTransportPort,
+  ) {}
 
   async discoverStores(accessToken: string) {
     const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
