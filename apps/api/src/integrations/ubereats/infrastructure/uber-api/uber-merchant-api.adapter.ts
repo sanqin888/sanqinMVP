@@ -6,7 +6,7 @@ import type {
   UberMerchantApiPort,
   UberOAuthTokenPort,
   UberStoreApiPort,
-} from '../../application/ports/uber-api.ports';
+} from '../../application/merchant/uber-merchant-api.ports';
 import {
   UberApiGatewayTransport,
   type UberGatewayTransportPort,
@@ -16,7 +16,7 @@ import { UberCryptoConfigService } from '../crypto/uber-crypto-config.service';
 import {
   isUberApplicationError,
   UberTransientUpstreamError,
-} from '../../application/errors/uber-application.error';
+} from '../../application/shared/uber-application.error';
 
 const object = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)

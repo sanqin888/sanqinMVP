@@ -10,7 +10,7 @@ import {
   type UberAuthConfigPort,
   type UberAuthHttpPort,
 } from './uber-token.provider';
-import type { UberTelemetryPort } from '../../application/ports/uber-order-processing.ports';
+import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
 import {
   createUberTransportFake,
   uberHttpResult,

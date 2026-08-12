@@ -5,11 +5,11 @@ import type {
   UberOrderOutboxPort,
   UberOrderOutboxItem,
   UberOrderStatusAuditPort,
-} from '../../application/ports/uber-order-processing.ports';
-import type { UberJsonValue } from '../../application/ports/uber-json-value';
+} from '../../application/orders/uber-order-processing.ports';
+import type { UberJsonValue } from '../../application/shared/uber-json-value';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
+import { buildUberIdempotencyKey } from '../../application/orders/uber-idempotency-key';
 import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 
 @Injectable()

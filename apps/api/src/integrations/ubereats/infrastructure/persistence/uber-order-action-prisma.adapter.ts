@@ -5,7 +5,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderActionRepositoryPort,
   UberOrderActionTask,
-} from '../../application/ports/uber-order.ports';
+} from '../../application/orders/uber-order.ports';
 
 type ClaimedRow = Omit<UberOrderActionTask, 'taskId'> & { id: string };
 

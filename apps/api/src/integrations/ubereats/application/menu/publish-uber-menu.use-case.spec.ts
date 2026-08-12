@@ -1,5 +1,5 @@
-import { UberValidationError } from '../errors/uber-application.error';
-import type { UberMenuPublicationRepositoryPort } from '../ports/uber-menu-publication.ports';
+import { UberValidationError } from '../shared/uber-application.error';
+import type { UberMenuPublicationRepositoryPort } from './uber-menu-publication.ports';
 import { PublishUberMenuUseCase } from './publish-uber-menu.use-case';
 
 describe('PublishUberMenuUseCase', () => {

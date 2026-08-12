@@ -6,7 +6,7 @@ import { UberApiConfigService } from './uber-api-config.service';
 import {
   UBER_RATE_LIMITER_PORT,
   type UberRateLimiterPort,
-} from '../../application/ports/uber-rate-limiter.port';
+} from '../../application/shared/uber-rate-limiter.port';
 
 export type UberAuthHttpPort = Pick<UberHttpClient, 'request'>;
 export type UberAuthConfigPort = Pick<

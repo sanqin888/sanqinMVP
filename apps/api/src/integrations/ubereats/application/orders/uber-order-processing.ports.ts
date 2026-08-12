@@ -3,7 +3,7 @@ import type {
   UberOrderActionRecord,
   UberOrderStatus,
 } from '../../domain/orders/uber-order.types';
-import type { UberJsonValue } from './uber-json-value';
+import type { UberJsonValue } from '../shared/uber-json-value';
 import type { UberWebhookVerificationInput } from '../../domain/webhook/uber-webhook.types';
 
 export type UberOrderOutboxItem = {
@@ -93,18 +93,6 @@ export interface UberWebhookSignatureVerifier {
 export const UBER_WEBHOOK_SIGNATURE_VERIFIER = Symbol(
   'UBER_WEBHOOK_SIGNATURE_VERIFIER',
 );
-
-export interface UberTelemetryPort {
-  captureEvent(
-    eventName: string,
-    attributes?: Record<string, unknown>,
-  ): Promise<void>;
-  workflowLog(
-    level: 'debug' | 'log' | 'warn' | 'error',
-    message?: unknown,
-  ): void;
-}
-export const UBER_TELEMETRY_PORT = Symbol('UBER_TELEMETRY_PORT');
 
 /** Status accepted by application order synchronization boundaries. */
 export type UberOrderSyncStatus = UberOrderStatus;

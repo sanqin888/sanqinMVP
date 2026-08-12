@@ -6,7 +6,7 @@ import {
   type UberRateLimitLease,
   type UberRateLimiterPort,
   type UberRateLimitRequest,
-} from '../../application/ports/uber-rate-limiter.port';
+} from '../../application/shared/uber-rate-limiter.port';
 
 export interface UberAtomicCommandStore {
   eval(

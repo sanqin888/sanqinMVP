@@ -1,4 +1,4 @@
-import type { UberMenuUnitOfWork } from '../ports/uber-menu-repositories.ports';
+import type { UberMenuUnitOfWork } from './uber-menu-repositories.ports';
 import {
   mergeMenuAvailability,
   validateModifierBindings,

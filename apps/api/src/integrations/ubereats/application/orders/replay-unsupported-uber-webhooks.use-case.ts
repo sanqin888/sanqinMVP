@@ -1,4 +1,4 @@
-import { type UberWebhookInboxPort } from '../ports/uber-order-processing.ports';
+import { type UberWebhookInboxPort } from './uber-order-processing.ports';
 
 /** Administrator operation used only after the deployed contract supports a quarantined type. */
 export class ReplayUnsupportedUberWebhooksUseCase {

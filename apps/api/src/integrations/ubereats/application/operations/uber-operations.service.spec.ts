@@ -1,4 +1,4 @@
-import { UberValidationError } from '../errors/uber-application.error';
+import { UberValidationError } from '../shared/uber-application.error';
 import {
   GenerateUberReconciliationReportUseCase,
   QueryUberOperationsSummary,

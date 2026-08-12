@@ -1,12 +1,12 @@
+import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
 import { createHash } from 'crypto';
 import { dispatchUberWebhookV1 } from '../../domain/webhook/uber-webhook-event.parser';
 import { UberMenuNotificationHandler } from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 import {
-  type UberTelemetryPort,
   type UberWebhookInboxItem,
   type UberWebhookInboxPort,
-} from '../ports/uber-order-processing.ports';
+} from './uber-order-processing.ports';
 import {
   ImportUberOrderUseCase,
   UberOrderStoreMappingError,
@@ -14,7 +14,7 @@ import {
 import {
   UberApplicationError,
   UberValidationError,
-} from '../errors/uber-application.error';
+} from '../shared/uber-application.error';
 
 /** Application use case that receives and routes durable webhook events. */
 export class ProcessUberWebhookInboxUseCase {

@@ -4,7 +4,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderSyncRepositoryPort,
   UberOrderSyncUnitOfWorkPort,
-} from '../../application/ports/uber-order-sync.ports';
+} from '../../application/orders/uber-order-sync.ports';
 import { toUberOrderStatus } from './uber-order-status.mapper';
 
 const pendingStatuses = [

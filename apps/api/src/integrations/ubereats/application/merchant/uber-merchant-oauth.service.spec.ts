@@ -1,8 +1,8 @@
-import { UberTransientUpstreamError } from '../errors/uber-application.error';
+import { UberTransientUpstreamError } from '../shared/uber-application.error';
 import type {
   UberOAuthIdentityTokens,
   UberOAuthTokenPort,
-} from '../ports/uber-api.ports';
+} from '../merchant/uber-merchant-api.ports';
 import type {
   UberMerchantConnectionRepositoryPort,
   UberOAuthStatePort,

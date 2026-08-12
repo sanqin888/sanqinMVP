@@ -23,7 +23,7 @@ import {
   UBER_MENU_DRAFT_DIFF_PORT,
   UBER_MENU_DRAFT_MUTATION_PORT,
   UBER_MENU_DRAFT_READ_PORT,
-} from '../application/ports/uber-menu-draft.ports';
+} from '../application/menu/uber-menu-draft.ports';
 import {
   type UberMenuGatewayPort,
   type UberMenuImageProbePort,
@@ -35,20 +35,20 @@ import {
   UBER_MENU_PUBLICATION_REPOSITORY,
   UBER_MENU_PUBLISH_COMMAND,
   UBER_MENU_SNAPSHOT_REPOSITORY,
-} from '../application/ports/uber-menu-publication.ports';
+} from '../application/menu/uber-menu-publication.ports';
 import {
   UBER_MENU_UNIT_OF_WORK,
   type UberMenuUnitOfWork,
-} from '../application/ports/uber-menu-repositories.ports';
-import { UBER_MENU_AVAILABILITY_PORT } from '../application/ports/uber-use-case.ports';
+} from '../application/menu/uber-menu-repositories.ports';
+import { UBER_MENU_AVAILABILITY_PORT } from '../application/menu/uber-menu-availability.ports';
 import {
   type UberMenuAvailabilityCommandPort,
   type UberMenuAvailabilityQueryPort,
   UBER_MENU_AVAILABILITY_COMMAND,
   UBER_MENU_AVAILABILITY_QUERY,
-} from '../application/ports/uber-menu-availability.ports';
-import type { UberTelemetryPort } from '../application/ports/uber-order-processing.ports';
-import { UBER_TELEMETRY_PORT } from '../application/ports/uber-order-processing.ports';
+} from '../application/menu/uber-menu-availability.ports';
+import type { UberTelemetryPort } from '../application/shared/uber-telemetry.port';
+import { UBER_TELEMETRY_PORT } from '../application/shared/uber-telemetry.port';
 import { UberMenuAvailabilityPrismaAdapter } from '../infrastructure/persistence/uber-menu-availability-prisma.adapter';
 import { PrismaUberMenuUnitOfWork } from '../infrastructure/persistence/uber-menu-draft.repositories';
 import { UberMenuNotificationPrismaRepository } from '../infrastructure/persistence/uber-menu-notification-prisma.repository';

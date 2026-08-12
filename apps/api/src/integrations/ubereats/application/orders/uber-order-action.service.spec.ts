@@ -2,7 +2,7 @@ import type {
   UberOrderActionGatewayPort,
   UberOrderActionRepositoryPort,
   UberOrderActionTask,
-} from '../ports/uber-order.ports';
+} from './uber-order.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 
 const task: UberOrderActionTask = {

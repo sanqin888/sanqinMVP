@@ -1,3 +1,4 @@
+import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
 import { createHash } from 'crypto';
 import {
   canonicalizeUberWebhookPayload,
@@ -7,12 +8,11 @@ import {
 } from '../../domain/webhook/uber-webhook-envelope';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
-import { UberValidationError } from '../errors/uber-application.error';
+import { UberValidationError } from '../shared/uber-application.error';
 import {
-  type UberTelemetryPort,
   type UberWebhookInboxPort,
   type UberWebhookSignatureVerifier,
-} from '../ports/uber-order-processing.ports';
+} from './uber-order-processing.ports';
 
 /** Signature verification, contract parsing and one atomic inbox insert. */
 export class ReceiveUberWebhookUseCase {

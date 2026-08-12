@@ -1,11 +1,11 @@
+import { UBER_TELEMETRY_PORT } from '../application/shared/uber-telemetry.port';
 import type { Provider } from '@nestjs/common';
 import { BrowserWriteCsrfGuard } from '../api/ubereats-csrf.guard';
-import { UBER_RATE_LIMITER_PORT } from '../application/ports/uber-rate-limiter.port';
+import { UBER_RATE_LIMITER_PORT } from '../application/shared/uber-rate-limiter.port';
 import {
-  UBER_TELEMETRY_PORT,
   UBER_WEBHOOK_INBOX_PORT,
   UBER_WEBHOOK_SIGNATURE_VERIFIER,
-} from '../application/ports/uber-order-processing.ports';
+} from '../application/orders/uber-order-processing.ports';
 import { UberCryptoConfigService } from '../infrastructure/crypto/uber-crypto-config.service';
 import { UberApiConfigService } from '../infrastructure/uber-api/uber-api-config.service';
 import { UberWorkerConfigService } from '../infrastructure/workers/uber-worker-config.service';

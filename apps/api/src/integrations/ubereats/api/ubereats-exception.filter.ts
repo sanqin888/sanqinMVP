@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import {
   UberApplicationError,
   type UberErrorCategory,
-} from '../application/errors/uber-application.error';
+} from '../application/shared/uber-application.error';
 import { toUberPublicError } from '../contracts/responses/ubereats.responses';
 
 const STATUS_BY_CATEGORY: Record<UberErrorCategory, number> = {

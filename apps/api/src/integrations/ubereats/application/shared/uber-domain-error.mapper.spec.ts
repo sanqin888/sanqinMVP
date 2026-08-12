@@ -1,9 +1,9 @@
-import { UberMenuScheduleValidationError } from '../domain/menu/uber-menu.errors';
-import { UberOrderActionNotAllowedError } from '../domain/orders/uber-order.errors';
+import { UberMenuScheduleValidationError } from '../../domain/menu/uber-menu.errors';
+import { UberOrderActionNotAllowedError } from '../../domain/orders/uber-order.errors';
 import {
   UberBusinessConflictError,
   UberValidationError,
-} from './errors/uber-application.error';
+} from './uber-application.error';
 import { toUberEatsApplicationError } from './uber-domain-error.mapper';
 
 describe('toUberEatsApplicationError', () => {

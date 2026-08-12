@@ -1,18 +1,18 @@
 import { createHash } from 'crypto';
-import { UberValidationError } from '../errors/uber-application.error';
+import { UberValidationError } from '../shared/uber-application.error';
 import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
 import {
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
 } from '../../domain/menu/uber-menu-payload.builder';
-import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
+import { buildUberIdempotencyKey } from '../orders/uber-idempotency-key';
 import {
   type UberMenuGatewayPort,
   type UberMenuImageProbePort,
   type UberMenuPublicationRepositoryPort,
   type UberMenuPublishSnapshot,
   type UberMenuSnapshotRepositoryPort,
-} from '../ports/uber-menu-publication.ports';
+} from './uber-menu-publication.ports';
 
 export class PublishUberMenuUseCase {
   constructor(

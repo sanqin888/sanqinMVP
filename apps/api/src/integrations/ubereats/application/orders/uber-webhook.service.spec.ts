@@ -20,7 +20,7 @@ import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use
 import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
 import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.helpers';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
-import type { UberWebhookInboxPort } from '../ports/uber-order-processing.ports';
+import type { UberWebhookInboxPort } from './uber-order-processing.ports';
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>

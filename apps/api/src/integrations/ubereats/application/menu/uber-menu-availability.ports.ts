@@ -1,3 +1,21 @@
+import type {
+  SyncAvailabilityInput,
+  SyncOptionAvailabilityInput,
+  UberAvailabilitySyncResult,
+} from '../../domain/menu/uber-menu.types';
+
+export const UBER_MENU_AVAILABILITY_PORT = Symbol(
+  'UBER_MENU_AVAILABILITY_PORT',
+);
+export interface UberMenuAvailabilityPort {
+  syncUberMenuItemAvailability(
+    input: SyncAvailabilityInput,
+  ): Promise<UberAvailabilitySyncResult>;
+  syncUberOptionItemAvailability(
+    input: SyncOptionAvailabilityInput,
+  ): Promise<UberAvailabilitySyncResult>;
+}
+
 export type UberAvailabilityItemConfig = {
   storeId: string;
   uberStoreId: string | null;

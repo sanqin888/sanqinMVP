@@ -1,13 +1,13 @@
-import { UberMenuDomainError } from '../domain/menu/uber-menu.errors';
+import { UberMenuDomainError } from '../../domain/menu/uber-menu.errors';
 import {
   UberOrderActionNotAllowedError,
   UberOrderDomainError,
-} from '../domain/orders/uber-order.errors';
+} from '../../domain/orders/uber-order.errors';
 import {
   UberApplicationError,
   UberBusinessConflictError,
   UberValidationError,
-} from './errors/uber-application.error';
+} from './uber-application.error';
 
 /** Converts domain failures to the framework-free application error contract. */
 export function toUberEatsApplicationError(

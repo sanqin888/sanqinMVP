@@ -1,3 +1,7 @@
+import {
+  type UberTelemetryPort,
+  UBER_TELEMETRY_PORT,
+} from '../application/shared/uber-telemetry.port';
 import type { Provider } from '@nestjs/common';
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../application/orders/process-uber-webhook-inbox.use-case';
@@ -17,26 +21,24 @@ import {
   type UberOrderDetailGatewayPort,
   UBER_ORDER_ACTION_GATEWAY,
   UBER_ORDER_DETAIL_GATEWAY,
-} from '../application/ports/uber-api.ports';
+} from '../application/orders/uber-order-api.ports';
 import {
   type UberOrderOutboxPort,
   type UberOrderStatusAuditPort,
-  type UberTelemetryPort,
   type UberWebhookInboxPort,
   type UberWebhookSignatureVerifier,
   UBER_ORDER_OUTBOX_PORT,
   UBER_ORDER_STATUS_AUDIT_PORT,
-  UBER_TELEMETRY_PORT,
   UBER_WEBHOOK_INBOX_PORT,
   UBER_WEBHOOK_SIGNATURE_VERIFIER,
-} from '../application/ports/uber-order-processing.ports';
+} from '../application/orders/uber-order-processing.ports';
 import {
   type UberOrderActionQueuePort,
   type UberOrderSyncRepositoryPort,
   type UberOrderSyncUnitOfWorkPort,
   UBER_ORDER_SYNC_REPOSITORY,
   UBER_ORDER_SYNC_UNIT_OF_WORK,
-} from '../application/ports/uber-order-sync.ports';
+} from '../application/orders/uber-order-sync.ports';
 import {
   type UberOrderActionGatewayPort,
   type UberOrderActionRepositoryPort,
@@ -44,8 +46,8 @@ import {
   UBER_ORDER_ACTION_COMMAND_GATEWAY,
   UBER_ORDER_ACTION_REPOSITORY,
   UBER_ORDER_IMPORT_REPOSITORY,
-} from '../application/ports/uber-order.ports';
-import { UBER_ORDER_IMPORT_PORT } from '../application/ports/uber-use-case.ports';
+} from '../application/orders/uber-order.ports';
+import { UBER_ORDER_IMPORT_PORT } from '../application/orders/uber-order.ports';
 import { UberOrderActionPrismaAdapter } from '../infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberOrderImportPrismaAdapter } from '../infrastructure/persistence/uber-order-import-prisma.adapter';
 import {

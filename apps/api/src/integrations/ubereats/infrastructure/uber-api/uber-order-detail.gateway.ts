@@ -2,9 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   UberNonRetryableUpstreamError,
   UberTransientUpstreamError,
-} from '../../application/errors/uber-application.error';
-import type { UberOrderDetailGatewayPort } from '../../application/ports/uber-api.ports';
-import type { UberTelemetryPort } from '../../application/ports/uber-order-processing.ports';
+} from '../../application/shared/uber-application.error';
+import type { UberOrderDetailGatewayPort } from '../../application/orders/uber-order-api.ports';
+import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
 import {
   redactUberLogText,
   summarizeUberDebugResponse,

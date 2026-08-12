@@ -1,5 +1,5 @@
-import { UberValidationError } from '../errors/uber-application.error';
-import { toUberEatsApplicationError } from '../uber-domain-error.mapper';
+import { UberValidationError } from '../shared/uber-application.error';
+import { toUberEatsApplicationError } from '../shared/uber-domain-error.mapper';
 import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
 import {
   UberOpsTicketPriority,
@@ -20,14 +20,14 @@ import {
   type UberReconciliationReportResult,
 } from '../../domain/operations/uber-operations.types';
 import { UberOrderStatus } from '../../domain/orders/uber-order.types';
-import type { UberTelemetryPort } from '../ports/uber-order-processing.ports';
+import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type {
   UberMenuItemOperationsRepositoryPort,
   UberOperationsUnitOfWorkPort,
   UberOpsTicketRepositoryPort,
   UberOrderOperationsRepositoryPort,
   UberReconciliationRepositoryPort,
-} from '../ports/uber-operations.ports';
+} from './uber-operations.ports';
 import type { PublishUberMenuUseCase } from '../menu/publish-uber-menu.use-case';
 import type { UberMenuAvailabilityUseCase } from '../menu/uber-menu-availability.use-case';
 import type { SyncUberStoreStatusUseCase } from '../merchant/uber-merchant-provisioning.service';

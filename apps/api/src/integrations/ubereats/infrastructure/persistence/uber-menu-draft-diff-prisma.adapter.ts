@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { UberMenuPublishStatus } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type { UberMenuDraftDiffPort } from '../../application/ports/uber-menu-draft.ports';
+import type { UberMenuDraftDiffPort } from '../../application/menu/uber-menu-draft.ports';
 import { buildUberMenuDraftDiff } from '../../domain/menu/uber-menu-diff.service';
 import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
 import { UberMenuDraftReadPrismaAdapter } from './uber-menu-draft-read-prisma.adapter';

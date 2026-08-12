@@ -1,10 +1,10 @@
-import type { UberMenuAvailabilityPort } from '../ports/uber-use-case.ports';
-import type { UberMenuPublishCommandPort } from '../ports/uber-menu-publication.ports';
-import type { UberTelemetryPort } from '../ports/uber-order-processing.ports';
+import type { UberMenuAvailabilityPort } from './uber-menu-availability.ports';
+import type { UberMenuPublishCommandPort } from './uber-menu-publication.ports';
+import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type {
   UberMenuAvailabilityCommandPort,
   UberMenuAvailabilityQueryPort,
-} from '../ports/uber-menu-availability.ports';
+} from './uber-menu-availability.ports';
 import type {
   UberAvailabilitySyncResult,
   UberAvailabilitySyncStatus,

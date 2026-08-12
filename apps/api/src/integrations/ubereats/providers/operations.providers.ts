@@ -1,3 +1,7 @@
+import {
+  type UberTelemetryPort,
+  UBER_TELEMETRY_PORT,
+} from '../application/shared/uber-telemetry.port';
 import type { Provider } from '@nestjs/common';
 import {
   CreateUberOpsTicketUseCase,
@@ -20,11 +24,7 @@ import {
   UBER_OPS_TICKET_REPOSITORY,
   UBER_ORDER_OPERATIONS_REPOSITORY,
   UBER_RECONCILIATION_REPOSITORY,
-} from '../application/ports/uber-operations.ports';
-import {
-  UBER_TELEMETRY_PORT,
-  type UberTelemetryPort,
-} from '../application/ports/uber-order-processing.ports';
+} from '../application/operations/uber-operations.ports';
 import {
   UberMenuItemOperationsPrismaRepository,
   UberOperationsPrismaUnitOfWork,

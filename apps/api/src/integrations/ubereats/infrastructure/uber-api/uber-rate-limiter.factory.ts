@@ -1,5 +1,5 @@
 import { UberApiConfigService } from './uber-api-config.service';
-import type { UberRateLimiterMetricsPort } from '../../application/ports/uber-rate-limiter.port';
+import type { UberRateLimiterMetricsPort } from '../../application/shared/uber-rate-limiter.port';
 import { ProcessUberRateLimiter } from './uber-rate-limiter';
 import {
   DistributedUberRateLimiter,

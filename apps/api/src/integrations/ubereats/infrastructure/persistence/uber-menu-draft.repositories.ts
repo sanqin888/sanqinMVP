@@ -10,7 +10,7 @@ import type {
   ModifierConfigRepository,
   UberMenuRepositoryScope,
   UberMenuUnitOfWork,
-} from '../../application/ports/uber-menu-repositories.ports';
+} from '../../application/menu/uber-menu-repositories.ports';
 import type { UberMenuDraftSource } from '../../domain/menu/uber-menu-draft-source';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;

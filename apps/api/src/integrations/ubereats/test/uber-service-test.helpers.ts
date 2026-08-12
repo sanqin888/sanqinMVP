@@ -1,7 +1,7 @@
 import type { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
 import type { ImportUberOrderUseCase } from '../application/orders/uber-order.use-cases';
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
-import type { UberWebhookInboxPort } from '../application/ports/uber-order-processing.ports';
+import type { UberWebhookInboxPort } from '../application/orders/uber-order-processing.ports';
 import type { UberCryptoConfigService } from '../infrastructure/crypto/uber-crypto-config.service';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
 
