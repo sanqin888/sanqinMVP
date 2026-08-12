@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return -- typed framework/Prisma test doubles cross a dynamic boundary */
 // apps/api/src/admin/menu/admin-menu.service.ts
 import {
   BadRequestException,

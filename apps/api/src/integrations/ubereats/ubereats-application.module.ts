@@ -59,7 +59,6 @@ import { SyncUberOrderStatusUseCase } from './application/orders/sync-uber-order
 import { ListPendingUberOrdersQuery } from './application/orders/list-pending-uber-orders.query';
 import { UberCredentialVaultService } from './infrastructure/crypto/uber-credential-vault.service';
 import { UberApiGatewayTransport } from './infrastructure/uber-api/uber-api.gateway';
-import { ProcessUberRateLimiter } from './infrastructure/uber-api/uber-rate-limiter';
 import { UBER_RATE_LIMITER_PORT } from './application/ports/uber-rate-limiter.port';
 import { createUberRateLimiter } from './infrastructure/uber-api/uber-rate-limiter.factory';
 import {
