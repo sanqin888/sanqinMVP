@@ -9,16 +9,40 @@ import type {
   UberOpsTicketListResponse,
   UberReconciliationReportListResponse,
 } from '../contracts/responses/operations.responses';
-import type {
-  UberOperationsCountSummary,
-  UberOpsTicket,
-  UberPage,
-  UberReconciliationReport,
-} from '../domain/operations/uber-operations.types';
 import { dateOf } from './presenter.utils';
 
+interface OperationsPage<T> {
+  items: T[];
+}
+
+interface OpsTicketPresentation {
+  ticketStableId: string;
+  type: string;
+  status: string;
+  priority: string;
+  title: string;
+  externalOrderId: string | null;
+  menuItemStableId: string | null;
+  retryCount: number;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+interface ReconciliationReportPresentation {
+  reportStableId: string;
+  totalOrders: number;
+  totalAmountCents: number;
+  syncedOrders: number;
+  pendingOrders: number;
+  failedSyncEvents: number;
+  discrepancyOrders: number;
+  rangeStart: Date;
+  rangeEnd: Date;
+  createdAt: Date;
+}
+
 export const presentOpsTickets = (
-  result: UberPage<UberOpsTicket>,
+  result: OperationsPage<OpsTicketPresentation>,
 ): UberOpsTicketListResponse => {
   const items = result.items.map((ticket) => ({
     ticketStableId: ticket.ticketStableId,
@@ -35,7 +59,7 @@ export const presentOpsTickets = (
   return toUberListResponse(items, 200);
 };
 export const presentReconciliationReports = (
-  result: UberPage<UberReconciliationReport>,
+  result: OperationsPage<ReconciliationReportPresentation>,
 ): UberReconciliationReportListResponse =>
   toUberListResponse(
     result.items.map((report) => ({
@@ -47,9 +71,9 @@ export const presentReconciliationReports = (
     100,
   );
 
-export const presentOperationsSummary = (
-  result: UberOperationsCountSummary,
-): UberOperationsSummaryResponse => {
+export const presentOperationsSummary = (result: {
+  count: number;
+}): UberOperationsSummaryResponse => {
   return {
     total: result.count,
     succeeded: 0,
