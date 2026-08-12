@@ -1,6 +1,6 @@
 import { UBER_ACTION_BY_LOCAL_STATUS } from '../../domain/orders/uber-order.types';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
-import type { UberJsonValue } from '../ports/uber-persistence.ports';
+import type { UberJsonValue } from '../ports/uber-json-value';
 import { type UberOrderStatusAuditPort } from '../ports/uber-order-processing.ports';
 
 /** Centralizes local-to-Uber status mapping and sync audit records. */

@@ -3,7 +3,7 @@ import type {
   UberOrderActionRecord,
   UberOrderStatus,
 } from '../../domain/orders/uber-order.types';
-import type { UberJsonValue } from './uber-persistence.ports';
+import type { UberJsonValue } from './uber-json-value';
 import type { UberWebhookVerificationInput } from '../../domain/webhook/uber-webhook.types';
 
 export type UberOrderOutboxItem = {
