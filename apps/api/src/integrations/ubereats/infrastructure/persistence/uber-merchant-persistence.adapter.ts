@@ -185,10 +185,10 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
       UberMerchantConnectionRepositoryPort['upsertConnectionByUberUserId']
     >[0],
   ) {
-    const { uberUserId, ...connection } = input;
-    const encryptedAccessToken = this.vault.encrypt(input.accessToken);
-    const encryptedRefreshToken = input.refreshToken
-      ? this.vault.encrypt(input.refreshToken)
+    const { uberUserId, accessToken, refreshToken, ...connection } = input;
+    const encryptedAccessToken = this.vault.encrypt(accessToken);
+    const encryptedRefreshToken = refreshToken
+      ? this.vault.encrypt(refreshToken)
       : null;
     const row = await this.prisma.uberMerchantConnection.upsert({
       where: { merchantUberUserId: uberUserId },
