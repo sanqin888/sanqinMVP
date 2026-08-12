@@ -3,11 +3,11 @@ import type {
   UberEatsAvailabilitySyncStatus,
   UberEatsOrderActionResult,
   UberEatsSyncError,
-} from '../public-api';
+} from '../../public-api';
 import type {
   UberAvailabilitySyncResult,
   UberAvailabilitySyncStatus,
-} from '../domain/menu/uber-menu.types';
+} from '../../domain/menu/uber-menu.types';
 
 export const publicSyncError = (
   message: string,

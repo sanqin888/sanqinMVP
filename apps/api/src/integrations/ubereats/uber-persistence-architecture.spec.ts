@@ -157,7 +157,8 @@ describe('Uber Eats menu persistence dependency direction', () => {
     const moduleFile = scanTypeScript(__dirname, {
       productionOnly: true,
     }).find(
-      (file) => file.path === join(__dirname, 'providers/menu.providers.ts'),
+      (file) =>
+        file.path === join(__dirname, 'infrastructure/nest/menu.wiring.ts'),
     );
     expect(moduleFile).toBeDefined();
 
