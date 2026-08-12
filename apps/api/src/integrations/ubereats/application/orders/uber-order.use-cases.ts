@@ -15,6 +15,7 @@ import {
 } from '../../domain/orders/uber-order-payload.parser';
 import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
+import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 
 /** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
 export class ImportUberOrderUseCase {
@@ -24,6 +25,7 @@ export class ImportUberOrderUseCase {
     private readonly repository: UberOrderImportRepositoryPort,
     private readonly detailGateway: UberOrderDetailGatewayPort,
     private readonly actions: UberOrderActionService,
+    private readonly storeMappings: UberStoreMappingRepositoryPort,
   ) {}
   async execute(
     eventType: string,
@@ -63,11 +65,22 @@ export class ImportUberOrderUseCase {
         });
       return;
     }
+    const storeMapping = order.uberStoreId
+      ? await this.storeMappings.findMapping(order.uberStoreId)
+      : null;
+    const posStoreId = storeMapping?.posExternalStoreId?.trim();
+    if (!posStoreId) {
+      await this.actions.request(order.externalOrderId, 'DENY', {
+        reasonCode: 'INVALID_ORDER',
+        reasonDetail: `门店映射不存在或未配置 POS 门店标识: ${order.uberStoreId ?? 'unknown'}`,
+      });
+      return;
+    }
     const externalIds = order.items
       .map((item) => item.externalItemId)
       .filter((id): id is string => !!id);
     const mappings = await this.repository.findMenuMappings(
-      order.storeId ?? '',
+      order.uberStoreId ?? '',
       externalIds,
     );
     const byId = new Map(mappings.map((item) => [item.externalItemId, item]));
@@ -109,6 +122,7 @@ export class ImportUberOrderUseCase {
         };
     await this.repository.saveImportedOrder({
       order,
+      posStoreId,
       eventType: normalizedEventType,
       cursor,
       menuMappings: mappings,

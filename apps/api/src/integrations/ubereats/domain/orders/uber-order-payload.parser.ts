@@ -79,7 +79,7 @@ export class UberOrderPayloadParser {
       externalOrderId,
       displayId: readString(dto.display_id),
       pickupCode: readString(dto.pickup_code, dto.display_id),
-      storeId: readString(dto.store_id, dto.store?.id),
+      uberStoreId: readString(dto.store_id, dto.store?.id),
       subtotalCents,
       taxCents,
       totalCents,

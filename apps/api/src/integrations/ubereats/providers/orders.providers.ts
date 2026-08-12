@@ -65,6 +65,10 @@ import {
   UBER_EATS_ORDER_ACTIONS,
   UBER_EATS_ORDER_STATUS_SYNC,
 } from '../public-api';
+import {
+  type UberStoreMappingRepositoryPort,
+  UBER_STORE_MAPPING_REPOSITORY,
+} from '../application/merchant/uber-merchant-persistence.ports';
 
 export const UBER_EATS_ORDER_PROVIDERS: Provider[] = [
   UberOrderGateway,
@@ -154,12 +158,15 @@ export const UBER_EATS_ORDER_PROVIDERS: Provider[] = [
       UBER_ORDER_IMPORT_REPOSITORY,
       UBER_ORDER_DETAIL_GATEWAY,
       UberOrderActionService,
+      UBER_STORE_MAPPING_REPOSITORY,
     ],
     useFactory: (
       repository: UberOrderImportRepositoryPort,
       gateway: UberOrderDetailGatewayPort,
       actions: UberOrderActionService,
-    ) => new ImportUberOrderUseCase(repository, gateway, actions),
+      storeMappings: UberStoreMappingRepositoryPort,
+    ) =>
+      new ImportUberOrderUseCase(repository, gateway, actions, storeMappings),
   },
   { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
   {
@@ -168,12 +175,15 @@ export const UBER_EATS_ORDER_PROVIDERS: Provider[] = [
       UBER_ORDER_IMPORT_REPOSITORY,
       UBER_ORDER_DETAIL_GATEWAY,
       UberOrderActionService,
+      UBER_STORE_MAPPING_REPOSITORY,
     ],
     useFactory: (
       repository: UberOrderImportRepositoryPort,
       gateway: UberOrderDetailGatewayPort,
       actions: UberOrderActionService,
-    ) => new CancelUberOrderUseCase(repository, gateway, actions),
+      storeMappings: UberStoreMappingRepositoryPort,
+    ) =>
+      new CancelUberOrderUseCase(repository, gateway, actions, storeMappings),
   },
   {
     provide: RequestUberOrderActionUseCase,

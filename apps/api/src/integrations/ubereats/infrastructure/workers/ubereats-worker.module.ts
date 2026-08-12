@@ -12,6 +12,10 @@ import {
   UberMenuNotificationHandler,
 } from '../../application/menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../../application/merchant/uber-merchant-webhook.handler';
+import {
+  type UberStoreMappingRepositoryPort,
+  UBER_STORE_MAPPING_REPOSITORY,
+} from '../../application/merchant/uber-merchant-persistence.ports';
 import { ClaimAndExecuteUberOrderActionsUseCase } from '../../application/orders/claim-and-execute-uber-order-actions.use-case';
 import { ClaimAndProcessUberWebhookInboxUseCase } from '../../application/orders/claim-and-process-uber-webhook-inbox.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../../application/orders/process-uber-webhook-inbox.use-case';
@@ -54,6 +58,7 @@ import { UberMenuNotificationPrismaRepository } from '../persistence/uber-menu-n
 import { UberMenuPublicationPrismaAdapter } from '../persistence/uber-menu-publication-prisma.adapter';
 import { UberOrderActionPrismaAdapter } from '../persistence/uber-order-action-prisma.adapter';
 import { UberOrderImportPrismaAdapter } from '../persistence/uber-order-import-prisma.adapter';
+import { UberStoreMappingPrismaAdapter } from '../persistence/uber-merchant-persistence.adapter';
 import { UberTelemetryService } from '../persistence/uber-telemetry.service';
 import { UberWebhookInboxPrismaAdapter } from '../persistence/uber-webhook-inbox-prisma.adapter';
 import { UberApiGatewayTransport } from '../uber-api/uber-api.gateway';
@@ -123,6 +128,11 @@ const WORKER_APPLICATION_PROVIDERS = [
     provide: UBER_ORDER_IMPORT_REPOSITORY,
     useExisting: UberOrderImportPrismaAdapter,
   },
+  UberStoreMappingPrismaAdapter,
+  {
+    provide: UBER_STORE_MAPPING_REPOSITORY,
+    useExisting: UberStoreMappingPrismaAdapter,
+  },
   {
     provide: UberOrderActionService,
     inject: [UBER_ORDER_ACTION_REPOSITORY, UBER_ORDER_ACTION_COMMAND_GATEWAY],
@@ -137,12 +147,15 @@ const WORKER_APPLICATION_PROVIDERS = [
       UBER_ORDER_IMPORT_REPOSITORY,
       UBER_ORDER_DETAIL_GATEWAY,
       UberOrderActionService,
+      UBER_STORE_MAPPING_REPOSITORY,
     ],
     useFactory: (
       repository: UberOrderImportRepositoryPort,
       gateway: UberOrderDetailGatewayPort,
       actions: UberOrderActionService,
-    ) => new ImportUberOrderUseCase(repository, gateway, actions),
+      storeMappings: UberStoreMappingRepositoryPort,
+    ) =>
+      new ImportUberOrderUseCase(repository, gateway, actions, storeMappings),
   },
   { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
   {

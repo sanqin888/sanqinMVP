@@ -13,7 +13,7 @@ const notification = {
 } as UberOrderNotificationEventV1;
 const detail = {
   id: 'order-1',
-  store: { id: 'store-1' },
+  store_id: 'uber-store-123',
   subtotal: 100,
   total: 100,
   items: [{ id: 'item-1', quantity: 1, price: 100, total_price: 100 }],
@@ -34,6 +34,10 @@ describe('Uber order use-case boundaries', () => {
       });
     });
     const request = jest.fn();
+    const findMapping = jest.fn().mockResolvedValue({
+      uberStoreId: 'uber-store-123',
+      posExternalStoreId: '4750_Yonge_Street',
+    });
     const useCase = new ImportUberOrderUseCase(
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
@@ -48,16 +52,20 @@ describe('Uber order use-case boundaries', () => {
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(detail) },
       { request } as unknown as UberOrderActionService,
+      { findMapping } as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
 
     expect(saveImportedOrder).toHaveBeenCalledTimes(1);
+    expect(findMapping).toHaveBeenCalledWith('uber-store-123');
     expect(saved.order?.actionIntent).toMatchObject({
       externalOrderId: 'order-1',
       action: 'ACCEPT',
     });
     expect(saved.order?.actionIntent?.idempotencyKey).toMatch(/^sanqin-uber-/);
+    expect(saved.order?.order.uberStoreId).toBe('uber-store-123');
+    expect(saved.order?.posStoreId).toBe('4750_Yonge_Street');
     expect(request).not.toHaveBeenCalled();
   });
 
@@ -79,6 +87,7 @@ describe('Uber order use-case boundaries', () => {
       repository as never,
       { fetchOrderDetail: jest.fn() },
       { request } as unknown as UberOrderActionService,
+      { findMapping: jest.fn() } as never,
     );
 
     await Promise.all([
