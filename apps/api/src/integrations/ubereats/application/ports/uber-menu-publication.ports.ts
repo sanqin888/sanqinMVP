@@ -71,6 +71,15 @@ export type UberMenuPublicationLease = UberMenuPublicationAttempt & {
 };
 
 export interface UberMenuPublicationRepositoryPort {
+  markPublishVersionSucceeded(
+    attemptId: string,
+    responsePayload: Record<string, unknown>,
+  ): Promise<void>;
+  markPublishVersionFailed(
+    attemptId: string,
+    errorMessage: string,
+    errors?: Array<Record<string, unknown>>,
+  ): Promise<void>;
   findSucceededAttempt(
     idempotencyKey: string,
   ): Promise<UberMenuPublicationAttempt | null>;

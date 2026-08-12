@@ -1,12 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
-import {
-  UberMenuPublishStatus,
-  UberOpsTicketPriority,
-  UberOpsTicketStatus,
-  UberOpsTicketType,
-  type Prisma,
-} from '@prisma/client';
+import { UberMenuPublishStatus, type Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/errors/uber-application.error';
 import type {
@@ -17,10 +11,6 @@ import type {
   UberMenuDraftReadPort,
   UberMenuReferenceQueryPort,
 } from '../../application/ports/uber-menu-draft-workflow.ports';
-import {
-  UBER_MENU_PUBLISH_COMMAND,
-  type UberMenuPublishCommandPort,
-} from '../../application/ports/uber-menu-publication.ports';
 import { UberAuthService } from '../uber-api/uber-token.provider';
 import {
   UberConfigService,
@@ -28,12 +18,6 @@ import {
 } from '../config/uber-config.service';
 import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
 import type {
-  PublishMenuInput,
-  SyncAvailabilityInput,
-  SyncOptionAvailabilityInput,
-  UberAvailabilitySyncResult,
-  UberAvailabilitySyncStatus,
-  UberMenuPublishError,
   UberMenuUploadPayload,
   UpdateDraftGroupInput,
   UpdateDraftItemInput,
@@ -72,7 +56,6 @@ import {
   validateUberBusinessSchedule,
   validateUberStoreTimezone,
 } from '../../domain/menu/uber-business-schedule.validator';
-import { summarizeWebhookError } from '../uber-api/uber-error.mapper';
 
 const uberMenuValidation = (message: string) =>
   new UberValidationError({
@@ -99,8 +82,6 @@ export class UberMenuDraftGateway
     private readonly prisma: PrismaService,
     private readonly uberAuthService: UberAuthService,
     @Inject(UberConfigService) private readonly config: UberMenuConfig,
-    @Inject(UBER_MENU_PUBLISH_COMMAND)
-    private readonly publishMenu: UberMenuPublishCommandPort,
     @Optional()
     private readonly credentialVault = new UberCredentialVaultService(),
     @Optional() telemetry?: UberTelemetryService,
@@ -714,186 +695,6 @@ export class UberMenuDraftGateway
     });
   }
 
-  async publishUberMenu(input: PublishMenuInput) {
-    return this.publishMenu.execute(input);
-  }
-
-  async syncUberMenuItemAvailability(
-    input: SyncAvailabilityInput,
-  ): Promise<UberAvailabilitySyncResult> {
-    const requestedStoreId = input.storeId?.trim();
-    const configs = await this.prisma.uberItemChannelConfig.findMany({
-      where: {
-        menuItemStableId: input.menuItemStableId,
-        ...(requestedStoreId ? { storeId: requestedStoreId } : {}),
-      },
-    });
-    if (configs.length === 0) {
-      return { status: 'SKIPPED_NOT_PUBLISHED', stores: [] };
-    }
-
-    const mappings = await this.prisma.uberStoreMapping.findMany({
-      where: { isProvisioned: true },
-      select: { uberStoreId: true },
-    });
-    const stores: UberAvailabilitySyncResult['stores'] = [];
-    for (const config of configs) {
-      const mapping = mappings.find(
-        (candidate) =>
-          candidate.uberStoreId === config.storeId ||
-          candidate.uberStoreId === config.uberStoreId,
-      );
-      if (!mapping || !config.externalItemId) {
-        stores.push({
-          storeId: config.storeId,
-          uberStoreId: mapping?.uberStoreId ?? config.uberStoreId ?? null,
-          status: 'SKIPPED_NOT_PUBLISHED',
-        });
-        continue;
-      }
-
-      await this.prisma.uberItemChannelConfig.update({
-        where: {
-          storeId_menuItemStableId: {
-            storeId: config.storeId,
-            menuItemStableId: input.menuItemStableId,
-          },
-        },
-        data: { isAvailable: input.isAvailable },
-      });
-      try {
-        // This integration currently supports Uber's asynchronous full-menu upload.
-        // Every upload creates a durable publish version and is completed by the
-        // notification handler or the polling confirmation task.
-        const published = await this.publishUberMenu({
-          storeId: config.storeId,
-          dryRun: false,
-          taxRateConfirmed: true,
-          timezoneConfirmed: true,
-        });
-        stores.push({
-          storeId: config.storeId,
-          uberStoreId: mapping.uberStoreId,
-          status: 'PENDING',
-          versionStableId: published.versionStableId,
-        });
-      } catch (error) {
-        const message = summarizeWebhookError(error);
-        await this.prisma.uberOpsTicket.create({
-          data: {
-            storeId: config.storeId,
-            type: UberOpsTicketType.MENU_PUBLISH,
-            status: UberOpsTicketStatus.OPEN,
-            priority: UberOpsTicketPriority.HIGH,
-            title: `Uber 商品可售状态同步失败：${input.menuItemStableId}`,
-            description: '本地状态已保存；请重试整份菜单发布。',
-            menuItemStableId: input.menuItemStableId,
-            lastError: message,
-            context: {
-              publish: {
-                storeId: config.storeId,
-                dryRun: false,
-                taxRateConfirmed: true,
-                timezoneConfirmed: true,
-              },
-              uberStoreId: mapping.uberStoreId,
-              externalItemId: config.externalItemId,
-              isAvailable: input.isAvailable,
-            },
-          },
-        });
-        stores.push({
-          storeId: config.storeId,
-          uberStoreId: mapping.uberStoreId,
-          status: 'FAILED',
-          error: message,
-        });
-      }
-    }
-
-    const status: UberAvailabilitySyncStatus = stores.some(
-      (store) => store.status === 'FAILED',
-    )
-      ? 'FAILED'
-      : stores.some((store) => store.status === 'PENDING')
-        ? 'PENDING'
-        : 'SKIPPED_NOT_PUBLISHED';
-    await this.telemetry.captureEvent(
-      'ubereats_menu_item_availability_sync_requested',
-      {
-        menuItemStableId: input.menuItemStableId,
-        isAvailable: input.isAvailable,
-        status,
-        stores,
-      },
-    );
-    return { status, stores };
-  }
-
-  async syncUberOptionItemAvailability(
-    input: SyncOptionAvailabilityInput,
-  ): Promise<UberAvailabilitySyncResult> {
-    const requestedStoreId = input.storeId?.trim();
-    const mappings = await this.prisma.uberStoreMapping.findMany({
-      where: {
-        isProvisioned: true,
-        ...(requestedStoreId ? { uberStoreId: requestedStoreId } : {}),
-      },
-      select: { uberStoreId: true },
-    });
-    if (mappings.length === 0) {
-      throw uberMenuValidation('未找到已 provision 的 Uber 门店');
-    }
-    const stores: UberAvailabilitySyncResult['stores'] = [];
-    for (const mapping of mappings) {
-      await this.prisma.uberOptionItemConfig.upsert({
-        where: {
-          storeId_optionChoiceStableId: {
-            storeId: mapping.uberStoreId,
-            optionChoiceStableId: input.optionChoiceStableId,
-          },
-        },
-        create: {
-          storeId: mapping.uberStoreId,
-          uberStoreId: mapping.uberStoreId,
-          optionChoiceStableId: input.optionChoiceStableId,
-          isAvailable: input.isAvailable,
-        },
-        update: {
-          uberStoreId: mapping.uberStoreId,
-          isAvailable: input.isAvailable,
-        },
-      });
-      const published = await this.publishUberMenu({
-        storeId: mapping.uberStoreId,
-        dryRun: false,
-        taxRateConfirmed: true,
-        timezoneConfirmed: true,
-      });
-      stores.push({
-        storeId: mapping.uberStoreId,
-        uberStoreId: mapping.uberStoreId,
-        status: 'PENDING',
-        versionStableId: published.versionStableId,
-      });
-    }
-
-    await this.telemetry.captureEvent(
-      'ubereats_option_item_availability_synced',
-      {
-        storeId: requestedStoreId ?? null,
-        optionChoiceStableId: input.optionChoiceStableId,
-        isAvailable: input.isAvailable,
-        stores,
-      },
-    );
-
-    return {
-      status: 'PENDING',
-      stores,
-    };
-  }
-
   private async resolveMerchantConnection(
     merchantUberUserId?: string,
     accessToken?: string,
@@ -1084,38 +885,6 @@ export class UberMenuDraftGateway
       timezoneConfirmed,
     });
     if (message) throw uberMenuValidation(message);
-  }
-
-  private async markMenuPublishVersionSuccess(
-    id: string,
-    responsePayload: Record<string, unknown>,
-  ) {
-    await this.prisma.uberMenuPublishVersion.update({
-      where: { id },
-      data: {
-        status: UberMenuPublishStatus.SUCCEEDED,
-        responsePayload: responsePayload as Prisma.InputJsonValue,
-        errorMessage: null,
-        errorDetails: undefined,
-        finishedAt: new Date(),
-      },
-    });
-  }
-
-  private async markMenuPublishVersionFailed(
-    id: string,
-    errorMessage: string,
-    errors: UberMenuPublishError[] = [],
-  ) {
-    await this.prisma.uberMenuPublishVersion.update({
-      where: { id },
-      data: {
-        status: UberMenuPublishStatus.FAILED,
-        errorMessage,
-        errorDetails: errors as unknown as Prisma.InputJsonValue,
-        finishedAt: new Date(),
-      },
-    });
   }
 
   private async resolveUberProductStableId(
