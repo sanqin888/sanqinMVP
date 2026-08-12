@@ -36,6 +36,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Generate Prisma Client (api only)
+        if: matrix.app == 'api'
+        run: pnpm --filter api prisma:generate
+
       - name: Lint (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} lint
 

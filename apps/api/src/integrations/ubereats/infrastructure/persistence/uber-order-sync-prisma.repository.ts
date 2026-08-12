@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Channel, OrderStatus } from '@prisma/client';
+import { Channel, OrderStatus, type Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderSyncRepositoryPort,
@@ -12,6 +12,18 @@ const pendingStatuses = [
   OrderStatus.paid,
   OrderStatus.making,
 ];
+
+const pendingOrderSelect = {
+  orderStableId: true,
+  clientRequestId: true,
+  status: true,
+  totalCents: true,
+  createdAt: true,
+} satisfies Prisma.OrderSelect;
+
+type PendingOrderRow = Prisma.OrderGetPayload<{
+  select: typeof pendingOrderSelect;
+}>;
 
 @Injectable()
 export class UberOrderSyncPrismaRepository implements UberOrderSyncRepositoryPort {
@@ -35,15 +47,9 @@ export class UberOrderSyncPrismaRepository implements UberOrderSyncRepositoryPor
       where: { channel: Channel.ubereats, status: { in: pendingStatuses } },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      select: {
-        orderStableId: true,
-        clientRequestId: true,
-        status: true,
-        totalCents: true,
-        createdAt: true,
-      },
+      select: pendingOrderSelect,
     });
-    return rows.map((row) => ({
+    return rows.map((row: PendingOrderRow) => ({
       orderStableId: row.orderStableId,
       externalOrderId: row.clientRequestId?.replace('ubereats:', '') ?? null,
       status: toUberOrderStatus(row.status),
@@ -53,7 +59,7 @@ export class UberOrderSyncPrismaRepository implements UberOrderSyncRepositoryPor
   }
 
   async pendingSummary() {
-    const where = {
+    const where: Prisma.OrderWhereInput = {
       channel: Channel.ubereats,
       status: { in: pendingStatuses },
     };
