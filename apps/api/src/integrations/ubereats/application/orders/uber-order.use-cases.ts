@@ -1,4 +1,5 @@
 import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
+import type { UberOrderCancelEventV1 } from '../../contracts/events/uber-order-cancel.v1';
 import type { UberEventOrdering } from '../ports/uber-order-processing.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 import {
@@ -24,7 +25,7 @@ export class ImportUberOrderUseCase {
   async execute(
     eventType: string,
     eventId: string,
-    payload: UberOrderNotificationEventV1,
+    payload: UberOrderNotificationEventV1 | UberOrderCancelEventV1,
     ordering?: UberEventOrdering,
   ) {
     const normalizedEventType = normalizeUberEventType(eventType);

@@ -271,7 +271,7 @@ export class RetryUberOpsTicketUseCase {
 export class QueryUberOperationsSummary {
   constructor(
     private readonly reports: UberReconciliationRepositoryPort,
-    private readonly tickets: UberOpsTicketRepositoryPort,
+    private readonly ticketRepository: UberOpsTicketRepositoryPort,
   ) {}
   async listReports(
     storeId?: string,
@@ -292,14 +292,14 @@ export class QueryUberOperationsSummary {
     status?: UberOpsTicketStatus,
   ): Promise<UberPage<UberOpsTicket>> {
     const normalized = normalizeUberStoreId(storeId);
-    const items = await this.tickets.list(normalized, status);
+    const items = await this.ticketRepository.list(normalized, status);
     return { storeId: normalized, count: items.length, items };
   }
   ticketsSummary(
     storeId?: string,
     status?: UberOpsTicketStatus,
   ): Promise<UberOperationsCountSummary> {
-    return this.tickets.summary(normalizeUberStoreId(storeId), status);
+    return this.ticketRepository.summary(normalizeUberStoreId(storeId), status);
   }
   tickets(
     storeId?: string,
