@@ -2,7 +2,7 @@ import type {
   UberMenuDraftDiffResult,
   UberMenuDraftEdgeDto,
   UberMenuDraftResult,
-} from '../../application/ports/uber-menu-draft-workflow.ports';
+} from './uber-menu-diff.types';
 
 const object = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
