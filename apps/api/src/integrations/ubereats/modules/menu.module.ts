@@ -18,8 +18,10 @@ import {
   type UberMenuDraftDiffPort,
   type UberMenuDraftMutationPort,
   type UberMenuDraftReadPort,
+  type UberMenuReferenceQueryPort,
   UBER_MENU_CONFIG_QUERY_PORT,
   UBER_MENU_CONFIG_WRITE_PORT,
+  UBER_MENU_REFERENCE_QUERY_PORT,
   UBER_MENU_DRAFT_DIFF_PORT,
   UBER_MENU_DRAFT_MUTATION_PORT,
   UBER_MENU_DRAFT_READ_PORT,
@@ -85,6 +87,10 @@ export const UBER_EATS_MENU_PROVIDERS = [
     useExisting: UberMenuDraftGateway,
   },
   { provide: UBER_MENU_DRAFT_DIFF_PORT, useExisting: UberMenuDraftGateway },
+  {
+    provide: UBER_MENU_REFERENCE_QUERY_PORT,
+    useExisting: UberMenuDraftGateway,
+  },
   UberMenuAvailabilityGateway,
   {
     provide: UBER_MENU_AVAILABILITY_PORT,
@@ -129,6 +135,7 @@ export const UBER_EATS_MENU_PROVIDERS = [
       UBER_MENU_DRAFT_READ_PORT,
       UBER_MENU_DRAFT_MUTATION_PORT,
       UBER_MENU_DRAFT_DIFF_PORT,
+      UBER_MENU_REFERENCE_QUERY_PORT,
     ],
     useFactory: (
       configQueries: UberMenuConfigQueryPort,
@@ -136,6 +143,7 @@ export const UBER_EATS_MENU_PROVIDERS = [
       draftQueries: UberMenuDraftReadPort,
       draftMutations: UberMenuDraftMutationPort,
       draftDiffs: UberMenuDraftDiffPort,
+      references: UberMenuReferenceQueryPort,
     ) =>
       new UberMenuDraftUseCase(
         configQueries,
@@ -143,6 +151,7 @@ export const UBER_EATS_MENU_PROVIDERS = [
         draftQueries,
         draftMutations,
         draftDiffs,
+        references,
       ),
   },
   {

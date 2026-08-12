@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { createHash } from 'crypto';
 import {
   UberMenuPublishStatus,
   UberOpsTicketPriority,
@@ -14,6 +15,7 @@ import type {
   UberMenuDraftDiffPort,
   UberMenuDraftMutationPort,
   UberMenuDraftReadPort,
+  UberMenuReferenceQueryPort,
 } from '../../application/ports/uber-menu-draft-workflow.ports';
 import {
   UBER_MENU_PUBLISH_COMMAND,
@@ -24,10 +26,7 @@ import {
   UberConfigService,
   type UberMenuConfig,
 } from '../config/uber-config.service';
-import {
-  normalizeUberStoreId,
-  redactUberLogText,
-} from '../../domain/shared/uber-integration.utils';
+import { normalizeUberStoreId } from '../../domain/shared/uber-integration.utils';
 import type {
   PublishMenuInput,
   SyncAvailabilityInput,
@@ -44,11 +43,9 @@ import type {
 } from '../../domain/menu/uber-menu.types';
 import type { UberMerchantConnectionRecord } from '../../domain/merchant/uber-merchant.types';
 import type { ParsedUberOrderItem } from '../../domain/orders/uber-order.types';
-import { toUberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import {
-  composeUberDisplayName,
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
 } from '../../domain/menu/uber-menu-payload.builder';
@@ -59,7 +56,10 @@ import {
   summarizeUberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
 
-import { UberMenuDraftSourcePrismaRepository } from './uber-menu-draft.repositories';
+import {
+  readStoreTimezone,
+  UberMenuDraftSourcePrismaRepository,
+} from './uber-menu-draft.repositories';
 import { emptyUberMenuDraftFilters } from '../../domain/menu/uber-menu-draft-source';
 import {
   buildDraftCategories,
@@ -68,6 +68,11 @@ import {
 } from '../../domain/menu/uber-menu-draft.projector';
 import { buildUberMenuDraftDiff } from '../../domain/menu/uber-menu-diff.service';
 import { UberTelemetryService } from './uber-telemetry.service';
+import {
+  validateUberBusinessSchedule,
+  validateUberStoreTimezone,
+} from '../../domain/menu/uber-business-schedule.validator';
+import { summarizeWebhookError } from '../uber-api/uber-error.mapper';
 
 const uberMenuValidation = (message: string) =>
   new UberValidationError({
@@ -84,7 +89,8 @@ export class UberMenuDraftGateway
     UberMenuConfigWritePort,
     UberMenuDraftReadPort,
     UberMenuDraftMutationPort,
-    UberMenuDraftDiffPort
+    UberMenuDraftDiffPort,
+    UberMenuReferenceQueryPort
 {
   private static readonly UBER_MODIFIER_COMBINATION_LIMIT = 100;
   private readonly telemetry: UberTelemetryService;
@@ -193,7 +199,6 @@ export class UberMenuDraftGateway
 
   async upsertUberItemChannelConfig(input: UpsertPriceBookItemInput) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
-    await this.ensureMenuItemExists(input.menuItemStableId);
 
     const row = await this.prisma.uberItemChannelConfig.upsert({
       where: {
@@ -240,7 +245,6 @@ export class UberMenuDraftGateway
 
   async upsertUberOptionItemConfig(input: UpsertOptionItemConfigInput) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
-    await this.ensureOptionChoiceExists(input.optionChoiceStableId);
 
     const row = await this.prisma.uberOptionItemConfig.upsert({
       where: {
@@ -392,7 +396,6 @@ export class UberMenuDraftGateway
 
   async updateUberDraftItem(itemId: string, input: UpdateDraftItemInput) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
-    await this.ensureMenuItemExists(itemId);
 
     const menuItem = await this.prisma.menuItem.findUnique({
       where: { stableId: itemId },
@@ -516,7 +519,6 @@ export class UberMenuDraftGateway
     input: UpdateDraftOptionInput,
   ) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
-    await this.ensureOptionChoiceExists(optionItemId);
     const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
       select: { priceDeltaCents: true, isAvailable: true },
@@ -719,7 +721,6 @@ export class UberMenuDraftGateway
   async syncUberMenuItemAvailability(
     input: SyncAvailabilityInput,
   ): Promise<UberAvailabilitySyncResult> {
-    await this.ensureMenuItemExists(input.menuItemStableId);
     const requestedStoreId = input.storeId?.trim();
     const configs = await this.prisma.uberItemChannelConfig.findMany({
       where: {
@@ -777,7 +778,7 @@ export class UberMenuDraftGateway
           versionStableId: published.versionStableId,
         });
       } catch (error) {
-        const message = this.summarizeWebhookError(error);
+        const message = summarizeWebhookError(error);
         await this.prisma.uberOpsTicket.create({
           data: {
             storeId: config.storeId,
@@ -832,8 +833,6 @@ export class UberMenuDraftGateway
   async syncUberOptionItemAvailability(
     input: SyncOptionAvailabilityInput,
   ): Promise<UberAvailabilitySyncResult> {
-    await this.ensureOptionChoiceExists(input.optionChoiceStableId);
-
     const requestedStoreId = input.storeId?.trim();
     const mappings = await this.prisma.uberStoreMapping.findMany({
       where: {
@@ -1028,12 +1027,28 @@ export class UberMenuDraftGateway
    */
   /** Validate the final wire payload. Both preview and upload must pass here. */
 
-  private async getUberMenuSchedule(): Promise<{
-    timezone: string;
-    serviceAvailability: UberServiceAvailability[];
-    taxRatePercentage: number;
-    taxRateSource: string;
-  }> {
+  async findMenuItemByStableId(stableId: string) {
+    return await this.prisma.menuItem.findUnique({
+      where: { stableId },
+      select: { stableId: true },
+    });
+  }
+
+  async findOptionChoiceByStableId(stableId: string) {
+    return await this.prisma.menuOptionTemplateChoice.findUnique({
+      where: { stableId },
+      select: { stableId: true },
+    });
+  }
+
+  async findProvisionedStoreMapping(storeId: string) {
+    return await this.prisma.uberStoreMapping.findFirst({
+      where: { uberStoreId: storeId, isProvisioned: true },
+      select: { uberStoreId: true, rawPayload: true },
+    });
+  }
+
+  async readBusinessSchedule() {
     const [config, hours] = await Promise.all([
       this.prisma.businessConfig.findUnique({
         where: { id: 1 },
@@ -1041,39 +1056,20 @@ export class UberMenuDraftGateway
       }),
       this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
     ]);
-    const timezone = config?.timezone?.trim();
-    if (!timezone) {
-      throw uberMenuValidation('发布 Uber 菜单前必须配置门店时区。');
-    }
-    if (/^(?:UTC|GMT)?[+-]\d{1,2}(?::?\d{2})?$/i.test(timezone)) {
-      throw uberMenuValidation(
-        '夏令时地区不得使用固定 UTC offset，请配置 IANA timezone（例如 America/Toronto）。',
-      );
-    }
-    const salesTaxRate = config?.salesTaxRate;
-    if (
-      typeof salesTaxRate !== 'number' ||
-      !Number.isFinite(salesTaxRate) ||
-      salesTaxRate < 0 ||
-      salesTaxRate > 1
-    ) {
-      throw uberMenuValidation(
-        'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
-      );
-    }
-    const taxRatePercentage = Number((salesTaxRate * 100).toFixed(4));
-    const serviceAvailability = toUberServiceAvailability(hours, timezone);
-    if (serviceAvailability.length === 0) {
-      throw uberMenuValidation(
-        '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
-      );
-    }
-    return {
-      timezone,
-      serviceAvailability,
-      taxRatePercentage,
-      taxRateSource: 'BusinessConfig.salesTaxRate',
-    };
+    return config ? { ...config, hours } : null;
+  }
+
+  private async getUberMenuSchedule(): Promise<{
+    timezone: string;
+    serviceAvailability: UberServiceAvailability[];
+    taxRatePercentage: number;
+    taxRateSource: string;
+  }> {
+    const result = validateUberBusinessSchedule(
+      await this.readBusinessSchedule(),
+    );
+    if (!result.valid) throw uberMenuValidation(result.message);
+    return { ...result, taxRateSource: 'BusinessConfig.salesTaxRate' };
   }
 
   private async assertUberStoreTimezone(
@@ -1081,32 +1077,13 @@ export class UberMenuDraftGateway
     businessTimezone: string,
     timezoneConfirmed: boolean,
   ): Promise<void> {
-    const mapping = await this.prisma.uberStoreMapping.findFirst({
-      where: { uberStoreId },
-      select: { rawPayload: true },
+    const mapping = await this.findProvisionedStoreMapping(uberStoreId);
+    const message = validateUberStoreTimezone({
+      businessTimezone,
+      uberTimezone: readStoreTimezone(mapping?.rawPayload),
+      timezoneConfirmed,
     });
-    const uberTimezone = this.readUberStoreTimezone(mapping?.rawPayload);
-    if (uberTimezone && uberTimezone !== businessTimezone) {
-      throw uberMenuValidation(
-        `BusinessConfig.timezone（${businessTimezone}）与 Uber 门店时区（${uberTimezone}）不一致，已阻止正式发布。`,
-      );
-    }
-    if (!uberTimezone && !timezoneConfirmed) {
-      throw uberMenuValidation(
-        `Uber API 未返回门店时区；请在管理页确认 Uber 门店使用 ${businessTimezone} 后再正式发布。`,
-      );
-    }
-  }
-
-  private readUberStoreTimezone(payload: unknown): string | null {
-    const store = this.asObject(payload);
-    const location = this.asObject(store?.location);
-    return this.readString(
-      store?.timezone,
-      store?.time_zone,
-      location?.timezone,
-      location?.time_zone,
-    );
+    if (message) throw uberMenuValidation(message);
   }
 
   private async markMenuPublishVersionSuccess(
@@ -1232,104 +1209,5 @@ export class UberMenuDraftGateway
       );
     }
     return stableId;
-  }
-
-  private async resolveUberStoreIdOrThrow(storeId: string): Promise<string> {
-    const row = await this.prisma.uberStoreMapping.findFirst({
-      where: {
-        uberStoreId: storeId,
-        isProvisioned: true,
-      },
-      select: { uberStoreId: true },
-    });
-
-    if (!row?.uberStoreId) {
-      throw uberMenuValidation(
-        `未找到已 provision 的 Uber store 映射，请先完成店铺映射。storeId=${storeId}`,
-      );
-    }
-
-    return row.uberStoreId;
-  }
-
-  private async ensureMenuItemExists(menuItemStableId: string) {
-    const menuItem = await this.prisma.menuItem.findUnique({
-      where: { stableId: menuItemStableId },
-      select: { stableId: true },
-    });
-
-    if (!menuItem) {
-      throw uberMenuValidation(`菜单项 ${menuItemStableId} 不存在`);
-    }
-  }
-
-  private async ensureOptionChoiceExists(optionChoiceStableId: string) {
-    const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
-      where: { stableId: optionChoiceStableId },
-      select: { stableId: true },
-    });
-
-    if (!choice) {
-      throw uberMenuValidation(`选项 ${optionChoiceStableId} 不存在`);
-    }
-  }
-
-  private summarizeWebhookError(error: unknown): string {
-    const structured = this.safeStructuredError(error);
-    if (structured.code) {
-      return `${structured.code}: ${structured.detail ?? 'Uber request failed'}`.slice(
-        0,
-        500,
-      );
-    }
-    const nestResponse =
-      error &&
-      typeof error === 'object' &&
-      'getResponse' in error &&
-      typeof (error as { getResponse?: unknown }).getResponse === 'function'
-        ? (error as { getResponse: () => unknown }).getResponse()
-        : null;
-    const rawSummary = nestResponse
-      ? JSON.stringify(nestResponse)
-      : error instanceof Error
-        ? error.message
-        : String(error);
-
-    return redactUberLogText(rawSummary).slice(0, 500);
-  }
-
-  private safeStructuredError(error: unknown): {
-    code?: string;
-    detail?: string;
-    operation?: string;
-  } {
-    if (!error || typeof error !== 'object') return {};
-    const value = error as Record<string, unknown>;
-    return {
-      ...(typeof value.uberCode === 'string' ? { code: value.uberCode } : {}),
-      ...(typeof value.safeDetail === 'string'
-        ? { detail: redactUberLogText(value.safeDetail) }
-        : {}),
-      ...(typeof value.operation === 'string'
-        ? { operation: value.operation }
-        : {}),
-    };
-  }
-
-  private asObject(value: unknown): Record<string, unknown> | null {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return null;
-  }
-
-  private readString(...values: unknown[]): string | null {
-    for (const value of values) {
-      if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed.length > 0) return trimmed;
-      }
-    }
-    return null;
   }
 }
