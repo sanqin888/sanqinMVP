@@ -1,4 +1,4 @@
-/** JSON values are owned by the application boundary, not by Prisma. */
+/** JSON values are owned by the application boundary, not by the ORM. */
 import type { UberWebhookInboxRecordV1 } from '../../contracts/events/uber-webhook-inbox-record.v1';
 
 export type UberJsonValue =
@@ -22,22 +22,6 @@ export type UberOrderAction = {
   attemptCount: number;
   leaseUntil: Date | null;
   result: UberJsonValue | null;
-};
-
-export type UberMerchantConnection = {
-  merchantUberUserId: string;
-  accessTokenEncrypted: string;
-  refreshTokenEncrypted: string | null;
-  expiresAt: Date | null;
-  connectedAt: Date;
-};
-
-export type UberStoreMapping = {
-  uberStoreId: string;
-  storeId: string | null;
-  merchantUberUserId: string;
-  posExternalStoreId: string | null;
-  isProvisioned: boolean;
 };
 
 export type UberMenuPublishAttempt = {
@@ -74,18 +58,6 @@ export interface UberOrderActionPort {
     result: UberJsonValue | null,
     status: string,
   ): Promise<UberOrderAction>;
-}
-
-export interface UberMerchantConnectionPort {
-  findMerchantConnection(id?: string): Promise<UberMerchantConnection | null>;
-  saveMerchantConnection(
-    connection: UberMerchantConnection,
-  ): Promise<UberMerchantConnection>;
-}
-
-export interface UberStoreMappingPort {
-  findStoreMapping(uberStoreId: string): Promise<UberStoreMapping | null>;
-  saveStoreMapping(mapping: UberStoreMapping): Promise<UberStoreMapping>;
 }
 
 export interface UberOAuthStatePort {
@@ -246,8 +218,6 @@ export interface UberOperationsTicketPort {
 export type UberRepositoryScope = {
   webhookInbox: UberWebhookInboxPort;
   orderActions: UberOrderActionPort;
-  merchantConnections: UberMerchantConnectionPort;
-  storeMappings: UberStoreMappingPort;
   oauthStates: UberOAuthStatePort;
   menuPublishes: UberMenuPublishPort;
   operationsTickets: UberOperationsTicketPort;

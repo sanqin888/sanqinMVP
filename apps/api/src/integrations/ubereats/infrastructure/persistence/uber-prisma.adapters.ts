@@ -6,15 +6,11 @@ import type {
   UberJsonValue,
   UberMenuPublishAttempt,
   UberMenuPublishPort,
-  UberMerchantConnection,
-  UberMerchantConnectionPort,
   UberOAuthStatePort,
   UberOperationsTicket,
   UberOperationsTicketPort,
   UberOrderAction,
   UberOrderActionPort,
-  UberStoreMapping,
-  UberStoreMappingPort,
   UberWebhookInbox,
   UberWebhookInboxPort,
   UberRepositoryScope,
@@ -142,86 +138,6 @@ export class PrismaUberOrderActionAdapter implements UberOrderActionPort {
 }
 
 @Injectable()
-export class PrismaUberMerchantConnectionAdapter implements UberMerchantConnectionPort {
-  constructor(private readonly prisma: PrismaService) {}
-  async findMerchantConnection(id?: string) {
-    const row = id
-      ? await this.prisma.uberMerchantConnection.findUnique({
-          where: { merchantUberUserId: id },
-        })
-      : await this.prisma.uberMerchantConnection.findFirst({
-          orderBy: { connectedAt: 'desc' },
-        });
-    return row && this.map(row);
-  }
-  async saveMerchantConnection(value: UberMerchantConnection) {
-    return this.map(
-      await this.prisma.uberMerchantConnection.upsert({
-        where: { merchantUberUserId: value.merchantUberUserId },
-        create: {
-          merchantUberUserId: value.merchantUberUserId,
-          encryptedAccessToken: value.accessTokenEncrypted,
-          encryptedRefreshToken: value.refreshTokenEncrypted,
-          expiresAt: value.expiresAt,
-          connectedAt: value.connectedAt,
-        },
-        update: {
-          encryptedAccessToken: value.accessTokenEncrypted,
-          encryptedRefreshToken: value.refreshTokenEncrypted,
-          expiresAt: value.expiresAt,
-        },
-      }),
-    );
-  }
-  private map(row: any): UberMerchantConnection {
-    return {
-      merchantUberUserId: row.merchantUberUserId,
-      accessTokenEncrypted: row.encryptedAccessToken ?? '',
-      refreshTokenEncrypted: row.encryptedRefreshToken,
-      expiresAt: row.expiresAt,
-      connectedAt: row.connectedAt,
-    };
-  }
-}
-
-@Injectable()
-export class PrismaUberStoreMappingAdapter implements UberStoreMappingPort {
-  constructor(private readonly prisma: PrismaService) {}
-  async findStoreMapping(uberStoreId: string) {
-    const row = await this.prisma.uberStoreMapping.findUnique({
-      where: { uberStoreId },
-    });
-    return row && this.map(row);
-  }
-  async saveStoreMapping(value: UberStoreMapping) {
-    return this.map(
-      await this.prisma.uberStoreMapping.upsert({
-        where: { uberStoreId: value.uberStoreId },
-        create: {
-          uberStoreId: value.uberStoreId,
-          merchantUberUserId: value.merchantUberUserId,
-          posExternalStoreId: value.posExternalStoreId,
-          isProvisioned: value.isProvisioned,
-        },
-        update: {
-          merchantUberUserId: value.merchantUberUserId,
-          posExternalStoreId: value.posExternalStoreId,
-          isProvisioned: value.isProvisioned,
-        },
-      }),
-    );
-  }
-  private map(row: any): UberStoreMapping {
-    return {
-      uberStoreId: row.uberStoreId,
-      storeId: row.posExternalStoreId,
-      merchantUberUserId: row.merchantUberUserId,
-      posExternalStoreId: row.posExternalStoreId,
-      isProvisioned: row.isProvisioned,
-    };
-  }
-}
-
 @Injectable()
 export class PrismaUberOAuthStateAdapter implements UberOAuthStatePort {
   constructor(private readonly prisma: PrismaService) {}
@@ -406,8 +322,6 @@ export class PrismaUberUnitOfWork implements UberUnitOfWork {
       return work({
         webhookInbox: new PrismaUberWebhookInboxAdapter(client),
         orderActions: new PrismaUberOrderActionAdapter(client),
-        merchantConnections: new PrismaUberMerchantConnectionAdapter(client),
-        storeMappings: new PrismaUberStoreMappingAdapter(client),
         oauthStates: new PrismaUberOAuthStateAdapter(client),
         menuPublishes: new PrismaUberMenuPublishAdapter(client),
         operationsTickets: new PrismaUberOperationsTicketAdapter(client),

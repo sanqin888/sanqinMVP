@@ -1,24 +1,17 @@
 import type {
   UberDomainJson,
+  UberOperationsCountSummary,
+  UberOpsTicket,
   UberOpsTicketPriority,
   UberOpsTicketStatus,
   UberOpsTicketType,
+  UberReconciliationReport,
 } from '../../domain/operations/uber-operations.types';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 export type UberReconciliationOrder = {
   status: UberOrderStatus;
   totalCents: number;
-};
-export type UberReconciliationReport = {
-  reportStableId: string;
-  rangeStart: Date;
-  rangeEnd: Date;
-  totalOrders: number;
-  totalAmountCents: number;
-  failedSyncEvents: number;
-  discrepancyOrders: number;
-  createdAt: Date;
 };
 export interface UberOrderOperationsRepositoryPort {
   reconciliationOrders(
@@ -41,22 +34,13 @@ export interface UberReconciliationRepositoryPort {
     },
   ): Promise<Pick<UberReconciliationReport, 'reportStableId' | 'createdAt'>>;
   list(storeId: string, limit: number): Promise<UberReconciliationReport[]>;
-  summary(storeId: string): Promise<{ count: number; updatedAt: Date | null }>;
+  summary(storeId: string): Promise<UberOperationsCountSummary>;
 }
-export type UberOpsTicketRecord = {
-  ticketStableId: string;
-  storeId: string;
-  type: UberOpsTicketType;
-  status: UberOpsTicketStatus;
-  priority: UberOpsTicketPriority;
-  title: string;
+export type UberOpsTicketRecord = UberOpsTicket & {
+  description: string | null;
   externalOrderId: string | null;
   menuItemStableId: string | null;
   context: UberDomainJson | null;
-  retryCount: number;
-  lastError: string | null;
-  createdAt: Date;
-  updatedAt: Date;
   resolvedAt: Date | null;
 };
 export interface UberOpsTicketRepositoryPort {
@@ -76,14 +60,11 @@ export interface UberOpsTicketRepositoryPort {
       'ticketStableId' | 'status' | 'priority' | 'createdAt'
     >
   >;
-  list(
-    storeId: string,
-    status?: UberOpsTicketStatus,
-  ): Promise<Omit<UberOpsTicketRecord, 'context' | 'resolvedAt'>[]>;
+  list(storeId: string, status?: UberOpsTicketStatus): Promise<UberOpsTicket[]>;
   summary(
     storeId: string,
     status?: UberOpsTicketStatus,
-  ): Promise<{ count: number; updatedAt: Date | null }>;
+  ): Promise<UberOperationsCountSummary>;
   find(ticketStableId: string): Promise<UberOpsTicketRecord | null>;
   markInProgress(ticketStableId: string): Promise<void>;
   finishRetry(

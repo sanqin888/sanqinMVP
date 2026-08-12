@@ -71,3 +71,61 @@ export type CreateOpsTicketInput = {
   menuItemStableId?: string;
   context?: { [key: string]: UberDomainJson };
 };
+
+/** Stable application-facing reconciliation totals. */
+export type UberReconciliationSummary = {
+  totalOrders: number;
+  totalAmountCents: number;
+  syncedOrders: number;
+  pendingOrders: number;
+  failedSyncEvents: number;
+  discrepancyOrders: number;
+};
+
+export type UberReconciliationReport = UberReconciliationSummary & {
+  reportStableId: string;
+  rangeStart: Date;
+  rangeEnd: Date;
+  createdAt: Date;
+};
+
+export type UberOpsTicket = {
+  ticketStableId: string;
+  storeId: string;
+  type: UberOpsTicketType;
+  status: UberOpsTicketStatus;
+  priority: UberOpsTicketPriority;
+  title: string;
+  externalOrderId: string | null;
+  menuItemStableId: string | null;
+  retryCount: number;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type UberPage<T> = {
+  storeId: string;
+  count: number;
+  items: T[];
+};
+
+export type UberOperationsCountSummary = {
+  count: number;
+  updatedAt: Date | null;
+};
+
+export type UberReconciliationReportResult = UberReconciliationReport & {
+  ok: true;
+  storeId: string;
+};
+
+export type UberOpsTicketCreated = Pick<
+  UberOpsTicket,
+  'ticketStableId' | 'status' | 'priority' | 'createdAt'
+> & { ok: true; storeId: string };
+
+export type UberOpsTicketRetryResult = Pick<
+  UberOpsTicket,
+  'ticketStableId' | 'status' | 'retryCount' | 'lastError'
+> & { ok: boolean; resolvedAt: Date | null };

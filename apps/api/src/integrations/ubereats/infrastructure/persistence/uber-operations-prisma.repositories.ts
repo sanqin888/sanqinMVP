@@ -16,11 +16,70 @@ import type {
 } from '../../application/ports/uber-operations.ports';
 import type { UberOpsTicketStatus } from '../../domain/operations/uber-operations.types';
 import {
+  toDomainTicketPriority,
+  toDomainTicketStatus,
+  toDomainTicketType,
   toPrismaTicketPriority,
   toPrismaTicketStatus,
   toPrismaTicketType,
 } from './uber-operations-enum.mapper';
 import { toUberOrderStatus } from './uber-order-status.mapper';
+
+type ReconciliationRow = {
+  reportStableId: string;
+  rangeStart: Date;
+  rangeEnd: Date;
+  totalOrders: number;
+  totalAmountCents: number;
+  syncedOrders: number;
+  pendingOrders: number;
+  failedSyncEvents: number;
+  discrepancyOrders: number;
+  createdAt: Date;
+};
+
+export const mapReconciliationRow = (row: ReconciliationRow) => ({
+  reportStableId: row.reportStableId,
+  rangeStart: row.rangeStart,
+  rangeEnd: row.rangeEnd,
+  totalOrders: row.totalOrders,
+  totalAmountCents: row.totalAmountCents,
+  syncedOrders: row.syncedOrders,
+  pendingOrders: row.pendingOrders,
+  failedSyncEvents: row.failedSyncEvents,
+  discrepancyOrders: row.discrepancyOrders,
+  createdAt: row.createdAt,
+});
+
+type TicketRow = {
+  ticketStableId: string;
+  storeId: string;
+  type: Parameters<typeof toDomainTicketType>[0];
+  status: Parameters<typeof toDomainTicketStatus>[0];
+  priority: Parameters<typeof toDomainTicketPriority>[0];
+  title: string;
+  externalOrderId: string | null;
+  menuItemStableId: string | null;
+  retryCount: number;
+  lastError: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const mapOpsTicketRow = (row: TicketRow) => ({
+  ticketStableId: row.ticketStableId,
+  storeId: row.storeId,
+  type: toDomainTicketType(row.type),
+  status: toDomainTicketStatus(row.status),
+  priority: toDomainTicketPriority(row.priority),
+  title: row.title,
+  externalOrderId: row.externalOrderId,
+  menuItemStableId: row.menuItemStableId,
+  retryCount: row.retryCount,
+  lastError: row.lastError,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+});
 
 @Injectable()
 export class UberOrderOperationsPrismaRepository implements UberOrderOperationsRepositoryPort {
@@ -81,8 +140,8 @@ export class UberReconciliationPrismaRepository implements UberReconciliationRep
       select: { reportStableId: true, createdAt: true },
     });
   }
-  list(storeId: string, limit: number) {
-    return this.prisma.uberReconciliationReport.findMany({
+  async list(storeId: string, limit: number) {
+    const rows = await this.prisma.uberReconciliationReport.findMany({
       where: { storeId },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -92,11 +151,14 @@ export class UberReconciliationPrismaRepository implements UberReconciliationRep
         rangeEnd: true,
         totalOrders: true,
         totalAmountCents: true,
+        syncedOrders: true,
+        pendingOrders: true,
         failedSyncEvents: true,
         discrepancyOrders: true,
         createdAt: true,
       },
     });
+    return rows.map(mapReconciliationRow);
   }
   async summary(storeId: string) {
     const [count, latest] = await Promise.all([
@@ -121,8 +183,8 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
       },
     });
   }
-  create(input: Parameters<UberOpsTicketRepositoryPort['create']>[0]) {
-    return this.db.uberOpsTicket.create({
+  async create(input: Parameters<UberOpsTicketRepositoryPort['create']>[0]) {
+    const row = await this.db.uberOpsTicket.create({
       data: {
         ...input,
         type: toPrismaTicketType(input.type),
@@ -136,10 +198,16 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
         priority: true,
         createdAt: true,
       },
-    }) as ReturnType<UberOpsTicketRepositoryPort['create']>;
+    });
+    return {
+      ticketStableId: row.ticketStableId,
+      status: toDomainTicketStatus(row.status),
+      priority: toDomainTicketPriority(row.priority),
+      createdAt: row.createdAt,
+    };
   }
-  list(storeId: string, status?: UberOpsTicketStatus) {
-    return this.db.uberOpsTicket.findMany({
+  async list(storeId: string, status?: UberOpsTicketStatus) {
+    const rows = await this.db.uberOpsTicket.findMany({
       where: {
         storeId,
         ...(status ? { status: toPrismaTicketStatus(status) } : {}),
@@ -160,7 +228,8 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
         createdAt: true,
         updatedAt: true,
       },
-    }) as ReturnType<UberOpsTicketRepositoryPort['list']>;
+    });
+    return rows.map(mapOpsTicketRow);
   }
   async summary(storeId: string, status?: UberOpsTicketStatus) {
     const where = {
@@ -177,10 +246,19 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
     ]);
     return { count, updatedAt: latest?.updatedAt ?? null };
   }
-  find(ticketStableId: string) {
-    return this.db.uberOpsTicket.findUnique({
+  async find(ticketStableId: string) {
+    const row = await this.db.uberOpsTicket.findUnique({
       where: { ticketStableId },
-    }) as ReturnType<UberOpsTicketRepositoryPort['find']>;
+    });
+    if (!row) return null;
+    return {
+      ...mapOpsTicketRow(row),
+      description: row.description,
+      context: row.context as Parameters<
+        UberOpsTicketRepositoryPort['create']
+      >[0]['context'],
+      resolvedAt: row.resolvedAt,
+    };
   }
   async markInProgress(ticketStableId: string) {
     await this.db.uberOpsTicket.update({
@@ -188,8 +266,8 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
       data: { status: DbTicketStatus.IN_PROGRESS },
     });
   }
-  finishRetry(ticketStableId: string, error: string | null) {
-    return this.db.uberOpsTicket.update({
+  async finishRetry(ticketStableId: string, error: string | null) {
+    const row = await this.db.uberOpsTicket.update({
       where: { ticketStableId },
       data: error
         ? {
@@ -210,7 +288,14 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
         lastError: true,
         resolvedAt: true,
       },
-    }) as ReturnType<UberOpsTicketRepositoryPort['finishRetry']>;
+    });
+    return {
+      ticketStableId: row.ticketStableId,
+      status: toDomainTicketStatus(row.status),
+      retryCount: row.retryCount,
+      lastError: row.lastError,
+      resolvedAt: row.resolvedAt,
+    };
   }
 }
 @Injectable()
