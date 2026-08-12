@@ -52,4 +52,14 @@ describe('Uber Eats API architecture', () => {
       );
     }
   });
+
+  it('keeps presenters independent from aggregate use-case modules', () => {
+    for (const { source } of productionFiles.filter(({ path }) =>
+      path.endsWith('.presenter.ts'),
+    )) {
+      expect(source).not.toMatch(
+        /from\s+['"][^'"]*\/application\/operations\/uber-operations\.use-cases['"]|from\s+['"]\.\.\/application\/operations\/uber-operations\.use-cases['"]/,
+      );
+    }
+  });
 });

@@ -10,15 +10,15 @@ import type {
   UberReconciliationReportListResponse,
 } from '../contracts/responses/operations.responses';
 import type {
-  UberOperationsPage,
-  UberOperationsSummaryView,
-  UberOperationsTicketView,
-  UberReconciliationReportView,
-} from '../application/operations/uber-operations.use-cases';
+  UberOperationsCountSummary,
+  UberOpsTicket,
+  UberPage,
+  UberReconciliationReport,
+} from '../domain/operations/uber-operations.types';
 import { dateOf } from './presenter.utils';
 
 export const presentOpsTickets = (
-  result: UberOperationsPage<UberOperationsTicketView>,
+  result: UberPage<UberOpsTicket>,
 ): UberOpsTicketListResponse => {
   const items = result.items.map((ticket) => ({
     ticketStableId: ticket.ticketStableId,
@@ -35,7 +35,7 @@ export const presentOpsTickets = (
   return toUberListResponse(items, 200);
 };
 export const presentReconciliationReports = (
-  result: UberOperationsPage<UberReconciliationReportView>,
+  result: UberPage<UberReconciliationReport>,
 ): UberReconciliationReportListResponse =>
   toUberListResponse(
     result.items.map((report) => ({
@@ -48,7 +48,7 @@ export const presentReconciliationReports = (
   );
 
 export const presentOperationsSummary = (
-  result: UberOperationsSummaryView,
+  result: UberOperationsCountSummary,
 ): UberOperationsSummaryResponse => {
   return {
     total: result.count,
