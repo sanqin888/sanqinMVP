@@ -11,11 +11,7 @@ import { UberEatsOrdersModule } from './modules/orders.module';
 
 /** Controller-free entry point for consumers of the stable integration API. */
 @Module({
-  imports: [
-    UberEatsMerchantModule,
-    UberEatsMenuModule,
-    UberEatsOrdersModule,
-  ],
+  imports: [UberEatsMerchantModule, UberEatsMenuModule, UberEatsOrdersModule],
   exports: [
     UBER_EATS_MENU_AVAILABILITY,
     UBER_EATS_ORDER_ACTIONS,
