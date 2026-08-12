@@ -63,11 +63,16 @@ describe('Uber webhook use cases', () => {
         telemetry,
       );
 
-      await handler.execute(eventType, 'evt-store', {
-        event_type: eventType,
-        event_id: 'evt-store',
-        resource_href: 'https://api.uber.com/v1/eats/stores/store-1',
-        meta: { resource_id: 'store-1', user_id: 'org-1' },
+      await handler.execute('evt-store', {
+        version: 1,
+        family: 'store-provisioning',
+        eventType,
+        eventId: 'evt-store',
+        resourceHref: 'https://api.uber.com/v1/eats/stores/store-1',
+        resourceId: 'store-1',
+        userId: 'org-1',
+        storeId: 'store-1',
+        provisioned: value,
       });
 
       expect(inboxPort.setStoreProvisioned).toHaveBeenCalledWith(
@@ -228,9 +233,8 @@ describe('Uber webhook use cases', () => {
     await worker.execute();
 
     expect(merchant.execute).toHaveBeenCalledWith(
-      item.eventType,
       item.eventId,
-      item.payload,
+      expect.objectContaining({ storeId: 'store-1', provisioned: true }),
     );
     expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
     expect(inboxPort.markUnsupported).not.toHaveBeenCalled();

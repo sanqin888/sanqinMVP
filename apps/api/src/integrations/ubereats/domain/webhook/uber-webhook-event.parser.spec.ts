@@ -1,11 +1,14 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseUberMenuNotificationV1 } from './uber-menu-notification.v1';
-import { parseUberOrderCancelV1 } from './uber-order-cancel.v1';
-import { parseUberOrderNotificationV1 } from './uber-order-notification.v1';
-import { parseUberStoreProvisioningV1 } from './uber-store-provisioning.v1';
-import { parseUberStoreStatusChangedV1 } from './uber-store-status.v1';
-import { parseUberWebhookEnvelopeV1 } from './uber-webhook-envelope.v1';
+import {
+  dispatchUberWebhookV1,
+  parseUberMenuNotificationV1,
+  parseUberOrderCancelV1,
+  parseUberOrderNotificationV1,
+  parseUberStoreProvisioningV1,
+  parseUberStoreStatusChangedV1,
+} from './uber-webhook-event.parser';
+import { parseUberWebhookEnvelopeV1 } from './uber-webhook-envelope';
 
 const envelope = {
   event_type: 'orders.notification',
@@ -23,7 +26,7 @@ const parseJsonObject = (text: string): Record<string, unknown> => {
   return value;
 };
 
-describe('Uber events v1 contract', () => {
+describe('Uber webhook event domain parser', () => {
   const fixture = (name: string): Record<string, unknown> =>
     parseJsonObject(
       readFileSync(
@@ -143,5 +146,35 @@ describe('Uber events v1 contract', () => {
       status: 'FAILED',
       failures: [{ code: 'INVALID', path: 'menus[0]', message: 'bad' }],
     });
+  });
+
+  it('rejects unknown business versions before interpreting the payload', () => {
+    expect(
+      dispatchUberWebhookV1({
+        eventType: 'orders.notification',
+        businessVersion: 'v2',
+        payload: envelope,
+      }),
+    ).toEqual({ kind: 'unsupported', reason: 'version' });
+  });
+
+  it('returns invalid for a supported event with required fields missing', () => {
+    expect(
+      dispatchUberWebhookV1({
+        eventType: 'orders.notification',
+        businessVersion: 'v1',
+        payload: { ...envelope, resource_href: undefined },
+      }),
+    ).toEqual({ kind: 'invalid' });
+  });
+
+  it('returns unsupported without parsing unknown event workflows', () => {
+    expect(
+      dispatchUberWebhookV1({
+        eventType: 'orders.future',
+        businessVersion: 'v1',
+        payload: envelope,
+      }),
+    ).toEqual({ kind: 'unsupported', reason: 'event' });
   });
 });

@@ -1,3 +1,4 @@
+import type { UberWebhookEnvelopePayloadV1 } from '../../contracts/events/uber-webhook-envelope.v1';
 import type { UberWebhookHeaderValue } from './uber-webhook.types';
 
 export type UberWebhookEnvelope = {
@@ -5,15 +6,6 @@ export type UberWebhookEnvelope = {
   resourceId: string | null;
   eventId: string | null;
 };
-
-export interface UberWebhookEnvelopePayloadV1 {
-  event_type: string;
-  resource_href: string;
-  event_id?: string;
-  id?: string;
-  meta: { resource_id: string; user_id: string };
-  [key: string]: unknown;
-}
 
 export interface UberWebhookEventV1 {
   version: 1;
