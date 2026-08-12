@@ -3,6 +3,13 @@ export const UBER_WEBHOOK_SIGNATURE_VERSION = 'hmac-sha256-hex-v1' as const;
 
 export type UberWebhookSignatureVersion = typeof UBER_WEBHOOK_SIGNATURE_VERSION;
 
+/** Domain lifecycle states recognized from Uber menu publication notifications. */
+export type UberMenuNotificationStatus =
+  | 'SUBMITTED'
+  | 'PENDING'
+  | 'SUCCEEDED'
+  | 'FAILED';
+
 /** 与 Nest、Express 及 Node HTTP header 类型无关的签名验证边界。 */
 export type UberWebhookHeaderValue = string | readonly string[] | undefined;
 
