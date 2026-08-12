@@ -17,7 +17,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
 import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
 import { EmailModule } from '../email/email.module';
-import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
+import { UberEatsCapabilitiesModule } from '../integrations/ubereats/ubereats-capabilities.module';
 
 @Module({
   imports: [
@@ -30,7 +30,7 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
     AdminMembersModule,
     AdminPosDevicesModule,
     EmailModule,
-    UberEatsModule,
+    UberEatsCapabilitiesModule,
   ],
   controllers: [
     AdminBusinessController,
