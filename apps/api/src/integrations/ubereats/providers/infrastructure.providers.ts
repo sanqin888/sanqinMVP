@@ -6,7 +6,9 @@ import {
   UBER_WEBHOOK_INBOX_PORT,
   UBER_WEBHOOK_SIGNATURE_VERIFIER,
 } from '../application/ports/uber-order-processing.ports';
-import { UberConfigService } from '../infrastructure/config/uber-config.service';
+import { UberCryptoConfigService } from '../infrastructure/crypto/uber-crypto-config.service';
+import { UberApiConfigService } from '../infrastructure/uber-api/uber-api-config.service';
+import { UberWorkerConfigService } from '../infrastructure/workers/uber-worker-config.service';
 import { UberCredentialVaultService } from '../infrastructure/crypto/uber-credential-vault.service';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
 import { UberTelemetryService } from '../infrastructure/persistence/uber-telemetry.service';
@@ -18,8 +20,16 @@ import { UberAuthService } from '../infrastructure/uber-api/uber-token.provider'
 
 export const UBER_EATS_INFRASTRUCTURE_PROVIDERS: Provider[] = [
   {
-    provide: UberConfigService,
-    useFactory: () => new UberConfigService(process.env),
+    provide: UberApiConfigService,
+    useFactory: () => new UberApiConfigService(process.env),
+  },
+  {
+    provide: UberCryptoConfigService,
+    useFactory: () => new UberCryptoConfigService(process.env),
+  },
+  {
+    provide: UberWorkerConfigService,
+    useFactory: () => new UberWorkerConfigService(process.env),
   },
   BrowserWriteCsrfGuard,
   {
@@ -41,9 +51,11 @@ export const UBER_EATS_INFRASTRUCTURE_PROVIDERS: Provider[] = [
   UberHttpClient,
   {
     provide: UBER_RATE_LIMITER_PORT,
-    inject: [UberConfigService, UberTelemetryService],
-    useFactory: (config: UberConfigService, telemetry: UberTelemetryService) =>
-      createUberRateLimiter(process.env, config, telemetry),
+    inject: [UberApiConfigService, UberTelemetryService],
+    useFactory: (
+      config: UberApiConfigService,
+      telemetry: UberTelemetryService,
+    ) => createUberRateLimiter(process.env, config, telemetry),
   },
   UberAuthService,
   UberApiGatewayTransport,

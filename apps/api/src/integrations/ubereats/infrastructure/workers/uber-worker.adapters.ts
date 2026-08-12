@@ -9,9 +9,9 @@ import { ClaimAndExecuteUberOrderActionsUseCase } from '../../application/orders
 import { ClaimAndProcessUberWebhookInboxUseCase } from '../../application/orders/claim-and-process-uber-webhook-inbox.use-case';
 import { ConfirmUberMenuPublicationsUseCase } from '../../application/menu/confirm-uber-menu-publications.use-case';
 import {
-  UberConfigService,
+  UberWorkerConfigService,
   type UberWorkerKind,
-} from '../config/uber-config.service';
+} from './uber-worker-config.service';
 
 export interface UberWorkerMetrics {
   readonly lastSuccessfulAt: Date | null;
@@ -53,7 +53,7 @@ abstract class UberPollingWorkerAdapter
   protected abstract readonly logger: Logger;
 
   protected constructor(
-    protected readonly config: UberConfigService,
+    protected readonly config: UberWorkerConfigService,
     private readonly kind: UberWorkerKind,
   ) {}
 
@@ -175,7 +175,7 @@ export class UberWebhookInboxWorkerAdapter extends UberPollingWorkerAdapter {
   protected readonly logger = new Logger(UberWebhookInboxWorkerAdapter.name);
   constructor(
     private readonly useCase: ClaimAndProcessUberWebhookInboxUseCase,
-    config: UberConfigService,
+    config: UberWorkerConfigService,
   ) {
     super(config, 'webhookInbox');
   }
@@ -189,7 +189,7 @@ export class UberOrderActionWorkerAdapter extends UberPollingWorkerAdapter {
   protected readonly logger = new Logger(UberOrderActionWorkerAdapter.name);
   constructor(
     private readonly useCase: ClaimAndExecuteUberOrderActionsUseCase,
-    config: UberConfigService,
+    config: UberWorkerConfigService,
   ) {
     super(config, 'orderAction');
   }
@@ -205,7 +205,7 @@ export class UberMenuPublishConfirmationWorkerAdapter extends UberPollingWorkerA
   );
   constructor(
     private readonly useCase: ConfirmUberMenuPublicationsUseCase,
-    config: UberConfigService,
+    config: UberWorkerConfigService,
   ) {
     super(config, 'menuConfirmation');
   }

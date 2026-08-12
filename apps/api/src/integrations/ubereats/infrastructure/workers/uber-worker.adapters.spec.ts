@@ -3,18 +3,37 @@ import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './uber-worker.adapters';
-import { UberConfigService } from '../config/uber-config.service';
+import { UberWorkerConfigService } from './uber-worker-config.service';
 
 describe('Uber durable worker adapters', () => {
   afterEach(() => jest.restoreAllMocks());
 
   const config = (env: Record<string, string> = {}) =>
-    new UberConfigService({
+    new UberWorkerConfigService({
       UBER_EATS_WORKER_ENABLED: 'true',
       UBER_EATS_WORKER_BATCH_SIZE: '1',
       UBER_EATS_WORKER_SHUTDOWN_TIMEOUT_MS: '100',
       ...env,
     });
+
+  it.each([
+    ['webhook inbox', UberWebhookInboxWorkerAdapter],
+    ['order action', UberOrderActionWorkerAdapter],
+    ['menu confirmation', UberMenuPublishConfirmationWorkerAdapter],
+  ])(
+    '%s delegates a poll exclusively to its injected use case',
+    async (_name, Worker) => {
+      const execute = jest.fn().mockResolvedValue(1);
+      const unrelated = jest.fn();
+      const adapter = new Worker({ execute, unrelated } as never, config());
+
+      await expect(adapter.runOnce()).resolves.toBe(true);
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledWith(1);
+      expect(unrelated).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ['webhook inbox', UberWebhookInboxWorkerAdapter],

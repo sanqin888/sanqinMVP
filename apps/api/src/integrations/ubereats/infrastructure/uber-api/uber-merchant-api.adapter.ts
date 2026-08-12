@@ -12,7 +12,7 @@ import {
   type UberGatewayTransportPort,
 } from './uber-api.gateway';
 import { UberAuthService } from './uber-token.provider';
-import { UberConfigService } from '../config/uber-config.service';
+import { UberCryptoConfigService } from '../crypto/uber-crypto-config.service';
 import {
   isUberApplicationError,
   UberTransientUpstreamError,
@@ -32,7 +32,8 @@ const string = (...values: unknown[]): string | null => {
 export class UberOAuthTokenAdapter implements UberOAuthTokenPort {
   constructor(
     private readonly auth: UberAuthService,
-    @Inject(UberConfigService) private readonly config: UberConfigService,
+    @Inject(UberCryptoConfigService)
+    private readonly config: UberCryptoConfigService,
   ) {}
   getRedirectUri() {
     return this.auth.getMerchantRedirectUri();

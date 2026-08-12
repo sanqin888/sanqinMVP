@@ -180,6 +180,61 @@ describe('Uber Eats bounded-context architecture', () => {
     ).toBe(true);
   });
 
+  it.each(['crypto', 'uber-api', 'workers'] as const)(
+    'keeps infrastructure/%s independent from persistence technology',
+    (capability) => {
+      const files = scanTypeScript(
+        join(BOUNDED_CONTEXT_ROOT, `infrastructure/${capability}`),
+        { productionOnly: true },
+      );
+      const violations: string[] = [];
+
+      for (const file of files) {
+        if (/@prisma\/client|\bPrismaService\b/.test(file.source)) {
+          violations.push(
+            formatSourceViolation(
+              BOUNDED_CONTEXT_ROOT,
+              file,
+              'Prisma dependency',
+            ),
+          );
+        }
+        for (const specifier of importSpecifiers(file.source)) {
+          if (/(?:^|\/)persistence\//.test(specifier)) {
+            violations.push(
+              formatSourceViolation(BOUNDED_CONTEXT_ROOT, file, specifier),
+            );
+          }
+        }
+      }
+
+      expect(violations).toEqual([]);
+    },
+  );
+
+  it('keeps worker adapters on use cases and worker runtime config only', () => {
+    const file = boundedContextFiles.find(({ path }) =>
+      path.endsWith('infrastructure/workers/uber-worker.adapters.ts'),
+    );
+    expect(file).toBeDefined();
+    expect(
+      importSpecifiers(file!.source).filter((path) => path.startsWith('.')),
+    ).toEqual([
+      '../../application/orders/claim-and-execute-uber-order-actions.use-case',
+      '../../application/orders/claim-and-process-uber-webhook-inbox.use-case',
+      '../../application/menu/confirm-uber-menu-publications.use-case',
+      './uber-worker-config.service',
+    ]);
+  });
+
+  it('keeps the worker lifecycle module free of concrete infrastructure wiring', () => {
+    const file = boundedContextFiles.find(({ path }) =>
+      path.endsWith('infrastructure/workers/ubereats-worker.module.ts'),
+    );
+    expect(file).toBeDefined();
+    expect(file!.source).not.toMatch(/PrismaModule|persistence\/|uber-api\//);
+  });
+
   it('has one composition root and no aggregate compatibility facade', () => {
     expect(existsSync(join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts'))).toBe(
       true,

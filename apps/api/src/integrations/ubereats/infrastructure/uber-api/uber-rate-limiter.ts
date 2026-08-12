@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { UberRateLimitConfig } from '../config/uber-config.service';
-import { UberConfigService } from '../config/uber-config.service';
+import type { UberRateLimitConfig } from './uber-api-config.service';
+import { UberApiConfigService } from './uber-api-config.service';
 import {
   UberRateLimitRejectedError,
   type UberRateLimitLease,
@@ -34,7 +34,7 @@ type Partition = {
 export class ProcessUberRateLimiter implements UberRateLimiterPort {
   private readonly partitions = new Map<string, Partition>();
   constructor(
-    @Inject(UberConfigService) private readonly config: UberRateLimitConfig,
+    @Inject(UberApiConfigService) private readonly config: UberRateLimitConfig,
     private readonly metrics?: {
       increment(
         name: 'ubereats_rate_limit_rejected_total' | 'ubereats_api_429_total',

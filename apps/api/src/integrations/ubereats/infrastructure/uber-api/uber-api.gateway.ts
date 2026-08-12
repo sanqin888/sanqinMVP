@@ -15,7 +15,7 @@ import {
 import type {
   UberApiConfig,
   UberRateLimitConfig,
-} from '../config/uber-config.service';
+} from './uber-api-config.service';
 
 type UberGatewayRequestBase = Pick<
   UberHttpRequest,
