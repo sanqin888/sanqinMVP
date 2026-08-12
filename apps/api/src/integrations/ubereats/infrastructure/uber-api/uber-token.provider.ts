@@ -1,8 +1,12 @@
 //apps/api/src/integrations/ubereats/uber-auth.service.ts
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AppLogger } from '../../../../common/app-logger';
 import { UberHttpClient } from './uber-http.client';
 import { UberConfigService } from '../config/uber-config.service';
+import {
+  UBER_RATE_LIMITER_PORT,
+  type UberRateLimiterPort,
+} from '../../application/ports/uber-rate-limiter.port';
 
 type UberTokenResponse = {
   access_token?: string;
@@ -55,6 +59,9 @@ export class UberAuthService {
   constructor(
     @Optional() private readonly httpClient = new UberHttpClient(),
     @Optional() private readonly config = new UberConfigService(),
+    @Optional()
+    @Inject(UBER_RATE_LIMITER_PORT)
+    private readonly limiter?: UberRateLimiterPort,
   ) {}
 
   private resolveOAuthClientCredentials(): {
@@ -348,40 +355,52 @@ export class UberAuthService {
       `[token.request] endpoint=${this.config.tokenEndpoint} grant_type=${params.get('grant_type') || ''} scope=${params.get('scope') || ''}`,
     );
 
-    const { response, data } = await this.httpClient.request<UberTokenResponse>(
-      {
-        returnErrorResponse: true,
-        url: this.config.tokenEndpoint,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body,
-        kind: 'token',
-      },
-    );
+    const lease = await this.limiter?.acquire({
+      partitionKey: `merchant:${params.get('client_id') ?? 'app'}`,
+      operation: 'uber.oauth.token',
+      weight: this.config.operationWeight('uber.oauth.token'),
+    });
+    try {
+      const { response, data } =
+        await this.httpClient.request<UberTokenResponse>({
+          returnErrorResponse: true,
+          url: this.config.tokenEndpoint,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body,
+          kind: 'token',
+        });
+      lease?.feedback({
+        status: response.status,
+        retryAfter: response.headers.get('retry-after'),
+      });
 
-    if (!response.ok) {
-      const error = (
-        data && typeof data === 'object' ? data : {}
-      ) as UberTokenErrorResponse;
-      const errorCode = this.safeTokenErrorValue(
-        error.error_code ?? error.error,
-        'unknown',
-      );
-      const description = this.safeTokenErrorValue(
-        error.error_description,
-        'unavailable',
-      );
-      this.logger.error(
-        `[token.request] failed status=${response.status} uberErrorCode=${errorCode} description=${description}`,
-      );
-      throw new Error(
-        `Uber token 请求失败 status=${response.status} uberErrorCode=${errorCode} description=${description}`,
-      );
+      if (!response.ok) {
+        const error = (
+          data && typeof data === 'object' ? data : {}
+        ) as UberTokenErrorResponse;
+        const errorCode = this.safeTokenErrorValue(
+          error.error_code ?? error.error,
+          'unknown',
+        );
+        const description = this.safeTokenErrorValue(
+          error.error_description,
+          'unavailable',
+        );
+        this.logger.error(
+          `[token.request] failed status=${response.status} uberErrorCode=${errorCode} description=${description}`,
+        );
+        throw new Error(
+          `Uber token 请求失败 status=${response.status} uberErrorCode=${errorCode} description=${description}`,
+        );
+      }
+
+      return data || {};
+    } finally {
+      lease?.release();
     }
-
-    return data || {};
   }
 
   private safeTokenErrorValue(value: unknown, fallback: string): string {

@@ -18,3 +18,14 @@
 `saveMenuPublication`、`findStoreMapping` 的业务语义方法。`UberPrismaAccessService`
 仅作为既有持久化实现的内部过渡桥，公开 delegate 属性应在 repository 迁移完成后
 逐项删除。
+
+## API quota coordination
+
+`UBER_EATS_RATE_LIMITER_MODE` is mandatory. Use `distributed` for normal production
+and configure `UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL` plus
+`UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN`; the coordinator atomically shares token
+buckets, concurrency leases, and `Retry-After` cooldown by merchant/store partition.
+`process` is intended for development. Production may use it only when
+`UBER_EATS_SINGLE_REPLICA=true` explicitly documents a single-replica deployment.
+Operation weights have conservative defaults and can be overridden with
+`UBER_EATS_API_OPERATION_WEIGHTS`.

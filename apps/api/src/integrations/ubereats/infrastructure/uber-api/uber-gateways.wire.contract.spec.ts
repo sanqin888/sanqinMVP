@@ -137,6 +137,7 @@ describe('Uber gateways wire contract v1', () => {
         path: '/v2/eats/stores/store%2F1/menus',
         scope: 'eats.store',
         operation: 'uber.menu.upload',
+        partitionKey: 'store/1',
         method: 'PUT',
         json: wireMenu,
         idempotencyKey: 'menu:store-1:v1',
@@ -145,6 +146,7 @@ describe('Uber gateways wire contract v1', () => {
         path: '/v2/eats/stores/store%2F1/menus',
         scope: 'eats.store',
         operation: 'uber.menu.read',
+        partitionKey: 'store/1',
         method: 'GET',
       },
     ]);
@@ -211,7 +213,7 @@ describe('Uber gateways wire contract v1', () => {
         method: 'POST',
         operation: `uber.order.${action.toLowerCase()}`,
         scope: 'eats.order',
-        partitionKey: 'order/1',
+        partitionKey: 'merchant:app',
         json: {},
         idempotencyKey: `${action}:v1`,
       });

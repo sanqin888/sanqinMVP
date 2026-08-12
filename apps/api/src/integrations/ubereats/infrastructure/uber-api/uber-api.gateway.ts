@@ -80,7 +80,7 @@ export class UberApiGatewayTransport {
     const path = this.normalizePath(request.path);
     const baseUrl = this.normalizeBaseUrl(this.config.apiBaseUrl);
     const requestId = randomUUID();
-    const partition = request.partitionKey?.trim() || 'global';
+    const partition = request.partitionKey?.trim() || 'merchant:app';
     const lease = await this.acquire(partition, request.operation);
     const startedAt = Date.now();
     let status = 0;
