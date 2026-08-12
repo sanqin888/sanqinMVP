@@ -8,7 +8,7 @@ import type {
 import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
-import { UberConfigService } from '../config/uber-config.service';
+import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
 import { UberApplicationError } from '../../application/errors/uber-application.error';
 
@@ -19,7 +19,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: UberConfigService,
+    private readonly config: UberWorkerConfigService,
     @Optional() telemetry?: UberTelemetryService,
   ) {
     this.telemetry = telemetry ?? new UberTelemetryService(prisma);

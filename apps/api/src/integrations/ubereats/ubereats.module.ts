@@ -16,6 +16,7 @@ import { ClaimAndProcessUberWebhookInboxUseCase } from './application/orders/cla
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ExecuteUberOrderActionWorker } from './application/orders/uber-order.use-cases';
 import { UBER_EATS_INFRASTRUCTURE_PROVIDERS } from './providers/infrastructure.providers';
+import { UberWorkerConfigService } from './infrastructure/workers/uber-worker-config.service';
 import {
   UBER_EATS_MENU_EXPORTS,
   UBER_EATS_MENU_PROVIDERS,
@@ -76,6 +77,7 @@ export const UBER_EATS_COMPOSITION_EXPORTS = [
   ClaimAndProcessUberWebhookInboxUseCase,
   ClaimAndExecuteUberOrderActionsUseCase,
   ConfirmUberMenuPublicationsUseCase,
+  UberWorkerConfigService,
 ];
 
 /** The single controller-free Uber Eats adapter/port/use-case composition root. */

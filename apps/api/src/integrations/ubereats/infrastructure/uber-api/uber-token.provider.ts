@@ -2,7 +2,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AppLogger } from '../../../../common/app-logger';
 import { UberHttpClient } from './uber-http.client';
-import { UberConfigService } from '../config/uber-config.service';
+import { UberApiConfigService } from './uber-api-config.service';
 import {
   UBER_RATE_LIMITER_PORT,
   type UberRateLimiterPort,
@@ -10,7 +10,7 @@ import {
 
 export type UberAuthHttpPort = Pick<UberHttpClient, 'request'>;
 export type UberAuthConfigPort = Pick<
-  UberConfigService,
+  UberApiConfigService,
   | 'clientId'
   | 'clientSecret'
   | 'defaultAppScopes'
@@ -74,8 +74,8 @@ export class UberAuthService {
     @Inject(UberHttpClient)
     private readonly httpClient: UberAuthHttpPort = new UberHttpClient(),
     @Optional()
-    @Inject(UberConfigService)
-    private readonly config: UberAuthConfigPort = new UberConfigService(),
+    @Inject(UberApiConfigService)
+    private readonly config: UberAuthConfigPort = new UberApiConfigService(),
     @Optional()
     @Inject(UBER_RATE_LIMITER_PORT)
     private readonly limiter?: UberRateLimiterPort,

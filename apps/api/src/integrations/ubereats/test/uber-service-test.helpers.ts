@@ -2,7 +2,7 @@ import type { PublishUberMenuUseCase } from '../application/menu/publish-uber-me
 import type { ImportUberOrderUseCase } from '../application/orders/uber-order.use-cases';
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 import type { UberWebhookInboxPort } from '../application/ports/uber-order-processing.ports';
-import type { UberConfigService } from '../infrastructure/config/uber-config.service';
+import type { UberCryptoConfigService } from '../infrastructure/crypto/uber-crypto-config.service';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
 
 type WebhookInboxTestPrisma = {
@@ -13,7 +13,7 @@ type WebhookInboxTestPrisma = {
 
 export function createReceiveUberWebhookUseCase(
   prisma: WebhookInboxTestPrisma,
-  config: UberConfigService,
+  config: UberCryptoConfigService,
   orders: ImportUberOrderUseCase,
   menu?: PublishUberMenuUseCase,
 ) {

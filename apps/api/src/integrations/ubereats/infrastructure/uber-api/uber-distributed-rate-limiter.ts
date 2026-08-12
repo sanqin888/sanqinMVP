@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import type { UberRateLimitConfig } from '../config/uber-config.service';
+import type { UberRateLimitConfig } from './uber-api-config.service';
 import {
   UberRateLimitRejectedError,
   type UberRateLimitLease,

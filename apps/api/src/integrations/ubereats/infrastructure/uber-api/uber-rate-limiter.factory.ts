@@ -1,4 +1,4 @@
-import { UberConfigService } from '../config/uber-config.service';
+import { UberApiConfigService } from './uber-api-config.service';
 import type { UberRateLimiterMetricsPort } from '../../application/ports/uber-rate-limiter.port';
 import { ProcessUberRateLimiter } from './uber-rate-limiter';
 import {
@@ -8,7 +8,7 @@ import {
 
 export function createUberRateLimiter(
   env: NodeJS.ProcessEnv,
-  config: UberConfigService,
+  config: UberApiConfigService,
   metrics: UberRateLimiterMetricsPort,
 ) {
   const mode = env.UBER_EATS_RATE_LIMITER_MODE;

@@ -10,7 +10,7 @@ import type { UberJsonValue } from '../../application/ports/uber-json-value';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
-import { UberConfigService } from '../config/uber-config.service';
+import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 
 @Injectable()
 export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
@@ -18,7 +18,7 @@ export class UberOrderOutboxPrismaAdapter implements UberOrderOutboxPort {
   private readonly logger = new Logger(UberOrderOutboxPrismaAdapter.name);
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: UberConfigService,
+    private readonly config: UberWorkerConfigService,
   ) {}
 
   enqueue(

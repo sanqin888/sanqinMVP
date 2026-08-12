@@ -15,7 +15,7 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { createHmac } from 'crypto';
-import { UberConfigService } from '../../infrastructure/config/uber-config.service';
+import { UberCryptoConfigService } from '../../infrastructure/crypto/uber-crypto-config.service';
 import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
 import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.helpers';
@@ -24,7 +24,7 @@ import type { UberWebhookInboxPort } from '../ports/uber-order-processing.ports'
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>
-  new UberConfigService({
+  new UberCryptoConfigService({
     UBER_EATS_OAUTH_STATE_SECRET: '0123456789abcdef0123456789ABCDEF',
     UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
   });
@@ -386,14 +386,17 @@ describe('ReceiveUberWebhookUseCase 最小依赖装配', () => {
     expect(ReceiveUberWebhookUseCase.length).toBe(3);
   });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
-    const webhookOnly = new UberConfigService({
+    const webhookOnly = new UberCryptoConfigService({
       UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
     });
     expect(() =>
       createReceiveUberWebhookUseCase({} as never, webhookOnly),
     ).not.toThrow();
     expect(() =>
-      createReceiveUberWebhookUseCase({} as never, new UberConfigService()),
+      createReceiveUberWebhookUseCase(
+        {} as never,
+        new UberCryptoConfigService(),
+      ),
     ).toThrow('UBER_EATS_WEBHOOK_SIGNING_KEY');
   });
 });

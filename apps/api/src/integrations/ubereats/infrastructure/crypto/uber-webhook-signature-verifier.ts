@@ -3,10 +3,9 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import type { UberWebhookSignatureVerifier } from '../../application/ports/uber-order-processing.ports';
 import { UberAuthenticationError } from '../../application/errors/uber-application.error';
 import {
-  UberConfigService,
-  type UberWebhookConfig,
+  UberCryptoConfigService,
   type UberWebhookSigningSecrets,
-} from '../config/uber-config.service';
+} from './uber-crypto-config.service';
 import {
   UBER_WEBHOOK_SIGNATURE_VERSION,
   type UberWebhookVerificationInput,
@@ -16,7 +15,7 @@ import {
 export class HmacUberWebhookSignatureVerifier implements UberWebhookSignatureVerifier {
   private readonly signingSecrets: UberWebhookSigningSecrets;
   constructor(
-    @Inject(UberConfigService) config: UberWebhookConfig,
+    @Inject(UberCryptoConfigService) config: UberCryptoConfigService,
     private readonly now: () => number = Date.now,
   ) {
     this.signingSecrets = config.getWebhookSigningSecrets();
