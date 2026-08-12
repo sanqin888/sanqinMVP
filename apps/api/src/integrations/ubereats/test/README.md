@@ -2,12 +2,12 @@
 
 本目录是跨实现层的稳定验收边界。测试按 `merchant`、`webhook`、`orders`、
 `menu`、`operations` 五个能力域读取同一份 `acceptanceMatrix`，不引用 workflow
-私有方法。后续拆分 service 或 workflow 时，不应改写契约来迁就实现。
+私有方法。内部实现重构时，不应改写契约来迁就实现。
 
 每个场景固定七类结果：输入、API 状态码、数据库状态迁移、Uber 请求次数、
 对外响应、幂等/并发结果和日志禁用字段。具体矩阵见 `contract-matrix.ts`。
 
-## 迁移阶段验收
+## 永久验收边界
 
 | 阶段       | API                                          | 数据库                               | Uber 请求               | 幂等                          | 日志                                |
 | ---------- | -------------------------------------------- | ------------------------------------ | ----------------------- | ----------------------------- | ----------------------------------- |
@@ -23,6 +23,12 @@
 Uber 原始 HTTP schema 另存于 `fixtures/uber-contract/v1/`，不得用 application/domain
 类型替代 wire fixture。能力、scope、webhook 与实现/测试的完整关联见
 `requirement-matrix.md`；升级版本必须新增 fixture 版本并同步更新矩阵和门禁测试。
+
+这里保留的是**永久兼容的 Uber wire contract**：版本化请求、响应、webhook envelope、
+错误映射及签名向量。它约束与 Uber 之间可观察的网络协议，可通过新增版本演进，不能因
+内部重构而删除或改写。共享 delegate、旧 service/workflow、`modules/`、`composition/`
+以及 capabilities/facade 聚合入口属于**应被删除的内部迁移兼容层**，不是 wire contract，
+不得为它们新增 fixture、别名或长期兼容测试。
 
 ## Webhook 签名契约核对（2026-08-10 UTC）
 

@@ -4,6 +4,13 @@
 > `uber-contract-fixtures.spec.ts` 必须在 API 版本升级时同步更新。fixture 只能含合成、
 > 脱敏数据。
 
+本矩阵追踪的是**永久兼容的 Uber wire contract**，即 Uber HTTP 请求/响应、webhook、
+OAuth、错误和签名在版本边界上的可观察行为。内部类名、共享 delegate、旧
+service/workflow、`modules/`、`composition/` 与 capabilities/facade 聚合入口只是
+**应被删除的内部迁移兼容层**，不属于需求或兼容性承诺，也不得进入本矩阵。其他 bounded
+context 永久只能经 `public-api.ts` 使用业务能力，并分别经 `ubereats.module.ts` 或
+`worker.ts` 完成 API/Worker 进程装配。
+
 ## 核对边界（2026-08-12 UTC）
 
 本次核对以 Uber Developers 正式页面 **Authentication**、**Uber Eats API**、
