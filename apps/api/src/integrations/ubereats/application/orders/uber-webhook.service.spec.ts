@@ -20,6 +20,7 @@ import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use
 import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
 import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.helpers';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
+import type { UberWebhookInboxPort } from '../ports/uber-order-processing.ports';
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>
@@ -130,6 +131,9 @@ describe('Uber webhook use cases', () => {
   it.each(['menus.deleted', 'store.mystery', 'completely.unknown'])(
     '隔离未知事件 %s，不会错误标记为成功',
     async (eventType) => {
+      type MarkUnsupportedCall = Parameters<
+        UberWebhookInboxPort['markUnsupported']
+      >;
       const item = {
         eventId: `evt-${eventType}`,
         eventType,
@@ -141,7 +145,9 @@ describe('Uber webhook use cases', () => {
       const inboxPort = {
         claimDue: jest.fn().mockResolvedValue([item]),
         markSucceeded: jest.fn(),
-        markUnsupported: jest.fn().mockResolvedValue(undefined),
+        markUnsupported: jest
+          .fn<Promise<void>, MarkUnsupportedCall>()
+          .mockResolvedValue(undefined),
         requeueUnsupported: jest.fn().mockResolvedValue(0),
         markFailed: jest.fn(),
         enqueue: jest.fn(),
@@ -163,17 +169,20 @@ describe('Uber webhook use cases', () => {
 
       expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
       expect(inboxPort.markFailed).not.toHaveBeenCalled();
-      expect(inboxPort.markUnsupported).toHaveBeenCalledWith(
-        item,
-        expect.objectContaining({
-          code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
-          eventType,
-          businessVersion: 'v1',
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          safeSummary: expect.stringMatching(
-            /^type=.*;payloadSha256=[a-f0-9]{16}$/,
-          ),
-        }),
+      expect(inboxPort.markUnsupported).toHaveBeenCalledTimes(1);
+      const actualCall: MarkUnsupportedCall | undefined =
+        inboxPort.markUnsupported.mock.calls[0];
+      expect(actualCall).toBeDefined();
+      if (!actualCall) {
+        throw new Error('Expected markUnsupported to be called');
+      }
+      const [actualItem, actual] = actualCall;
+      expect(actualItem).toBe(item);
+      expect(actual.code).toBe('UBER_WEBHOOK_EVENT_UNSUPPORTED');
+      expect(actual.eventType).toBe(eventType);
+      expect(actual.businessVersion).toBe('v1');
+      expect(actual.safeSummary).toMatch(
+        /^type=.*;payloadSha256=[a-f0-9]{16}$/,
       );
       expect(telemetry.captureEvent).toHaveBeenCalledWith(
         'ubereats_webhook_unsupported',
