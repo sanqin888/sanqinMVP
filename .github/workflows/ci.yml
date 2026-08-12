@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       UBER_SANDBOX_CONFIGURED: ${{ secrets.UBER_SANDBOX_CLIENT_ID != '' && secrets.UBER_SANDBOX_CLIENT_SECRET != '' && secrets.UBER_SANDBOX_STORE_ID != '' }}
+      UBER_SANDBOX_SMOKE_REQUIRED: ${{ vars.UBER_SANDBOX_SMOKE_REQUIRED == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -50,15 +51,43 @@ jobs:
         if: matrix.app == 'api'
         run: pnpm --filter api test
 
+      - name: Check Uber sandbox smoke credentials
+        if: matrix.app == 'api'
+        id: uber-smoke
+        env:
+          HAS_CLIENT_ID: ${{ secrets.UBER_SANDBOX_CLIENT_ID != '' }}
+          HAS_CLIENT_SECRET: ${{ secrets.UBER_SANDBOX_CLIENT_SECRET != '' }}
+          HAS_STORE_ID: ${{ secrets.UBER_SANDBOX_STORE_ID != '' }}
+        run: |
+          if [[ "$UBER_SANDBOX_CONFIGURED" == "true" ]]; then
+            echo "Uber sandbox credentials are complete; the smoke test will run."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          missing=()
+          [[ "$HAS_CLIENT_ID" == "true" ]] || missing+=(UBER_SANDBOX_CLIENT_ID)
+          [[ "$HAS_CLIENT_SECRET" == "true" ]] || missing+=(UBER_SANDBOX_CLIENT_SECRET)
+          [[ "$HAS_STORE_ID" == "true" ]] || missing+=(UBER_SANDBOX_STORE_ID)
+          reason="Uber sandbox smoke skipped: missing dedicated credentials: ${missing[*]}."
+          echo "run=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::$reason"
+          echo "### Uber sandbox smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "$reason" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$UBER_SANDBOX_SMOKE_REQUIRED" == "true" ]]; then
+            echo "::error::Uber sandbox smoke is required for this branch/environment, but its credentials are incomplete."
+            exit 1
+          fi
+
       - name: Uber sandbox smoke (dedicated credentials only)
         if: >-
           matrix.app == 'api' &&
-          env.UBER_SANDBOX_CONFIGURED == 'true'
+          steps.uber-smoke.outputs.run == 'true'
         env:
-          UBER_SANDBOX_SMOKE: "1"
           UBER_SANDBOX_CLIENT_ID: ${{ secrets.UBER_SANDBOX_CLIENT_ID }}
           UBER_SANDBOX_CLIENT_SECRET: ${{ secrets.UBER_SANDBOX_CLIENT_SECRET }}
           UBER_SANDBOX_STORE_ID: ${{ secrets.UBER_SANDBOX_STORE_ID }}
           UBER_SANDBOX_TOKEN_URL: ${{ vars.UBER_SANDBOX_TOKEN_URL }}
           UBER_SANDBOX_API_URL: ${{ vars.UBER_SANDBOX_API_URL }}
-        run: pnpm --filter api test -- --runInBand uber-sandbox.smoke.spec.ts
+        run: pnpm --filter api test:uber-smoke

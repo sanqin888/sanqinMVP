@@ -2,10 +2,7 @@
  * Opt-in, read-only Uber sandbox probe. Never include secret values in matcher
  * messages, snapshots, logs or test names.
  */
-const enabled = process.env.UBER_SANDBOX_SMOKE === '1';
-const smoke = enabled ? describe : describe.skip;
-
-smoke('Uber sandbox read-only smoke', () => {
+describe('Uber sandbox read-only smoke', () => {
   it('obtains a token and reads store resources without mutation', async () => {
     const clientId = process.env.UBER_SANDBOX_CLIENT_ID;
     const clientSecret = process.env.UBER_SANDBOX_CLIENT_SECRET;
@@ -16,7 +13,7 @@ smoke('Uber sandbox read-only smoke', () => {
     const apiUrl = process.env.UBER_SANDBOX_API_URL || 'https://api.uber.com';
     if (!clientId || !clientSecret || !storeId)
       throw new Error(
-        'Sandbox smoke enabled without the three dedicated UBER_SANDBOX credentials',
+        'Sandbox smoke requires all three dedicated UBER_SANDBOX credentials',
       );
 
     const tokenResponse = await fetch(tokenUrl, {
