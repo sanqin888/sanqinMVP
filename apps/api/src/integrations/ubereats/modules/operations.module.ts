@@ -11,13 +11,21 @@ import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.us
 import { SyncUberStoreStatusUseCase } from '../application/merchant/uber-merchant-provisioning.service';
 import { SyncUberOrderStatusUseCase } from '../application/orders/sync-uber-order-status.use-case';
 import {
+  type UberMenuItemOperationsRepositoryPort,
+  type UberOperationsUnitOfWorkPort,
+  type UberOpsTicketRepositoryPort,
+  type UberOrderOperationsRepositoryPort,
+  type UberReconciliationRepositoryPort,
   UBER_MENU_ITEM_OPERATIONS_REPOSITORY,
   UBER_OPERATIONS_UNIT_OF_WORK,
   UBER_OPS_TICKET_REPOSITORY,
   UBER_ORDER_OPERATIONS_REPOSITORY,
   UBER_RECONCILIATION_REPOSITORY,
 } from '../application/ports/uber-operations.ports';
-import { UBER_TELEMETRY_PORT } from '../application/ports/uber-order-processing.ports';
+import {
+  UBER_TELEMETRY_PORT,
+  type UberTelemetryPort,
+} from '../application/ports/uber-order-processing.ports';
 import {
   UberMenuItemOperationsPrismaRepository,
   UberOperationsPrismaUnitOfWork,
@@ -64,7 +72,12 @@ export const UBER_EATS_OPERATIONS_PROVIDERS = [
       UBER_OPS_TICKET_REPOSITORY,
       UBER_TELEMETRY_PORT,
     ],
-    useFactory: (orders, reports, tickets, telemetry) =>
+    useFactory: (
+      orders: UberOrderOperationsRepositoryPort,
+      reports: UberReconciliationRepositoryPort,
+      tickets: UberOpsTicketRepositoryPort,
+      telemetry: UberTelemetryPort,
+    ) =>
       new GenerateUberReconciliationReportUseCase(
         orders,
         reports,
@@ -80,8 +93,12 @@ export const UBER_EATS_OPERATIONS_PROVIDERS = [
       UBER_MENU_ITEM_OPERATIONS_REPOSITORY,
       UBER_TELEMETRY_PORT,
     ],
-    useFactory: (tickets, orders, menuItems, telemetry) =>
-      new CreateUberOpsTicketUseCase(tickets, orders, menuItems, telemetry),
+    useFactory: (
+      tickets: UberOpsTicketRepositoryPort,
+      orders: UberOrderOperationsRepositoryPort,
+      menuItems: UberMenuItemOperationsRepositoryPort,
+      telemetry: UberTelemetryPort,
+    ) => new CreateUberOpsTicketUseCase(tickets, orders, menuItems, telemetry),
   },
   {
     provide: RetryUberOpsTicketUseCase,
@@ -94,12 +111,12 @@ export const UBER_EATS_OPERATIONS_PROVIDERS = [
       UBER_TELEMETRY_PORT,
     ],
     useFactory: (
-      unitOfWork,
-      orders,
-      publish,
-      availability,
-      stores,
-      telemetry,
+      unitOfWork: UberOperationsUnitOfWorkPort,
+      orders: SyncUberOrderStatusUseCase,
+      publish: PublishUberMenuUseCase,
+      availability: UberMenuAvailabilityUseCase,
+      stores: SyncUberStoreStatusUseCase,
+      telemetry: UberTelemetryPort,
     ) =>
       new RetryUberOpsTicketUseCase(
         unitOfWork,
@@ -113,8 +130,10 @@ export const UBER_EATS_OPERATIONS_PROVIDERS = [
   {
     provide: QueryUberOperationsSummary,
     inject: [UBER_RECONCILIATION_REPOSITORY, UBER_OPS_TICKET_REPOSITORY],
-    useFactory: (reports, tickets) =>
-      new QueryUberOperationsSummary(reports, tickets),
+    useFactory: (
+      reports: UberReconciliationRepositoryPort,
+      tickets: UberOpsTicketRepositoryPort,
+    ) => new QueryUberOperationsSummary(reports, tickets),
   },
 ];
 

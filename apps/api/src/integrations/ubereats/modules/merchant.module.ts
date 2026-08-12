@@ -15,17 +15,26 @@ import {
 } from '../application/merchant/uber-merchant-store-mapping.service';
 import { HandleUberMerchantWebhookHandler } from '../application/merchant/uber-merchant-webhook.handler';
 import {
+  type UberMerchantApiPort,
+  type UberOAuthTokenPort,
+  type UberStoreApiPort,
   UBER_MERCHANT_API,
   UBER_OAUTH_TOKEN,
   UBER_STORE_API,
 } from '../application/ports/uber-api.ports';
 import {
+  type UberMerchantConnectionRepositoryPort,
+  type UberOAuthStatePort,
+  type UberOperationsAlertRepositoryPort,
+  type UberStoreMappingRepositoryPort,
   UBER_MERCHANT_CONNECTION_REPOSITORY,
   UBER_OAUTH_STATE_REPOSITORY,
   UBER_OPERATIONS_ALERT_REPOSITORY,
   UBER_STORE_MAPPING_REPOSITORY,
 } from '../application/ports/uber-persistence.ports';
 import {
+  type UberTelemetryPort,
+  type UberWebhookInboxPort,
   UBER_TELEMETRY_PORT,
   UBER_WEBHOOK_INBOX_PORT,
 } from '../application/ports/uber-order-processing.ports';
@@ -76,7 +85,8 @@ export const UBER_EATS_MERCHANT_PROVIDERS = [
   {
     provide: StartUberOAuthUseCase,
     inject: [UBER_OAUTH_TOKEN, UBER_OAUTH_STATE_REPOSITORY],
-    useFactory: (tokens, states) => new StartUberOAuthUseCase(tokens, states),
+    useFactory: (tokens: UberOAuthTokenPort, states: UberOAuthStatePort) =>
+      new StartUberOAuthUseCase(tokens, states),
   },
   {
     provide: CompleteUberOAuthUseCase,
@@ -85,8 +95,11 @@ export const UBER_EATS_MERCHANT_PROVIDERS = [
       UBER_OAUTH_STATE_REPOSITORY,
       UBER_MERCHANT_CONNECTION_REPOSITORY,
     ],
-    useFactory: (tokens, states, connections) =>
-      new CompleteUberOAuthUseCase(tokens, states, connections),
+    useFactory: (
+      tokens: UberOAuthTokenPort,
+      states: UberOAuthStatePort,
+      connections: UberMerchantConnectionRepositoryPort,
+    ) => new CompleteUberOAuthUseCase(tokens, states, connections),
   },
   {
     provide: DiscoverUberStoresUseCase,
@@ -96,13 +109,18 @@ export const UBER_EATS_MERCHANT_PROVIDERS = [
       UBER_MERCHANT_CONNECTION_REPOSITORY,
       UBER_STORE_MAPPING_REPOSITORY,
     ],
-    useFactory: (api, tokens, connections, mappings) =>
-      new DiscoverUberStoresUseCase(api, tokens, connections, mappings),
+    useFactory: (
+      api: UberMerchantApiPort,
+      tokens: UberOAuthTokenPort,
+      connections: UberMerchantConnectionRepositoryPort,
+      mappings: UberStoreMappingRepositoryPort,
+    ) => new DiscoverUberStoresUseCase(api, tokens, connections, mappings),
   },
   {
     provide: MapUberStoreUseCase,
     inject: [UBER_STORE_MAPPING_REPOSITORY],
-    useFactory: (mappings) => new MapUberStoreUseCase(mappings),
+    useFactory: (mappings: UberStoreMappingRepositoryPort) =>
+      new MapUberStoreUseCase(mappings),
   },
   {
     provide: ProvisionUberStoreUseCase,
@@ -111,8 +129,11 @@ export const UBER_EATS_MERCHANT_PROVIDERS = [
       UBER_MERCHANT_CONNECTION_REPOSITORY,
       UBER_STORE_MAPPING_REPOSITORY,
     ],
-    useFactory: (api, connections, mappings) =>
-      new ProvisionUberStoreUseCase(api, connections, mappings),
+    useFactory: (
+      api: UberStoreApiPort,
+      connections: UberMerchantConnectionRepositoryPort,
+      mappings: UberStoreMappingRepositoryPort,
+    ) => new ProvisionUberStoreUseCase(api, connections, mappings),
   },
   {
     provide: DeprovisionUberStoreUseCase,
@@ -125,13 +146,16 @@ export const UBER_EATS_MERCHANT_PROVIDERS = [
       UBER_STORE_MAPPING_REPOSITORY,
       UBER_OPERATIONS_ALERT_REPOSITORY,
     ],
-    useFactory: (api, mappings, alerts) =>
-      new SyncUberStoreStatusUseCase(api, mappings, alerts),
+    useFactory: (
+      api: UberStoreApiPort,
+      mappings: UberStoreMappingRepositoryPort,
+      alerts: UberOperationsAlertRepositoryPort,
+    ) => new SyncUberStoreStatusUseCase(api, mappings, alerts),
   },
   {
     provide: HandleUberMerchantWebhookHandler,
     inject: [UBER_WEBHOOK_INBOX_PORT, UBER_TELEMETRY_PORT],
-    useFactory: (inbox, telemetry) =>
+    useFactory: (inbox: UberWebhookInboxPort, telemetry: UberTelemetryPort) =>
       new HandleUberMerchantWebhookHandler(inbox, telemetry),
   },
 ];
