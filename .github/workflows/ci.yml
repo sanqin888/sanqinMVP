@@ -46,6 +46,15 @@ jobs:
       - name: Build (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} build
 
+      - name: Strict declaration check (${{ matrix.app }})
+        run: pnpm --filter ${{ matrix.app }} exec tsc -p tsconfig.strict.json --pretty false
+
+      - name: Strict declaration check (shared libraries)
+        if: matrix.app == 'api'
+        run: |
+          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
+          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
+
       - name: Test (api only)
         if: matrix.app == 'api'
         run: pnpm --filter api test
