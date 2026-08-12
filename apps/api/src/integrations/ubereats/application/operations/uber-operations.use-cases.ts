@@ -219,7 +219,8 @@ export class RetryUberOpsTicketUseCase {
         const result = await this.storeStatusSync.syncStoreStatusToUber(
           parseStoreContext(ticket.context),
         );
-        if (!result.ok) throw new Error('Uber 门店状态同步失败');
+        if (result.outcome === 'FAILED')
+          throw new Error('Uber 门店状态同步失败');
       } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH)
         await this.menuPublish.execute(
           parsePublishContext(ticket.context).publish,

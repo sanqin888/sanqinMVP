@@ -67,6 +67,7 @@ import {
   UBER_EATS_ORDER_ACTIONS,
   UBER_EATS_ORDER_STATUS_SYNC,
 } from '../public-api';
+import { presentOrderAction } from './public-contract.mappers';
 import {
   type UberStoreMappingRepositoryPort,
   UBER_STORE_MAPPING_REPOSITORY,
@@ -195,7 +196,15 @@ export const UBER_EATS_ORDER_PROVIDERS: Provider[] = [
   },
   {
     provide: UBER_EATS_ORDER_ACTIONS,
-    useExisting: RequestUberOrderActionUseCase,
+    inject: [RequestUberOrderActionUseCase],
+    useFactory: (actions: RequestUberOrderActionUseCase) => ({
+      accept: async (id: string) =>
+        presentOrderAction(await actions.accept(id)),
+      retryReadyForPickup: async (id: string) =>
+        presentOrderAction(await actions.retryReadyForPickup(id)),
+      getReadyForPickupAction: async (id: string) =>
+        presentOrderAction(await actions.getReadyForPickupAction(id)),
+    }),
   },
   {
     provide: ExecuteUberOrderActionWorker,

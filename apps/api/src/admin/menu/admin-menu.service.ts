@@ -1057,9 +1057,8 @@ export class AdminMenuService {
         stores: [
           {
             storeId: 'unknown',
-            uberStoreId: null,
             status: 'FAILED',
-            error: message,
+            error: { code: 'UNKNOWN', message, retryable: true },
           },
         ],
       };

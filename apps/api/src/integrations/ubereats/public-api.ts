@@ -10,16 +10,21 @@ export const UBER_EATS_STORE_STATUS_SYNC = Symbol(
   'UBER_EATS_STORE_STATUS_SYNC',
 );
 
-export type UberEatsAvailabilitySyncResult = {
-  status: 'PENDING' | 'FAILED' | 'SKIPPED_NOT_PUBLISHED';
-  stores: Array<{
-    storeId: string;
-    uberStoreId?: string | null;
-    status: 'PENDING' | 'FAILED' | 'SKIPPED_NOT_PUBLISHED';
-    versionStableId?: string;
-    error?: string;
-  }>;
-};
+export type {
+  UberEatsAvailabilitySyncResult,
+  UberEatsAvailabilitySyncStatus,
+  UberEatsOrderActionResult,
+  UberEatsOrderStatusSyncResult,
+  UberEatsStoreStatusSyncResult,
+  UberEatsSyncError,
+} from './contracts/responses/cross-context.responses';
+
+import type {
+  UberEatsAvailabilitySyncResult,
+  UberEatsOrderActionResult,
+  UberEatsOrderStatusSyncResult,
+  UberEatsStoreStatusSyncResult,
+} from './contracts/responses/cross-context.responses';
 
 export interface UberEatsMenuAvailabilityPort {
   syncUberMenuItemAvailability(input: {
@@ -33,16 +38,6 @@ export interface UberEatsMenuAvailabilityPort {
     isAvailable: boolean;
   }): Promise<UberEatsAvailabilitySyncResult>;
 }
-
-export type UberEatsOrderActionResult = {
-  ok: boolean;
-  id?: string;
-  actionId?: string;
-  status: string;
-  retryable: boolean;
-  duplicate?: boolean;
-  lastError?: string | null;
-};
 
 export interface UberEatsOrderActionsPort {
   accept(externalOrderId: string): Promise<UberEatsOrderActionResult>;
@@ -58,9 +53,9 @@ export interface UberEatsOrderStatusSyncPort {
   execute(
     externalOrderId: string,
     status: 'pending' | 'paid' | 'making' | 'ready' | 'completed' | 'cancelled',
-  ): Promise<{ actionResult: UberEatsOrderActionResult }>;
+  ): Promise<UberEatsOrderStatusSyncResult>;
 }
 
 export interface UberEatsStoreStatusSyncPort {
-  syncStoreStatusToUber(): Promise<unknown>;
+  syncStoreStatusToUber(): Promise<UberEatsStoreStatusSyncResult>;
 }
