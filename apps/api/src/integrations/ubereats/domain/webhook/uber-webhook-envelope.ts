@@ -1,4 +1,3 @@
-import type { UberWebhookEnvelopePayloadV1 } from '../../contracts/events/uber-webhook-envelope.v1';
 import type { UberWebhookHeaderValue } from './uber-webhook.types';
 
 export type UberWebhookEnvelope = {

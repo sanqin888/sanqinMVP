@@ -5,6 +5,7 @@ import {
 } from './uber-order.use-cases';
 import { UberOrderActionService } from './uber-order-action.service';
 import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
+import type { UberOrderImportRepositoryPort } from '../ports/uber-order.ports';
 
 const notification = {
   resourceId: 'order-1',
@@ -20,10 +21,17 @@ const detail = {
 
 describe('Uber order use-case boundaries', () => {
   it('commits the ACCEPT intent with the order so process exit cannot lose it', async () => {
-    const saveImportedOrder = jest.fn().mockResolvedValue({
-      orderId: 'local-1',
-      created: true,
-      action: { taskId: 'action-1', created: true },
+    type ImportedOrderInput = Parameters<
+      UberOrderImportRepositoryPort['saveImportedOrder']
+    >[0];
+    const saved: { order?: ImportedOrderInput } = {};
+    const saveImportedOrder = jest.fn((order: ImportedOrderInput) => {
+      saved.order = order;
+      return Promise.resolve({
+        orderId: 'local-1',
+        created: true,
+        action: { taskId: 'action-1', created: true },
+      });
     });
     const request = jest.fn();
     const useCase = new ImportUberOrderUseCase(
@@ -44,15 +52,12 @@ describe('Uber order use-case boundaries', () => {
 
     await useCase.execute('orders.notification', 'event-1', notification);
 
-    expect(saveImportedOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actionIntent: expect.objectContaining({
-          externalOrderId: 'order-1',
-          action: 'ACCEPT',
-          idempotencyKey: expect.stringMatching(/^sanqin-uber-/),
-        }),
-      }),
-    );
+    expect(saveImportedOrder).toHaveBeenCalledTimes(1);
+    expect(saved.order?.actionIntent).toMatchObject({
+      externalOrderId: 'order-1',
+      action: 'ACCEPT',
+    });
+    expect(saved.order?.actionIntent?.idempotencyKey).toMatch(/^sanqin-uber-/);
     expect(request).not.toHaveBeenCalled();
   });
 
