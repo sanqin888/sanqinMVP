@@ -65,6 +65,10 @@ import { HandleUberMerchantWebhookHandler } from '../application/merchant/uber-m
 import { UberEatsInternalInfrastructureModule } from './ubereats-internal-infrastructure.module';
 import { UberEatsMenuModule } from './menu.module';
 import { UberEatsMerchantModule } from './merchant.module';
+import {
+  UBER_EATS_ORDER_ACTIONS,
+  UBER_EATS_ORDER_STATUS_SYNC,
+} from '../public-api';
 
 export const UBER_EATS_ORDER_PROVIDERS = [
   UberOrderGateway,
@@ -182,6 +186,10 @@ export const UBER_EATS_ORDER_PROVIDERS = [
       new RequestUberOrderActionUseCase(actions),
   },
   {
+    provide: UBER_EATS_ORDER_ACTIONS,
+    useExisting: RequestUberOrderActionUseCase,
+  },
+  {
     provide: ExecuteUberOrderActionWorker,
     inject: [UberOrderActionService],
     useFactory: (actions: UberOrderActionService) =>
@@ -210,6 +218,10 @@ export const UBER_EATS_ORDER_PROVIDERS = [
         statusSync,
         telemetry,
       ),
+  },
+  {
+    provide: UBER_EATS_ORDER_STATUS_SYNC,
+    useExisting: SyncUberOrderStatusUseCase,
   },
   {
     provide: ListPendingUberOrdersQuery,
@@ -250,6 +262,8 @@ export const UBER_EATS_ORDER_EXPORTS = [
   ExecuteUberOrderActionWorker,
   RequestUberOrderActionUseCase,
   SyncUberOrderStatusUseCase,
+  UBER_EATS_ORDER_ACTIONS,
+  UBER_EATS_ORDER_STATUS_SYNC,
   ListPendingUberOrdersQuery,
 ];
 

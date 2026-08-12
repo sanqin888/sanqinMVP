@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { UBER_EATS_STORE_STATUS_SYNC } from '../public-api';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import {
   CompleteUberOAuthUseCase,
@@ -153,6 +154,10 @@ export const UBER_EATS_MERCHANT_PROVIDERS = [
     ) => new SyncUberStoreStatusUseCase(api, mappings, alerts),
   },
   {
+    provide: UBER_EATS_STORE_STATUS_SYNC,
+    useExisting: SyncUberStoreStatusUseCase,
+  },
+  {
     provide: HandleUberMerchantWebhookHandler,
     inject: [UBER_WEBHOOK_INBOX_PORT, UBER_TELEMETRY_PORT],
     useFactory: (inbox: UberWebhookInboxPort, telemetry: UberTelemetryPort) =>
@@ -168,6 +173,7 @@ export const UBER_EATS_MERCHANT_EXPORTS = [
   ProvisionUberStoreUseCase,
   DeprovisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
+  UBER_EATS_STORE_STATUS_SYNC,
   HandleUberMerchantWebhookHandler,
 ];
 

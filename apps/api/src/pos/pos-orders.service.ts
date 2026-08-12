@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
 } from '@nestjs/common';
 import {
@@ -16,9 +17,11 @@ import {
 } from '../orders/order-status';
 import type { OrderDto } from '../orders/dto/order.dto';
 import {
-  RequestUberOrderActionUseCase,
-  SyncUberOrderStatusUseCase,
-} from '../integrations/ubereats/application/orders/uber-order.use-cases';
+  UBER_EATS_ORDER_ACTIONS,
+  UBER_EATS_ORDER_STATUS_SYNC,
+  type UberEatsOrderActionsPort,
+  type UberEatsOrderStatusSyncPort,
+} from '../integrations/ubereats/public-api';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash } from 'crypto';
 
@@ -28,8 +31,10 @@ const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 export class PosOrdersService {
   constructor(
     private readonly orders: OrdersService,
-    private readonly uberOrderActions: RequestUberOrderActionUseCase,
-    private readonly uberOrderStatusSync: SyncUberOrderStatusUseCase,
+    @Inject(UBER_EATS_ORDER_ACTIONS)
+    private readonly uberOrderActions: UberEatsOrderActionsPort,
+    @Inject(UBER_EATS_ORDER_STATUS_SYNC)
+    private readonly uberOrderStatusSync: UberEatsOrderStatusSyncPort,
     private readonly prisma: PrismaService,
   ) {}
 
