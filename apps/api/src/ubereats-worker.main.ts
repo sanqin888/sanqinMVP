@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { NestFactory } from '@nestjs/core';
 
-import { UberWorkerHealthService } from './integrations/ubereats/worker';
+import { UberWorkerHealthService as UberEatsWorkerHealth } from './integrations/ubereats/worker';
 import { UberEatsWorkerModule } from './ubereats-worker.module';
 
 export function assertUberWorkerEnabled(
@@ -14,7 +14,7 @@ export function assertUberWorkerEnabled(
   }
 }
 
-function createHealthServer(health: UberWorkerHealthService): Server {
+function createHealthServer(health: UberEatsWorkerHealth): Server {
   return createServer((request, response) => {
     if (request.url !== '/health') {
       response.writeHead(404).end('Not Found');
@@ -35,7 +35,7 @@ async function bootstrap(): Promise<void> {
   context.enableShutdownHooks();
 
   const port = Number(process.env.UBER_EATS_WORKER_HEALTH_PORT ?? 4001);
-  const server = createHealthServer(context.get(UberWorkerHealthService));
+  const server = createHealthServer(context.get(UberEatsWorkerHealth));
   server.listen(port, '0.0.0.0', () => {
     console.log(`Uber Eats worker health listening on :${port}/health`);
   });

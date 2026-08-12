@@ -8,100 +8,49 @@ import { PublishUberMenuUseCase } from './application/menu/publish-uber-menu.use
 import { StartUberOAuthUseCase } from './application/merchant/uber-merchant-oauth.service';
 import { QueryUberOperationsSummary } from './application/operations/uber-operations.use-cases';
 import { RequestUberOrderActionUseCase } from './application/orders/uber-order.use-cases';
-import { UberEatsInfrastructureWorkerModule } from './composition/ubereats-worker.module';
-import { UberEatsMenuModule } from './modules/menu.module';
-import { UberEatsMerchantModule } from './modules/merchant.module';
-import { UberEatsOperationsModule } from './modules/operations.module';
-import { UberEatsOrdersModule } from './modules/orders.module';
-import { UberEatsHttpModule } from './modules/ubereats-http.module';
-import { UberEatsInternalInfrastructureModule } from './modules/ubereats-internal-infrastructure.module';
+import { UberEatsInfrastructureWorkerModule } from './infrastructure/workers/ubereats-worker.module';
+import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
+import { UberEatsModule } from './ubereats.module';
 
 const metadata = <T>(module: object, key: string): T[] => {
   const value: unknown = Reflect.getMetadata(key, module);
   return Array.isArray(value) ? (value as T[]) : [];
 };
-
 const providerTokens = (module: object) =>
-  metadata<unknown>(module, MODULE_METADATA.PROVIDERS).map((provider) => {
-    if (
-      typeof provider === 'object' &&
-      provider !== null &&
-      'provide' in provider
-    ) {
-      return provider.provide;
-    }
-    return provider;
-  });
-
-describe('Uber Eats Nest module metadata', () => {
-  const controllers = [
-    UberEatsOAuthController,
-    UberEatsWebhookController,
-    UberEatsOrdersController,
-    UberEatsMenuController,
-    UberEatsOperationsController,
-  ];
-  const domains = [
-    { module: UberEatsMerchantModule, own: StartUberOAuthUseCase },
-    { module: UberEatsOrdersModule, own: RequestUberOrderActionUseCase },
-    { module: UberEatsMenuModule, own: PublishUberMenuUseCase },
-    { module: UberEatsOperationsModule, own: QueryUberOperationsSummary },
-  ];
-
-  it.each(domains)(
-    '$module.name registers and exports only its own application providers',
-    ({ module, own }) => {
-      const providers = providerTokens(module);
-      const exports = metadata<unknown>(module, MODULE_METADATA.EXPORTS);
-      expect(providers).toContain(own);
-      expect(exports).toContain(own);
-      for (const foreign of domains.filter(
-        (domain) => domain.module !== module,
-      )) {
-        expect(providers).not.toContain(foreign.own);
-        expect(exports).not.toContain(foreign.module);
-        expect(exports).not.toContain(foreign.own);
-      }
-      expect(metadata(module, MODULE_METADATA.CONTROLLERS)).toEqual([]);
-    },
+  metadata<unknown>(module, MODULE_METADATA.PROVIDERS).map((provider) =>
+    typeof provider === 'object' && provider !== null && 'provide' in provider
+      ? provider.provide
+      : provider,
   );
 
-  it('keeps every HTTP controller in the HTTP composition module', () => {
-    expect(metadata(UberEatsHttpModule, MODULE_METADATA.CONTROLLERS)).toEqual(
-      controllers,
-    );
-    expect(metadata(UberEatsHttpModule, MODULE_METADATA.IMPORTS)).toEqual([
-      UberEatsMerchantModule,
-      UberEatsOrdersModule,
-      UberEatsMenuModule,
-      UberEatsOperationsModule,
+describe('Uber Eats Nest module metadata', () => {
+  it('assembles HTTP controllers and all application subdomains in one root', () => {
+    expect(metadata(UberEatsModule, MODULE_METADATA.CONTROLLERS)).toEqual([
+      UberEatsOAuthController,
+      UberEatsWebhookController,
+      UberEatsOrdersController,
+      UberEatsMenuController,
+      UberEatsOperationsController,
     ]);
+    expect(providerTokens(UberEatsModule)).toEqual(
+      expect.arrayContaining([
+        StartUberOAuthUseCase,
+        RequestUberOrderActionUseCase,
+        PublishUberMenuUseCase,
+        QueryUberOperationsSummary,
+      ]),
+    );
   });
 
-  it('exports only explicit infrastructure dependencies', () => {
-    const exports = metadata(
-      UberEatsInternalInfrastructureModule,
-      MODULE_METADATA.EXPORTS,
-    );
-    expect(exports).not.toContain(UberEatsMerchantModule);
-    expect(exports).not.toContain(UberEatsOrdersModule);
-    expect(exports).not.toContain(UberEatsMenuModule);
-    expect(exports).not.toContain(UberEatsOperationsModule);
-  });
-
-  it('keeps the worker controller-free and detached from HTTP feature modules', () => {
-    const imports = metadata(
-      UberEatsInfrastructureWorkerModule,
-      MODULE_METADATA.IMPORTS,
-    );
+  it('keeps the worker controller-free with explicit private providers', () => {
     expect(
       metadata(UberEatsInfrastructureWorkerModule, MODULE_METADATA.CONTROLLERS),
     ).toEqual([]);
-    expect(imports).toContain(UberEatsInternalInfrastructureModule);
-    expect(imports).not.toContain(UberEatsHttpModule);
-    expect(imports).not.toContain(UberEatsMerchantModule);
-    expect(imports).not.toContain(UberEatsOrdersModule);
-    expect(imports).not.toContain(UberEatsMenuModule);
-    expect(imports).not.toContain(UberEatsOperationsModule);
+    expect(providerTokens(UberEatsInfrastructureWorkerModule)).toEqual(
+      expect.arrayContaining([UberWorkerHealthService]),
+    );
+    expect(
+      metadata(UberEatsInfrastructureWorkerModule, MODULE_METADATA.IMPORTS),
+    ).not.toContain(UberEatsModule);
   });
 });

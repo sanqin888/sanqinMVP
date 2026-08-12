@@ -16,19 +16,19 @@ const LAYERS = [
   'contracts',
   'domain',
   'infrastructure',
-  'composition',
 ] as const;
-type Layer = (typeof LAYERS)[number];
+type Layer = (typeof LAYERS)[number] | 'composition';
 
 const layerOf = (path: string): Layer | undefined =>
-  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
-  path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
+  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts')
     ? 'composition'
-    : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
-      ? 'contracts'
-      : LAYERS.find((layer) =>
-          path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, layer)}${sep}`),
-        );
+    : path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts')
+      ? 'infrastructure'
+      : path === join(BOUNDED_CONTEXT_ROOT, 'public-api.ts')
+        ? 'contracts'
+        : LAYERS.find((layer) =>
+            path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, layer)}${sep}`),
+          );
 
 const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   api: ['api', 'application', 'contracts'],
@@ -36,14 +36,7 @@ const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   contracts: ['contracts', 'domain'],
   domain: ['domain'],
   infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
-  composition: [
-    'api',
-    'application',
-    'contracts',
-    'domain',
-    'infrastructure',
-    'composition',
-  ],
+  composition: ['api', 'application', 'contracts', 'domain', 'infrastructure'],
 };
 
 describe('Uber Eats bounded-context architecture', () => {

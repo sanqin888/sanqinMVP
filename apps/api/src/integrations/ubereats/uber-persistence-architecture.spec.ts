@@ -137,9 +137,9 @@ describe('Uber Eats menu persistence dependency direction', () => {
   });
 
   it('binds each menu draft port to its dedicated Prisma adapter', () => {
-    const moduleFile = scanTypeScript(join(__dirname, 'modules'), {
+    const moduleFile = scanTypeScript(join(__dirname), {
       productionOnly: true,
-    }).find((file) => file.path.endsWith('menu.module.ts'));
+    }).find((file) => file.path === join(__dirname, 'ubereats.module.ts'));
     expect(moduleFile).toBeDefined();
 
     const draftPortBindings = Object.fromEntries(
