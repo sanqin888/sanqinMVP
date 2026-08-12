@@ -67,7 +67,7 @@ const envConfigModule = configModuleFactory.forRoot({
     AdminModule,
     StoreStatusModule,
     PublicMenuModule,
-    UberEatsModule.forHttp(),
+    UberEatsModule,
   ],
   controllers: [AppController],
   providers: [

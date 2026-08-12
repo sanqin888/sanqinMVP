@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
-
-import { UberEatsModule } from './integrations/ubereats/ubereats.module';
+import { UberEatsInfrastructureWorkerModule } from './integrations/ubereats/infrastructure/workers/ubereats-worker.module';
 
 /** Production root for the controller-free Uber Eats worker process. */
 @Module({
-  imports: [UberEatsModule.withWorkers()],
+  imports: [UberEatsInfrastructureWorkerModule],
 })
 export class UberEatsWorkerModule {}

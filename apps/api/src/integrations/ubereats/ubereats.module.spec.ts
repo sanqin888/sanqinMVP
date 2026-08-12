@@ -1,69 +1,61 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-describe('UberEatsModule focused use-case contract', () => {
-  const source = readFileSync(join(__dirname, 'ubereats.module.ts'), 'utf8');
-  const publicUseCases = [
-    'UberMenuDraftUseCase',
-    'PublishUberMenuUseCase',
-    'UberMenuAvailabilityUseCase',
-    'RequestUberOrderActionUseCase',
-    'SyncUberOrderStatusUseCase',
-    'ListPendingUberOrdersQuery',
-    'StartUberOAuthUseCase',
-    'CompleteUberOAuthUseCase',
-    'DiscoverUberStoresUseCase',
-    'MapUberStoreUseCase',
-    'ProvisionUberStoreUseCase',
-    'SyncUberStoreStatusUseCase',
-  ];
+const read = (...parts: string[]) =>
+  readFileSync(join(__dirname, ...parts), 'utf8');
 
-  it.each(publicUseCases)('registers the focused %s boundary', (useCase) => {
-    expect(source).toContain(useCase);
+describe('Uber Eats composition roots', () => {
+  const httpRoot = read('ubereats.module.ts');
+  const httpModule = read('modules', 'ubereats-http.module.ts');
+  const workerModule = read(
+    'infrastructure',
+    'workers',
+    'ubereats-worker.module.ts',
+  );
+  const applicationModule = read('ubereats-application.module.ts');
+
+  it('organizes HTTP capabilities as explicit internal modules', () => {
+    for (const capability of ['Merchant', 'Orders', 'Menu', 'Operations']) {
+      expect(httpModule).toContain(`UberEats${capability}Module`);
+    }
+    expect(httpRoot).toContain('UberEatsHttpModule');
   });
 
-  it('does not register an all-purpose Uber facade', () => {
-    expect(source).not.toMatch(
-      /UberMerchantService|UberMenuService|UberOrderApplication|UberOperationsApplication/,
-    );
+  it('keeps HTTP controllers and worker polling providers isolated', () => {
+    expect(httpModule).toContain('controllers:');
+    expect(httpModule).not.toMatch(/WorkerAdapter|UberWorkerHealthService/);
+    expect(workerModule).not.toMatch(/controllers\s*:|UberEatsHttpModule/);
+    expect(workerModule).toContain('UberWebhookInboxWorkerAdapter');
+    expect(workerModule).toContain('UberOrderActionWorkerAdapter');
+    expect(workerModule).toContain('UberMenuPublishConfirmationWorkerAdapter');
   });
 
-  it('keeps polling providers out of the default HTTP module', () => {
-    const httpMetadata = source.slice(
-      source.indexOf('@Module('),
-      source.indexOf('export class'),
+  it('exports only tokens/classes already present in the provider set', () => {
+    const exportsDefinition = applicationModule.slice(
+      applicationModule.indexOf('export const UBER_EATS_PUBLIC_PROVIDERS'),
     );
-    const workerMetadata = source.slice(source.indexOf('static withWorkers'));
-    expect(httpMetadata).not.toContain('UberWebhookInboxWorkerAdapter');
-    expect(workerMetadata).toContain('UberWebhookInboxWorkerAdapter');
+    expect(applicationModule).toContain('UBER_EATS_INTERNAL_PROVIDERS');
+    expect(exportsDefinition).not.toContain('useFactory');
+    expect(httpRoot).not.toContain('useFactory');
   });
 
-  it('production worker root imports the explicit worker composition only', () => {
-    const workerRoot = readFileSync(
-      join(__dirname, '..', '..', 'ubereats-worker.module.ts'),
-      'utf8',
+  it('worker process imports only the dedicated worker composition module', () => {
+    const workerRoot = read('..', '..', 'ubereats-worker.module.ts');
+    expect(workerRoot).toContain(
+      'imports: [UberEatsInfrastructureWorkerModule]',
     );
-    expect(workerRoot).toContain('imports: [UberEatsModule.withWorkers()]');
-    expect(workerRoot).not.toMatch(/controllers\s*:/);
+    expect(workerRoot).not.toMatch(/\bUberEatsModule\b|controllers\s*:/);
     expect(workerRoot).not.toContain('AppModule');
   });
 
-  it('worker entrypoint fails closed when enablement is missing', () => {
-    const entrypoint = readFileSync(
-      join(__dirname, '..', '..', 'ubereats-worker.main.ts'),
-      'utf8',
-    );
-    expect(entrypoint).toContain("env.UBER_EATS_WORKER_ENABLED !== 'true'");
-    expect(entrypoint).toContain('throw new Error');
+  it('selects polling through module composition instead of runtime config', () => {
+    expect(httpRoot).not.toMatch(/WORKER_ENABLED|withWorkers|WorkerAdapter/);
+    expect(workerModule).not.toMatch(/WORKER_ENABLED|process\.env/);
   });
 
-  it('deployment explicitly separates API and worker enablement', () => {
-    const compose = readFileSync(
-      join(__dirname, '..', '..', '..', '..', '..', 'docker-compose.yml'),
-      'utf8',
+  it('does not register compatibility facades or legacy aliases', () => {
+    expect(applicationModule).not.toMatch(
+      /UberMerchantService|UberMenuService|UberOrderApplication|UberOperationsApplication/,
     );
-    expect(compose).toContain('UBER_EATS_WORKER_ENABLED: "false"');
-    expect(compose).toContain('UBER_EATS_WORKER_ENABLED: "true"');
-    expect(compose).toContain('dist/ubereats-worker.main.js');
   });
 });
