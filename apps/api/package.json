@@ -19,6 +19,7 @@
     "prisma:generate": "prisma generate",
     "pretest": "pnpm run prisma:generate",
     "test": "jest",
+    "test:uber-smoke": "jest --runInBand --testRegex 'uber-sandbox\\.smoke\\.spec\\.ts$'",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand"
@@ -100,7 +101,7 @@
       "ts"
     ],
     "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
+    "testRegex": "^(?!.*\\.smoke\\.spec\\.ts$).*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
