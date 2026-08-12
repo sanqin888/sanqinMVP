@@ -193,13 +193,26 @@ export class SyncUberStoreStatusUseCase {
         );
     }
     const succeeded = results.filter((r) => r.ok).length;
+    if (results.length === 0)
+      return { outcome: 'SKIPPED' as const, reason: 'NO_STORES' as const };
+    if (succeeded === results.length)
+      return { outcome: 'SUCCEEDED' as const, synchronizedStores: succeeded };
+    const failedStores = results.length - succeeded;
+    const allSkipped = results.every((result) => result.skipped === true);
+    if (allSkipped)
+      return {
+        outcome: 'SKIPPED' as const,
+        reason: 'NO_PROVISIONED_STORES' as const,
+      };
     return {
-      ok: results.length > 0 && succeeded === results.length,
-      total: results.length,
-      succeeded,
-      failed: results.length - succeeded,
-      payload,
-      results,
+      outcome: 'FAILED' as const,
+      synchronizedStores: succeeded,
+      failedStores,
+      error: {
+        code: 'UPSTREAM_REJECTED' as const,
+        message: '一个或多个 Uber 门店状态同步失败',
+        retryable: results.some((result) => result.retryable !== false),
+      },
     };
   }
   private parsePause(value?: string | null) {

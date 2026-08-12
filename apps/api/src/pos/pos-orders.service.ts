@@ -64,7 +64,12 @@ export class PosOrdersService {
       // Uber action outbox. Read the committed order rather than advancing it
       // separately, which could otherwise lose the retryable action on failure.
       const current = await this.orders.getByStableId(orderStableId);
-      return this.advanceResult(current, result.actionResult);
+      return this.advanceResult(
+        current,
+        result.ok
+          ? result.actionResult
+          : { errorSummary: result.error.message },
+      );
     }
 
     if (order.status === 'ready' && externalOrderId) {
@@ -72,10 +77,10 @@ export class PosOrdersService {
         await this.uberOrderActions.getReadyForPickupAction(externalOrderId);
       if (action && action.status !== 'SUCCEEDED') {
         return this.advanceResult(order, {
-          actionId: action.id,
+          actionId: action.actionId,
           status: action.status,
           retryable: action.retryable,
-          errorSummary: action.lastError ? 'Uber 同步失败' : undefined,
+          errorSummary: action.error ? 'Uber 同步失败' : undefined,
         });
       }
     }

@@ -67,6 +67,7 @@ import {
 import { UberImageValidator } from '../infrastructure/uber-api/uber-image.validator';
 import { UberMenuGateway } from '../infrastructure/uber-api/uber-resource.gateways';
 import { UBER_EATS_MENU_AVAILABILITY } from '../public-api';
+import { presentAvailabilitySync } from './public-contract.mappers';
 
 export const UBER_EATS_MENU_PROVIDERS: Provider[] = [
   UberMenuGateway,
@@ -221,7 +222,25 @@ export const UBER_EATS_MENU_PROVIDERS: Provider[] = [
   },
   {
     provide: UBER_EATS_MENU_AVAILABILITY,
-    useExisting: UberMenuAvailabilityUseCase,
+    inject: [UberMenuAvailabilityUseCase],
+    useFactory: (availability: UberMenuAvailabilityUseCase) => ({
+      syncUberMenuItemAvailability: async (
+        input: Parameters<
+          UberMenuAvailabilityUseCase['syncUberMenuItemAvailability']
+        >[0],
+      ) =>
+        presentAvailabilitySync(
+          await availability.syncUberMenuItemAvailability(input),
+        ),
+      syncUberOptionItemAvailability: async (
+        input: Parameters<
+          UberMenuAvailabilityUseCase['syncUberOptionItemAvailability']
+        >[0],
+      ) =>
+        presentAvailabilitySync(
+          await availability.syncUberOptionItemAvailability(input),
+        ),
+    }),
   },
 ];
 
