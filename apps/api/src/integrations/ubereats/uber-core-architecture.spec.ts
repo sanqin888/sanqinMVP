@@ -12,6 +12,18 @@ const CORE_ROOTS = [
 ];
 
 describe('Uber Eats framework-independent core architecture', () => {
+  it('keeps domain independent from contracts', () => {
+    const domain = scanTypeScript(resolve(UBER_EATS_ROOT, 'domain'), {
+      productionOnly: true,
+    });
+
+    expect(
+      importViolations(domain, UBER_EATS_ROOT, (specifier) =>
+        /(?:^|\/)contracts(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
+
   it('keeps Nest HTTP exceptions out of core and infrastructure production code', () => {
     const roots = [...CORE_ROOTS, resolve(UBER_EATS_ROOT, 'infrastructure')];
     for (const root of roots) {

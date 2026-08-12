@@ -148,6 +148,33 @@ describe('Uber webhook event domain parser', () => {
     });
   });
 
+  it.each(['submitted', 'pending', 'succeeded', 'failed'] as const)(
+    'normalizes the %s menu notification status in the domain parser',
+    (status) => {
+      expect(
+        parseUberMenuNotificationV1({
+          data: {
+            store_id: 'store-1',
+            resource_id: 'publication-1',
+            status,
+          },
+        })?.status,
+      ).toBe(status.toUpperCase());
+    },
+  );
+
+  it('rejects menu notifications with a status outside the domain lifecycle', () => {
+    expect(
+      parseUberMenuNotificationV1({
+        data: {
+          store_id: 'store-1',
+          resource_id: 'publication-1',
+          status: 'cancelled',
+        },
+      }),
+    ).toBeNull();
+  });
+
   it('rejects unknown business versions before interpreting the payload', () => {
     expect(
       dispatchUberWebhookV1({

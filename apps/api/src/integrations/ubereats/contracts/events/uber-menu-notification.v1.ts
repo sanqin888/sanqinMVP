@@ -1,8 +1,7 @@
-export type UberMenuNotificationStatusV1 =
-  | 'SUBMITTED'
-  | 'PENDING'
-  | 'SUCCEEDED'
-  | 'FAILED';
+import type { UberMenuNotificationStatus } from '../../domain/webhook/uber-webhook.types';
+
+/** V1 wire status is currently identical to the domain lifecycle vocabulary. */
+export type UberMenuNotificationStatusV1 = UberMenuNotificationStatus;
 
 /** Uber-owned menu notification wire shape (legacy locations remain optional). */
 export interface UberMenuNotificationPayloadV1 {

@@ -1,4 +1,3 @@
-import type { UberMenuNotificationStatusV1 } from '../../contracts/events/uber-menu-notification.v1';
 import { normalizeUberEventType } from '../shared/uber-integration.utils';
 import {
   parseUberWebhookEnvelopeV1,
@@ -6,6 +5,7 @@ import {
   webhookText,
   type UberWebhookEventV1,
 } from './uber-webhook-envelope';
+import type { UberMenuNotificationStatus } from './uber-webhook.types';
 
 export interface UberOrderNotificationEventV1 extends UberWebhookEventV1 {
   family: 'order';
@@ -29,7 +29,7 @@ export interface UberMenuNotificationEventV1 {
   family: 'menu';
   storeId: string;
   resourceId: string;
-  status: UberMenuNotificationStatusV1;
+  status: UberMenuNotificationStatus;
   failures: Array<{ code: string; path: string | null; message: string }>;
 }
 export interface UberEventOrdering {
@@ -106,7 +106,7 @@ export function parseUberMenuNotificationV1(payload: unknown) {
     family: 'menu',
     storeId,
     resourceId,
-    status: status as UberMenuNotificationStatusV1,
+    status: status as UberMenuNotificationStatus,
     failures: errors.map((entry) => {
       const error = webhookObject(entry);
       return {
