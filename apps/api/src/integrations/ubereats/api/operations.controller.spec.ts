@@ -26,7 +26,7 @@ describe('UberEatsOperationsController contract', () => {
     const routes = Object.getOwnPropertyNames(
       UberEatsOperationsController.prototype,
     )
-      .map((name) =>
+      .map((name): unknown =>
         Reflect.getMetadata(
           PATH_METADATA,
           UberEatsOperationsController.prototype[name as never],
