@@ -20,6 +20,19 @@ import { UberTelemetryService } from './uber-telemetry.service';
 const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
+const mapStoreMapping = (
+  row: UberMerchantStoreMapping,
+): UberMerchantStoreMapping => ({
+  merchantUberUserId: row.merchantUberUserId,
+  uberStoreId: row.uberStoreId,
+  storeName: row.storeName,
+  locationSummary: row.locationSummary,
+  isProvisioned: row.isProvisioned,
+  provisionedAt: row.provisionedAt,
+  posExternalStoreId: row.posExternalStoreId,
+  ...(row.rawPayload === undefined ? {} : { rawPayload: row.rawPayload }),
+});
+
 @Injectable()
 export class UberOAuthStatePrismaAdapter implements UberOAuthStatePort {
   constructor(
@@ -155,11 +168,16 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
     if (!row.encryptedAccessToken) return null;
     const accessToken = this.vault.decrypt(row.encryptedAccessToken);
     return {
-      ...row,
+      merchantUberUserId: row.merchantUberUserId,
       accessToken,
       refreshToken: row.encryptedRefreshToken
         ? this.vault.decrypt(row.encryptedRefreshToken)
         : null,
+      expiresAt: row.expiresAt,
+      scope: row.scope,
+      tokenType: row.tokenType,
+      connectedAt: row.connectedAt,
+      rawStoresSnapshot: row.rawStoresSnapshot,
     };
   }
   async upsertConnectionByUberUserId(
@@ -172,7 +190,7 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
     const encryptedRefreshToken = input.refreshToken
       ? this.vault.encrypt(input.refreshToken)
       : null;
-    return this.prisma.uberMerchantConnection.upsert({
+    const row = await this.prisma.uberMerchantConnection.upsert({
       where: { merchantUberUserId: uberUserId },
       create: {
         ...connection,
@@ -192,6 +210,7 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
         connectedAt: input.connectedAt,
       },
     });
+    return { connectedAt: row.connectedAt };
   }
   async saveStoresSnapshot(
     merchantUberUserId: string,
@@ -207,18 +226,23 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
 @Injectable()
 export class UberStoreMappingPrismaAdapter implements UberStoreMappingRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
-  findMappings(merchantUberUserId: string, ids: string[]) {
-    return this.prisma.uberStoreMapping.findMany({
+  async findMappings(merchantUberUserId: string, ids: string[]) {
+    const rows = await this.prisma.uberStoreMapping.findMany({
       where: { merchantUberUserId, uberStoreId: { in: ids } },
     });
+    return rows.map(mapStoreMapping);
   }
-  listMappings() {
-    return this.prisma.uberStoreMapping.findMany({
+  async listMappings() {
+    const rows = await this.prisma.uberStoreMapping.findMany({
       orderBy: { uberStoreId: 'asc' },
     });
+    return rows.map(mapStoreMapping);
   }
-  findMapping(uberStoreId: string) {
-    return this.prisma.uberStoreMapping.findUnique({ where: { uberStoreId } });
+  async findMapping(uberStoreId: string) {
+    const row = await this.prisma.uberStoreMapping.findUnique({
+      where: { uberStoreId },
+    });
+    return row ? mapStoreMapping(row) : null;
   }
   async saveDiscovery(input: UberMerchantStoreMapping) {
     await this.prisma.uberStoreMapping.upsert({
@@ -235,24 +259,25 @@ export class UberStoreMappingPrismaAdapter implements UberStoreMappingRepository
       },
     });
   }
-  upsertMapping(input: UberMerchantStoreMapping) {
-    return this.prisma.uberStoreMapping.upsert({
+  async upsertMapping(input: UberMerchantStoreMapping) {
+    const row = await this.prisma.uberStoreMapping.upsert({
       where: { uberStoreId: input.uberStoreId },
       create: { ...input, rawPayload: json(input.rawPayload ?? {}) },
       update: { ...input, rawPayload: json(input.rawPayload ?? {}) },
     });
+    return mapStoreMapping(row);
   }
   async updatePosExternalStoreId(
     uberStoreId: string,
     posExternalStoreId: string,
   ) {
     const existing = await this.findMapping(uberStoreId);
-    return existing
-      ? this.prisma.uberStoreMapping.update({
-          where: { uberStoreId },
-          data: { posExternalStoreId },
-        })
-      : null;
+    if (!existing) return null;
+    const row = await this.prisma.uberStoreMapping.update({
+      where: { uberStoreId },
+      data: { posExternalStoreId },
+    });
+    return mapStoreMapping(row);
   }
 }
 

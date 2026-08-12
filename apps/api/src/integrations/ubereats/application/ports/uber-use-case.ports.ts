@@ -4,6 +4,7 @@ import type { UberEventOrdering } from './uber-order-processing.ports';
 import type {
   SyncAvailabilityInput,
   SyncOptionAvailabilityInput,
+  UberAvailabilitySyncResult,
   UpdateDraftGroupInput,
   UpdateDraftItemInput,
   UpdateDraftOptionInput,
@@ -17,35 +18,47 @@ export const UBER_MENU_AVAILABILITY_PORT = Symbol(
 );
 export const UBER_ORDER_IMPORT_PORT = Symbol('UBER_ORDER_IMPORT_PORT');
 export interface UberMenuDraftPort {
-  listUberItemChannelConfigs(storeId?: string): Promise<any>;
-  listUberPublishedMenuItems(storeId?: string): Promise<any>;
-  listUberOptionItemConfigs(storeId?: string): Promise<any>;
-  upsertUberItemChannelConfig(input: UpsertPriceBookItemInput): Promise<any>;
-  upsertUberOptionItemConfig(input: UpsertOptionItemConfigInput): Promise<any>;
-  getUberMenuDraft(storeId?: string): Promise<any>;
-  updateUberDraftItem(id: string, input: UpdateDraftItemInput): Promise<any>;
-  updateUberDraftGroup(id: string, input: UpdateDraftGroupInput): Promise<any>;
+  listUberItemChannelConfigs(storeId?: string): Promise<unknown>;
+  listUberPublishedMenuItems(storeId?: string): Promise<unknown>;
+  listUberOptionItemConfigs(storeId?: string): Promise<unknown>;
+  upsertUberItemChannelConfig(
+    input: UpsertPriceBookItemInput,
+  ): Promise<unknown>;
+  upsertUberOptionItemConfig(
+    input: UpsertOptionItemConfigInput,
+  ): Promise<unknown>;
+  getUberMenuDraft(storeId?: string): Promise<unknown>;
+  updateUberDraftItem(
+    id: string,
+    input: UpdateDraftItemInput,
+  ): Promise<unknown>;
+  updateUberDraftGroup(
+    id: string,
+    input: UpdateDraftGroupInput,
+  ): Promise<unknown>;
   updateUberDraftOption(
     id: string,
     input: UpdateDraftOptionInput,
-  ): Promise<any>;
+  ): Promise<unknown>;
   bindUberDraftOptionChildGroup(
     optionId: string,
     childGroupId: string,
     storeId?: string,
-  ): Promise<any>;
+  ): Promise<unknown>;
   unbindUberDraftOptionChildGroup(
     optionId: string,
     childGroupId: string,
     storeId?: string,
-  ): Promise<any>;
-  getUberMenuDraftDiff(storeId?: string): Promise<any>;
+  ): Promise<unknown>;
+  getUberMenuDraftDiff(storeId?: string): Promise<unknown>;
 }
 export interface UberMenuAvailabilityPort {
-  syncUberMenuItemAvailability(input: SyncAvailabilityInput): Promise<any>;
+  syncUberMenuItemAvailability(
+    input: SyncAvailabilityInput,
+  ): Promise<UberAvailabilitySyncResult>;
   syncUberOptionItemAvailability(
     input: SyncOptionAvailabilityInput,
-  ): Promise<any>;
+  ): Promise<UberAvailabilitySyncResult>;
 }
 export interface UberOrderImportPort {
   processWebhookEvent(

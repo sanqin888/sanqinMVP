@@ -10,6 +10,13 @@ import {
   type MenuPublishContext,
   type OrderStatusSyncContext,
   type StoreStatusSyncContext,
+  type UberOperationsCountSummary,
+  type UberOpsTicketCreated,
+  type UberOpsTicketRetryResult,
+  type UberPage,
+  type UberOpsTicket,
+  type UberReconciliationReport,
+  type UberReconciliationReportResult,
 } from '../../domain/operations/uber-operations.types';
 import { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberTelemetryPort } from '../ports/uber-order-processing.ports';
@@ -43,6 +50,32 @@ export type CreateUberOpsTicketCommand = Omit<
     excludedOptionChoiceStableIds?: string[];
   };
 };
+
+/** Stable facade contract consumed by delivery adapters. */
+export interface UberOperationsPort {
+  generateReconciliationReport(
+    input: GenerateReconciliationReportInput,
+  ): Promise<UberReconciliationReportResult>;
+  listReconciliationReports(
+    storeId?: string,
+    limit?: number,
+  ): Promise<UberPage<UberReconciliationReport>>;
+  getReconciliationSummary(
+    storeId?: string,
+  ): Promise<UberOperationsCountSummary>;
+  createOpsTicket(
+    input: CreateUberOpsTicketCommand,
+  ): Promise<UberOpsTicketCreated>;
+  listOpsTickets(
+    storeId?: string,
+    status?: UberOpsTicketStatus,
+  ): Promise<UberPage<UberOpsTicket>>;
+  getOpsTicketsSummary(
+    storeId?: string,
+    status?: UberOpsTicketStatus,
+  ): Promise<UberOperationsCountSummary>;
+  retryOpsTicket(ticketStableId: string): Promise<UberOpsTicketRetryResult>;
+}
 export const mapCreateUberOpsTicketCommand = (
   command: CreateUberOpsTicketCommand,
 ): CreateOpsTicketInput => {
@@ -91,7 +124,9 @@ export class GenerateUberReconciliationReportUseCase {
     private readonly tickets: UberOpsTicketRepositoryPort,
     private readonly telemetry: UberTelemetryPort,
   ) {}
-  async execute(input: GenerateReconciliationReportInput) {
+  async execute(
+    input: GenerateReconciliationReportInput,
+  ): Promise<UberReconciliationReportResult> {
     const storeId = normalizeUberStoreId(input.storeId);
     const range = reportRange(input.rangeStart, input.rangeEnd);
     const [orders, failedSyncEvents, discrepancyOrders] = await Promise.all([
@@ -136,7 +171,9 @@ export class CreateUberOpsTicketUseCase {
     private readonly menuItems: UberMenuItemOperationsRepositoryPort,
     private readonly telemetry: UberTelemetryPort,
   ) {}
-  async execute(command: CreateUberOpsTicketCommand) {
+  async execute(
+    command: CreateUberOpsTicketCommand,
+  ): Promise<UberOpsTicketCreated> {
     const input = mapCreateUberOpsTicketCommand(command);
     const storeId = normalizeUberStoreId(input.storeId);
     const context = parseTicketContext(input.type, input.context);
@@ -181,7 +218,7 @@ export class RetryUberOpsTicketUseCase {
     private readonly storeStatusSync: SyncUberStoreStatusUseCase,
     private readonly telemetry: UberTelemetryPort,
   ) {}
-  async execute(id: string) {
+  async execute(id: string): Promise<UberOpsTicketRetryResult> {
     const ticket = await this.unitOfWork.transaction(async ({ tickets }) => {
       const found = await tickets.find(id);
       if (!found) throw new BadRequestException(`工单 ${id} 不存在`);
@@ -236,7 +273,10 @@ export class QueryUberOperationsSummary {
     private readonly reports: UberReconciliationRepositoryPort,
     private readonly tickets: UberOpsTicketRepositoryPort,
   ) {}
-  async listReports(storeId?: string, limit = 20) {
+  async listReports(
+    storeId?: string,
+    limit = 20,
+  ): Promise<UberPage<UberReconciliationReport>> {
     const normalized = normalizeUberStoreId(storeId);
     const items = await this.reports.list(
       normalized,
@@ -244,18 +284,27 @@ export class QueryUberOperationsSummary {
     );
     return { storeId: normalized, count: items.length, items };
   }
-  reconciliation(storeId?: string) {
+  reconciliation(storeId?: string): Promise<UberOperationsCountSummary> {
     return this.reports.summary(normalizeUberStoreId(storeId));
   }
-  async listTickets(storeId?: string, status?: UberOpsTicketStatus) {
+  async listTickets(
+    storeId?: string,
+    status?: UberOpsTicketStatus,
+  ): Promise<UberPage<UberOpsTicket>> {
     const normalized = normalizeUberStoreId(storeId);
     const items = await this.tickets.list(normalized, status);
     return { storeId: normalized, count: items.length, items };
   }
-  ticketsSummary(storeId?: string, status?: UberOpsTicketStatus) {
+  ticketsSummary(
+    storeId?: string,
+    status?: UberOpsTicketStatus,
+  ): Promise<UberOperationsCountSummary> {
     return this.tickets.summary(normalizeUberStoreId(storeId), status);
   }
-  tickets(storeId?: string, status?: UberOpsTicketStatus) {
+  tickets(
+    storeId?: string,
+    status?: UberOpsTicketStatus,
+  ): Promise<UberOperationsCountSummary> {
     return this.ticketsSummary(storeId, status);
   }
 }

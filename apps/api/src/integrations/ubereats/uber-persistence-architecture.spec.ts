@@ -52,4 +52,21 @@ describe('Uber Eats persistence architecture', () => {
 
     expect([...forbiddenImports, ...leakedDelegateTypes]).toEqual([]);
   });
+
+  it('keeps application ports free of any and generated Prisma types', () => {
+    const root = join(__dirname);
+    const files = scanTypeScript(join(root, 'application', 'ports'), {
+      productionOnly: true,
+    });
+    const violations = files.flatMap((file) =>
+      [
+        ...file.source.matchAll(/\bany\b/g),
+        ...file.source.matchAll(
+          /(?:from\s+['"]@prisma\/client['"]|\bPrisma\.)/g,
+        ),
+      ].map((match) => formatSourceViolation(root, file, match[0])),
+    );
+
+    expect(violations).toEqual([]);
+  });
 });

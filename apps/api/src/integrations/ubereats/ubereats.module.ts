@@ -142,11 +142,9 @@ import { UberWebhookInboxPrismaAdapter } from './infrastructure/persistence/uber
 import { HmacUberWebhookSignatureVerifier } from './infrastructure/crypto/uber-webhook-signature-verifier';
 import {
   PrismaUberMenuPublishAdapter,
-  PrismaUberMerchantConnectionAdapter,
   PrismaUberOAuthStateAdapter,
   PrismaUberOperationsTicketAdapter,
   PrismaUberOrderActionAdapter,
-  PrismaUberStoreMappingAdapter,
   PrismaUberUnitOfWork,
   PrismaUberWebhookInboxAdapter,
 } from './infrastructure/persistence/uber-prisma.adapters';
@@ -214,8 +212,6 @@ const UBER_EATS_HTTP_METADATA = {
     ...UBER_PERSISTENCE_INTERNAL_PROVIDERS,
     PrismaUberWebhookInboxAdapter,
     PrismaUberOrderActionAdapter,
-    PrismaUberMerchantConnectionAdapter,
-    PrismaUberStoreMappingAdapter,
     PrismaUberOAuthStateAdapter,
     PrismaUberMenuPublishAdapter,
     PrismaUberOperationsTicketAdapter,
