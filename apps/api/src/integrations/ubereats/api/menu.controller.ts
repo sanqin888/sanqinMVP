@@ -14,7 +14,7 @@ import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 import {
   OptionalResourceIdPipe,
   ResourceIdPipe,
-} from '../contracts/requests/resource-id.pipe';
+} from './pipes/resource-id.pipe';
 import {
   UberAdminWrite,
   UberMfaAdminWrite,

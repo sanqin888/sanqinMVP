@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, UseFilters } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
-import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
+import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import {
   UberMfaAdminWrite,
   UberReadOnlyAdmin,

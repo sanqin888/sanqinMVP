@@ -24,6 +24,7 @@ import {
   ValidationArguments,
   ValidatorConstraintInterface,
 } from 'class-validator';
+import { UBER_RESOURCE_ID_PATTERN } from '../../domain/shared/uber-resource-id';
 /** Stable public API values. These deliberately do not expose persistence enums. */
 export const OrderStatus = {
   pending: 'pending',
@@ -64,13 +65,11 @@ export const UberOpsTicketPriority = {
 export type UberOpsTicketPriority =
   (typeof UberOpsTicketPriority)[keyof typeof UberOpsTicketPriority];
 
-export const RESOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-
 export class ResourceIdParam {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   id!: string;
 }
 export class StoreIdQuery {
@@ -78,7 +77,7 @@ export class StoreIdQuery {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 }
 export class MerchantQuery {
@@ -86,7 +85,7 @@ export class MerchantQuery {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   merchantUberUserId?: string;
 }
 export class ReportListQuery extends StoreIdQuery {
@@ -208,7 +207,7 @@ export class UpdateUberDraftItemDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 }
 
@@ -242,7 +241,7 @@ export class UpdateUberDraftGroupDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 }
 
@@ -269,7 +268,7 @@ export class UpdateUberDraftOptionDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 }
 
@@ -281,7 +280,7 @@ export class UpdateUberDraftOptionChildGroupDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 }
 
@@ -290,7 +289,7 @@ export class PublishUberMenuDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 
   @IsOptional()
@@ -342,7 +341,7 @@ export class SyncUberMenuItemAvailabilityDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 }
 
@@ -354,7 +353,7 @@ export class SyncUberOptionItemAvailabilityDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 }
 
@@ -363,7 +362,7 @@ export class GenerateUberReconciliationReportDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 
   @IsOptional()
@@ -380,13 +379,13 @@ export class ProvisionUberStoreDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId!: string;
 
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   merchantUberUserId!: string;
 
   @IsOptional()
@@ -448,7 +447,7 @@ export class CreateUberOpsTicketDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId?: string;
 
   @ValidateIf(
@@ -459,7 +458,7 @@ export class CreateUberOpsTicketDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   externalOrderId?: string;
 
   @ValidateIf(
@@ -470,7 +469,7 @@ export class CreateUberOpsTicketDto {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
-  @Matches(RESOURCE_ID_PATTERN)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   menuItemStableId?: string;
 
   @ValidateIf(

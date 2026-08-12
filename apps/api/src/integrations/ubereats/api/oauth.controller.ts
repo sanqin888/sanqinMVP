@@ -15,7 +15,7 @@ import {
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 import type { Request, Response } from 'express';
 import { SESSION_COOKIE_NAME } from '../../../auth/session-auth.guard';
-import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
+import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import {
   UberAdminWrite,
   UberMfaAdminWrite,
