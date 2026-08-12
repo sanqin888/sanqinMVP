@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import type { Locale } from '@/lib/i18n/locales';
@@ -171,7 +171,7 @@ export default function PosMenuManagementPage() {
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
   const [expandedTemplateGroupIds, setExpandedTemplateGroupIds] = useState<Set<string>>(new Set());
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
@@ -186,12 +186,11 @@ export default function PosMenuManagementPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [copy.error]);
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeLocale]);
+  }, [load]);
 
   async function setItemAvailability(itemStableId: string, mode: AvailabilityMode) {
     setSavingKey(`item-${itemStableId}`);

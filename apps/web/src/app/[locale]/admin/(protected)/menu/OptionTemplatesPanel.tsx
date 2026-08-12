@@ -1,7 +1,13 @@
 //apps/web/src/app/[locale]/admin/(protected)/menu/OptionTemplatesPanel.tsx
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { apiFetch } from '@/lib/api/client';
 import type {
   AdminMenuFullResponse,
@@ -220,7 +226,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
       });
   }, [isZh, menuItems]);
 
-  async function loadTemplates(): Promise<void> {
+  const loadTemplates = useCallback(async (): Promise<void> => {
     setLoading(true);
     setErr(null);
     try {
@@ -236,12 +242,11 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [isZh]);
 
   useEffect(() => {
     void loadTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isZh]);
+  }, [loadTemplates]);
 
   function getOptionStatusTone(o: OptionChoiceDto): 'good' | 'warn' | 'off' {
     if (!o.isAvailable) return 'off';
