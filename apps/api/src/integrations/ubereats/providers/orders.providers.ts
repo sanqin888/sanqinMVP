@@ -1,5 +1,4 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../../prisma/prisma.module';
+import type { Provider } from '@nestjs/common';
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../application/orders/process-uber-webhook-inbox.use-case';
 import { ReplayUnsupportedUberWebhooksUseCase } from '../application/orders/replay-unsupported-uber-webhooks.use-case';
@@ -62,15 +61,12 @@ import { UberOrderDetailGatewayAdapter } from '../infrastructure/uber-api/uber-o
 import { UberOrderGateway } from '../infrastructure/uber-api/uber-resource.gateways';
 import { UberMenuNotificationHandler } from '../application/menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../application/merchant/uber-merchant-webhook.handler';
-import { UberEatsInternalInfrastructureModule } from './ubereats-internal-infrastructure.module';
-import { UberEatsMenuModule } from './menu.module';
-import { UberEatsMerchantModule } from './merchant.module';
 import {
   UBER_EATS_ORDER_ACTIONS,
   UBER_EATS_ORDER_STATUS_SYNC,
 } from '../public-api';
 
-export const UBER_EATS_ORDER_PROVIDERS = [
+export const UBER_EATS_ORDER_PROVIDERS: Provider[] = [
   UberOrderGateway,
   { provide: UBER_ORDER_ACTION_GATEWAY, useExisting: UberOrderGateway },
   UberOrderDetailGatewayAdapter,
@@ -266,15 +262,3 @@ export const UBER_EATS_ORDER_EXPORTS = [
   UBER_EATS_ORDER_STATUS_SYNC,
   ListPendingUberOrdersQuery,
 ];
-
-@Module({
-  imports: [
-    PrismaModule,
-    UberEatsInternalInfrastructureModule,
-    UberEatsMenuModule,
-    UberEatsMerchantModule,
-  ],
-  providers: UBER_EATS_ORDER_PROVIDERS,
-  exports: UBER_EATS_ORDER_EXPORTS,
-})
-export class UberEatsOrdersModule {}

@@ -5,7 +5,7 @@ import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
   type UberWorkerMetrics,
-} from '../infrastructure/workers/uber-worker.adapters';
+} from './uber-worker.adapters';
 
 export interface UberWorkerHealth {
   readonly status: 'ok' | 'starting';

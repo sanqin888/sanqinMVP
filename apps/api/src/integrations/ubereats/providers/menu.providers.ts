@@ -1,5 +1,4 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../../prisma/prisma.module';
+import type { Provider } from '@nestjs/common';
 import { LoadUberMenuWorkflowUseCase } from '../application/menu/load-uber-menu-workflow.use-case';
 import { UberMenuDraftUseCase } from '../application/menu/uber-menu-draft.use-case';
 import { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
@@ -67,10 +66,9 @@ import {
 } from '../infrastructure/uber-api/uber-menu-publication.adapter';
 import { UberImageValidator } from '../infrastructure/uber-api/uber-image.validator';
 import { UberMenuGateway } from '../infrastructure/uber-api/uber-resource.gateways';
-import { UberEatsInternalInfrastructureModule } from './ubereats-internal-infrastructure.module';
 import { UBER_EATS_MENU_AVAILABILITY } from '../public-api';
 
-export const UBER_EATS_MENU_PROVIDERS = [
+export const UBER_EATS_MENU_PROVIDERS: Provider[] = [
   UberMenuGateway,
   UberImageValidator,
   UberMenuConfigQueryPrismaAdapter,
@@ -236,10 +234,3 @@ export const UBER_EATS_MENU_EXPORTS = [
   UberMenuAvailabilityUseCase,
   UBER_EATS_MENU_AVAILABILITY,
 ];
-
-@Module({
-  imports: [PrismaModule, UberEatsInternalInfrastructureModule],
-  providers: UBER_EATS_MENU_PROVIDERS,
-  exports: UBER_EATS_MENU_EXPORTS,
-})
-export class UberEatsMenuModule {}
