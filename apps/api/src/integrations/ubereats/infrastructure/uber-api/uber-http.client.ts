@@ -23,6 +23,7 @@ export class UberApiError extends UberApplicationError {
   ) {
     super(category, uberCode, safeDetail, operation, retryable, {
       retryAfterMs,
+      upstreamStatus: httpStatus,
       cause,
     });
     this.name = 'UberApiError';

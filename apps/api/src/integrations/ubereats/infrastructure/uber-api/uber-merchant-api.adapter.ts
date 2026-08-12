@@ -1,6 +1,5 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { UberAuthenticationError } from '../../domain/menu/uber-menu.types';
 import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
 import { summarizeUberDebugResponse } from '../../domain/shared/uber-integration.utils';
 import type {
@@ -14,6 +13,10 @@ import {
 } from './uber-api.gateway';
 import { UberAuthService } from './uber-token.provider';
 import { UberConfigService } from '../config/uber-config.service';
+import {
+  isUberApplicationError,
+  UberTransientUpstreamError,
+} from '../../application/errors/uber-application.error';
 
 const object = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -200,16 +203,14 @@ export class UberMerchantApiAdapter
           : { ...common, method },
       );
     } catch (caught) {
-      if (caught instanceof BadRequestException) throw caught;
-      const error: UberAuthenticationError = {
-        upstreamStatus: 502,
-        code: 'UBER_API_ERROR',
-        message:
-          caught instanceof Error
-            ? caught.message.slice(0, 500)
-            : 'Uber request failed',
-      };
-      throw new BadRequestException({ ok: false, status: 502, error });
+      if (isUberApplicationError(caught)) throw caught;
+      throw new UberTransientUpstreamError({
+        code: 'UBER_NETWORK_ERROR',
+        message: 'Uber API 暂时不可用',
+        operation: `${method} ${path}`,
+        upstreamStatus: null,
+        cause: caught,
+      });
     }
   }
 }

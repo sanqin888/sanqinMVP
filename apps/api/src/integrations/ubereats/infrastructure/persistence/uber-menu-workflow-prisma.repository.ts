@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Optional,
-} from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   UberMenuPublishStatus,
   UberOpsTicketPriority,
@@ -13,6 +8,7 @@ import {
 } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import { UberValidationError } from '../../application/errors/uber-application.error';
 import {
   UBER_MENU_PUBLISH_COMMAND,
   type UberMenuPublishCommandPort,
@@ -58,6 +54,14 @@ import {
 } from '../../domain/menu/uber-menu-graph.service';
 
 import { UberTelemetryService } from './uber-telemetry.service';
+
+const uberMenuValidation = (message: string) =>
+  new UberValidationError({
+    code: 'UBER_MENU_INPUT_INVALID',
+    message,
+    operation: 'menu.validate',
+    upstreamStatus: null,
+  });
 
 @Injectable()
 export class UberMenuDraftGateway {
@@ -481,7 +485,7 @@ export class UberMenuDraftGateway {
       select: { basePriceCents: true, isAvailable: true },
     });
     if (!menuItem) {
-      throw new BadRequestException(`菜单项 ${itemId} 不存在`);
+      throw uberMenuValidation(`菜单项 ${itemId} 不存在`);
     }
 
     const row = await this.prisma.uberItemChannelConfig.upsert({
@@ -542,7 +546,7 @@ export class UberMenuDraftGateway {
       },
     });
     if (!template) {
-      throw new BadRequestException(`选项模板组 ${groupId} 不存在`);
+      throw uberMenuValidation(`选项模板组 ${groupId} 不存在`);
     }
 
     const minSelect =
@@ -604,7 +608,7 @@ export class UberMenuDraftGateway {
       select: { priceDeltaCents: true, isAvailable: true },
     });
     if (!choice) {
-      throw new BadRequestException(`选项 ${optionItemId} 不存在`);
+      throw uberMenuValidation(`选项 ${optionItemId} 不存在`);
     }
 
     const row = await this.prisma.uberOptionItemConfig.upsert({
@@ -661,7 +665,7 @@ export class UberMenuDraftGateway {
       select: { stableId: true },
     });
     if (!parentChoice) {
-      throw new BadRequestException(`选项 ${optionItemId} 不存在`);
+      throw uberMenuValidation(`选项 ${optionItemId} 不存在`);
     }
 
     const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
@@ -669,7 +673,7 @@ export class UberMenuDraftGateway {
       select: { stableId: true },
     });
     if (!childGroup) {
-      throw new BadRequestException(`模板组 ${groupId} 不存在`);
+      throw uberMenuValidation(`模板组 ${groupId} 不存在`);
     }
 
     await this.prisma.uberOptionChildGroupBinding.upsert({
@@ -713,7 +717,7 @@ export class UberMenuDraftGateway {
       select: { stableId: true },
     });
     if (!parentChoice) {
-      throw new BadRequestException(`选项 ${optionItemId} 不存在`);
+      throw uberMenuValidation(`选项 ${optionItemId} 不存在`);
     }
 
     const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
@@ -721,7 +725,7 @@ export class UberMenuDraftGateway {
       select: { stableId: true },
     });
     if (!childGroup) {
-      throw new BadRequestException(`模板组 ${groupId} 不存在`);
+      throw uberMenuValidation(`模板组 ${groupId} 不存在`);
     }
 
     const row = await this.prisma.uberOptionChildGroupBinding.upsert({
@@ -989,7 +993,7 @@ export class UberMenuDraftGateway {
       select: { uberStoreId: true },
     });
     if (mappings.length === 0) {
-      throw new BadRequestException('未找到已 provision 的 Uber 门店');
+      throw uberMenuValidation('未找到已 provision 的 Uber 门店');
     }
     const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const mapping of mappings) {
@@ -1068,7 +1072,7 @@ export class UberMenuDraftGateway {
         });
 
     if (!row?.encryptedAccessToken) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         '未找到 Uber 商户授权，请先调用 /oauth/connect-url 和 /oauth/callback 完成授权',
       );
     }
@@ -1094,7 +1098,7 @@ export class UberMenuDraftGateway {
     }
 
     if (!refreshToken) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         'Uber 商户 access token 已过期，且缺少 refresh token，请重新授权',
       );
     }
@@ -1724,10 +1728,10 @@ export class UberMenuDraftGateway {
     ]);
     const timezone = config?.timezone?.trim();
     if (!timezone) {
-      throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
+      throw uberMenuValidation('发布 Uber 菜单前必须配置门店时区。');
     }
     if (/^(?:UTC|GMT)?[+-]\d{1,2}(?::?\d{2})?$/i.test(timezone)) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         '夏令时地区不得使用固定 UTC offset，请配置 IANA timezone（例如 America/Toronto）。',
       );
     }
@@ -1738,14 +1742,14 @@ export class UberMenuDraftGateway {
       salesTaxRate < 0 ||
       salesTaxRate > 1
     ) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
       );
     }
     const taxRatePercentage = Number((salesTaxRate * 100).toFixed(4));
     const serviceAvailability = toUberServiceAvailability(hours, timezone);
     if (serviceAvailability.length === 0) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
       );
     }
@@ -1768,12 +1772,12 @@ export class UberMenuDraftGateway {
     });
     const uberTimezone = this.readUberStoreTimezone(mapping?.rawPayload);
     if (uberTimezone && uberTimezone !== businessTimezone) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         `BusinessConfig.timezone（${businessTimezone}）与 Uber 门店时区（${uberTimezone}）不一致，已阻止正式发布。`,
       );
     }
     if (!uberTimezone && !timezoneConfirmed) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         `Uber API 未返回门店时区；请在管理页确认 Uber 门店使用 ${businessTimezone} 后再正式发布。`,
       );
     }
@@ -2110,7 +2114,7 @@ export class UberMenuDraftGateway {
     });
 
     if (!row?.uberStoreId) {
-      throw new BadRequestException(
+      throw uberMenuValidation(
         `未找到已 provision 的 Uber store 映射，请先完成店铺映射。storeId=${storeId}`,
       );
     }
@@ -2134,7 +2138,7 @@ export class UberMenuDraftGateway {
     });
 
     if (!menuItem) {
-      throw new BadRequestException(`菜单项 ${menuItemStableId} 不存在`);
+      throw uberMenuValidation(`菜单项 ${menuItemStableId} 不存在`);
     }
   }
 
@@ -2145,7 +2149,7 @@ export class UberMenuDraftGateway {
     });
 
     if (!choice) {
-      throw new BadRequestException(`选项 ${optionChoiceStableId} 不存在`);
+      throw uberMenuValidation(`选项 ${optionChoiceStableId} 不存在`);
     }
   }
 

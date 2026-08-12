@@ -11,12 +11,14 @@ export interface UberApplicationErrorOptions {
   message: string;
   operation: string;
   retryAfterMs?: number | null;
+  upstreamStatus?: number | null;
   cause?: unknown;
 }
 
 /** Framework-free, deliberately safe error crossing domain/application boundaries. */
 export class UberApplicationError extends Error {
   readonly retryAfterMs: number | null;
+  readonly upstreamStatus: number | null;
 
   constructor(
     readonly category: UberErrorCategory,
@@ -24,7 +26,11 @@ export class UberApplicationError extends Error {
     message: string,
     readonly operation: string,
     readonly retryable: boolean,
-    options: { retryAfterMs?: number | null; cause?: unknown } = {},
+    options: {
+      retryAfterMs?: number | null;
+      upstreamStatus?: number | null;
+      cause?: unknown;
+    } = {},
   ) {
     super(
       message,
@@ -32,6 +38,7 @@ export class UberApplicationError extends Error {
     );
     this.name = 'UberApplicationError';
     this.retryAfterMs = options.retryAfterMs ?? null;
+    this.upstreamStatus = options.upstreamStatus ?? null;
   }
 }
 

@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { isIP } from 'net';
 import { lookup } from 'dns/promises';
 import {
@@ -9,6 +9,18 @@ import {
 } from './uber-api.gateway';
 import type { UberOrderActionGatewayPort } from '../../application/ports/uber-api.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
+import {
+  UberTransientUpstreamError,
+  UberValidationError,
+} from '../../application/errors/uber-application.error';
+
+const invalidResource = (code: string, message: string, operation: string) =>
+  new UberValidationError({
+    code,
+    message,
+    operation,
+    upstreamStatus: null,
+  });
 
 abstract class PrefixGateway implements UberResourceGateway {
   protected abstract readonly prefixes: readonly string[];
@@ -21,7 +33,11 @@ abstract class PrefixGateway implements UberResourceGateway {
     request: UberGatewayRequest,
   ): Promise<T> {
     if (!this.prefixes.some((prefix) => request.path.startsWith(prefix)))
-      throw new BadRequestException('Uber resource path 不属于此 gateway');
+      throw invalidResource(
+        'UBER_RESOURCE_PATH_UNSUPPORTED',
+        'Uber resource path 不属于此 gateway',
+        request.operation,
+      );
     return this.transport.request<T>(request);
   }
 }
@@ -64,7 +80,11 @@ export class UberOrderGateway
     try {
       url = new URL(resourceHref);
     } catch {
-      throw new BadRequestException('Uber resource_href 无效');
+      throw invalidResource(
+        'UBER_RESOURCE_HREF_INVALID',
+        'Uber resource_href 无效',
+        'order.resource_href.validate',
+      );
     }
     const allowed = new Set(
       this.config.resourceHrefAllowedOrigins
@@ -80,25 +100,52 @@ export class UberOrderGateway
       url.password ||
       !allowed.has(url.origin)
     )
-      throw new BadRequestException('Uber resource_href 不属于允许的来源');
+      throw invalidResource(
+        'UBER_RESOURCE_HREF_ORIGIN_FORBIDDEN',
+        'Uber resource_href 不属于允许的来源',
+        'order.resource_href.validate',
+      );
 
-    const addresses = isIP(url.hostname)
-      ? [{ address: url.hostname }]
-      : await lookup(url.hostname, { all: true, verbatim: true });
+    let addresses: { address: string }[];
+    try {
+      addresses = isIP(url.hostname)
+        ? [{ address: url.hostname }]
+        : await lookup(url.hostname, { all: true, verbatim: true });
+    } catch (cause) {
+      throw new UberTransientUpstreamError({
+        code: 'UBER_RESOURCE_DNS_FAILURE',
+        message: '无法验证 Uber resource_href 地址',
+        operation: 'order.resource_href.resolve',
+        upstreamStatus: null,
+        cause,
+      });
+    }
     if (
       !addresses.length ||
       addresses.some(({ address }) => !this.isPublic(address))
     )
-      throw new BadRequestException('Uber resource_href 地址不安全');
+      throw invalidResource(
+        'UBER_RESOURCE_ADDRESS_UNSAFE',
+        'Uber resource_href 地址不安全',
+        'order.resource_href.validate',
+      );
     const path = `${url.pathname}${url.search}`;
     if (!this.prefixes.some((prefix) => path.startsWith(prefix)))
-      throw new BadRequestException('Uber resource_href path 不受支持');
+      throw invalidResource(
+        'UBER_RESOURCE_PATH_UNSUPPORTED',
+        'Uber resource_href path 不受支持',
+        'order.resource_href.validate',
+      );
     return path;
   }
 
   inspect<T>(request: UberGatewayRequest) {
     if (!this.prefixes.some((prefix) => request.path.startsWith(prefix)))
-      throw new BadRequestException('Uber order path 不受支持');
+      throw invalidResource(
+        'UBER_RESOURCE_PATH_UNSUPPORTED',
+        'Uber order path 不受支持',
+        request.operation,
+      );
     return this.transport.inspect<T>(request);
   }
 
