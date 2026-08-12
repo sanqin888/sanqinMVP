@@ -16,6 +16,11 @@ import {
   presentOrderSummary,
   presentPendingOrders,
 } from './orders.presenter';
+import type {
+  UberOrderMutationResponse,
+  UberOrderSummaryResponse,
+  UberOrdersListResponse,
+} from '../contracts/responses/orders.responses';
 
 @Controller('integrations/ubereats')
 @UseFilters(UberEatsExceptionFilter)
@@ -30,19 +35,19 @@ export class UberEatsOrdersController {
   async syncOrderStatus(
     @Param('externalOrderId', ResourceIdPipe) externalOrderId: string,
     @Body() dto: SyncOrderStatusDto,
-  ) {
+  ): Promise<UberOrderMutationResponse> {
     await this.statusSync.execute(externalOrderId, dto.status);
     return presentOrderMutation();
   }
 
   @Get('orders/pending')
-  async listPendingOrders() {
+  async listPendingOrders(): Promise<UberOrdersListResponse> {
     const result = await this.pendingOrders.list();
     return presentPendingOrders(result);
   }
 
   @Get('orders/pending/summary')
-  async pendingOrdersSummary() {
+  async pendingOrdersSummary(): Promise<UberOrderSummaryResponse> {
     return presentOrderSummary(await this.pendingOrders.summary());
   }
 }
