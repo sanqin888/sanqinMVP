@@ -31,6 +31,8 @@ export class RequestIdInterceptor implements NestInterceptor {
   ];
   private readonly analyticsEventsPath = '/api/v1/analytics/events';
   private readonly cloverOnlineQuotePath = '/api/v1/clover/pay/online/quote';
+  private readonly orderPrintStatusPath =
+    /^\/api\/v1\/pos\/orders\/[^/]+\/print-status$/;
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     // 只处理 HTTP 请求
@@ -78,7 +80,7 @@ export class RequestIdInterceptor implements NestInterceptor {
     return runWithLogContext({ requestId }, () =>
       next.handle().pipe(
         tap({
-          next: () => {
+          next: (responseBody: unknown) => {
             if (shouldSkipInfoLog) {
               return;
             }
@@ -86,6 +88,26 @@ export class RequestIdInterceptor implements NestInterceptor {
             const ms = Date.now() - start;
             const status = response?.statusCode;
             const logMessage = `[reqId=${requestId}] ${method} ${safeUrl} - ${status} (${ms}ms)`;
+
+            if (
+              method === 'GET' &&
+              this.orderPrintStatusPath.test(requestPathWithoutQuery)
+            ) {
+              const printStatus = responseBody as {
+                customerStatus?: unknown;
+                kitchenStatus?: unknown;
+              } | null;
+              const hasFailedPrint =
+                printStatus?.customerStatus === 'FAILED' ||
+                printStatus?.kitchenStatus === 'FAILED';
+
+              if (!hasFailedPrint) {
+                return;
+              }
+
+              this.logger.warn(logMessage);
+              return;
+            }
 
             if (
               method === 'POST' &&
