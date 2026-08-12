@@ -8,22 +8,34 @@ import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.us
 import { ConfirmUberMenuPublicationUseCase } from '../application/menu/confirm-uber-menu-publication.use-case';
 import { RecoverTimedOutMenuPublicationsUseCase } from '../application/menu/recover-timed-out-menu-publications.use-case';
 import {
+  type MenuNotificationRepository,
   MENU_NOTIFICATION_REPOSITORY,
   UberMenuNotificationHandler,
 } from '../application/menu/uber-menu-notification.handler';
 import {
+  type UberMenuDraftCommandPort,
+  type UberMenuDraftQueryPort,
   UBER_MENU_DRAFT_COMMAND_PORT,
   UBER_MENU_DRAFT_QUERY_PORT,
 } from '../application/ports/uber-menu-draft.ports';
 import {
+  type UberMenuGatewayPort,
+  type UberMenuImageProbePort,
+  type UberMenuPublicationRepositoryPort,
+  type UberMenuSnapshotRepositoryPort,
   UBER_MENU_GATEWAY,
   UBER_MENU_IMAGE_PROBE,
   UBER_MENU_PUBLICATION_REPOSITORY,
   UBER_MENU_PUBLISH_COMMAND,
   UBER_MENU_SNAPSHOT_REPOSITORY,
 } from '../application/ports/uber-menu-publication.ports';
-import { UBER_MENU_UNIT_OF_WORK } from '../application/ports/uber-menu-repositories.ports';
 import {
+  UBER_MENU_UNIT_OF_WORK,
+  type UberMenuUnitOfWork,
+} from '../application/ports/uber-menu-repositories.ports';
+import {
+  type UberMenuAvailabilityPort,
+  type UberMenuDraftPort,
   UBER_MENU_AVAILABILITY_PORT,
   UBER_MENU_DRAFT_PORT,
 } from '../application/ports/uber-use-case.ports';
@@ -89,18 +101,21 @@ export const UBER_EATS_MENU_PROVIDERS = [
   {
     provide: UberMenuDraftUseCase,
     inject: [UBER_MENU_DRAFT_PORT],
-    useFactory: (drafts) => new UberMenuDraftUseCase(drafts),
+    useFactory: (drafts: UberMenuDraftPort) => new UberMenuDraftUseCase(drafts),
   },
   {
     provide: UberMenuDraftConfigUseCase,
     inject: [UBER_MENU_DRAFT_QUERY_PORT, UBER_MENU_DRAFT_COMMAND_PORT],
-    useFactory: (queries, commands) =>
-      new UberMenuDraftConfigUseCase(queries, commands),
+    useFactory: (
+      queries: UberMenuDraftQueryPort,
+      commands: UberMenuDraftCommandPort,
+    ) => new UberMenuDraftConfigUseCase(queries, commands),
   },
   {
     provide: LoadUberMenuWorkflowUseCase,
     inject: [UBER_MENU_UNIT_OF_WORK],
-    useFactory: (unitOfWork) => new LoadUberMenuWorkflowUseCase(unitOfWork),
+    useFactory: (unitOfWork: UberMenuUnitOfWork) =>
+      new LoadUberMenuWorkflowUseCase(unitOfWork),
   },
   {
     provide: PublishUberMenuUseCase,
@@ -110,31 +125,39 @@ export const UBER_EATS_MENU_PROVIDERS = [
       UBER_MENU_GATEWAY,
       UBER_MENU_IMAGE_PROBE,
     ],
-    useFactory: (snapshots, publications, gateway, images) =>
-      new PublishUberMenuUseCase(snapshots, publications, gateway, images),
+    useFactory: (
+      snapshots: UberMenuSnapshotRepositoryPort,
+      publications: UberMenuPublicationRepositoryPort,
+      gateway: UberMenuGatewayPort,
+      images: UberMenuImageProbePort,
+    ) => new PublishUberMenuUseCase(snapshots, publications, gateway, images),
   },
   { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
   {
     provide: ConfirmUberMenuPublicationUseCase,
     inject: [UBER_MENU_PUBLICATION_REPOSITORY, UBER_MENU_GATEWAY],
-    useFactory: (publications, gateway) =>
-      new ConfirmUberMenuPublicationUseCase(publications, gateway),
+    useFactory: (
+      publications: UberMenuPublicationRepositoryPort,
+      gateway: UberMenuGatewayPort,
+    ) => new ConfirmUberMenuPublicationUseCase(publications, gateway),
   },
   {
     provide: RecoverTimedOutMenuPublicationsUseCase,
     inject: [UBER_MENU_PUBLICATION_REPOSITORY],
-    useFactory: (publications) =>
+    useFactory: (publications: UberMenuPublicationRepositoryPort) =>
       new RecoverTimedOutMenuPublicationsUseCase(publications),
   },
   {
     provide: UberMenuNotificationHandler,
     inject: [MENU_NOTIFICATION_REPOSITORY],
-    useFactory: (repository) => new UberMenuNotificationHandler(repository),
+    useFactory: (repository: MenuNotificationRepository) =>
+      new UberMenuNotificationHandler(repository),
   },
   {
     provide: UberMenuAvailabilityUseCase,
     inject: [UBER_MENU_AVAILABILITY_PORT],
-    useFactory: (availability) => new UberMenuAvailabilityUseCase(availability),
+    useFactory: (availability: UberMenuAvailabilityPort) =>
+      new UberMenuAvailabilityUseCase(availability),
   },
 ];
 

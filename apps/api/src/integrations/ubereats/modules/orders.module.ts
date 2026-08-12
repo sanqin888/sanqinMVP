@@ -15,10 +15,17 @@ import {
 import { SyncUberOrderStatusUseCase } from '../application/orders/sync-uber-order-status.use-case';
 import { ListPendingUberOrdersQuery } from '../application/orders/list-pending-uber-orders.query';
 import {
+  type UberOrderActionGatewayPort,
+  type UberOrderDetailGatewayPort,
   UBER_ORDER_ACTION_GATEWAY,
   UBER_ORDER_DETAIL_GATEWAY,
 } from '../application/ports/uber-api.ports';
 import {
+  type UberOrderOutboxPort,
+  type UberOrderStatusAuditPort,
+  type UberTelemetryPort,
+  type UberWebhookInboxPort,
+  type UberWebhookSignatureVerifier,
   UBER_ORDER_OUTBOX_PORT,
   UBER_ORDER_STATUS_AUDIT_PORT,
   UBER_TELEMETRY_PORT,
@@ -26,10 +33,15 @@ import {
   UBER_WEBHOOK_SIGNATURE_VERIFIER,
 } from '../application/ports/uber-order-processing.ports';
 import {
+  type UberOrderActionQueuePort,
+  type UberOrderSyncRepositoryPort,
+  type UberOrderSyncUnitOfWorkPort,
   UBER_ORDER_SYNC_REPOSITORY,
   UBER_ORDER_SYNC_UNIT_OF_WORK,
 } from '../application/ports/uber-order-sync.ports';
 import {
+  type UberOrderActionRepositoryPort,
+  type UberOrderImportRepositoryPort,
   UBER_ORDER_ACTION_COMMAND_GATEWAY,
   UBER_ORDER_ACTION_REPOSITORY,
   UBER_ORDER_IMPORT_REPOSITORY,
@@ -104,29 +116,37 @@ export const UBER_EATS_ORDER_PROVIDERS = [
       UBER_WEBHOOK_SIGNATURE_VERIFIER,
       UBER_TELEMETRY_PORT,
     ],
-    useFactory: (inbox, signatures, telemetry) =>
-      new ReceiveUberWebhookUseCase(inbox, signatures, telemetry),
+    useFactory: (
+      inbox: UberWebhookInboxPort,
+      signatures: UberWebhookSignatureVerifier,
+      telemetry: UberTelemetryPort,
+    ) => new ReceiveUberWebhookUseCase(inbox, signatures, telemetry),
   },
   {
     provide: ReplayUnsupportedUberWebhooksUseCase,
     inject: [UBER_WEBHOOK_INBOX_PORT],
-    useFactory: (inbox) => new ReplayUnsupportedUberWebhooksUseCase(inbox),
+    useFactory: (inbox: UberWebhookInboxPort) =>
+      new ReplayUnsupportedUberWebhooksUseCase(inbox),
   },
   {
     provide: UberOrderActionService,
     inject: [UBER_ORDER_ACTION_REPOSITORY, UBER_ORDER_ACTION_COMMAND_GATEWAY],
-    useFactory: (repository, gateway) =>
-      new UberOrderActionService(repository, gateway),
+    useFactory: (
+      repository: UberOrderActionRepositoryPort,
+      gateway: UberOrderActionGatewayPort,
+    ) => new UberOrderActionService(repository, gateway),
   },
   {
     provide: UberOrderStatusSyncService,
     inject: [UBER_ORDER_STATUS_AUDIT_PORT],
-    useFactory: (audit) => new UberOrderStatusSyncService(audit),
+    useFactory: (audit: UberOrderStatusAuditPort) =>
+      new UberOrderStatusSyncService(audit),
   },
   {
     provide: UberOrderOutboxService,
     inject: [UBER_ORDER_OUTBOX_PORT],
-    useFactory: (outbox) => new UberOrderOutboxService(outbox),
+    useFactory: (outbox: UberOrderOutboxPort) =>
+      new UberOrderOutboxService(outbox),
   },
   {
     provide: ImportUberOrderUseCase,
@@ -135,8 +155,11 @@ export const UBER_EATS_ORDER_PROVIDERS = [
       UBER_ORDER_DETAIL_GATEWAY,
       UberOrderActionService,
     ],
-    useFactory: (repository, gateway, actions) =>
-      new ImportUberOrderUseCase(repository, gateway, actions),
+    useFactory: (
+      repository: UberOrderImportRepositoryPort,
+      gateway: UberOrderDetailGatewayPort,
+      actions: UberOrderActionService,
+    ) => new ImportUberOrderUseCase(repository, gateway, actions),
   },
   { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
   {
@@ -146,18 +169,23 @@ export const UBER_EATS_ORDER_PROVIDERS = [
       UBER_ORDER_DETAIL_GATEWAY,
       UberOrderActionService,
     ],
-    useFactory: (repository, gateway, actions) =>
-      new CancelUberOrderUseCase(repository, gateway, actions),
+    useFactory: (
+      repository: UberOrderImportRepositoryPort,
+      gateway: UberOrderDetailGatewayPort,
+      actions: UberOrderActionService,
+    ) => new CancelUberOrderUseCase(repository, gateway, actions),
   },
   {
     provide: RequestUberOrderActionUseCase,
     inject: [UberOrderActionService],
-    useFactory: (actions) => new RequestUberOrderActionUseCase(actions),
+    useFactory: (actions: UberOrderActionService) =>
+      new RequestUberOrderActionUseCase(actions),
   },
   {
     provide: ExecuteUberOrderActionWorker,
     inject: [UberOrderActionService],
-    useFactory: (actions) => new ExecuteUberOrderActionWorker(actions),
+    useFactory: (actions: UberOrderActionService) =>
+      new ExecuteUberOrderActionWorker(actions),
   },
   {
     provide: SyncUberOrderStatusUseCase,
@@ -168,7 +196,13 @@ export const UBER_EATS_ORDER_PROVIDERS = [
       UberOrderStatusSyncService,
       UBER_TELEMETRY_PORT,
     ],
-    useFactory: (orders, unitOfWork, queue, statusSync, telemetry) =>
+    useFactory: (
+      orders: UberOrderSyncRepositoryPort,
+      unitOfWork: UberOrderSyncUnitOfWorkPort,
+      queue: UberOrderActionQueuePort,
+      statusSync: UberOrderStatusSyncService,
+      telemetry: UberTelemetryPort,
+    ) =>
       new SyncUberOrderStatusUseCase(
         orders,
         unitOfWork,
@@ -180,7 +214,8 @@ export const UBER_EATS_ORDER_PROVIDERS = [
   {
     provide: ListPendingUberOrdersQuery,
     inject: [UBER_ORDER_SYNC_REPOSITORY],
-    useFactory: (orders) => new ListPendingUberOrdersQuery(orders),
+    useFactory: (orders: UberOrderSyncRepositoryPort) =>
+      new ListPendingUberOrdersQuery(orders),
   },
   {
     provide: ProcessUberWebhookInboxUseCase,
@@ -191,7 +226,13 @@ export const UBER_EATS_ORDER_PROVIDERS = [
       HandleUberMerchantWebhookHandler,
       UBER_TELEMETRY_PORT,
     ],
-    useFactory: (inbox, orders, menu, merchant, telemetry) =>
+    useFactory: (
+      inbox: UberWebhookInboxPort,
+      orders: ImportUberOrderUseCase,
+      menu: UberMenuNotificationHandler,
+      merchant: HandleUberMerchantWebhookHandler,
+      telemetry: UberTelemetryPort,
+    ) =>
       new ProcessUberWebhookInboxUseCase(
         inbox,
         orders,
