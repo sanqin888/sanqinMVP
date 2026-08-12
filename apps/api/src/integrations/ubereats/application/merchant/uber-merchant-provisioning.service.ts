@@ -4,9 +4,9 @@ import { createHash } from 'crypto';
 import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
 import {
   type UberMerchantConnectionRepositoryPort,
-  type UberOperationsAlertRepositoryPort,
   type UberStoreMappingRepositoryPort,
-} from '../ports/uber-persistence.ports';
+} from './uber-merchant-persistence.ports';
+import type { UberOperationsAlertRepositoryPort } from '../ports/uber-operations-alert.ports';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;

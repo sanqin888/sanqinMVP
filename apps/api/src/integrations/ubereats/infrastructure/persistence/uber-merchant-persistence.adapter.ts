@@ -10,9 +10,9 @@ import type {
   UberMerchantConnectionRepositoryPort,
   UberMerchantStoreMapping,
   UberOAuthStatePort,
-  UberOperationsAlertRepositoryPort,
   UberStoreMappingRepositoryPort,
-} from '../../application/ports/uber-persistence.ports';
+} from '../../application/merchant/uber-merchant-persistence.ports';
+import type { UberOperationsAlertRepositoryPort } from '../../application/ports/uber-operations-alert.ports';
 import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import { UberTelemetryService } from './uber-telemetry.service';

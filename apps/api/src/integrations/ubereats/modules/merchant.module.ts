@@ -26,13 +26,15 @@ import {
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberOAuthStatePort,
-  type UberOperationsAlertRepositoryPort,
   type UberStoreMappingRepositoryPort,
   UBER_MERCHANT_CONNECTION_REPOSITORY,
   UBER_OAUTH_STATE_REPOSITORY,
-  UBER_OPERATIONS_ALERT_REPOSITORY,
   UBER_STORE_MAPPING_REPOSITORY,
-} from '../application/ports/uber-persistence.ports';
+} from '../application/merchant/uber-merchant-persistence.ports';
+import {
+  type UberOperationsAlertRepositoryPort,
+  UBER_OPERATIONS_ALERT_REPOSITORY,
+} from '../application/ports/uber-operations-alert.ports';
 import {
   type UberTelemetryPort,
   type UberWebhookInboxPort,

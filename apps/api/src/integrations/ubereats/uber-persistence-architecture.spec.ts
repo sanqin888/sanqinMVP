@@ -89,6 +89,23 @@ describe('Uber Eats persistence architecture', () => {
 
     expect(violations).toEqual([]);
   });
+
+  it('does not restore a generic repository scope across Uber features', () => {
+    const root = join(__dirname);
+    const files = scanTypeScript(root, { productionOnly: true });
+    const retiredAbstractions =
+      /\b(?:UberRepositoryScope|UberUnitOfWork|UBER_UNIT_OF_WORK|UberOrderActionPort|UberMenuPublishPort|UberOperationsTicketPort)\b/g;
+    const genericScopes =
+      /(?:interface|type)\s+Uber(?!(?:Merchant|Menu|Order|Operations)[A-Za-z]*RepositoryScope\b)[A-Za-z]*RepositoryScope\b/g;
+    const violations = files.flatMap((file) =>
+      [
+        ...file.source.matchAll(retiredAbstractions),
+        ...file.source.matchAll(genericScopes),
+      ].map((match) => formatSourceViolation(root, file, match[0])),
+    );
+
+    expect(violations).toEqual([]);
+  });
 });
 
 describe('Uber Eats menu persistence dependency direction', () => {

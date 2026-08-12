@@ -6,7 +6,7 @@ import type {
 import type {
   UberMerchantConnectionRepositoryPort,
   UberOAuthStatePort,
-} from '../ports/uber-persistence.ports';
+} from './uber-merchant-persistence.ports';
 import { CompleteUberOAuthUseCase } from './uber-merchant-oauth.service';
 
 describe('CompleteUberOAuthUseCase OAuth 状态机', () => {

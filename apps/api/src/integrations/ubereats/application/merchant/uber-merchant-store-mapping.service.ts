@@ -6,7 +6,7 @@ import {
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberStoreMappingRepositoryPort,
-} from '../ports/uber-persistence.ports';
+} from './uber-merchant-persistence.ports';
 
 export class DiscoverUberStoresUseCase {
   constructor(

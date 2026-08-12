@@ -12,7 +12,7 @@ import { type UberOAuthTokenPort } from '../ports/uber-api.ports';
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberOAuthStatePort,
-} from '../ports/uber-persistence.ports';
+} from './uber-merchant-persistence.ports';
 
 export type UberOAuthErrorCode =
   | 'OAUTH_START_FAILED'

@@ -6,7 +6,7 @@ import type {
   UberOrderOutboxItem,
   UberOrderStatusAuditPort,
 } from '../../application/ports/uber-order-processing.ports';
-import type { UberJsonValue } from '../../application/ports/uber-persistence.ports';
+import type { UberJsonValue } from '../../application/ports/uber-json-value';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
