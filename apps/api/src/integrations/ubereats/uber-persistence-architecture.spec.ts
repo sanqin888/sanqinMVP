@@ -69,6 +69,26 @@ describe('Uber Eats persistence architecture', () => {
 
     expect(violations).toEqual([]);
   });
+
+  it('does not expose Prisma delegates from persistence services', () => {
+    const root = join(__dirname);
+    const files = scanTypeScript(join(root, 'infrastructure', 'persistence'), {
+      productionOnly: true,
+    });
+    const violations = files.flatMap((file) =>
+      [
+        ...file.source.matchAll(/\bPrisma\.[A-Z]\w*Delegate\b/g),
+        ...file.source.matchAll(
+          /(?:public\s+)?readonly\s+\w+\s*:\s*PrismaService\[['"][a-z]\w*['"]\]/g,
+        ),
+        ...file.source.matchAll(
+          /(?:public\s+)?(?:readonly\s+)?\w+(?:Repository|Delegate)\s*=\s*(?:this\.)?prisma\.[a-z]\w*/g,
+        ),
+      ].map((match) => formatSourceViolation(root, file, match[0])),
+    );
+
+    expect(violations).toEqual([]);
+  });
 });
 
 describe('Uber Eats menu persistence dependency direction', () => {

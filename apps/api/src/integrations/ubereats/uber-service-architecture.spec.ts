@@ -54,15 +54,9 @@ describe('Uber Eats bounded-context architecture', () => {
       BOUNDED_CONTEXT_ROOT,
       'infrastructure/persistence',
     );
-    const orchestrationAdapters = new Set([
-      'uber-operations-prisma.adapter.ts',
-      'uber-order-sync.adapter.ts',
-    ]);
     const persistenceFiles = scanTypeScript(persistenceRoot, {
       productionOnly: true,
-    }).filter(
-      ({ path }) => !orchestrationAdapters.has(relative(persistenceRoot, path)),
-    );
+    });
 
     const violations: string[] = [];
     const report = (filePath: string, rule: string) => {

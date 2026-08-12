@@ -18,14 +18,6 @@ describe('UberOrderOutboxPrismaAdapter lease fencing', () => {
     };
     const leases = ['lease-a', 'lease-b'];
     const state = { status: 'PENDING', leaseToken: '' };
-    const prisma = {
-      $queryRaw: jest.fn(() => {
-        const leaseToken = leases.shift();
-        state.status = 'PROCESSING';
-        state.leaseToken = leaseToken ?? '';
-        return Promise.resolve([{ ...base, leaseToken }]);
-      }),
-    };
     const updateMany = jest.fn(
       ({
         where,
@@ -45,9 +37,17 @@ describe('UberOrderOutboxPrismaAdapter lease fencing', () => {
         return Promise.resolve({ count: matches ? 1 : 0 });
       },
     );
+    const prisma = {
+      $queryRaw: jest.fn(() => {
+        const leaseToken = leases.shift();
+        state.status = 'PROCESSING';
+        state.leaseToken = leaseToken ?? '';
+        return Promise.resolve([{ ...base, leaseToken }]);
+      }),
+      uberOrderAction: { updateMany },
+    };
     const adapter = new UberOrderOutboxPrismaAdapter(
       prisma as never,
-      { uberOrderActionRepository: { updateMany } } as never,
       {} as never,
     );
 
