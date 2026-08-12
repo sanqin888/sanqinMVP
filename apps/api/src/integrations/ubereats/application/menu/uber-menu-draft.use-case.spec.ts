@@ -1,5 +1,5 @@
 import { UberMenuDraftUseCase } from './uber-menu-draft.use-case';
-import type { UberMenuDraftPort } from '../ports/uber-use-case.ports';
+import type { UberMenuDraftReadPort } from '../ports/uber-menu-draft-workflow.ports';
 
 describe('UberMenuDraftUseCase', () => {
   it('delegates getUberMenuDraft to the menu workflow boundary', async () => {
@@ -7,7 +7,11 @@ describe('UberMenuDraftUseCase', () => {
       getUberMenuDraft: jest.fn().mockResolvedValue({ ok: true }),
     };
     const service = new UberMenuDraftUseCase(
-      workflow as unknown as UberMenuDraftPort,
+      {} as never,
+      {} as never,
+      workflow as unknown as UberMenuDraftReadPort,
+      {} as never,
+      {} as never,
     );
     await expect(service.getUberMenuDraft('store-1')).resolves.toEqual({
       ok: true,
