@@ -1,6 +1,6 @@
 import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type { UberStoreProvisioningEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
-import { type UberWebhookInboxPort } from './uber-order-processing.ports';
+import { type UberWebhookInboxPort } from '../orders/uber-order-processing.ports';
 
 export class HandleUberMerchantWebhookHandler {
   constructor(
