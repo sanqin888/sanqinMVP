@@ -660,6 +660,7 @@ enum UberWebhookInboxStatus {
 enum UberOrderActionType {
   ACCEPT
   DENY
+  CANCEL
   READY_FOR_PICKUP
 }
 

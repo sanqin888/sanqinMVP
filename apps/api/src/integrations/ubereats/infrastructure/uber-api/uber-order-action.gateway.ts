@@ -40,6 +40,8 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     });
   }
   cancel(input: { externalOrderId: string; idempotencyKey: string }) {
+    // CANCEL remains a business action everywhere else. This adapter alone
+    // translates it to Uber's merchant-denial endpoint and wire payload.
     return this.execute(input, 'DENY', {
       reason: { code: 'OTHER', explanation: 'Cancelled by merchant' },
     });

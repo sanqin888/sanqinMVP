@@ -231,7 +231,7 @@ export const acceptanceMatrix: Record<
       'one pending ACCEPT',
       secrets,
     ],
-    ...(['ACCEPT', 'DENY', 'READY_FOR_PICKUP'] as const).flatMap(
+    ...(['ACCEPT', 'DENY', 'CANCEL', 'READY_FOR_PICKUP'] as const).flatMap(
       (action) =>
         [
           [

@@ -178,7 +178,11 @@ export type ParsedUberOrder = {
   } | null;
 };
 
-export type UberOrderActionName = 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP';
+export type UberOrderActionName =
+  | 'ACCEPT'
+  | 'DENY'
+  | 'CANCEL'
+  | 'READY_FOR_PICKUP';
 
 export const UBER_ACTION_BY_LOCAL_STATUS: Partial<
   Record<UberOrderStatus, UberOrderActionName>

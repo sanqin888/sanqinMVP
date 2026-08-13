@@ -247,6 +247,9 @@ export class RequestUberOrderActionUseCase {
       }),
     );
   }
+  async cancel(id: string) {
+    return this.present(await this.actions.request(id, 'CANCEL'));
+  }
   async retryReadyForPickup(id: string) {
     return this.present(await this.actions.request(id, 'READY_FOR_PICKUP'));
   }
