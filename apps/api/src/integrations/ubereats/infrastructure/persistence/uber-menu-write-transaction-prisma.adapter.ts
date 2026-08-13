@@ -14,7 +14,20 @@ import { UberTelemetryService } from './uber-telemetry.service';
 export class UberMenuWriteTransactionPrismaAdapter implements UberMenuWriteTransactionPort<UberMenuWriteCommands> {
   constructor(private readonly prisma: PrismaService) {}
 
-  execute<T>(
+  async execute<T>(
+    work: (commands: UberMenuWriteCommands) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.executeOnce(work);
+    } catch (error: unknown) {
+      // A concurrent first insert can lose the composite-unique race. Replay
+      // outside the aborted transaction so Prisma P2002 never leaks outward.
+      if (!this.isUniqueConflict(error)) throw error;
+      return this.executeOnce(work);
+    }
+  }
+
+  private executeOnce<T>(
     work: (commands: UberMenuWriteCommands) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction(async (transaction) => {
@@ -29,16 +42,24 @@ export class UberMenuWriteTransactionPrismaAdapter implements UberMenuWriteTrans
           config.upsertUberOptionItemConfig(input),
         updateUberDraftItem: (id, input) =>
           draft.updateUberDraftItem(id, input),
-        updateUberDraftGroup: (id, input) =>
-          draft.updateUberDraftGroup(id, input),
+        updateUberDraftGroup: (command) => draft.updateUberDraftGroup(command),
         updateUberDraftOption: (id, input) =>
           draft.updateUberDraftOption(id, input),
-        bindUberDraftOptionChildGroup: (optionId, groupId, storeId) =>
-          draft.bindUberDraftOptionChildGroup(optionId, groupId, storeId),
-        unbindUberDraftOptionChildGroup: (optionId, groupId, storeId) =>
-          draft.unbindUberDraftOptionChildGroup(optionId, groupId, storeId),
+        bindUberDraftOptionChildGroup: (command) =>
+          draft.bindUberDraftOptionChildGroup(command),
+        unbindUberDraftOptionChildGroup: (command) =>
+          draft.unbindUberDraftOptionChildGroup(command),
       };
       return work(commands);
     });
+  }
+
+  private isUniqueConflict(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
   }
 }

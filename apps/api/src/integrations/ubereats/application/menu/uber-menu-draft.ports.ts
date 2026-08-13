@@ -144,6 +144,60 @@ export type UberMenuConfigWriteResult<T> = {
   storeId: string;
   item: T;
 };
+
+/**
+ * The resource identity, rather than a transport request id, is the idempotency
+ * boundary for menu configuration commands.  Consequently an equal payload is
+ * a replay of the same desired state, while a different payload is an update.
+ * Durable side effects use the same key plus the resulting state/action.
+ */
+export const UBER_MENU_COMMAND_IDEMPOTENCY = {
+  samePayload: 'RETURN_SAME_BUSINESS_STATE',
+  differentPayload: 'UPDATE_RESOURCE',
+  sideEffects: 'DEDUPLICATE_BY_RESOURCE_AND_RESULTING_STATE',
+  concurrency: 'CONVERGE_BY_UNIQUE_RESOURCE_KEY',
+} as const;
+
+export type UberItemConfigResourceKey = Readonly<{
+  storeId: string;
+  menuItemStableId: string;
+}>;
+export type UberOptionConfigResourceKey = Readonly<{
+  storeId: string;
+  optionChoiceStableId: string;
+}>;
+export type UberGroupConfigResourceKey = Readonly<{
+  storeId: string;
+  templateGroupStableId: string;
+}>;
+export type UberOptionChildGroupBindingResourceKey = Readonly<{
+  storeId: string;
+  parentOptionChoiceStableId: string;
+  childTemplateGroupStableId: string;
+}>;
+
+export type UberIdempotentCommand<TKey, TPayload> = Readonly<{
+  resourceKey: TKey;
+  payload: TPayload;
+  semantics: typeof UBER_MENU_COMMAND_IDEMPOTENCY;
+}>;
+
+export type UberItemConfigCommand = UberIdempotentCommand<
+  UberItemConfigResourceKey,
+  UpsertPriceBookItemInput
+>;
+export type UberOptionConfigCommand = UberIdempotentCommand<
+  UberOptionConfigResourceKey,
+  UpsertOptionItemConfigInput
+>;
+export type UberGroupConfigCommand = UberIdempotentCommand<
+  UberGroupConfigResourceKey,
+  UpdateDraftGroupInput
+>;
+export type UberOptionChildGroupBindingCommand = UberIdempotentCommand<
+  UberOptionChildGroupBindingResourceKey,
+  { isBound: boolean }
+>;
 export type UberDraftMutationResult<TConfig> = {
   ok: boolean;
   storeId: string;
@@ -171,12 +225,12 @@ export interface UberMenuConfigQueryPort {
 }
 export interface UberItemChannelConfigCommandPort {
   upsertUberItemChannelConfig(
-    input: UpsertPriceBookItemInput,
+    command: UberItemConfigCommand,
   ): Promise<UberMenuConfigWriteResult<UberItemChannelConfigDto>>;
 }
 export interface UberOptionItemConfigCommandPort {
   upsertUberOptionItemConfig(
-    input: UpsertOptionItemConfigInput,
+    command: UberOptionConfigCommand,
   ): Promise<UberMenuConfigWriteResult<UberOptionItemConfigDto>>;
 }
 export interface UberMenuDraftReadPort {
@@ -190,8 +244,7 @@ export interface UberDraftItemCommandPort {
 }
 export interface UberDraftGroupCommandPort {
   updateUberDraftGroup(
-    id: string,
-    input: UpdateDraftGroupInput,
+    command: UberGroupConfigCommand,
   ): Promise<UberDraftMutationResult<UberModifierGroupConfigDto>>;
 }
 export interface UberDraftOptionCommandPort {
@@ -202,14 +255,10 @@ export interface UberDraftOptionCommandPort {
 }
 export interface UberOptionChildGroupBindingCommandPort {
   bindUberDraftOptionChildGroup(
-    optionId: string,
-    childGroupId: string,
-    storeId?: string,
+    command: UberOptionChildGroupBindingCommand,
   ): Promise<UberDraftBindingResult>;
   unbindUberDraftOptionChildGroup(
-    optionId: string,
-    childGroupId: string,
-    storeId?: string,
+    command: UberOptionChildGroupBindingCommand,
   ): Promise<UberDraftBindingResult>;
 }
 /**

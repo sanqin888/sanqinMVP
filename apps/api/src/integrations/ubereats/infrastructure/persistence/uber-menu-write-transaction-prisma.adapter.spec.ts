@@ -1,6 +1,23 @@
 import type { PrismaService } from '../../../../prisma/prisma.service';
 import { UberMenuWriteTransactionPrismaAdapter } from './uber-menu-write-transaction-prisma.adapter';
 
+const semantics = {
+  samePayload: 'RETURN_SAME_BUSINESS_STATE',
+  differentPayload: 'UPDATE_RESOURCE',
+  sideEffects: 'DEDUPLICATE_BY_RESOURCE_AND_RESULTING_STATE',
+  concurrency: 'CONVERGE_BY_UNIQUE_RESOURCE_KEY',
+} as const;
+
+const itemCommand = {
+  resourceKey: { storeId: 'store-1', menuItemStableId: 'item-1' },
+  payload: {
+    storeId: 'store-1',
+    menuItemStableId: 'item-1',
+    priceCents: 1200,
+  },
+  semantics,
+} as const;
+
 describe('UberMenuWriteTransactionPrismaAdapter', () => {
   it('runs the write and durable telemetry on the transaction client', async () => {
     type OpsEventUpsert = (input: {
@@ -27,11 +44,7 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
     } as unknown as PrismaService);
 
     await adapter.execute((commands) =>
-      commands.upsertUberItemChannelConfig({
-        storeId: 'store-1',
-        menuItemStableId: 'item-1',
-        priceCents: 1200,
-      }),
+      commands.upsertUberItemChannelConfig(itemCommand),
     );
 
     expect($transaction).toHaveBeenCalledTimes(1);
@@ -74,14 +87,29 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
 
     await expect(
       adapter.execute((commands) =>
-        commands.upsertUberItemChannelConfig({
-          menuItemStableId: 'item-1',
-          priceCents: 1200,
-        }),
+        commands.upsertUberItemChannelConfig(itemCommand),
       ),
     ).rejects.toBe(failure);
     expect($transaction).toHaveBeenCalledTimes(1);
     expect(staged).toEqual({ businessRows: 1, events: 1 });
     expect(committed).toEqual({ businessRows: 0, events: 0 });
+  });
+
+  it('replays once when concurrent creation loses a unique-key race', async () => {
+    const converged = { ok: true, storeId: 'store-1' };
+    const $transaction = jest
+      .fn()
+      .mockRejectedValueOnce({ code: 'P2002' })
+      .mockImplementationOnce(
+        (work: (client: object) => Promise<typeof converged>) => work({}),
+      );
+    const adapter = new UberMenuWriteTransactionPrismaAdapter({
+      $transaction,
+    } as unknown as PrismaService);
+
+    await expect(
+      adapter.execute(() => Promise.resolve(converged)),
+    ).resolves.toBe(converged);
+    expect($transaction).toHaveBeenCalledTimes(2);
   });
 });
