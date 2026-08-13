@@ -343,6 +343,35 @@ describe('Uber webhook use cases', () => {
     expect(menu.processWebhookEvent).not.toHaveBeenCalled();
   });
 
+  it('数据库入箱失败时返回可重试错误而不伪装成功', async () => {
+    const uberWebhookInbox = inbox();
+    uberWebhookInbox.create.mockRejectedValueOnce(
+      new Error('database unavailable'),
+    );
+    const service = createReceiveUberWebhookUseCase(
+      { uberWebhookInbox } as unknown as ConstructorParameters<
+        typeof ReceiveUberWebhookUseCase
+      >[0],
+      config(),
+      undefined,
+    );
+
+    await expect(
+      service.execute(
+        signed({
+          event_type: 'orders.notification',
+          event_id: 'evt-db-failure',
+          resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+          meta: { resource_id: 'order-1', user_id: 'store-1' },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'UBER_WEBHOOK_INBOX_UNAVAILABLE',
+      retryable: true,
+      category: 'transient-upstream',
+    });
+  });
+
   it('拒绝无效签名且不会 claim inbox', async () => {
     const uberWebhookInbox = inbox();
     const service = createReceiveUberWebhookUseCase(

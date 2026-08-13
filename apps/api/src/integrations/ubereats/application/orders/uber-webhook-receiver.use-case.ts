@@ -8,7 +8,10 @@ import {
 } from '../../domain/webhook/uber-webhook-envelope';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
-import { UberValidationError } from '../shared/uber-application.error';
+import {
+  UberTransientUpstreamError,
+  UberValidationError,
+} from '../shared/uber-application.error';
 import {
   type UberWebhookInboxPort,
   type UberWebhookSignatureVerifier,
@@ -66,12 +69,22 @@ export class ReceiveUberWebhookUseCase {
         : normalized.startsWith('store.')
           ? 'store'
           : 'event';
-    const inserted = await this.inbox.enqueue({
-      eventId,
-      eventType: parsed.envelope.eventType,
-      externalOrderId: `${prefix}:${parsed.envelope.resourceId ?? eventId}`,
-      payload: parsed.payload,
-    });
+    let inserted: boolean;
+    try {
+      inserted = await this.inbox.enqueue({
+        eventId,
+        eventType: parsed.envelope.eventType,
+        externalOrderId: `${prefix}:${parsed.envelope.resourceId ?? eventId}`,
+        payload: parsed.payload,
+      });
+    } catch (cause) {
+      throw new UberTransientUpstreamError({
+        code: 'UBER_WEBHOOK_INBOX_UNAVAILABLE',
+        message: 'Uber webhook inbox 暂时不可用',
+        operation: 'webhook.enqueue',
+        cause,
+      });
+    }
     if (!inserted)
       this.telemetry.workflowLog('warn', 'duplicate webhook ignored');
   }
