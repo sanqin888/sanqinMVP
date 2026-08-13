@@ -40,6 +40,40 @@ const createActions = () =>
   );
 
 describe('Uber order use-case boundaries', () => {
+  it.each([
+    ['MALFORMED_PAYLOAD', '订单详情无法解析'],
+    ['EMPTY_ITEMS', '订单不包含可导入商品'],
+  ] as const)(
+    'denies an invalid order detail: %s',
+    async (reason, reasonDetail) => {
+      const repository = {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        findMenuMappings: jest.fn(),
+        saveImportedOrder: jest.fn(),
+      };
+      const actions = { request: jest.fn().mockResolvedValue(undefined) };
+      const useCase = new ImportUberOrderUseCase(
+        repository as never,
+        {
+          fetchOrderDetail: jest
+            .fn()
+            .mockResolvedValue({ kind: 'invalid', reason }),
+        },
+        actions as unknown as UberOrderActionService,
+        { findMapping: jest.fn() } as never,
+      );
+
+      await useCase.execute('orders.notification', 'event-1', notification);
+
+      expect(actions.request).toHaveBeenCalledWith('order-1', 'DENY', {
+        reasonCode: 'INVALID_ORDER',
+        reasonDetail,
+      });
+      expect(repository.findMenuMappings).not.toHaveBeenCalled();
+      expect(repository.saveImportedOrder).not.toHaveBeenCalled();
+    },
+  );
+
   it('commits the ACCEPT intent with the order so process exit cannot lose it', async () => {
     const saved: { order?: ImportedOrderInput } = {};
     const saveImportedOrder = jest.fn((order: ImportedOrderInput) => {

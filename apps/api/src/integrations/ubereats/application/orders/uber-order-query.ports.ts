@@ -16,4 +16,11 @@ export interface UberOrderDetailQueryPort {
 /** Validated order-detail outcome; wire JSON never crosses this boundary. */
 export type UberOrderDetailResult =
   | { kind: 'parsed'; order: ParsedUberOrder }
-  | { kind: 'invalid'; reason: 'INVALID_ORDER_DETAIL' };
+  | {
+      kind: 'invalid';
+      reason:
+        | 'MALFORMED_PAYLOAD'
+        | 'MISSING_ORDER_ID'
+        | 'MISSING_TOTAL'
+        | 'EMPTY_ITEMS';
+    };

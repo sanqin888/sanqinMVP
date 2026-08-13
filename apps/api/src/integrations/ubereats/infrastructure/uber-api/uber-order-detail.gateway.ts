@@ -37,10 +37,15 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       kind: 'orderDetail',
     });
     if (result.response.ok) {
-      const order = this.parser.parse(result.data);
-      return order
-        ? { kind: 'parsed', order }
-        : { kind: 'invalid', reason: 'INVALID_ORDER_DETAIL' };
+      const mapped = this.parser.parseResult(result.data);
+      if (mapped.kind === 'parsed') return mapped;
+
+      // Never include the response body here: it may contain credentials or PII.
+      this.telemetry.workflowLog(
+        mapped.category === 'mapping' ? 'error' : 'warn',
+        `[ubereats order] detail invalid category=${mapped.category} reason=${mapped.reason}`,
+      );
+      return { kind: 'invalid', reason: mapped.reason };
     }
 
     const detail = summarizeUberDebugResponse(result.data, result.text);
