@@ -8,7 +8,6 @@ import { UberOrderGateway } from './uber-resource.gateways';
 export class UberOrderCommandError extends Error {
   constructor(
     readonly status: number,
-    readonly retryable: boolean,
     message = `Uber order command failed with HTTP ${status}`,
   ) {
     super(message);
@@ -62,10 +61,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     );
     if (outcome.ok || (action === 'READY_FOR_PICKUP' && outcome.status === 409))
       return;
-    throw new UberOrderCommandError(
-      outcome.status,
-      outcome.status === 429 || outcome.status >= 500,
-    );
+    throw new UberOrderCommandError(outcome.status);
   }
 
   private reasonCode(value: string): string {

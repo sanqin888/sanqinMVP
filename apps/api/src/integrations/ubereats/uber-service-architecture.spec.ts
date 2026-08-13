@@ -34,7 +34,6 @@ const INTERNAL_LAYERS = [
 const WHITE_BOX_TEST_FILES = new Set([
   'api/operations.controller.spec.ts',
   'api/ubereats-exception.filter.spec.ts',
-  'application/orders/uber-order-outbox.service.spec.ts',
   'application/orders/uber-order.use-cases.spec.ts',
   'application/orders/uber-webhook.service.spec.ts',
   'application/shared/uber-domain-error.mapper.spec.ts',
@@ -617,6 +616,29 @@ describe('Uber Eats bounded-context architecture', () => {
   it('requires every write gateway call to carry an idempotency key', () => {
     expect(
       writeGatewayViolations(boundedContextFiles, BOUNDED_CONTEXT_ROOT),
+    ).toEqual([]);
+  });
+
+  it('allows only one order-action gateway boundary and no legacy outbox channel', () => {
+    const applicationSources = boundedContextFiles.filter(
+      ({ path }) => layerOf(path) === 'application',
+    );
+    const declarations = applicationSources.flatMap(({ path, source }) =>
+      Array.from(
+        source.matchAll(
+          /(?:interface|const)\s+(UberOrderActionGatewayPort|UBER_ORDER_ACTION_GATEWAY)\b/g,
+        ),
+        (match) => `${relative(BOUNDED_CONTEXT_ROOT, path)}:${match[1]}`,
+      ),
+    );
+    expect(declarations).toEqual([
+      'application/orders/uber-order.ports.ts:UberOrderActionGatewayPort',
+      'application/orders/uber-order.ports.ts:UBER_ORDER_ACTION_GATEWAY',
+    ]);
+    expect(
+      applicationSources.filter(({ source }) =>
+        /UberOrderOutbox|UBER_ORDER_OUTBOX|ACTION_COMMAND_GATEWAY/.test(source),
+      ),
     ).toEqual([]);
   });
 

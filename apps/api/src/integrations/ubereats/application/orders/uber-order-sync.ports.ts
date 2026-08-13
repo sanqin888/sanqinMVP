@@ -1,8 +1,4 @@
-import type {
-  UberOrderActionName,
-  UberOrderActionRecord,
-  UberOrderStatus,
-} from '../../domain/orders/uber-order.types';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 export type UberPendingOrder = {
   orderStableId: string | null;
@@ -23,22 +19,4 @@ export interface UberOrderSyncRepositoryPort {
   pendingSummary(): Promise<{ count: number; updatedAt: Date | null }>;
 }
 
-export interface UberOrderSyncUnitOfWorkPort {
-  recordActionIntent(input: {
-    externalOrderId: string;
-    action: UberOrderActionName;
-    idempotencyKey: string;
-  }): Promise<void>;
-}
-
-export interface UberOrderActionQueuePort {
-  enqueue(
-    externalOrderId: string,
-    action: UberOrderActionName,
-  ): Promise<UberOrderActionRecord>;
-}
-
 export const UBER_ORDER_SYNC_REPOSITORY = Symbol('UBER_ORDER_SYNC_REPOSITORY');
-export const UBER_ORDER_SYNC_UNIT_OF_WORK = Symbol(
-  'UBER_ORDER_SYNC_UNIT_OF_WORK',
-);

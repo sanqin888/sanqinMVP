@@ -36,4 +36,20 @@ describe('UberOrderActionGatewayAdapter', () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it('maps CANCEL to the merchant denial endpoint', async () => {
+    const executeAction = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, data: {} });
+    await new UberOrderActionGatewayAdapter({ executeAction } as never).cancel({
+      externalOrderId: 'order-1',
+      idempotencyKey: 'cancel-key',
+    });
+    expect(executeAction).toHaveBeenCalledWith(
+      'order-1',
+      'DENY',
+      { reason: { code: 'OTHER', explanation: 'Cancelled by merchant' } },
+      'cancel-key',
+    );
+  });
 });

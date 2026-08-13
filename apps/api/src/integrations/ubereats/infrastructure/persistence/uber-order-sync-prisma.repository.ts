@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Channel, OrderStatus, type Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type {
-  UberOrderSyncRepositoryPort,
-  UberOrderSyncUnitOfWorkPort,
-} from '../../application/orders/uber-order-sync.ports';
+import type { UberOrderSyncRepositoryPort } from '../../application/orders/uber-order-sync.ports';
 import { toUberOrderStatus } from './uber-order-status.mapper';
 
 const pendingStatuses = [
@@ -72,26 +69,5 @@ export class UberOrderSyncPrismaRepository implements UberOrderSyncRepositoryPor
       }),
     ]);
     return { count, updatedAt: latest?.createdAt ?? null };
-  }
-}
-
-@Injectable()
-export class UberOrderSyncPrismaUnitOfWork implements UberOrderSyncUnitOfWorkPort {
-  constructor(private readonly prisma: PrismaService) {}
-  async recordActionIntent(
-    input: Parameters<UberOrderSyncUnitOfWorkPort['recordActionIntent']>[0],
-  ) {
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.uberOrderAction.upsert({
-        where: {
-          externalOrderId_action: {
-            externalOrderId: input.externalOrderId,
-            action: input.action,
-          },
-        },
-        create: { ...input, status: 'PENDING', businessVersion: 'v1' },
-        update: {},
-      });
-    });
   }
 }

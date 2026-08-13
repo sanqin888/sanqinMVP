@@ -8,7 +8,7 @@ import {
   type UberOrderEventCursor,
   type UberOrderImportRepositoryPort,
 } from './uber-order.ports';
-import { type UberOrderDetailGatewayPort } from './uber-order-api.ports';
+import { type UberOrderDetailQueryPort } from './uber-order-query.ports';
 import {
   UberOrderPayloadParser,
   validateUberOrderAmounts,
@@ -44,7 +44,7 @@ export class ImportUberOrderUseCase {
 
   constructor(
     private readonly repository: UberOrderImportRepositoryPort,
-    private readonly detailGateway: UberOrderDetailGatewayPort,
+    private readonly detailGateway: UberOrderDetailQueryPort,
     private readonly actions: UberOrderActionService,
     private readonly storeMappings: UberStoreMappingRepositoryPort,
   ) {}

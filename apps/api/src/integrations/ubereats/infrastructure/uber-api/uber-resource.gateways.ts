@@ -7,7 +7,6 @@ import {
   type UberResourceGateway,
   type UberGatewayTransportPort,
 } from './uber-api.gateway';
-import type { UberOrderActionGatewayPort } from '../../application/orders/uber-order-api.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import {
   UberTransientUpstreamError,
@@ -58,10 +57,7 @@ export class UberMenuGateway extends PrefixGateway {
 }
 
 @Injectable()
-export class UberOrderGateway
-  extends PrefixGateway
-  implements UberOrderActionGatewayPort
-{
+export class UberOrderGateway extends PrefixGateway {
   protected readonly prefixes = [
     '/v1/eats/orders',
     '/v1/delivery/order',

@@ -1,22 +1,17 @@
 import { UberValidationError } from '../shared/uber-application.error';
-import { buildUberIdempotencyKey } from '../orders/uber-idempotency-key';
 import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
-import type {
-  UberOrderActionQueuePort,
-  UberOrderSyncRepositoryPort,
-  UberOrderSyncUnitOfWorkPort,
-} from './uber-order-sync.ports';
+import type { UberOrderSyncRepositoryPort } from './uber-order-sync.ports';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import { toUberEatsApplicationError } from '../shared/uber-domain-error.mapper';
 import { UberOrderStatusSyncService } from './uber-order-status-sync.service';
+import { UberOrderActionService } from './uber-order-action.service';
 
 /** Records durable action intent and queues delivery without exposing storage concepts. */
 export class SyncUberOrderStatusUseCase {
   constructor(
     private readonly orders: UberOrderSyncRepositoryPort,
-    private readonly unitOfWork: UberOrderSyncUnitOfWorkPort,
-    private readonly queue: UberOrderActionQueuePort,
+    private readonly actions: UberOrderActionService,
     private readonly statusSync: UberOrderStatusSyncService,
     private readonly telemetry: UberTelemetryPort,
   ) {}
@@ -43,25 +38,15 @@ export class SyncUberOrderStatusUseCase {
     } catch (error) {
       throw toUberEatsApplicationError(error);
     }
-    await this.unitOfWork.recordActionIntent({
-      externalOrderId,
-      action,
-      idempotencyKey: buildUberIdempotencyKey({
-        taskId: `${externalOrderId}:${action}`,
-        resourceId: externalOrderId,
-        action,
-        businessVersion: 'v1',
-      }),
-    });
-    const queued = await this.queue.enqueue(externalOrderId, action);
+    const queued = await this.actions.request(externalOrderId, action);
     const actionResult = {
-      ok: queued.status === 'SUCCEEDED',
-      action: queued.action,
-      actionId: queued.id,
-      status: queued.status,
-      retryable: queued.retryable,
-      duplicate: true,
-      uberHttpStatus: queued.uberHttpStatus,
+      ok: false,
+      action,
+      actionId: queued.taskId,
+      status: 'PENDING' as const,
+      retryable: true,
+      duplicate: !queued.created,
+      uberHttpStatus: null,
     };
     await this.telemetry.captureEvent('ubereats_order_status_synced', {
       externalOrderId,

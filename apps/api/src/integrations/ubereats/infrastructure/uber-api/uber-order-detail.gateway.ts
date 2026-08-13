@@ -3,7 +3,7 @@ import {
   UberNonRetryableUpstreamError,
   UberTransientUpstreamError,
 } from '../../application/shared/uber-application.error';
-import type { UberOrderDetailGatewayPort } from '../../application/orders/uber-order-api.ports';
+import type { UberOrderDetailQueryPort } from '../../application/orders/uber-order-query.ports';
 import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
 import {
   redactUberLogText,
@@ -12,7 +12,7 @@ import {
 import { UberOrderGateway } from './uber-resource.gateways';
 
 @Injectable()
-export class UberOrderDetailGatewayAdapter implements UberOrderDetailGatewayPort {
+export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
   constructor(
     @Inject(UberOrderGateway)
     private readonly gateway: Pick<
