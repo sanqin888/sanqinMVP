@@ -25,6 +25,9 @@ export const UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT = Symbol(
 export const UBER_OPTION_ITEM_CONFIG_COMMAND_PORT = Symbol(
   'UBER_OPTION_ITEM_CONFIG_COMMAND_PORT',
 );
+export const UBER_MENU_WRITE_TRANSACTION_PORT = Symbol(
+  'UBER_MENU_WRITE_TRANSACTION_PORT',
+);
 export const UBER_MENU_DRAFT_READ_PORT = Symbol('UBER_MENU_DRAFT_READ_PORT');
 export const UBER_DRAFT_ITEM_COMMAND_PORT = Symbol(
   'UBER_DRAFT_ITEM_COMMAND_PORT',
@@ -209,6 +212,22 @@ export interface UberOptionChildGroupBindingCommandPort {
     storeId?: string,
   ): Promise<UberDraftBindingResult>;
 }
+/**
+ * Application-owned commit boundary for menu writes. Rejection from `work`
+ * rolls back both the command write and all durable telemetry it emits.
+ *
+ * `TCommands` deliberately lets each use case see only its required command.
+ */
+export interface UberMenuWriteTransactionPort<TCommands> {
+  execute<T>(work: (commands: TCommands) => Promise<T>): Promise<T>;
+}
+
+export type UberMenuWriteCommands = UberItemChannelConfigCommandPort &
+  UberOptionItemConfigCommandPort &
+  UberDraftItemCommandPort &
+  UberDraftGroupCommandPort &
+  UberDraftOptionCommandPort &
+  UberOptionChildGroupBindingCommandPort;
 export interface UberMenuDraftDiffPort {
   getUberMenuDraftDiff(storeId?: string): Promise<UberMenuDraftDiffResult>;
 }

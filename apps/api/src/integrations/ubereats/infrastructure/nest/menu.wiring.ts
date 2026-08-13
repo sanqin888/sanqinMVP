@@ -21,6 +21,7 @@ import {
 } from '../../application/menu/uber-menu-notification.handler';
 import {
   type UberMenuConfigQueryPort,
+  type UberMenuWriteTransactionPort,
   type UberItemChannelConfigCommandPort,
   type UberOptionItemConfigCommandPort,
   type UberMenuDraftDiffPort,
@@ -33,6 +34,7 @@ import {
   type OptionChoiceExistenceQueryPort,
   type ProvisionedUberStoreQueryPort,
   UBER_MENU_CONFIG_QUERY_PORT,
+  UBER_MENU_WRITE_TRANSACTION_PORT,
   UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
   UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
   MENU_ITEM_EXISTENCE_QUERY_PORT,
@@ -80,6 +82,7 @@ import { UberMenuPublicationPrismaAdapter } from '../../infrastructure/persisten
 import { UberMenuSnapshotPrismaAdapter } from '../../infrastructure/persistence/uber-menu-snapshot-prisma.adapter';
 import { UberMenuConfigQueryPrismaAdapter } from '../../infrastructure/persistence/uber-menu-config-query-prisma.adapter';
 import { UberMenuConfigWritePrismaAdapter } from '../../infrastructure/persistence/uber-menu-config-write-prisma.adapter';
+import { UberMenuWriteTransactionPrismaAdapter } from '../../infrastructure/persistence/uber-menu-write-transaction-prisma.adapter';
 import { UberMenuDraftReadPrismaAdapter } from '../../infrastructure/persistence/uber-menu-draft-read-prisma.adapter';
 import { UberMenuDraftMutationPrismaAdapter } from '../../infrastructure/persistence/uber-menu-draft-mutation-prisma.adapter';
 import { UberMenuDraftDiffPrismaAdapter } from '../../infrastructure/persistence/uber-menu-draft-diff-prisma.adapter';
@@ -100,6 +103,11 @@ export function createMenuWiring(): Provider[] {
     UberImageValidator,
     UberMenuConfigQueryPrismaAdapter,
     UberMenuConfigWritePrismaAdapter,
+    UberMenuWriteTransactionPrismaAdapter,
+    {
+      provide: UBER_MENU_WRITE_TRANSACTION_PORT,
+      useExisting: UberMenuWriteTransactionPrismaAdapter,
+    },
     {
       provide: UberPublicBaseUrlAdapter,
       useFactory: () => new UberPublicBaseUrlAdapter(process.env),
@@ -200,24 +208,24 @@ export function createMenuWiring(): Provider[] {
     {
       provide: UpsertUberItemChannelConfigUseCase,
       inject: [
-        UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
+        UBER_MENU_WRITE_TRANSACTION_PORT,
         MENU_ITEM_EXISTENCE_QUERY_PORT,
       ],
       useFactory: (
-        commands: UberItemChannelConfigCommandPort,
+        transaction: UberMenuWriteTransactionPort<UberItemChannelConfigCommandPort>,
         menuItems: MenuItemExistenceQueryPort,
-      ) => new UpsertUberItemChannelConfigUseCase(commands, menuItems),
+      ) => new UpsertUberItemChannelConfigUseCase(transaction, menuItems),
     },
     {
       provide: UpsertUberOptionItemConfigUseCase,
       inject: [
-        UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
+        UBER_MENU_WRITE_TRANSACTION_PORT,
         OPTION_CHOICE_EXISTENCE_QUERY_PORT,
       ],
       useFactory: (
-        commands: UberOptionItemConfigCommandPort,
+        transaction: UberMenuWriteTransactionPort<UberOptionItemConfigCommandPort>,
         optionChoices: OptionChoiceExistenceQueryPort,
-      ) => new UpsertUberOptionItemConfigUseCase(commands, optionChoices),
+      ) => new UpsertUberOptionItemConfigUseCase(transaction, optionChoices),
     },
     {
       provide: ReadUberMenuDraftUseCase,
@@ -227,40 +235,46 @@ export function createMenuWiring(): Provider[] {
     },
     {
       provide: UpdateUberDraftItemUseCase,
-      inject: [UBER_DRAFT_ITEM_COMMAND_PORT, MENU_ITEM_EXISTENCE_QUERY_PORT],
+      inject: [
+        UBER_MENU_WRITE_TRANSACTION_PORT,
+        MENU_ITEM_EXISTENCE_QUERY_PORT,
+      ],
       useFactory: (
-        commands: UberDraftItemCommandPort,
+        transaction: UberMenuWriteTransactionPort<UberDraftItemCommandPort>,
         menuItems: MenuItemExistenceQueryPort,
-      ) => new UpdateUberDraftItemUseCase(commands, menuItems),
+      ) => new UpdateUberDraftItemUseCase(transaction, menuItems),
     },
     {
       provide: UpdateUberDraftGroupUseCase,
-      inject: [UBER_DRAFT_GROUP_COMMAND_PORT],
-      useFactory: (commands: UberDraftGroupCommandPort) =>
-        new UpdateUberDraftGroupUseCase(commands),
+      inject: [UBER_MENU_WRITE_TRANSACTION_PORT],
+      useFactory: (
+        transaction: UberMenuWriteTransactionPort<UberDraftGroupCommandPort>,
+      ) => new UpdateUberDraftGroupUseCase(transaction),
     },
     {
       provide: UpdateUberDraftOptionUseCase,
       inject: [
-        UBER_DRAFT_OPTION_COMMAND_PORT,
+        UBER_MENU_WRITE_TRANSACTION_PORT,
         OPTION_CHOICE_EXISTENCE_QUERY_PORT,
       ],
       useFactory: (
-        commands: UberDraftOptionCommandPort,
+        transaction: UberMenuWriteTransactionPort<UberDraftOptionCommandPort>,
         optionChoices: OptionChoiceExistenceQueryPort,
-      ) => new UpdateUberDraftOptionUseCase(commands, optionChoices),
+      ) => new UpdateUberDraftOptionUseCase(transaction, optionChoices),
     },
     {
       provide: BindUberDraftOptionChildGroupUseCase,
-      inject: [UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT],
-      useFactory: (commands: UberOptionChildGroupBindingCommandPort) =>
-        new BindUberDraftOptionChildGroupUseCase(commands),
+      inject: [UBER_MENU_WRITE_TRANSACTION_PORT],
+      useFactory: (
+        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindingCommandPort>,
+      ) => new BindUberDraftOptionChildGroupUseCase(transaction),
     },
     {
       provide: UnbindUberDraftOptionChildGroupUseCase,
-      inject: [UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT],
-      useFactory: (commands: UberOptionChildGroupBindingCommandPort) =>
-        new UnbindUberDraftOptionChildGroupUseCase(commands),
+      inject: [UBER_MENU_WRITE_TRANSACTION_PORT],
+      useFactory: (
+        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindingCommandPort>,
+      ) => new UnbindUberDraftOptionChildGroupUseCase(transaction),
     },
     {
       provide: QueryUberMenuDraftDiffUseCase,

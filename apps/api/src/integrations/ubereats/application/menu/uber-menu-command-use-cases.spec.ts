@@ -5,6 +5,7 @@ import type {
   UberDraftItemCommandPort,
   UberDraftOptionCommandPort,
   UberItemChannelConfigCommandPort,
+  UberMenuWriteTransactionPort,
   UberOptionChildGroupBindingCommandPort,
   UberOptionItemConfigCommandPort,
 } from './uber-menu-draft.ports';
@@ -17,6 +18,12 @@ import { UpsertUberItemChannelConfigUseCase } from './upsert-uber-item-channel-c
 import { UpsertUberOptionItemConfigUseCase } from './upsert-uber-option-item-config.use-case';
 
 describe('Uber menu command use cases', () => {
+  const transaction = <TCommands>(
+    commands: TCommands,
+  ): UberMenuWriteTransactionPort<TCommands> => ({
+    execute: (work) => work(commands),
+  });
+
   it('exposes only execute as the public command method', () => {
     const useCaseTypes = [
       UpsertUberItemChannelConfigUseCase,
@@ -53,15 +60,15 @@ describe('Uber menu command use cases', () => {
 
     await expect(
       new UpsertUberItemChannelConfigUseCase(
-        upsertCommands,
+        transaction(upsertCommands),
         references,
       ).execute({ menuItemStableId: 'missing', priceCents: 100 }),
     ).rejects.toBe(missing);
     await expect(
-      new UpdateUberDraftItemUseCase(updateCommands, references).execute(
-        'missing',
-        {},
-      ),
+      new UpdateUberDraftItemUseCase(
+        transaction(updateCommands),
+        references,
+      ).execute('missing', {}),
     ).rejects.toBe(missing);
     expect(upsert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
@@ -83,15 +90,16 @@ describe('Uber menu command use cases', () => {
     };
 
     await expect(
-      new UpsertUberOptionItemConfigUseCase(upsertCommands, references).execute(
-        { optionChoiceStableId: 'missing', priceDeltaCents: 100 },
-      ),
+      new UpsertUberOptionItemConfigUseCase(
+        transaction(upsertCommands),
+        references,
+      ).execute({ optionChoiceStableId: 'missing', priceDeltaCents: 100 }),
     ).rejects.toBe(missing);
     await expect(
-      new UpdateUberDraftOptionUseCase(updateCommands, references).execute(
-        'missing',
-        {},
-      ),
+      new UpdateUberDraftOptionUseCase(
+        transaction(updateCommands),
+        references,
+      ).execute('missing', {}),
     ).rejects.toBe(missing);
     expect(upsert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
@@ -110,21 +118,20 @@ describe('Uber menu command use cases', () => {
     };
 
     await expect(
-      new UpdateUberDraftGroupUseCase(groupCommands).execute('group-1', {}),
+      new UpdateUberDraftGroupUseCase(transaction(groupCommands)).execute(
+        'group-1',
+        {},
+      ),
     ).resolves.toBe('updated');
     await expect(
-      new BindUberDraftOptionChildGroupUseCase(bindingCommands).execute(
-        'option-1',
-        'group-1',
-        'store-1',
-      ),
+      new BindUberDraftOptionChildGroupUseCase(
+        transaction(bindingCommands),
+      ).execute('option-1', 'group-1', 'store-1'),
     ).resolves.toBe('bound');
     await expect(
-      new UnbindUberDraftOptionChildGroupUseCase(bindingCommands).execute(
-        'option-1',
-        'group-1',
-        'store-1',
-      ),
+      new UnbindUberDraftOptionChildGroupUseCase(
+        transaction(bindingCommands),
+      ).execute('option-1', 'group-1', 'store-1'),
     ).resolves.toBe('unbound');
     expect(updateGroup).toHaveBeenCalledTimes(1);
     expect(bind).toHaveBeenCalledTimes(1);

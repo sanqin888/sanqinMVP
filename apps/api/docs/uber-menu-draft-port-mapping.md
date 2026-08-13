@@ -17,3 +17,7 @@
 | `GET menu/draft/diff`                                 | `QueryUberMenuDraftDiffUseCase.execute`             | `UberMenuDraftDiffPort.getUberMenuDraftDiff`                             | `UberMenuDraftDiffPrismaAdapter`     |
 
 已删除的 `UberMenuDraftConfigUseCase` 没有 controller、resolver 或其他运行时调用方；其 `listItems`、`listOptions`、`updateItem`、`updateGroup`、`updateOption` 分别被上表中的 channel 查询和 draft command 方法覆盖。旧 query/command repository 也因此不再注册。
+
+## 写事务边界
+
+所有上表中的写用例都通过 application-owned `UberMenuWriteTransactionPort<TCommands>.execute` 声明提交边界。泛型命令视图确保每个用例只可调用自己需要的写操作；reference validation 在进入事务前完成，而命令写入及其持久化 telemetry/audit 在同一个事务回调中完成。回调（包括持久化 telemetry）抛出异常时，infrastructure 的 Prisma `$transaction` 回滚整个提交；日志和内存指标不是数据库状态，不属于提交边界。本次边界没有 outbox 写入。

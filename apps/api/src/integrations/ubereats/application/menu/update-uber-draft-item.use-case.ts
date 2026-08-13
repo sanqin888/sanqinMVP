@@ -1,13 +1,14 @@
 import type {
   MenuItemExistenceQueryPort,
   UberDraftItemCommandPort,
+  UberMenuWriteTransactionPort,
 } from './uber-menu-draft.ports';
 import { ensureMenuItemExists } from './uber-menu-reference-validator.service';
 
 /** Owns the transaction that updates one draft item. */
 export class UpdateUberDraftItemUseCase {
   constructor(
-    private readonly commands: UberDraftItemCommandPort,
+    private readonly transaction: UberMenuWriteTransactionPort<UberDraftItemCommandPort>,
     private readonly menuItems: MenuItemExistenceQueryPort,
   ) {}
 
@@ -15,6 +16,8 @@ export class UpdateUberDraftItemUseCase {
     ...args: Parameters<UberDraftItemCommandPort['updateUberDraftItem']>
   ) {
     await ensureMenuItemExists(this.menuItems, args[0]);
-    return this.commands.updateUberDraftItem(...args);
+    return this.transaction.execute((commands) =>
+      commands.updateUberDraftItem(...args),
+    );
   }
 }
