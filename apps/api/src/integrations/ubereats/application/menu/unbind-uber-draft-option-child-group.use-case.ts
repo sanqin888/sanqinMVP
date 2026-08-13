@@ -1,14 +1,16 @@
-import type { UberMenuDraftMutationPort } from './uber-menu-draft.ports';
+import type { UberOptionChildGroupBindingCommandPort } from './uber-menu-draft.ports';
 
 /** Owns the atomic, idempotent child-group unbinding command. */
 export class UnbindUberDraftOptionChildGroupUseCase {
-  constructor(private readonly mutations: UberMenuDraftMutationPort) {}
+  constructor(
+    private readonly commands: UberOptionChildGroupBindingCommandPort,
+  ) {}
 
   execute(
     ...args: Parameters<
-      UberMenuDraftMutationPort['unbindUberDraftOptionChildGroup']
+      UberOptionChildGroupBindingCommandPort['unbindUberDraftOptionChildGroup']
     >
   ) {
-    return this.mutations.unbindUberDraftOptionChildGroup(...args);
+    return this.commands.unbindUberDraftOptionChildGroup(...args);
   }
 }

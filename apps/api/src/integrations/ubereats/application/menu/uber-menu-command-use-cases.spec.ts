@@ -1,6 +1,10 @@
 import type {
-  UberMenuConfigWritePort,
-  UberMenuDraftMutationPort,
+  UberDraftGroupCommandPort,
+  UberDraftItemCommandPort,
+  UberDraftOptionCommandPort,
+  UberItemChannelConfigCommandPort,
+  UberOptionChildGroupBindingCommandPort,
+  UberOptionItemConfigCommandPort,
 } from './uber-menu-draft.ports';
 import type { UberMenuReferenceValidator } from './uber-menu-reference-validator.service';
 import { BindUberDraftOptionChildGroupUseCase } from './bind-uber-draft-option-child-group.use-case';
@@ -39,19 +43,24 @@ describe('Uber menu command use cases', () => {
       ensureMenuItemExists: jest.fn().mockRejectedValue(missing),
     } as unknown as UberMenuReferenceValidator;
 
+    const upsertCommands: UberItemChannelConfigCommandPort = {
+      upsertUberItemChannelConfig: upsert,
+    };
+    const updateCommands: UberDraftItemCommandPort = {
+      updateUberDraftItem: update,
+    };
+
     await expect(
       new UpsertUberItemChannelConfigUseCase(
-        {
-          upsertUberItemChannelConfig: upsert,
-        } as unknown as UberMenuConfigWritePort,
+        upsertCommands,
         references,
       ).execute({ menuItemStableId: 'missing', priceCents: 100 }),
     ).rejects.toBe(missing);
     await expect(
-      new UpdateUberDraftItemUseCase(
-        { updateUberDraftItem: update } as unknown as UberMenuDraftMutationPort,
-        references,
-      ).execute('missing', {}),
+      new UpdateUberDraftItemUseCase(updateCommands, references).execute(
+        'missing',
+        {},
+      ),
     ).rejects.toBe(missing);
     expect(upsert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
@@ -65,21 +74,23 @@ describe('Uber menu command use cases', () => {
       ensureOptionChoiceExists: jest.fn().mockRejectedValue(missing),
     } as unknown as UberMenuReferenceValidator;
 
+    const upsertCommands: UberOptionItemConfigCommandPort = {
+      upsertUberOptionItemConfig: upsert,
+    };
+    const updateCommands: UberDraftOptionCommandPort = {
+      updateUberDraftOption: update,
+    };
+
     await expect(
-      new UpsertUberOptionItemConfigUseCase(
-        {
-          upsertUberOptionItemConfig: upsert,
-        } as unknown as UberMenuConfigWritePort,
-        references,
-      ).execute({ optionChoiceStableId: 'missing', priceDeltaCents: 100 }),
+      new UpsertUberOptionItemConfigUseCase(upsertCommands, references).execute(
+        { optionChoiceStableId: 'missing', priceDeltaCents: 100 },
+      ),
     ).rejects.toBe(missing);
     await expect(
-      new UpdateUberDraftOptionUseCase(
-        {
-          updateUberDraftOption: update,
-        } as unknown as UberMenuDraftMutationPort,
-        references,
-      ).execute('missing', {}),
+      new UpdateUberDraftOptionUseCase(updateCommands, references).execute(
+        'missing',
+        {},
+      ),
     ).rejects.toBe(missing);
     expect(upsert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
@@ -89,24 +100,26 @@ describe('Uber menu command use cases', () => {
     const updateGroup = jest.fn().mockResolvedValue('updated');
     const bind = jest.fn().mockResolvedValue('bound');
     const unbind = jest.fn().mockResolvedValue('unbound');
-    const mutations = {
+    const groupCommands: UberDraftGroupCommandPort = {
       updateUberDraftGroup: updateGroup,
+    };
+    const bindingCommands: UberOptionChildGroupBindingCommandPort = {
       bindUberDraftOptionChildGroup: bind,
       unbindUberDraftOptionChildGroup: unbind,
-    } as unknown as UberMenuDraftMutationPort;
+    };
 
     await expect(
-      new UpdateUberDraftGroupUseCase(mutations).execute('group-1', {}),
+      new UpdateUberDraftGroupUseCase(groupCommands).execute('group-1', {}),
     ).resolves.toBe('updated');
     await expect(
-      new BindUberDraftOptionChildGroupUseCase(mutations).execute(
+      new BindUberDraftOptionChildGroupUseCase(bindingCommands).execute(
         'option-1',
         'group-1',
         'store-1',
       ),
     ).resolves.toBe('bound');
     await expect(
-      new UnbindUberDraftOptionChildGroupUseCase(mutations).execute(
+      new UnbindUberDraftOptionChildGroupUseCase(bindingCommands).execute(
         'option-1',
         'group-1',
         'store-1',

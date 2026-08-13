@@ -1,6 +1,9 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type { UberMenuConfigWritePort } from '../../application/menu/uber-menu-draft.ports';
+import type {
+  UberItemChannelConfigCommandPort,
+  UberOptionItemConfigCommandPort,
+} from '../../application/menu/uber-menu-draft.ports';
 import type {
   UpsertOptionItemConfigInput,
   UpsertPriceBookItemInput,
@@ -9,7 +12,9 @@ import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 import { UberTelemetryService } from './uber-telemetry.service';
 
 @Injectable()
-export class UberMenuConfigWritePrismaAdapter implements UberMenuConfigWritePort {
+export class UberMenuConfigWritePrismaAdapter
+  implements UberItemChannelConfigCommandPort, UberOptionItemConfigCommandPort
+{
   private readonly telemetry: UberTelemetryService;
 
   constructor(

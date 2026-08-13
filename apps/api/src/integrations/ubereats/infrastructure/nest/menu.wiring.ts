@@ -22,16 +22,24 @@ import {
 } from '../../application/menu/uber-menu-notification.handler';
 import {
   type UberMenuConfigQueryPort,
-  type UberMenuConfigWritePort,
+  type UberItemChannelConfigCommandPort,
+  type UberOptionItemConfigCommandPort,
   type UberMenuDraftDiffPort,
-  type UberMenuDraftMutationPort,
+  type UberDraftItemCommandPort,
+  type UberDraftGroupCommandPort,
+  type UberDraftOptionCommandPort,
+  type UberOptionChildGroupBindingCommandPort,
   type UberMenuDraftReadPort,
   type UberMenuReferenceQueryPort,
   UBER_MENU_CONFIG_QUERY_PORT,
-  UBER_MENU_CONFIG_WRITE_PORT,
+  UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
+  UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
   UBER_MENU_REFERENCE_QUERY_PORT,
   UBER_MENU_DRAFT_DIFF_PORT,
-  UBER_MENU_DRAFT_MUTATION_PORT,
+  UBER_DRAFT_ITEM_COMMAND_PORT,
+  UBER_DRAFT_GROUP_COMMAND_PORT,
+  UBER_DRAFT_OPTION_COMMAND_PORT,
+  UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT,
   UBER_MENU_DRAFT_READ_PORT,
 } from '../../application/menu/uber-menu-draft.ports';
 import {
@@ -102,7 +110,11 @@ export function createMenuWiring(): Provider[] {
       useExisting: UberMenuConfigQueryPrismaAdapter,
     },
     {
-      provide: UBER_MENU_CONFIG_WRITE_PORT,
+      provide: UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
+      useExisting: UberMenuConfigWritePrismaAdapter,
+    },
+    {
+      provide: UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
       useExisting: UberMenuConfigWritePrismaAdapter,
     },
     {
@@ -110,7 +122,19 @@ export function createMenuWiring(): Provider[] {
       useExisting: UberMenuDraftReadPrismaAdapter,
     },
     {
-      provide: UBER_MENU_DRAFT_MUTATION_PORT,
+      provide: UBER_DRAFT_ITEM_COMMAND_PORT,
+      useExisting: UberMenuDraftMutationPrismaAdapter,
+    },
+    {
+      provide: UBER_DRAFT_GROUP_COMMAND_PORT,
+      useExisting: UberMenuDraftMutationPrismaAdapter,
+    },
+    {
+      provide: UBER_DRAFT_OPTION_COMMAND_PORT,
+      useExisting: UberMenuDraftMutationPrismaAdapter,
+    },
+    {
+      provide: UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT,
       useExisting: UberMenuDraftMutationPrismaAdapter,
     },
     {
@@ -165,19 +189,25 @@ export function createMenuWiring(): Provider[] {
     },
     {
       provide: UpsertUberItemChannelConfigUseCase,
-      inject: [UBER_MENU_CONFIG_WRITE_PORT, UberMenuReferenceValidator],
+      inject: [
+        UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
+        UberMenuReferenceValidator,
+      ],
       useFactory: (
-        writes: UberMenuConfigWritePort,
+        commands: UberItemChannelConfigCommandPort,
         references: UberMenuReferenceValidator,
-      ) => new UpsertUberItemChannelConfigUseCase(writes, references),
+      ) => new UpsertUberItemChannelConfigUseCase(commands, references),
     },
     {
       provide: UpsertUberOptionItemConfigUseCase,
-      inject: [UBER_MENU_CONFIG_WRITE_PORT, UberMenuReferenceValidator],
+      inject: [
+        UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
+        UberMenuReferenceValidator,
+      ],
       useFactory: (
-        writes: UberMenuConfigWritePort,
+        commands: UberOptionItemConfigCommandPort,
         references: UberMenuReferenceValidator,
-      ) => new UpsertUberOptionItemConfigUseCase(writes, references),
+      ) => new UpsertUberOptionItemConfigUseCase(commands, references),
     },
     {
       provide: ReadUberMenuDraftUseCase,
@@ -187,37 +217,37 @@ export function createMenuWiring(): Provider[] {
     },
     {
       provide: UpdateUberDraftItemUseCase,
-      inject: [UBER_MENU_DRAFT_MUTATION_PORT, UberMenuReferenceValidator],
+      inject: [UBER_DRAFT_ITEM_COMMAND_PORT, UberMenuReferenceValidator],
       useFactory: (
-        mutations: UberMenuDraftMutationPort,
+        commands: UberDraftItemCommandPort,
         references: UberMenuReferenceValidator,
-      ) => new UpdateUberDraftItemUseCase(mutations, references),
+      ) => new UpdateUberDraftItemUseCase(commands, references),
     },
     {
       provide: UpdateUberDraftGroupUseCase,
-      inject: [UBER_MENU_DRAFT_MUTATION_PORT],
-      useFactory: (mutations: UberMenuDraftMutationPort) =>
-        new UpdateUberDraftGroupUseCase(mutations),
+      inject: [UBER_DRAFT_GROUP_COMMAND_PORT],
+      useFactory: (commands: UberDraftGroupCommandPort) =>
+        new UpdateUberDraftGroupUseCase(commands),
     },
     {
       provide: UpdateUberDraftOptionUseCase,
-      inject: [UBER_MENU_DRAFT_MUTATION_PORT, UberMenuReferenceValidator],
+      inject: [UBER_DRAFT_OPTION_COMMAND_PORT, UberMenuReferenceValidator],
       useFactory: (
-        mutations: UberMenuDraftMutationPort,
+        commands: UberDraftOptionCommandPort,
         references: UberMenuReferenceValidator,
-      ) => new UpdateUberDraftOptionUseCase(mutations, references),
+      ) => new UpdateUberDraftOptionUseCase(commands, references),
     },
     {
       provide: BindUberDraftOptionChildGroupUseCase,
-      inject: [UBER_MENU_DRAFT_MUTATION_PORT],
-      useFactory: (mutations: UberMenuDraftMutationPort) =>
-        new BindUberDraftOptionChildGroupUseCase(mutations),
+      inject: [UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT],
+      useFactory: (commands: UberOptionChildGroupBindingCommandPort) =>
+        new BindUberDraftOptionChildGroupUseCase(commands),
     },
     {
       provide: UnbindUberDraftOptionChildGroupUseCase,
-      inject: [UBER_MENU_DRAFT_MUTATION_PORT],
-      useFactory: (mutations: UberMenuDraftMutationPort) =>
-        new UnbindUberDraftOptionChildGroupUseCase(mutations),
+      inject: [UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT],
+      useFactory: (commands: UberOptionChildGroupBindingCommandPort) =>
+        new UnbindUberDraftOptionChildGroupUseCase(commands),
     },
     {
       provide: QueryUberMenuDraftDiffUseCase,

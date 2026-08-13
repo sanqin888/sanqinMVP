@@ -1,12 +1,12 @@
-import type { UberMenuDraftMutationPort } from './uber-menu-draft.ports';
+import type { UberDraftGroupCommandPort } from './uber-menu-draft.ports';
 
 /** Owns the transaction that updates one draft group. */
 export class UpdateUberDraftGroupUseCase {
-  constructor(private readonly mutations: UberMenuDraftMutationPort) {}
+  constructor(private readonly commands: UberDraftGroupCommandPort) {}
 
   execute(
-    ...args: Parameters<UberMenuDraftMutationPort['updateUberDraftGroup']>
+    ...args: Parameters<UberDraftGroupCommandPort['updateUberDraftGroup']>
   ) {
-    return this.mutations.updateUberDraftGroup(...args);
+    return this.commands.updateUberDraftGroup(...args);
   }
 }
