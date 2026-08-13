@@ -241,8 +241,13 @@ export class RequestUberOrderActionUseCase {
       }),
     );
   }
-  async cancel(id: string) {
-    return this.present(await this.actions.request(id, 'CANCEL'));
+  async cancel(id: string, reason?: string) {
+    return this.present(
+      await this.actions.request(id, 'CANCEL', {
+        reasonCode: 'OTHER',
+        reasonDetail: reason?.trim() || null,
+      }),
+    );
   }
   async retryReadyForPickup(id: string) {
     return this.present(await this.actions.request(id, 'READY_FOR_PICKUP'));

@@ -67,7 +67,14 @@ export class UberOrderActionService {
             reasonDetail: task.reasonDetail,
           },
         });
-      else if (task.action === 'CANCEL') await this.gateway.cancel(common);
+      else if (task.action === 'CANCEL')
+        await this.gateway.cancel({
+          ...common,
+          denial: {
+            reasonCode: task.reasonCode ?? 'OTHER',
+            reasonDetail: task.reasonDetail,
+          },
+        });
       else await this.gateway.readyForPickup(common);
     } catch (error) {
       const upstream = this.classifyFailure(error);

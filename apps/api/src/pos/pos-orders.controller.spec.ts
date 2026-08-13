@@ -2,20 +2,27 @@ import { PosOrdersController } from './pos-orders.controller';
 
 describe('PosOrdersController Uber orders', () => {
   const orders = { createFullRefund: jest.fn() };
+  const posOrders = { cancelUberOrder: jest.fn() };
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    posOrders as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('Uber 新订单由 webhook 自动接单，POS 不暴露拒单端点', () => {
-    expect(
-      'cancelUberOrder' in (controller as unknown as Record<string, unknown>),
-    ).toBe(false);
+  it('POS 将店员主动取消提交到 Uber CANCEL 应用边界', async () => {
+    posOrders.cancelUberOrder.mockResolvedValue({ actionId: 'action-1' });
+
+    await expect(
+      controller.cancelUberOrder('order_1', { reason: '商品售罄' }),
+    ).resolves.toEqual({ actionId: 'action-1' });
+    expect(posOrders.cancelUberOrder).toHaveBeenCalledWith(
+      'order_1',
+      '商品售罄',
+    );
   });
 
   it('接单后的 Uber 全额退款仍提交给订单服务处理', async () => {

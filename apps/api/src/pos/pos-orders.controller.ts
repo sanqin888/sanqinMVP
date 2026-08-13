@@ -32,7 +32,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosGateway } from './pos.gateway';
 import { PosOrdersService } from './pos-orders.service';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 class CreateFullRefundDto {
   @IsString()
@@ -56,6 +56,12 @@ class RecordManualUberRefundDto {
 
   @IsString()
   evidence!: string;
+}
+
+class CancelUberOrderDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }
 
 @Controller('pos/orders')
@@ -189,6 +195,15 @@ export class PosOrdersController {
   @HttpCode(200)
   retryUberSync(@Param('orderStableId', StableIdPipe) orderStableId: string) {
     return this.posOrders.retryUberSync(orderStableId);
+  }
+
+  @Post(':orderStableId/uber-cancel')
+  @HttpCode(202)
+  cancelUberOrder(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body() body: CancelUberOrderDto,
+  ) {
+    return this.posOrders.cancelUberOrder(orderStableId, body.reason);
   }
 
   @Post(':orderStableId/amendments')

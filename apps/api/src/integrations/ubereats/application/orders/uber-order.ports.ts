@@ -132,6 +132,7 @@ export interface UberOrderActionGatewayPort {
   cancel(input: {
     externalOrderId: string;
     idempotencyKey: string;
+    denial?: UberOrderDenial;
   }): Promise<void>;
   readyForPickup(input: {
     externalOrderId: string;

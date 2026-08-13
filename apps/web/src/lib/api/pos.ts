@@ -56,6 +56,17 @@ export async function retryUberOrderSync<T = unknown>(id: string) {
   );
 }
 
+export async function cancelUberOrder<T = unknown>(
+  id: string,
+  reason?: string,
+) {
+  return apiFetch<PosAdvanceResult<T>>(`/pos/orders/${enc(id)}/uber-cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+}
+
 // POS: 看板/队列（如果你前端有用到）
 export async function fetchOrderBoard<T = unknown>(params: {
   status?: string; // comma-separated
