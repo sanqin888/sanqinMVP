@@ -15,6 +15,10 @@ import { ClaimAndExecuteUberOrderActionsUseCase } from './application/orders/cla
 import { ClaimAndProcessUberWebhookInboxUseCase } from './application/orders/claim-and-process-uber-webhook-inbox.use-case';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ExecuteUberOrderActionWorker } from './application/orders/uber-order.use-cases';
+import {
+  UBER_EATS_STARTUP_CONFIG,
+  validateUberEatsStartupConfig,
+} from './infrastructure/config/uber-eats-startup-config.validator';
 import { createCommonWiring } from './infrastructure/nest/common.wiring';
 import { createMenuWiring } from './infrastructure/nest/menu.wiring';
 import { createMerchantWiring } from './infrastructure/nest/merchant.wiring';
@@ -30,6 +34,10 @@ import {
 
 /** The complete provider graph assembled exclusively by the composition root. */
 export const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
+  {
+    provide: UBER_EATS_STARTUP_CONFIG,
+    useFactory: () => validateUberEatsStartupConfig(process.env),
+  },
   ...createCommonWiring(),
   ...createMerchantWiring(),
   ...createMenuWiring(),

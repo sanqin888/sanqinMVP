@@ -17,24 +17,29 @@ import { UberApiGatewayTransport } from '../../infrastructure/uber-api/uber-api.
 import { UberHttpClient } from '../../infrastructure/uber-api/uber-http.client';
 import { createUberRateLimiter } from '../../infrastructure/uber-api/uber-rate-limiter.factory';
 import { UberAuthService } from '../../infrastructure/uber-api/uber-token.provider';
+import { UBER_EATS_STARTUP_CONFIG } from '../../infrastructure/config/uber-eats-startup-config.validator';
 
 export function createCommonWiring(): Provider[] {
   return [
     {
       provide: UberApiConfigService,
+      inject: [UBER_EATS_STARTUP_CONFIG],
       useFactory: () => new UberApiConfigService(process.env),
     },
     {
       provide: UberCryptoConfigService,
+      inject: [UBER_EATS_STARTUP_CONFIG],
       useFactory: () => new UberCryptoConfigService(process.env),
     },
     {
       provide: UberWorkerConfigService,
+      inject: [UBER_EATS_STARTUP_CONFIG],
       useFactory: () => new UberWorkerConfigService(process.env),
     },
     BrowserWriteCsrfGuard,
     {
       provide: UberCredentialVaultService,
+      inject: [UBER_EATS_STARTUP_CONFIG],
       useFactory: () => new UberCredentialVaultService(process.env),
     },
     UberTelemetryService,
@@ -52,8 +57,13 @@ export function createCommonWiring(): Provider[] {
     UberHttpClient,
     {
       provide: UBER_RATE_LIMITER_PORT,
-      inject: [UberApiConfigService, UberTelemetryService],
+      inject: [
+        UBER_EATS_STARTUP_CONFIG,
+        UberApiConfigService,
+        UberTelemetryService,
+      ],
       useFactory: (
+        _startupConfig: void,
         config: UberApiConfigService,
         telemetry: UberTelemetryService,
       ) => createUberRateLimiter(process.env, config, telemetry),

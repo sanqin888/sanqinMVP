@@ -1,3 +1,12 @@
+x-ubereats-runtime: &ubereats-runtime
+  UBER_EATS_RATE_LIMITER_MODE: "distributed"
+  UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL: ${UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL}
+  UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN: ${UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN}
+  # These values are populated in the deployment environment by its secrets manager.
+  UBER_CREDENTIAL_ENCRYPTION_KEYS: ${UBER_CREDENTIAL_ENCRYPTION_KEYS}
+  UBER_CREDENTIAL_ACTIVE_KEY_VERSION: ${UBER_CREDENTIAL_ACTIVE_KEY_VERSION}
+  UBER_CREDENTIAL_KEYS_SOURCE: "secrets-manager"
+
 services:
   db:
     image: postgres:15-alpine
@@ -16,6 +25,7 @@ services:
       dockerfile: Dockerfile.api
     restart: always
     environment:
+      <<: *ubereats-runtime
       NODE_ENV: "production"
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
       PORT: 4000
@@ -109,6 +119,7 @@ services:
     command: ["node", "apps/api/dist/ubereats-worker.main.js"]
     restart: always
     environment:
+      <<: *ubereats-runtime
       NODE_ENV: "production"
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
       UBER_EATS_WORKER_ENABLED: "true"

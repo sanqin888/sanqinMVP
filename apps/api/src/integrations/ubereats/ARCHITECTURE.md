@@ -59,3 +59,9 @@ buckets, concurrency leases, and `Retry-After` cooldown by merchant/store partit
 `UBER_EATS_SINGLE_REPLICA=true` explicitly documents a single-replica deployment.
 Operation weights have conservative defaults and can be overridden with
 `UBER_EATS_API_OPERATION_WEIGHTS`.
+
+API 与 dedicated worker 必须引用同一份运行时配置：限流模式及 Redis HTTP
+URL/token 不得分叉。两个进程还必须由 secrets manager 注入完全相同的
+`UBER_CREDENTIAL_ENCRYPTION_KEYS` 与 `UBER_CREDENTIAL_ACTIVE_KEY_VERSION`，并设置
+`UBER_CREDENTIAL_KEYS_SOURCE=secrets-manager`；Compose 与源码不得保存实际 key。
+composition root 的统一启动校验会在各配置 provider 创建前聚合报告所有缺失和冲突项。
