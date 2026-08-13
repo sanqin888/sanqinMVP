@@ -9,10 +9,8 @@ import {
   type UberOrderImportRepositoryPort,
 } from './uber-order.ports';
 import { type UberOrderDetailQueryPort } from './uber-order-query.ports';
-import {
-  UberOrderPayloadParser,
-  validateUberOrderAmounts,
-} from '../../domain/orders/uber-order-payload.parser';
+import { validateUberOrderAmounts } from '../../domain/orders/uber-order-payload.parser';
+import type { ParsedUberOrder } from '../../domain/orders/uber-order.types';
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
@@ -40,8 +38,6 @@ export class UberOrderStoreMappingError extends UberApplicationError {
 
 /** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
 export class ImportUberOrderUseCase {
-  private readonly parser = new UberOrderPayloadParser();
-
   constructor(
     private readonly repository: UberOrderImportRepositoryPort,
     private readonly detailGateway: UberOrderDetailQueryPort,
@@ -71,14 +67,13 @@ export class ImportUberOrderUseCase {
     }
     if (existing?.cursor && !this.isAfter(cursor, existing.cursor)) return;
 
-    const raw = await this.detailGateway.fetchOrderDetail({
+    const detail = await this.detailGateway.fetchOrderDetail({
       resourceHref: payload.resourceHref,
       eventType: normalizedEventType,
       eventId,
       resourceId: externalOrderId ?? null,
     });
-    const order = this.parser.parse(raw);
-    if (!order) {
+    if (detail.kind === 'invalid') {
       if (externalOrderId)
         await this.actions.request(externalOrderId, 'DENY', {
           reasonCode: 'INVALID_ORDER',
@@ -86,6 +81,7 @@ export class ImportUberOrderUseCase {
         });
       return;
     }
+    const order = detail.order;
     const uberStoreId = order.uberStoreId?.trim();
     if (!uberStoreId)
       throw new UberOrderStoreMappingError(
@@ -197,11 +193,8 @@ export class ImportUberOrderUseCase {
     if (cancellation || this.isCancellation(eventType)) return;
     await this.actions.request(externalOrderId, 'ACCEPT');
   }
-  private cancellation(
-    eventType: string,
-    order: ReturnType<UberOrderPayloadParser['parse']>,
-  ) {
-    if (!order || !this.isCancellation(eventType)) return null;
+  private cancellation(eventType: string, order: ParsedUberOrder) {
+    if (!this.isCancellation(eventType)) return null;
     const value = order.cancellation ?? {
       cancelledBy: null,
       reasonCode: null,

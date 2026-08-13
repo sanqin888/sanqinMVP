@@ -34,11 +34,20 @@ export interface UberOAuthTokenPort {
 export type UberMerchantIdentity = { merchantUberUserId: string };
 
 export interface UberMerchantApiPort {
-  discoverStores(identity: UberMerchantIdentity): Promise<{
-    stores: UberMerchantStore[];
-    raw: Record<string, unknown>;
-  }>;
+  discoverStores(
+    identity: UberMerchantIdentity,
+  ): Promise<UberStoreDiscoveryResult>;
 }
+
+export type UberStoreDiscoveryResult = { stores: UberMerchantStore[] };
+
+export type UberStoreProvisionResult = {
+  storeId: string;
+  status: string | null;
+  storeName: string | null;
+  locationSummary: string | null;
+  posExternalStoreId: string | null;
+};
 
 export type UberStoreWriteResult = {
   uberStoreId: string;
@@ -56,7 +65,7 @@ export interface UberStoreApiPort {
     storeId: string,
     payload: Record<string, unknown>,
     idempotencyKey: string,
-  ): Promise<Record<string, unknown>>;
+  ): Promise<UberStoreProvisionResult>;
   writeStatus(
     storeId: string,
     payload: Record<string, string>,

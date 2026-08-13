@@ -1,3 +1,5 @@
+import type { ParsedUberOrder } from '../../domain/orders/uber-order.types';
+
 /** Token for the Uber order-detail query boundary. */
 export const UBER_ORDER_DETAIL_QUERY = Symbol('UBER_ORDER_DETAIL_QUERY');
 
@@ -8,5 +10,10 @@ export interface UberOrderDetailQueryPort {
     eventType: string;
     eventId: string;
     resourceId: string | null;
-  }): Promise<unknown>;
+  }): Promise<UberOrderDetailResult>;
 }
+
+/** Validated order-detail outcome; wire JSON never crosses this boundary. */
+export type UberOrderDetailResult =
+  | { kind: 'parsed'; order: ParsedUberOrder }
+  | { kind: 'invalid'; reason: 'INVALID_ORDER_DETAIL' };

@@ -1,4 +1,34 @@
 import { redactUberLogText } from '../shared/uber-log.utils';
+import {
+  UberNonRetryableUpstreamError,
+  UberTransientUpstreamError,
+} from '../../application/shared/uber-application.error';
+
+/** Infrastructure-only failure raised when an upstream wire value cannot be mapped. */
+export class UberGatewayMappingError extends Error {
+  constructor(
+    readonly code: string,
+    readonly operation: string,
+    readonly retryable = false,
+    cause?: unknown,
+  ) {
+    super(code, { cause });
+    this.name = 'UberGatewayMappingError';
+  }
+}
+
+/** The sole translation point from gateway failures to application errors. */
+export function mapUberGatewayError(error: UberGatewayMappingError) {
+  const ErrorType = error.retryable
+    ? UberTransientUpstreamError
+    : UberNonRetryableUpstreamError;
+  return new ErrorType({
+    code: error.code,
+    message: 'Uber API 响应无法映射',
+    operation: error.operation,
+    cause: error,
+  });
+}
 
 export function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
