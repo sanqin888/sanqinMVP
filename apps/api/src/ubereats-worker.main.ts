@@ -14,9 +14,16 @@ export function assertUberWorkerEnabled(
   }
 }
 
-function createHealthServer(health: UberWorkerHealthService): Server {
+export function createHealthServer(health: UberWorkerHealthService): Server {
   return createServer((request, response) => {
-    if (request.url !== '/health') {
+    if (request.url === '/live') {
+      response.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+      });
+      response.end(JSON.stringify({ status: 'ok' }));
+      return;
+    }
+    if (request.url !== '/health' && request.url !== '/ready') {
       response.writeHead(404).end('Not Found');
       return;
     }
@@ -37,7 +44,9 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.UBER_EATS_WORKER_HEALTH_PORT ?? 4001);
   const server = createHealthServer(context.get(UberWorkerHealthService));
   server.listen(port, '0.0.0.0', () => {
-    console.log(`Uber Eats worker health listening on :${port}/health`);
+    console.log(
+      `Uber Eats worker health listening on :${port} (/health, /ready, /live)`,
+    );
   });
 
   const close = () => server.close();

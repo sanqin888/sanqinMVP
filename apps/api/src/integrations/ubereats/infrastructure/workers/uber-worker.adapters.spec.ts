@@ -90,7 +90,7 @@ describe('Uber durable worker adapters', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  it('exposes successful claim and failure metrics', async () => {
+  it('atomically snapshots a success, a temporary failure, and recovery', async () => {
     const execute = jest
       .fn()
       .mockResolvedValueOnce(2)
@@ -100,9 +100,34 @@ describe('Uber durable worker adapters', () => {
       config(),
     );
     await adapter.runOnce();
+    const successful = adapter.getMetrics();
+    expect(successful).toMatchObject({
+      claimed: 2,
+      failures: 0,
+      consecutiveFailures: 0,
+      lastFailureAt: null,
+    });
+    expect(successful.lastAttemptAt).toBeInstanceOf(Date);
+    expect(successful.lastSuccessfulAt).toBeInstanceOf(Date);
+
     await adapter.runOnce();
-    expect(adapter.getMetrics()).toMatchObject({ claimed: 2, failures: 1 });
-    expect(adapter.getMetrics().lastSuccessfulAt).toBeInstanceOf(Date);
+    const failed = adapter.getMetrics();
+    expect(failed).toMatchObject({
+      claimed: 2,
+      failures: 1,
+      consecutiveFailures: 1,
+      lastSuccessfulAt: successful.lastSuccessfulAt,
+    });
+    expect(failed.lastAttemptAt).toBeInstanceOf(Date);
+    expect(failed.lastFailureAt).toBeInstanceOf(Date);
+
+    await adapter.runOnce();
+    expect(adapter.getMetrics()).toMatchObject({
+      claimed: 2,
+      failures: 1,
+      consecutiveFailures: 0,
+      lastFailureAt: failed.lastFailureAt,
+    });
   });
 
   it('does not overlap claims made by duplicate worker instances', async () => {
@@ -131,5 +156,21 @@ describe('Uber durable worker adapters', () => {
     );
     await adapter.runOnce();
     expect(adapter.getMetrics().leaseRecoveries).toBe(1);
+  });
+
+  it('replaces the current backlog snapshot when the backlog grows', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce({ claimed: 1, backlog: 2 })
+      .mockResolvedValueOnce({ claimed: 1, backlog: 7 });
+    const adapter = new UberWebhookInboxWorkerAdapter(
+      { execute } as never,
+      config(),
+    );
+
+    await adapter.runOnce();
+    expect(adapter.getMetrics().backlog).toBe(2);
+    await adapter.runOnce();
+    expect(adapter.getMetrics()).toMatchObject({ claimed: 2, backlog: 7 });
   });
 });

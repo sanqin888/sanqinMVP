@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 
 import {
   UberMenuPublishConfirmationWorkerAdapter,
@@ -6,9 +6,20 @@ import {
   UberWebhookInboxWorkerAdapter,
   type UberWorkerMetrics,
 } from './uber-worker.adapters';
+import { UberWorkerConfigService } from './uber-worker-config.service';
+
+export type UberWorkerHealthStatus =
+  | 'starting'
+  | 'ok'
+  | 'degraded'
+  | 'unhealthy';
 
 export interface UberWorkerHealth {
-  readonly status: 'ok' | 'starting';
+  readonly status: UberWorkerHealthStatus;
+  readonly thresholds: Readonly<{
+    consecutiveFailures: number;
+    lastSuccessAgeMs: number;
+  }>;
   readonly adapters: Readonly<{
     webhookInbox: Readonly<UberWorkerMetrics>;
     orderAction: Readonly<UberWorkerMetrics>;
@@ -18,12 +29,19 @@ export interface UberWorkerHealth {
 
 /** Dependency-free health snapshot consumed by the worker's private health server. */
 @Injectable()
-export class UberWorkerHealthService {
+export class UberWorkerHealthService implements OnModuleDestroy {
+  private stopping = false;
+
   constructor(
     private readonly webhookInbox: UberWebhookInboxWorkerAdapter,
     private readonly orderAction: UberOrderActionWorkerAdapter,
     private readonly menuConfirmation: UberMenuPublishConfirmationWorkerAdapter,
+    private readonly config: UberWorkerConfigService,
   ) {}
+
+  onModuleDestroy(): void {
+    this.stopping = true;
+  }
 
   snapshot(): UberWorkerHealth {
     const adapters = {
@@ -31,12 +49,44 @@ export class UberWorkerHealthService {
       orderAction: this.orderAction.getMetrics(),
       menuConfirmation: this.menuConfirmation.getMetrics(),
     };
-    return {
-      status: Object.values(adapters).every(
-        (metrics) => metrics.lastSuccessfulAt !== null,
+    const metrics = Object.values(adapters);
+    const lastSuccessAgeMs =
+      this.config.workerPollIntervalMs *
+      this.config.workerUnhealthyFailureThreshold;
+    const now = Date.now();
+    let status: UberWorkerHealthStatus;
+    if (this.stopping) {
+      status = 'unhealthy';
+    } else if (
+      metrics.some(
+        (adapter) =>
+          adapter.consecutiveFailures >=
+            this.config.workerUnhealthyFailureThreshold ||
+          (adapter.lastSuccessfulAt !== null &&
+            now - adapter.lastSuccessfulAt.getTime() > lastSuccessAgeMs),
       )
-        ? 'ok'
-        : 'starting',
+    ) {
+      status = 'unhealthy';
+    } else if (metrics.some((adapter) => adapter.lastAttemptAt === null)) {
+      status = 'starting';
+    } else if (
+      metrics.some(
+        (adapter) =>
+          adapter.lastSuccessfulAt === null ||
+          adapter.consecutiveFailures > 0 ||
+          adapter.backlog > 0,
+      )
+    ) {
+      status = 'degraded';
+    } else {
+      status = 'ok';
+    }
+    return {
+      status,
+      thresholds: {
+        consecutiveFailures: this.config.workerUnhealthyFailureThreshold,
+        lastSuccessAgeMs,
+      },
       adapters,
     };
   }
