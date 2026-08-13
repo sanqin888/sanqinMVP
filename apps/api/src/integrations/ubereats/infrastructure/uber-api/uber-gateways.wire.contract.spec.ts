@@ -77,11 +77,27 @@ describe('Uber gateways wire contract v1', () => {
     transport.request
       .mockResolvedValueOnce(fixture('stores/discovery.json'))
       .mockResolvedValueOnce(fixture('stores/provision-response.json'));
-    const adapter = new UberMerchantApiAdapter(transport);
+    const credentials = {
+      loadCredential: jest.fn().mockResolvedValue({
+        merchantUberUserId: 'merchant-1',
+        accessToken: 'fixture-merchant-token',
+        refreshToken: null,
+        expiresAt: new Date(Date.now() + 3600_000),
+        scope: 'eats.store',
+        tokenType: 'Bearer',
+        version: 'v1',
+      }),
+      rotateCredential: jest.fn(),
+    };
+    const adapter = new UberMerchantApiAdapter(
+      transport,
+      credentials,
+      {} as UberAuthService,
+    );
 
-    await adapter.discoverStores('fixture-merchant-token');
+    await adapter.discoverStores({ merchantUberUserId: 'merchant-1' });
     await adapter.provisionStore(
-      'fixture-merchant-token',
+      { merchantUberUserId: 'merchant-1' },
       'store / 1',
       fixture('stores/provision-request.json'),
       'provision:store-1:v1',

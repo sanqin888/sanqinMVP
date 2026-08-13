@@ -52,17 +52,20 @@ export interface UberOAuthStatePort {
   completeOAuthState(nonce: string, connectedAt: Date): Promise<boolean>;
 }
 
+export type UberMerchantConnection = {
+  merchantUberUserId: string;
+  expiresAt: Date | null;
+  scope: string | null;
+  tokenType: string | null;
+  connectedAt: Date;
+  rawStoresSnapshot: unknown;
+};
+
 export interface UberMerchantConnectionRepositoryPort {
-  findConnection(merchantUberUserId?: string): Promise<{
-    merchantUberUserId: string;
-    accessToken: string;
-    refreshToken: string | null;
-    expiresAt: Date | null;
-    scope: string | null;
-    tokenType: string | null;
-    connectedAt: Date;
-    rawStoresSnapshot: unknown;
-  } | null>;
+  /** Application-safe connection metadata. Decrypted credentials never cross this port. */
+  findConnection(
+    merchantUberUserId?: string,
+  ): Promise<UberMerchantConnection | null>;
   upsertConnectionByUberUserId(input: {
     uberUserId: string;
     accessToken: string;

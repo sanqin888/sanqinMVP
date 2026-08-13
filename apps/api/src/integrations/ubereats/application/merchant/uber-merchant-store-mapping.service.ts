@@ -1,8 +1,5 @@
 import { UberValidationError } from '../shared/uber-application.error';
-import {
-  type UberMerchantApiPort,
-  type UberOAuthTokenPort,
-} from '../merchant/uber-merchant-api.ports';
+import { type UberMerchantApiPort } from '../merchant/uber-merchant-api.ports';
 import {
   type UberMerchantConnectionRepositoryPort,
   type UberStoreMappingRepositoryPort,
@@ -11,15 +8,14 @@ import {
 export class DiscoverUberStoresUseCase {
   constructor(
     private readonly api: UberMerchantApiPort,
-    private readonly tokens: UberOAuthTokenPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
   async getMerchantStores(id?: string) {
     const connection = await this.resolve(id);
-    const { stores, raw } = await this.api.discoverStores(
-      connection.accessToken,
-    );
+    const { stores, raw } = await this.api.discoverStores({
+      merchantUberUserId: connection.merchantUberUserId,
+    });
     const existing = await this.mappings.findMappings(
       connection.merchantUberUserId,
       stores.map((s) => s.storeId),
@@ -66,31 +62,13 @@ export class DiscoverUberStoresUseCase {
         operation: 'merchant',
         message: 'merchantUberUserId 不能为空',
       });
-    let row = await this.connections.findConnection(id.trim());
+    const row = await this.connections.findConnection(id.trim());
     if (!row)
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
         operation: 'merchant',
         message: '未找到 Uber 商户授权',
       });
-    if (row.expiresAt && row.expiresAt.getTime() <= Date.now() + 60_000) {
-      if (!row.refreshToken)
-        throw new UberValidationError({
-          code: 'INVALID_REQUEST',
-          operation: 'merchant',
-          message: 'Uber 商户凭据已过期',
-        });
-      const fresh = await this.tokens.refreshAccessToken(
-        row.refreshToken,
-        row.scope ?? undefined,
-      );
-      await this.connections.upsertConnectionByUberUserId({
-        ...row,
-        ...fresh,
-        uberUserId: row.merchantUberUserId,
-      });
-      row = { ...row, ...fresh };
-    }
     return row;
   }
 }
