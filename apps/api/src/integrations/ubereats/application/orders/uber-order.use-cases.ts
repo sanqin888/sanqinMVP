@@ -298,8 +298,3 @@ export class ExecuteUberOrderActionWorker {
     return tasks.length;
   }
 }
-
-// Compatibility re-exports keep callers on the application boundary while the
-// focused implementations live in their own files.
-export { SyncUberOrderStatusUseCase } from './sync-uber-order-status.use-case';
-export { ListPendingUberOrdersQuery } from './list-pending-uber-orders.query';

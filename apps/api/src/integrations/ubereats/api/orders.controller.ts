@@ -7,10 +7,8 @@ import {
   UberReadOnlyAdmin,
 } from './ubereats-access.decorator';
 import { SyncOrderStatusDto } from '../contracts/requests/orders.requests';
-import {
-  ListPendingUberOrdersQuery,
-  SyncUberOrderStatusUseCase,
-} from '../application/orders/uber-order.use-cases';
+import { ListPendingUberOrdersQuery } from '../application/orders/list-pending-uber-orders.query';
+import { SyncUberOrderStatusUseCase } from '../application/orders/sync-uber-order-status.use-case';
 import {
   presentOrderMutation,
   presentOrderSummary,
