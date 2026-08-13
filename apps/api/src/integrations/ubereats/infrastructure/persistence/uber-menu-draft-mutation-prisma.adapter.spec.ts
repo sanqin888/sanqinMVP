@@ -1,7 +1,81 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { PrismaService } from '../../../../prisma/prisma.service';
 import { UberMenuDraftMutationPrismaAdapter } from './uber-menu-draft-mutation-prisma.adapter';
-import type { UberTelemetryService } from './uber-telemetry.service';
+
+type BindingRow = {
+  storeId: string;
+  parentOptionChoiceStableId: string;
+  childTemplateGroupStableId: string;
+  isBound: boolean;
+};
+
+type BindingWrite = {
+  where: {
+    storeId_parentOptionChoiceStableId_childTemplateGroupStableId: Omit<
+      BindingRow,
+      'isBound'
+    >;
+  };
+  create: BindingRow;
+  update: Pick<BindingRow, 'isBound'>;
+};
+
+type OpsEventWrite = {
+  where: { idempotencyKey: string };
+  create: { idempotencyKey: string; eventName: string };
+  update: Record<string, never>;
+};
+
+const persistentBindingPrisma = () => {
+  const bindings = new Map<string, BindingRow>();
+  const events = new Map<string, OpsEventWrite['create']>();
+  const bindingKey = (row: Omit<BindingRow, 'isBound'>) =>
+    `${row.storeId}:${row.parentOptionChoiceStableId}:${row.childTemplateGroupStableId}`;
+
+  const create = jest.fn(({ data }: { data: BindingRow }) => {
+    const key = bindingKey(data);
+    if (bindings.has(key))
+      return Promise.reject(new Error('Unique constraint failed'));
+    bindings.set(key, { ...data });
+    return Promise.resolve({ ...data });
+  });
+  const upsert = jest.fn(({ where, create, update }: BindingWrite) => {
+    const key = bindingKey(
+      where.storeId_parentOptionChoiceStableId_childTemplateGroupStableId,
+    );
+    const current = bindings.get(key);
+    const row = current ? { ...current, ...update } : { ...create };
+    bindings.set(key, row);
+    return Promise.resolve({ ...row });
+  });
+  const findMany = jest.fn(() =>
+    Promise.resolve(Array.from(bindings.values(), (row) => ({ ...row }))),
+  );
+  const upsertEvent = jest.fn(({ where, create }: OpsEventWrite) => {
+    const current = events.get(where.idempotencyKey);
+    if (current) return Promise.resolve({ ...current });
+    events.set(where.idempotencyKey, { ...create });
+    return Promise.resolve({ ...create });
+  });
+  const findManyEvents = jest.fn(() =>
+    Promise.resolve(Array.from(events.values(), (event) => ({ ...event }))),
+  );
+
+  return {
+    client: db({
+      menuOptionTemplateChoice: {
+        findUnique: jest.fn().mockResolvedValue({ stableId: 'option-1' }),
+      },
+      menuOptionGroupTemplate: {
+        findUnique: jest.fn().mockResolvedValue({ stableId: 'group-1' }),
+      },
+      uberOptionChildGroupBinding: { create, upsert, findMany },
+      opsEvent: { upsert: upsertEvent, findMany: findManyEvents },
+    }),
+    binding: { create, upsert, findMany },
+    events: { upsert: upsertEvent, findMany: findManyEvents },
+  };
+};
 
 const semantics = {
   samePayload: 'RETURN_SAME_BUSINESS_STATE',
@@ -126,63 +200,83 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
     });
   });
 
-  it('emits telemetry only after bind and unbind persistence succeeds', async () => {
-    const upsert = jest
-      .fn()
-      .mockResolvedValueOnce({ isBound: true })
-      .mockResolvedValueOnce({ isBound: false });
-    const captureEvent = jest.fn().mockResolvedValue(undefined);
-    const adapter = new UberMenuDraftMutationPrismaAdapter(
-      db({
-        menuOptionTemplateChoice: {
-          findUnique: jest.fn().mockResolvedValue({ stableId: 'option-1' }),
-        },
-        menuOptionGroupTemplate: {
-          findUnique: jest.fn().mockResolvedValue({ stableId: 'group-1' }),
-        },
-        uberOptionChildGroupBinding: { upsert },
-      }),
-      { captureEvent } as unknown as UberTelemetryService,
-    );
+  it('keeps sequential bind/unbind persistence and telemetry idempotent', async () => {
+    const persistence = persistentBindingPrisma();
+    const adapter = new UberMenuDraftMutationPrismaAdapter(persistence.client);
 
     const resourceKey = {
       storeId: 'store-1',
       parentOptionChoiceStableId: 'option-1',
       childTemplateGroupStableId: 'group-1',
     };
-    await adapter.bindUberDraftOptionChildGroup({
+    const bindCommand = {
       resourceKey,
       payload: { isBound: true },
       semantics,
-    });
-    await adapter.unbindUberDraftOptionChildGroup({
+    } as const;
+    const unbindCommand = {
       resourceKey,
       payload: { isBound: false },
       semantics,
-    });
+    } as const;
 
-    expect(captureEvent).toHaveBeenNthCalledWith(
-      1,
-      'ubereats_draft_option_child_group_bound',
+    const firstBind = await adapter.bindUberDraftOptionChildGroup(bindCommand);
+    const secondBind = await adapter.bindUberDraftOptionChildGroup(bindCommand);
+
+    expect(secondBind).toEqual(firstBind);
+    await expect(persistence.binding.findMany()).resolves.toEqual([
+      expect.objectContaining({ ...resourceKey, isBound: true }),
+    ]);
+    await expect(persistence.events.findMany()).resolves.toHaveLength(1);
+
+    const firstUnbind =
+      await adapter.unbindUberDraftOptionChildGroup(unbindCommand);
+    const secondUnbind =
+      await adapter.unbindUberDraftOptionChildGroup(unbindCommand);
+
+    expect(secondUnbind).toEqual(firstUnbind);
+    await expect(persistence.binding.findMany()).resolves.toEqual([
+      expect.objectContaining({ ...resourceKey, isBound: false }),
+    ]);
+    await expect(persistence.events.findMany()).resolves.toEqual([
       expect.objectContaining({
-        storeId: 'store-1',
-        optionItemId: 'option-1',
-        groupId: 'group-1',
+        eventName: 'ubereats_draft_option_child_group_bound',
       }),
-      {
-        eventId: 'uber-menu:binding:bound:store-1:option-1:group-1',
-      },
-    );
-    expect(captureEvent).toHaveBeenNthCalledWith(
-      2,
-      'ubereats_draft_option_child_group_unbound',
-      expect.objectContaining({ isBound: false }),
-      {
-        eventId: 'uber-menu:binding:unbound:store-1:option-1:group-1',
-      },
-    );
-    expect(upsert.mock.invocationCallOrder[0]).toBeLessThan(
-      captureEvent.mock.invocationCallOrder[0],
-    );
+      expect.objectContaining({
+        eventName: 'ubereats_draft_option_child_group_unbound',
+      }),
+    ]);
   });
+
+  it.each([
+    ['bind', true],
+    ['unbind', false],
+  ] as const)(
+    'concurrent duplicate %s calls converge to one row and one event',
+    async (operation, isBound) => {
+      const persistence = persistentBindingPrisma();
+      const adapter = new UberMenuDraftMutationPrismaAdapter(
+        persistence.client,
+      );
+      const resourceKey = {
+        storeId: 'store-1',
+        parentOptionChoiceStableId: 'option-1',
+        childTemplateGroupStableId: 'group-1',
+      };
+      const command = { resourceKey, payload: { isBound }, semantics };
+      const invoke = () =>
+        operation === 'bind'
+          ? adapter.bindUberDraftOptionChildGroup(command)
+          : adapter.unbindUberDraftOptionChildGroup(command);
+
+      const results = await Promise.all([invoke(), invoke(), invoke()]);
+
+      expect(results[1]).toEqual(results[0]);
+      expect(results[2]).toEqual(results[0]);
+      await expect(persistence.binding.findMany()).resolves.toEqual([
+        expect.objectContaining({ ...resourceKey, isBound }),
+      ]);
+      await expect(persistence.events.findMany()).resolves.toHaveLength(1);
+    },
+  );
 });
