@@ -146,9 +146,8 @@ export class SyncUberStoreStatusUseCase {
       const result = !mapping.isProvisioned
         ? {
             uberStoreId: mapping.uberStoreId,
-            ok: false,
-            skipped: true,
-            status: 422,
+            outcome: 'SKIPPED' as const,
+            reason: 'NOT_PROVISIONED' as const,
             attempts: 0,
             error: 'Uber 门店尚未 provision，未发送状态写请求',
           }
@@ -164,28 +163,22 @@ export class SyncUberStoreStatusUseCase {
           );
       results.push(result);
       await this.alerts.recordStoreStatusResult(result, payload);
-      if (
-        !result.ok &&
-        typeof result.status === 'number' &&
-        result.status >= 400 &&
-        result.status < 500
-      )
+      if (result.outcome === 'FAILED')
         await this.alerts.createStoreStatusAlert(
           mapping.uberStoreId,
-          typeof result.error === 'string'
-            ? result.error
-            : 'Uber 门店状态写入被拒绝',
-          result.status,
+          result.error,
+          result.reason,
+          result.retryable,
           payload,
         );
     }
-    const succeeded = results.filter((r) => r.ok).length;
+    const succeeded = results.filter((r) => r.outcome === 'SUCCEEDED').length;
     if (results.length === 0)
       return { outcome: 'SKIPPED' as const, reason: 'NO_STORES' as const };
     if (succeeded === results.length)
       return { outcome: 'SUCCEEDED' as const, synchronizedStores: succeeded };
     const failedStores = results.length - succeeded;
-    const allSkipped = results.every((result) => result.skipped === true);
+    const allSkipped = results.every((result) => result.outcome === 'SKIPPED');
     if (allSkipped)
       return {
         outcome: 'SKIPPED' as const,
@@ -198,7 +191,9 @@ export class SyncUberStoreStatusUseCase {
       error: {
         code: 'UPSTREAM_REJECTED' as const,
         message: '一个或多个 Uber 门店状态同步失败',
-        retryable: results.some((result) => result.retryable !== false),
+        retryable: results.some(
+          (result) => result.outcome === 'FAILED' && result.retryable,
+        ),
       },
     };
   }

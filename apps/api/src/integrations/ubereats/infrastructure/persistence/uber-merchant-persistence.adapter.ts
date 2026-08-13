@@ -339,7 +339,8 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
   async createStoreStatusAlert(
     uberStoreId: string,
     error: string,
-    status: number,
+    reason: 'UPSTREAM_REJECTED' | 'UPSTREAM_UNAVAILABLE',
+    retryable: boolean,
     payload: Record<string, string>,
   ) {
     await this.prisma.uberOpsTicket.create({
@@ -353,8 +354,9 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
         context: {
           uberStoreId,
           targetStatus: payload.status,
-          uberHttpStatus: status,
-          errorCode: `UBER_HTTP_${status}`,
+          outcome: 'FAILED',
+          reason,
+          retryable,
         },
       },
     });
