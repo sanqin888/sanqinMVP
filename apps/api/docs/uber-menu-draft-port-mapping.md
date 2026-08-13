@@ -20,4 +20,4 @@
 
 ## 写事务边界
 
-所有上表中的写用例都通过 application-owned `UberMenuWriteTransactionPort<TCommands>.execute` 声明提交边界。泛型命令视图确保每个用例只可调用自己需要的写操作；reference validation 在进入事务前完成，而命令写入及其持久化 telemetry/audit 在同一个事务回调中完成。回调（包括持久化 telemetry）抛出异常时，infrastructure 的 Prisma `$transaction` 回滚整个提交；日志和内存指标不是数据库状态，不属于提交边界。本次边界没有 outbox 写入。
+所有上表中的写用例都通过 application-owned `UberMenuWriteTransactionPort<TCommands>.execute` 声明提交边界。泛型命令视图确保每个用例只可调用自己需要的写操作；reference validation 在进入事务前完成，而命令写入及其持久化 telemetry event 在同一个事务回调中完成。event 使用业务命令派生的唯一键 upsert，因此相同命令可安全重试且不会生成重复事件。回调（包括 event 持久化）抛出异常时，infrastructure 的 Prisma `$transaction` 同时回滚业务数据与 event；日志和内存指标不是数据库状态，不属于提交边界。

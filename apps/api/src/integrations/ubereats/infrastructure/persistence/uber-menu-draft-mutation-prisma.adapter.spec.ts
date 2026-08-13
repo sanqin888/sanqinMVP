@@ -153,11 +153,17 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
         optionItemId: 'option-1',
         groupId: 'group-1',
       }),
+      {
+        eventId: 'uber-menu:binding:bound:store-1:option-1:group-1',
+      },
     );
     expect(captureEvent).toHaveBeenNthCalledWith(
       2,
       'ubereats_draft_option_child_group_unbound',
       expect.objectContaining({ isBound: false }),
+      {
+        eventId: 'uber-menu:binding:unbound:store-1:option-1:group-1',
+      },
     );
     expect(upsert.mock.invocationCallOrder[0]).toBeLessThan(
       captureEvent.mock.invocationCallOrder[0],

@@ -1220,12 +1220,13 @@ model AnalyticsEvent {
 }
 
 model OpsEvent {
-  id         String   @id @default(uuid()) @db.Uuid
-  eventName  String
-  source     String
-  payload    Json?
-  occurredAt DateTime @default(now())
-  createdAt  DateTime @default(now())
+  id             String   @id @default(uuid()) @db.Uuid
+  idempotencyKey String?  @unique
+  eventName      String
+  source         String
+  payload        Json?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   @@index([source, eventName, occurredAt])
   @@index([occurredAt])
