@@ -17,28 +17,30 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
   it('过期 token 会在 gateway 内自动刷新并持久化轮换', async () => {
     const transport = createUberTransportFake();
     transport.request.mockResolvedValue({ stores: [] });
+    const rotateCredential = jest.fn().mockResolvedValue(true);
     const credentials: jest.Mocked<UberMerchantCredentialStore> = {
       loadCredential: jest.fn().mockResolvedValue(expired()),
-      rotateCredential: jest.fn().mockResolvedValue(true),
+      rotateCredential,
     };
+    const refreshMerchantAccessToken = jest.fn().mockResolvedValue({
+      accessToken: 'fresh-access',
+      refreshToken: 'fresh-refresh',
+      expiresAt: new Date(Date.now() + 3600_000),
+      scope: 'eats.store',
+      tokenType: 'Bearer',
+    });
     const auth = {
-      refreshMerchantAccessToken: jest.fn().mockResolvedValue({
-        accessToken: 'fresh-access',
-        refreshToken: 'fresh-refresh',
-        expiresAt: new Date(Date.now() + 3600_000),
-        scope: 'eats.store',
-        tokenType: 'Bearer',
-      }),
+      refreshMerchantAccessToken,
     } as unknown as jest.Mocked<UberAuthService>;
     const gateway = new UberMerchantApiAdapter(transport, credentials, auth);
 
     await gateway.discoverStores({ merchantUberUserId: 'merchant-1' });
 
-    expect(auth.refreshMerchantAccessToken).toHaveBeenCalledWith(
+    expect(refreshMerchantAccessToken).toHaveBeenCalledWith(
       'refresh-secret',
       'eats.store',
     );
-    expect(credentials.rotateCredential).toHaveBeenCalledWith(
+    expect(rotateCredential).toHaveBeenCalledWith(
       expect.objectContaining({
         merchantUberUserId: 'merchant-1',
         expectedVersion: expired().version,
@@ -53,9 +55,10 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
   it('同一商户并发调用只执行一次刷新', async () => {
     const transport = createUberTransportFake();
     transport.request.mockResolvedValue({ stores: [] });
+    const rotateCredential = jest.fn().mockResolvedValue(true);
     const credentials: jest.Mocked<UberMerchantCredentialStore> = {
       loadCredential: jest.fn().mockResolvedValue(expired()),
-      rotateCredential: jest.fn().mockResolvedValue(true),
+      rotateCredential,
     };
     let release!: () => void;
     const barrier = new Promise<void>((resolve) => {
@@ -83,6 +86,6 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
     await Promise.all(calls);
 
     expect(refreshMerchantAccessToken).toHaveBeenCalledTimes(1);
-    expect(credentials.rotateCredential).toHaveBeenCalledTimes(1);
+    expect(rotateCredential).toHaveBeenCalledTimes(1);
   });
 });
