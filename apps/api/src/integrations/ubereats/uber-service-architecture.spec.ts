@@ -513,10 +513,14 @@ describe('Uber Eats bounded-context architecture', () => {
 
   it('keeps focused use cases behind application-owned ports', () => {
     for (const path of [
-      'application/menu/write-uber-menu-config.use-case.ts',
+      'application/menu/upsert-uber-item-channel-config.use-case.ts',
+      'application/menu/upsert-uber-option-item-config.use-case.ts',
       'application/menu/read-uber-menu-draft.use-case.ts',
-      'application/menu/update-uber-menu-draft-item.use-case.ts',
-      'application/menu/bind-uber-menu-option-child-group.use-case.ts',
+      'application/menu/update-uber-draft-item.use-case.ts',
+      'application/menu/update-uber-draft-group.use-case.ts',
+      'application/menu/update-uber-draft-option.use-case.ts',
+      'application/menu/bind-uber-draft-option-child-group.use-case.ts',
+      'application/menu/unbind-uber-draft-option-child-group.use-case.ts',
       'application/menu/query-uber-menu-draft-diff.use-case.ts',
       'application/menu/publish-uber-menu.use-case.ts',
       'application/menu/uber-menu-availability.use-case.ts',
@@ -534,7 +538,7 @@ describe('Uber Eats bounded-context architecture', () => {
 
   it('prevents menu draft use cases from aggregating unrelated repository ports', () => {
     const focusedDraftUseCases = boundedContextFiles.filter((file) =>
-      /application\/menu\/(?:query|write|read|update|bind)-uber-menu-(?:config|draft|option-child-group).*\.use-case\.ts$/.test(
+      /application\/menu\/(?:query-uber-menu-config|query-uber-menu-draft-diff|read-uber-menu-draft|upsert-uber-(?:item-channel|option-item)-config|update-uber-draft-(?:item|group|option)|(?:bind|unbind)-uber-draft-option-child-group)\.use-case\.ts$/.test(
         file.path,
       ),
     );
@@ -553,7 +557,7 @@ describe('Uber Eats bounded-context architecture', () => {
         : [];
     });
 
-    expect(focusedDraftUseCases).toHaveLength(6);
+    expect(focusedDraftUseCases).toHaveLength(10);
     expect(violations).toEqual([]);
   });
 

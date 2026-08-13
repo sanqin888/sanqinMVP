@@ -1,18 +1,10 @@
 import type { UberMenuDraftMutationPort } from './uber-menu-draft.ports';
 
-/** Binding commands are atomic and idempotent at the mutation port boundary. */
-export class BindUberMenuOptionChildGroupUseCase {
+/** Owns the atomic, idempotent child-group unbinding command. */
+export class UnbindUberDraftOptionChildGroupUseCase {
   constructor(private readonly mutations: UberMenuDraftMutationPort) {}
 
-  bind(
-    ...args: Parameters<
-      UberMenuDraftMutationPort['bindUberDraftOptionChildGroup']
-    >
-  ) {
-    return this.mutations.bindUberDraftOptionChildGroup(...args);
-  }
-
-  unbind(
+  execute(
     ...args: Parameters<
       UberMenuDraftMutationPort['unbindUberDraftOptionChildGroup']
     >
