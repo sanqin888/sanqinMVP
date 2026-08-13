@@ -83,8 +83,7 @@ describe('UberOrderActionService contract', () => {
 
   it('dispatches a claimed CANCEL through the sole action gateway', async () => {
     const { repository, gateway, service } = setup();
-    repository.claim.mockResolvedValue([{ ...task, action: 'CANCEL' }]);
-    await service.process(1, 'worker-a');
+    await service.executeClaimed({ ...task, action: 'CANCEL' });
     expect(gateway.cancel).toHaveBeenCalledWith({
       externalOrderId: 'order-1',
       idempotencyKey: 'key-1',
@@ -97,7 +96,7 @@ describe('UberOrderActionService contract', () => {
 
   it('always writes success with the token returned by claim', async () => {
     const { repository, service } = setup();
-    await service.process(1, 'worker-a');
+    await service.executeClaimed(task);
     expect(repository.markSucceeded.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
@@ -112,7 +111,7 @@ describe('UberOrderActionService contract', () => {
     const { repository, service } = setup({
       accept: jest.fn().mockRejectedValue(error),
     });
-    await service.process(1, 'worker-a');
+    await service.executeClaimed(task);
     expect(repository.markFailed.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
@@ -126,7 +125,7 @@ describe('UberOrderActionService contract', () => {
       new Error('database unavailable'),
     );
     repository.markFailed.mockRejectedValue(new Error('database unavailable'));
-    await expect(service.process(1, 'worker-a')).rejects.toThrow(
+    await expect(service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
     );
     expect(repository.markSucceeded.mock.calls).toContainEqual([

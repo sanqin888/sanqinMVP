@@ -5,6 +5,7 @@ import type {
 import type { UberEventOrdering } from './uber-order-processing.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 import {
+  type UberOrderActionRepositoryPort,
   type UberOrderEventCursor,
   type UberOrderImportRepositoryPort,
 } from './uber-order.ports';
@@ -271,9 +272,22 @@ export class RequestUberOrderActionUseCase {
 }
 /** Claims durable action leases and records each gateway result in a separate transaction. */
 export class ExecuteUberOrderActionWorker {
-  constructor(private readonly actions: UberOrderActionService) {}
-  execute(limit = 50) {
-    return this.actions.process(limit, `worker-${process.pid}`);
+  private static readonly LEASE_DURATION_MS = 30_000;
+
+  constructor(
+    private readonly repository: UberOrderActionRepositoryPort,
+    private readonly actions: UberOrderActionService,
+  ) {}
+
+  async execute(limit = 50): Promise<number> {
+    const tasks = await this.repository.claim({
+      limit,
+      owner: `worker-${process.pid}`,
+      now: new Date(),
+      leaseDurationMs: ExecuteUberOrderActionWorker.LEASE_DURATION_MS,
+    });
+    await Promise.all(tasks.map((task) => this.actions.executeClaimed(task)));
+    return tasks.length;
   }
 }
 

@@ -65,7 +65,7 @@ UberOrderActionWorkerAdapter
 
 Worker adapter 只负责轮询调度，应用 Worker 负责批量领取，`UberOrderActionService.executeClaimed(task)` 负责按动作类型调用 gateway，并把结果交还 repository 完成。`complete(...)` 在实现层可以由成功和失败两个显式方法表达，但必须携带 `claim(...)` 返回的 lease token，确保只有当前租约所有者能够提交结果。
 
-> 当前实现的过渡点：adapter 目前通过 `ClaimAndExecuteUberOrderActionsUseCase` 调用 `UberOrderActionService.process(...)`，service 内部使用 `claim(...)`、私有 `execute(...)`、`markSucceeded(...)`/`markFailed(...)` 完成相同职责。收口到上述最终命名时，不应改变边界，也不应把 gateway 调用移到 adapter 或 Worker 中。
+`ExecuteUberOrderActionWorker` 持有 worker owner、batch limit 和 lease duration，调用 repository 领取任务并并发调度。Service 的单任务公开入口不领取新任务，因而调用方必须传入 `claim(...)` 返回且包含 lease token 的完整任务。
 
 ## 唯一通道约束
 

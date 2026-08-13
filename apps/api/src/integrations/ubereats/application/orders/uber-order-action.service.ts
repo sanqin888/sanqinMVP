@@ -44,18 +44,8 @@ export class UberOrderActionService {
     };
   }
 
-  async process(limit: number, owner: string): Promise<number> {
-    const tasks = await this.repository.claim({
-      limit,
-      owner,
-      now: new Date(),
-      leaseDurationMs: 30_000,
-    });
-    await Promise.all(tasks.map((task) => this.execute(task)));
-    return tasks.length;
-  }
-
-  private async execute(task: UberOrderActionTask): Promise<void> {
+  /** Executes one task whose lease has already been acquired by a worker. */
+  async executeClaimed(task: UberOrderActionTask): Promise<void> {
     try {
       const common = {
         externalOrderId: task.externalOrderId,
