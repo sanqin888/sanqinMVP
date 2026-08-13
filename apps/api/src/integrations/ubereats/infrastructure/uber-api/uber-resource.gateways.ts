@@ -172,6 +172,7 @@ export class UberOrderGateway extends PrefixGateway {
       ok: result.response.ok,
       status: result.response.status,
       data: result.data,
+      retryAfter: result.response.headers.get('retry-after'),
     };
   }
 
