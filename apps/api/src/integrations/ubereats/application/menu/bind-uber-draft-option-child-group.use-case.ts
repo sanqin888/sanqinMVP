@@ -1,6 +1,6 @@
 import type {
   UberMenuWriteTransactionPort,
-  UberOptionChildGroupBindingCommandPort,
+  UberOptionChildGroupBindCommandPort,
 } from './uber-menu-draft.ports';
 import { UBER_MENU_COMMAND_IDEMPOTENCY } from './uber-menu-draft.ports';
 import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
@@ -8,7 +8,7 @@ import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 /** Owns the atomic, idempotent child-group binding command. */
 export class BindUberDraftOptionChildGroupUseCase {
   constructor(
-    private readonly transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindingCommandPort>,
+    private readonly transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindCommandPort>,
   ) {}
 
   execute(optionId: string, childGroupId: string, storeId?: string) {

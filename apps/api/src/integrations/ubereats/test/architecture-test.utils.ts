@@ -49,6 +49,69 @@ export const formatSourceViolation = (
   token: string,
 ): string => `${relative(root, file.path)} -> ${token}`;
 
+export type InterfaceMethods = { interfaceName: string; methods: string[] };
+
+/** Reads interface method declarations structurally, without relying on text layout. */
+export const interfaceMethods = (file: SourceFile): InterfaceMethods[] => {
+  const sourceFile = ts.createSourceFile(
+    file.path,
+    file.source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+
+  return sourceFile.statements.flatMap((node) =>
+    ts.isInterfaceDeclaration(node)
+      ? [
+          {
+            interfaceName: node.name.text,
+            methods: node.members.flatMap((member) =>
+              ts.isMethodSignature(member)
+                ? [member.name.getText(sourceFile)]
+                : [],
+            ),
+          },
+        ]
+      : [],
+  );
+};
+
+/** Returns every named type referenced by each class constructor parameter. */
+export const constructorDependencyTypes = (
+  file: SourceFile,
+): Array<{ className: string; parameterTypes: string[][] }> => {
+  const sourceFile = ts.createSourceFile(
+    file.path,
+    file.source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const typeNames = (node: ts.TypeNode): string[] => {
+    const names: string[] = [];
+    const visit = (child: ts.Node) => {
+      if (ts.isTypeReferenceNode(child)) names.push(child.typeName.getText());
+      ts.forEachChild(child, visit);
+    };
+    visit(node);
+    return [...new Set(names)];
+  };
+
+  return sourceFile.statements.flatMap((node) => {
+    if (!ts.isClassDeclaration(node) || !node.name) return [];
+    const constructor = node.members.find(ts.isConstructorDeclaration);
+    return constructor
+      ? [
+          {
+            className: node.name.text,
+            parameterTypes: constructor.parameters.map((parameter) =>
+              parameter.type ? typeNames(parameter.type) : [],
+            ),
+          },
+        ]
+      : [];
+  });
+};
+
 /** Finds unsafe wire-shaped values anywhere in an application port method result. */
 export const portMethodReturnTypeViolations = (
   files: readonly SourceFile[],

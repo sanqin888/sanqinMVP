@@ -28,7 +28,8 @@ import {
   type UberDraftItemCommandPort,
   type UberDraftGroupCommandPort,
   type UberDraftOptionCommandPort,
-  type UberOptionChildGroupBindingCommandPort,
+  type UberOptionChildGroupBindCommandPort,
+  type UberOptionChildGroupUnbindCommandPort,
   type UberMenuDraftReadPort,
   type MenuItemExistenceQueryPort,
   type OptionChoiceExistenceQueryPort,
@@ -266,14 +267,14 @@ export function createMenuWiring(): Provider[] {
       provide: BindUberDraftOptionChildGroupUseCase,
       inject: [UBER_MENU_WRITE_TRANSACTION_PORT],
       useFactory: (
-        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindingCommandPort>,
+        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindCommandPort>,
       ) => new BindUberDraftOptionChildGroupUseCase(transaction),
     },
     {
       provide: UnbindUberDraftOptionChildGroupUseCase,
       inject: [UBER_MENU_WRITE_TRANSACTION_PORT],
       useFactory: (
-        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindingCommandPort>,
+        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupUnbindCommandPort>,
       ) => new UnbindUberDraftOptionChildGroupUseCase(transaction),
     },
     {

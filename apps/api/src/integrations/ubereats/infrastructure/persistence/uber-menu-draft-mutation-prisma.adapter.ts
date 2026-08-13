@@ -5,7 +5,8 @@ import type {
   UberDraftGroupCommandPort,
   UberDraftItemCommandPort,
   UberDraftOptionCommandPort,
-  UberOptionChildGroupBindingCommandPort,
+  UberOptionChildGroupBindCommandPort,
+  UberOptionChildGroupUnbindCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
 import type {
   UpdateDraftItemInput,
@@ -28,7 +29,8 @@ export class UberMenuDraftMutationPrismaAdapter
     UberDraftItemCommandPort,
     UberDraftGroupCommandPort,
     UberDraftOptionCommandPort,
-    UberOptionChildGroupBindingCommandPort
+    UberOptionChildGroupBindCommandPort,
+    UberOptionChildGroupUnbindCommandPort
 {
   private readonly telemetry: UberTelemetryService;
 

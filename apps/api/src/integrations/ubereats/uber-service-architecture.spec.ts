@@ -1,7 +1,9 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
+  constructorDependencyTypes,
   formatSourceViolation,
+  interfaceMethods,
   importSpecifiers,
   importViolations,
   scanTypeScript,
@@ -535,28 +537,94 @@ describe('Uber Eats bounded-context architecture', () => {
     }
   });
 
-  it('prevents menu draft use cases from aggregating unrelated repository ports', () => {
-    const focusedDraftUseCases = boundedContextFiles.filter((file) =>
-      /application\/menu\/(?:query-uber-menu-config|query-uber-menu-draft-diff|read-uber-menu-draft|upsert-uber-(?:item-channel|option-item)-config|update-uber-draft-(?:item|group|option)|(?:bind|unbind)-uber-draft-option-child-group)\.use-case\.ts$/.test(
-        file.path,
+  it('keeps every menu write use case on one narrow command boundary', () => {
+    const menuApplicationRoot = join(BOUNDED_CONTEXT_ROOT, 'application/menu');
+    const menuFiles = scanTypeScript(menuApplicationRoot, {
+      productionOnly: true,
+    });
+    const draftPortsFile = menuFiles.find((file) =>
+      file.path.endsWith('uber-menu-draft.ports.ts'),
+    );
+    expect(draftPortsFile).toBeDefined();
+    const draftCommandPorts = new Set(
+      interfaceMethods(draftPortsFile!).flatMap(({ interfaceName }) =>
+        interfaceName.endsWith('CommandPort') ? [interfaceName] : [],
       ),
     );
-    const violations = focusedDraftUseCases.flatMap((file) => {
-      const directPortDependencies = [
-        ...file.source.matchAll(
-          /private readonly \w+:\s*(Uber\w+(?:Port|Repository|UnitOfWork))/g,
+    const focusedDraftUseCases = menuFiles.filter(
+      (file) =>
+        file.path.endsWith('.use-case.ts') &&
+        constructorDependencyTypes(file).some(({ parameterTypes }) =>
+          parameterTypes
+            .flat()
+            .some(
+              (name) =>
+                draftCommandPorts.has(name) ||
+                name === 'UberMenuDraftMutationPort' ||
+                name === 'UberMenuConfigWritePort',
+            ),
         ),
-      ].map((match) => match[1]);
-      return new Set(directPortDependencies).size > 1
-        ? [
-            `${relative(BOUNDED_CONTEXT_ROOT, file.path)} aggregates ${[
-              ...new Set(directPortDependencies),
-            ].join(', ')}`,
-          ]
-        : [];
+    );
+    const forbiddenAggregatePorts = new Set([
+      'UberMenuDraftMutationPort',
+      'UberMenuConfigWritePort',
+    ]);
+    const violations = focusedDraftUseCases.flatMap((file) => {
+      return constructorDependencyTypes(file).flatMap(
+        ({ className, parameterTypes }) => {
+          const allTypes = parameterTypes.flat();
+          const commandParameters = parameterTypes.filter((types) =>
+            types.some((name) =>
+              /(?:CommandPort|WriteTransactionPort|Repository)/.test(name),
+            ),
+          );
+          const supportingParameters = parameterTypes.filter(
+            (types) =>
+              types.some((name) =>
+                /(?:Query|Validation)\w*(?:Port|Service)$/.test(name),
+              ) &&
+              !types.some((name) =>
+                /(?:CommandPort|WriteTransactionPort|Repository)/.test(name),
+              ),
+          );
+          const reasons = [
+            ...(commandParameters.length > 1
+              ? [`${commandParameters.length} command/repository dependencies`]
+              : []),
+            ...(supportingParameters.length > 2
+              ? [`${supportingParameters.length} validation/query services`]
+              : []),
+            ...allTypes
+              .filter((name) => forbiddenAggregatePorts.has(name))
+              .map((name) => `forbidden aggregate ${name}`),
+          ];
+          return reasons.map(
+            (reason) =>
+              `${relative(BOUNDED_CONTEXT_ROOT, file.path)}#${className} -> ${reason}`,
+          );
+        },
+      );
     });
 
-    expect(focusedDraftUseCases).toHaveLength(10);
+    expect(focusedDraftUseCases.length).toBeGreaterThan(0);
+    expect(violations).toEqual([]);
+  });
+
+  it('allows exactly one command method on each menu draft command port', () => {
+    const draftPortFiles = boundedContextFiles.filter(({ path }) =>
+      path.endsWith('application/menu/uber-menu-draft.ports.ts'),
+    );
+    expect(draftPortFiles).toHaveLength(1);
+    const violations = draftPortFiles.flatMap((file) =>
+      interfaceMethods(file).flatMap(({ interfaceName, methods }) =>
+        interfaceName.endsWith('CommandPort') && methods.length !== 1
+          ? [
+              `${relative(BOUNDED_CONTEXT_ROOT, file.path)}#${interfaceName} declares ${methods.length} command methods: ${methods.join(', ')}`,
+            ]
+          : [],
+      ),
+    );
+
     expect(violations).toEqual([]);
   });
 
