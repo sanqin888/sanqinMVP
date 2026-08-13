@@ -20,12 +20,24 @@ export type {
 export const UBER_MENU_CONFIG_QUERY_PORT = Symbol(
   'UBER_MENU_CONFIG_QUERY_PORT',
 );
-export const UBER_MENU_CONFIG_WRITE_PORT = Symbol(
-  'UBER_MENU_CONFIG_WRITE_PORT',
+export const UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT = Symbol(
+  'UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT',
+);
+export const UBER_OPTION_ITEM_CONFIG_COMMAND_PORT = Symbol(
+  'UBER_OPTION_ITEM_CONFIG_COMMAND_PORT',
 );
 export const UBER_MENU_DRAFT_READ_PORT = Symbol('UBER_MENU_DRAFT_READ_PORT');
-export const UBER_MENU_DRAFT_MUTATION_PORT = Symbol(
-  'UBER_MENU_DRAFT_MUTATION_PORT',
+export const UBER_DRAFT_ITEM_COMMAND_PORT = Symbol(
+  'UBER_DRAFT_ITEM_COMMAND_PORT',
+);
+export const UBER_DRAFT_GROUP_COMMAND_PORT = Symbol(
+  'UBER_DRAFT_GROUP_COMMAND_PORT',
+);
+export const UBER_DRAFT_OPTION_COMMAND_PORT = Symbol(
+  'UBER_DRAFT_OPTION_COMMAND_PORT',
+);
+export const UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT = Symbol(
+  'UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT',
 );
 export const UBER_MENU_DRAFT_DIFF_PORT = Symbol('UBER_MENU_DRAFT_DIFF_PORT');
 export const UBER_MENU_REFERENCE_QUERY_PORT = Symbol(
@@ -146,10 +158,12 @@ export interface UberMenuConfigQueryPort {
     storeId?: string,
   ): Promise<UberMenuConfigListResult<UberOptionItemConfigDto>>;
 }
-export interface UberMenuConfigWritePort {
+export interface UberItemChannelConfigCommandPort {
   upsertUberItemChannelConfig(
     input: UpsertPriceBookItemInput,
   ): Promise<UberMenuConfigWriteResult<UberItemChannelConfigDto>>;
+}
+export interface UberOptionItemConfigCommandPort {
   upsertUberOptionItemConfig(
     input: UpsertOptionItemConfigInput,
   ): Promise<UberMenuConfigWriteResult<UberOptionItemConfigDto>>;
@@ -157,19 +171,25 @@ export interface UberMenuConfigWritePort {
 export interface UberMenuDraftReadPort {
   getUberMenuDraft(storeId?: string): Promise<UberMenuDraftResult>;
 }
-export interface UberMenuDraftMutationPort {
+export interface UberDraftItemCommandPort {
   updateUberDraftItem(
     id: string,
     input: UpdateDraftItemInput,
   ): Promise<UberDraftMutationResult<UberItemChannelConfigDto>>;
+}
+export interface UberDraftGroupCommandPort {
   updateUberDraftGroup(
     id: string,
     input: UpdateDraftGroupInput,
   ): Promise<UberDraftMutationResult<UberModifierGroupConfigDto>>;
+}
+export interface UberDraftOptionCommandPort {
   updateUberDraftOption(
     id: string,
     input: UpdateDraftOptionInput,
   ): Promise<UberDraftMutationResult<UberOptionItemConfigDto>>;
+}
+export interface UberOptionChildGroupBindingCommandPort {
   bindUberDraftOptionChildGroup(
     optionId: string,
     childGroupId: string,

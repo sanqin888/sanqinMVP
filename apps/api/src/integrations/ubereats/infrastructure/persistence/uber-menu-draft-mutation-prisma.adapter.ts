@@ -1,7 +1,12 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/shared/uber-application.error';
-import type { UberMenuDraftMutationPort } from '../../application/menu/uber-menu-draft.ports';
+import type {
+  UberDraftGroupCommandPort,
+  UberDraftItemCommandPort,
+  UberDraftOptionCommandPort,
+  UberOptionChildGroupBindingCommandPort,
+} from '../../application/menu/uber-menu-draft.ports';
 import type {
   UpdateDraftGroupInput,
   UpdateDraftItemInput,
@@ -19,7 +24,13 @@ const uberMenuValidation = (message: string) =>
   });
 
 @Injectable()
-export class UberMenuDraftMutationPrismaAdapter implements UberMenuDraftMutationPort {
+export class UberMenuDraftMutationPrismaAdapter
+  implements
+    UberDraftItemCommandPort,
+    UberDraftGroupCommandPort,
+    UberDraftOptionCommandPort,
+    UberOptionChildGroupBindingCommandPort
+{
   private readonly telemetry: UberTelemetryService;
 
   constructor(
