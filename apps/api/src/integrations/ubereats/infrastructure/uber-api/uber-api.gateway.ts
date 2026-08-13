@@ -16,6 +16,8 @@ import type {
   UberApiConfig,
   UberRateLimitConfig,
 } from './uber-api-config.service';
+import { mapUberGatewayFailure } from './uber-error.mapper';
+import { isUberApplicationError } from '../../application/shared/uber-application.error';
 
 type UberGatewayRequestBase = Pick<
   UberHttpRequest,
@@ -51,10 +53,7 @@ export interface UberResourceGateway {
   request<T = Record<string, unknown>>(request: UberGatewayRequest): Promise<T>;
 }
 
-export type UberGatewayHttpPort = Pick<
-  UberHttpClient,
-  'request' | 'ensureSuccess'
->;
+export type UberGatewayHttpPort = Pick<UberHttpClient, 'request'>;
 export type UberGatewayAuthPort = Pick<
   UberAuthService,
   'getAccessToken' | 'forceRefreshAccessToken'
@@ -114,14 +113,38 @@ export class UberApiGatewayTransport {
         status,
         retryAfter: result.response.headers.get('retry-after'),
       });
-      if (translateError) this.http.ensureSuccess(result, request.operation);
+      if (translateError && !result.response.ok)
+        throw mapUberGatewayFailure({
+          kind: 'http',
+          operation: request.operation,
+          status: result.response.status,
+          upstreamCode: this.upstreamCode(result.data),
+        });
       return result;
+    } catch (cause) {
+      if (isUberApplicationError(cause)) throw cause;
+      throw mapUberGatewayFailure({
+        kind: 'transport',
+        operation: request.operation,
+        code: 'UBER_NETWORK_ERROR',
+        cause,
+      });
     } finally {
       this.logger.log(
         `[uber gateway metric] operation=${request.operation} partition=${partition} requestId=${requestId} status=${status || 'error'} latencyMs=${Date.now() - startedAt}`,
       );
       lease.release();
     }
+  }
+
+  private upstreamCode(data: unknown): string | null {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const value = [body.code, body.error_code, body.error].find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0,
+    );
+    return value?.trim() ?? null;
   }
 
   private send<T>(

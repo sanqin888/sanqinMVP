@@ -7,10 +7,7 @@ import {
 } from '../shared/uber-log.utils';
 import { UberOrderGateway } from './uber-resource.gateways';
 import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
-import {
-  mapUberGatewayError,
-  UberGatewayMappingError,
-} from './uber-error.mapper';
+import { mapUberGatewayFailure } from './uber-error.mapper';
 import type { UberOrderDetailResult } from '../../application/orders/uber-order-query.ports';
 
 @Injectable()
@@ -51,12 +48,11 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       'error',
       `[ubereats order] detail fetch failed status=${result.response.status} eventType=${input.eventType} eventId=${input.eventId} resourceId=${input.resourceId ?? 'unknown'} detail=${redactUberLogText(detail)}`,
     );
-    throw mapUberGatewayError(
-      new UberGatewayMappingError(
-        `UBER_ORDER_DETAIL_HTTP_${result.response.status}`,
-        'order.fetch-detail',
-        ![400, 401, 403, 404].includes(result.response.status),
-      ),
-    );
+    throw mapUberGatewayFailure({
+      kind: 'http',
+      operation: 'order.fetch-detail',
+      status: result.response.status,
+      upstreamCode: null,
+    });
   }
 }

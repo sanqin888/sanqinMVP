@@ -18,18 +18,12 @@ import {
   UBER_MERCHANT_CREDENTIAL_STORE,
   type UberMerchantCredentialStore,
 } from './uber-merchant-credential.port';
-import {
-  isUberApplicationError,
-  UberTransientUpstreamError,
-} from '../../application/shared/uber-application.error';
+import { isUberApplicationError } from '../../application/shared/uber-application.error';
 import {
   UBER_TELEMETRY_PORT,
   type UberTelemetryPort,
 } from '../../application/shared/uber-telemetry.port';
-import {
-  mapUberGatewayError,
-  UberGatewayMappingError,
-} from './uber-error.mapper';
+import { mapUberGatewayFailure } from './uber-error.mapper';
 
 const object = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -100,12 +94,12 @@ export class UberMerchantApiAdapter
     const candidates = [raw.stores, raw.data, object(raw.data)?.stores];
     const node = candidates.find(Array.isArray);
     if (!Array.isArray(node))
-      throw mapUberGatewayError(
-        new UberGatewayMappingError(
-          'UBER_STORE_DISCOVERY_MAPPING_FAILED',
-          'merchant.discover-stores',
-        ),
-      );
+      throw mapUberGatewayFailure({
+        kind: 'mapping',
+        code: 'UBER_STORE_DISCOVERY_MAPPING_FAILED',
+        operation: 'merchant.discover-stores',
+        reason: 'Uber 门店列表响应无法映射',
+      });
     const stores: UberMerchantStore[] = node
       .map(object)
       .filter((v): v is Record<string, unknown> => !!v)
@@ -163,12 +157,12 @@ export class UberMerchantApiAdapter
     const location = object(raw.location) ?? object(raw.address);
     const mappedStoreId = string(raw.store_id, store?.id, store?.store_id);
     if (!mappedStoreId)
-      throw mapUberGatewayError(
-        new UberGatewayMappingError(
-          'UBER_STORE_PROVISION_MAPPING_FAILED',
-          'merchant.provision-store',
-        ),
-      );
+      throw mapUberGatewayFailure({
+        kind: 'mapping',
+        code: 'UBER_STORE_PROVISION_MAPPING_FAILED',
+        operation: 'merchant.provision-store',
+        reason: 'Uber 门店配置响应无法映射',
+      });
     return {
       storeId: mappedStoreId,
       status: string(raw.status),
@@ -297,11 +291,10 @@ export class UberMerchantApiAdapter
       );
     } catch (caught) {
       if (isUberApplicationError(caught)) throw caught;
-      throw new UberTransientUpstreamError({
-        code: 'UBER_NETWORK_ERROR',
-        message: 'Uber API 暂时不可用',
+      throw mapUberGatewayFailure({
+        kind: 'transport',
         operation: `${method} ${path}`,
-        upstreamStatus: null,
+        code: 'UBER_NETWORK_ERROR',
         cause: caught,
       });
     }

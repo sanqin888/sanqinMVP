@@ -270,7 +270,7 @@ describe('Uber gateways wire contract v1', () => {
         resourceId: 'order-1',
       }),
     ).rejects.toMatchObject({
-      code: 'UBER_ORDER_DETAIL_HTTP_403',
+      code: 'UBER_SCOPE_INSUFFICIENT',
       retryable: false,
     });
     expect(gateway.inspect).toHaveBeenCalledWith({

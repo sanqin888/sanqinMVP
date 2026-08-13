@@ -1,32 +1,81 @@
 import { redactUberLogText } from '../shared/uber-log.utils';
 import {
+  UberApplicationError,
+  UberAuthenticationError,
+  UberBusinessConflictError,
   UberNonRetryableUpstreamError,
+  UberRateLimitedError,
   UberTransientUpstreamError,
+  UberValidationError,
 } from '../../application/shared/uber-application.error';
 
-/** Infrastructure-only failure raised when an upstream wire value cannot be mapped. */
-export class UberGatewayMappingError extends Error {
-  constructor(
-    readonly code: string,
-    readonly operation: string,
-    readonly retryable = false,
-    cause?: unknown,
-  ) {
-    super(code, { cause });
-    this.name = 'UberGatewayMappingError';
-  }
-}
+/** Complete infrastructure-only failure vocabulary for Uber gateways. */
+export type UberGatewayFailure =
+  | {
+      kind: 'transport';
+      operation: string;
+      code: 'UBER_NETWORK_ERROR';
+      cause?: unknown;
+    }
+  | {
+      kind: 'http';
+      operation: string;
+      status: number;
+      upstreamCode: string | null;
+    }
+  | {
+      kind: 'mapping';
+      operation: string;
+      code: string;
+      reason: string;
+      cause?: unknown;
+    };
 
 /** The sole translation point from gateway failures to application errors. */
-export function mapUberGatewayError(error: UberGatewayMappingError) {
-  const ErrorType = error.retryable
-    ? UberTransientUpstreamError
-    : UberNonRetryableUpstreamError;
+export function mapUberGatewayFailure(
+  failure: UberGatewayFailure,
+): UberApplicationError {
+  if (failure.kind === 'transport')
+    return new UberTransientUpstreamError({
+      code: failure.code,
+      message: 'Uber API 暂时不可用',
+      operation: failure.operation,
+      cause: failure.cause,
+    });
+
+  if (failure.kind === 'mapping')
+    return new UberNonRetryableUpstreamError({
+      code: failure.code,
+      message: failure.reason,
+      operation: failure.operation,
+      cause: failure.cause,
+    });
+
+  const { status } = failure;
+  const ErrorType =
+    status === 401 || status === 403
+      ? UberAuthenticationError
+      : status === 429
+        ? UberRateLimitedError
+        : status === 408 || status >= 500
+          ? UberTransientUpstreamError
+          : status === 409 || status === 422
+            ? UberBusinessConflictError
+            : status >= 400 && status < 500
+              ? UberValidationError
+              : UberNonRetryableUpstreamError;
+  const code =
+    status === 401
+      ? 'UBER_ACCESS_TOKEN_INVALID'
+      : status === 403
+        ? 'UBER_SCOPE_INSUFFICIENT'
+        : failure.upstreamCode
+          ? `UBER_${failure.upstreamCode.replace(/[^A-Za-z0-9]+/g, '_').toUpperCase()}`
+          : `UBER_HTTP_${status}`;
   return new ErrorType({
-    code: error.code,
-    message: 'Uber API 响应无法映射',
-    operation: error.operation,
-    cause: error,
+    code,
+    message: 'Uber API 请求失败',
+    operation: failure.operation,
   });
 }
 

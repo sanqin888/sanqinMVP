@@ -117,14 +117,10 @@ describe('Uber API gateway contract', () => {
     ).rejects.toThrow();
   });
 
-  it('maps a terminal 429/5xx through the centralized safe error translator', async () => {
-    const inspected = uberHttpResult(429);
-    const translated = new Error('safe translated error');
+  it('maps a terminal HTTP failure through the centralized gateway mapper', async () => {
+    const inspected = uberHttpResult(429, { code: 'rate-limit-exceeded' });
     const http = createUberHttpFake();
     http.request.mockResolvedValue(inspected);
-    http.ensureSuccess.mockImplementation(() => {
-      throw translated;
-    });
     const auth = createUberAuthFake();
     auth.getAccessToken.mockResolvedValue('token');
     const gateway = new UberApiGatewayTransport(http, auth, {
@@ -136,10 +132,11 @@ describe('Uber API gateway contract', () => {
         operation: 'uber.store.list',
         scope: 'eats.store',
       }),
-    ).rejects.toBe(translated);
-    expect(http.ensureSuccess).toHaveBeenCalledWith(
-      inspected,
-      'uber.store.list',
-    );
+    ).rejects.toMatchObject({
+      category: 'rate-limited',
+      code: 'UBER_RATE_LIMIT_EXCEEDED',
+      operation: 'uber.store.list',
+      upstreamStatus: null,
+    });
   });
 });

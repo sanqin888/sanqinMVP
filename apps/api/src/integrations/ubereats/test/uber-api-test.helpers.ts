@@ -17,7 +17,6 @@ export const uberHttpResult = <T extends Record<string, unknown>>(
 
 export const createUberHttpFake = (): jest.Mocked<UberGatewayHttpPort> => ({
   request: jest.fn(),
-  ensureSuccess: jest.fn(),
 });
 
 export const createUberAuthFake = (): jest.Mocked<UberGatewayAuthPort> => ({
