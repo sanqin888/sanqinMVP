@@ -79,7 +79,7 @@ export class ProvisionUberStoreUseCase {
         message: '未找到 Uber 商户授权',
       });
     const response = await this.api.provisionStore(
-      connection.accessToken,
+      { merchantUberUserId: connection.merchantUberUserId },
       id,
       payload,
       buildUberIdempotencyKey({

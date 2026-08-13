@@ -89,7 +89,6 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       verifyState,
       buildAuthorizeUrl: jest.fn(() => 'https://example.com/authorize'),
       exchangeAuthorizationCode,
-      refreshAccessToken: jest.fn(() => Promise.resolve(token)),
     };
     const upsertConnectionByUberUserId = jest.fn(() =>
       Promise.resolve({

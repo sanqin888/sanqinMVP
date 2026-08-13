@@ -28,15 +28,13 @@ export interface UberOAuthTokenPort {
     code: string,
     redirectUri: string,
   ): Promise<UberOAuthIdentityTokens>;
-  refreshAccessToken(
-    refreshToken: string,
-    scope?: string,
-  ): Promise<UberOAuthTokens>;
 }
 
 /** Merchant discovery capability; it translates the upstream wire model. */
+export type UberMerchantIdentity = { merchantUberUserId: string };
+
 export interface UberMerchantApiPort {
-  discoverStores(accessToken: string): Promise<{
+  discoverStores(identity: UberMerchantIdentity): Promise<{
     stores: UberMerchantStore[];
     raw: Record<string, unknown>;
   }>;
@@ -54,7 +52,7 @@ export type UberStoreWriteResult = {
 /** Store mutation capability; URL/request construction belongs to its adapter. */
 export interface UberStoreApiPort {
   provisionStore(
-    accessToken: string,
+    identity: UberMerchantIdentity,
     storeId: string,
     payload: Record<string, unknown>,
     idempotencyKey: string,

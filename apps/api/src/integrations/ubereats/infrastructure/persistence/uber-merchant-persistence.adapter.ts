@@ -16,6 +16,7 @@ import type { UberOperationsAlertRepositoryPort } from '../../application/operat
 import { redactUberLogText } from '../shared/uber-log.utils';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import { UberTelemetryService } from './uber-telemetry.service';
+import type { UberMerchantCredentialStore } from '../uber-api/uber-merchant-credential.port';
 
 const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -151,7 +152,9 @@ export class UberOAuthStatePrismaAdapter implements UberOAuthStatePort {
 }
 
 @Injectable()
-export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnectionRepositoryPort {
+export class UberMerchantConnectionPrismaAdapter
+  implements UberMerchantConnectionRepositoryPort, UberMerchantCredentialStore
+{
   constructor(
     private readonly prisma: PrismaService,
     private readonly vault: UberCredentialVaultService,
@@ -164,21 +167,52 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
       : await this.prisma.uberMerchantConnection.findFirst({
           orderBy: { connectedAt: 'desc' },
         });
-    if (!row) return null;
-    if (!row.encryptedAccessToken) return null;
-    const accessToken = this.vault.decrypt(row.encryptedAccessToken);
+    if (!row?.encryptedAccessToken) return null;
     return {
       merchantUberUserId: row.merchantUberUserId,
-      accessToken,
-      refreshToken: row.encryptedRefreshToken
-        ? this.vault.decrypt(row.encryptedRefreshToken)
-        : null,
       expiresAt: row.expiresAt,
       scope: row.scope,
       tokenType: row.tokenType,
       connectedAt: row.connectedAt,
       rawStoresSnapshot: row.rawStoresSnapshot,
     };
+  }
+  async loadCredential(merchantUberUserId: string) {
+    const row = await this.prisma.uberMerchantConnection.findUnique({
+      where: { merchantUberUserId },
+    });
+    if (!row?.encryptedAccessToken) return null;
+    return {
+      merchantUberUserId: row.merchantUberUserId,
+      accessToken: this.vault.decrypt(row.encryptedAccessToken),
+      refreshToken: row.encryptedRefreshToken
+        ? this.vault.decrypt(row.encryptedRefreshToken)
+        : null,
+      expiresAt: row.expiresAt,
+      scope: row.scope,
+      tokenType: row.tokenType,
+      version: row.updatedAt.toISOString(),
+    };
+  }
+  async rotateCredential(
+    input: Parameters<UberMerchantCredentialStore['rotateCredential']>[0],
+  ) {
+    const updated = await this.prisma.uberMerchantConnection.updateMany({
+      where: {
+        merchantUberUserId: input.merchantUberUserId,
+        updatedAt: new Date(input.expectedVersion),
+      },
+      data: {
+        encryptedAccessToken: this.vault.encrypt(input.accessToken),
+        encryptedRefreshToken: input.refreshToken
+          ? this.vault.encrypt(input.refreshToken)
+          : null,
+        expiresAt: input.expiresAt,
+        scope: input.scope,
+        tokenType: input.tokenType,
+      },
+    });
+    return updated.count === 1;
   }
   async upsertConnectionByUberUserId(
     input: Parameters<

@@ -52,6 +52,7 @@ import {
   UberMerchantApiAdapter,
   UberOAuthTokenAdapter,
 } from '../../infrastructure/uber-api/uber-merchant-api.adapter';
+import { UBER_MERCHANT_CREDENTIAL_STORE } from '../uber-api/uber-merchant-credential.port';
 import {
   UberMerchantResourceGateway,
   UberStoreGateway,
@@ -63,6 +64,10 @@ export function createMerchantWiring(): Provider[] {
     UberStoreGateway,
     UberOAuthTokenAdapter,
     { provide: UBER_OAUTH_TOKEN, useExisting: UberOAuthTokenAdapter },
+    {
+      provide: UBER_MERCHANT_CREDENTIAL_STORE,
+      useExisting: UberMerchantConnectionPrismaAdapter,
+    },
     UberMerchantApiAdapter,
     { provide: UBER_MERCHANT_API, useExisting: UberMerchantApiAdapter },
     { provide: UBER_STORE_API, useExisting: UberMerchantApiAdapter },
@@ -109,16 +114,14 @@ export function createMerchantWiring(): Provider[] {
       provide: DiscoverUberStoresUseCase,
       inject: [
         UBER_MERCHANT_API,
-        UBER_OAUTH_TOKEN,
         UBER_MERCHANT_CONNECTION_REPOSITORY,
         UBER_STORE_MAPPING_REPOSITORY,
       ],
       useFactory: (
         api: UberMerchantApiPort,
-        tokens: UberOAuthTokenPort,
         connections: UberMerchantConnectionRepositoryPort,
         mappings: UberStoreMappingRepositoryPort,
-      ) => new DiscoverUberStoresUseCase(api, tokens, connections, mappings),
+      ) => new DiscoverUberStoresUseCase(api, connections, mappings),
     },
     {
       provide: MapUberStoreUseCase,

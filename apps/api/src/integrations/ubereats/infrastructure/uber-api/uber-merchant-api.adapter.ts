@@ -13,6 +13,11 @@ import {
 } from './uber-api.gateway';
 import { UberAuthService } from './uber-token.provider';
 import { UberCryptoConfigService } from '../crypto/uber-crypto-config.service';
+import type { UberMerchantIdentity } from '../../application/merchant/uber-merchant-api.ports';
+import {
+  UBER_MERCHANT_CREDENTIAL_STORE,
+  type UberMerchantCredentialStore,
+} from './uber-merchant-credential.port';
 import {
   isUberApplicationError,
   UberTransientUpstreamError,
@@ -56,22 +61,25 @@ export class UberOAuthTokenAdapter implements UberOAuthTokenPort {
   exchangeAuthorizationCode(code: string, redirectUri: string) {
     return this.auth.exchangeAuthorizationCode(code, redirectUri);
   }
-  refreshAccessToken(refreshToken: string, scope?: string) {
-    return this.auth.refreshMerchantAccessToken(refreshToken, scope);
-  }
 }
 
-/** Stateless adapter: only builds Uber requests and translates wire responses. */
+/** Merchant gateway: resolves credentials, refreshes them, and translates Uber wire responses. */
 @Injectable()
 export class UberMerchantApiAdapter
   implements UberMerchantApiPort, UberStoreApiPort
 {
+  private readonly credentialRequests = new Map<string, Promise<string>>();
+
   constructor(
     @Inject(UberApiGatewayTransport)
     private readonly transport: UberGatewayTransportPort,
+    @Inject(UBER_MERCHANT_CREDENTIAL_STORE)
+    private readonly credentials: UberMerchantCredentialStore,
+    private readonly auth: UberAuthService,
   ) {}
 
-  async discoverStores(accessToken: string) {
+  async discoverStores(identity: UberMerchantIdentity) {
+    const accessToken = await this.accessTokenFor(identity);
     const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
     const candidates = [raw.stores, raw.data, object(raw.data)?.stores];
     const node = candidates.find(Array.isArray);
@@ -114,12 +122,13 @@ export class UberMerchantApiAdapter
     return { stores, raw };
   }
 
-  provisionStore(
-    accessToken: string,
+  async provisionStore(
+    identity: UberMerchantIdentity,
     storeId: string,
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ) {
+    const accessToken = await this.accessTokenFor(identity);
     return this.request(
       `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`,
       'POST',
@@ -181,6 +190,43 @@ export class UberMerchantApiAdapter
       attempts: maxAttempts,
       error: error || 'Uber 门店状态写入失败',
     };
+  }
+
+  private async accessTokenFor(
+    identity: UberMerchantIdentity,
+  ): Promise<string> {
+    const id = identity.merchantUberUserId.trim();
+    const inflight = this.credentialRequests.get(id);
+    if (inflight) return inflight;
+    const request = this.loadAndRefresh(id).finally(() =>
+      this.credentialRequests.delete(id),
+    );
+    this.credentialRequests.set(id, request);
+    return request;
+  }
+
+  private async loadAndRefresh(id: string): Promise<string> {
+    let credential = await this.credentials.loadCredential(id);
+    if (!credential) throw new Error('未找到 Uber 商户凭据');
+    if (
+      !credential.expiresAt ||
+      credential.expiresAt.getTime() > Date.now() + 60_000
+    )
+      return credential.accessToken;
+    if (!credential.refreshToken) throw new Error('Uber 商户凭据已过期');
+    const fresh = await this.auth.refreshMerchantAccessToken(
+      credential.refreshToken,
+      credential.scope ?? undefined,
+    );
+    const rotated = await this.credentials.rotateCredential({
+      merchantUberUserId: id,
+      expectedVersion: credential.version,
+      ...fresh,
+    });
+    if (rotated) return fresh.accessToken;
+    credential = await this.credentials.loadCredential(id);
+    if (!credential) throw new Error('未找到 Uber 商户凭据');
+    return credential.accessToken;
   }
 
   private async request(
