@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type { UberMenuReferenceQueryPort } from '../../application/menu/uber-menu-draft.ports';
+import type {
+  UberMenuReferenceQueryPort,
+  UberProvisionedStoreMapping,
+} from '../../application/menu/uber-menu-draft.ports';
 
 @Injectable()
 export class UberMenuReferenceQueryPrismaAdapter implements UberMenuReferenceQueryPort {
@@ -21,10 +24,11 @@ export class UberMenuReferenceQueryPrismaAdapter implements UberMenuReferenceQue
   }
 
   async findProvisionedStoreMapping(storeId: string) {
-    return await this.prisma.uberStoreMapping.findFirst({
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
       where: { uberStoreId: storeId, isProvisioned: true },
       select: { uberStoreId: true, rawPayload: true },
     });
+    return mapping as UberProvisionedStoreMapping | null;
   }
 
   async readBusinessSchedule() {

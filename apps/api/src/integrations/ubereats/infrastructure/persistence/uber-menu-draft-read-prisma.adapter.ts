@@ -22,6 +22,7 @@ import {
   buildUberDraftTreeNodes,
 } from '../../domain/menu/uber-menu-draft.projector';
 import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
+import type { UberMenuDraftJsonValue } from '../../domain/menu/uber-menu-diff.types';
 import { validateUberBusinessSchedule } from '../../domain/menu/uber-business-schedule.validator';
 import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 import { UberMenuDraftSourcePrismaRepository } from './uber-menu-draft.repositories';
@@ -142,7 +143,13 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       serviceAvailability: schedule.serviceAvailability,
       serviceAvailabilityTimezone: schedule.timezone,
       dirty: summary.changedItems > 0,
-      lastPublishedVersion,
+      lastPublishedVersion: lastPublishedVersion
+        ? {
+            ...lastPublishedVersion,
+            errorDetails:
+              lastPublishedVersion.errorDetails as UberMenuDraftJsonValue,
+          }
+        : null,
     };
   }
 

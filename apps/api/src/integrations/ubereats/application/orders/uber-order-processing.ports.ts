@@ -12,7 +12,7 @@ export const UBER_ORDER_STATUS_AUDIT_PORT = Symbol(
 export type UberWebhookInboxItem = {
   eventId: string;
   eventType: string;
-  payload: unknown;
+  payload: UberJsonValue;
   leaseToken: string;
   idempotencyKey: string;
   businessVersion: string;
