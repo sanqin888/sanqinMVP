@@ -180,11 +180,11 @@ describe('Uber gateways wire contract v1', () => {
   ] as const)(
     '%s maps domain input to the explicit Uber command wire schema',
     async (method, suffix, bodyFixture) => {
-      const executeAction = jest
+      const sendActionCommand = jest
         .fn()
         .mockResolvedValue({ ok: true, status: 200 });
       const adapter = new UberOrderActionGatewayAdapter({
-        executeAction,
+        sendActionCommand,
       });
       const common = {
         externalOrderId: 'order/1',
@@ -205,7 +205,7 @@ describe('Uber gateways wire contract v1', () => {
           : method === 'deny'
             ? 'DENY'
             : 'READY_FOR_PICKUP';
-      expect(executeAction).toHaveBeenCalledWith(
+      expect(sendActionCommand).toHaveBeenCalledWith(
         'order/1',
         action,
         fixture(bodyFixture),
@@ -231,7 +231,7 @@ describe('Uber gateways wire contract v1', () => {
           resourceHrefAllowedOrigins: 'https://api.uber.com',
         },
       );
-      await gateway.executeAction('order/1', action, {}, `${action}:v1`);
+      await gateway.sendActionCommand('order/1', action, {}, `${action}:v1`);
       expect(inspect).toHaveBeenCalledWith({
         path,
         method: 'POST',

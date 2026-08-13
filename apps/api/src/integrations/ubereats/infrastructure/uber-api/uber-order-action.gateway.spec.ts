@@ -10,17 +10,17 @@ describe('UberOrderActionGatewayAdapter', () => {
   ] as const)(
     '%s maps to the semantic endpoint with an empty payload and idempotency key',
     async (method, wireAction) => {
-      const executeAction = jest
+      const sendActionCommand = jest
         .fn()
         .mockResolvedValue({ ok: true, status: 200, data: {} });
       const adapter = new UberOrderActionGatewayAdapter({
-        executeAction,
+        sendActionCommand,
       } as never);
       await adapter[method]({
         externalOrderId: 'order/1',
         idempotencyKey: `${method}-key`,
       });
-      expect(executeAction).toHaveBeenCalledWith(
+      expect(sendActionCommand).toHaveBeenCalledWith(
         'order/1',
         wireAction,
         {},
@@ -30,18 +30,18 @@ describe('UberOrderActionGatewayAdapter', () => {
   );
 
   it('owns the DENY reason wire payload', async () => {
-    const executeAction = jest
+    const sendActionCommand = jest
       .fn()
       .mockResolvedValue({ ok: true, status: 200, data: {} });
     const gateway = new UberOrderActionGatewayAdapter({
-      executeAction,
+      sendActionCommand,
     } as never);
     await gateway.deny({
       externalOrderId: 'order/1',
       idempotencyKey: 'key',
       denial: { reasonCode: 'ITEM_UNAVAILABLE', reasonDetail: 'sold out' },
     });
-    expect(executeAction).toHaveBeenCalledWith(
+    expect(sendActionCommand).toHaveBeenCalledWith(
       'order/1',
       'DENY',
       {
@@ -59,11 +59,11 @@ describe('UberOrderActionGatewayAdapter', () => {
   ] as const)(
     'treats a repeated %s conflict as idempotent success',
     async (method, extra) => {
-      const executeAction = jest
+      const sendActionCommand = jest
         .fn()
         .mockResolvedValue({ ok: false, status: 409, data: {} });
       const adapter = new UberOrderActionGatewayAdapter({
-        executeAction,
+        sendActionCommand,
       } as never);
       await expect(
         adapter[method]({
@@ -76,12 +76,12 @@ describe('UberOrderActionGatewayAdapter', () => {
   );
 
   it('does not hide non-conflict upstream failures as idempotent success', async () => {
-    const executeAction = jest
+    const sendActionCommand = jest
       .fn()
       .mockResolvedValue({ ok: false, status: 422, data: {} });
 
     await expect(
-      new UberOrderActionGatewayAdapter({ executeAction } as never).deny({
+      new UberOrderActionGatewayAdapter({ sendActionCommand } as never).deny({
         externalOrderId: 'order-1',
         idempotencyKey: 'key',
         denial: { reasonCode: 'OTHER', reasonDetail: null },
@@ -90,15 +90,17 @@ describe('UberOrderActionGatewayAdapter', () => {
   });
 
   it('maps CANCEL to the merchant denial endpoint', async () => {
-    const executeAction = jest
+    const sendActionCommand = jest
       .fn()
       .mockResolvedValue({ ok: true, status: 200, data: {} });
-    await new UberOrderActionGatewayAdapter({ executeAction } as never).cancel({
+    await new UberOrderActionGatewayAdapter({
+      sendActionCommand,
+    } as never).cancel({
       externalOrderId: 'order-1',
       idempotencyKey: 'cancel-key',
       denial: { reasonCode: 'ITEM_UNAVAILABLE', reasonDetail: 'sold out' },
     });
-    expect(executeAction).toHaveBeenCalledWith(
+    expect(sendActionCommand).toHaveBeenCalledWith(
       'order-1',
       'DENY',
       { reason: { code: 'ITEM_AVAILABILITY', explanation: 'sold out' } },
@@ -107,7 +109,7 @@ describe('UberOrderActionGatewayAdapter', () => {
   });
 
   it('exposes only stable upstream facts for an HTTP failure', async () => {
-    const executeAction = jest.fn().mockResolvedValue({
+    const sendActionCommand = jest.fn().mockResolvedValue({
       ok: false,
       status: 429,
       data: { message: 'unsafe upstream detail' },
@@ -115,7 +117,7 @@ describe('UberOrderActionGatewayAdapter', () => {
     });
 
     const error = await new UberOrderActionGatewayAdapter({
-      executeAction,
+      sendActionCommand,
     } as never)
       .accept({ externalOrderId: 'order-1', idempotencyKey: 'key' })
       .catch((caught: unknown) => caught as UberOrderCommandError);
@@ -133,19 +135,19 @@ describe('UberOrderActionGatewayAdapter', () => {
   it.each([400, 429, 503])(
     'exposes HTTP %s without assigning service retry policy',
     async (status) => {
-      const executeAction = jest.fn().mockResolvedValue({
+      const sendActionCommand = jest.fn().mockResolvedValue({
         ok: false,
         status,
         data: {},
       });
       const error = await new UberOrderActionGatewayAdapter({
-        executeAction,
+        sendActionCommand,
       } as never)
         .accept({ externalOrderId: 'order-1', idempotencyKey: 'write-key' })
         .catch((caught: unknown) => caught as UberOrderCommandError);
       expect(error).toMatchObject({ status });
       expect(error).not.toHaveProperty('retryable');
-      expect(executeAction).toHaveBeenCalledWith(
+      expect(sendActionCommand).toHaveBeenCalledWith(
         'order-1',
         'ACCEPT',
         {},
@@ -155,10 +157,10 @@ describe('UberOrderActionGatewayAdapter', () => {
   );
 
   it('normalizes an unknown transport failure as no HTTP response', async () => {
-    const executeAction = jest.fn().mockRejectedValue(new Error('secret'));
+    const sendActionCommand = jest.fn().mockRejectedValue(new Error('secret'));
 
     await expect(
-      new UberOrderActionGatewayAdapter({ executeAction } as never).accept({
+      new UberOrderActionGatewayAdapter({ sendActionCommand } as never).accept({
         externalOrderId: 'order-1',
         idempotencyKey: 'key',
       }),

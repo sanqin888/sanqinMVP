@@ -45,7 +45,7 @@ export class UberOrderCommandError
 export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort {
   constructor(
     @Inject(UberOrderGateway)
-    private readonly gateway: Pick<UberOrderGateway, 'executeAction'>,
+    private readonly gateway: Pick<UberOrderGateway, 'sendActionCommand'>,
   ) {}
 
   accept(input: { externalOrderId: string; idempotencyKey: string }) {
@@ -88,9 +88,9 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     action: UberWireOrderAction,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    let outcome: Awaited<ReturnType<UberOrderGateway['executeAction']>>;
+    let outcome: Awaited<ReturnType<UberOrderGateway['sendActionCommand']>>;
     try {
-      outcome = await this.gateway.executeAction(
+      outcome = await this.gateway.sendActionCommand(
         input.externalOrderId,
         action,
         payload,
