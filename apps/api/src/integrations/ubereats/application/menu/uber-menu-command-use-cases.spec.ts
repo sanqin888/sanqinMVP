@@ -1,4 +1,6 @@
 import type {
+  MenuItemExistenceQueryPort,
+  OptionChoiceExistenceQueryPort,
   UberDraftGroupCommandPort,
   UberDraftItemCommandPort,
   UberDraftOptionCommandPort,
@@ -6,7 +8,6 @@ import type {
   UberOptionChildGroupBindingCommandPort,
   UberOptionItemConfigCommandPort,
 } from './uber-menu-draft.ports';
-import type { UberMenuReferenceValidator } from './uber-menu-reference-validator.service';
 import { BindUberDraftOptionChildGroupUseCase } from './bind-uber-draft-option-child-group.use-case';
 import { UnbindUberDraftOptionChildGroupUseCase } from './unbind-uber-draft-option-child-group.use-case';
 import { UpdateUberDraftGroupUseCase } from './update-uber-draft-group.use-case';
@@ -40,8 +41,8 @@ describe('Uber menu command use cases', () => {
     const update = jest.fn();
     const missing = new Error('missing item');
     const references = {
-      ensureMenuItemExists: jest.fn().mockRejectedValue(missing),
-    } as unknown as UberMenuReferenceValidator;
+      menuItemExists: jest.fn().mockRejectedValue(missing),
+    } satisfies MenuItemExistenceQueryPort;
 
     const upsertCommands: UberItemChannelConfigCommandPort = {
       upsertUberItemChannelConfig: upsert,
@@ -71,8 +72,8 @@ describe('Uber menu command use cases', () => {
     const update = jest.fn();
     const missing = new Error('missing option');
     const references = {
-      ensureOptionChoiceExists: jest.fn().mockRejectedValue(missing),
-    } as unknown as UberMenuReferenceValidator;
+      optionChoiceExists: jest.fn().mockRejectedValue(missing),
+    } satisfies OptionChoiceExistenceQueryPort;
 
     const upsertCommands: UberOptionItemConfigCommandPort = {
       upsertUberOptionItemConfig: upsert,

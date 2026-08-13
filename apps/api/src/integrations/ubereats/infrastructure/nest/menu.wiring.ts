@@ -10,7 +10,6 @@ import { UpdateUberDraftOptionUseCase } from '../../application/menu/update-uber
 import { BindUberDraftOptionChildGroupUseCase } from '../../application/menu/bind-uber-draft-option-child-group.use-case';
 import { UnbindUberDraftOptionChildGroupUseCase } from '../../application/menu/unbind-uber-draft-option-child-group.use-case';
 import { QueryUberMenuDraftDiffUseCase } from '../../application/menu/query-uber-menu-draft-diff.use-case';
-import { UberMenuReferenceValidator } from '../../application/menu/uber-menu-reference-validator.service';
 import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
 import { PublishUberMenuUseCase } from '../../application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from '../../application/menu/confirm-uber-menu-publication.use-case';
@@ -30,11 +29,15 @@ import {
   type UberDraftOptionCommandPort,
   type UberOptionChildGroupBindingCommandPort,
   type UberMenuDraftReadPort,
-  type UberMenuReferenceQueryPort,
+  type MenuItemExistenceQueryPort,
+  type OptionChoiceExistenceQueryPort,
   UBER_MENU_CONFIG_QUERY_PORT,
   UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
   UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
-  UBER_MENU_REFERENCE_QUERY_PORT,
+  MENU_ITEM_EXISTENCE_QUERY_PORT,
+  OPTION_CHOICE_EXISTENCE_QUERY_PORT,
+  PROVISIONED_UBER_STORE_QUERY_PORT,
+  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
   UBER_MENU_DRAFT_DIFF_PORT,
   UBER_DRAFT_ITEM_COMMAND_PORT,
   UBER_DRAFT_GROUP_COMMAND_PORT,
@@ -79,7 +82,7 @@ import { UberMenuConfigWritePrismaAdapter } from '../../infrastructure/persisten
 import { UberMenuDraftReadPrismaAdapter } from '../../infrastructure/persistence/uber-menu-draft-read-prisma.adapter';
 import { UberMenuDraftMutationPrismaAdapter } from '../../infrastructure/persistence/uber-menu-draft-mutation-prisma.adapter';
 import { UberMenuDraftDiffPrismaAdapter } from '../../infrastructure/persistence/uber-menu-draft-diff-prisma.adapter';
-import { UberMenuReferenceQueryPrismaAdapter } from '../../infrastructure/persistence/uber-menu-reference-query-prisma.adapter';
+import { UberMenuSupportingQueriesPrismaAdapter } from '../../infrastructure/persistence/uber-menu-supporting-queries-prisma.adapter';
 import {
   UberMenuGatewayAdapter,
   UberMenuImageProbeAdapter,
@@ -104,7 +107,7 @@ export function createMenuWiring(): Provider[] {
     UberMenuDraftReadPrismaAdapter,
     UberMenuDraftMutationPrismaAdapter,
     UberMenuDraftDiffPrismaAdapter,
-    UberMenuReferenceQueryPrismaAdapter,
+    UberMenuSupportingQueriesPrismaAdapter,
     {
       provide: UBER_MENU_CONFIG_QUERY_PORT,
       useExisting: UberMenuConfigQueryPrismaAdapter,
@@ -142,8 +145,20 @@ export function createMenuWiring(): Provider[] {
       useExisting: UberMenuDraftDiffPrismaAdapter,
     },
     {
-      provide: UBER_MENU_REFERENCE_QUERY_PORT,
-      useExisting: UberMenuReferenceQueryPrismaAdapter,
+      provide: MENU_ITEM_EXISTENCE_QUERY_PORT,
+      useExisting: UberMenuSupportingQueriesPrismaAdapter,
+    },
+    {
+      provide: OPTION_CHOICE_EXISTENCE_QUERY_PORT,
+      useExisting: UberMenuSupportingQueriesPrismaAdapter,
+    },
+    {
+      provide: PROVISIONED_UBER_STORE_QUERY_PORT,
+      useExisting: UberMenuSupportingQueriesPrismaAdapter,
+    },
+    {
+      provide: UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+      useExisting: UberMenuSupportingQueriesPrismaAdapter,
     },
     UberMenuAvailabilityPrismaAdapter,
     {
@@ -176,12 +191,6 @@ export function createMenuWiring(): Provider[] {
       useExisting: UberMenuNotificationPrismaRepository,
     },
     {
-      provide: UberMenuReferenceValidator,
-      inject: [UBER_MENU_REFERENCE_QUERY_PORT],
-      useFactory: (references: UberMenuReferenceQueryPort) =>
-        new UberMenuReferenceValidator(references),
-    },
-    {
       provide: QueryUberMenuConfigUseCase,
       inject: [UBER_MENU_CONFIG_QUERY_PORT],
       useFactory: (queries: UberMenuConfigQueryPort) =>
@@ -191,23 +200,23 @@ export function createMenuWiring(): Provider[] {
       provide: UpsertUberItemChannelConfigUseCase,
       inject: [
         UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
-        UberMenuReferenceValidator,
+        MENU_ITEM_EXISTENCE_QUERY_PORT,
       ],
       useFactory: (
         commands: UberItemChannelConfigCommandPort,
-        references: UberMenuReferenceValidator,
-      ) => new UpsertUberItemChannelConfigUseCase(commands, references),
+        menuItems: MenuItemExistenceQueryPort,
+      ) => new UpsertUberItemChannelConfigUseCase(commands, menuItems),
     },
     {
       provide: UpsertUberOptionItemConfigUseCase,
       inject: [
         UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
-        UberMenuReferenceValidator,
+        OPTION_CHOICE_EXISTENCE_QUERY_PORT,
       ],
       useFactory: (
         commands: UberOptionItemConfigCommandPort,
-        references: UberMenuReferenceValidator,
-      ) => new UpsertUberOptionItemConfigUseCase(commands, references),
+        optionChoices: OptionChoiceExistenceQueryPort,
+      ) => new UpsertUberOptionItemConfigUseCase(commands, optionChoices),
     },
     {
       provide: ReadUberMenuDraftUseCase,
@@ -217,11 +226,11 @@ export function createMenuWiring(): Provider[] {
     },
     {
       provide: UpdateUberDraftItemUseCase,
-      inject: [UBER_DRAFT_ITEM_COMMAND_PORT, UberMenuReferenceValidator],
+      inject: [UBER_DRAFT_ITEM_COMMAND_PORT, MENU_ITEM_EXISTENCE_QUERY_PORT],
       useFactory: (
         commands: UberDraftItemCommandPort,
-        references: UberMenuReferenceValidator,
-      ) => new UpdateUberDraftItemUseCase(commands, references),
+        menuItems: MenuItemExistenceQueryPort,
+      ) => new UpdateUberDraftItemUseCase(commands, menuItems),
     },
     {
       provide: UpdateUberDraftGroupUseCase,
@@ -231,11 +240,14 @@ export function createMenuWiring(): Provider[] {
     },
     {
       provide: UpdateUberDraftOptionUseCase,
-      inject: [UBER_DRAFT_OPTION_COMMAND_PORT, UberMenuReferenceValidator],
+      inject: [
+        UBER_DRAFT_OPTION_COMMAND_PORT,
+        OPTION_CHOICE_EXISTENCE_QUERY_PORT,
+      ],
       useFactory: (
         commands: UberDraftOptionCommandPort,
-        references: UberMenuReferenceValidator,
-      ) => new UpdateUberDraftOptionUseCase(commands, references),
+        optionChoices: OptionChoiceExistenceQueryPort,
+      ) => new UpdateUberDraftOptionUseCase(commands, optionChoices),
     },
     {
       provide: BindUberDraftOptionChildGroupUseCase,
