@@ -15,7 +15,6 @@ export type UberMerchantConnectionRecord = {
   scope: string | null;
   tokenType: string | null;
   connectedAt: Date;
-  rawStoresSnapshot?: unknown;
 };
 
 export type UberStoreMappingRecord = {
@@ -26,7 +25,6 @@ export type UberStoreMappingRecord = {
   isProvisioned: boolean;
   provisionedAt: Date | null;
   posExternalStoreId: string | null;
-  rawPayload?: unknown;
 };
 
 export type UpsertStoreMappingInput = {

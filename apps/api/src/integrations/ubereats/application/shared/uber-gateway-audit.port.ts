@@ -1,12 +1,9 @@
+import type { UberJsonValue } from './uber-json-value';
+
 export const UBER_GATEWAY_AUDIT_PORT = Symbol('UBER_GATEWAY_AUDIT_PORT');
 
-export type UberGatewayAuditJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | UberGatewayAuditJsonValue[]
-  | { [key: string]: UberGatewayAuditJsonValue };
+/** Stable JSON boundary for sanitized upstream wire audit data. */
+export type UberGatewayAuditJsonValue = UberJsonValue;
 
 export interface UberGatewayAuditEvent {
   operation: string;

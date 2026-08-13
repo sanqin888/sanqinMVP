@@ -4,9 +4,13 @@ import type { UberAuthService } from './uber-token.provider';
 import { createUberTransportFake } from '../../test/uber-api-test.helpers';
 
 describe('UberMerchantApiAdapter merchant credentials', () => {
-  const audit = () => ({
-    recordResponse: jest.fn().mockResolvedValue(undefined),
-  });
+  type GatewayAudit = ConstructorParameters<typeof UberMerchantApiAdapter>[3];
+  const audit = (): jest.Mocked<GatewayAudit> => {
+    const recordResponse: jest.MockedFunction<GatewayAudit['recordResponse']> =
+      jest.fn();
+    recordResponse.mockResolvedValue(undefined);
+    return { recordResponse };
+  };
   const expired = () => ({
     merchantUberUserId: 'merchant-1',
     accessToken: 'expired-access',

@@ -98,7 +98,6 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
     const connections: UberMerchantConnectionRepositoryPort = {
       findConnection: jest.fn(() => Promise.resolve(null)),
       upsertConnectionByUberUserId,
-      saveStoresSnapshot: jest.fn(() => Promise.resolve()),
     };
     return {
       row,

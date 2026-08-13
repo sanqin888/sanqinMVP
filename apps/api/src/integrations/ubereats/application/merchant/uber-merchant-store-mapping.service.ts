@@ -31,7 +31,6 @@ export class DiscoverUberStoresUseCase {
           isProvisioned: s.integrationEnabled,
           provisionedAt: s.integrationEnabled ? new Date() : null,
           posExternalStoreId: s.posExternalStoreId,
-          rawPayload: null,
         }),
       ),
     );

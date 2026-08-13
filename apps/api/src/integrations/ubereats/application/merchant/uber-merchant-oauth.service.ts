@@ -201,7 +201,6 @@ export class CompleteUberOAuthUseCase {
       await this.connections.upsertConnectionByUberUserId({
         ...token,
         connectedAt,
-        rawStoresSnapshot: null,
       });
       await this.states.completeOAuthState(nonce, connectedAt);
       return {

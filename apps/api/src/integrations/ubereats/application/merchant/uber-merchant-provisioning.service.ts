@@ -91,7 +91,6 @@ export class ProvisionUberStoreUseCase {
       isProvisioned: true,
       provisionedAt: new Date(),
       posExternalStoreId: response.posExternalStoreId,
-      rawPayload: null,
     });
     return {
       ok: true,

@@ -59,7 +59,6 @@ describe('UberMerchantConnectionPrismaAdapter', () => {
       scope: 'eats.store',
       tokenType: 'Bearer',
       connectedAt: new Date('2026-08-12T00:00:00.000Z'),
-      rawStoresSnapshot: null,
     });
 
     if (!mutation) throw new Error('Expected an Uber credential upsert');
