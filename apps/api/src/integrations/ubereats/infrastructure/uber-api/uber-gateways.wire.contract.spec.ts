@@ -11,6 +11,7 @@ import {
   type UberAuthHttpPort,
 } from './uber-token.provider';
 import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
+import type { UberGatewayAuditPort } from '../../application/shared/uber-gateway-audit.port';
 import {
   createUberTransportFake,
   uberHttpResult,
@@ -23,6 +24,9 @@ import {
 } from './uber-resource.gateways';
 
 const fixtureRoot = join(__dirname, '../../test/fixtures/uber-contract/v1');
+const audit: UberGatewayAuditPort = {
+  recordResponse: () => Promise.resolve(),
+};
 const isJsonObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -93,6 +97,7 @@ describe('Uber gateways wire contract v1', () => {
       transport,
       credentials,
       {} as UberAuthService,
+      audit,
     );
 
     await adapter.discoverStores({ merchantUberUserId: 'merchant-1' });
@@ -127,7 +132,12 @@ describe('Uber gateways wire contract v1', () => {
   it('store status has a write scope and stable idempotency key', async () => {
     const transport = createUberTransportFake();
     transport.inspect.mockResolvedValue(uberHttpResult(200));
-    const adapter = new UberMerchantApiAdapter(transport);
+    const adapter = new UberMerchantApiAdapter(
+      transport,
+      undefined as never,
+      undefined as never,
+      audit,
+    );
     await adapter.writeStatus('store/1', { status: 'ONLINE' }, 'status:key:v1');
     expect(transport.inspect).toHaveBeenCalledWith({
       path: '/v1/eats/stores/store%2F1/status',

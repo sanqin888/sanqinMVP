@@ -1,4 +1,5 @@
 import { UBER_TELEMETRY_PORT } from '../../application/shared/uber-telemetry.port';
+import { UBER_GATEWAY_AUDIT_PORT } from '../../application/shared/uber-gateway-audit.port';
 import type { Provider } from '@nestjs/common';
 import { BrowserWriteCsrfGuard } from '../../api/ubereats-csrf.guard';
 import { UBER_RATE_LIMITER_PORT } from '../../application/shared/uber-rate-limiter.port';
@@ -12,6 +13,7 @@ import { UberWorkerConfigService } from '../../infrastructure/workers/uber-worke
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 import { HmacUberWebhookSignatureVerifier } from '../../infrastructure/crypto/uber-webhook-signature-verifier';
 import { UberTelemetryService } from '../../infrastructure/persistence/uber-telemetry.service';
+import { UberGatewayAuditPrismaAdapter } from '../../infrastructure/persistence/uber-gateway-audit-prisma.adapter';
 import { UberWebhookInboxPrismaAdapter } from '../../infrastructure/persistence/uber-webhook-inbox-prisma.adapter';
 import { UberApiGatewayTransport } from '../../infrastructure/uber-api/uber-api.gateway';
 import { UberHttpClient } from '../../infrastructure/uber-api/uber-http.client';
@@ -44,6 +46,11 @@ export function createCommonWiring(): Provider[] {
     },
     UberTelemetryService,
     { provide: UBER_TELEMETRY_PORT, useExisting: UberTelemetryService },
+    UberGatewayAuditPrismaAdapter,
+    {
+      provide: UBER_GATEWAY_AUDIT_PORT,
+      useExisting: UberGatewayAuditPrismaAdapter,
+    },
     UberWebhookInboxPrismaAdapter,
     {
       provide: UBER_WEBHOOK_INBOX_PORT,

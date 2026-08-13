@@ -4,6 +4,9 @@ import type { UberAuthService } from './uber-token.provider';
 import { createUberTransportFake } from '../../test/uber-api-test.helpers';
 
 describe('UberMerchantApiAdapter merchant credentials', () => {
+  const audit = () => ({
+    recordResponse: jest.fn().mockResolvedValue(undefined),
+  });
   const expired = () => ({
     merchantUberUserId: 'merchant-1',
     accessToken: 'expired-access',
@@ -32,7 +35,12 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
     const auth = {
       refreshMerchantAccessToken,
     } as unknown as jest.Mocked<UberAuthService>;
-    const gateway = new UberMerchantApiAdapter(transport, credentials, auth);
+    const gateway = new UberMerchantApiAdapter(
+      transport,
+      credentials,
+      auth,
+      audit(),
+    );
 
     await gateway.discoverStores({ merchantUberUserId: 'merchant-1' });
 
@@ -74,9 +82,14 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
         tokenType: 'Bearer',
       };
     });
-    const gateway = new UberMerchantApiAdapter(transport, credentials, {
-      refreshMerchantAccessToken,
-    } as unknown as UberAuthService);
+    const gateway = new UberMerchantApiAdapter(
+      transport,
+      credentials,
+      {
+        refreshMerchantAccessToken,
+      } as unknown as UberAuthService,
+      audit(),
+    );
 
     const calls = [
       gateway.discoverStores({ merchantUberUserId: 'merchant-1' }),
@@ -87,5 +100,47 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
 
     expect(refreshMerchantAccessToken).toHaveBeenCalledTimes(1);
     expect(rotateCredential).toHaveBeenCalledTimes(1);
+  });
+
+  it('审计失败采用 best-effort，不阻断 discovery，并仅发送脱敏原始响应到专用 port', async () => {
+    const transport = createUberTransportFake();
+    transport.request.mockResolvedValue({
+      stores: [],
+      accessToken: 'must-not-leak',
+      nested: { password: 'must-not-leak' },
+    });
+    const credentials: jest.Mocked<UberMerchantCredentialStore> = {
+      loadCredential: jest.fn().mockResolvedValue({
+        ...expired(),
+        accessToken: 'valid',
+        expiresAt: new Date(Date.now() + 3_600_000),
+      }),
+      rotateCredential: jest.fn(),
+    };
+    const gatewayAudit = audit();
+    gatewayAudit.recordResponse.mockRejectedValue(new Error('audit offline'));
+    const gateway = new UberMerchantApiAdapter(
+      transport,
+      credentials,
+      {} as UberAuthService,
+      gatewayAudit,
+    );
+
+    await expect(
+      gateway.discoverStores({ merchantUberUserId: 'merchant-1' }),
+    ).resolves.toEqual({ stores: [] });
+    const event = gatewayAudit.recordResponse.mock.calls[0][0];
+    expect(event).toMatchObject({
+      operation: 'merchant.discover-stores',
+      merchantUberUserId: 'merchant-1',
+      outcome: 'RECEIVED',
+      upstreamStatus: null,
+      sanitizedRawResponse: {
+        stores: [],
+        accessToken: '[REDACTED]',
+        nested: { password: '[REDACTED]' },
+      },
+    });
+    expect(event.recordedAt).toBeInstanceOf(Date);
   });
 });
