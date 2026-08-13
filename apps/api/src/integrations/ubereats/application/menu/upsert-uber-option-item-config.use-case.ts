@@ -1,23 +1,14 @@
 import type { UberMenuConfigWritePort } from './uber-menu-draft.ports';
 import { UberMenuReferenceValidator } from './uber-menu-reference-validator.service';
 
-/** The write port owns one atomic, idempotent upsert for each command. */
-export class WriteUberMenuConfigUseCase {
+/** Owns the atomic, idempotent option item configuration command. */
+export class UpsertUberOptionItemConfigUseCase {
   constructor(
     private readonly writes: UberMenuConfigWritePort,
     private readonly references: UberMenuReferenceValidator,
   ) {}
 
-  async upsertItemChannelConfig(
-    input: Parameters<
-      UberMenuConfigWritePort['upsertUberItemChannelConfig']
-    >[0],
-  ) {
-    await this.references.ensureMenuItemExists(input.menuItemStableId);
-    return this.writes.upsertUberItemChannelConfig(input);
-  }
-
-  async upsertOptionItemConfig(
+  async execute(
     input: Parameters<UberMenuConfigWritePort['upsertUberOptionItemConfig']>[0],
   ) {
     await this.references.ensureOptionChoiceExists(input.optionChoiceStableId);

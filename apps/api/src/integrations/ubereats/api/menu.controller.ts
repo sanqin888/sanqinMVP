@@ -32,10 +32,14 @@ import {
   UpsertUberPriceBookItemDto,
 } from '../contracts/requests/ubereats.requests';
 import { QueryUberMenuConfigUseCase } from '../application/menu/query-uber-menu-config.use-case';
-import { WriteUberMenuConfigUseCase } from '../application/menu/write-uber-menu-config.use-case';
+import { UpsertUberItemChannelConfigUseCase } from '../application/menu/upsert-uber-item-channel-config.use-case';
+import { UpsertUberOptionItemConfigUseCase } from '../application/menu/upsert-uber-option-item-config.use-case';
 import { ReadUberMenuDraftUseCase } from '../application/menu/read-uber-menu-draft.use-case';
-import { UpdateUberMenuDraftItemUseCase } from '../application/menu/update-uber-menu-draft-item.use-case';
-import { BindUberMenuOptionChildGroupUseCase } from '../application/menu/bind-uber-menu-option-child-group.use-case';
+import { UpdateUberDraftItemUseCase } from '../application/menu/update-uber-draft-item.use-case';
+import { UpdateUberDraftGroupUseCase } from '../application/menu/update-uber-draft-group.use-case';
+import { UpdateUberDraftOptionUseCase } from '../application/menu/update-uber-draft-option.use-case';
+import { BindUberDraftOptionChildGroupUseCase } from '../application/menu/bind-uber-draft-option-child-group.use-case';
+import { UnbindUberDraftOptionChildGroupUseCase } from '../application/menu/unbind-uber-draft-option-child-group.use-case';
 import { QueryUberMenuDraftDiffUseCase } from '../application/menu/query-uber-menu-draft-diff.use-case';
 import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
 import { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
@@ -52,10 +56,14 @@ import {
 export class UberEatsMenuController {
   constructor(
     private readonly configQueries: QueryUberMenuConfigUseCase,
-    private readonly configWrites: WriteUberMenuConfigUseCase,
+    private readonly itemConfigUpserts: UpsertUberItemChannelConfigUseCase,
+    private readonly optionConfigUpserts: UpsertUberOptionItemConfigUseCase,
     private readonly draftReader: ReadUberMenuDraftUseCase,
-    private readonly draftUpdates: UpdateUberMenuDraftItemUseCase,
-    private readonly optionGroupBindings: BindUberMenuOptionChildGroupUseCase,
+    private readonly draftItemUpdates: UpdateUberDraftItemUseCase,
+    private readonly draftGroupUpdates: UpdateUberDraftGroupUseCase,
+    private readonly draftOptionUpdates: UpdateUberDraftOptionUseCase,
+    private readonly optionChildGroupBindings: BindUberDraftOptionChildGroupUseCase,
+    private readonly optionChildGroupUnbindings: UnbindUberDraftOptionChildGroupUseCase,
     private readonly draftDiffs: QueryUberMenuDraftDiffUseCase,
     private readonly publications: PublishUberMenuUseCase,
     private readonly availability: UberMenuAvailabilityUseCase,
@@ -87,7 +95,7 @@ export class UberEatsMenuController {
     @Body() dto: UpsertUberPriceBookItemDto,
     @Query('storeId', OptionalResourceIdPipe) storeId?: string,
   ) {
-    await this.configWrites.upsertItemChannelConfig({
+    await this.itemConfigUpserts.execute({
       storeId,
       menuItemStableId,
       priceCents: dto.priceCents,
@@ -115,7 +123,7 @@ export class UberEatsMenuController {
     @Body() dto: UpsertUberOptionItemConfigDto,
     @Query('storeId', OptionalResourceIdPipe) storeId?: string,
   ) {
-    await this.configWrites.upsertOptionItemConfig({
+    await this.optionConfigUpserts.execute({
       storeId,
       optionChoiceStableId,
       priceDeltaCents: dto.priceDeltaCents,
@@ -139,7 +147,7 @@ export class UberEatsMenuController {
     @Param('itemId', ResourceIdPipe) itemId: string,
     @Body() dto: UpdateUberDraftItemDto,
   ) {
-    await this.draftUpdates.updateItem(itemId, dto);
+    await this.draftItemUpdates.execute(itemId, dto);
     return presentMenuMutation();
   }
 
@@ -149,7 +157,7 @@ export class UberEatsMenuController {
     @Param('groupId', ResourceIdPipe) groupId: string,
     @Body() dto: UpdateUberDraftGroupDto,
   ) {
-    await this.draftUpdates.updateGroup(groupId, dto);
+    await this.draftGroupUpdates.execute(groupId, dto);
     return presentMenuMutation();
   }
 
@@ -159,7 +167,7 @@ export class UberEatsMenuController {
     @Param('optionItemId', ResourceIdPipe) optionItemId: string,
     @Body() dto: UpdateUberDraftOptionDto,
   ) {
-    await this.draftUpdates.updateOption(optionItemId, dto);
+    await this.draftOptionUpdates.execute(optionItemId, dto);
     return presentMenuMutation();
   }
 
@@ -169,7 +177,11 @@ export class UberEatsMenuController {
     @Param('optionItemId', ResourceIdPipe) optionItemId: string,
     @Body() dto: UpdateUberDraftOptionChildGroupDto,
   ) {
-    await this.optionGroupBindings.bind(optionItemId, dto.groupId, dto.storeId);
+    await this.optionChildGroupBindings.execute(
+      optionItemId,
+      dto.groupId,
+      dto.storeId,
+    );
     return presentMenuMutation();
   }
 
@@ -180,7 +192,11 @@ export class UberEatsMenuController {
     @Param('groupId', ResourceIdPipe) groupId: string,
     @Query('storeId', OptionalResourceIdPipe) storeId?: string,
   ) {
-    await this.optionGroupBindings.unbind(optionItemId, groupId, storeId);
+    await this.optionChildGroupUnbindings.execute(
+      optionItemId,
+      groupId,
+      storeId,
+    );
     return presentMenuMutation();
   }
 
