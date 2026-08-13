@@ -1,5 +1,4 @@
 import type { Provider } from '@nestjs/common';
-import { PrismaService } from '../../../../prisma/prisma.service';
 import { LoadUberMenuWorkflowUseCase } from '../../application/menu/load-uber-menu-workflow.use-case';
 import { UberMenuDraftUseCase } from '../../application/menu/uber-menu-draft.use-case';
 import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
@@ -84,12 +83,7 @@ export function createMenuWiring(): Provider[] {
       useFactory: () => new UberPublicBaseUrlAdapter(process.env),
     },
     { provide: UBER_PUBLIC_BASE_URL, useExisting: UberPublicBaseUrlAdapter },
-    {
-      provide: UberMenuDraftReadPrismaAdapter,
-      inject: [PrismaService, UBER_PUBLIC_BASE_URL],
-      useFactory: (prisma: PrismaService, urls: UberPublicBaseUrlPort) =>
-        new UberMenuDraftReadPrismaAdapter(prisma, urls),
-    },
+    UberMenuDraftReadPrismaAdapter,
     UberMenuDraftMutationPrismaAdapter,
     UberMenuDraftDiffPrismaAdapter,
     UberMenuReferenceQueryPrismaAdapter,
