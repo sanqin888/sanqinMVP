@@ -11,8 +11,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
   constructor(private readonly prisma: PrismaService) {}
 
   async loadPublishSnapshot(
-    storeId: string,
+    uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null> {
+    const storeId = uberStoreId;
     const [
       mapping,
       categories,

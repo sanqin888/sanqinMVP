@@ -14,9 +14,11 @@ import {
   type UberMenuSnapshotRepositoryPort,
   type UberPublicBaseUrlPort,
 } from './uber-menu-publication.ports';
+import type { ProvisionedUberStoreQueryPort } from './uber-menu-draft.ports';
 
 export class PublishUberMenuUseCase {
   constructor(
+    private readonly provisionedStores: ProvisionedUberStoreQueryPort,
     private readonly snapshots: UberMenuSnapshotRepositoryPort,
     private readonly publications: UberMenuPublicationRepositoryPort,
     private readonly gateway: UberMenuGatewayPort,
@@ -25,7 +27,15 @@ export class PublishUberMenuUseCase {
   ) {}
 
   async execute(input: PublishMenuInput) {
-    const storeId = input.storeId?.trim() || 'default';
+    const posStoreId = input.storeId?.trim() || 'default';
+    const mapping =
+      await this.provisionedStores.resolveProvisionedUberStoreId(posStoreId);
+    if (!mapping)
+      throw this.validationError(
+        'UBER_STORE_NOT_PROVISIONED',
+        `POS 门店 ${posStoreId} 未配置或尚未 provision。`,
+      );
+    const storeId = mapping.uberStoreId;
     const snapshot = await this.snapshots.loadPublishSnapshot(storeId);
     if (!snapshot)
       throw this.validationError(

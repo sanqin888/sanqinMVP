@@ -73,8 +73,9 @@ export interface OptionChoiceExistenceQueryPort {
   optionChoiceExists(stableId: string): Promise<boolean>;
 }
 export interface ProvisionedUberStoreQueryPort {
-  resolveProvisionedStore(
-    storeId: string,
+  /** Resolves the POS store/print-room id supplied by menu publication callers. */
+  resolveProvisionedUberStoreId(
+    posStoreId: string,
   ): Promise<UberProvisionedStoreMapping | null>;
 }
 export interface UberBusinessScheduleQueryPort {

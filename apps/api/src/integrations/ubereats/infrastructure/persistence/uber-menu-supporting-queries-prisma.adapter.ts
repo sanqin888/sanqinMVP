@@ -33,9 +33,9 @@ export class UberMenuSupportingQueriesPrismaAdapter
     return choice !== null;
   }
 
-  async resolveProvisionedStore(storeId: string) {
+  async resolveProvisionedUberStoreId(posStoreId: string) {
     return await this.prisma.uberStoreMapping.findFirst({
-      where: { uberStoreId: storeId, isProvisioned: true },
+      where: { posExternalStoreId: posStoreId, isProvisioned: true },
       select: { uberStoreId: true },
     });
   }

@@ -51,7 +51,10 @@ export type UberMenuPublishSnapshot = {
 };
 
 export interface UberMenuSnapshotRepositoryPort {
-  loadPublishSnapshot(storeId: string): Promise<UberMenuPublishSnapshot | null>;
+  /** Receives an already resolved Uber store id; adapters must not infer POS semantics. */
+  loadPublishSnapshot(
+    uberStoreId: string,
+  ): Promise<UberMenuPublishSnapshot | null>;
 }
 
 export type UberMenuPublicationStatus =
