@@ -30,7 +30,7 @@ import {
   UpdateUberDraftOptionDto,
   UpsertUberOptionItemConfigDto,
   UpsertUberPriceBookItemDto,
-} from '../contracts/requests/ubereats.requests';
+} from '../contracts/requests/menu.requests';
 import { QueryUberMenuConfigUseCase } from '../application/menu/query-uber-menu-config.use-case';
 import { UpsertUberItemChannelConfigUseCase } from '../application/menu/upsert-uber-item-channel-config.use-case';
 import { UpsertUberOptionItemConfigUseCase } from '../application/menu/upsert-uber-option-item-config.use-case';

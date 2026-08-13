@@ -26,7 +26,7 @@ import {
   OAuthCallbackQuery,
   ProvisionUberStoreDto,
   UpdatePosExternalStoreIdDto,
-} from '../contracts/requests/ubereats.requests';
+} from '../contracts/requests/oauth.requests';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,

@@ -20,7 +20,7 @@ import {
   GenerateUberReconciliationReportDto,
   OpsTicketListQuery,
   ReportListQuery,
-} from '../contracts/requests/ubereats.requests';
+} from '../contracts/requests/operations.requests';
 import {
   CreateUberOpsTicketUseCase,
   GenerateUberReconciliationReportUseCase,

@@ -6,7 +6,7 @@ import {
   UberMfaAdminWrite,
   UberReadOnlyAdmin,
 } from './ubereats-access.decorator';
-import { SyncOrderStatusDto } from '../contracts/requests/ubereats.requests';
+import { SyncOrderStatusDto } from '../contracts/requests/orders.requests';
 import {
   ListPendingUberOrdersQuery,
   SyncUberOrderStatusUseCase,
