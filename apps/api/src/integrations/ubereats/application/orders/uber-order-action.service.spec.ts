@@ -47,6 +47,35 @@ describe('UberOrderActionService contract', () => {
     );
   });
 
+  it('persists CANCEL as its own idempotent business action', async () => {
+    const { repository, service } = setup();
+    await service.request('order-1', 'CANCEL');
+    await service.request('order-1', 'CANCEL');
+    expect(repository.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'CANCEL',
+        idempotencyKey: expect.stringMatching(/^sanqin-uber-/),
+      }),
+    );
+    expect(repository.enqueue.mock.calls[0][0].idempotencyKey).toBe(
+      repository.enqueue.mock.calls[1][0].idempotencyKey,
+    );
+  });
+
+  it('dispatches a claimed CANCEL through the sole action gateway', async () => {
+    const { repository, gateway, service } = setup();
+    repository.claim.mockResolvedValue([{ ...task, action: 'CANCEL' }]);
+    await service.process(1, 'worker-a');
+    expect(gateway.cancel).toHaveBeenCalledWith({
+      externalOrderId: 'order-1',
+      idempotencyKey: 'key-1',
+    });
+    expect(repository.markSucceeded).toHaveBeenCalledWith(
+      'task-1',
+      'lease-from-claim',
+    );
+  });
+
   it('always writes success with the token returned by claim', async () => {
     const { repository, service } = setup();
     await service.process(1, 'worker-a');

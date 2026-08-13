@@ -41,6 +41,7 @@ export interface UberEatsMenuAvailabilityPort {
 
 export interface UberEatsOrderActionsPort {
   accept(externalOrderId: string): Promise<UberEatsOrderActionResult>;
+  cancel(externalOrderId: string): Promise<UberEatsOrderActionResult>;
   retryReadyForPickup(
     externalOrderId: string,
   ): Promise<UberEatsOrderActionResult>;

@@ -15,6 +15,8 @@ const canRequestOrderAction = (
     return (
       status === UberOrderStatus.pending || status === UberOrderStatus.paid
     );
+  if (action === 'CANCEL')
+    return status === UberOrderStatus.paid || status === UberOrderStatus.making;
   return status === UberOrderStatus.paid || status === UberOrderStatus.making;
 };
 
