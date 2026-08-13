@@ -47,6 +47,25 @@ describe('UberOrderActionService contract', () => {
     );
   });
 
+  it('builds the same normalized intent without performing I/O', () => {
+    const { repository, service } = setup();
+    const intent = service.buildIntent({
+      externalOrderId: ' order-1 ',
+      action: 'DENY',
+      denial: { reasonCode: ' INVALID_ORDER ', reasonDetail: ' invalid ' },
+    });
+
+    expect(intent).toEqual({
+      externalOrderId: 'order-1',
+      action: 'DENY',
+      idempotencyKey: expect.stringMatching(/^sanqin-uber-/),
+      businessVersion: 'v1',
+      reasonCode: 'INVALID_ORDER',
+      reasonDetail: 'invalid',
+    });
+    expect(repository.enqueue).not.toHaveBeenCalled();
+  });
+
   it('persists CANCEL as its own idempotent business action', async () => {
     const { repository, service } = setup();
     await service.request('order-1', 'CANCEL');

@@ -28,14 +28,20 @@ export type UberOrderEventCursor = {
 };
 
 /** Durable command written in the same transaction as the imported order. */
-export type UberOrderImportActionIntent = {
+export type UberOrderActionIntent<
+  TAction extends UberOrderActionName = UberOrderActionName,
+> = {
   externalOrderId: string;
-  action: Extract<UberOrderActionName, 'ACCEPT' | 'DENY'>;
+  action: TAction;
   idempotencyKey: string;
   businessVersion: string;
   reasonCode: string | null;
   reasonDetail: string | null;
 };
+
+export type UberOrderImportActionIntent = UberOrderActionIntent<
+  Extract<UberOrderActionName, 'ACCEPT' | 'DENY'>
+>;
 
 export interface UberOrderImportRepositoryPort {
   findMenuMappings(

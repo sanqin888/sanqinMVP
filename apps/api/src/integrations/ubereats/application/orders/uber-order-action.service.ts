@@ -1,9 +1,11 @@
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import {
+  type UberOrderActionIntent,
   type UberOrderActionGatewayPort,
   type UberOrderActionRepositoryPort,
   type UberOrderActionTask,
+  type UberOrderDenial,
 } from './uber-order.ports';
 
 export class UberOrderActionService {
@@ -15,20 +17,31 @@ export class UberOrderActionService {
   request(
     externalOrderId: string,
     action: UberOrderActionName,
-    denial?: { reasonCode: string; reasonDetail: string | null },
+    denial?: UberOrderDenial,
   ) {
-    const id = externalOrderId.trim();
+    return this.repository.enqueue(
+      this.buildIntent({ externalOrderId, action, denial }),
+    );
+  }
+
+  buildIntent<TAction extends UberOrderActionName>(input: {
+    externalOrderId: string;
+    action: TAction;
+    denial?: UberOrderDenial;
+  }): UberOrderActionIntent<TAction> {
+    const { action, denial } = input;
+    const id = input.externalOrderId.trim();
     if (!id) throw new Error('externalOrderId 不能为空');
     if (action === 'DENY' && !denial?.reasonCode.trim())
       throw new Error('拒单原因不能为空');
-    return this.repository.enqueue({
+    return {
       externalOrderId: id,
       action,
       idempotencyKey: UberOrderStateMachine.idempotencyKey(id, action),
       businessVersion: 'v1',
       reasonCode: denial?.reasonCode.trim() ?? null,
       reasonDetail: denial?.reasonDetail?.trim() || null,
-    });
+    };
   }
 
   async process(limit: number, owner: string): Promise<number> {
