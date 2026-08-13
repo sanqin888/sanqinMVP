@@ -41,6 +41,49 @@ const createActions = () =>
 
 describe('Uber order use-case boundaries', () => {
   it.each([
+    [
+      'terminal',
+      {
+        category: 'authentication',
+        code: 'UBER_SCOPE_INSUFFICIENT',
+        retryable: false,
+      },
+    ],
+    [
+      'transient',
+      {
+        category: 'transient-upstream',
+        code: 'UBER_NETWORK_ERROR',
+        retryable: true,
+      },
+    ],
+  ] as const)(
+    'propagates a %s order-detail failure without importing or denying',
+    async (_kind, gatewayError) => {
+      const repository = {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        findMenuMappings: jest.fn(),
+        saveImportedOrder: jest.fn(),
+      };
+      const actions = { request: jest.fn() };
+      const fetchOrderDetail = jest.fn().mockRejectedValue(gatewayError);
+      const useCase = new ImportUberOrderUseCase(
+        repository as never,
+        { fetchOrderDetail },
+        actions as unknown as UberOrderActionService,
+        { findMapping: jest.fn() } as never,
+      );
+
+      await expect(
+        useCase.execute('orders.notification', 'event-1', notification),
+      ).rejects.toBe(gatewayError);
+      expect(repository.findMenuMappings).not.toHaveBeenCalled();
+      expect(repository.saveImportedOrder).not.toHaveBeenCalled();
+      expect(actions.request).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
     ['MALFORMED_PAYLOAD', '订单详情无法解析'],
     ['EMPTY_ITEMS', '订单不包含可导入商品'],
   ] as const)(
