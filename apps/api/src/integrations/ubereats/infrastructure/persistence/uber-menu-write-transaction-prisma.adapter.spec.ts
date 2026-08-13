@@ -3,10 +3,10 @@ import { UberMenuWriteTransactionPrismaAdapter } from './uber-menu-write-transac
 
 describe('UberMenuWriteTransactionPrismaAdapter', () => {
   it('runs the write and durable telemetry on the transaction client', async () => {
-    type OpsEventCreate = (input: {
-      data: { eventName: string };
+    type OpsEventUpsert = (input: {
+      create: { eventName: string };
     }) => Promise<object>;
-    const create: jest.MockedFunction<OpsEventCreate> = jest
+    const upsert: jest.MockedFunction<OpsEventUpsert> = jest
       .fn()
       .mockResolvedValue({});
     const row = {
@@ -16,7 +16,7 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
     };
     const transactionClient = {
       uberItemChannelConfig: { upsert: jest.fn().mockResolvedValue(row) },
-      opsEvent: { create },
+      opsEvent: { upsert },
     };
     const $transaction = jest.fn(
       (work: (client: typeof transactionClient) => Promise<unknown>) =>
@@ -36,26 +36,37 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
 
     expect($transaction).toHaveBeenCalledTimes(1);
     expect(transactionClient.uberItemChannelConfig.upsert).toHaveBeenCalled();
-    expect(create).toHaveBeenCalled();
-    expect(create.mock.calls[0]?.[0].data.eventName).toBe(
+    expect(upsert).toHaveBeenCalled();
+    expect(upsert.mock.calls[0]?.[0].create.eventName).toBe(
       'ubereats_price_book_item_upserted',
     );
   });
 
-  it('propagates a durable side-effect failure through the transaction boundary', async () => {
+  it('rolls back both business data and the event when event persistence fails', async () => {
     const failure = new Error('telemetry unavailable');
+    const committed = { businessRows: 0, events: 0 };
+    const staged = { businessRows: 0, events: 0 };
     const transactionClient = {
       uberItemChannelConfig: {
-        upsert: jest.fn().mockResolvedValue({
-          priceCents: 1200,
-          isAvailable: true,
+        upsert: jest.fn().mockImplementation(() => {
+          staged.businessRows += 1;
+          return Promise.resolve({ priceCents: 1200, isAvailable: true });
         }),
       },
-      opsEvent: { create: jest.fn().mockRejectedValue(failure) },
+      opsEvent: {
+        upsert: jest.fn().mockImplementation(() => {
+          staged.events += 1;
+          return Promise.reject(failure);
+        }),
+      },
     };
     const $transaction = jest.fn(
-      async (work: (client: typeof transactionClient) => Promise<unknown>) =>
-        work(transactionClient),
+      async (work: (client: typeof transactionClient) => Promise<unknown>) => {
+        const result = await work(transactionClient);
+        committed.businessRows += staged.businessRows;
+        committed.events += staged.events;
+        return result;
+      },
     );
     const adapter = new UberMenuWriteTransactionPrismaAdapter({
       $transaction,
@@ -70,5 +81,7 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
       ),
     ).rejects.toBe(failure);
     expect($transaction).toHaveBeenCalledTimes(1);
+    expect(staged).toEqual({ businessRows: 1, events: 1 });
+    expect(committed).toEqual({ businessRows: 0, events: 0 });
   });
 });

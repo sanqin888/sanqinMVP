@@ -263,6 +263,14 @@ export class UberMenuDraftMutationPrismaAdapter
         groupId,
         mode: 'uber_binding_only',
       },
+      {
+        eventId: this.bindingEventKey(
+          'bound',
+          normalizedStoreId,
+          optionItemId,
+          groupId,
+        ),
+      },
     );
 
     return { ok: true, storeId: normalizedStoreId, optionItemId, groupId };
@@ -315,6 +323,14 @@ export class UberMenuDraftMutationPrismaAdapter
         groupId,
         isBound: row.isBound,
       },
+      {
+        eventId: this.bindingEventKey(
+          'unbound',
+          normalizedStoreId,
+          optionItemId,
+          groupId,
+        ),
+      },
     );
 
     return {
@@ -324,5 +340,14 @@ export class UberMenuDraftMutationPrismaAdapter
       groupId,
       deletedCount: 1,
     };
+  }
+
+  private bindingEventKey(
+    action: string,
+    storeId: string,
+    optionItemId: string,
+    groupId: string,
+  ): string {
+    return `uber-menu:binding:${action}:${encodeURIComponent(storeId)}:${encodeURIComponent(optionItemId)}:${encodeURIComponent(groupId)}`;
   }
 }

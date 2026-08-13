@@ -99,13 +99,22 @@ export class UberTelemetryService {
   ): Promise<void> {
     const correlated = this.contextFrom(attributes, context);
     const safeAttributes = this.sanitize(attributes, ATTRIBUTE_ALLOWLIST);
-    await this.prisma.opsEvent.create({
-      data: {
-        eventName,
-        source: 'ubereats',
-        payload: { ...safeAttributes, ...correlated } as Prisma.JsonObject,
-      },
-    });
+    const data = {
+      eventName,
+      source: 'ubereats',
+      payload: { ...safeAttributes, ...correlated } as Prisma.JsonObject,
+    };
+    const idempotencyKey = correlated.eventId;
+    if (idempotencyKey) {
+      await this.prisma.opsEvent.upsert({
+        where: { idempotencyKey },
+        create: { ...data, idempotencyKey },
+        // A retried command must not mutate or redeliver the original event.
+        update: {},
+      });
+    } else {
+      await this.prisma.opsEvent.create({ data });
+    }
     this.log('log', eventName, correlated, safeAttributes);
   }
 

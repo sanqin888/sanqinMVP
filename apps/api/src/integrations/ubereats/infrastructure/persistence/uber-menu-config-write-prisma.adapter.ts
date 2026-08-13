@@ -1,4 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberItemChannelConfigCommandPort,
@@ -56,12 +57,28 @@ export class UberMenuConfigWritePrismaAdapter
       },
     });
 
-    await this.telemetry.captureEvent('ubereats_price_book_item_upserted', {
-      storeId: normalizedStoreId,
-      menuItemStableId: input.menuItemStableId,
-      priceCents: row.priceCents,
-      isAvailable: row.isAvailable,
-    });
+    await this.telemetry.captureEvent(
+      'ubereats_price_book_item_upserted',
+      {
+        storeId: normalizedStoreId,
+        menuItemStableId: input.menuItemStableId,
+        priceCents: row.priceCents,
+        isAvailable: row.isAvailable,
+      },
+      {
+        eventId: this.eventKey(
+          'item',
+          normalizedStoreId,
+          input.menuItemStableId,
+          {
+            priceCents: row.priceCents,
+            isAvailable: row.isAvailable,
+            displayName: row.displayName,
+            displayDescription: row.displayDescription,
+          },
+        ),
+      },
+    );
 
     return {
       ok: true,
@@ -104,17 +121,45 @@ export class UberMenuConfigWritePrismaAdapter
       },
     });
 
-    await this.telemetry.captureEvent('ubereats_option_item_config_upserted', {
-      storeId: normalizedStoreId,
-      optionChoiceStableId: input.optionChoiceStableId,
-      priceDeltaCents: row.priceDeltaCents,
-      isAvailable: row.isAvailable,
-    });
+    await this.telemetry.captureEvent(
+      'ubereats_option_item_config_upserted',
+      {
+        storeId: normalizedStoreId,
+        optionChoiceStableId: input.optionChoiceStableId,
+        priceDeltaCents: row.priceDeltaCents,
+        isAvailable: row.isAvailable,
+      },
+      {
+        eventId: this.eventKey(
+          'option',
+          normalizedStoreId,
+          input.optionChoiceStableId,
+          {
+            priceDeltaCents: row.priceDeltaCents,
+            isAvailable: row.isAvailable,
+            displayName: row.displayName,
+            displayDescription: row.displayDescription,
+          },
+        ),
+      },
+    );
 
     return {
       ok: true,
       storeId: normalizedStoreId,
       item: row,
     };
+  }
+
+  private eventKey(
+    kind: string,
+    storeId: string,
+    entityId: string,
+    state: Record<string, unknown>,
+  ): string {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(state))
+      .digest('hex');
+    return `uber-menu:${kind}:${storeId}:${entityId}:${digest}`;
   }
 }

@@ -214,7 +214,7 @@ export interface UberOptionChildGroupBindingCommandPort {
 }
 /**
  * Application-owned commit boundary for menu writes. Rejection from `work`
- * rolls back both the command write and all durable telemetry it emits.
+ * rolls back both the command write and its idempotent durable event record.
  *
  * `TCommands` deliberately lets each use case see only its required command.
  */
