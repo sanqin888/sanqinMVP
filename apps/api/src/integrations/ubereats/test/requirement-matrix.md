@@ -91,10 +91,3 @@ webhook URL、订阅事件和 signing key 来源。任何未复核项不得标�
 建立证据，已从支持 switch 删除并立即 quarantine。它们**不是历史兼容版本**，因此不设
 虚假的退役日期。若应用所有者能提供正式版本化文档，须新增独立 parser、fixture、测试、
 `businessVersion` 和明确退役日期后才能恢复。
-
-## 凭据与 smoke test
-
-Sandbox smoke test 不属于常规 Jest 测试集合；使用 `pnpm --filter api test:uber-smoke`
-显式运行。CI 仅在专用 `UBER_SANDBOX_*` secrets 全部存在时运行该命令；若环境将
-`UBER_SANDBOX_SMOKE_REQUIRED` 配置为 `true`，凭据不完整会令检查失败。测试不得打印 request body、Authorization、token response、
-signing key、商户或顾客资料；生产凭据不得复制到 fixture 或报告。

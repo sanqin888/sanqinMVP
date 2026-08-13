@@ -45,7 +45,6 @@ const WHITE_BOX_TEST_FILES = new Set([
   'test/contract-matrix.ts',
   'test/uber-api-test.helpers.ts',
   'test/uber-contract-fixtures.spec.ts',
-  'test/uber-sandbox.smoke.spec.ts',
   'test/uber-service-test.helpers.ts',
   'uber-credential-schema.spec.ts',
   'uber-rate-limiter-composition.spec.ts',
