@@ -46,7 +46,8 @@ import {
   UBER_DRAFT_ITEM_COMMAND_PORT,
   UBER_DRAFT_GROUP_COMMAND_PORT,
   UBER_DRAFT_OPTION_COMMAND_PORT,
-  UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT,
+  UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT,
+  UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT,
   UBER_MENU_DRAFT_READ_PORT,
 } from '../../application/menu/uber-menu-draft.ports';
 import {
@@ -147,7 +148,11 @@ export function createMenuWiring(): Provider[] {
       useExisting: UberMenuDraftMutationPrismaAdapter,
     },
     {
-      provide: UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT,
+      provide: UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT,
+      useExisting: UberMenuDraftMutationPrismaAdapter,
+    },
+    {
+      provide: UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT,
       useExisting: UberMenuDraftMutationPrismaAdapter,
     },
     {

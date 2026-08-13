@@ -38,8 +38,11 @@ export const UBER_DRAFT_GROUP_COMMAND_PORT = Symbol(
 export const UBER_DRAFT_OPTION_COMMAND_PORT = Symbol(
   'UBER_DRAFT_OPTION_COMMAND_PORT',
 );
-export const UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT = Symbol(
-  'UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT',
+export const UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT = Symbol(
+  'UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT',
+);
+export const UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT = Symbol(
+  'UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT',
 );
 export const UBER_MENU_DRAFT_DIFF_PORT = Symbol('UBER_MENU_DRAFT_DIFF_PORT');
 export const MENU_ITEM_EXISTENCE_QUERY_PORT = Symbol(
@@ -273,13 +276,6 @@ export interface UberMenuWriteTransactionPort<TCommands> {
   execute<T>(work: (commands: TCommands) => Promise<T>): Promise<T>;
 }
 
-export type UberMenuWriteCommands = UberItemChannelConfigCommandPort &
-  UberOptionItemConfigCommandPort &
-  UberDraftItemCommandPort &
-  UberDraftGroupCommandPort &
-  UberDraftOptionCommandPort &
-  UberOptionChildGroupBindCommandPort &
-  UberOptionChildGroupUnbindCommandPort;
 export interface UberMenuDraftDiffPort {
   getUberMenuDraftDiff(storeId?: string): Promise<UberMenuDraftDiffResult>;
 }

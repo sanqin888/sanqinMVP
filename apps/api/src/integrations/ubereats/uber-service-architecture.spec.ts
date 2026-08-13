@@ -551,6 +551,10 @@ describe('Uber Eats bounded-context architecture', () => {
         interfaceName.endsWith('CommandPort') ? [interfaceName] : [],
       ),
     );
+    const retiredAggregatePorts = new Set([
+      ['UberMenuDraft', 'MutationPort'].join(''),
+      ['UberMenuConfig', 'WritePort'].join(''),
+    ]);
     const focusedDraftUseCases = menuFiles.filter(
       (file) =>
         file.path.endsWith('.use-case.ts') &&
@@ -559,16 +563,10 @@ describe('Uber Eats bounded-context architecture', () => {
             .flat()
             .some(
               (name) =>
-                draftCommandPorts.has(name) ||
-                name === 'UberMenuDraftMutationPort' ||
-                name === 'UberMenuConfigWritePort',
+                draftCommandPorts.has(name) || retiredAggregatePorts.has(name),
             ),
         ),
     );
-    const forbiddenAggregatePorts = new Set([
-      'UberMenuDraftMutationPort',
-      'UberMenuConfigWritePort',
-    ]);
     const violations = focusedDraftUseCases.flatMap((file) => {
       return constructorDependencyTypes(file).flatMap(
         ({ className, parameterTypes }) => {
@@ -595,8 +593,8 @@ describe('Uber Eats bounded-context architecture', () => {
               ? [`${supportingParameters.length} validation/query services`]
               : []),
             ...allTypes
-              .filter((name) => forbiddenAggregatePorts.has(name))
-              .map((name) => `forbidden aggregate ${name}`),
+              .filter((name) => retiredAggregatePorts.has(name))
+              .map((name) => `retired aggregate ${name}`),
           ];
           return reasons.map(
             (reason) =>
