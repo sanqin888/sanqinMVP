@@ -2,6 +2,14 @@
 
 > 原则：先保存证据再处置；查询均使用只读账号并限定时间/门店。重试必须使用原 event/action 的幂等键。任何输出不得包含 access/refresh token、签名、完整 webhook、顾客电话或地址。
 
+## 部署前清单
+
+- [ ] API 与 `ubereats-worker` 使用同一配置版本，并均通过统一启动配置校验。
+- [ ] 常规生产设置 `UBER_EATS_RATE_LIMITER_MODE=distributed`，两个进程使用相同的 `UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL`/`UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN`；仅明确单副本时改用 `process` 并设置 `UBER_EATS_SINGLE_REPLICA=true`。
+- [ ] secrets manager 向两个进程注入相同的 `UBER_CREDENTIAL_ENCRYPTION_KEYS`、`UBER_CREDENTIAL_ACTIVE_KEY_VERSION` 和 `UBER_CREDENTIAL_KEYS_SOURCE=secrets-manager`，活动版本确实存在于 key ring。
+- [ ] 检查 Compose、源码、部署日志和工单均不含实际 credential key 或 Redis token。
+- [ ] 滚动发布前后确认 API/worker 的副本策略、限流模式和活动 key version 一致，再执行 OAuth/Webhook 健康验证。
+
 ## 通用关联与指标
 
 从告警的 `correlationId` 开始，在 `OpsEvent.payload` 中按 `eventId`、`externalOrderId`、`orderStableId`、`uberStoreId`、`posStoreId`、`menuPublishVersionStableId`、`orderActionId`、`opsTicketStableId` 或 `uberRequestId` 交叉定位。观察 `ubereats_webhook_*`、`ubereats_{inbox,outbox}_*`、`ubereats_api_*`、`ubereats_oauth_refresh_failed_total`、`ubereats_menu_*` 和 `ubereats_order_*` 指标；operation、outcome、eventType、failureCategory、queue 是唯一允许的指标标签。
