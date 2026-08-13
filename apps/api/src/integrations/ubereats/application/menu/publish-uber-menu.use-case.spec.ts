@@ -27,6 +27,11 @@ describe('PublishUberMenuUseCase', () => {
     modifierOptions: [],
   };
   const setup = () => {
+    const provisionedStores = {
+      resolveProvisionedUberStoreId: jest
+        .fn()
+        .mockResolvedValue({ uberStoreId: 'store-1' }),
+    };
     const snapshots = {
       loadPublishSnapshot: jest.fn().mockResolvedValue(snapshot),
     };
@@ -60,6 +65,7 @@ describe('PublishUberMenuUseCase', () => {
     };
     return {
       useCase: new PublishUberMenuUseCase(
+        provisionedStores,
         snapshots,
         publications as unknown as UberMenuPublicationRepositoryPort,
         gateway,
@@ -70,8 +76,27 @@ describe('PublishUberMenuUseCase', () => {
       publications,
       gateway,
       images,
+      provisionedStores,
     };
   };
+
+  it('先将 POS store id 解析为 Uber store id，再调用 snapshot adapter', async () => {
+    const x = setup();
+    await x.useCase.execute({ storeId: 'pos-room-1', dryRun: true });
+    expect(
+      x.provisionedStores.resolveProvisionedUberStoreId,
+    ).toHaveBeenCalledWith('pos-room-1');
+    expect(x.snapshots.loadPublishSnapshot).toHaveBeenCalledWith('store-1');
+  });
+
+  it('POS store id 没有 provisioned mapping 时抛出应用错误', async () => {
+    const x = setup();
+    x.provisionedStores.resolveProvisionedUberStoreId.mockResolvedValue(null);
+    await expect(
+      x.useCase.execute({ storeId: 'missing-pos-store', dryRun: true }),
+    ).rejects.toMatchObject({ code: 'UBER_STORE_NOT_PROVISIONED' });
+    expect(x.snapshots.loadPublishSnapshot).not.toHaveBeenCalled();
+  });
 
   it('dry-run 只构建 payload，不创建发布尝试', async () => {
     const x = setup();

@@ -285,6 +285,7 @@ export class UpdateUberDraftOptionChildGroupDto {
 }
 
 export class PublishUberMenuDto {
+  /** Internal/POS store id and cloud print-task room id; never an Uber store id. */
   @IsOptional()
   @IsString()
   @MinLength(1)

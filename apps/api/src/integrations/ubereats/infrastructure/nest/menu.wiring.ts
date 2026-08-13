@@ -31,6 +31,7 @@ import {
   type UberMenuDraftReadPort,
   type MenuItemExistenceQueryPort,
   type OptionChoiceExistenceQueryPort,
+  type ProvisionedUberStoreQueryPort,
   UBER_MENU_CONFIG_QUERY_PORT,
   UBER_ITEM_CHANNEL_CONFIG_COMMAND_PORT,
   UBER_OPTION_ITEM_CONFIG_COMMAND_PORT,
@@ -276,6 +277,7 @@ export function createMenuWiring(): Provider[] {
     {
       provide: PublishUberMenuUseCase,
       inject: [
+        PROVISIONED_UBER_STORE_QUERY_PORT,
         UBER_MENU_SNAPSHOT_REPOSITORY,
         UBER_MENU_PUBLICATION_REPOSITORY,
         UBER_MENU_GATEWAY,
@@ -283,6 +285,7 @@ export function createMenuWiring(): Provider[] {
         UBER_PUBLIC_BASE_URL,
       ],
       useFactory: (
+        provisionedStores: ProvisionedUberStoreQueryPort,
         snapshots: UberMenuSnapshotRepositoryPort,
         publications: UberMenuPublicationRepositoryPort,
         gateway: UberMenuGatewayPort,
@@ -290,6 +293,7 @@ export function createMenuWiring(): Provider[] {
         urls: UberPublicBaseUrlPort,
       ) =>
         new PublishUberMenuUseCase(
+          provisionedStores,
           snapshots,
           publications,
           gateway,
