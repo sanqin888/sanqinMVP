@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import type { UberMenuDraftReadPort } from '../../application/menu/uber-menu-draft.ports';
-import type { UberPublicBaseUrlPort } from '../../application/menu/uber-menu-publication.ports';
+import {
+  UBER_PUBLIC_BASE_URL,
+  type UberPublicBaseUrlPort,
+} from '../../application/menu/uber-menu-publication.ports';
 import {
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
@@ -35,6 +38,7 @@ const uberMenuValidation = (message: string) =>
 export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(UBER_PUBLIC_BASE_URL)
     private readonly urls: UberPublicBaseUrlPort,
   ) {}
 
