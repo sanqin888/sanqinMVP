@@ -12,6 +12,7 @@ import {
   type UberMenuPublicationRepositoryPort,
   type UberMenuPublishSnapshot,
   type UberMenuSnapshotRepositoryPort,
+  type UberPublicBaseUrlPort,
 } from './uber-menu-publication.ports';
 
 export class PublishUberMenuUseCase {
@@ -20,6 +21,7 @@ export class PublishUberMenuUseCase {
     private readonly publications: UberMenuPublicationRepositoryPort,
     private readonly gateway: UberMenuGatewayPort,
     private readonly images: UberMenuImageProbePort,
+    private readonly urls: UberPublicBaseUrlPort,
   ) {}
 
   async execute(input: PublishMenuInput) {
@@ -35,15 +37,19 @@ export class PublishUberMenuUseCase {
       graph,
       this.availability(snapshot.timezone),
       snapshot.taxRate,
+      { publicBaseUrl: this.urls.publicBaseUrl },
     );
     const validation = validateUberMenuPayload(payload);
     const imageResult = await this.images.validateImages(
-      graph.items
-        .filter((item) => item.imageUrl)
-        .map((item) => ({
-          itemStableId: item.sourceStableId,
-          url: item.imageUrl!,
-        })),
+      payload.items.flatMap((item) => {
+        if (!item.image_url) return [];
+        const source = graph.items.find(
+          (candidate) => candidate.id === item.id,
+        );
+        return source
+          ? [{ itemStableId: source.sourceStableId, url: item.image_url }]
+          : [];
+      }),
     );
     if (
       validation.some((issue) => issue.severity === 'ERROR') ||

@@ -4,6 +4,10 @@ import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
 export interface UberMenuPublishCommandPort {
   execute(input: PublishMenuInput): Promise<{ versionStableId?: string }>;
 }
+export interface UberPublicBaseUrlPort {
+  readonly publicBaseUrl: string;
+}
+export const UBER_PUBLIC_BASE_URL = Symbol('UBER_PUBLIC_BASE_URL');
 export const UBER_MENU_PUBLISH_COMMAND = Symbol('UBER_MENU_PUBLISH_COMMAND');
 
 export type UberMenuSnapshotItem = {
