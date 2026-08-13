@@ -56,7 +56,7 @@ describe('UberOrderActionService contract', () => {
 
   it.each(actions)(
     '%s has a stable key distinct from every other action',
-    async (action) => {
+    (action) => {
       const { service } = setup();
       const denial = action === 'DENY' ? { reasonCode: 'OTHER' } : undefined;
       const first = service.buildIntent({
@@ -98,20 +98,22 @@ describe('UberOrderActionService contract', () => {
 
       await service.executeClaimed(claimed);
 
-      expect(gateway[method]).toHaveBeenCalledWith(
-        expect.objectContaining({
-          externalOrderId: 'order-1',
-          idempotencyKey: 'key-1',
-        }),
-      );
+      expect(gateway[method].mock.calls[0][0]).toMatchObject({
+        externalOrderId: 'order-1',
+        idempotencyKey: 'key-1',
+      });
       for (const [, candidate] of actions)
         if (candidate !== method)
-          expect(gateway[candidate]).not.toHaveBeenCalled();
-      expect(repository.complete).toHaveBeenCalledWith({
-        taskId: 'task-1',
-        leaseToken: 'lease-from-claim',
-        transition: nextStatus ? { from: currentStatus, to: nextStatus } : null,
-      });
+          expect(gateway[candidate].mock.calls).toHaveLength(0);
+      expect(repository.complete.mock.calls).toContainEqual([
+        {
+          taskId: 'task-1',
+          leaseToken: 'lease-from-claim',
+          transition: nextStatus
+            ? { from: currentStatus, to: nextStatus }
+            : null,
+        },
+      ]);
     },
   );
 
@@ -123,26 +125,26 @@ describe('UberOrderActionService contract', () => {
       denial: { reasonCode: ' INVALID_ORDER ', reasonDetail: ' invalid ' },
     });
 
-    expect(intent).toEqual({
+    expect(intent).toMatchObject({
       externalOrderId: 'order-1',
       action: 'DENY',
-      idempotencyKey: expect.stringMatching(/^sanqin-uber-/),
       businessVersion: 'v1',
       reasonCode: 'INVALID_ORDER',
       reasonDetail: 'invalid',
     });
-    expect(repository.enqueue).not.toHaveBeenCalled();
+    expect(intent.idempotencyKey).toMatch(/^sanqin-uber-/);
+    expect(repository.enqueue.mock.calls).toHaveLength(0);
   });
 
   it('persists CANCEL as its own idempotent business action', async () => {
     const { repository, service } = setup();
     await service.request('order-1', 'CANCEL');
     await service.request('order-1', 'CANCEL');
-    expect(repository.enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'CANCEL',
-        idempotencyKey: expect.stringMatching(/^sanqin-uber-/),
-      }),
+    expect(repository.enqueue.mock.calls[0][0]).toMatchObject({
+      action: 'CANCEL',
+    });
+    expect(repository.enqueue.mock.calls[0][0].idempotencyKey).toMatch(
+      /^sanqin-uber-/,
     );
     expect(repository.enqueue.mock.calls[0][0].idempotencyKey).toBe(
       repository.enqueue.mock.calls[1][0].idempotencyKey,
@@ -153,16 +155,20 @@ describe('UberOrderActionService contract', () => {
     const { repository, gateway, service } = setup();
     repository.getOrderStatus.mockResolvedValue('making');
     await service.executeClaimed({ ...task, action: 'CANCEL' });
-    expect(gateway.cancel).toHaveBeenCalledWith({
-      externalOrderId: 'order-1',
-      idempotencyKey: 'key-1',
-      denial: { reasonCode: 'OTHER', reasonDetail: null },
-    });
-    expect(repository.complete).toHaveBeenCalledWith({
-      taskId: 'task-1',
-      leaseToken: 'lease-from-claim',
-      transition: { from: 'making', to: 'refunded' },
-    });
+    expect(gateway.cancel.mock.calls).toContainEqual([
+      {
+        externalOrderId: 'order-1',
+        idempotencyKey: 'key-1',
+        denial: { reasonCode: 'OTHER', reasonDetail: null },
+      },
+    ]);
+    expect(repository.complete.mock.calls).toContainEqual([
+      {
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+        transition: { from: 'making', to: 'refunded' },
+      },
+    ]);
   });
 
   it('completes without a transition when the order no longer exists', async () => {
@@ -171,21 +177,25 @@ describe('UberOrderActionService contract', () => {
 
     await service.executeClaimed(task);
 
-    expect(repository.complete).toHaveBeenCalledWith({
-      taskId: 'task-1',
-      leaseToken: 'lease-from-claim',
-      transition: null,
-    });
+    expect(repository.complete.mock.calls).toContainEqual([
+      {
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+        transition: null,
+      },
+    ]);
   });
 
   it('always writes success with the token returned by claim', async () => {
     const { repository, service } = setup();
     await service.executeClaimed(task);
-    expect(repository.complete).toHaveBeenCalledWith({
-      taskId: 'task-1',
-      leaseToken: 'lease-from-claim',
-      transition: { from: 'pending', to: 'making' },
-    });
+    expect(repository.complete.mock.calls).toContainEqual([
+      {
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+        transition: { from: 'pending', to: 'making' },
+      },
+    ]);
   });
 
   it.each([
@@ -217,12 +227,12 @@ describe('UberOrderActionService contract', () => {
       const { repository, gateway, service } = setup();
       gateway[method].mockRejectedValue(error);
       await service.executeClaimed({ ...task, action });
-      expect(repository.markFailed).toHaveBeenCalledWith(
+      expect(repository.markFailed.mock.calls).toContainEqual([
         'task-1',
         'lease-from-claim',
         expect.objectContaining({ retryable: true }),
-      );
-      expect(repository.complete).not.toHaveBeenCalled();
+      ]);
+      expect(repository.complete.mock.calls).toHaveLength(0);
     },
   );
 
@@ -237,14 +247,14 @@ describe('UberOrderActionService contract', () => {
 
     await service.executeClaimed(task);
 
-    expect(repository.markFailed).toHaveBeenCalledWith(
+    expect(repository.markFailed.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
       expect.objectContaining({
         retryable: true,
         code: 'UBER_NETWORK_ERROR',
       }),
-    );
+    ]);
   });
 
   it('treats unknown exceptions as retryable without trusting retryable hints', async () => {
@@ -255,11 +265,11 @@ describe('UberOrderActionService contract', () => {
 
     await service.executeClaimed(task);
 
-    expect(repository.markFailed).toHaveBeenCalledWith(
+    expect(repository.markFailed.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
       expect.objectContaining({ retryable: true }),
-    );
+    ]);
   });
 
   it('leaves a claimed row recoverable when local success writeback fails', async () => {
@@ -269,13 +279,13 @@ describe('UberOrderActionService contract', () => {
     await expect(service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
     );
-    expect(repository.complete).toHaveBeenCalledWith(
+    expect(repository.complete.mock.calls).toContainEqual([
       expect.objectContaining({
         taskId: 'task-1',
         leaseToken: 'lease-from-claim',
       }),
-    );
-    expect(repository.markFailed).not.toHaveBeenCalled();
+    ]);
+    expect(repository.markFailed.mock.calls).toHaveLength(0);
   });
 
   it('does not mark an upstream failure when the local status read fails', async () => {
@@ -287,7 +297,7 @@ describe('UberOrderActionService contract', () => {
     await expect(service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
     );
-    expect(gateway.accept).not.toHaveBeenCalled();
-    expect(repository.markFailed).not.toHaveBeenCalled();
+    expect(gateway.accept.mock.calls).toHaveLength(0);
+    expect(repository.markFailed.mock.calls).toHaveLength(0);
   });
 });

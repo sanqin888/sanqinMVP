@@ -31,7 +31,13 @@ describe('UberOrderActionPrismaAdapter contract', () => {
   it.each(['ACCEPT', 'DENY', 'CANCEL', 'READY_FOR_PICKUP'] as const)(
     'enqueues %s without interpreting its target order status',
     async (action) => {
-      const create = jest.fn().mockResolvedValue({ id: `task-${action}` });
+      type CreateInput = {
+        data: Record<string, unknown>;
+        select: { id: boolean };
+      };
+      const create = jest
+        .fn<Promise<{ id: string }>, [CreateInput]>()
+        .mockResolvedValue({ id: `task-${action}` });
       const adapter = new UberOrderActionPrismaAdapter({
         uberOrderAction: { create },
       } as never);
@@ -39,11 +45,10 @@ describe('UberOrderActionPrismaAdapter contract', () => {
         taskId: `task-${action}`,
         created: true,
       });
-      expect(create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ action, status: 'PENDING' }),
-        select: { id: true },
-      });
-      expect(create.mock.calls[0][0].data).not.toHaveProperty('orderStatus');
+      const createInput = create.mock.calls[0][0];
+      expect(createInput.data).toMatchObject({ action, status: 'PENDING' });
+      expect(createInput.select).toEqual({ id: true });
+      expect(createInput.data).not.toHaveProperty('orderStatus');
     },
   );
 
@@ -169,7 +174,10 @@ describe('UberOrderActionPrismaAdapter contract', () => {
   });
 
   it('persists exactly the transition supplied by the application service', async () => {
-    const actionUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    type UpdateInput = { where: Record<string, unknown> };
+    const actionUpdate = jest
+      .fn<Promise<{ count: number }>, [UpdateInput]>()
+      .mockResolvedValue({ count: 1 });
     const orderUpdate = jest.fn().mockResolvedValue({ count: 1 });
     const prisma = {
       $transaction: jest.fn((work: (tx: unknown) => unknown) =>
@@ -207,9 +215,8 @@ describe('UberOrderActionPrismaAdapter contract', () => {
         readyAt: undefined,
       },
     });
-    expect(actionUpdate.mock.calls[0][0].where).toEqual(
-      expect.objectContaining({ leaseToken: 'lease-1' }),
-    );
+    const actionWhere = actionUpdate.mock.calls[0][0];
+    expect(actionWhere.where).toMatchObject({ leaseToken: 'lease-1' });
   });
 
   it.each(['complete', 'markFailed'] as const)(
