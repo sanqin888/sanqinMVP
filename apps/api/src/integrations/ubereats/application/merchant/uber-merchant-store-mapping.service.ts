@@ -13,7 +13,7 @@ export class DiscoverUberStoresUseCase {
   ) {}
   async getMerchantStores(id?: string) {
     const connection = await this.resolve(id);
-    const { stores, raw } = await this.api.discoverStores({
+    const { stores } = await this.api.discoverStores({
       merchantUberUserId: connection.merchantUberUserId,
     });
     const existing = await this.mappings.findMappings(
@@ -21,10 +21,6 @@ export class DiscoverUberStoresUseCase {
       stores.map((s) => s.storeId),
     );
     const byId = new Map(existing.map((m) => [m.uberStoreId, m]));
-    await this.connections.saveStoresSnapshot(
-      connection.merchantUberUserId,
-      raw,
-    );
     await Promise.all(
       stores.map((s) =>
         this.mappings.saveDiscovery({
@@ -35,7 +31,7 @@ export class DiscoverUberStoresUseCase {
           isProvisioned: s.integrationEnabled,
           provisionedAt: s.integrationEnabled ? new Date() : null,
           posExternalStoreId: s.posExternalStoreId,
-          rawPayload: s.raw,
+          rawPayload: null,
         }),
       ),
     );

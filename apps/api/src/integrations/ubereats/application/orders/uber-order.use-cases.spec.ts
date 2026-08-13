@@ -6,6 +6,7 @@ import {
 import { UberOrderActionService } from './uber-order-action.service';
 import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
 import type { UberOrderImportRepositoryPort } from './uber-order.ports';
+import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
 
 type ImportedOrderInput = Parameters<
   UberOrderImportRepositoryPort['saveImportedOrder']
@@ -21,6 +22,10 @@ const detail = {
   subtotal: 100,
   total: 100,
   items: [{ id: 'item-1', quantity: 1, price: 100, total_price: 100 }],
+};
+const parsedDetail = {
+  kind: 'parsed' as const,
+  order: new UberOrderPayloadParser().parse(detail)!,
 };
 
 describe('Uber order use-case boundaries', () => {
@@ -52,7 +57,7 @@ describe('Uber order use-case boundaries', () => {
         ]),
         saveImportedOrder,
       },
-      { fetchOrderDetail: jest.fn().mockResolvedValue(detail) },
+      { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
       { request } as unknown as UberOrderActionService,
       { findMapping } as never,
     );
@@ -100,7 +105,7 @@ describe('Uber order use-case boundaries', () => {
       const actions = { request: jest.fn() };
       const useCase = new ImportUberOrderUseCase(
         repository as never,
-        { fetchOrderDetail: jest.fn().mockResolvedValue(detail) },
+        { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
         actions as unknown as UberOrderActionService,
         { findMapping: jest.fn().mockResolvedValue(mapping) } as never,
       );
@@ -147,7 +152,7 @@ describe('Uber order use-case boundaries', () => {
     const actions = { request: jest.fn() };
     const useCase = new ImportUberOrderUseCase(
       repository as never,
-      { fetchOrderDetail: jest.fn().mockResolvedValue(detail) },
+      { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
       actions as unknown as UberOrderActionService,
       { findMapping: jest.fn().mockImplementation(() => mapping) } as never,
     );

@@ -70,6 +70,22 @@ describe('Uber Eats persistence architecture', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps Uber API port return values semantic and wire-type free', () => {
+    const root = join(__dirname);
+    const files = scanTypeScript(join(root, 'application'), {
+      productionOnly: true,
+    }).filter(({ path }) => /uber-.*(?:api|query)\.ports?\.ts$/.test(path));
+    const violations = files.flatMap((file) =>
+      [
+        ...file.source.matchAll(
+          /Promise\s*<\s*(?:unknown|any|Record\s*<\s*string\s*,\s*unknown\s*>)\s*>/g,
+        ),
+      ].map((match) => formatSourceViolation(root, file, match[0])),
+    );
+
+    expect(violations).toEqual([]);
+  });
+
   it('does not expose Prisma delegates from persistence services', () => {
     const root = join(__dirname);
     const files = scanTypeScript(join(root, 'infrastructure', 'persistence'), {

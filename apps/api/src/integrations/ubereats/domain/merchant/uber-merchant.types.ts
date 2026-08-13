@@ -5,7 +5,6 @@ export type UberMerchantStore = {
   integrationEnabled: boolean;
   posExternalStoreId: string | null;
   timezone: string | null;
-  raw: Record<string, unknown>;
 };
 
 export type UberMerchantConnectionRecord = {

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
 import { summarizeUberDebugResponse } from '../shared/uber-log.utils';
@@ -22,6 +22,14 @@ import {
   isUberApplicationError,
   UberTransientUpstreamError,
 } from '../../application/shared/uber-application.error';
+import {
+  UBER_TELEMETRY_PORT,
+  type UberTelemetryPort,
+} from '../../application/shared/uber-telemetry.port';
+import {
+  mapUberGatewayError,
+  UberGatewayMappingError,
+} from './uber-error.mapper';
 
 const object = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -76,50 +84,59 @@ export class UberMerchantApiAdapter
     @Inject(UBER_MERCHANT_CREDENTIAL_STORE)
     private readonly credentials: UberMerchantCredentialStore,
     private readonly auth: UberAuthService,
+    @Optional()
+    @Inject(UBER_TELEMETRY_PORT)
+    private readonly audit?: Pick<UberTelemetryPort, 'captureEvent'>,
   ) {}
 
   async discoverStores(identity: UberMerchantIdentity) {
     const accessToken = await this.accessTokenFor(identity);
     const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
+    await this.audit?.captureEvent('uber.gateway.raw-response', {
+      operation: 'merchant.discover-stores',
+      merchantUberUserId: identity.merchantUberUserId,
+      response: raw,
+    });
     const candidates = [raw.stores, raw.data, object(raw.data)?.stores];
     const node = candidates.find(Array.isArray);
-    const stores: UberMerchantStore[] = !Array.isArray(node)
-      ? []
-      : node
-          .map(object)
-          .filter((v): v is Record<string, unknown> => !!v)
-          .map((store) => {
-            const location = object(store.location) ?? object(store.address);
-            const pos = object(store.pos_data);
-            return {
-              storeId:
-                string(store.store_id, store.id, store.uuid) ?? 'unknown',
-              storeName: string(store.name, store.store_name),
-              locationSummary: string(
-                store.location_summary,
-                location?.formatted_address,
-                [location?.address_line_one, location?.city, location?.country]
-                  .filter(
-                    (x): x is string => typeof x === 'string' && !!x.trim(),
-                  )
-                  .join(', '),
-              ),
-              integrationEnabled: pos?.integration_enabled === true,
-              posExternalStoreId: string(
-                pos?.order_manager_client_id,
-                pos?.pos_external_store_id,
-                store.pos_external_store_id,
-              ),
-              timezone: string(
-                store.timezone,
-                store.time_zone,
-                location?.timezone,
-                location?.time_zone,
-              ),
-              raw: store,
-            };
-          });
-    return { stores, raw };
+    if (!Array.isArray(node))
+      throw mapUberGatewayError(
+        new UberGatewayMappingError(
+          'UBER_STORE_DISCOVERY_MAPPING_FAILED',
+          'merchant.discover-stores',
+        ),
+      );
+    const stores: UberMerchantStore[] = node
+      .map(object)
+      .filter((v): v is Record<string, unknown> => !!v)
+      .map((store) => {
+        const location = object(store.location) ?? object(store.address);
+        const pos = object(store.pos_data);
+        return {
+          storeId: string(store.store_id, store.id, store.uuid) ?? 'unknown',
+          storeName: string(store.name, store.store_name),
+          locationSummary: string(
+            store.location_summary,
+            location?.formatted_address,
+            [location?.address_line_one, location?.city, location?.country]
+              .filter((x): x is string => typeof x === 'string' && !!x.trim())
+              .join(', '),
+          ),
+          integrationEnabled: pos?.integration_enabled === true,
+          posExternalStoreId: string(
+            pos?.order_manager_client_id,
+            pos?.pos_external_store_id,
+            store.pos_external_store_id,
+          ),
+          timezone: string(
+            store.timezone,
+            store.time_zone,
+            location?.timezone,
+            location?.time_zone,
+          ),
+        };
+      });
+    return { stores };
   }
 
   async provisionStore(
@@ -129,13 +146,42 @@ export class UberMerchantApiAdapter
     idempotencyKey: string,
   ) {
     const accessToken = await this.accessTokenFor(identity);
-    return this.request(
+    const raw = await this.request(
       `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`,
       'POST',
       accessToken,
       payload,
       idempotencyKey,
     );
+    await this.audit?.captureEvent('uber.gateway.raw-response', {
+      operation: 'merchant.provision-store',
+      merchantUberUserId: identity.merchantUberUserId,
+      storeId,
+      response: raw,
+    });
+    const store = object(raw.store);
+    const location = object(raw.location) ?? object(raw.address);
+    const mappedStoreId = string(raw.store_id, store?.id, store?.store_id);
+    if (!mappedStoreId)
+      throw mapUberGatewayError(
+        new UberGatewayMappingError(
+          'UBER_STORE_PROVISION_MAPPING_FAILED',
+          'merchant.provision-store',
+        ),
+      );
+    return {
+      storeId: mappedStoreId,
+      status: string(raw.status),
+      storeName: string(store?.name, raw.store_name),
+      locationSummary: string(
+        raw.location_summary,
+        location?.formatted_address,
+      ),
+      posExternalStoreId: string(
+        raw.pos_external_store_id,
+        object(raw.pos_data)?.order_manager_client_id,
+      ),
+    };
   }
 
   async writeStatus(

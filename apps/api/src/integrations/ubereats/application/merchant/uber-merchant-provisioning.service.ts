@@ -14,14 +14,6 @@ export type UberStoreStatusTarget = {
   reason?: string;
   pauseUntil?: string;
 };
-const object = (v: unknown): Record<string, unknown> | null =>
-  v && typeof v === 'object' && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null;
-const text = (...vs: unknown[]) => {
-  for (const v of vs) if (typeof v === 'string' && v.trim()) return v.trim();
-  return null;
-};
 const credentials = (v: unknown): boolean =>
   Array.isArray(v)
     ? v.some(credentials)
@@ -91,20 +83,15 @@ export class ProvisionUberStoreUseCase {
           .digest('hex'),
       }),
     );
-    const store = object(response.store);
-    const location = object(response.location) ?? object(response.address);
     const mapping = await this.mappings.upsertMapping({
       merchantUberUserId: connection.merchantUberUserId,
       uberStoreId: id,
-      storeName: text(store?.name, response.store_name),
-      locationSummary: text(
-        response.location_summary,
-        location?.formatted_address,
-      ),
+      storeName: response.storeName,
+      locationSummary: response.locationSummary,
       isProvisioned: true,
       provisionedAt: new Date(),
-      posExternalStoreId: text(response.pos_external_store_id),
-      rawPayload: response,
+      posExternalStoreId: response.posExternalStoreId,
+      rawPayload: null,
     });
     return {
       ok: true,
