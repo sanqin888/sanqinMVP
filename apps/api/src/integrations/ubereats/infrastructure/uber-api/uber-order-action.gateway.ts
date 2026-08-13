@@ -7,6 +7,22 @@ import type {
 import { UberOrderGateway } from './uber-resource.gateways';
 import { UberApiError } from './uber-http.client';
 
+type UberWireOrderAction = 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP';
+
+/**
+ * Uber reports a repeated transition as HTTP 409 rather than replaying the
+ * original success response. Keep that wire-level idempotency rule here: the
+ * application still sees four business actions and never has to understand
+ * that CANCEL shares DENY's Uber command.
+ */
+const IDEMPOTENT_CONFLICT_STATUSES: Readonly<
+  Record<UberWireOrderAction, readonly number[]>
+> = {
+  ACCEPT: [409],
+  DENY: [409],
+  READY_FOR_PICKUP: [409],
+};
+
 export class UberOrderCommandError
   extends Error
   implements UberOrderCommandFailure
@@ -69,7 +85,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
 
   private async execute(
     input: { externalOrderId: string; idempotencyKey: string },
-    action: 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP',
+    action: UberWireOrderAction,
     payload: Record<string, unknown>,
   ): Promise<void> {
     let outcome: Awaited<ReturnType<UberOrderGateway['executeAction']>>;
@@ -90,7 +106,10 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         );
       throw new UberOrderCommandError(null);
     }
-    if (outcome.ok || (action === 'READY_FOR_PICKUP' && outcome.status === 409))
+    if (
+      outcome.ok ||
+      IDEMPOTENT_CONFLICT_STATUSES[action].includes(outcome.status)
+    )
       return;
     throw new UberOrderCommandError(
       outcome.status,
