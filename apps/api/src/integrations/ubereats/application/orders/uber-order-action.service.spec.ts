@@ -60,7 +60,7 @@ describe('UberOrderActionService contract', () => {
     [503, true],
     [400, false],
   ])('classifies HTTP %s failure retryable=%s', async (status, retryable) => {
-    const error = Object.assign(new Error('failed'), { status, retryable });
+    const error = Object.assign(new Error('failed'), { status });
     const { repository, service } = setup({
       accept: jest.fn().mockRejectedValue(error),
     });

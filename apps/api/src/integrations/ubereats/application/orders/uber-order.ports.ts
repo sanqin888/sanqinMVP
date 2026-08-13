@@ -146,9 +146,8 @@ export const UBER_ORDER_IMPORT_REPOSITORY = Symbol(
 export const UBER_ORDER_ACTION_REPOSITORY = Symbol(
   'UBER_ORDER_ACTION_REPOSITORY',
 );
-export const UBER_ORDER_ACTION_COMMAND_GATEWAY = Symbol(
-  'UBER_ORDER_ACTION_COMMAND_GATEWAY',
-);
+/** The single outbound boundary for business-semantic order commands. */
+export const UBER_ORDER_ACTION_GATEWAY = Symbol('UBER_ORDER_ACTION_GATEWAY');
 export const UBER_ORDER_STATUS_REPOSITORY = Symbol(
   'UBER_ORDER_STATUS_REPOSITORY',
 );

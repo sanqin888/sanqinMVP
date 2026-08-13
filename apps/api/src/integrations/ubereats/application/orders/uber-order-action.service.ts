@@ -62,24 +62,26 @@ export class UberOrderActionService {
       // another worker owns the row; its local transition must remain untouched.
       await this.repository.markSucceeded(task.taskId, task.leaseToken);
     } catch (error) {
-      const upstream = this.asUpstreamError(error);
+      const upstream = this.classifyFailure(error);
       await this.repository.markFailed(task.taskId, task.leaseToken, {
-        retryable: upstream?.retryable ?? true,
-        code: upstream ? `HTTP_${upstream.status}` : 'UPSTREAM_ERROR',
+        retryable: upstream.retryable,
+        code: upstream.status ? `HTTP_${upstream.status}` : 'UPSTREAM_ERROR',
         message: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
-  private asUpstreamError(error: unknown): {
-    status: number;
+  private classifyFailure(error: unknown): {
+    status: number | null;
     retryable: boolean;
-  } | null {
-    if (!error || typeof error !== 'object') return null;
-    const value = error as { status?: unknown; retryable?: unknown };
-    return typeof value.status === 'number' &&
-      typeof value.retryable === 'boolean'
-      ? { status: value.status, retryable: value.retryable }
-      : null;
+  } {
+    if (!error || typeof error !== 'object')
+      return { status: null, retryable: true };
+    const status = (error as { status?: unknown }).status;
+    if (typeof status !== 'number') return { status: null, retryable: true };
+    return {
+      status,
+      retryable: status === 408 || status === 429 || status >= 500,
+    };
   }
 }

@@ -1,33 +1,6 @@
-import type {
-  UberOrderActionName,
-  UberOrderActionRecord,
-  UberOrderStatus,
-} from '../../domain/orders/uber-order.types';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 import type { UberJsonValue } from '../shared/uber-json-value';
 import type { UberWebhookVerificationInput } from '../../domain/webhook/uber-webhook.types';
-
-export type UberOrderOutboxItem = {
-  taskId: string;
-  leaseToken: string;
-  externalOrderId: string;
-  action: UberOrderActionName;
-  reasonCode: string | null;
-  reasonDetail: string | null;
-  idempotencyKey: string;
-  businessVersion: string;
-};
-
-export interface UberOrderOutboxPort {
-  enqueue(
-    externalOrderId: string,
-    action: UberOrderActionName,
-    audit?: { reasonCode?: string; reasonDetail?: string },
-  ): Promise<UberOrderActionRecord>;
-  claimDue(limit: number): Promise<UberOrderOutboxItem[]>;
-  markSucceeded(item: UberOrderOutboxItem): Promise<boolean>;
-  markFailed(item: UberOrderOutboxItem, error: unknown): Promise<boolean>;
-}
-export const UBER_ORDER_OUTBOX_PORT = Symbol('UBER_ORDER_OUTBOX_PORT');
 
 export interface UberOrderStatusAuditPort {
   record(eventName: string, payload: UberJsonValue): Promise<void>;
