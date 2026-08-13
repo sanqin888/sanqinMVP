@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
 import { summarizeUberDebugResponse } from '../shared/uber-log.utils';
 import type {
   UberMerchantApiPort,
@@ -26,16 +25,11 @@ import {
   type UberGatewayAuditPort,
 } from '../../application/shared/uber-gateway-audit.port';
 import { mapUberGatewayFailure } from './uber-error.mapper';
+import {
+  mapUberStoreDiscoveryWire,
+  mapUberStoreProvisionWire,
+} from './uber-store-wire.mapper';
 
-const object = (value: unknown): Record<string, unknown> | null =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-const string = (...values: unknown[]): string | null => {
-  for (const value of values)
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  return null;
-};
 const SENSITIVE_AUDIT_KEY =
   /(token|authorization|signature|secret|password|cookie|phone|address)/i;
 const sanitizeForAudit = (value: unknown): UberGatewayAuditJsonValue => {
@@ -111,46 +105,7 @@ export class UberMerchantApiAdapter
       sanitizedRawResponse: sanitizeForAudit(raw),
       recordedAt: new Date(),
     });
-    const candidates = [raw.stores, raw.data, object(raw.data)?.stores];
-    const node = candidates.find(Array.isArray);
-    if (!Array.isArray(node))
-      throw mapUberGatewayFailure({
-        kind: 'mapping',
-        code: 'UBER_STORE_DISCOVERY_MAPPING_FAILED',
-        operation: 'merchant.discover-stores',
-        reason: 'Uber 门店列表响应无法映射',
-      });
-    const stores: UberMerchantStore[] = node
-      .map(object)
-      .filter((v): v is Record<string, unknown> => !!v)
-      .map((store) => {
-        const location = object(store.location) ?? object(store.address);
-        const pos = object(store.pos_data);
-        return {
-          storeId: string(store.store_id, store.id, store.uuid) ?? 'unknown',
-          storeName: string(store.name, store.store_name),
-          locationSummary: string(
-            store.location_summary,
-            location?.formatted_address,
-            [location?.address_line_one, location?.city, location?.country]
-              .filter((x): x is string => typeof x === 'string' && !!x.trim())
-              .join(', '),
-          ),
-          integrationEnabled: pos?.integration_enabled === true,
-          posExternalStoreId: string(
-            pos?.order_manager_client_id,
-            pos?.pos_external_store_id,
-            store.pos_external_store_id,
-          ),
-          timezone: string(
-            store.timezone,
-            store.time_zone,
-            location?.timezone,
-            location?.time_zone,
-          ),
-        };
-      });
-    return { stores };
+    return mapUberStoreDiscoveryWire(raw);
   }
 
   async provisionStore(
@@ -176,29 +131,7 @@ export class UberMerchantApiAdapter
       sanitizedRawResponse: sanitizeForAudit(raw),
       recordedAt: new Date(),
     });
-    const store = object(raw.store);
-    const location = object(raw.location) ?? object(raw.address);
-    const mappedStoreId = string(raw.store_id, store?.id, store?.store_id);
-    if (!mappedStoreId)
-      throw mapUberGatewayFailure({
-        kind: 'mapping',
-        code: 'UBER_STORE_PROVISION_MAPPING_FAILED',
-        operation: 'merchant.provision-store',
-        reason: 'Uber 门店配置响应无法映射',
-      });
-    return {
-      storeId: mappedStoreId,
-      status: string(raw.status),
-      storeName: string(store?.name, raw.store_name),
-      locationSummary: string(
-        raw.location_summary,
-        location?.formatted_address,
-      ),
-      posExternalStoreId: string(
-        raw.pos_external_store_id,
-        object(raw.pos_data)?.order_manager_client_id,
-      ),
-    };
+    return mapUberStoreProvisionWire(raw);
   }
 
   async writeStatus(
