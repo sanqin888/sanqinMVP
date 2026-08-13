@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import type { UberMenuDraftReadPort } from '../../application/menu/uber-menu-draft.ports';
+import type { UberPublicBaseUrlPort } from '../../application/menu/uber-menu-publication.ports';
 import {
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
@@ -32,7 +33,10 @@ const uberMenuValidation = (message: string) =>
 
 @Injectable()
 export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly urls: UberPublicBaseUrlPort,
+  ) {}
 
   async getUberMenuDraft(storeId?: string) {
     const normalizedStoreId = normalizeUberStoreId(storeId);
@@ -57,6 +61,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       normalized.graph,
       schedule.serviceAvailability,
       schedule.taxRatePercentage,
+      { publicBaseUrl: this.urls.publicBaseUrl },
     );
     const payloadValidation = validateUberMenuPayload(payload);
     const summary = summarizeUberMenuGraph(normalized.graph);

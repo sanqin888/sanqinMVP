@@ -30,7 +30,7 @@ describe('Uber menu draft projector', () => {
         isAvailable: true,
         modifierGroupIds: ['group'],
         hasDelta: true,
-        imageUrl: null,
+        imageUrl: '/images/noodles.jpg',
       },
       {
         id: 'option',
@@ -64,6 +64,7 @@ describe('Uber menu draft projector', () => {
     const before = JSON.stringify(graph);
     const categories = buildDraftCategories(graph);
     expect(categories[0].items[0].groups[0].options[0].displayName).toBe('辣');
+    expect(categories[0].items[0].imageUrl).toBe('/images/noodles.jpg');
     expect(buildUberDraftTreeNodes(categories)[0].children[0].type).toBe(
       'item',
     );

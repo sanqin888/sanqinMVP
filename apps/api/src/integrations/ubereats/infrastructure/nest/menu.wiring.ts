@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import { LoadUberMenuWorkflowUseCase } from '../../application/menu/load-uber-menu-workflow.use-case';
 import { UberMenuDraftUseCase } from '../../application/menu/uber-menu-draft.use-case';
 import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
@@ -35,6 +36,8 @@ import {
   UBER_MENU_PUBLICATION_REPOSITORY,
   UBER_MENU_PUBLISH_COMMAND,
   UBER_MENU_SNAPSHOT_REPOSITORY,
+  UBER_PUBLIC_BASE_URL,
+  type UberPublicBaseUrlPort,
 } from '../../application/menu/uber-menu-publication.ports';
 import {
   UBER_MENU_UNIT_OF_WORK,
@@ -68,6 +71,7 @@ import { UberImageValidator } from '../../infrastructure/uber-api/uber-image.val
 import { UberMenuGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
 import { UBER_EATS_MENU_AVAILABILITY } from '../../public-api';
 import { presentAvailabilitySync } from '../../contracts/responses/public-contract.mapper';
+import { UberPublicBaseUrlAdapter } from '../config/uber-public-base-url.adapter';
 
 export function createMenuWiring(): Provider[] {
   return [
@@ -75,7 +79,17 @@ export function createMenuWiring(): Provider[] {
     UberImageValidator,
     UberMenuConfigQueryPrismaAdapter,
     UberMenuConfigWritePrismaAdapter,
-    UberMenuDraftReadPrismaAdapter,
+    {
+      provide: UberPublicBaseUrlAdapter,
+      useFactory: () => new UberPublicBaseUrlAdapter(process.env),
+    },
+    { provide: UBER_PUBLIC_BASE_URL, useExisting: UberPublicBaseUrlAdapter },
+    {
+      provide: UberMenuDraftReadPrismaAdapter,
+      inject: [PrismaService, UBER_PUBLIC_BASE_URL],
+      useFactory: (prisma: PrismaService, urls: UberPublicBaseUrlPort) =>
+        new UberMenuDraftReadPrismaAdapter(prisma, urls),
+    },
     UberMenuDraftMutationPrismaAdapter,
     UberMenuDraftDiffPrismaAdapter,
     UberMenuReferenceQueryPrismaAdapter,
@@ -173,13 +187,22 @@ export function createMenuWiring(): Provider[] {
         UBER_MENU_PUBLICATION_REPOSITORY,
         UBER_MENU_GATEWAY,
         UBER_MENU_IMAGE_PROBE,
+        UBER_PUBLIC_BASE_URL,
       ],
       useFactory: (
         snapshots: UberMenuSnapshotRepositoryPort,
         publications: UberMenuPublicationRepositoryPort,
         gateway: UberMenuGatewayPort,
         images: UberMenuImageProbePort,
-      ) => new PublishUberMenuUseCase(snapshots, publications, gateway, images),
+        urls: UberPublicBaseUrlPort,
+      ) =>
+        new PublishUberMenuUseCase(
+          snapshots,
+          publications,
+          gateway,
+          images,
+          urls,
+        ),
     },
     { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
     {

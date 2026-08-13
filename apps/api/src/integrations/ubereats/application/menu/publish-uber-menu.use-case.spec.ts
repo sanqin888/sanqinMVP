@@ -64,6 +64,7 @@ describe('PublishUberMenuUseCase', () => {
         publications as unknown as UberMenuPublicationRepositoryPort,
         gateway,
         images,
+        { publicBaseUrl: 'https://menu.example/' },
       ),
       snapshots,
       publications,
@@ -149,5 +150,20 @@ describe('PublishUberMenuUseCase', () => {
       x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true }),
     ).rejects.toBeInstanceOf(UberValidationError);
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
+  });
+
+  it('将相对图片路径解析后再交给图片探测器', async () => {
+    const x = setup();
+    x.snapshots.loadPublishSnapshot.mockResolvedValue({
+      ...snapshot,
+      items: [{ ...snapshot.items[0], imageUrl: '/images/noodles.jpg' }],
+    });
+    await x.useCase.execute({ storeId: 'store-1', dryRun: true });
+    expect(x.images.validateImages).toHaveBeenCalledWith([
+      {
+        itemStableId: 'food-1',
+        url: 'https://menu.example/images/noodles.jpg',
+      },
+    ]);
   });
 });
