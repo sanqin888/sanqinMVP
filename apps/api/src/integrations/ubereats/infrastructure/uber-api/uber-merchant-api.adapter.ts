@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
 import { summarizeUberDebugResponse } from '../shared/uber-log.utils';
@@ -20,9 +20,11 @@ import {
 } from './uber-merchant-credential.port';
 import { isUberApplicationError } from '../../application/shared/uber-application.error';
 import {
-  UBER_TELEMETRY_PORT,
-  type UberTelemetryPort,
-} from '../../application/shared/uber-telemetry.port';
+  UBER_GATEWAY_AUDIT_PORT,
+  type UberGatewayAuditEvent,
+  type UberGatewayAuditJsonValue,
+  type UberGatewayAuditPort,
+} from '../../application/shared/uber-gateway-audit.port';
 import { mapUberGatewayFailure } from './uber-error.mapper';
 
 const object = (value: unknown): Record<string, unknown> | null =>
@@ -33,6 +35,22 @@ const string = (...values: unknown[]): string | null => {
   for (const value of values)
     if (typeof value === 'string' && value.trim()) return value.trim();
   return null;
+};
+const SENSITIVE_AUDIT_KEY =
+  /(token|authorization|signature|secret|password|cookie|phone|address)/i;
+const sanitizeForAudit = (value: unknown): UberGatewayAuditJsonValue => {
+  if (value === null || ['string', 'boolean'].includes(typeof value))
+    return value as null | string | boolean;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) return value.map(sanitizeForAudit);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        SENSITIVE_AUDIT_KEY.test(key) ? '[REDACTED]' : sanitizeForAudit(child),
+      ]),
+    );
+  return '[UNSUPPORTED]';
 };
 
 @Injectable()
@@ -78,18 +96,20 @@ export class UberMerchantApiAdapter
     @Inject(UBER_MERCHANT_CREDENTIAL_STORE)
     private readonly credentials: UberMerchantCredentialStore,
     private readonly auth: UberAuthService,
-    @Optional()
-    @Inject(UBER_TELEMETRY_PORT)
-    private readonly audit?: Pick<UberTelemetryPort, 'captureEvent'>,
+    @Inject(UBER_GATEWAY_AUDIT_PORT)
+    private readonly audit: UberGatewayAuditPort,
   ) {}
 
   async discoverStores(identity: UberMerchantIdentity) {
     const accessToken = await this.accessTokenFor(identity);
     const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
-    await this.audit?.captureEvent('uber.gateway.raw-response', {
+    await this.auditResponse({
       operation: 'merchant.discover-stores',
       merchantUberUserId: identity.merchantUberUserId,
-      response: raw,
+      outcome: 'RECEIVED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
     });
     const candidates = [raw.stores, raw.data, object(raw.data)?.stores];
     const node = candidates.find(Array.isArray);
@@ -147,11 +167,14 @@ export class UberMerchantApiAdapter
       payload,
       idempotencyKey,
     );
-    await this.audit?.captureEvent('uber.gateway.raw-response', {
+    await this.auditResponse({
       operation: 'merchant.provision-store',
       merchantUberUserId: identity.merchantUberUserId,
       storeId,
-      response: raw,
+      outcome: 'RECEIVED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
     });
     const store = object(raw.store);
     const location = object(raw.location) ?? object(raw.address);
@@ -198,11 +221,17 @@ export class UberMerchantApiAdapter
           idempotencyKey,
         });
         status = result.response.status;
-        await this.audit?.captureEvent('uber.gateway.store-status-response', {
+        await this.auditResponse({
           operation: 'merchant.write-store-status',
           storeId,
-          httpStatus: status,
-          attempt,
+          outcome: result.response.ok
+            ? 'SUCCEEDED'
+            : status === 409
+              ? 'REJECTED'
+              : 'FAILED',
+          upstreamStatus: status,
+          sanitizedRawResponse: sanitizeForAudit(result.data),
+          recordedAt: new Date(),
         });
         if (result.response.ok || status === 409)
           return {
@@ -304,6 +333,15 @@ export class UberMerchantApiAdapter
         code: 'UBER_NETWORK_ERROR',
         cause: caught,
       });
+    }
+  }
+
+  /** Audit persistence must never change the merchant operation's outcome. */
+  private async auditResponse(event: UberGatewayAuditEvent): Promise<void> {
+    try {
+      await this.audit.recordResponse(event);
+    } catch {
+      // Deliberately best-effort: gateway availability takes precedence over audit storage.
     }
   }
 }
