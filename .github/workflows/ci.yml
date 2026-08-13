@@ -6,28 +6,32 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
+    name: Build & Test (${{ matrix.app }})
     runs-on: ubuntu-latest
-    env:
-      UBER_SANDBOX_CONFIGURED: ${{ secrets.UBER_SANDBOX_CLIENT_ID != '' && secrets.UBER_SANDBOX_CLIENT_SECRET != '' && secrets.UBER_SANDBOX_STORE_ID != '' }}
-      UBER_SANDBOX_SMOKE_REQUIRED: ${{ vars.UBER_SANDBOX_SMOKE_REQUIRED == 'true' }}
+
     strategy:
       fail-fast: false
       matrix:
         app: [web, api]
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      # ✅ 先装 pnpm（不要写 version，避免与 packageManager 冲突）
+      # 先安装 pnpm。
+      # 不指定 version，使用 package.json 中的 packageManager 版本。
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
           run_install: false
 
-      # ✅ 再装 Node，并启用 pnpm cache（此时 pnpm 已存在）
-      - name: Setup Node (pnpm cache)
+      # 再安装 Node，并启用 pnpm cache。
+      - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: "20"
@@ -60,39 +64,72 @@ jobs:
         if: matrix.app == 'api'
         run: pnpm --filter api test
 
-      - name: Check Uber sandbox smoke credentials
-        if: matrix.app == 'api'
-        id: uber-smoke
+  uber-sandbox-smoke:
+    name: Uber sandbox smoke
+
+    # 只在代码真正 push 到 dev/main 后运行。
+    # PR 阶段不向待合并代码暴露 Uber Sandbox 凭证。
+    if: github.event_name == 'push'
+
+    # 普通 CI 全部通过后，再访问真实 Uber Sandbox。
+    needs: build-test
+
+    runs-on: ubuntu-latest
+
+    # 只有这个 job 可以访问 UberEats-Sandbox Environment secrets。
+    # deployment: false 表示使用 Environment，但不创建 Deployment 记录。
+    environment:
+      name: UberEats-Sandbox
+      deployment: false
+
+    steps:
+      - name: Check Uber sandbox credentials
         env:
           HAS_CLIENT_ID: ${{ secrets.UBER_SANDBOX_CLIENT_ID != '' }}
           HAS_CLIENT_SECRET: ${{ secrets.UBER_SANDBOX_CLIENT_SECRET != '' }}
           HAS_STORE_ID: ${{ secrets.UBER_SANDBOX_STORE_ID != '' }}
         run: |
-          if [[ "$UBER_SANDBOX_CONFIGURED" == "true" ]]; then
-            echo "Uber sandbox credentials are complete; the smoke test will run."
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           missing=()
+
           [[ "$HAS_CLIENT_ID" == "true" ]] || missing+=(UBER_SANDBOX_CLIENT_ID)
           [[ "$HAS_CLIENT_SECRET" == "true" ]] || missing+=(UBER_SANDBOX_CLIENT_SECRET)
           [[ "$HAS_STORE_ID" == "true" ]] || missing+=(UBER_SANDBOX_STORE_ID)
-          reason="Uber sandbox smoke skipped: missing dedicated credentials: ${missing[*]}."
-          echo "run=false" >> "$GITHUB_OUTPUT"
-          echo "::notice::$reason"
-          echo "### Uber sandbox smoke" >> "$GITHUB_STEP_SUMMARY"
-          echo "$reason" >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "$UBER_SANDBOX_SMOKE_REQUIRED" == "true" ]]; then
-            echo "::error::Uber sandbox smoke is required for this branch/environment, but its credentials are incomplete."
+          if (( ${#missing[@]} > 0 )); then
+            reason="Uber sandbox smoke cannot run: missing environment secrets: ${missing[*]}."
+
+            echo "::error::$reason"
+
+            echo "### Uber sandbox smoke" >> "$GITHUB_STEP_SUMMARY"
+            echo "$reason" >> "$GITHUB_STEP_SUMMARY"
+
             exit 1
           fi
 
-      - name: Uber sandbox smoke (dedicated credentials only)
-        if: >-
-          matrix.app == 'api' &&
-          steps.uber-smoke.outputs.run == 'true'
+          echo "Uber sandbox credentials are complete."
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Generate Prisma Client
+        run: pnpm --filter api prisma:generate
+
+      - name: Uber sandbox smoke
         env:
           UBER_SANDBOX_CLIENT_ID: ${{ secrets.UBER_SANDBOX_CLIENT_ID }}
           UBER_SANDBOX_CLIENT_SECRET: ${{ secrets.UBER_SANDBOX_CLIENT_SECRET }}
