@@ -27,10 +27,10 @@ export function createReceiveUberWebhookUseCase(
       return true;
     },
     claimDue: () => Promise.resolve([]),
-    markSucceeded: () => Promise.resolve(),
-    markUnsupported: () => Promise.resolve(),
+    markSucceeded: () => Promise.resolve(true),
+    markUnsupported: () => Promise.resolve(true),
     requeueUnsupported: () => Promise.resolve(0),
-    markFailed: () => Promise.resolve(),
+    markFailed: () => Promise.resolve(true),
     setStoreProvisioned: () => Promise.resolve(false),
   };
   return new ReceiveUberWebhookUseCase(

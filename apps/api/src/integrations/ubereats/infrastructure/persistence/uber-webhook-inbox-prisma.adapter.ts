@@ -132,8 +132,8 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         leaseToken,
       }));
   }
-  async markSucceeded(item: UberWebhookInboxItem): Promise<void> {
-    await this.prisma.uberWebhookInbox.updateMany({
+  async markSucceeded(item: UberWebhookInboxItem): Promise<boolean> {
+    const result = await this.prisma.uberWebhookInbox.updateMany({
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -149,6 +149,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         structuredError: Prisma.DbNull,
       },
     });
+    return result.count === 1;
   }
   async markUnsupported(
     item: UberWebhookInboxItem,
@@ -158,8 +159,8 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       safeSummary: string;
       businessVersion: string;
     },
-  ): Promise<void> {
-    await this.prisma.uberWebhookInbox.updateMany({
+  ): Promise<boolean> {
+    const result = await this.prisma.uberWebhookInbox.updateMany({
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -175,6 +176,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         leaseExpiresAt: null,
       },
     });
+    return result.count === 1;
   }
 
   async requeueUnsupported(
@@ -199,7 +201,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     item: UberWebhookInboxItem,
     error: unknown,
     retryable: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const current = await this.prisma.uberWebhookInbox.findUnique({
       where: { eventId: item.eventId },
       select: { attemptCount: true },
@@ -210,7 +212,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     const summary = redactUberLogText(
       error instanceof Error ? error.message : String(error),
     ).slice(0, 500);
-    await this.prisma.uberWebhookInbox.updateMany({
+    const result = await this.prisma.uberWebhookInbox.updateMany({
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -240,6 +242,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         leaseExpiresAt: null,
       },
     });
+    return result.count === 1;
   }
   async setStoreProvisioned(
     storeId: string,

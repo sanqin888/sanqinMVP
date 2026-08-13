@@ -66,6 +66,28 @@ export class UberWorkerConfigService {
       orderAction: this.policy(env, 'ORDER_ACTION'),
       menuConfirmation: this.policy(env, 'MENU_CONFIRMATION'),
     });
+    this.validateLeaseBudget(env);
+  }
+
+  private validateLeaseBudget(env: Record<string, string | undefined>): void {
+    const attempts = this.integer(env, 'UBER_EATS_HTTP_MAX_ATTEMPTS', 3, 1, 5);
+    const retryDelay = this.milliseconds(
+      env, 'UBER_EATS_HTTP_MAX_RETRY_DELAY_MS', 2_000, 50, 30_000,
+    );
+    const longestRequest = Math.max(
+      this.milliseconds(env, 'UBER_EATS_TOKEN_TIMEOUT_MS', 10_000, 100, 120_000),
+      this.milliseconds(env, 'UBER_EATS_API_TIMEOUT_MS', 10_000, 100, 120_000),
+      this.milliseconds(env, 'UBER_EATS_ORDER_DETAIL_TIMEOUT_MS', 15_000, 100, 120_000),
+    );
+    const worstCaseMs = attempts * longestRequest + (attempts - 1) * retryDelay;
+    if (worstCaseMs >= this.workerLeaseDurationMs)
+      throw new Error(
+        `Uber worker lease ${this.workerLeaseDurationMs}ms 必须大于 HTTP 最坏尝试预算 ${worstCaseMs}ms`,
+      );
+    if (this.workerBatchSize < this.workerPolicies.webhookInbox.concurrency)
+      throw new Error(
+        'UBER_EATS_WORKER_BATCH_SIZE 不得小于 WEBHOOK_INBOX worker concurrency',
+      );
   }
 
   private policy(

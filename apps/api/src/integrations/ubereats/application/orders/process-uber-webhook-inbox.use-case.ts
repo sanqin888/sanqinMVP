@@ -27,9 +27,15 @@ export class ProcessUberWebhookInboxUseCase {
   ) {}
 
   async execute(limit = 50): Promise<number> {
-    const rows = await this.inbox.claimDue(limit);
-    for (const row of rows) await this.route(row);
-    return rows.length;
+    let completed = 0;
+    // Claim immediately before processing so leases never wait behind slow rows.
+    for (let index = 0; index < limit; index += 1) {
+      const [row] = await this.inbox.claimDue(1);
+      if (!row) break;
+      await this.route(row);
+      completed += 1;
+    }
+    return completed;
   }
 
   private async route(item: UberWebhookInboxItem): Promise<void> {
@@ -65,6 +71,8 @@ export class ProcessUberWebhookInboxUseCase {
             resourceId: menu.resourceId,
             status: menu.status,
             failures: menu.failures,
+            // Replays after a crash retain the inbox-derived identity.
+            idempotencyKey: item.idempotencyKey,
           });
           break;
         }
@@ -83,11 +91,20 @@ export class ProcessUberWebhookInboxUseCase {
             operation: 'webhook.dispatch',
           });
       }
-      await this.inbox.markSucceeded(item);
+      if (!(await this.inbox.markSucceeded(item)))
+        throw new UberWebhookLeaseLostError(eventId, 'markSucceeded');
     } catch (error) {
+      if (error instanceof UberWebhookLeaseLostError) {
+        this.recordLeaseLost(error);
+        throw error;
+      }
       const retryable =
         error instanceof UberApplicationError ? error.retryable : true;
-      await this.inbox.markFailed(item, error, retryable);
+      if (!(await this.inbox.markFailed(item, error, retryable))) {
+        const leaseLost = new UberWebhookLeaseLostError(eventId, 'markFailed');
+        this.recordLeaseLost(leaseLost);
+        throw leaseLost;
+      }
       if (error instanceof UberOrderStoreMappingError) {
         await this.telemetry.captureEvent(
           'ubereats_order_store_mapping_alert',
@@ -114,12 +131,14 @@ export class ProcessUberWebhookInboxUseCase {
     priority: 'high',
   ): Promise<void> {
     const safeSummary = this.safeEventSummary(item);
-    await this.inbox.markUnsupported(item, {
+    const committed = await this.inbox.markUnsupported(item, {
       code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
       eventType: item.eventType,
       safeSummary,
       businessVersion: item.businessVersion,
     });
+    if (!committed)
+      throw new UberWebhookLeaseLostError(item.eventId, 'markUnsupported');
     await this.telemetry.captureEvent('ubereats_webhook_unsupported', {
       priority,
       eventType: item.eventType,
@@ -133,11 +152,29 @@ export class ProcessUberWebhookInboxUseCase {
     );
   }
 
+  private recordLeaseLost(error: UberWebhookLeaseLostError): void {
+    this.telemetry.workflowLog(
+      'error',
+      `webhook lease lost: eventId=${error.eventId};operation=${error.operation}`,
+    );
+  }
+
   private safeEventSummary(item: UberWebhookInboxItem): string {
     const digest = createHash('sha256')
       .update(JSON.stringify(item.payload ?? null))
       .digest('hex')
       .slice(0, 16);
     return `type=${item.eventType};payloadSha256=${digest}`;
+  }
+}
+
+/** A stale worker must fail its poll instead of reporting another worker's work. */
+export class UberWebhookLeaseLostError extends Error {
+  constructor(
+    readonly eventId: string,
+    readonly operation: string,
+  ) {
+    super(`Uber webhook lease lost during ${operation} (${eventId})`);
+    this.name = 'UberWebhookLeaseLostError';
   }
 }
