@@ -216,7 +216,7 @@ describe('Uber Eats menu persistence dependency direction', () => {
     const draftPortBindings = Object.fromEntries(
       [
         ...moduleFile!.source.matchAll(
-          /provide:\s*(UBER_(?:MENU_(?:CONFIG_QUERY|DRAFT_(?:READ|DIFF)|REFERENCE_QUERY)_PORT|(?:ITEM_CHANNEL_CONFIG|OPTION_ITEM_CONFIG|DRAFT_(?:ITEM|GROUP|OPTION)|OPTION_CHILD_GROUP_BINDING)_COMMAND_PORT)),\s*useExisting:\s*(\w+)/g,
+          /provide:\s*((?:MENU_ITEM_EXISTENCE|OPTION_CHOICE_EXISTENCE|PROVISIONED_UBER_STORE|UBER_BUSINESS_SCHEDULE)_QUERY_PORT|UBER_(?:MENU_(?:CONFIG_QUERY|DRAFT_(?:READ|DIFF))_PORT|(?:ITEM_CHANNEL_CONFIG|OPTION_ITEM_CONFIG|DRAFT_(?:ITEM|GROUP|OPTION)|OPTION_CHILD_GROUP_BINDING)_COMMAND_PORT)),\s*useExisting:\s*(\w+)/g,
         ),
       ].map((match) => [match[1], match[2]]),
     );
@@ -232,7 +232,13 @@ describe('Uber Eats menu persistence dependency direction', () => {
       UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT:
         'UberMenuDraftMutationPrismaAdapter',
       UBER_MENU_DRAFT_DIFF_PORT: 'UberMenuDraftDiffPrismaAdapter',
-      UBER_MENU_REFERENCE_QUERY_PORT: 'UberMenuReferenceQueryPrismaAdapter',
+      MENU_ITEM_EXISTENCE_QUERY_PORT: 'UberMenuSupportingQueriesPrismaAdapter',
+      OPTION_CHOICE_EXISTENCE_QUERY_PORT:
+        'UberMenuSupportingQueriesPrismaAdapter',
+      PROVISIONED_UBER_STORE_QUERY_PORT:
+        'UberMenuSupportingQueriesPrismaAdapter',
+      UBER_BUSINESS_SCHEDULE_QUERY_PORT:
+        'UberMenuSupportingQueriesPrismaAdapter',
     });
   });
 

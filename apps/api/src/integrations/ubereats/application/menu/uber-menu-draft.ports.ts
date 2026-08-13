@@ -9,7 +9,6 @@ import type {
   UberMenuDraftDiffResult,
   UberMenuDraftResult,
 } from '../../domain/menu/uber-menu-diff.types';
-import type { UberJsonValue } from '../shared/uber-json-value';
 
 export type {
   UberMenuDraftDiffResult,
@@ -40,15 +39,21 @@ export const UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT = Symbol(
   'UBER_OPTION_CHILD_GROUP_BINDING_COMMAND_PORT',
 );
 export const UBER_MENU_DRAFT_DIFF_PORT = Symbol('UBER_MENU_DRAFT_DIFF_PORT');
-export const UBER_MENU_REFERENCE_QUERY_PORT = Symbol(
-  'UBER_MENU_REFERENCE_QUERY_PORT',
+export const MENU_ITEM_EXISTENCE_QUERY_PORT = Symbol(
+  'MENU_ITEM_EXISTENCE_QUERY_PORT',
+);
+export const OPTION_CHOICE_EXISTENCE_QUERY_PORT = Symbol(
+  'OPTION_CHOICE_EXISTENCE_QUERY_PORT',
+);
+export const PROVISIONED_UBER_STORE_QUERY_PORT = Symbol(
+  'PROVISIONED_UBER_STORE_QUERY_PORT',
+);
+export const UBER_BUSINESS_SCHEDULE_QUERY_PORT = Symbol(
+  'UBER_BUSINESS_SCHEDULE_QUERY_PORT',
 );
 
-export type UberMenuItemReference = { stableId: string };
-export type UberOptionChoiceReference = { stableId: string };
 export type UberProvisionedStoreMapping = {
   uberStoreId: string;
-  rawPayload: UberJsonValue;
 };
 export type UberBusinessScheduleRecord = {
   timezone: string | null;
@@ -61,16 +66,18 @@ export type UberBusinessScheduleRecord = {
   }>;
 };
 
-export interface UberMenuReferenceQueryPort {
-  findMenuItemByStableId(
-    stableId: string,
-  ): Promise<UberMenuItemReference | null>;
-  findOptionChoiceByStableId(
-    stableId: string,
-  ): Promise<UberOptionChoiceReference | null>;
-  findProvisionedStoreMapping(
+export interface MenuItemExistenceQueryPort {
+  menuItemExists(stableId: string): Promise<boolean>;
+}
+export interface OptionChoiceExistenceQueryPort {
+  optionChoiceExists(stableId: string): Promise<boolean>;
+}
+export interface ProvisionedUberStoreQueryPort {
+  resolveProvisionedStore(
     storeId: string,
   ): Promise<UberProvisionedStoreMapping | null>;
+}
+export interface UberBusinessScheduleQueryPort {
   readBusinessSchedule(): Promise<UberBusinessScheduleRecord | null>;
 }
 

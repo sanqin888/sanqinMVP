@@ -1,34 +1,43 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
-  UberMenuReferenceQueryPort,
-  UberProvisionedStoreMapping,
+  MenuItemExistenceQueryPort,
+  OptionChoiceExistenceQueryPort,
+  ProvisionedUberStoreQueryPort,
+  UberBusinessScheduleQueryPort,
 } from '../../application/menu/uber-menu-draft.ports';
 
 @Injectable()
-export class UberMenuReferenceQueryPrismaAdapter implements UberMenuReferenceQueryPort {
+export class UberMenuSupportingQueriesPrismaAdapter
+  implements
+    MenuItemExistenceQueryPort,
+    OptionChoiceExistenceQueryPort,
+    ProvisionedUberStoreQueryPort,
+    UberBusinessScheduleQueryPort
+{
   constructor(private readonly prisma: PrismaService) {}
 
-  async findMenuItemByStableId(stableId: string) {
-    return await this.prisma.menuItem.findUnique({
+  async menuItemExists(stableId: string): Promise<boolean> {
+    const item = await this.prisma.menuItem.findUnique({
       where: { stableId },
       select: { stableId: true },
     });
+    return item !== null;
   }
 
-  async findOptionChoiceByStableId(stableId: string) {
-    return await this.prisma.menuOptionTemplateChoice.findUnique({
+  async optionChoiceExists(stableId: string): Promise<boolean> {
+    const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId },
       select: { stableId: true },
     });
+    return choice !== null;
   }
 
-  async findProvisionedStoreMapping(storeId: string) {
-    const mapping = await this.prisma.uberStoreMapping.findFirst({
+  async resolveProvisionedStore(storeId: string) {
+    return await this.prisma.uberStoreMapping.findFirst({
       where: { uberStoreId: storeId, isProvisioned: true },
-      select: { uberStoreId: true, rawPayload: true },
+      select: { uberStoreId: true },
     });
-    return mapping as UberProvisionedStoreMapping | null;
   }
 
   async readBusinessSchedule() {

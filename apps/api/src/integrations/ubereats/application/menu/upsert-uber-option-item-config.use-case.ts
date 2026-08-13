@@ -1,11 +1,14 @@
-import type { UberOptionItemConfigCommandPort } from './uber-menu-draft.ports';
-import { UberMenuReferenceValidator } from './uber-menu-reference-validator.service';
+import type {
+  OptionChoiceExistenceQueryPort,
+  UberOptionItemConfigCommandPort,
+} from './uber-menu-draft.ports';
+import { ensureOptionChoiceExists } from './uber-menu-reference-validator.service';
 
 /** Owns the atomic, idempotent option item configuration command. */
 export class UpsertUberOptionItemConfigUseCase {
   constructor(
     private readonly commands: UberOptionItemConfigCommandPort,
-    private readonly references: UberMenuReferenceValidator,
+    private readonly optionChoices: OptionChoiceExistenceQueryPort,
   ) {}
 
   async execute(
@@ -13,7 +16,10 @@ export class UpsertUberOptionItemConfigUseCase {
       UberOptionItemConfigCommandPort['upsertUberOptionItemConfig']
     >[0],
   ) {
-    await this.references.ensureOptionChoiceExists(input.optionChoiceStableId);
+    await ensureOptionChoiceExists(
+      this.optionChoices,
+      input.optionChoiceStableId,
+    );
     return this.commands.upsertUberOptionItemConfig(input);
   }
 }
