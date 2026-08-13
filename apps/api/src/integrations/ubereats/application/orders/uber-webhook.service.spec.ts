@@ -343,6 +343,35 @@ describe('Uber webhook use cases', () => {
     expect(menu.processWebhookEvent).not.toHaveBeenCalled();
   });
 
+  it('数据库入箱失败时返回可重试错误而不伪装成功', async () => {
+    const uberWebhookInbox = inbox();
+    uberWebhookInbox.create.mockRejectedValueOnce(
+      new Error('database unavailable'),
+    );
+    const service = createReceiveUberWebhookUseCase(
+      { uberWebhookInbox } as unknown as ConstructorParameters<
+        typeof ReceiveUberWebhookUseCase
+      >[0],
+      config(),
+      undefined,
+    );
+
+    await expect(
+      service.execute(
+        signed({
+          event_type: 'orders.notification',
+          event_id: 'evt-db-failure',
+          resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+          meta: { resource_id: 'order-1', user_id: 'store-1' },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'UBER_WEBHOOK_INBOX_UNAVAILABLE',
+      retryable: true,
+      category: 'transient-upstream',
+    });
+  });
+
   it('拒绝无效签名且不会 claim inbox', async () => {
     const uberWebhookInbox = inbox();
     const service = createReceiveUberWebhookUseCase(
@@ -403,20 +432,43 @@ describe('ReceiveUberWebhookUseCase 最小依赖装配', () => {
 
 it('逐条领取且旧 lease token 写回失败时 poll 明确失败', async () => {
   const item = {
-    eventId: 'slow-event', eventType: 'store.provisioned',
-    payload: { event_type: 'store.provisioned', resource_href: 'https://api.uber.com/v1/eats/stores/s1', meta: { resource_id: 's1', user_id: 'u1' } },
-    leaseToken: 'expired-worker-token', idempotencyKey: 'stable-key', businessVersion: 'v1',
+    eventId: 'slow-event',
+    eventType: 'store.provisioned',
+    payload: {
+      event_type: 'store.provisioned',
+      resource_href: 'https://api.uber.com/v1/eats/stores/s1',
+      meta: { resource_id: 's1', user_id: 'u1' },
+    },
+    leaseToken: 'expired-worker-token',
+    idempotencyKey: 'stable-key',
+    businessVersion: 'v1',
   };
   const inboxPort = {
     claimDue: jest.fn().mockResolvedValueOnce([item]),
-    markSucceeded: jest.fn().mockResolvedValue(false), markFailed: jest.fn(),
-    markUnsupported: jest.fn(), requeueUnsupported: jest.fn(), enqueue: jest.fn(), setStoreProvisioned: jest.fn(),
+    markSucceeded: jest.fn().mockResolvedValue(false),
+    markFailed: jest.fn(),
+    markUnsupported: jest.fn(),
+    requeueUnsupported: jest.fn(),
+    enqueue: jest.fn(),
+    setStoreProvisioned: jest.fn(),
   };
-  const telemetry = { captureEvent: jest.fn().mockResolvedValue(undefined), workflowLog: jest.fn() };
-  const worker = new ProcessUberWebhookInboxUseCase(inboxPort, {} as never, {} as never, { execute: jest.fn() } as never, telemetry);
+  const telemetry = {
+    captureEvent: jest.fn().mockResolvedValue(undefined),
+    workflowLog: jest.fn(),
+  };
+  const worker = new ProcessUberWebhookInboxUseCase(
+    inboxPort,
+    {} as never,
+    {} as never,
+    { execute: jest.fn() } as never,
+    telemetry,
+  );
   await expect(worker.execute(10)).rejects.toThrow('lease lost');
   expect(inboxPort.claimDue).toHaveBeenCalledTimes(1);
   expect(inboxPort.claimDue).toHaveBeenCalledWith(1);
   expect(inboxPort.markFailed).not.toHaveBeenCalled();
-  expect(telemetry.workflowLog).toHaveBeenCalledWith('error', expect.stringContaining('lease lost'));
+  expect(telemetry.workflowLog).toHaveBeenCalledWith(
+    'error',
+    expect.stringContaining('lease lost'),
+  );
 });

@@ -10,6 +10,13 @@
   ],
   "synthetic_only": true,
   "upgrade_rule": "Create a new version directory and update requirement-matrix.md and its validation test in the same change.",
+  "webhook_delivery_contract": {
+    "http_fixture_scope": "signature, envelope, atomic durable inbox, deduplication and acknowledgement only",
+    "acknowledge_200_after": "inbox transaction committed or duplicate confirmed",
+    "non_2xx_means": "durable ownership was not acquired; Uber should redeliver",
+    "worker_fixture_scope": "business payload validation, handlers, unsupported events, internal retries and DEAD state",
+    "worker_failures": "must not change the original HTTP 200 or request Uber redelivery"
+  },
   "webhook_fixtures": [
     "webhooks/menus.notification.json",
     "webhooks/orders.notification.json",

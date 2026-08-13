@@ -1,6 +1,7 @@
 export type ContractDomain =
   | 'merchant'
-  | 'webhook'
+  | 'webhook-receive'
+  | 'webhook-worker'
   | 'orders'
   | 'menu'
   | 'operations';
@@ -9,7 +10,7 @@ export type ContractDomain =
 export type UberAcceptanceContract = readonly [
   scenario: string,
   input: string,
-  apiStatus: number,
+  apiStatus: number | 'not-applicable',
   persistence: string,
   uberRequests: number | 'at-most-once' | 'until-confirmed',
   response: string,
@@ -75,7 +76,7 @@ export const acceptanceMatrix: Record<
       [...secrets, 'code', 'state'],
     ],
   ],
-  webhook: [
+  'webhook-receive': [
     [
       'invalid-signature',
       'webhook-order.json + invalid signature',
@@ -83,17 +84,47 @@ export const acceptanceMatrix: Record<
       'no inbox row',
       0,
       'rejected',
-      'not applicable',
+      'non-2xx asks Uber to redeliver; nothing was persisted',
+      [...secrets, 'x-uber-signature'],
+    ],
+    [
+      'invalid-envelope',
+      'signed invalid JSON or envelope',
+      400,
+      'no inbox row',
+      0,
+      'rejected before durable ownership',
+      'non-2xx asks Uber to redeliver; nothing was persisted',
+      [...secrets, 'x-uber-signature'],
+    ],
+    [
+      'atomic-inbox-commit',
+      'signed valid envelope',
+      200,
+      'inbox=PENDING committed before response',
+      0,
+      'acknowledged only after commit',
+      'internal worker now owns every retry',
+      [...secrets, 'x-uber-signature'],
+    ],
+    [
+      'inbox-write-failure',
+      'signed valid envelope; database unavailable',
+      503,
+      'no committed inbox row',
+      0,
+      'not acknowledged',
+      'non-2xx asks Uber to redeliver because ownership was not acquired',
       [...secrets, 'x-uber-signature'],
     ],
     [
       'duplicate-event-id',
       'webhook-order.json twice',
       200,
-      'one inbox row; PROCESSED once',
+      'one committed inbox row; worker processes once',
       0,
       'acknowledged',
-      'same eventId is a no-op',
+      'duplicate is safely acknowledged; no external retry requested',
       [...secrets, 'x-uber-signature'],
     ],
     [
@@ -103,27 +134,49 @@ export const acceptanceMatrix: Record<
       'one inbox row keyed by body hash',
       0,
       'acknowledged',
-      'same bytes are a no-op',
+      'duplicate is safely acknowledged; no external retry requested',
       [...secrets, 'x-uber-signature'],
     ],
+  ],
+  'webhook-worker': [
     [
-      'retryable-handler-error',
+      'handler-timeout',
       'signed event; downstream timeout',
-      503,
+      'not-applicable',
       'inbox=FAILED_RETRYABLE',
       0,
-      'retry requested',
-      'later delivery may claim again',
+      'original HTTP response remains 200',
+      'internal inbox retry only; never request Uber redelivery',
       [...secrets, 'x-uber-signature'],
     ],
     [
-      'terminal-handler-error',
-      'signed malformed event',
-      200,
+      'invalid-business-payload',
+      'committed envelope with malformed business payload',
+      'not-applicable',
       'inbox=FAILED_TERMINAL',
       0,
-      'acknowledged',
-      'redelivery is a no-op',
+      'original HTTP response remains 200',
+      'terminal failure; Uber redelivery cannot repair persisted bytes',
+      [...secrets, 'x-uber-signature'],
+    ],
+    [
+      'unsupported-event',
+      'committed unknown event type',
+      'not-applicable',
+      'inbox=UNSUPPORTED (quarantined)',
+      0,
+      'original HTTP response remains 200',
+      'operator replay after support is added; no Uber redelivery',
+      [...secrets, 'x-uber-signature'],
+    ],
+    [
+      'retry-exhausted',
+      'retryable handler failure reaches attempt limit',
+      'not-applicable',
+      'inbox=DEAD after internal retries',
+      0,
+      'original HTTP response remains 200',
+      'operator recovery from durable inbox; no Uber redelivery',
       [...secrets, 'x-uber-signature'],
     ],
   ],

@@ -16,6 +16,28 @@ Webhook 的公开接收边界只接受 headers 与未经解析的 `rawBody` 字�
 `data.resource_id`、`data.errors[].field_path/description` 不属于 Uber v1 wire contract，
 已经删除且不提供长期兼容。下表及 manifest 所列位置才是必须长期兼容的 wire shape。
 
+### Webhook 接收与异步处理边界
+
+HTTP 接收阶段只校验签名、解析最小 envelope、计算幂等键，并以一次原子数据库操作提交
+inbox。只有提交成功（包括已经提交过的重复事件）才返回 `200`。签名或 envelope 无效时
+返回非 2xx；inbox 写入/事务失败返回 `503`。这些错误发生时系统尚未取得事件的持久所有权，
+因此应由 Uber 外部重投。
+
+一旦 inbox 已安全提交，原请求必须返回 `200`，Worker 才异步解析业务 payload 并调用
+handler。handler 超时进入 `FAILED_RETRYABLE` 并由 inbox 内部重试；非法业务 payload 进入
+`FAILED_TERMINAL`；未知事件进入 `UNSUPPORTED` 隔离；重试耗尽进入 `DEAD`。这些状态都不得
+改变原 webhook HTTP 响应，也不得返回 `503` 请求 Uber 再投，否则会同时启动外部投递和
+内部重试。运营恢复必须基于已持久化的 inbox 记录完成。
+
+| 阶段 | 情况 | HTTP | 重试所有者 |
+| ---- | ---- | ---- | ---------- |
+| 接收 | 签名/envelope 无效，未入箱 | 非 2xx | Uber 外部重投 |
+| 接收 | inbox 数据库提交失败 | `503` | Uber 外部重投 |
+| 接收 | 新事件已提交或重复事件已存在 | `200` | 系统内部 inbox |
+| Worker | handler 超时/可重试故障 | 原响应保持 `200` | inbox 重试至成功或 `DEAD` |
+| Worker | 非法业务 payload | 原响应保持 `200` | `FAILED_TERMINAL`，人工处置 |
+| Worker | unsupported event | 原响应保持 `200` | `UNSUPPORTED`，支持后 replay |
+
 ## 核对边界（2026-08-12 UTC）
 
 本次核对以 Uber Developers 正式页面 **Authentication**、**Uber Eats API**、
