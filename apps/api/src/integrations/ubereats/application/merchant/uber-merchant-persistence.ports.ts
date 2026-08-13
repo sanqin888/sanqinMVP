@@ -58,7 +58,6 @@ export type UberMerchantConnection = {
   scope: string | null;
   tokenType: string | null;
   connectedAt: Date;
-  rawStoresSnapshot: unknown;
 };
 
 export interface UberMerchantConnectionRepositoryPort {
@@ -74,12 +73,7 @@ export interface UberMerchantConnectionRepositoryPort {
     scope: string | null;
     tokenType: string | null;
     connectedAt: Date;
-    rawStoresSnapshot?: unknown;
   }): Promise<{ connectedAt: Date }>;
-  saveStoresSnapshot(
-    merchantUberUserId: string,
-    raw: Record<string, unknown>,
-  ): Promise<void>;
 }
 
 export type UberMerchantStoreMapping = {
@@ -90,7 +84,6 @@ export type UberMerchantStoreMapping = {
   isProvisioned: boolean;
   provisionedAt: Date | null;
   posExternalStoreId: string | null;
-  rawPayload?: unknown;
 };
 
 export interface UberStoreMappingRepositoryPort {
