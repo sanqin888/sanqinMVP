@@ -28,6 +28,25 @@ const intent = {
 };
 
 describe('UberOrderActionPrismaAdapter contract', () => {
+  it.each(['ACCEPT', 'DENY', 'CANCEL', 'READY_FOR_PICKUP'] as const)(
+    'enqueues %s without interpreting its target order status',
+    async (action) => {
+      const create = jest.fn().mockResolvedValue({ id: `task-${action}` });
+      const adapter = new UberOrderActionPrismaAdapter({
+        uberOrderAction: { create },
+      } as never);
+      await expect(adapter.enqueue({ ...intent, action })).resolves.toEqual({
+        taskId: `task-${action}`,
+        created: true,
+      });
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ action, status: 'PENDING' }),
+        select: { id: true },
+      });
+      expect(create.mock.calls[0][0].data).not.toHaveProperty('orderStatus');
+    },
+  );
+
   it('returns the existing durable task after a duplicate enqueue race', async () => {
     const prisma = {
       uberOrderAction: {
@@ -65,6 +84,18 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     );
     expect(sqlText(queryRaw.mock.calls[0][0])).toContain(
       'UPDATE "UberOrderAction"',
+    );
+    const claimPredicate = queryRaw.mock.calls[0].find(
+      (value): value is { sql: string } =>
+        typeof value === 'object' && value !== null && 'sql' in value,
+    );
+    expect(claimPredicate?.sql).toContain("status = 'PENDING'");
+    expect(claimPredicate?.sql).toContain(
+      "status = 'FAILED' AND retryable = true",
+    );
+    expect(claimPredicate?.sql).toContain("status = 'PROCESSING'");
+    expect(claimPredicate?.sql).not.toContain(
+      "status = 'FAILED' AND retryable = false",
     );
   });
 

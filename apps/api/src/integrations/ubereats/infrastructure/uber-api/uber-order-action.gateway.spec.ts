@@ -4,6 +4,31 @@ import {
 } from './uber-order-action.gateway';
 
 describe('UberOrderActionGatewayAdapter', () => {
+  it.each([
+    ['accept', 'ACCEPT'],
+    ['readyForPickup', 'READY_FOR_PICKUP'],
+  ] as const)(
+    '%s maps to the semantic endpoint with an empty payload and idempotency key',
+    async (method, wireAction) => {
+      const executeAction = jest
+        .fn()
+        .mockResolvedValue({ ok: true, status: 200, data: {} });
+      const adapter = new UberOrderActionGatewayAdapter({
+        executeAction,
+      } as never);
+      await adapter[method]({
+        externalOrderId: 'order/1',
+        idempotencyKey: `${method}-key`,
+      });
+      expect(executeAction).toHaveBeenCalledWith(
+        'order/1',
+        wireAction,
+        {},
+        `${method}-key`,
+      );
+    },
+  );
+
   it('owns the DENY reason wire payload', async () => {
     const executeAction = jest
       .fn()
@@ -104,6 +129,30 @@ describe('UberOrderActionGatewayAdapter', () => {
     expect(error).not.toHaveProperty('retryable');
     expect(error.message).not.toContain('unsafe upstream detail');
   });
+
+  it.each([400, 429, 503])(
+    'exposes HTTP %s without assigning service retry policy',
+    async (status) => {
+      const executeAction = jest.fn().mockResolvedValue({
+        ok: false,
+        status,
+        data: {},
+      });
+      const error = await new UberOrderActionGatewayAdapter({
+        executeAction,
+      } as never)
+        .accept({ externalOrderId: 'order-1', idempotencyKey: 'write-key' })
+        .catch((caught: unknown) => caught as UberOrderCommandError);
+      expect(error).toMatchObject({ status });
+      expect(error).not.toHaveProperty('retryable');
+      expect(executeAction).toHaveBeenCalledWith(
+        'order-1',
+        'ACCEPT',
+        {},
+        'write-key',
+      );
+    },
+  );
 
   it('normalizes an unknown transport failure as no HTTP response', async () => {
     const executeAction = jest.fn().mockRejectedValue(new Error('secret'));

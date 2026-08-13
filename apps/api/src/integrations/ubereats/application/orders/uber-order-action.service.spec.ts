@@ -17,6 +17,12 @@ const task: UberOrderActionTask = {
 };
 
 describe('UberOrderActionService contract', () => {
+  const actions = [
+    ['ACCEPT', 'accept', 'pending', 'making'],
+    ['DENY', 'deny', 'pending', null],
+    ['CANCEL', 'cancel', 'making', 'refunded'],
+    ['READY_FOR_PICKUP', 'readyForPickup', 'making', 'ready'],
+  ] as const;
   const setup = (overrides: Partial<UberOrderActionGatewayPort> = {}) => {
     const repository = {
       enqueue: jest.fn().mockResolvedValue({ taskId: 'task-1', created: true }),
@@ -47,6 +53,67 @@ describe('UberOrderActionService contract', () => {
       repository.enqueue.mock.calls[1][0].idempotencyKey,
     );
   });
+
+  it.each(actions)(
+    '%s has a stable key distinct from every other action',
+    async (action) => {
+      const { service } = setup();
+      const denial = action === 'DENY' ? { reasonCode: 'OTHER' } : undefined;
+      const first = service.buildIntent({
+        externalOrderId: 'order-1',
+        action,
+        denial,
+      });
+      const replay = service.buildIntent({
+        externalOrderId: ' order-1 ',
+        action,
+        denial,
+      });
+      const otherKeys = actions
+        .filter(([candidate]) => candidate !== action)
+        .map(
+          ([candidate]) =>
+            service.buildIntent({
+              externalOrderId: 'order-1',
+              action: candidate,
+              denial:
+                candidate === 'DENY' ? { reasonCode: 'OTHER' } : undefined,
+            }).idempotencyKey,
+        );
+      expect(replay.idempotencyKey).toBe(first.idempotencyKey);
+      expect(otherKeys).not.toContain(first.idempotencyKey);
+    },
+  );
+
+  it.each(actions)(
+    '%s invokes only %s and commits its domain transition with the claimed lease',
+    async (action, method, currentStatus, nextStatus) => {
+      const { repository, gateway, service } = setup();
+      repository.getOrderStatus.mockResolvedValue(currentStatus);
+      const claimed = {
+        ...task,
+        action,
+        reasonCode: action === 'DENY' ? 'ITEM_UNAVAILABLE' : null,
+      };
+
+      await service.executeClaimed(claimed);
+
+      expect(gateway[method]).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalOrderId: 'order-1',
+          idempotencyKey: 'key-1',
+        }),
+      );
+      for (const [, candidate] of actions)
+        if (candidate !== method)
+          expect(gateway[candidate]).not.toHaveBeenCalled();
+      expect(repository.complete).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+        transition: nextStatus ? { from: currentStatus, to: nextStatus } : null,
+      });
+    },
+  );
 
   it('builds the same normalized intent without performing I/O', () => {
     const { repository, service } = setup();
@@ -142,6 +209,22 @@ describe('UberOrderActionService contract', () => {
       expect.objectContaining({ retryable }),
     ]);
   });
+
+  it.each(actions)(
+    '%s applies the same retry policy at the service boundary',
+    async (action, method) => {
+      const error = Object.assign(new Error('throttled'), { status: 429 });
+      const { repository, gateway, service } = setup();
+      gateway[method].mockRejectedValue(error);
+      await service.executeClaimed({ ...task, action });
+      expect(repository.markFailed).toHaveBeenCalledWith(
+        'task-1',
+        'lease-from-claim',
+        expect.objectContaining({ retryable: true }),
+      );
+      expect(repository.complete).not.toHaveBeenCalled();
+    },
+  );
 
   it('retries failures without an HTTP response', async () => {
     const error = Object.assign(new Error('network unavailable'), {

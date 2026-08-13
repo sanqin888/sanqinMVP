@@ -70,6 +70,22 @@ describe('Uber durable worker adapters', () => {
     expect(execute).toHaveBeenCalledTimes(2);
   });
 
+  it('isolates an order-action use-case infrastructure error in the thin runner', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const execute = jest.fn().mockRejectedValue(new Error('database offline'));
+    const adapter = new UberOrderActionWorkerAdapter(
+      { execute } as never,
+      config(),
+    );
+
+    await expect(adapter.runOnce()).resolves.toBe(false);
+    expect(execute).toHaveBeenCalledWith(1);
+    expect(adapter.getMetrics()).toMatchObject({
+      failures: 1,
+      consecutiveFailures: 1,
+    });
+  });
+
   it('does not start new work after shutdown begins', async () => {
     let release!: () => void;
     const execute = jest.fn(
