@@ -11,6 +11,7 @@ import { buildUberIdempotencyKey } from '../../application/orders/uber-idempoten
 import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
 import { UberApplicationError } from '../../application/shared/uber-application.error';
+import type { UberJsonValue } from '../../application/shared/uber-json-value';
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
@@ -125,7 +126,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       .map((row) => ({
         eventId: row.eventId,
         eventType: row.eventType!,
-        payload: row.payload,
+        payload: row.payload as UberJsonValue,
         idempotencyKey: row.idempotencyKey!,
         businessVersion: row.businessVersion!,
         resourceKey: row.resourceKey,

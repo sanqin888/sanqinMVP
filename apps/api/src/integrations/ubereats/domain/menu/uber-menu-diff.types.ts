@@ -5,6 +5,14 @@ import type {
   UberMenuGraphSummary,
 } from './uber-menu-graph.service';
 
+export type UberMenuDraftJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | UberMenuDraftJsonValue[]
+  | { [key: string]: UberMenuDraftJsonValue };
+
 export type UberMenuDraftEdgeDto = {
   from: string;
   to: string;
@@ -18,7 +26,7 @@ export type UberMenuDraftResult = {
     items: number;
     optionItems: number;
     groups: number;
-    tree: { categories: unknown[] };
+    tree: { categories: UberMenuDraftJsonValue[] };
   };
   uberDraft: {
     menuId: string;
@@ -26,15 +34,18 @@ export type UberMenuDraftResult = {
     items: UberMenuGraphItem[];
     groups: UberMenuGraphGroup[];
     edges: UberMenuDraftEdgeDto[];
-    tree: { categories: unknown[] };
-    treeNodes: unknown[];
-    optionMappings: unknown[];
+    tree: { categories: UberMenuDraftJsonValue[] };
+    treeNodes: UberMenuDraftJsonValue[];
+    optionMappings: UberMenuDraftJsonValue[];
   };
   mappingErrors: Array<{ code: string; message: string }>;
-  validation: { warnings: unknown[]; errors: unknown[] };
-  mappingWarnings: unknown[];
+  validation: {
+    warnings: UberMenuDraftJsonValue[];
+    errors: UberMenuDraftJsonValue[];
+  };
+  mappingWarnings: UberMenuDraftJsonValue[];
   publishSummary: UberMenuGraphSummary;
-  serviceAvailability: unknown[];
+  serviceAvailability: UberMenuDraftJsonValue[];
   serviceAvailabilityTimezone: string;
   dirty: boolean;
   lastPublishedVersion: {
@@ -44,7 +55,7 @@ export type UberMenuDraftResult = {
     totalItems: number;
     changedItems: number;
     errorMessage: string | null;
-    errorDetails: unknown;
+    errorDetails: UberMenuDraftJsonValue;
     finishedAt: Date | null;
   } | null;
 };

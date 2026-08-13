@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import {
   formatSourceViolation,
   importViolations,
+  portMethodReturnTypeViolations,
   scanTypeScript,
 } from './test/architecture-test.utils';
 
@@ -70,20 +71,54 @@ describe('Uber Eats persistence architecture', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps Uber API port return values semantic and wire-type free', () => {
+  it('keeps every application port return value semantic and wire-type free', () => {
     const root = join(__dirname);
     const files = scanTypeScript(join(root, 'application'), {
       productionOnly: true,
-    }).filter(({ path }) => /uber-.*(?:api|query)\.ports?\.ts$/.test(path));
-    const violations = files.flatMap((file) =>
-      [
-        ...file.source.matchAll(
-          /Promise\s*<\s*(?:unknown|any|Record\s*<\s*string\s*,\s*unknown\s*>)\s*>/g,
-        ),
-      ].map((match) => formatSourceViolation(root, file, match[0])),
-    );
+    }).filter(({ path }) => /\.ports?\.ts$/.test(path));
+    const violations = portMethodReturnTypeViolations(files, root);
 
     expect(violations).toEqual([]);
+  });
+
+  it('resolves aliases, nested generics and object properties without reading comments', () => {
+    const root = join(__dirname, 'test', 'port-return-fixtures');
+    const fixture = (name: string, source: string) => ({
+      path: join(root, `${name}.port.ts`),
+      source,
+    });
+    const invalid = [
+      fixture('direct', 'interface DirectPort { load(): Promise<unknown> }'),
+      fixture(
+        'alias',
+        'type Result = any; interface AliasPort { load(): Result }',
+      ),
+      fixture(
+        'nested',
+        'type Box<T> = { value: T }; interface NestedPort { load(): Promise<Box<Array<Record<string, unknown>>>> }',
+      ),
+      fixture(
+        'property',
+        'type Result = { safe: string; raw: unknown }; interface PropertyPort { load(): Promise<Result> }',
+      ),
+    ];
+
+    expect(portMethodReturnTypeViolations(invalid, root)).toHaveLength(4);
+    expect(
+      portMethodReturnTypeViolations(
+        [
+          fixture(
+            'safe-comments',
+            '/** any and unknown describe forbidden wire types. */\ntype Result = { value: string }; interface SafePort { load(): Promise<Result> }',
+          ),
+          fixture(
+            'audit',
+            'type Json = null | boolean | number | string | Json[] | { [key: string]: Json }; type UberGatewayAuditJsonValue = Json; interface AuditPort { record(): Promise<UberGatewayAuditJsonValue> }',
+          ),
+        ],
+        root,
+      ),
+    ).toEqual([]);
   });
 
   it('does not expose Prisma delegates from persistence services', () => {

@@ -9,6 +9,7 @@ import type {
   UberMenuDraftDiffResult,
   UberMenuDraftResult,
 } from '../../domain/menu/uber-menu-diff.types';
+import type { UberJsonValue } from '../shared/uber-json-value';
 
 export type {
   UberMenuDraftDiffResult,
@@ -35,7 +36,7 @@ export type UberMenuItemReference = { stableId: string };
 export type UberOptionChoiceReference = { stableId: string };
 export type UberProvisionedStoreMapping = {
   uberStoreId: string;
-  rawPayload: unknown;
+  rawPayload: UberJsonValue;
 };
 export type UberBusinessScheduleRecord = {
   timezone: string | null;
@@ -83,6 +84,21 @@ export type UberOptionItemConfigDto = {
   lastPublishedAt: Date | null;
   lastPublishError: string | null;
   updatedAt: Date;
+};
+export type UberModifierGroupConfigDto = {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  isActive: boolean;
+  storeId: string;
+  templateGroupStableId: string;
+  minSelect: number;
+  maxSelect: number;
+  displayName: string | null;
+  uberStoreId: string | null;
+  lastPublishedAt: Date | null;
+  lastPublishError: string | null;
+  externalModifierGroupId: string | null;
 };
 export type UberPublishedMenuItemDto = {
   publishVersionId: string;
@@ -149,7 +165,7 @@ export interface UberMenuDraftMutationPort {
   updateUberDraftGroup(
     id: string,
     input: UpdateDraftGroupInput,
-  ): Promise<UberDraftMutationResult<Record<string, unknown>>>;
+  ): Promise<UberDraftMutationResult<UberModifierGroupConfigDto>>;
   updateUberDraftOption(
     id: string,
     input: UpdateDraftOptionInput,
