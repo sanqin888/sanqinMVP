@@ -5,7 +5,11 @@ import {
 } from './uber-order.use-cases';
 import { UberOrderActionService } from './uber-order-action.service';
 import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
-import type { UberOrderImportRepositoryPort } from './uber-order.ports';
+import type {
+  UberOrderActionGatewayPort,
+  UberOrderActionRepositoryPort,
+  UberOrderImportRepositoryPort,
+} from './uber-order.ports';
 import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
 
 type ImportedOrderInput = Parameters<
@@ -28,6 +32,12 @@ const parsedDetail = {
   order: new UberOrderPayloadParser().parse(detail)!,
 };
 
+const createActions = () =>
+  new UberOrderActionService(
+    { enqueue: jest.fn() } as unknown as UberOrderActionRepositoryPort,
+    {} as UberOrderActionGatewayPort,
+  );
+
 describe('Uber order use-case boundaries', () => {
   it('commits the ACCEPT intent with the order so process exit cannot lose it', async () => {
     const saved: { order?: ImportedOrderInput } = {};
@@ -39,7 +49,8 @@ describe('Uber order use-case boundaries', () => {
         action: { taskId: 'action-1', created: true },
       });
     });
-    const request = jest.fn();
+    const actions = createActions();
+    const request = jest.spyOn(actions, 'request');
     const findMapping = jest.fn().mockResolvedValue({
       uberStoreId: 'uber-store-123',
       isProvisioned: true,
@@ -58,7 +69,7 @@ describe('Uber order use-case boundaries', () => {
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
-      { request } as unknown as UberOrderActionService,
+      actions,
       { findMapping } as never,
     );
 
@@ -149,7 +160,8 @@ describe('Uber order use-case boundaries', () => {
           action: { taskId: 'accept-1', created: true },
         }),
     };
-    const actions = { request: jest.fn() };
+    const actions = createActions();
+    const request = jest.spyOn(actions, 'request');
     const useCase = new ImportUberOrderUseCase(
       repository as never,
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
@@ -168,7 +180,7 @@ describe('Uber order use-case boundaries', () => {
     const savedInput = repository.saveImportedOrder.mock.calls[0]?.[0];
     expect(savedInput?.posStoreId).toBe('store-1');
     expect(savedInput?.actionIntent?.action).toBe('ACCEPT');
-    expect(actions.request).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('keeps concurrent duplicate deliveries as an idempotent repair path', async () => {

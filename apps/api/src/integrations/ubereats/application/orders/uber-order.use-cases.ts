@@ -12,7 +12,6 @@ import { type UberOrderDetailQueryPort } from './uber-order-query.ports';
 import { validateUberOrderAmounts } from '../../domain/orders/uber-order-payload.parser';
 import type { ParsedUberOrder } from '../../domain/orders/uber-order.types';
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
-import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import { UberApplicationError } from '../shared/uber-application.error';
 
@@ -153,17 +152,11 @@ export class ImportUberOrderUseCase {
     const cancellation = this.cancellation(normalizedEventType, order);
     const decision = cancellation
       ? null
-      : {
+      : this.actions.buildIntent({
           externalOrderId: order.externalOrderId,
-          action: denial ? ('DENY' as const) : ('ACCEPT' as const),
-          idempotencyKey: UberOrderStateMachine.idempotencyKey(
-            order.externalOrderId,
-            denial ? 'DENY' : 'ACCEPT',
-          ),
-          businessVersion: 'v1',
-          reasonCode: denial?.reasonCode ?? null,
-          reasonDetail: denial?.reasonDetail ?? null,
-        };
+          action: denial ? 'DENY' : 'ACCEPT',
+          denial: denial ?? undefined,
+        });
     await this.repository.saveImportedOrder({
       order,
       posStoreId,
