@@ -19,6 +19,7 @@ export class UberWorkerConfigService {
   readonly workerBatchSize: number;
   readonly workerLeaseDurationMs: number;
   readonly workerShutdownTimeoutMs: number;
+  readonly workerUnhealthyFailureThreshold: number;
   readonly workerPolicies: Readonly<Record<UberWorkerKind, UberWorkerPolicy>>;
 
   constructor(env: Record<string, string | undefined> = process.env) {
@@ -52,6 +53,13 @@ export class UberWorkerConfigService {
       30_000,
       100,
       600_000,
+    );
+    this.workerUnhealthyFailureThreshold = this.integer(
+      env,
+      'UBER_EATS_WORKER_UNHEALTHY_FAILURE_THRESHOLD',
+      3,
+      1,
+      100,
     );
     this.workerPolicies = Object.freeze({
       webhookInbox: this.policy(env, 'WEBHOOK_INBOX'),
