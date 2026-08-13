@@ -72,12 +72,28 @@ export class UberWorkerConfigService {
   private validateLeaseBudget(env: Record<string, string | undefined>): void {
     const attempts = this.integer(env, 'UBER_EATS_HTTP_MAX_ATTEMPTS', 3, 1, 5);
     const retryDelay = this.milliseconds(
-      env, 'UBER_EATS_HTTP_MAX_RETRY_DELAY_MS', 2_000, 50, 30_000,
+      env,
+      'UBER_EATS_HTTP_MAX_RETRY_DELAY_MS',
+      2_000,
+      50,
+      30_000,
     );
     const longestRequest = Math.max(
-      this.milliseconds(env, 'UBER_EATS_TOKEN_TIMEOUT_MS', 10_000, 100, 120_000),
+      this.milliseconds(
+        env,
+        'UBER_EATS_TOKEN_TIMEOUT_MS',
+        10_000,
+        100,
+        120_000,
+      ),
       this.milliseconds(env, 'UBER_EATS_API_TIMEOUT_MS', 10_000, 100, 120_000),
-      this.milliseconds(env, 'UBER_EATS_ORDER_DETAIL_TIMEOUT_MS', 15_000, 100, 120_000),
+      this.milliseconds(
+        env,
+        'UBER_EATS_ORDER_DETAIL_TIMEOUT_MS',
+        15_000,
+        100,
+        120_000,
+      ),
     );
     const worstCaseMs = attempts * longestRequest + (attempts - 1) * retryDelay;
     if (worstCaseMs >= this.workerLeaseDurationMs)

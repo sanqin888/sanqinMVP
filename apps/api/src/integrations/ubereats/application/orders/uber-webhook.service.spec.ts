@@ -403,20 +403,43 @@ describe('ReceiveUberWebhookUseCase 最小依赖装配', () => {
 
 it('逐条领取且旧 lease token 写回失败时 poll 明确失败', async () => {
   const item = {
-    eventId: 'slow-event', eventType: 'store.provisioned',
-    payload: { event_type: 'store.provisioned', resource_href: 'https://api.uber.com/v1/eats/stores/s1', meta: { resource_id: 's1', user_id: 'u1' } },
-    leaseToken: 'expired-worker-token', idempotencyKey: 'stable-key', businessVersion: 'v1',
+    eventId: 'slow-event',
+    eventType: 'store.provisioned',
+    payload: {
+      event_type: 'store.provisioned',
+      resource_href: 'https://api.uber.com/v1/eats/stores/s1',
+      meta: { resource_id: 's1', user_id: 'u1' },
+    },
+    leaseToken: 'expired-worker-token',
+    idempotencyKey: 'stable-key',
+    businessVersion: 'v1',
   };
   const inboxPort = {
     claimDue: jest.fn().mockResolvedValueOnce([item]),
-    markSucceeded: jest.fn().mockResolvedValue(false), markFailed: jest.fn(),
-    markUnsupported: jest.fn(), requeueUnsupported: jest.fn(), enqueue: jest.fn(), setStoreProvisioned: jest.fn(),
+    markSucceeded: jest.fn().mockResolvedValue(false),
+    markFailed: jest.fn(),
+    markUnsupported: jest.fn(),
+    requeueUnsupported: jest.fn(),
+    enqueue: jest.fn(),
+    setStoreProvisioned: jest.fn(),
   };
-  const telemetry = { captureEvent: jest.fn().mockResolvedValue(undefined), workflowLog: jest.fn() };
-  const worker = new ProcessUberWebhookInboxUseCase(inboxPort, {} as never, {} as never, { execute: jest.fn() } as never, telemetry);
+  const telemetry = {
+    captureEvent: jest.fn().mockResolvedValue(undefined),
+    workflowLog: jest.fn(),
+  };
+  const worker = new ProcessUberWebhookInboxUseCase(
+    inboxPort,
+    {} as never,
+    {} as never,
+    { execute: jest.fn() } as never,
+    telemetry,
+  );
   await expect(worker.execute(10)).rejects.toThrow('lease lost');
   expect(inboxPort.claimDue).toHaveBeenCalledTimes(1);
   expect(inboxPort.claimDue).toHaveBeenCalledWith(1);
   expect(inboxPort.markFailed).not.toHaveBeenCalled();
-  expect(telemetry.workflowLog).toHaveBeenCalledWith('error', expect.stringContaining('lease lost'));
+  expect(telemetry.workflowLog).toHaveBeenCalledWith(
+    'error',
+    expect.stringContaining('lease lost'),
+  );
 });
