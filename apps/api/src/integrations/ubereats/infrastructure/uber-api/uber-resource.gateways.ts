@@ -8,10 +8,8 @@ import {
   type UberGatewayTransportPort,
 } from './uber-api.gateway';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
-import {
-  UberTransientUpstreamError,
-  UberValidationError,
-} from '../../application/shared/uber-application.error';
+import { UberValidationError } from '../../application/shared/uber-application.error';
+import { mapUberGatewayFailure } from './uber-error.mapper';
 
 const invalidResource = (code: string, message: string, operation: string) =>
   new UberValidationError({
@@ -108,11 +106,10 @@ export class UberOrderGateway extends PrefixGateway {
         ? [{ address: url.hostname }]
         : await lookup(url.hostname, { all: true, verbatim: true });
     } catch (cause) {
-      throw new UberTransientUpstreamError({
-        code: 'UBER_RESOURCE_DNS_FAILURE',
-        message: '无法验证 Uber resource_href 地址',
+      throw mapUberGatewayFailure({
+        kind: 'transport',
         operation: 'order.resource_href.resolve',
-        upstreamStatus: null,
+        code: 'UBER_NETWORK_ERROR',
         cause,
       });
     }
