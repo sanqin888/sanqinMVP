@@ -8,6 +8,7 @@ import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-web
 import type {
   UberOrderActionGatewayPort,
   UberOrderActionRepositoryPort,
+  UberOrderActionTask,
   UberOrderImportRepositoryPort,
 } from './uber-order.ports';
 import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
@@ -229,12 +230,26 @@ describe('Uber order use-case boundaries', () => {
     expect(request).toHaveBeenCalledWith('order-1', 'ACCEPT');
   });
 
-  it('delegates lease processing to the action service', async () => {
-    const process = jest.fn().mockResolvedValue(2);
-    const worker = new ExecuteUberOrderActionWorker({
-      process,
-    } as unknown as UberOrderActionService);
+  it('claims a batch and delegates every claimed task to the action service', async () => {
+    const tasks = [
+      { taskId: 'task-1' },
+      { taskId: 'task-2' },
+    ] as UberOrderActionTask[];
+    const claim = jest.fn().mockResolvedValue(tasks);
+    const executeClaimed = jest.fn().mockResolvedValue(undefined);
+    const worker = new ExecuteUberOrderActionWorker(
+      { claim } as unknown as UberOrderActionRepositoryPort,
+      { executeClaimed } as unknown as UberOrderActionService,
+    );
     await expect(worker.execute(50)).resolves.toBe(2);
-    expect(process).toHaveBeenCalledWith(50, expect.stringMatching(/^worker-/));
+    expect(claim).toHaveBeenCalledWith({
+      limit: 50,
+      owner: expect.stringMatching(/^worker-/),
+      now: expect.any(Date),
+      leaseDurationMs: 30_000,
+    });
+    expect(executeClaimed).toHaveBeenCalledTimes(2);
+    expect(executeClaimed).toHaveBeenNthCalledWith(1, tasks[0]);
+    expect(executeClaimed).toHaveBeenNthCalledWith(2, tasks[1]);
   });
 });

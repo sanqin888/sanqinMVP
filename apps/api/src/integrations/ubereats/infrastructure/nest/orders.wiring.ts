@@ -181,9 +181,11 @@ export function createOrdersWiring(): Provider[] {
     },
     {
       provide: ExecuteUberOrderActionWorker,
-      inject: [UberOrderActionService],
-      useFactory: (actions: UberOrderActionService) =>
-        new ExecuteUberOrderActionWorker(actions),
+      inject: [UBER_ORDER_ACTION_REPOSITORY, UberOrderActionService],
+      useFactory: (
+        repository: UberOrderActionRepositoryPort,
+        actions: UberOrderActionService,
+      ) => new ExecuteUberOrderActionWorker(repository, actions),
     },
     {
       provide: SyncUberOrderStatusUseCase,
