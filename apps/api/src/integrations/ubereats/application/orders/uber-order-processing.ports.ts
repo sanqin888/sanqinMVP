@@ -60,7 +60,7 @@ export interface UberWebhookInboxPort {
     payload: unknown;
   }): Promise<boolean>;
   claimDue(limit: number): Promise<UberWebhookInboxItem[]>;
-  markSucceeded(item: UberWebhookInboxItem): Promise<void>;
+  markSucceeded(item: UberWebhookInboxItem): Promise<boolean>;
   markUnsupported(
     item: UberWebhookInboxItem,
     details: {
@@ -69,7 +69,7 @@ export interface UberWebhookInboxPort {
       safeSummary: string;
       businessVersion: string;
     },
-  ): Promise<void>;
+  ): Promise<boolean>;
   requeueUnsupported(
     eventIds: string[],
     supportedEventTypes: string[],
@@ -79,7 +79,7 @@ export interface UberWebhookInboxPort {
     item: UberWebhookInboxItem,
     error: unknown,
     retryable: boolean,
-  ): Promise<void>;
+  ): Promise<boolean>;
   setStoreProvisioned(
     storeId: string,
     isProvisioned: boolean,

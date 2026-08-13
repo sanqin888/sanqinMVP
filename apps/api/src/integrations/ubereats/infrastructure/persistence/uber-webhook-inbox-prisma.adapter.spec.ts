@@ -6,7 +6,7 @@ jest.mock('@prisma/client', () => ({
 import { UberWebhookInboxPrismaAdapter } from './uber-webhook-inbox-prisma.adapter';
 
 describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
-  it('claims only the oldest unfinished event per resource while allowing other resources', async () => {
+  it('keeps same-order events ordered while allowing other resources', async () => {
     let sql = '';
     const prisma = {
       $queryRaw: jest.fn((parts: TemplateStringsArray) => {
@@ -51,7 +51,7 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
     expect(sql).toContain('FOR UPDATE OF candidate SKIP LOCKED');
   });
 
-  it('automatically dead-letters an eighth crashed attempt and then claims the next event for the resource', async () => {
+  it('takes over an expired crashed lease and eventually releases the next ordered event', async () => {
     const telemetry = { captureEvent: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
       $queryRaw: jest
@@ -106,4 +106,35 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
     expect(sql).toContain("SELECT 'AUTO_DEAD'");
     expect(sql).toContain('AND NOT (earlier."attemptCount" >=');
   });
+});
+
+describe('UberWebhookInboxPrismaAdapter lease fencing', () => {
+  const item = {
+    eventId: 'event-1', eventType: 'orders.notification', payload: {},
+    leaseToken: 'old-token', idempotencyKey: 'stable-event-key', businessVersion: 'v1',
+  };
+
+  it.each(['markSucceeded', 'markUnsupported', 'markFailed'] as const)(
+    'rejects a stale token in %s', async (method) => {
+      const prisma = {
+        uberWebhookInbox: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findUnique: jest.fn().mockResolvedValue({ attemptCount: 2 }),
+        },
+      };
+      const adapter = new UberWebhookInboxPrismaAdapter(prisma as never, {
+        workerLeaseDurationMs: 60_000,
+        workerPolicies: { webhookInbox: { initialBackoffMs: 1_000, maxBackoffMs: 60_000 } },
+      } as never);
+      const result = method === 'markSucceeded'
+        ? await adapter.markSucceeded(item)
+        : method === 'markUnsupported'
+          ? await adapter.markUnsupported(item, { code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED', eventType: item.eventType, safeSummary: 'safe', businessVersion: 'v1' })
+          : await adapter.markFailed(item, new Error('boom'), true);
+      expect(result).toBe(false);
+      expect(prisma.uberWebhookInbox.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ leaseToken: 'old-token', status: 'PROCESSING' }) }),
+      );
+    },
+  );
 });
