@@ -47,6 +47,9 @@ export class UberOrderActionService {
   /** Executes one task whose lease has already been acquired by a worker. */
   async executeClaimed(task: UberOrderActionTask): Promise<void> {
     try {
+      const currentStatus = await this.repository.getOrderStatus(
+        task.externalOrderId,
+      );
       const common = {
         externalOrderId: task.externalOrderId,
         idempotencyKey: task.idempotencyKey,
@@ -64,7 +67,21 @@ export class UberOrderActionService {
       else await this.gateway.readyForPickup(common);
       // The exact lease returned by claim is mandatory. A false result means
       // another worker owns the row; its local transition must remain untouched.
-      await this.repository.markSucceeded(task.taskId, task.leaseToken);
+      const nextStatus =
+        currentStatus === null
+          ? null
+          : UberOrderStateMachine.afterConfirmedAction(
+              currentStatus,
+              task.action,
+            );
+      await this.repository.complete({
+        taskId: task.taskId,
+        leaseToken: task.leaseToken,
+        transition:
+          currentStatus !== null && nextStatus !== null
+            ? { from: currentStatus, to: nextStatus }
+            : null,
+      });
     } catch (error) {
       const upstream = this.classifyFailure(error);
       await this.repository.markFailed(task.taskId, task.leaseToken, {

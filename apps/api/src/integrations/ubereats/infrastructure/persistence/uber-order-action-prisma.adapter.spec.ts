@@ -137,7 +137,51 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     expect(queryRaw.mock.calls[0]).toContain(3);
   });
 
-  it.each(['markSucceeded', 'markFailed'] as const)(
+  it('persists exactly the transition supplied by the application service', async () => {
+    const actionUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    const orderUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    const prisma = {
+      $transaction: jest.fn((work: (tx: unknown) => unknown) =>
+        Promise.resolve(
+          work({
+            uberOrderAction: {
+              findFirst: jest
+                .fn()
+                .mockResolvedValue({ externalOrderId: 'order-1' }),
+              updateMany: actionUpdate,
+            },
+            order: { updateMany: orderUpdate },
+          }),
+        ),
+      ),
+    };
+    const adapter = new UberOrderActionPrismaAdapter(prisma as never);
+
+    await expect(
+      adapter.complete({
+        taskId: 'task-1',
+        leaseToken: 'lease-1',
+        transition: { from: 'making', to: 'refunded' },
+      }),
+    ).resolves.toBe(true);
+
+    expect(orderUpdate).toHaveBeenCalledWith({
+      where: {
+        clientRequestId: 'ubereats:order-1',
+        status: 'making',
+      },
+      data: {
+        status: 'refunded',
+        makingAt: undefined,
+        readyAt: undefined,
+      },
+    });
+    expect(actionUpdate.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({ leaseToken: 'lease-1' }),
+    );
+  });
+
+  it.each(['complete', 'markFailed'] as const)(
     '%s rejects an expired or replaced lease by returning false',
     async (method) => {
       const updateMany = jest
@@ -155,8 +199,12 @@ describe('UberOrderActionPrismaAdapter contract', () => {
       };
       const adapter = new UberOrderActionPrismaAdapter(prisma as never);
       const result =
-        method === 'markSucceeded'
-          ? await adapter.markSucceeded('task', 'expired-token')
+        method === 'complete'
+          ? await adapter.complete({
+              taskId: 'task',
+              leaseToken: 'expired-token',
+              transition: { from: 'pending', to: 'making' },
+            })
           : await adapter.markFailed('task', 'expired-token', {
               retryable: true,
               code: 'HTTP_503',

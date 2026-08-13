@@ -4,13 +4,13 @@
 
 ## 核心组件与职责
 
-| 组件 | 唯一职责 | 不应承担的职责 |
-| --- | --- | --- |
-| `ProcessUberWebhookInboxUseCase` | 从 inbox 领取并分发 webhook，订单事件交给导入用例 | 不生成动作、不直接写动作表、不调用 Uber 动作 API |
-| `ImportUberOrderUseCase` | 校验并导入订单，决定随导入事务保存的初始动作 intent | 不在订单事务外另行 enqueue，不调用 Uber 动作 API |
-| `UberOrderActionService` | 统一动作 intent 的构建、请求校验和已领取任务的执行规则 | 不成为 HTTP、webhook 或定时任务入口 |
-| `UberOrderStatusSyncService` | 把本地订单状态映射为受支持的 Uber 动作 | 不持久化动作、不直接调用 gateway |
-| `ExecuteUberOrderActionWorker` | 编排动作任务的领取与执行 | 不复制动作校验、幂等键生成或 gateway 分派规则 |
+| 组件                             | 唯一职责                                               | 不应承担的职责                                   |
+| -------------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
+| `ProcessUberWebhookInboxUseCase` | 从 inbox 领取并分发 webhook，订单事件交给导入用例      | 不生成动作、不直接写动作表、不调用 Uber 动作 API |
+| `ImportUberOrderUseCase`         | 校验并导入订单，决定随导入事务保存的初始动作 intent    | 不在订单事务外另行 enqueue，不调用 Uber 动作 API |
+| `UberOrderActionService`         | 统一动作 intent 的构建、请求校验和已领取任务的执行规则 | 不成为 HTTP、webhook 或定时任务入口              |
+| `UberOrderStatusSyncService`     | 把本地订单状态映射为受支持的 Uber 动作                 | 不持久化动作、不直接调用 gateway                 |
+| `ExecuteUberOrderActionWorker`   | 编排动作任务的领取与执行                               | 不复制动作校验、幂等键生成或 gateway 分派规则    |
 
 ## Webhook 导入链路
 
@@ -63,7 +63,9 @@ UberOrderActionWorkerAdapter
   → UberOrderActionRepositoryPort.complete(...)
 ```
 
-Worker adapter 只负责轮询调度，应用 Worker 负责批量领取，`UberOrderActionService.executeClaimed(task)` 负责按动作类型调用 gateway，并把结果交还 repository 完成。`complete(...)` 在实现层可以由成功和失败两个显式方法表达，但必须携带 `claim(...)` 返回的 lease token，确保只有当前租约所有者能够提交结果。
+Worker adapter 只负责轮询调度，应用 Worker 负责批量领取，`UberOrderActionService.executeClaimed(task)` 负责读取当前订单状态、按动作类型调用 gateway，并在确认成功后通过 `UberOrderStateMachine.afterConfirmedAction(...)` 产生明确的状态迁移，再把结果交还 repository 完成。`complete(...)` 必须携带 `claim(...)` 返回的 lease token，并在同一事务内完成 lease fencing、任务成功写入和 service 指定的条件状态更新；repository 不得根据 action 推导目标状态。
+
+商户发起的 `CANCEL` 是独立 command，沿用 action idempotency key；确认成功后的生命周期结果由 `afterConfirmedAction(status, 'CANCEL')` 决定。Uber cancellation webhook 则继续使用 webhook event id 和 inbox 幂等边界。两条入口可以复用取消状态判断，但不得混用幂等标识或事件语义。
 
 `ExecuteUberOrderActionWorker` 持有 worker owner、batch limit 和 lease duration，调用 repository 领取任务并并发调度。Service 的单任务公开入口不领取新任务，因而调用方必须传入 `claim(...)` 返回且包含 lease token 的完整任务。
 

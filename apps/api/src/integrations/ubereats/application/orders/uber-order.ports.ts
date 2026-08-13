@@ -91,7 +91,15 @@ export interface UberOrderActionRepositoryPort {
     now: Date;
     leaseDurationMs: number;
   }): Promise<UberOrderActionTask[]>;
-  markSucceeded(taskId: string, leaseToken: string): Promise<boolean>;
+  getOrderStatus(externalOrderId: string): Promise<UberOrderStatus | null>;
+  complete(input: {
+    taskId: string;
+    leaseToken: string;
+    transition: {
+      from: UberOrderStatus;
+      to: UberOrderStatus;
+    } | null;
+  }): Promise<boolean>;
   markFailed(
     taskId: string,
     leaseToken: string,

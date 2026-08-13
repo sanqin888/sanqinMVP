@@ -110,6 +110,9 @@ export const UberOrderStateMachine = {
     status: UberOrderStatus,
     action: UberOrderActionName,
   ): UberOrderStatus | null {
+    // Merchant-issued cancellation commands have their own action idempotency
+    // key, but share the lifecycle decision with cancellation webhook events.
+    if (action === 'CANCEL') return statusAfterCancellation(status);
     if (action === 'ACCEPT' && status === UberOrderStatus.pending)
       return UberOrderStatus.making;
     if (
