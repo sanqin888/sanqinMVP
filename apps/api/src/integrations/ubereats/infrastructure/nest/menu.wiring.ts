@@ -1,6 +1,12 @@
 import type { Provider } from '@nestjs/common';
 import { LoadUberMenuWorkflowUseCase } from '../../application/menu/load-uber-menu-workflow.use-case';
-import { UberMenuDraftUseCase } from '../../application/menu/uber-menu-draft.use-case';
+import { QueryUberMenuConfigUseCase } from '../../application/menu/query-uber-menu-config.use-case';
+import { WriteUberMenuConfigUseCase } from '../../application/menu/write-uber-menu-config.use-case';
+import { ReadUberMenuDraftUseCase } from '../../application/menu/read-uber-menu-draft.use-case';
+import { UpdateUberMenuDraftItemUseCase } from '../../application/menu/update-uber-menu-draft-item.use-case';
+import { BindUberMenuOptionChildGroupUseCase } from '../../application/menu/bind-uber-menu-option-child-group.use-case';
+import { QueryUberMenuDraftDiffUseCase } from '../../application/menu/query-uber-menu-draft-diff.use-case';
+import { UberMenuReferenceValidator } from '../../application/menu/uber-menu-reference-validator.service';
 import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
 import { PublishUberMenuUseCase } from '../../application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from '../../application/menu/confirm-uber-menu-publication.use-case';
@@ -142,31 +148,50 @@ export function createMenuWiring(): Provider[] {
       useExisting: UberMenuNotificationPrismaRepository,
     },
     {
-      provide: UberMenuDraftUseCase,
-      inject: [
-        UBER_MENU_CONFIG_QUERY_PORT,
-        UBER_MENU_CONFIG_WRITE_PORT,
-        UBER_MENU_DRAFT_READ_PORT,
-        UBER_MENU_DRAFT_MUTATION_PORT,
-        UBER_MENU_DRAFT_DIFF_PORT,
-        UBER_MENU_REFERENCE_QUERY_PORT,
-      ],
+      provide: UberMenuReferenceValidator,
+      inject: [UBER_MENU_REFERENCE_QUERY_PORT],
+      useFactory: (references: UberMenuReferenceQueryPort) =>
+        new UberMenuReferenceValidator(references),
+    },
+    {
+      provide: QueryUberMenuConfigUseCase,
+      inject: [UBER_MENU_CONFIG_QUERY_PORT],
+      useFactory: (queries: UberMenuConfigQueryPort) =>
+        new QueryUberMenuConfigUseCase(queries),
+    },
+    {
+      provide: WriteUberMenuConfigUseCase,
+      inject: [UBER_MENU_CONFIG_WRITE_PORT, UberMenuReferenceValidator],
       useFactory: (
-        configQueries: UberMenuConfigQueryPort,
-        configWrites: UberMenuConfigWritePort,
-        draftQueries: UberMenuDraftReadPort,
-        draftMutations: UberMenuDraftMutationPort,
-        draftDiffs: UberMenuDraftDiffPort,
-        references: UberMenuReferenceQueryPort,
-      ) =>
-        new UberMenuDraftUseCase(
-          configQueries,
-          configWrites,
-          draftQueries,
-          draftMutations,
-          draftDiffs,
-          references,
-        ),
+        writes: UberMenuConfigWritePort,
+        references: UberMenuReferenceValidator,
+      ) => new WriteUberMenuConfigUseCase(writes, references),
+    },
+    {
+      provide: ReadUberMenuDraftUseCase,
+      inject: [UBER_MENU_DRAFT_READ_PORT],
+      useFactory: (drafts: UberMenuDraftReadPort) =>
+        new ReadUberMenuDraftUseCase(drafts),
+    },
+    {
+      provide: UpdateUberMenuDraftItemUseCase,
+      inject: [UBER_MENU_DRAFT_MUTATION_PORT, UberMenuReferenceValidator],
+      useFactory: (
+        mutations: UberMenuDraftMutationPort,
+        references: UberMenuReferenceValidator,
+      ) => new UpdateUberMenuDraftItemUseCase(mutations, references),
+    },
+    {
+      provide: BindUberMenuOptionChildGroupUseCase,
+      inject: [UBER_MENU_DRAFT_MUTATION_PORT],
+      useFactory: (mutations: UberMenuDraftMutationPort) =>
+        new BindUberMenuOptionChildGroupUseCase(mutations),
+    },
+    {
+      provide: QueryUberMenuDraftDiffUseCase,
+      inject: [UBER_MENU_DRAFT_DIFF_PORT],
+      useFactory: (diffs: UberMenuDraftDiffPort) =>
+        new QueryUberMenuDraftDiffUseCase(diffs),
     },
     {
       provide: LoadUberMenuWorkflowUseCase,

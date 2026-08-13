@@ -513,7 +513,11 @@ describe('Uber Eats bounded-context architecture', () => {
 
   it('keeps focused use cases behind application-owned ports', () => {
     for (const path of [
-      'application/menu/uber-menu-draft.use-case.ts',
+      'application/menu/write-uber-menu-config.use-case.ts',
+      'application/menu/read-uber-menu-draft.use-case.ts',
+      'application/menu/update-uber-menu-draft-item.use-case.ts',
+      'application/menu/bind-uber-menu-option-child-group.use-case.ts',
+      'application/menu/query-uber-menu-draft-diff.use-case.ts',
       'application/menu/publish-uber-menu.use-case.ts',
       'application/menu/uber-menu-availability.use-case.ts',
       'application/orders/uber-order.use-cases.ts',
@@ -526,6 +530,31 @@ describe('Uber Eats bounded-context architecture', () => {
       expect(source).not.toMatch(/PrismaService|UberHttpClient/);
       expect(source).toMatch(/(?:port|repository|gateway)/i);
     }
+  });
+
+  it('prevents menu draft use cases from aggregating unrelated repository ports', () => {
+    const focusedDraftUseCases = boundedContextFiles.filter((file) =>
+      /application\/menu\/(?:query|write|read|update|bind)-uber-menu-(?:config|draft|option-child-group).*\.use-case\.ts$/.test(
+        file.path,
+      ),
+    );
+    const violations = focusedDraftUseCases.flatMap((file) => {
+      const directPortDependencies = [
+        ...file.source.matchAll(
+          /private readonly \w+:\s*(Uber\w+(?:Port|Repository|UnitOfWork))/g,
+        ),
+      ].map((match) => match[1]);
+      return new Set(directPortDependencies).size > 1
+        ? [
+            `${relative(BOUNDED_CONTEXT_ROOT, file.path)} aggregates ${[
+              ...new Set(directPortDependencies),
+            ].join(', ')}`,
+          ]
+        : [];
+    });
+
+    expect(focusedDraftUseCases).toHaveLength(6);
+    expect(violations).toEqual([]);
   });
 
   it('forbids application imports of infrastructure and the removed merchant gateway', () => {
