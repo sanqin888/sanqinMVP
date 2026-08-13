@@ -236,8 +236,8 @@ export class RequestUberOrderActionUseCase {
   async deny(id: string, reasonCode: string, reasonDetail?: string) {
     return this.present(
       await this.actions.request(id, 'DENY', {
-        reasonCode,
-        reasonDetail: reasonDetail ?? null,
+        reasonCode: reasonCode.trim(),
+        reasonDetail: reasonDetail?.trim() || null,
       }),
     );
   }

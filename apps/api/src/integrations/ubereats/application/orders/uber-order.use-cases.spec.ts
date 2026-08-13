@@ -230,6 +230,48 @@ describe('Uber order use-case boundaries', () => {
     expect(request).toHaveBeenCalledWith('order-1', 'ACCEPT');
   });
 
+  it.each([
+    ['accept', ['order-1', 'ACCEPT']],
+    [
+      'deny',
+      [
+        'order-1',
+        'DENY',
+        { reasonCode: 'STORE_CLOSED', reasonDetail: 'closed' },
+      ],
+    ],
+    [
+      'cancel',
+      ['order-1', 'CANCEL', { reasonCode: 'OTHER', reasonDetail: 'closed' }],
+    ],
+    ['getReadyForPickupAction', ['order-1', 'READY_FOR_PICKUP']],
+  ] as const)(
+    '%s delegates its semantic action without building a key',
+    async (method, expected) => {
+      const request = jest.fn().mockResolvedValue({
+        taskId: 'same-task',
+        created: false,
+      });
+      const useCase = new RequestUberOrderActionUseCase({ request } as never);
+      const args =
+        method === 'deny'
+          ? (['order-1', ' STORE_CLOSED ', 'closed'] as const)
+          : method === 'cancel'
+            ? (['order-1', ' closed '] as const)
+            : (['order-1'] as const);
+
+      const result = await (
+        useCase[method] as (...input: never[]) => Promise<unknown>
+      )(...(args as never[]));
+
+      expect(request).toHaveBeenCalledWith(...expected);
+      expect(request.mock.calls.flat()).not.toContainEqual(
+        expect.stringMatching(/^sanqin-uber-/),
+      );
+      expect(result).toMatchObject({ duplicate: true, actionId: 'same-task' });
+    },
+  );
+
   it('requests a CANCEL durable intent with the merchant reason', async () => {
     const request = jest
       .fn()
@@ -269,5 +311,25 @@ describe('Uber order use-case boundaries', () => {
     expect(executeClaimed).toHaveBeenCalledTimes(2);
     expect(executeClaimed).toHaveBeenNthCalledWith(1, tasks[0]);
     expect(executeClaimed).toHaveBeenNthCalledWith(2, tasks[1]);
+  });
+
+  it('returns zero without invoking the service for an empty claim', async () => {
+    const claim = jest.fn().mockResolvedValue([]);
+    const executeClaimed = jest.fn();
+    const worker = new ExecuteUberOrderActionWorker(
+      { claim } as never,
+      { executeClaimed } as never,
+    );
+    await expect(worker.execute()).resolves.toBe(0);
+    expect(executeClaimed).not.toHaveBeenCalled();
+  });
+
+  it('does not add a second error protocol around infrastructure failures', async () => {
+    const failure = new Error('database unavailable');
+    const worker = new ExecuteUberOrderActionWorker(
+      { claim: jest.fn().mockResolvedValue([{ taskId: 'task-1' }]) } as never,
+      { executeClaimed: jest.fn().mockRejectedValue(failure) } as never,
+    );
+    await expect(worker.execute()).rejects.toBe(failure);
   });
 });
