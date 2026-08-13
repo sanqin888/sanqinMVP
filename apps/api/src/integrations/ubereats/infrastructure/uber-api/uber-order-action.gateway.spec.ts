@@ -26,18 +26,42 @@ describe('UberOrderActionGatewayAdapter', () => {
     );
   });
 
-  it('treats a ready conflict as idempotent success', async () => {
+  it.each([
+    ['accept', undefined],
+    ['deny', { denial: { reasonCode: 'STORE_CLOSED', reasonDetail: null } }],
+    ['cancel', { denial: { reasonCode: 'STORE_CLOSED', reasonDetail: null } }],
+    ['readyForPickup', undefined],
+  ] as const)(
+    'treats a repeated %s conflict as idempotent success',
+    async (method, extra) => {
+      const executeAction = jest
+        .fn()
+        .mockResolvedValue({ ok: false, status: 409, data: {} });
+      const adapter = new UberOrderActionGatewayAdapter({
+        executeAction,
+      } as never);
+      await expect(
+        adapter[method]({
+          externalOrderId: 'order-1',
+          idempotencyKey: 'key',
+          ...extra,
+        }),
+      ).resolves.toBeUndefined();
+    },
+  );
+
+  it('does not hide non-conflict upstream failures as idempotent success', async () => {
     const executeAction = jest
       .fn()
-      .mockResolvedValue({ ok: false, status: 409, data: {} });
+      .mockResolvedValue({ ok: false, status: 422, data: {} });
+
     await expect(
-      new UberOrderActionGatewayAdapter({
-        executeAction,
-      } as never).readyForPickup({
+      new UberOrderActionGatewayAdapter({ executeAction } as never).deny({
         externalOrderId: 'order-1',
         idempotencyKey: 'key',
+        denial: { reasonCode: 'OTHER', reasonDetail: null },
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ status: 422, code: 'UBER_ORDER_HTTP_422' });
   });
 
   it('maps CANCEL to the merchant denial endpoint', async () => {
