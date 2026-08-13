@@ -10,7 +10,8 @@ export interface UberOperationsAlertRepositoryPort {
   createStoreStatusAlert(
     uberStoreId: string,
     error: string,
-    status: number,
+    reason: 'UPSTREAM_REJECTED' | 'UPSTREAM_UNAVAILABLE',
+    retryable: boolean,
     payload: Record<string, string>,
   ): Promise<void>;
 }

@@ -49,14 +49,21 @@ export type UberStoreProvisionResult = {
   posExternalStoreId: string | null;
 };
 
-export type UberStoreWriteResult = {
-  uberStoreId: string;
-  ok: boolean;
-  status: number | null;
-  attempts: number;
-  duplicate?: boolean;
-  error?: string;
-};
+export type UberStoreWriteResult =
+  | {
+      uberStoreId: string;
+      outcome: 'SUCCEEDED';
+      attempts: number;
+      duplicate: boolean;
+    }
+  | {
+      uberStoreId: string;
+      outcome: 'FAILED';
+      reason: 'UPSTREAM_REJECTED' | 'UPSTREAM_UNAVAILABLE';
+      retryable: boolean;
+      attempts: number;
+      error: string;
+    };
 
 /** Store mutation capability; URL/request construction belongs to its adapter. */
 export interface UberStoreApiPort {

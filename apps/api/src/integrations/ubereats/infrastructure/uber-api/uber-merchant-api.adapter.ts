@@ -198,11 +198,16 @@ export class UberMerchantApiAdapter
           idempotencyKey,
         });
         status = result.response.status;
+        await this.audit?.captureEvent('uber.gateway.store-status-response', {
+          operation: 'merchant.write-store-status',
+          storeId,
+          httpStatus: status,
+          attempt,
+        });
         if (result.response.ok || status === 409)
           return {
             uberStoreId: storeId,
-            ok: true,
-            status,
+            outcome: 'SUCCEEDED' as const,
             attempts: attempt,
             duplicate: status === 409,
           };
@@ -210,8 +215,9 @@ export class UberMerchantApiAdapter
         if (status !== 429 && status < 500)
           return {
             uberStoreId: storeId,
-            ok: false,
-            status,
+            outcome: 'FAILED' as const,
+            reason: 'UPSTREAM_REJECTED' as const,
+            retryable: false,
             attempts: attempt,
             error,
           };
@@ -225,8 +231,9 @@ export class UberMerchantApiAdapter
     }
     return {
       uberStoreId: storeId,
-      ok: false,
-      status,
+      outcome: 'FAILED' as const,
+      reason: 'UPSTREAM_UNAVAILABLE' as const,
+      retryable: true,
       attempts: maxAttempts,
       error: error || 'Uber 门店状态写入失败',
     };
