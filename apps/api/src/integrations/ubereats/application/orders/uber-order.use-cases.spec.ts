@@ -230,6 +230,24 @@ describe('Uber order use-case boundaries', () => {
     expect(request).toHaveBeenCalledWith('order-1', 'ACCEPT');
   });
 
+  it('requests a CANCEL durable intent with the merchant reason', async () => {
+    const request = jest
+      .fn()
+      .mockResolvedValue({ taskId: 'task-cancel', created: true });
+    const useCase = new RequestUberOrderActionUseCase({
+      request,
+    } as unknown as UberOrderActionService);
+
+    await expect(useCase.cancel('order-1', '商品售罄')).resolves.toMatchObject({
+      actionId: 'task-cancel',
+      status: 'PENDING',
+    });
+    expect(request).toHaveBeenCalledWith('order-1', 'CANCEL', {
+      reasonCode: 'OTHER',
+      reasonDetail: '商品售罄',
+    });
+  });
+
   it('claims a batch and delegates every claimed task to the action service', async () => {
     const tasks = [
       { taskId: 'task-1' },

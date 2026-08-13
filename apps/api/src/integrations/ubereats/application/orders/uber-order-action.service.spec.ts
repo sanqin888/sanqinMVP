@@ -89,6 +89,7 @@ describe('UberOrderActionService contract', () => {
     expect(gateway.cancel).toHaveBeenCalledWith({
       externalOrderId: 'order-1',
       idempotencyKey: 'key-1',
+      denial: { reasonCode: 'OTHER', reasonDetail: null },
     });
     expect(repository.complete).toHaveBeenCalledWith({
       taskId: 'task-1',

@@ -63,7 +63,14 @@ export class UberOrderActionService {
             reasonDetail: task.reasonDetail,
           },
         });
-      else if (task.action === 'CANCEL') await this.gateway.cancel(common);
+      else if (task.action === 'CANCEL')
+        await this.gateway.cancel({
+          ...common,
+          denial: {
+            reasonCode: task.reasonCode ?? 'OTHER',
+            reasonDetail: task.reasonDetail,
+          },
+        });
       else await this.gateway.readyForPickup(common);
       // The exact lease returned by claim is mandatory. A false result means
       // another worker owns the row; its local transition must remain untouched.

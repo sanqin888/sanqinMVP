@@ -44,11 +44,12 @@ describe('UberOrderActionGatewayAdapter', () => {
     await new UberOrderActionGatewayAdapter({ executeAction } as never).cancel({
       externalOrderId: 'order-1',
       idempotencyKey: 'cancel-key',
+      denial: { reasonCode: 'ITEM_UNAVAILABLE', reasonDetail: 'sold out' },
     });
     expect(executeAction).toHaveBeenCalledWith(
       'order-1',
       'DENY',
-      { reason: { code: 'OTHER', explanation: 'Cancelled by merchant' } },
+      { reason: { code: 'ITEM_AVAILABILITY', explanation: 'sold out' } },
       'cancel-key',
     );
   });
