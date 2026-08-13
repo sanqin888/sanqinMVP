@@ -6,7 +6,8 @@ import type {
   UberDraftOptionCommandPort,
   UberItemChannelConfigCommandPort,
   UberMenuWriteTransactionPort,
-  UberOptionChildGroupBindingCommandPort,
+  UberOptionChildGroupBindCommandPort,
+  UberOptionChildGroupUnbindCommandPort,
   UberOptionItemConfigCommandPort,
 } from './uber-menu-draft.ports';
 import { BindUberDraftOptionChildGroupUseCase } from './bind-uber-draft-option-child-group.use-case';
@@ -112,8 +113,10 @@ describe('Uber menu command use cases', () => {
     const groupCommands: UberDraftGroupCommandPort = {
       updateUberDraftGroup: updateGroup,
     };
-    const bindingCommands: UberOptionChildGroupBindingCommandPort = {
+    const bindCommands: UberOptionChildGroupBindCommandPort = {
       bindUberDraftOptionChildGroup: bind,
+    };
+    const unbindCommands: UberOptionChildGroupUnbindCommandPort = {
       unbindUberDraftOptionChildGroup: unbind,
     };
 
@@ -125,12 +128,12 @@ describe('Uber menu command use cases', () => {
     ).resolves.toBe('updated');
     await expect(
       new BindUberDraftOptionChildGroupUseCase(
-        transaction(bindingCommands),
+        transaction(bindCommands),
       ).execute('option-1', 'group-1', 'store-1'),
     ).resolves.toBe('bound');
     await expect(
       new UnbindUberDraftOptionChildGroupUseCase(
-        transaction(bindingCommands),
+        transaction(unbindCommands),
       ).execute('option-1', 'group-1', 'store-1'),
     ).resolves.toBe('unbound');
     expect(updateGroup).toHaveBeenCalledTimes(1);

@@ -253,10 +253,12 @@ export interface UberDraftOptionCommandPort {
     input: UpdateDraftOptionInput,
   ): Promise<UberDraftMutationResult<UberOptionItemConfigDto>>;
 }
-export interface UberOptionChildGroupBindingCommandPort {
+export interface UberOptionChildGroupBindCommandPort {
   bindUberDraftOptionChildGroup(
     command: UberOptionChildGroupBindingCommand,
   ): Promise<UberDraftBindingResult>;
+}
+export interface UberOptionChildGroupUnbindCommandPort {
   unbindUberDraftOptionChildGroup(
     command: UberOptionChildGroupBindingCommand,
   ): Promise<UberDraftBindingResult>;
@@ -276,7 +278,8 @@ export type UberMenuWriteCommands = UberItemChannelConfigCommandPort &
   UberDraftItemCommandPort &
   UberDraftGroupCommandPort &
   UberDraftOptionCommandPort &
-  UberOptionChildGroupBindingCommandPort;
+  UberOptionChildGroupBindCommandPort &
+  UberOptionChildGroupUnbindCommandPort;
 export interface UberMenuDraftDiffPort {
   getUberMenuDraftDiff(storeId?: string): Promise<UberMenuDraftDiffResult>;
 }
