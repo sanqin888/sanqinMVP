@@ -145,9 +145,9 @@ export class UberOrderGateway extends PrefixGateway {
     return this.transport.inspect<T>(request);
   }
 
-  async executeAction(
+  async sendActionCommand(
     externalOrderId: string,
-    action: UberOrderActionName,
+    action: Exclude<UberOrderActionName, 'CANCEL'>,
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ) {
