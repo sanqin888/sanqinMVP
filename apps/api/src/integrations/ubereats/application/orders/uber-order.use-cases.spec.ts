@@ -295,19 +295,25 @@ describe('Uber order use-case boundaries', () => {
       { taskId: 'task-1' },
       { taskId: 'task-2' },
     ] as UberOrderActionTask[];
-    const claim = jest.fn().mockResolvedValue(tasks);
+    type ClaimInput = {
+      limit: number;
+      owner: string;
+      now: Date;
+      leaseDurationMs: number;
+    };
+    const claim = jest
+      .fn<Promise<UberOrderActionTask[]>, [ClaimInput]>()
+      .mockResolvedValue(tasks);
     const executeClaimed = jest.fn().mockResolvedValue(undefined);
     const worker = new ExecuteUberOrderActionWorker(
       { claim } as unknown as UberOrderActionRepositoryPort,
       { executeClaimed } as unknown as UberOrderActionService,
     );
     await expect(worker.execute(50)).resolves.toBe(2);
-    expect(claim).toHaveBeenCalledWith({
-      limit: 50,
-      owner: expect.stringMatching(/^worker-/),
-      now: expect.any(Date),
-      leaseDurationMs: 30_000,
-    });
+    const claimInput = claim.mock.calls[0][0];
+    expect(claimInput).toMatchObject({ limit: 50, leaseDurationMs: 30_000 });
+    expect(claimInput.owner).toMatch(/^worker-/);
+    expect(claimInput.now).toBeInstanceOf(Date);
     expect(executeClaimed).toHaveBeenCalledTimes(2);
     expect(executeClaimed).toHaveBeenNthCalledWith(1, tasks[0]);
     expect(executeClaimed).toHaveBeenNthCalledWith(2, tasks[1]);
