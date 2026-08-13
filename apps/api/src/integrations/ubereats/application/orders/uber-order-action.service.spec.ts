@@ -121,8 +121,14 @@ describe('UberOrderActionService contract', () => {
   });
 
   it.each([
+    [408, true],
+    [429, true],
     [503, true],
     [400, false],
+    [401, false],
+    [403, false],
+    [404, false],
+    [422, false],
   ])('classifies HTTP %s failure retryable=%s', async (status, retryable) => {
     const error = Object.assign(new Error('failed'), { status });
     const { repository, service } = setup({
@@ -134,6 +140,42 @@ describe('UberOrderActionService contract', () => {
       'lease-from-claim',
       expect.objectContaining({ retryable }),
     ]);
+  });
+
+  it('retries failures without an HTTP response', async () => {
+    const error = Object.assign(new Error('network unavailable'), {
+      status: null,
+      code: 'UBER_NETWORK_ERROR',
+    });
+    const { repository, service } = setup({
+      accept: jest.fn().mockRejectedValue(error),
+    });
+
+    await service.executeClaimed(task);
+
+    expect(repository.markFailed).toHaveBeenCalledWith(
+      'task-1',
+      'lease-from-claim',
+      expect.objectContaining({
+        retryable: true,
+        code: 'UBER_NETWORK_ERROR',
+      }),
+    );
+  });
+
+  it('treats unknown exceptions as retryable without trusting retryable hints', async () => {
+    const error = Object.assign(new Error('unknown'), { retryable: false });
+    const { repository, service } = setup({
+      accept: jest.fn().mockRejectedValue(error),
+    });
+
+    await service.executeClaimed(task);
+
+    expect(repository.markFailed).toHaveBeenCalledWith(
+      'task-1',
+      'lease-from-claim',
+      expect.objectContaining({ retryable: true }),
+    );
   });
 
   it('leaves a claimed row recoverable when local success writeback fails', async () => {
@@ -149,5 +191,19 @@ describe('UberOrderActionService contract', () => {
         leaseToken: 'lease-from-claim',
       }),
     );
+    expect(repository.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('does not mark an upstream failure when the local status read fails', async () => {
+    const { repository, gateway, service } = setup();
+    repository.getOrderStatus.mockRejectedValue(
+      new Error('database unavailable'),
+    );
+
+    await expect(service.executeClaimed(task)).rejects.toThrow(
+      'database unavailable',
+    );
+    expect(gateway.accept).not.toHaveBeenCalled();
+    expect(repository.markFailed).not.toHaveBeenCalled();
   });
 });

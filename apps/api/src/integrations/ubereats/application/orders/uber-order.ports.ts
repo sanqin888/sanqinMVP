@@ -111,6 +111,14 @@ export type UberOrderDenial = {
   reasonCode: string;
   reasonDetail: string | null;
 };
+
+/** Minimal upstream failure facts. Retry policy deliberately lives in the service. */
+export interface UberOrderCommandFailure extends Error {
+  status: number | null;
+  code?: string;
+  retryAfterMs?: number | null;
+}
+
 export interface UberOrderActionGatewayPort {
   accept(input: {
     externalOrderId: string;

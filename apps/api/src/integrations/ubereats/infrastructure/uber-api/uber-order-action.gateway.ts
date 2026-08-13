@@ -1,14 +1,23 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
   UberOrderActionGatewayPort,
+  UberOrderCommandFailure,
   UberOrderDenial,
 } from '../../application/orders/uber-order.ports';
 import { UberOrderGateway } from './uber-resource.gateways';
+import { UberApiError } from './uber-http.client';
 
-export class UberOrderCommandError extends Error {
+export class UberOrderCommandError
+  extends Error
+  implements UberOrderCommandFailure
+{
   constructor(
-    readonly status: number,
-    message = `Uber order command failed with HTTP ${status}`,
+    readonly status: number | null,
+    message = status === null
+      ? 'Uber order command failed before receiving an HTTP response'
+      : `Uber order command failed with HTTP ${status}`,
+    readonly code?: string,
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = 'UberOrderCommandError';
@@ -55,15 +64,41 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     action: 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP',
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const outcome = await this.gateway.executeAction(
-      input.externalOrderId,
-      action,
-      payload,
-      input.idempotencyKey,
-    );
+    let outcome: Awaited<ReturnType<UberOrderGateway['executeAction']>>;
+    try {
+      outcome = await this.gateway.executeAction(
+        input.externalOrderId,
+        action,
+        payload,
+        input.idempotencyKey,
+      );
+    } catch (error) {
+      if (error instanceof UberApiError)
+        throw new UberOrderCommandError(
+          error.httpStatus,
+          error.safeDetail,
+          error.uberCode,
+          error.retryAfterMs,
+        );
+      throw new UberOrderCommandError(null);
+    }
     if (outcome.ok || (action === 'READY_FOR_PICKUP' && outcome.status === 409))
       return;
-    throw new UberOrderCommandError(outcome.status);
+    throw new UberOrderCommandError(
+      outcome.status,
+      undefined,
+      `UBER_ORDER_HTTP_${outcome.status}`,
+      this.retryAfterMs(outcome.retryAfter),
+    );
+  }
+
+  private retryAfterMs(value: string | null): number | null {
+    if (!value) return null;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0)
+      return Math.round(seconds * 1_000);
+    const date = Date.parse(value);
+    return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
   }
 
   private reasonCode(value: string): string {
