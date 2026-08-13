@@ -52,9 +52,6 @@ const WHITE_BOX_TEST_FILES = new Set([
   'uber-rate-limiter-composition.spec.ts',
   'ubereats.module.spec.ts',
 ]);
-const EXTERNAL_WHITE_BOX_TEST_FILES = new Set([
-  'admin/menu/admin-menu.service.spec.ts',
-]);
 const LAYERS = [
   'api',
   'application',
@@ -303,15 +300,16 @@ describe('Uber Eats bounded-context architecture', () => {
         file.path,
       );
       for (const specifier of importSpecifiers(file.source)) {
-        const deepExternalImport =
-          /integrations\/ubereats\/(?:api|application|domain|contracts|infrastructure|providers)(?:\/|$)/.test(
-            specifier,
+        const externalNonPublicImport = (() => {
+          const match = specifier.match(/integrations\/ubereats(?:\/(.*))?$/);
+          return Boolean(
+            match &&
+            match[1] !== 'public-api' &&
+            match[1] !== 'ubereats.module' &&
+            match[1] !== 'worker',
           );
-        if (
-          !isInsideContext &&
-          deepExternalImport &&
-          !EXTERNAL_WHITE_BOX_TEST_FILES.has(relativePath)
-        ) {
+        })();
+        if (!isInsideContext && externalNonPublicImport) {
           violations.push(`${relativePath} -> ${specifier}`);
           continue;
         }
