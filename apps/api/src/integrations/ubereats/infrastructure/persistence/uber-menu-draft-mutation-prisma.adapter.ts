@@ -8,7 +8,6 @@ import type {
   UberOptionChildGroupBindingCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
 import type {
-  UpdateDraftGroupInput,
   UpdateDraftItemInput,
   UpdateDraftOptionInput,
 } from '../../domain/menu/uber-menu.types';
@@ -97,8 +96,12 @@ export class UberMenuDraftMutationPrismaAdapter
     };
   }
 
-  async updateUberDraftGroup(groupId: string, input: UpdateDraftGroupInput) {
-    const normalizedStoreId = normalizeUberStoreId(input.storeId);
+  async updateUberDraftGroup(
+    command: import('../../application/menu/uber-menu-draft.ports').UberGroupConfigCommand,
+  ) {
+    const groupId = command.resourceKey.templateGroupStableId;
+    const input = command.payload;
+    const normalizedStoreId = command.resourceKey.storeId;
     const template = await this.prisma.menuOptionGroupTemplate.findUnique({
       where: { stableId: groupId },
       select: {
@@ -217,11 +220,13 @@ export class UberMenuDraftMutationPrismaAdapter
   }
 
   async bindUberDraftOptionChildGroup(
-    optionItemId: string,
-    groupId: string,
-    storeId?: string,
+    command: import('../../application/menu/uber-menu-draft.ports').UberOptionChildGroupBindingCommand,
   ) {
-    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const {
+      storeId: normalizedStoreId,
+      parentOptionChoiceStableId: optionItemId,
+      childTemplateGroupStableId: groupId,
+    } = command.resourceKey;
     const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
       select: { stableId: true },
@@ -277,11 +282,13 @@ export class UberMenuDraftMutationPrismaAdapter
   }
 
   async unbindUberDraftOptionChildGroup(
-    optionItemId: string,
-    groupId: string,
-    storeId?: string,
+    command: import('../../application/menu/uber-menu-draft.ports').UberOptionChildGroupBindingCommand,
   ) {
-    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const {
+      storeId: normalizedStoreId,
+      parentOptionChoiceStableId: optionItemId,
+      childTemplateGroupStableId: groupId,
+    } = command.resourceKey;
     const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
       select: { stableId: true },

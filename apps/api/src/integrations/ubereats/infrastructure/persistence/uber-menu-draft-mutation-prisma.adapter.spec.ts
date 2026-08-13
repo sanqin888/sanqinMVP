@@ -3,6 +3,13 @@ import type { PrismaService } from '../../../../prisma/prisma.service';
 import { UberMenuDraftMutationPrismaAdapter } from './uber-menu-draft-mutation-prisma.adapter';
 import type { UberTelemetryService } from './uber-telemetry.service';
 
+const semantics = {
+  samePayload: 'RETURN_SAME_BUSINESS_STATE',
+  differentPayload: 'UPDATE_RESOURCE',
+  sideEffects: 'DEDUPLICATE_BY_RESOURCE_AND_RESULTING_STATE',
+  concurrency: 'CONVERGE_BY_UNIQUE_RESOURCE_KEY',
+} as const;
+
 const db = (value: object) => value as PrismaService;
 
 describe('UberMenuDraftMutationPrismaAdapter contract', () => {
@@ -64,9 +71,13 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
     );
 
     await expect(
-      adapter.updateUberDraftGroup('group-1', {
-        storeId: 'store-1',
-        required: true,
+      adapter.updateUberDraftGroup({
+        resourceKey: {
+          storeId: 'store-1',
+          templateGroupStableId: 'group-1',
+        },
+        payload: { storeId: 'store-1', required: true },
+        semantics,
       }),
     ).resolves.toMatchObject({ groupId: 'group-1', warnings: [] });
     expect(upsert).toHaveBeenCalledWith(
@@ -134,16 +145,21 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
       { captureEvent } as unknown as UberTelemetryService,
     );
 
-    await adapter.bindUberDraftOptionChildGroup(
-      'option-1',
-      'group-1',
-      'store-1',
-    );
-    await adapter.unbindUberDraftOptionChildGroup(
-      'option-1',
-      'group-1',
-      'store-1',
-    );
+    const resourceKey = {
+      storeId: 'store-1',
+      parentOptionChoiceStableId: 'option-1',
+      childTemplateGroupStableId: 'group-1',
+    };
+    await adapter.bindUberDraftOptionChildGroup({
+      resourceKey,
+      payload: { isBound: true },
+      semantics,
+    });
+    await adapter.unbindUberDraftOptionChildGroup({
+      resourceKey,
+      payload: { isBound: false },
+      semantics,
+    });
 
     expect(captureEvent).toHaveBeenNthCalledWith(
       1,
