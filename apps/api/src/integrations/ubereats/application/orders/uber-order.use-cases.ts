@@ -77,7 +77,10 @@ export class ImportUberOrderUseCase {
       if (externalOrderId)
         await this.actions.request(externalOrderId, 'DENY', {
           reasonCode: 'INVALID_ORDER',
-          reasonDetail: '订单详情无法解析',
+          reasonDetail:
+            detail.reason === 'EMPTY_ITEMS'
+              ? '订单不包含可导入商品'
+              : '订单详情无法解析',
         });
       return;
     }

@@ -292,6 +292,44 @@ describe('Uber gateways wire contract v1', () => {
     });
   });
 
+  it.each([
+    ['mapping', 'MISSING_ORDER_ID', { total: 100, items: [{}] }],
+    ['business', 'EMPTY_ITEMS', { id: 'order-1', total: 100, items: [] }],
+  ] as const)(
+    'classifies a successful but invalid order detail as %s/%s without auditing its payload',
+    async (category, reason, data) => {
+      const credential = 'Bearer super-secret-credential';
+      const workflowLog = jest.fn();
+      const adapter = new UberOrderDetailGatewayAdapter(
+        {
+          pathFromResourceHref: jest.fn().mockResolvedValue('/orders/1'),
+          inspect: jest.fn().mockResolvedValue({
+            response: new Response(null, { status: 200 }),
+            data: { ...data, authorization: credential },
+            text: JSON.stringify({ ...data, authorization: credential }),
+          }),
+        },
+        { workflowLog },
+      );
+
+      await expect(
+        adapter.fetchOrderDetail({
+          resourceHref: 'https://api.uber.com/orders/1',
+          eventType: 'orders.notification',
+          eventId: 'event-1',
+          resourceId: 'order-1',
+        }),
+      ).resolves.toEqual({ kind: 'invalid', reason });
+      expect(workflowLog).toHaveBeenCalledWith(
+        category === 'mapping' ? 'error' : 'warn',
+        `[ubereats order] detail invalid category=${category} reason=${reason}`,
+      );
+      expect(JSON.stringify(workflowLog.mock.calls)).not.toContain(
+        'super-secret-credential',
+      );
+    },
+  );
+
   it('resource gateways reject cross-capability paths before transport', () => {
     const transport = createUberTransportFake();
     for (const gateway of [

@@ -9,12 +9,34 @@ import type {
 } from './uber-order.types';
 import type { UberOrderStatus } from './uber-order.types';
 
+export type UberOrderPayloadParseResult =
+  | { kind: 'parsed'; order: ParsedUberOrder }
+  | {
+      kind: 'invalid';
+      reason:
+        | 'MALFORMED_PAYLOAD'
+        | 'MISSING_ORDER_ID'
+        | 'MISSING_TOTAL'
+        | 'EMPTY_ITEMS';
+      category: 'mapping' | 'business';
+    };
+
 /** Database- and transport-free normalization of Uber webhook order bodies. */
 export class UberOrderPayloadParser {
   parse(payload: unknown): ParsedUberOrder | null {
+    const result = this.parseResult(payload);
+    return result.kind === 'parsed' ? result.order : null;
+  }
+
+  parseResult(payload: unknown): UberOrderPayloadParseResult {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
-      return null;
+      return invalid('MALFORMED_PAYLOAD', 'mapping');
     const dto = payload as UberOrderDetailDto;
+    if (
+      (dto.items !== undefined && !Array.isArray(dto.items)) ||
+      (dto.cart?.items !== undefined && !Array.isArray(dto.cart.items))
+    )
+      return invalid('MALFORMED_PAYLOAD', 'mapping');
     const charges = dto.payment?.charges;
     const promotions = dto.payment?.promotions;
     const externalOrderId = readString(
@@ -27,7 +49,12 @@ export class UberOrderPayloadParser {
       dto.total_cents ??
       charges?.total ??
       charges?.total_promo_applied;
-    if (!externalOrderId || totalSource === undefined) return null;
+    if (!externalOrderId) return invalid('MISSING_ORDER_ID', 'mapping');
+    if (totalSource === undefined) return invalid('MISSING_TOTAL', 'mapping');
+    const wireItems = dto.items ?? dto.cart?.items ?? [];
+    if (wireItems.length === 0) return invalid('EMPTY_ITEMS', 'business');
+    if (wireItems.some((item) => !asObject(item)))
+      return invalid('MALFORMED_PAYLOAD', 'mapping');
     const subtotalCents = readCents(
       dto.subtotal ?? dto.sub_total ?? charges?.sub_total ?? charges?.subtotal,
       dto.subtotal_cents,
@@ -62,7 +89,7 @@ export class UberOrderPayloadParser {
       undefined,
       0,
     );
-    const items = (dto.items ?? dto.cart?.items ?? []).map(parseUberOrderItem);
+    const items = wireItems.map(parseUberOrderItem);
     const totalCents = readCents(
       dto.total ?? charges?.total ?? charges?.total_promo_applied,
       dto.total_cents,
@@ -76,55 +103,68 @@ export class UberOrderPayloadParser {
       .filter(Boolean)
       .join(' ');
     return {
-      externalOrderId,
-      displayId: readString(dto.display_id),
-      pickupCode: readString(dto.pickup_code, dto.display_id),
-      uberStoreId: readString(dto.store_id, dto.store?.id),
-      subtotalCents,
-      taxCents,
-      totalCents,
-      discountCents,
-      hasPromotion:
-        discountCents > 0 ||
-        promoSubtotalCents !== null ||
-        (promotions?.promotions?.length ?? 0) > 0,
-      deliveryFeeCents,
-      contactName: readString(customer.name, customer.full_name, eaterName),
-      contactPhone: readString(customer.phone, customer.phone_number),
-      paidAt:
-        readDate(dto.paid_at, dto.created_at, dto.placed_at) ?? new Date(),
-      fulfillmentType: readString(dto.fulfillment_type, dto.type)
-        ?.toLowerCase()
-        .includes('deliver')
-        ? 'delivery'
-        : 'pickup',
-      estimatedReadyAt: readDate(
-        dto.estimated_ready_for_pickup_at,
-        dto.estimated_delivery_at,
-      ),
-      specialInstructions: readString(
-        dto.special_instructions,
-        dto.cart?.special_instructions,
-      ),
-      cancellation:
-        dto.cancellation || dto.cancelled_at || dto.canceled_at
-          ? {
-              cancelledBy: readString(
-                dto.cancellation?.cancelled_by,
-                dto.cancellation?.canceled_by,
-              ),
-              reasonCode: readString(dto.cancellation?.reason_code),
-              reasonDetail: readString(
-                dto.cancellation?.reason,
-                dto.cancellation?.details,
-              ),
-              occurredAt:
-                readDate(dto.cancelled_at, dto.canceled_at) ?? new Date(),
-            }
-          : null,
-      items,
+      kind: 'parsed',
+      order: {
+        externalOrderId,
+        displayId: readString(dto.display_id),
+        pickupCode: readString(dto.pickup_code, dto.display_id),
+        uberStoreId: readString(dto.store_id, dto.store?.id),
+        subtotalCents,
+        taxCents,
+        totalCents,
+        discountCents,
+        hasPromotion:
+          discountCents > 0 ||
+          promoSubtotalCents !== null ||
+          (promotions?.promotions?.length ?? 0) > 0,
+        deliveryFeeCents,
+        contactName: readString(customer.name, customer.full_name, eaterName),
+        contactPhone: readString(customer.phone, customer.phone_number),
+        paidAt:
+          readDate(dto.paid_at, dto.created_at, dto.placed_at) ?? new Date(),
+        fulfillmentType: readString(dto.fulfillment_type, dto.type)
+          ?.toLowerCase()
+          .includes('deliver')
+          ? 'delivery'
+          : 'pickup',
+        estimatedReadyAt: readDate(
+          dto.estimated_ready_for_pickup_at,
+          dto.estimated_delivery_at,
+        ),
+        specialInstructions: readString(
+          dto.special_instructions,
+          dto.cart?.special_instructions,
+        ),
+        cancellation:
+          dto.cancellation || dto.cancelled_at || dto.canceled_at
+            ? {
+                cancelledBy: readString(
+                  dto.cancellation?.cancelled_by,
+                  dto.cancellation?.canceled_by,
+                ),
+                reasonCode: readString(dto.cancellation?.reason_code),
+                reasonDetail: readString(
+                  dto.cancellation?.reason,
+                  dto.cancellation?.details,
+                ),
+                occurredAt:
+                  readDate(dto.cancelled_at, dto.canceled_at) ?? new Date(),
+              }
+            : null,
+        items,
+      },
     };
   }
+}
+
+function invalid(
+  reason: Extract<UberOrderPayloadParseResult, { kind: 'invalid' }>['reason'],
+  category: Extract<
+    UberOrderPayloadParseResult,
+    { kind: 'invalid' }
+  >['category'],
+): UberOrderPayloadParseResult {
+  return { kind: 'invalid', reason, category };
 }
 
 export function parseUberOrderItem(
