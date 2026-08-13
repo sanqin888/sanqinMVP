@@ -6,6 +6,7 @@ import type {
   UberOrderActionRepositoryPort,
   UberOrderActionTask,
 } from '../../application/orders/uber-order.ports';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 type ClaimedRow = {
   id: string;
@@ -99,16 +100,38 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
     );
   }
 
-  async markSucceeded(taskId: string, leaseToken: string): Promise<boolean> {
+  async getOrderStatus(
+    externalOrderId: string,
+  ): Promise<UberOrderStatus | null> {
+    const order = await this.prisma.order.findUnique({
+      where: { clientRequestId: `ubereats:${externalOrderId}` },
+      select: { status: true },
+    });
+    return (order?.status as UberOrderStatus | undefined) ?? null;
+  }
+
+  async complete(input: {
+    taskId: string;
+    leaseToken: string;
+    transition: { from: UberOrderStatus; to: UberOrderStatus } | null;
+  }): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       const claimed = await tx.uberOrderAction.findFirst({
-        where: { id: taskId, status: 'PROCESSING', leaseToken },
-        select: { externalOrderId: true, action: true },
+        where: {
+          id: input.taskId,
+          status: 'PROCESSING',
+          leaseToken: input.leaseToken,
+        },
+        select: { externalOrderId: true },
       });
       if (!claimed) return false;
       const completedAt = new Date();
       const updated = await tx.uberOrderAction.updateMany({
-        where: { id: taskId, status: 'PROCESSING', leaseToken },
+        where: {
+          id: input.taskId,
+          status: 'PROCESSING',
+          leaseToken: input.leaseToken,
+        },
         data: {
           status: 'SUCCEEDED',
           retryable: false,
@@ -119,21 +142,24 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         },
       });
       if (updated.count !== 1) return false;
-      if (claimed.action === 'ACCEPT') {
+      if (input.transition) {
+        const timestamps = {
+          makingAt:
+            input.transition.to === OrderStatus.making
+              ? completedAt
+              : undefined,
+          readyAt:
+            input.transition.to === OrderStatus.ready ? completedAt : undefined,
+        };
         await tx.order.updateMany({
           where: {
             clientRequestId: `ubereats:${claimed.externalOrderId}`,
-            status: { in: [OrderStatus.pending, OrderStatus.paid] },
+            status: input.transition.from as OrderStatus,
           },
-          data: { status: OrderStatus.making, makingAt: completedAt },
-        });
-      } else if (claimed.action === 'READY_FOR_PICKUP') {
-        await tx.order.updateMany({
-          where: {
-            clientRequestId: `ubereats:${claimed.externalOrderId}`,
-            status: { in: [OrderStatus.paid, OrderStatus.making] },
+          data: {
+            status: input.transition.to as OrderStatus,
+            ...timestamps,
           },
-          data: { status: OrderStatus.ready, readyAt: completedAt },
         });
       }
       return true;

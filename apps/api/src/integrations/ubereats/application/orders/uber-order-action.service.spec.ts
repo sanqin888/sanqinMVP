@@ -21,7 +21,8 @@ describe('UberOrderActionService contract', () => {
     const repository = {
       enqueue: jest.fn().mockResolvedValue({ taskId: 'task-1', created: true }),
       claim: jest.fn().mockResolvedValue([task]),
-      markSucceeded: jest.fn().mockResolvedValue(true),
+      getOrderStatus: jest.fn().mockResolvedValue('pending'),
+      complete: jest.fn().mockResolvedValue(true),
       markFailed: jest.fn().mockResolvedValue(true),
     } as jest.Mocked<UberOrderActionRepositoryPort>;
     const gateway = {
@@ -83,24 +84,40 @@ describe('UberOrderActionService contract', () => {
 
   it('dispatches a claimed CANCEL through the sole action gateway', async () => {
     const { repository, gateway, service } = setup();
+    repository.getOrderStatus.mockResolvedValue('making');
     await service.executeClaimed({ ...task, action: 'CANCEL' });
     expect(gateway.cancel).toHaveBeenCalledWith({
       externalOrderId: 'order-1',
       idempotencyKey: 'key-1',
     });
-    expect(repository.markSucceeded).toHaveBeenCalledWith(
-      'task-1',
-      'lease-from-claim',
-    );
+    expect(repository.complete).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      leaseToken: 'lease-from-claim',
+      transition: { from: 'making', to: 'refunded' },
+    });
+  });
+
+  it('completes without a transition when the order no longer exists', async () => {
+    const { repository, service } = setup();
+    repository.getOrderStatus.mockResolvedValue(null);
+
+    await service.executeClaimed(task);
+
+    expect(repository.complete).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      leaseToken: 'lease-from-claim',
+      transition: null,
+    });
   });
 
   it('always writes success with the token returned by claim', async () => {
     const { repository, service } = setup();
     await service.executeClaimed(task);
-    expect(repository.markSucceeded.mock.calls).toContainEqual([
-      'task-1',
-      'lease-from-claim',
-    ]);
+    expect(repository.complete).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      leaseToken: 'lease-from-claim',
+      transition: { from: 'pending', to: 'making' },
+    });
   });
 
   it.each([
@@ -121,16 +138,16 @@ describe('UberOrderActionService contract', () => {
 
   it('leaves a claimed row recoverable when local success writeback fails', async () => {
     const { repository, service } = setup();
-    repository.markSucceeded.mockRejectedValue(
-      new Error('database unavailable'),
-    );
+    repository.complete.mockRejectedValue(new Error('database unavailable'));
     repository.markFailed.mockRejectedValue(new Error('database unavailable'));
     await expect(service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
     );
-    expect(repository.markSucceeded.mock.calls).toContainEqual([
-      'task-1',
-      'lease-from-claim',
-    ]);
+    expect(repository.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+      }),
+    );
   });
 });
