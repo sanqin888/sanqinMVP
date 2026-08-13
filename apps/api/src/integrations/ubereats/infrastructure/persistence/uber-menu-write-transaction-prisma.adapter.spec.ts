@@ -55,35 +55,61 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
     );
   });
 
-  it('rolls back both business data and the event when event persistence fails', async () => {
+  it('does not commit business data or events when transactional event persistence fails', async () => {
     const failure = new Error('telemetry unavailable');
-    const committed = { businessRows: 0, events: 0 };
-    const staged = { businessRows: 0, events: 0 };
-    const transactionClient = {
-      uberItemChannelConfig: {
-        upsert: jest.fn().mockImplementation(() => {
-          staged.businessRows += 1;
-          return Promise.resolve({ priceCents: 1200, isAvailable: true });
-        }),
-      },
-      opsEvent: {
-        upsert: jest.fn().mockImplementation(() => {
-          staged.events += 1;
-          return Promise.reject(failure);
-        }),
-      },
+    type DatabaseState = { businessRows: number; events: number };
+    type DatabaseWrite = () => Promise<{
+      priceCents?: number;
+      isAvailable?: boolean;
+    }>;
+    const committed: DatabaseState = { businessRows: 0, events: 0 };
+    const writeBusinessConfig = (state: DatabaseState) =>
+      jest.fn().mockImplementation(() => {
+        state.businessRows += 1;
+        return Promise.resolve({ priceCents: 1200, isAvailable: true });
+      });
+    const writeEvent = (state: DatabaseState) =>
+      jest.fn().mockImplementation(() => {
+        // The database rejects this insert before it can become durable.
+        void state;
+        return Promise.reject(failure);
+      });
+    const rootClient = {
+      uberItemChannelConfig: { upsert: writeBusinessConfig(committed) },
+      opsEvent: { upsert: writeEvent(committed) },
     };
+    let transactionClient:
+      | {
+          uberItemChannelConfig: {
+            upsert: jest.MockedFunction<DatabaseWrite>;
+          };
+          opsEvent: { upsert: jest.MockedFunction<DatabaseWrite> };
+        }
+      | undefined;
     const $transaction = jest.fn(
-      async (work: (client: typeof transactionClient) => Promise<unknown>) => {
+      async (
+        work: (
+          client: NonNullable<typeof transactionClient>,
+        ) => Promise<unknown>,
+      ) => {
+        const staged = { ...committed };
+        transactionClient = {
+          uberItemChannelConfig: { upsert: writeBusinessConfig(staged) },
+          opsEvent: { upsert: writeEvent(staged) },
+        };
+
         const result = await work(transactionClient);
-        committed.businessRows += staged.businessRows;
-        committed.events += staged.events;
+        Object.assign(committed, staged);
         return result;
       },
     );
-    const adapter = new UberMenuWriteTransactionPrismaAdapter({
+    const prismaClient = {
+      ...rootClient,
       $transaction,
-    } as unknown as PrismaService);
+    };
+    const adapter = new UberMenuWriteTransactionPrismaAdapter(
+      prismaClient as unknown as PrismaService,
+    );
 
     await expect(
       adapter.execute((commands) =>
@@ -91,7 +117,12 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
       ),
     ).rejects.toBe(failure);
     expect($transaction).toHaveBeenCalledTimes(1);
-    expect(staged).toEqual({ businessRows: 1, events: 1 });
+    expect(
+      transactionClient?.uberItemChannelConfig.upsert,
+    ).toHaveBeenCalledTimes(1);
+    expect(transactionClient?.opsEvent.upsert).toHaveBeenCalledTimes(1);
+    expect(rootClient.uberItemChannelConfig.upsert).not.toHaveBeenCalled();
+    expect(rootClient.opsEvent.upsert).not.toHaveBeenCalled();
     expect(committed).toEqual({ businessRows: 0, events: 0 });
   });
 
