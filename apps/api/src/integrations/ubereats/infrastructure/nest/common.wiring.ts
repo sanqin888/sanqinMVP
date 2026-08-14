@@ -14,7 +14,10 @@ import { UberCryptoConfigService } from '../../infrastructure/crypto/uber-crypto
 import { UberApiConfigService } from '../../infrastructure/uber-api/uber-api-config.service';
 import { UberWorkerConfigService } from '../../infrastructure/workers/uber-worker-config.service';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
-import { HmacUberWebhookSignatureVerifier } from '../../infrastructure/crypto/uber-webhook-signature-verifier';
+import {
+  HmacUberWebhookSignatureVerifier,
+  UBER_WEBHOOK_CLOCK,
+} from '../../infrastructure/crypto/uber-webhook-signature-verifier';
 import { UberTelemetryService } from '../../infrastructure/persistence/uber-telemetry.service';
 import { UberGatewayAuditPrismaAdapter } from '../../infrastructure/persistence/uber-gateway-audit-prisma.adapter';
 import { UberWebhookInboxPrismaAdapter } from '../../infrastructure/persistence/uber-webhook-inbox-prisma.adapter';
@@ -60,6 +63,7 @@ export function createCommonWiring(): Provider[] {
       provide: UBER_WEBHOOK_INBOX_PORT,
       useExisting: UberWebhookInboxPrismaAdapter,
     },
+    { provide: UBER_WEBHOOK_CLOCK, useValue: () => Date.now() },
     HmacUberWebhookSignatureVerifier,
     {
       provide: UBER_WEBHOOK_SIGNATURE_VERIFIER,
