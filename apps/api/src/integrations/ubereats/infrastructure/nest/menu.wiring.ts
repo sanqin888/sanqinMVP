@@ -93,7 +93,11 @@ import {
   UberMenuGatewayAdapter,
   UberMenuImageProbeAdapter,
 } from '../../infrastructure/uber-api/uber-menu-publication.adapter';
-import { UberImageValidator } from '../../infrastructure/uber-api/uber-image.validator';
+import {
+  DEFAULT_UBER_IMAGE_POLICY,
+  UBER_IMAGE_POLICY,
+  UberImageValidator,
+} from '../../infrastructure/uber-api/uber-image.validator';
 import { UberMenuGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
 import { UBER_EATS_MENU_AVAILABILITY } from '../../public-api';
 import { presentAvailabilitySync } from '../../contracts/responses/public-contract.mapper';
@@ -102,6 +106,7 @@ import { UberPublicBaseUrlAdapter } from '../config/uber-public-base-url.adapter
 export function createMenuWiring(): Provider[] {
   return [
     UberMenuGateway,
+    { provide: UBER_IMAGE_POLICY, useValue: DEFAULT_UBER_IMAGE_POLICY },
     UberImageValidator,
     UberMenuConfigQueryPrismaAdapter,
     UberMenuConfigWritePrismaAdapter,
