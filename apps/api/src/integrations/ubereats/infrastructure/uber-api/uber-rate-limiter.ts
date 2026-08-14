@@ -142,15 +142,16 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
     state.active += 1;
     let released = false;
     return {
-      release: async () => {
+      release: () => {
         if (!released) {
           released = true;
           state.active -= 1;
           this.drain(state);
         }
+        return Promise.resolve();
       },
-      feedback: async ({ status, retryAfter }) => {
-        if (status !== 429) return;
+      feedback: ({ status, retryAfter }) => {
+        if (status !== 429) return Promise.resolve();
         this.metrics?.increment('ubereats_api_429_total', {
           operation: request.operation,
         });
@@ -159,6 +160,7 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
           Date.now() + this.retryAfterMs(retryAfter),
         );
         this.schedule(state);
+        return Promise.resolve();
       },
     };
   }

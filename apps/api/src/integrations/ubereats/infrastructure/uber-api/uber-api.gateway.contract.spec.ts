@@ -11,13 +11,11 @@ describe('Uber API gateway contract', () => {
   it('routes inspect through the same rate limiter and request-id pipeline', async () => {
     const inspected = uberHttpResult(200, { ok: true });
     const release = jest.fn<() => Promise<void>>().mockResolvedValue();
-    const feedback =
-      jest.fn<
-        (result: {
-          status: number;
-          retryAfter: string | null;
-        }) => Promise<void>
-      >().mockResolvedValue();
+    const feedback = jest
+      .fn<
+        (result: { status: number; retryAfter: string | null }) => Promise<void>
+      >()
+      .mockResolvedValue();
     const limiter = createUberRateLimiterFake();
     limiter.acquire.mockResolvedValue({ release, feedback });
     const http = createUberHttpFake();
@@ -58,15 +56,17 @@ describe('Uber API gateway contract', () => {
     const limiter = createUberRateLimiterFake();
     let finishFeedback: (() => void) | undefined;
     let finishRelease: (() => void) | undefined;
-    const feedback = jest.fn(() =>
-      new Promise<void>((resolve) => {
-        finishFeedback = resolve;
-      }),
+    const feedback = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishFeedback = resolve;
+        }),
     );
-    const release = jest.fn(() =>
-      new Promise<void>((resolve) => {
-        finishRelease = resolve;
-      }),
+    const release = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRelease = resolve;
+        }),
     );
     limiter.acquire.mockResolvedValue({ feedback, release });
     const http = createUberHttpFake();
