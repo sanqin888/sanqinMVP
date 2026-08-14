@@ -5,9 +5,9 @@
 ## 部署前清单
 
 - [ ] API 与 `ubereats-worker` 使用同一配置版本，并均通过统一启动配置校验。
-- [ ] 常规生产设置 `UBER_EATS_RATE_LIMITER_MODE=distributed`，两个进程使用相同的 `UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL`/`UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN`；仅明确单副本时改用 `process` 并设置 `UBER_EATS_SINGLE_REPLICA=true`。
-- [ ] secrets manager 向两个进程注入相同的 `UBER_CREDENTIAL_ENCRYPTION_KEYS`、`UBER_CREDENTIAL_ACTIVE_KEY_VERSION` 和 `UBER_CREDENTIAL_KEYS_SOURCE=secrets-manager`，活动版本确实存在于 key ring。
-- [ ] 检查 Compose、源码、部署日志和工单均不含实际 credential key 或 Redis token。
+- [ ] 常规生产设置 `UBER_EATS_RATE_LIMITER_MODE=database`，API 与 worker 指向同一 PostgreSQL；仅明确单副本开发/测试环境改用 `process` 并设置 `UBER_EATS_SINGLE_REPLICA=true`。
+- [ ] 部署 VM 的 environment/.env 向两个进程注入相同的 `UBER_CREDENTIAL_ENCRYPTION_KEYS`、`UBER_CREDENTIAL_ACTIVE_KEY_VERSION` 和 `UBER_CREDENTIAL_KEYS_SOURCE=env`，活动版本确实存在于 key ring。
+- [ ] 检查 Compose、源码、部署日志和工单均不含实际 credential key。
 - [ ] 滚动发布前后确认 API/worker 的副本策略、限流模式和活动 key version 一致，再执行 OAuth/Webhook 健康验证。
 
 ## 通用关联与指标
@@ -25,7 +25,7 @@
 ## 密钥轮换
 
 - **诊断查询**：查询 merchant connection 的 `status`、`tokenExpiresAt`、`updatedAt`（禁止选择密文字段），并按 `ubereats_oauth_refresh_failed_total` 判断影响范围。
-- **安全动作**：在密钥管理器添加新版本，灰度一个实例验证 OAuth/Webhook，切换活动版本，等待旧实例退出后吊销旧版本；随后发送不含 PII 的签名测试事件。
+- **安全动作**：在 VM environment/.env key ring 添加新版本，灰度一个实例验证 OAuth/Webhook，切换活动版本，等待旧实例退出后移除旧版本；随后发送不含 PII 的签名测试事件。
 - **禁止操作**：不得在日志、工单或 SQL 客户端输出密钥；不得先吊销旧版本；不得直接更新加密 token。
 
 ## Webhook 积压

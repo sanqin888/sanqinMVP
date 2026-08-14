@@ -2,7 +2,10 @@ import { UBER_TELEMETRY_PORT } from '../../application/shared/uber-telemetry.por
 import { UBER_GATEWAY_AUDIT_PORT } from '../../application/shared/uber-gateway-audit.port';
 import type { Provider } from '@nestjs/common';
 import { BrowserWriteCsrfGuard } from '../../api/ubereats-csrf.guard';
-import { UBER_RATE_LIMITER_PORT } from '../../application/shared/uber-rate-limiter.port';
+import {
+  UBER_RATE_LIMITER_PORT,
+  type UberRateLimitCoordinationRepositoryPort,
+} from '../../application/shared/uber-rate-limiter.port';
 import {
   UBER_WEBHOOK_INBOX_PORT,
   UBER_WEBHOOK_SIGNATURE_VERIFIER,
@@ -15,6 +18,7 @@ import { HmacUberWebhookSignatureVerifier } from '../../infrastructure/crypto/ub
 import { UberTelemetryService } from '../../infrastructure/persistence/uber-telemetry.service';
 import { UberGatewayAuditPrismaAdapter } from '../../infrastructure/persistence/uber-gateway-audit-prisma.adapter';
 import { UberWebhookInboxPrismaAdapter } from '../../infrastructure/persistence/uber-webhook-inbox-prisma.adapter';
+import { UberRateLimitPrismaRepository } from '../../infrastructure/persistence/uber-rate-limit-prisma.repository';
 import { UberApiGatewayTransport } from '../../infrastructure/uber-api/uber-api.gateway';
 import { UberHttpClient } from '../../infrastructure/uber-api/uber-http.client';
 import { createUberRateLimiter } from '../../infrastructure/uber-api/uber-rate-limiter.factory';
@@ -62,18 +66,21 @@ export function createCommonWiring(): Provider[] {
       useExisting: HmacUberWebhookSignatureVerifier,
     },
     UberHttpClient,
+    UberRateLimitPrismaRepository,
     {
       provide: UBER_RATE_LIMITER_PORT,
       inject: [
         UBER_EATS_STARTUP_CONFIG,
         UberApiConfigService,
         UberTelemetryService,
+        UberRateLimitPrismaRepository,
       ],
       useFactory: (
         _startupConfig: void,
         config: UberApiConfigService,
         telemetry: UberTelemetryService,
-      ) => createUberRateLimiter(process.env, config, telemetry),
+        repository: UberRateLimitCoordinationRepositoryPort,
+      ) => createUberRateLimiter(process.env, config, telemetry, repository),
     },
     UberAuthService,
     UberApiGatewayTransport,
