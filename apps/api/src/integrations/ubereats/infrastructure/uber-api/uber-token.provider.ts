@@ -377,6 +377,8 @@ export class UberAuthService {
       operation: 'uber.oauth.token',
       weight: this.config.operationWeight('uber.oauth.token'),
     });
+    let requestError: Error | undefined;
+    let responseData: UberTokenResponse | undefined;
     try {
       const { response, data } =
         await this.httpClient.request<UberTokenResponse>({
@@ -389,7 +391,7 @@ export class UberAuthService {
           body,
           kind: 'token',
         });
-      lease?.feedback({
+      await lease?.feedback({
         status: response.status,
         retryAfter: response.headers.get('retry-after'),
       });
@@ -414,10 +416,25 @@ export class UberAuthService {
         );
       }
 
-      return data || {};
-    } finally {
-      lease?.release();
+      responseData = data || {};
+    } catch (error) {
+      requestError =
+        error instanceof Error
+          ? error
+          : new Error('Uber token request failed', { cause: error });
     }
+    try {
+      await lease?.release();
+    } catch (releaseError) {
+      this.logger.error(
+        `[token.rate-limit-release] error=${releaseError instanceof Error ? releaseError.name : 'UnknownError'}`,
+      );
+      if (requestError === undefined) throw releaseError;
+    }
+    if (requestError !== undefined) throw requestError;
+    if (responseData === undefined)
+      throw new Error('Uber token request completed without a response');
+    return responseData;
   }
 
   private safeTokenErrorValue(value: unknown, fallback: string): string {

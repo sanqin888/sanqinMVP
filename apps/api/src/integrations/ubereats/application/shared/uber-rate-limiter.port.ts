@@ -12,8 +12,8 @@ export type UberRateLimitFeedback = {
 };
 
 export interface UberRateLimitLease {
-  release(): void;
-  feedback(value: UberRateLimitFeedback): void;
+  release(): Promise<void>;
+  feedback(value: UberRateLimitFeedback): Promise<void>;
 }
 
 /** Application boundary; implementations may coordinate one process or a cluster. */

@@ -86,12 +86,69 @@ const request = (partitionKey: string, weight = 1) => ({
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('DatabaseUberRateLimiter', () => {
+  it('awaits release persistence and propagates repository failures', async () => {
+    const repository = new SharedCoordinationRepository();
+    let finishRelease: (() => void) | undefined;
+    const releasePending = new Promise<void>((resolve) => {
+      finishRelease = resolve;
+    });
+    jest.spyOn(repository, 'release').mockReturnValueOnce(releasePending);
+    const lease = await new DatabaseUberRateLimiter(
+      config(),
+      repository,
+    ).acquire(request('store'));
+    let settled = false;
+    const releasing = lease.release().then(() => {
+      settled = true;
+    });
+    await settle();
+    expect(settled).toBe(false);
+    finishRelease?.();
+    await releasing;
+
+    const failedLease = await new DatabaseUberRateLimiter(
+      config(),
+      repository,
+    ).acquire(request('other-store'));
+    jest
+      .spyOn(repository, 'release')
+      .mockRejectedValueOnce(new Error('release unavailable'));
+    await expect(failedLease.release()).rejects.toThrow('release unavailable');
+  });
+
+  it('awaits 429 cooldown persistence, propagates failures, and ignores non-429 feedback', async () => {
+    const repository = new SharedCoordinationRepository();
+    let finishCooldown: (() => void) | undefined;
+    const cooldownPending = new Promise<void>((resolve) => {
+      finishCooldown = resolve;
+    });
+    const extend = jest
+      .spyOn(repository, 'extendCooldown')
+      .mockReturnValueOnce(cooldownPending);
+    const limiter = new DatabaseUberRateLimiter(config(), repository);
+    const lease = await limiter.acquire(request('store'));
+    let settled = false;
+    const feedback = lease
+      .feedback({ status: 429, retryAfter: '1' })
+      .then(() => {
+        settled = true;
+      });
+    await settle();
+    expect(settled).toBe(false);
+    finishCooldown?.();
+    await feedback;
+    await lease.feedback({ status: 200, retryAfter: null });
+    expect(extend).toHaveBeenCalledTimes(1);
+    extend.mockRejectedValueOnce(new Error('cooldown unavailable'));
+    await expect(
+      lease.feedback({ status: 429, retryAfter: null }),
+    ).rejects.toThrow('cooldown unavailable');
+  });
   it('acquires and releases a shared concurrency lease', async () => {
     const repository = new SharedCoordinationRepository();
     const limiter = new DatabaseUberRateLimiter(config(), repository);
     const first = await limiter.acquire(request('store'));
-    first.release();
-    await settle();
+    await first.release();
     await expect(limiter.acquire(request('store'))).resolves.toBeDefined();
   });
 
@@ -101,7 +158,7 @@ describe('DatabaseUberRateLimiter', () => {
       new SharedCoordinationRepository(),
     );
     const burst = await limiter.acquire(request('store', 2));
-    burst.release();
+    await burst.release();
     await expect(limiter.acquire(request('store'))).rejects.toMatchObject({
       reason: 'wait_timeout',
     });
@@ -114,7 +171,7 @@ describe('DatabaseUberRateLimiter', () => {
     const first = await api.acquire(request('store'));
     const waiting = worker.acquire(request('store'));
     await new Promise((resolve) => setTimeout(resolve, 10));
-    first.release();
+    await first.release();
     await expect(waiting).resolves.toBeDefined();
   });
 
@@ -163,8 +220,8 @@ describe('DatabaseUberRateLimiter', () => {
       expect.objectContaining({ status: 'rejected' }),
       expect.objectContaining({ status: 'rejected' }),
     ]);
-    storeA.release();
-    storeB.release();
+    await storeA.release();
+    await storeB.release();
   });
 
   it('shares Retry-After cooldown and resumes afterward', async () => {
@@ -178,12 +235,11 @@ describe('DatabaseUberRateLimiter', () => {
       repository,
     );
     const lease = await api.acquire(request('store'));
-    lease.feedback({ status: 429, retryAfter: '0.05' });
-    lease.release();
-    await settle();
+    await lease.feedback({ status: 429, retryAfter: '0.05' });
+    await lease.release();
     const started = Date.now();
     const next = await worker.acquire(request('store'));
     expect(Date.now() - started).toBeGreaterThanOrEqual(35);
-    next.release();
+    await next.release();
   });
 });

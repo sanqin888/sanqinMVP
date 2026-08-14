@@ -11,12 +11,16 @@ import {
   type UberWebhookVerificationInput,
 } from '../../domain/webhook/uber-webhook.types';
 
+export const UBER_WEBHOOK_CLOCK = Symbol('UBER_WEBHOOK_CLOCK');
+export type UberWebhookClock = () => number;
+
 @Injectable()
 export class HmacUberWebhookSignatureVerifier implements UberWebhookSignatureVerifier {
   private readonly signingSecrets: UberWebhookSigningSecrets;
   constructor(
     @Inject(UberCryptoConfigService) config: UberCryptoConfigService,
-    private readonly now: () => number = Date.now,
+    @Inject(UBER_WEBHOOK_CLOCK)
+    private readonly now: UberWebhookClock = Date.now,
   ) {
     this.signingSecrets = config.getWebhookSigningSecrets();
   }
