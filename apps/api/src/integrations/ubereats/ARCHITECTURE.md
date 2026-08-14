@@ -51,17 +51,22 @@
 
 ## API quota coordination
 
-`UBER_EATS_RATE_LIMITER_MODE` is mandatory. Use `distributed` for normal production
-and configure `UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL` plus
-`UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN`; the coordinator atomically shares token
-buckets, concurrency leases, and `Retry-After` cooldown by merchant/store partition.
+`UBER_EATS_RATE_LIMITER_MODE` is mandatory. Use `database` for normal production;
+the PostgreSQL coordinator atomically shares token buckets, expiring concurrency
+leases, and `Retry-After` cooldown by merchant/store partition.
 `process` is intended for development. Production may use it only when
 `UBER_EATS_SINGLE_REPLICA=true` explicitly documents a single-replica deployment.
 Operation weights have conservative defaults and can be overridden with
 `UBER_EATS_API_OPERATION_WEIGHTS`.
 
-API 与 dedicated worker 必须引用同一份运行时配置：限流模式及 Redis HTTP
-URL/token 不得分叉。两个进程还必须由 secrets manager 注入完全相同的
+API 与 dedicated worker 必须引用同一份运行时配置和 PostgreSQL database。两个进程
+还必须由部署 VM 的 environment/.env 注入完全相同的
 `UBER_CREDENTIAL_ENCRYPTION_KEYS` 与 `UBER_CREDENTIAL_ACTIVE_KEY_VERSION`，并设置
-`UBER_CREDENTIAL_KEYS_SOURCE=secrets-manager`；Compose 与源码不得保存实际 key。
+`UBER_CREDENTIAL_KEYS_SOURCE=env`；Compose 与源码不得保存实际 key。
 composition root 的统一启动校验会在各配置 provider 创建前聚合报告所有缺失和冲突项。
+
+database limiter 通过 application repository port 调用 `persistence/` 下的 PostgreSQL
+adapter。acquire transaction 使用 partition-derived transaction advisory lock，因此同一
+partition 的 refill、expired lease cleanup、token debit 与 lease insert 串行且原子；不同
+partition 使用不同 lock key，不会被全局串行。cooldown 在同一锁内只允许向后延长，release
+按唯一 lease id 幂等删除，崩溃遗留 lease 会在后续 acquire 时按 indexed expiry 清理。

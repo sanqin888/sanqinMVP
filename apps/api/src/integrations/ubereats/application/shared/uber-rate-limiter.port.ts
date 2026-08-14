@@ -21,6 +21,30 @@ export interface UberRateLimiterPort {
   acquire(request: UberRateLimitRequest): Promise<UberRateLimitLease>;
 }
 
+export type UberRateLimitAcquireCommand = {
+  partitionKey: string;
+  leaseId: string;
+  now: Date;
+  leaseExpiresAt: Date;
+  ratePerSecond: number;
+  burst: number;
+  concurrencyLimit: number;
+  weight: number;
+};
+
+export type UberRateLimitAcquireResult =
+  | { acquired: true }
+  | { acquired: false; retryAfterMs: number };
+
+/** Persistence boundary for atomic, cross-process quota coordination. */
+export interface UberRateLimitCoordinationRepositoryPort {
+  tryAcquire(
+    command: UberRateLimitAcquireCommand,
+  ): Promise<UberRateLimitAcquireResult>;
+  release(leaseId: string): Promise<void>;
+  extendCooldown(partitionKey: string, cooldownUntil: Date): Promise<void>;
+}
+
 /** Metrics required by rate-limiter adapters, independent of persistence. */
 export interface UberRateLimiterMetricsPort {
   increment(

@@ -21,6 +21,7 @@ describe('UberCredentialVaultService', () => {
     const vault = new UberCredentialVaultService({
       UBER_CREDENTIAL_ACTIVE_KEY_VERSION: '2',
       UBER_CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ 2: key(2) }),
+      UBER_CREDENTIAL_KEYS_SOURCE: 'env',
     });
     const token = 'secret-access-token';
     const encrypted = vault.encrypt(token);
@@ -39,6 +40,7 @@ describe('UberCredentialVaultService', () => {
     const oldVault = new UberCredentialVaultService({
       UBER_CREDENTIAL_ACTIVE_KEY_VERSION: '1',
       UBER_CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ 1: key(1) }),
+      UBER_CREDENTIAL_KEYS_SOURCE: 'env',
     });
     const oldEnvelope = oldVault.encrypt('refresh-secret');
     const rotatingVault = new UberCredentialVaultService({
@@ -47,6 +49,7 @@ describe('UberCredentialVaultService', () => {
         1: key(1),
         2: key(2),
       }),
+      UBER_CREDENTIAL_KEYS_SOURCE: 'env',
     });
 
     expect(rotatingVault.needsRotation(oldEnvelope)).toBe(true);
@@ -64,7 +67,7 @@ describe('UberCredentialVaultService', () => {
     expect(() => rotatingVault.decrypt(JSON.stringify(modified))).toThrow();
   });
 
-  it('requires production keys to declare a secrets-manager source', () => {
+  it('requires keys to declare the environment source', () => {
     expect(
       () =>
         new UberCredentialVaultService({
@@ -72,6 +75,18 @@ describe('UberCredentialVaultService', () => {
           UBER_CREDENTIAL_ACTIVE_KEY_VERSION: '1',
           UBER_CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ 1: key(1) }),
         }),
-    ).toThrow('secrets manager');
+    ).toThrow('environment');
+  });
+
+  it('accepts the environment source in production', () => {
+    expect(
+      () =>
+        new UberCredentialVaultService({
+          NODE_ENV: 'production',
+          UBER_CREDENTIAL_ACTIVE_KEY_VERSION: '1',
+          UBER_CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ 1: key(1) }),
+          UBER_CREDENTIAL_KEYS_SOURCE: 'env',
+        }),
+    ).not.toThrow();
   });
 });
