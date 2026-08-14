@@ -12,7 +12,7 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
     return { recordResponse };
   };
   const expired = () => ({
-    merchantUberUserId: 'merchant-1',
+    connectionId: 'merchant-1',
     accessToken: 'expired-access',
     refreshToken: 'refresh-secret',
     expiresAt: new Date(Date.now() - 1000),
@@ -46,7 +46,7 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
       audit(),
     );
 
-    await gateway.discoverStores({ merchantUberUserId: 'merchant-1' });
+    await gateway.discoverStores({ connectionId: 'merchant-1' });
 
     expect(refreshMerchantAccessToken).toHaveBeenCalledWith(
       'refresh-secret',
@@ -54,7 +54,7 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
     );
     expect(rotateCredential).toHaveBeenCalledWith(
       expect.objectContaining({
-        merchantUberUserId: 'merchant-1',
+        connectionId: 'merchant-1',
         expectedVersion: expired().version,
         accessToken: 'fresh-access',
       }),
@@ -96,8 +96,8 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
     );
 
     const calls = [
-      gateway.discoverStores({ merchantUberUserId: 'merchant-1' }),
-      gateway.discoverStores({ merchantUberUserId: 'merchant-1' }),
+      gateway.discoverStores({ connectionId: 'merchant-1' }),
+      gateway.discoverStores({ connectionId: 'merchant-1' }),
     ];
     release();
     await Promise.all(calls);
@@ -131,12 +131,12 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
     );
 
     await expect(
-      gateway.discoverStores({ merchantUberUserId: 'merchant-1' }),
+      gateway.discoverStores({ connectionId: 'merchant-1' }),
     ).resolves.toEqual({ stores: [] });
     const event = gatewayAudit.recordResponse.mock.calls[0][0];
     expect(event).toMatchObject({
       operation: 'merchant.discover-stores',
-      merchantUberUserId: 'merchant-1',
+      connectionId: 'merchant-1',
       outcome: 'RECEIVED',
       upstreamStatus: null,
       sanitizedRawResponse: {

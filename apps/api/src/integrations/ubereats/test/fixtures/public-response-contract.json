@@ -1,8 +1,27 @@
 {
-  "list": ["items", "pageInfo", "contractVersion"],
-  "pageInfo": ["limit", "count", "hasNextPage", "nextCursor"],
-  "mutation": ["operationId", "status", "error", "contractVersion"],
-  "error": ["code", "message", "retryable", "correlationId"],
+  "list": [
+    "items",
+    "pageInfo",
+    "contractVersion"
+  ],
+  "pageInfo": [
+    "limit",
+    "count",
+    "hasNextPage",
+    "nextCursor"
+  ],
+  "mutation": [
+    "operationId",
+    "status",
+    "error",
+    "contractVersion"
+  ],
+  "error": [
+    "code",
+    "message",
+    "retryable",
+    "correlationId"
+  ],
   "merchantStore": [
     "storeId",
     "storeName",
@@ -10,10 +29,13 @@
     "integrationEnabled",
     "isProvisioned",
     "provisionedAt",
-    "posExternalStoreId"
+    "posExternalStoreId",
+    "isMapped",
+    "mappedConnectionId",
+    "requiresReconnect"
   ],
   "merchantConnection": [
-    "uberUserId",
+    "connectionId",
     "scope",
     "tokenType",
     "expiresAt",

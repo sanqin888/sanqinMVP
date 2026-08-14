@@ -18,7 +18,7 @@ export interface UberOAuthStatePort {
     status: string;
     retryCount: number;
     lastErrorCategory: string | null;
-    uberUserId: string | null;
+    connectionId: string | null;
     scope: string | null;
     tokenType: string | null;
     tokenExpiresAt: Date | null;
@@ -34,7 +34,7 @@ export interface UberOAuthStatePort {
   failOAuthState(nonce: string, category: string): Promise<boolean>;
   saveExchangedTokens(input: {
     nonce: string;
-    uberUserId: string;
+    connectionId: string;
     accessToken: string;
     refreshToken: string | null;
     expiresAt: Date | null;
@@ -42,7 +42,7 @@ export interface UberOAuthStatePort {
     tokenType: string | null;
   }): Promise<boolean>;
   loadExchangedTokens(nonce: string): Promise<{
-    uberUserId: string;
+    connectionId: string;
     accessToken: string;
     refreshToken: string | null;
     expiresAt: Date | null;
@@ -53,7 +53,7 @@ export interface UberOAuthStatePort {
 }
 
 export type UberMerchantConnection = {
-  merchantUberUserId: string;
+  connectionId: string;
   expiresAt: Date | null;
   scope: string | null;
   tokenType: string | null;
@@ -63,10 +63,10 @@ export type UberMerchantConnection = {
 export interface UberMerchantConnectionRepositoryPort {
   /** Application-safe connection metadata. Decrypted credentials never cross this port. */
   findConnection(
-    merchantUberUserId?: string,
+    connectionId?: string,
   ): Promise<UberMerchantConnection | null>;
-  upsertConnectionByUberUserId(input: {
-    uberUserId: string;
+  upsertConnectionByConnectionId(input: {
+    connectionId: string;
     accessToken: string;
     refreshToken: string | null;
     expiresAt: Date | null;
@@ -77,7 +77,7 @@ export interface UberMerchantConnectionRepositoryPort {
 }
 
 export type UberMerchantStoreMapping = {
-  merchantUberUserId: string;
+  connectionId: string;
   uberStoreId: string;
   storeName: string | null;
   locationSummary: string | null;
@@ -88,15 +88,20 @@ export type UberMerchantStoreMapping = {
 
 export interface UberStoreMappingRepositoryPort {
   findMappings(
-    merchantUberUserId: string,
     uberStoreIds: string[],
   ): Promise<UberMerchantStoreMapping[]>;
   listMappings(): Promise<UberMerchantStoreMapping[]>;
   findMapping(uberStoreId: string): Promise<UberMerchantStoreMapping | null>;
-  saveDiscovery(input: UberMerchantStoreMapping): Promise<void>;
   upsertMapping(
     input: UberMerchantStoreMapping,
   ): Promise<UberMerchantStoreMapping>;
+  reconnectMapping(input: {
+    uberStoreId: string;
+    fromConnectionId: string;
+    toConnectionId: string;
+    storeName: string | null;
+    locationSummary: string | null;
+  }): Promise<UberMerchantStoreMapping | null>;
   updatePosExternalStoreId(
     uberStoreId: string,
     posExternalStoreId: string,

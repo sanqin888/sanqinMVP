@@ -92,42 +92,19 @@ describe('UberAuthService', () => {
     expect(logged).not.toContain('must-not-appear');
   });
 
-  it('authorization_code 会解析并返回 Uber token 响应中的稳定 user_id', async () => {
+  it('authorization_code token 无 user_id 仍成功', async () => {
     process.env.UBER_EATS_CLIENT_ID = 'app_1';
     process.env.UBER_EATS_CLIENT_SECRET = 'secret_1';
     process.env.UBER_EATS_REDIRECT_URI = 'https://example.com/callback';
     const service = new UberAuthService();
-    jest
-      .spyOn(service as never, 'performTokenRequest' as never)
-      .mockResolvedValue({
-        access_token: 'access_1',
-        user_id: '123e4567-e89b-42d3-a456-426614174000',
-        expires_in: 3600,
-      });
-
-    await expect(
-      service.exchangeAuthorizationCode('code_1'),
-    ).resolves.toMatchObject({
-      uberUserId: '123e4567-e89b-42d3-a456-426614174000',
-      accessToken: 'access_1',
+    jest.spyOn(service as never, 'performTokenRequest' as never).mockResolvedValue({
+      access_token: 'test', refresh_token: 'refresh', expires_in: 2592000,
+      token_type: 'Bearer', scope: 'eats.pos_provisioning',
     });
-  });
-
-  it('authorization_code 会拒绝缺失或无效的 Uber user_id', async () => {
-    process.env.UBER_EATS_CLIENT_ID = 'app_1';
-    process.env.UBER_EATS_CLIENT_SECRET = 'secret_1';
-    process.env.UBER_EATS_REDIRECT_URI = 'https://example.com/callback';
-    const service = new UberAuthService();
-    jest
-      .spyOn(service as never, 'performTokenRequest' as never)
-      .mockResolvedValue({
-        access_token: 'access_1',
-        user_id: 'not-a-stable-uber-id',
-      });
-
-    await expect(service.exchangeAuthorizationCode('code_1')).rejects.toThrow(
-      '稳定主体 user_id',
-    );
+    await expect(service.exchangeAuthorizationCode('code_1')).resolves.toMatchObject({
+      accessToken: 'test', refreshToken: 'refresh', tokenType: 'Bearer',
+      scope: 'eats.pos_provisioning',
+    });
   });
 });
 

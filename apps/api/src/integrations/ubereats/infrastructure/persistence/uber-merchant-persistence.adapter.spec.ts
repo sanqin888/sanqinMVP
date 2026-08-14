@@ -5,7 +5,7 @@ describe('UberMerchantConnectionPrismaAdapter', () => {
     const prisma = {
       uberMerchantConnection: {
         findUnique: jest.fn().mockResolvedValue({
-          merchantUberUserId: 'merchant-1',
+          id: 'merchant-1',
           encryptedAccessToken: 'cipher-access',
           encryptedRefreshToken: 'cipher-refresh',
           expiresAt: null,
@@ -51,8 +51,8 @@ describe('UberMerchantConnectionPrismaAdapter', () => {
       vault as never,
     );
 
-    await adapter.upsertConnectionByUberUserId({
-      uberUserId: 'merchant-1',
+    await adapter.upsertConnectionByConnectionId({
+      connectionId: 'merchant-1',
       accessToken: 'plain-access',
       refreshToken: 'plain-refresh',
       expiresAt: new Date('2026-08-12T01:00:00.000Z'),

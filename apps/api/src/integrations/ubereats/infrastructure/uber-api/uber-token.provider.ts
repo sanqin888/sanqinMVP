@@ -27,7 +27,6 @@ type UberTokenResponse = {
   token_type?: string;
   refresh_token?: string;
   scope?: string;
-  user_id?: unknown;
 };
 
 type UberTokenErrorResponse = {
@@ -48,14 +47,6 @@ export type UberMerchantTokenExchangeResult = {
   scope: string | null;
   tokenType: string | null;
 };
-
-export type UberMerchantIdentityTokenExchangeResult =
-  UberMerchantTokenExchangeResult & {
-    uberUserId: string;
-  };
-
-const UBER_USER_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class UberAuthService {
@@ -246,7 +237,7 @@ export class UberAuthService {
     code: string,
     redirectUriOverride?: string,
     scopeOverride?: string,
-  ): Promise<UberMerchantIdentityTokenExchangeResult> {
+  ): Promise<UberMerchantTokenExchangeResult> {
     if (!code.trim()) {
       throw new Error('authorization code 不能为空');
     }
@@ -270,19 +261,16 @@ export class UberAuthService {
       throw new Error('Uber authorization_code 响应缺少 access_token');
     }
 
-    const uberUserId =
-      typeof data.user_id === 'string' ? data.user_id.trim() : '';
-    if (!UBER_USER_ID_PATTERN.test(uberUserId)) {
-      throw new Error('Uber authorization_code 响应缺少有效的稳定主体 user_id');
-    }
-
     const expiresAt =
       typeof data.expires_in === 'number' && data.expires_in > 0
         ? new Date(Date.now() + data.expires_in * 1000)
         : null;
 
+    this.logger.debug(
+      `[token.response] grantType=authorization_code status=200 hasAccessToken=true hasRefreshToken=${Boolean(data.refresh_token)} scope=${data.scope?.trim() || resolvedScope} tokenType=${data.token_type?.trim() || ''} expiresIn=${data.expires_in ?? ''}`,
+    );
+
     return {
-      uberUserId,
       accessToken: data.access_token,
       refreshToken: data.refresh_token?.trim() || null,
       expiresAt,

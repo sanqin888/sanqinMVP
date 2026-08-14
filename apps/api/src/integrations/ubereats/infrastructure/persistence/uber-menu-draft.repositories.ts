@@ -342,7 +342,7 @@ export class UberMenuStoreMappingPrismaRepository implements MenuStoreMappingRep
       },
       select: {
         uberStoreId: true,
-        merchantUberUserId: true,
+        connectionId: true,
         posExternalStoreId: true,
         isProvisioned: true,
         rawPayload: true,
@@ -351,7 +351,7 @@ export class UberMenuStoreMappingPrismaRepository implements MenuStoreMappingRep
     return row
       ? {
           uberStoreId: row.uberStoreId,
-          merchantUberUserId: row.merchantUberUserId,
+          connectionId: row.connectionId,
           posExternalStoreId: row.posExternalStoreId,
           isProvisioned: row.isProvisioned,
           timezone: readStoreTimezone(row.rawPayload),

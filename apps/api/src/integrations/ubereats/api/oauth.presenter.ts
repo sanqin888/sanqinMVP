@@ -44,7 +44,7 @@ export const presentOAuthStart = <T extends { authorizeUrl: string }>(
 
 export const presentOAuthCallback = <
   T extends {
-    uberUserId: string;
+    connectionId: string;
     scope?: string | null;
     expiresAt?: Date | null;
   },

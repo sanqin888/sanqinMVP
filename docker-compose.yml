@@ -65,18 +65,17 @@ services:
       UBER_DIRECT_STORE_PROVINCE: "ON"
       UBER_DIRECT_STORE_POSTAL_CODE: "M2N 5M6"
       UBER_DIRECT_STORE_COUNTRY: "CA"
-      UBER_EATS_CLIENT_ID: "ji_NnxmUDZsh1WM_oz07zVZs1j9GKwry"
+      UBER_EATS_CLIENT_ID: ${UBER_EATS_CLIENT_ID}
       UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}
       UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}
-      UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
-      UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
-      UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
+      UBER_EATS_AUTHORIZE_ENDPOINT: ${UBER_EATS_AUTHORIZE_ENDPOINT}
+      UBER_EATS_TOKEN_ENDPOINT: ${UBER_EATS_TOKEN_ENDPOINT}
+      UBER_EATS_API_BASE_URL: ${UBER_EATS_API_BASE_URL}
       UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS: "https://api.uber.com"
       UBER_EATS_APP_SCOPES: "eats.store eats.order eats.report eats.store.orders.read eats.store.status.write"
       UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
-      UBER_EATS_STORE_ID: "47f93365-f7dc-4b49-9e3b-a99e9915e558"
       UBER_EATS_WORKER_ENABLED: "false"
       CLOVER_ENV: "production"
       CLOVER_BASE: "https://scl.clover.com"
@@ -122,11 +121,11 @@ services:
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
       UBER_EATS_WORKER_ENABLED: "true"
       UBER_EATS_WORKER_HEALTH_PORT: 4001
-      UBER_EATS_CLIENT_ID: "ji_NnxmUDZsh1WM_oz07zVZs1j9GKwry"
+      UBER_EATS_CLIENT_ID: ${UBER_EATS_CLIENT_ID}
       UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}
-      UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
-      UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
-      UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
+      UBER_EATS_API_BASE_URL: ${UBER_EATS_API_BASE_URL}
+      UBER_EATS_TOKEN_ENDPOINT: ${UBER_EATS_TOKEN_ENDPOINT}
+      UBER_EATS_AUTHORIZE_ENDPOINT: ${UBER_EATS_AUTHORIZE_ENDPOINT}
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
       UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}

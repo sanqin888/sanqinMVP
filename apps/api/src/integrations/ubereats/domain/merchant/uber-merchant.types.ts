@@ -8,7 +8,7 @@ export type UberMerchantStore = {
 };
 
 export type UberMerchantConnectionRecord = {
-  merchantUberUserId: string;
+  connectionId: string;
   accessToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
@@ -18,7 +18,7 @@ export type UberMerchantConnectionRecord = {
 };
 
 export type UberStoreMappingRecord = {
-  merchantUberUserId: string;
+  connectionId: string;
   uberStoreId: string;
   storeName: string | null;
   locationSummary: string | null;
@@ -28,7 +28,7 @@ export type UberStoreMappingRecord = {
 };
 
 export type UpsertStoreMappingInput = {
-  merchantUberUserId: string;
+  connectionId: string;
   uberStoreId: string;
   storeName: string | null;
   locationSummary: string | null;
