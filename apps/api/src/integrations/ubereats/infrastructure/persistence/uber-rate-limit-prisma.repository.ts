@@ -130,7 +130,9 @@ export class UberRateLimitPrismaRepository implements UberRateLimitCoordinationR
     partitionKey: string,
   ): Promise<void> {
     await tx.$queryRaw`
-      SELECT pg_advisory_xact_lock(hashtextextended(${partitionKey}, 824731))
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${partitionKey}, 824731)
+      )::text AS "lockResult"
     `;
   }
 }
