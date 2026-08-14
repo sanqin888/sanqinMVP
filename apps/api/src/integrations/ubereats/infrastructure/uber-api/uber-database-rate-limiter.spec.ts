@@ -158,7 +158,7 @@ describe('DatabaseUberRateLimiter', () => {
       new SharedCoordinationRepository(),
     );
     const burst = await limiter.acquire(request('store', 2));
-    burst.release();
+    await burst.release();
     await expect(limiter.acquire(request('store'))).rejects.toMatchObject({
       reason: 'wait_timeout',
     });
@@ -171,7 +171,7 @@ describe('DatabaseUberRateLimiter', () => {
     const first = await api.acquire(request('store'));
     const waiting = worker.acquire(request('store'));
     await new Promise((resolve) => setTimeout(resolve, 10));
-    first.release();
+    await first.release();
     await expect(waiting).resolves.toBeDefined();
   });
 
@@ -220,8 +220,8 @@ describe('DatabaseUberRateLimiter', () => {
       expect.objectContaining({ status: 'rejected' }),
       expect.objectContaining({ status: 'rejected' }),
     ]);
-    storeA.release();
-    storeB.release();
+    await storeA.release();
+    await storeB.release();
   });
 
   it('shares Retry-After cooldown and resumes afterward', async () => {
@@ -240,6 +240,6 @@ describe('DatabaseUberRateLimiter', () => {
     const started = Date.now();
     const next = await worker.acquire(request('store'));
     expect(Date.now() - started).toBeGreaterThanOrEqual(35);
-    next.release();
+    await next.release();
   });
 });

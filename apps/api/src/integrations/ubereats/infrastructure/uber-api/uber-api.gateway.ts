@@ -96,7 +96,8 @@ export class UberApiGatewayTransport {
     const lease = await this.acquire(partition, request.operation);
     const startedAt = Date.now();
     let status = 0;
-    let requestError: unknown;
+    let requestError: Error | undefined;
+    let requestResult: UberHttpResult<T> | undefined;
     try {
       let token =
         request.accessToken ?? (await this.auth.getAccessToken(request.scope));
@@ -121,7 +122,7 @@ export class UberApiGatewayTransport {
           status: result.response.status,
           upstreamCode: this.upstreamCode(result.data),
         });
-      return result;
+      requestResult = result;
     } catch (cause) {
       requestError = isUberApplicationError(cause)
         ? cause
@@ -131,20 +132,22 @@ export class UberApiGatewayTransport {
             code: 'UBER_NETWORK_ERROR',
             cause,
           });
-      throw requestError;
-    } finally {
-      this.logger.log(
-        `[uber gateway metric] operation=${request.operation} partition=${partition} requestId=${requestId} status=${status || 'error'} latencyMs=${Date.now() - startedAt}`,
-      );
-      try {
-        await lease.release();
-      } catch (releaseError) {
-        this.logger.error(
-          `[uber gateway rate limit release] operation=${request.operation} partition=${partition} requestId=${requestId} error=${this.safeErrorName(releaseError)}`,
-        );
-        if (requestError === undefined) throw releaseError;
-      }
     }
+    this.logger.log(
+      `[uber gateway metric] operation=${request.operation} partition=${partition} requestId=${requestId} status=${status || 'error'} latencyMs=${Date.now() - startedAt}`,
+    );
+    try {
+      await lease.release();
+    } catch (releaseError) {
+      this.logger.error(
+        `[uber gateway rate limit release] operation=${request.operation} partition=${partition} requestId=${requestId} error=${this.safeErrorName(releaseError)}`,
+      );
+      if (requestError === undefined) throw releaseError;
+    }
+    if (requestError !== undefined) throw requestError;
+    if (requestResult === undefined)
+      throw new Error('Uber gateway request completed without a result');
+    return requestResult;
   }
 
   private upstreamCode(data: unknown): string | null {

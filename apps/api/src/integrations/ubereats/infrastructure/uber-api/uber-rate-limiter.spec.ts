@@ -27,7 +27,7 @@ describe('ProcessUberRateLimiter contract', () => {
     );
     const merchant = await limiter.acquire(request('merchant-1'));
     await expect(limiter.acquire(request('store-2'))).resolves.toBeDefined();
-    merchant.release();
+    await merchant.release();
   });
 
   it('rejects immediately when the bounded partition queue is full', async () => {
@@ -39,8 +39,8 @@ describe('ProcessUberRateLimiter contract', () => {
     ).rejects.toMatchObject<UberRateLimitRejectedError>({
       reason: 'queue_full',
     });
-    active.release();
-    (await queued).release();
+    await active.release();
+    await (await queued).release();
   });
 
   it('rejects a queued request after its maximum wait time', async () => {
@@ -63,8 +63,8 @@ describe('ProcessUberRateLimiter contract', () => {
       config({ uberApiQueueWaitTimeoutMs: 2_000 }),
     );
     const active = await limiter.acquire(request('store-1'));
-    active.feedback({ status: 429, retryAfter: '1' });
-    active.release();
+    await active.feedback({ status: 429, retryAfter: '1' });
+    await active.release();
     let acquired = false;
     const queued = limiter.acquire(request('store-1')).then((lease) => {
       acquired = true;
@@ -73,7 +73,7 @@ describe('ProcessUberRateLimiter contract', () => {
     await jest.advanceTimersByTimeAsync(999);
     expect(acquired).toBe(false);
     await jest.advanceTimersByTimeAsync(2);
-    (await queued).release();
+    await (await queued).release();
   });
 
   it('charges operation weight from the token bucket', async () => {
@@ -81,7 +81,7 @@ describe('ProcessUberRateLimiter contract', () => {
       config({ uberApiBurst: 2, uberApiRatePerSecond: 1 }),
     );
     const lease = await limiter.acquire(request('store-1', 2));
-    lease.release();
+    await lease.release();
     await expect(
       Promise.race([
         limiter.acquire(request('store-1')),
