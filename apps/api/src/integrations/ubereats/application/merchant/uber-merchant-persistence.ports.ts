@@ -62,9 +62,7 @@ export type UberMerchantConnection = {
 
 export interface UberMerchantConnectionRepositoryPort {
   /** Application-safe connection metadata. Decrypted credentials never cross this port. */
-  findConnection(
-    connectionId?: string,
-  ): Promise<UberMerchantConnection | null>;
+  findConnection(connectionId?: string): Promise<UberMerchantConnection | null>;
   upsertConnectionByConnectionId(input: {
     connectionId: string;
     accessToken: string;
@@ -87,9 +85,7 @@ export type UberMerchantStoreMapping = {
 };
 
 export interface UberStoreMappingRepositoryPort {
-  findMappings(
-    uberStoreIds: string[],
-  ): Promise<UberMerchantStoreMapping[]>;
+  findMappings(uberStoreIds: string[]): Promise<UberMerchantStoreMapping[]>;
   listMappings(): Promise<UberMerchantStoreMapping[]>;
   findMapping(uberStoreId: string): Promise<UberMerchantStoreMapping | null>;
   upsertMapping(

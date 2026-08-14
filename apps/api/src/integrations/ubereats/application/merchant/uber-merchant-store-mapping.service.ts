@@ -81,23 +81,32 @@ export class MapUberStoreUseCase {
     const storeId = input.storeId.trim();
     if (!connectionId || !storeId)
       throw new UberValidationError({
-        code: 'INVALID_REQUEST', operation: 'merchant', message: '连接和门店 ID 不能为空',
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: '连接和门店 ID 不能为空',
       });
     const connection = await this.connections.findConnection(connectionId);
     if (!connection)
       throw new UberValidationError({
-        code: 'INVALID_REQUEST', operation: 'merchant', message: '未找到 Uber 商户授权',
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: '未找到 Uber 商户授权',
       });
     const discovery = await this.api.discoverStores({ connectionId });
     if (!discovery.stores.some((store) => store.storeId === storeId))
       throw new UberValidationError({
-        code: 'STORE_NOT_AUTHORIZED', operation: 'merchant', message: '当前 merchant connection 未授权该 Uber 门店',
+        code: 'STORE_NOT_AUTHORIZED',
+        operation: 'merchant',
+        message: '当前 merchant connection 未授权该 Uber 门店',
       });
     const existing = await this.mappings.findMapping(storeId);
     if (existing && existing.connectionId !== connectionId) {
       if (input.reconnectFromConnectionId?.trim() !== existing.connectionId)
         throw new UberValidationError({
-          code: 'STORE_ALREADY_MAPPED', operation: 'merchant', message: '该 Uber 门店已绑定到其他授权连接；重新授权需要明确确认原 connectionId',
+          code: 'STORE_ALREADY_MAPPED',
+          operation: 'merchant',
+          message:
+            '该 Uber 门店已绑定到其他授权连接；重新授权需要明确确认原 connectionId',
         });
       const reconnected = await this.mappings.reconnectMapping({
         uberStoreId: storeId,
@@ -109,16 +118,21 @@ export class MapUberStoreUseCase {
       });
       if (!reconnected)
         throw new UberValidationError({
-          code: 'STORE_RECONNECT_CONFLICT', operation: 'merchant', message: '门店连接已发生变化，请刷新后重试',
+          code: 'STORE_RECONNECT_CONFLICT',
+          operation: 'merchant',
+          message: '门店连接已发生变化，请刷新后重试',
         });
-      this.logger.log(`[merchant.store-mapping] storeId=${storeId} outcome=reconnected`);
+      this.logger.log(
+        `[merchant.store-mapping] storeId=${storeId} outcome=reconnected`,
+      );
       return { ok: true, mapping: reconnected };
     }
     const mapping = await this.mappings.upsertMapping({
       connectionId,
       uberStoreId: storeId,
       storeName: input.storeName?.trim() || existing?.storeName || null,
-      locationSummary: input.locationSummary?.trim() || existing?.locationSummary || null,
+      locationSummary:
+        input.locationSummary?.trim() || existing?.locationSummary || null,
       isProvisioned: existing?.isProvisioned ?? false,
       provisionedAt: existing?.provisionedAt ?? null,
       posExternalStoreId: existing?.posExternalStoreId ?? null,

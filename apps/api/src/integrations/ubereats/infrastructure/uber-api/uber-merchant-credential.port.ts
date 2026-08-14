@@ -15,9 +15,7 @@ export type UberMerchantCredential = {
 
 /** Kept outside application ports so use cases cannot request plaintext tokens. */
 export interface UberMerchantCredentialStore {
-  loadCredential(
-    connectionId: string,
-  ): Promise<UberMerchantCredential | null>;
+  loadCredential(connectionId: string): Promise<UberMerchantCredential | null>;
   rotateCredential(input: {
     connectionId: string;
     expectedVersion: string;

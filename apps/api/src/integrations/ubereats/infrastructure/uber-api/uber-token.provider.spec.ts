@@ -97,12 +97,21 @@ describe('UberAuthService', () => {
     process.env.UBER_EATS_CLIENT_SECRET = 'secret_1';
     process.env.UBER_EATS_REDIRECT_URI = 'https://example.com/callback';
     const service = new UberAuthService();
-    jest.spyOn(service as never, 'performTokenRequest' as never).mockResolvedValue({
-      access_token: 'test', refresh_token: 'refresh', expires_in: 2592000,
-      token_type: 'Bearer', scope: 'eats.pos_provisioning',
-    });
-    await expect(service.exchangeAuthorizationCode('code_1')).resolves.toMatchObject({
-      accessToken: 'test', refreshToken: 'refresh', tokenType: 'Bearer',
+    jest
+      .spyOn(service as never, 'performTokenRequest' as never)
+      .mockResolvedValue({
+        access_token: 'test',
+        refresh_token: 'refresh',
+        expires_in: 2592000,
+        token_type: 'Bearer',
+        scope: 'eats.pos_provisioning',
+      });
+    await expect(
+      service.exchangeAuthorizationCode('code_1'),
+    ).resolves.toMatchObject({
+      accessToken: 'test',
+      refreshToken: 'refresh',
+      tokenType: 'Bearer',
       scope: 'eats.pos_provisioning',
     });
   });

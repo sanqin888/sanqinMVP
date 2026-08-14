@@ -49,9 +49,15 @@ export class ProvisionUberStoreDto {
 }
 
 export class SelectUberStoreDto {
-  @IsString() @MinLength(1) @MaxLength(128) @Matches(UBER_RESOURCE_ID_PATTERN)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   connectionId!: string;
-  @IsString() @MinLength(1) @MaxLength(128) @Matches(UBER_RESOURCE_ID_PATTERN)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId!: string;
   @IsOptional() @IsString() @MaxLength(256) storeName?: string;
   @IsOptional() @IsString() @MaxLength(512) locationSummary?: string;

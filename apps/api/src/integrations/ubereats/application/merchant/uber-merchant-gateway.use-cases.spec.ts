@@ -88,15 +88,25 @@ describe('Uber merchant gateway use-case boundaries', () => {
     };
     const useCase = new MapUberStoreUseCase(
       mappings as never,
-      { discoverStores: jest.fn().mockResolvedValue({ stores: [{ storeId: 'uber-store-1' }] }) } as never,
-      { findConnection: jest.fn().mockResolvedValue({ connectionId: 'new-connection' }) } as never,
+      {
+        discoverStores: jest
+          .fn()
+          .mockResolvedValue({ stores: [{ storeId: 'uber-store-1' }] }),
+      } as never,
+      {
+        findConnection: jest
+          .fn()
+          .mockResolvedValue({ connectionId: 'new-connection' }),
+      } as never,
     );
 
-    await expect(useCase.selectStore({
-      connectionId: 'new-connection',
-      reconnectFromConnectionId: 'old-connection',
-      storeId: 'uber-store-1',
-    })).resolves.toMatchObject({
+    await expect(
+      useCase.selectStore({
+        connectionId: 'new-connection',
+        reconnectFromConnectionId: 'old-connection',
+        storeId: 'uber-store-1',
+      }),
+    ).resolves.toMatchObject({
       mapping: {
         connectionId: 'new-connection',
         isProvisioned: true,
@@ -123,13 +133,19 @@ describe('Uber merchant gateway use-case boundaries', () => {
     const useCase = new MapUberStoreUseCase(
       mappings as never,
       { discoverStores: jest.fn().mockResolvedValue({ stores: [] }) } as never,
-      { findConnection: jest.fn().mockResolvedValue({ connectionId: 'attacker' }) } as never,
+      {
+        findConnection: jest
+          .fn()
+          .mockResolvedValue({ connectionId: 'attacker' }),
+      } as never,
     );
-    await expect(useCase.selectStore({
-      connectionId: 'attacker',
-      storeId: 'uber-store-1',
-      reconnectFromConnectionId: 'owner-connection',
-    })).rejects.toMatchObject({ code: 'STORE_NOT_AUTHORIZED' });
+    await expect(
+      useCase.selectStore({
+        connectionId: 'attacker',
+        storeId: 'uber-store-1',
+        reconnectFromConnectionId: 'owner-connection',
+      }),
+    ).rejects.toMatchObject({ code: 'STORE_NOT_AUTHORIZED' });
     expect(mappings.reconnectMapping).not.toHaveBeenCalled();
   });
 
@@ -144,7 +160,15 @@ describe('Uber merchant gateway use-case boundaries', () => {
       }),
     };
     const mappings = {
-      findMapping: jest.fn().mockResolvedValue({ ...connection, uberStoreId: 'uber-store-1', storeName: 'Fixture Store', locationSummary: 'Toronto', isProvisioned: false, provisionedAt: null, posExternalStoreId: null }),
+      findMapping: jest.fn().mockResolvedValue({
+        ...connection,
+        uberStoreId: 'uber-store-1',
+        storeName: 'Fixture Store',
+        locationSummary: 'Toronto',
+        isProvisioned: false,
+        provisionedAt: null,
+        posExternalStoreId: null,
+      }),
       upsertMapping: jest.fn().mockResolvedValue({
         provisionedAt: new Date('2026-01-01T00:00:00.000Z'),
       }),
@@ -182,7 +206,12 @@ describe('Uber merchant gateway use-case boundaries', () => {
       code: 'UBER_STORE_PROVISION_MAPPING_FAILED',
       retryable: false,
     };
-    const mappings = { findMapping: jest.fn().mockResolvedValue({ ...connection, uberStoreId: 'uber-store-1' }), upsertMapping: jest.fn() };
+    const mappings = {
+      findMapping: jest
+        .fn()
+        .mockResolvedValue({ ...connection, uberStoreId: 'uber-store-1' }),
+      upsertMapping: jest.fn(),
+    };
     const useCase = new ProvisionUberStoreUseCase(
       { provisionStore: jest.fn().mockRejectedValue(failure) },
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,

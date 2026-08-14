@@ -102,9 +102,7 @@ export class ProvisionUberStoreUseCase {
       posExternalStoreId:
         response.posExternalStoreId ?? selected.posExternalStoreId,
     });
-    this.logger.log(
-      `[merchant.provisioning] storeId=${id} outcome=success`,
-    );
+    this.logger.log(`[merchant.provisioning] storeId=${id} outcome=success`);
     return {
       ok: true,
       connectionId: connection.connectionId,

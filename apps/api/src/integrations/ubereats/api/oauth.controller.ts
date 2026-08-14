@@ -163,9 +163,7 @@ export class UberEatsOAuthController {
   @UberReadOnlyAdmin()
   async oauthConnection(@Query() query: MerchantQuery) {
     return presentMerchantConnection(
-      await this.oauthComplete.getMerchantConnectionStatus(
-        query.connectionId,
-      ),
+      await this.oauthComplete.getMerchantConnectionStatus(query.connectionId),
     );
   }
 
