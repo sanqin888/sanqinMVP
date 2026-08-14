@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { UberOrderDetailQueryPort } from '../../application/orders/uber-order-query.ports';
-import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
+import {
+  type UberTelemetryPort,
+  UBER_TELEMETRY_PORT,
+} from '../../application/shared/uber-telemetry.port';
 import {
   redactUberLogText,
   summarizeUberDebugResponse,
@@ -19,6 +22,7 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       UberOrderGateway,
       'pathFromResourceHref' | 'inspect'
     >,
+    @Inject(UBER_TELEMETRY_PORT)
     private readonly telemetry: Pick<UberTelemetryPort, 'workflowLog'>,
   ) {}
 
