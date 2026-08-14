@@ -22,7 +22,8 @@ async function main() {
       phone: true,
       phoneVerifiedAt: true,
 
-      name: true,
+      firstName: true,
+      lastName: true,
       role: true,
       status: true,
 
@@ -294,7 +295,8 @@ async function main() {
       phone: u.phone,
       phoneVerifiedAt: u.phoneVerifiedAt,
 
-      name: u.name,
+      firstName: u.firstName,
+      lastName: u.lastName,
       role: u.role,
       status: u.status,
 
