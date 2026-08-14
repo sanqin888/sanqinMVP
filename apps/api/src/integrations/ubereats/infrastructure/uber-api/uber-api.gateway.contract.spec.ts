@@ -1,5 +1,9 @@
+import { Test } from '@nestjs/testing';
 import type { UberGatewayRequest } from './uber-api.gateway';
 import { UberApiGatewayTransport } from './uber-api.gateway';
+import { UberApiConfigService } from './uber-api-config.service';
+import { UberHttpClient } from './uber-http.client';
+import { UberAuthService } from './uber-token.provider';
 import {
   createUberAuthFake,
   createUberHttpFake,
@@ -8,6 +12,24 @@ import {
 } from '../../test/uber-api-test.helpers';
 
 describe('Uber API gateway contract', () => {
+  it('resolves its configuration through the Nest injection token', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        UberApiGatewayTransport,
+        { provide: UberHttpClient, useValue: createUberHttpFake() },
+        { provide: UberAuthService, useValue: createUberAuthFake() },
+        {
+          provide: UberApiConfigService,
+          useValue: { apiBaseUrl: 'https://api.uber.com' },
+        },
+      ],
+    }).compile();
+
+    expect(module.get(UberApiGatewayTransport)).toBeInstanceOf(
+      UberApiGatewayTransport,
+    );
+  });
+
   it('routes inspect through the same rate limiter and request-id pipeline', async () => {
     const inspected = uberHttpResult(200, { ok: true });
     const release = jest.fn<() => Promise<void>>().mockResolvedValue();
