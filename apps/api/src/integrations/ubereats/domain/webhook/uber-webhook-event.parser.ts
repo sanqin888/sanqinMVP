@@ -9,9 +9,13 @@ import type { UberMenuNotificationStatus } from './uber-webhook.types';
 
 export interface UberOrderNotificationEventV1 extends UberWebhookEventV1 {
   family: 'order';
+  resourceHref: string;
+  userId: string;
 }
 export interface UberOrderCancelEventV1 extends UberWebhookEventV1 {
   family: 'order-cancel';
+  resourceHref: string;
+  userId: string;
 }
 export interface UberStoreProvisioningEventV1 extends UberWebhookEventV1 {
   family: 'store-provisioning';

@@ -9,9 +9,9 @@ export type UberWebhookEnvelope = {
 export interface UberWebhookEventV1 {
   version: 1;
   eventType: string;
-  resourceHref: string;
+  resourceHref: string | null;
   resourceId: string;
-  userId: string;
+  userId: string | null;
   eventId: string | null;
 }
 
@@ -20,18 +20,25 @@ export function parseUberWebhookEnvelopeV1(
 ): UberWebhookEventV1 | null {
   const root = object(payload);
   const meta = object(root?.meta);
+  const webhookMeta = object(root?.webhook_meta);
   const eventType = text(root?.event_type);
   const resourceHref = text(root?.resource_href);
-  const resourceId = text(meta?.resource_id);
+  if (!eventType) return null;
+  const isStoreEvent = eventType.startsWith('store.');
+  const resourceId = isStoreEvent
+    ? text(root?.store_id, meta?.resource_id)
+    : text(meta?.resource_id);
   const userId = text(meta?.user_id);
-  if (!eventType || !resourceHref || !resourceId || !userId) return null;
+  if (!resourceId || (!isStoreEvent && (!resourceHref || !userId))) return null;
   return {
     version: 1,
     eventType,
     resourceHref,
     resourceId,
     userId,
-    eventId: text(root?.event_id, root?.id),
+    eventId: isStoreEvent
+      ? text(webhookMeta?.webhook_msg_uuid, root?.event_id, root?.id)
+      : text(root?.event_id, root?.id),
   };
 }
 
@@ -87,9 +94,15 @@ export function resolveUberWebhookEventId(
       return candidate.trim();
   }
   const root = object(payload);
+  const webhookMeta = object(root?.webhook_meta);
   return (
     envelopeEventId ??
-    text(root?.event_id, root?.id, object(root?.data)?.id) ??
+    text(
+      webhookMeta?.webhook_msg_uuid,
+      root?.event_id,
+      root?.id,
+      object(root?.data)?.id,
+    ) ??
     stableFallback
   );
 }

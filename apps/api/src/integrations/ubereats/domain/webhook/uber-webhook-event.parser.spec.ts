@@ -8,7 +8,10 @@ import {
   parseUberStoreProvisioningV1,
   parseUberStoreStatusChangedV1,
 } from './uber-webhook-event.parser';
-import { parseUberWebhookEnvelopeV1 } from './uber-webhook-envelope';
+import {
+  parseUberWebhookEnvelopeV1,
+  resolveUberWebhookEventId,
+} from './uber-webhook-envelope';
 
 const envelope = {
   event_type: 'orders.notification',
@@ -96,6 +99,19 @@ describe('Uber webhook event domain parser', () => {
       });
     },
   );
+
+  it('uses the official store envelope identifiers without requiring meta', () => {
+    const payload = fixture('store.provisioned');
+    expect(parseUberWebhookEnvelopeV1(payload)).toMatchObject({
+      eventType: 'store.provisioned',
+      resourceId: 'store-redacted',
+      eventId: 'fixture-store-provisioned-v1',
+      userId: null,
+    });
+    expect(resolveUberWebhookEventId({}, payload, null, 'fallback')).toBe(
+      'fixture-store-provisioned-v1',
+    );
+  });
 
   it('parses store status independently from provisioning', () => {
     const payload = fixture('store.status.changed');
