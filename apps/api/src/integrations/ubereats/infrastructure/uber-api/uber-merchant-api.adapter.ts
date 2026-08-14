@@ -131,7 +131,7 @@ export class UberMerchantApiAdapter
       sanitizedRawResponse: sanitizeForAudit(raw),
       recordedAt: new Date(),
     });
-    return mapUberStoreProvisionWire(raw);
+    return mapUberStoreProvisionWire(raw, storeId);
   }
 
   async writeStatus(
