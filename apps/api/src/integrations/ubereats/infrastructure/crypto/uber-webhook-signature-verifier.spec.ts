@@ -1,6 +1,12 @@
+import { Test } from '@nestjs/testing';
 import fixture from '../../test/fixtures/webhook-signature-v1.json';
 import type { UberWebhookVerificationInput } from '../../domain/webhook/uber-webhook.types';
-import { HmacUberWebhookSignatureVerifier } from './uber-webhook-signature-verifier';
+import { createCommonWiring } from '../nest/common.wiring';
+import { UberCryptoConfigService } from './uber-crypto-config.service';
+import {
+  HmacUberWebhookSignatureVerifier,
+  UBER_WEBHOOK_CLOCK,
+} from './uber-webhook-signature-verifier';
 
 const deadline = Date.parse('2026-08-11T00:00:00.000Z');
 const verifier = (now = deadline - 1) =>
@@ -27,6 +33,39 @@ const input = (
 
 /** Expected digests are frozen fixture values, never produced by the implementation under test. */
 describe('HmacUberWebhookSignatureVerifier', () => {
+  it('resolves through the production Nest composition wiring', async () => {
+    const productionVerifierProviders = createCommonWiring().filter(
+      (provider) => {
+        const token =
+          typeof provider === 'object' && 'provide' in provider
+            ? provider.provide
+            : provider;
+        return (
+          token === UBER_WEBHOOK_CLOCK ||
+          token === HmacUberWebhookSignatureVerifier
+        );
+      },
+    );
+    const module = await Test.createTestingModule({
+      providers: [
+        {
+          provide: UberCryptoConfigService,
+          useValue: {
+            getWebhookSigningSecrets: () => ({
+              active: fixture.activeSecret,
+            }),
+          },
+        },
+        ...productionVerifierProviders,
+      ],
+    }).compile();
+
+    expect(module.get(HmacUberWebhookSignatureVerifier)).toBeInstanceOf(
+      HmacUberWebhookSignatureVerifier,
+    );
+    await module.close();
+  });
+
   it('accepts the fixed official-shape v1 fixture', () =>
     expect(() =>
       verifier().verify(input(fixture.activeSignatureHex)),
