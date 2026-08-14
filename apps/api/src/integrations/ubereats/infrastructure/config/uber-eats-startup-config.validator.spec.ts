@@ -45,6 +45,44 @@ describe('Uber Eats startup configuration', () => {
     ).not.toThrow();
   });
 
+  it.each([
+    ['array', JSON.stringify([key])],
+    ['null', 'null'],
+    ['string', JSON.stringify(key)],
+    ['number', '3'],
+  ])('rejects a %s credential key ring', (_label, value) => {
+    expect(() =>
+      validateUberEatsStartupConfig({
+        UBER_EATS_RATE_LIMITER_MODE: 'database',
+        ...credentials,
+        UBER_CREDENTIAL_ENCRYPTION_KEYS: value,
+      }),
+    ).toThrow('普通 JSON object key ring');
+  });
+
+  it('rejects an empty credential key ring', () => {
+    expect(() =>
+      validateUberEatsStartupConfig({
+        UBER_EATS_RATE_LIMITER_MODE: 'database',
+        ...credentials,
+        UBER_CREDENTIAL_ENCRYPTION_KEYS: '{}',
+      }),
+    ).toThrow('不得为空对象');
+  });
+
+  it.each([
+    ['non-string value', JSON.stringify({ 3: 42 })],
+    ['invalid version', JSON.stringify({ current: key })],
+  ])('rejects a key ring with %s', (_label, value) => {
+    expect(() =>
+      validateUberEatsStartupConfig({
+        UBER_EATS_RATE_LIMITER_MODE: 'database',
+        ...credentials,
+        UBER_CREDENTIAL_ENCRYPTION_KEYS: value,
+      }),
+    ).toThrow('格式无效');
+  });
+
   it.each(['api', 'worker'])(
     'accepts explicit single-replica %s process mode',
     () => {

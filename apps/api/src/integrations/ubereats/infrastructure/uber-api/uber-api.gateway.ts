@@ -96,6 +96,7 @@ export class UberApiGatewayTransport {
     const lease = await this.acquire(partition, request.operation);
     const startedAt = Date.now();
     let status = 0;
+    let requestError: unknown;
     try {
       let token =
         request.accessToken ?? (await this.auth.getAccessToken(request.scope));
@@ -109,7 +110,7 @@ export class UberApiGatewayTransport {
         result = await this.send<T>(request, baseUrl, path, token, requestId);
       }
       status = result.response.status;
-      lease.feedback({
+      await lease.feedback({
         status,
         retryAfter: result.response.headers.get('retry-after'),
       });
@@ -122,18 +123,27 @@ export class UberApiGatewayTransport {
         });
       return result;
     } catch (cause) {
-      if (isUberApplicationError(cause)) throw cause;
-      throw mapUberGatewayFailure({
-        kind: 'transport',
-        operation: request.operation,
-        code: 'UBER_NETWORK_ERROR',
-        cause,
-      });
+      requestError = isUberApplicationError(cause)
+        ? cause
+        : mapUberGatewayFailure({
+            kind: 'transport',
+            operation: request.operation,
+            code: 'UBER_NETWORK_ERROR',
+            cause,
+          });
+      throw requestError;
     } finally {
       this.logger.log(
         `[uber gateway metric] operation=${request.operation} partition=${partition} requestId=${requestId} status=${status || 'error'} latencyMs=${Date.now() - startedAt}`,
       );
-      lease.release();
+      try {
+        await lease.release();
+      } catch (releaseError) {
+        this.logger.error(
+          `[uber gateway rate limit release] operation=${request.operation} partition=${partition} requestId=${requestId} error=${this.safeErrorName(releaseError)}`,
+        );
+        if (requestError === undefined) throw releaseError;
+      }
     }
   }
 
@@ -186,14 +196,18 @@ export class UberApiGatewayTransport {
   ): Promise<UberRateLimitLease> {
     if (!this.limiter)
       return Promise.resolve({
-        release: () => undefined,
-        feedback: () => undefined,
+        release: () => Promise.resolve(),
+        feedback: () => Promise.resolve(),
       });
     return this.limiter.acquire({
       partitionKey,
       operation,
       weight: this.config.operationWeight?.(operation) ?? 1,
     });
+  }
+
+  private safeErrorName(value: unknown): string {
+    return value instanceof Error ? value.name : 'UnknownError';
   }
 
   private normalizeBaseUrl(value: string): string {
