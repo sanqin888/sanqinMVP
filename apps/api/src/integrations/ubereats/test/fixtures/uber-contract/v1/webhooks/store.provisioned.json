@@ -1,6 +1,5 @@
 {
-  "event_id": "fixture-store-provisioned-v1",
   "event_type": "store.provisioned",
-  "resource_href": "https://api.uber.com/v1/eats/stores/store-redacted",
-  "meta": { "resource_id": "store-redacted", "user_id": "org-redacted" }
+  "store_id": "store-redacted",
+  "webhook_meta": { "webhook_msg_uuid": "fixture-store-provisioned-v1" }
 }

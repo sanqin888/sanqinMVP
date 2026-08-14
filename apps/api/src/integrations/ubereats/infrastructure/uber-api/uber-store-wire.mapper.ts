@@ -99,35 +99,36 @@ export function mapUberStoreDiscoveryWire(
 }
 
 /**
- * Provision wire policy: top-level `store_id` is required. Optional status,
- * store name, location and external POS identifier default to null; unknown
- * upstream fields are deliberately ignored.
+ * Provision wire policy: the requested store id is authoritative because a
+ * successful upstream response may have an empty body. Optional response
+ * fields default to null; unknown upstream fields are deliberately ignored.
  */
 export function mapUberStoreProvisionWire(
   value: unknown,
+  storeId: string,
 ): UberStoreProvisionResult {
   const raw = asObject(value);
-  const storeId = raw && readString(raw.store_id);
-  if (!raw || !storeId)
+  const requestedStoreId = readString(storeId);
+  if (!requestedStoreId)
     throw mappingFailure(
       'merchant.provision-store',
       'UBER_STORE_PROVISION_MAPPING_FAILED',
-      'Uber 门店配置响应缺少 store_id',
+      'Uber 门店配置请求缺少 storeId',
     );
 
-  const store = asObject(raw.store);
-  const location = asObject(raw.location) ?? asObject(raw.address);
+  const store = asObject(raw?.store);
+  const location = asObject(raw?.location) ?? asObject(raw?.address);
   return {
-    storeId,
-    status: readString(raw.status),
-    storeName: readString(store?.name, raw.store_name),
+    storeId: requestedStoreId,
+    status: readString(raw?.status),
+    storeName: readString(store?.name, raw?.store_name),
     locationSummary: readString(
-      raw.location_summary,
+      raw?.location_summary,
       location?.formatted_address,
     ),
     posExternalStoreId: readString(
-      raw.pos_external_store_id,
-      asObject(raw.pos_data)?.order_manager_client_id,
+      raw?.pos_external_store_id,
+      asObject(raw?.pos_data)?.order_manager_client_id,
     ),
   };
 }

@@ -45,12 +45,18 @@ describe('Uber store wire mapper', () => {
     );
   });
 
-  it('provision 缺少顶层 store_id 时映射失败且不使用嵌套 id', () => {
-    expectMappingFailure(
-      () => mapUberStoreProvisionWire(fixture('provision-missing-store-id')),
-      'UBER_STORE_PROVISION_MAPPING_FAILED',
-    );
-  });
+  it.each([null, {}])(
+    'provision 成功响应为 %p 或不含 store_id 时使用请求 storeId',
+    (response) => {
+      expect(mapUberStoreProvisionWire(response, 'store-1')).toEqual({
+        storeId: 'store-1',
+        status: null,
+        storeName: null,
+        locationSummary: null,
+        posExternalStoreId: null,
+      });
+    },
+  );
 
   it('明确应用可选字段默认值并忽略未知字段', () => {
     expect(
@@ -70,7 +76,10 @@ describe('Uber store wire mapper', () => {
       ],
     });
     expect(
-      mapUberStoreProvisionWire({ store_id: 'store-1', ignored: 'value' }),
+      mapUberStoreProvisionWire(
+        { store_id: 'wrong-response-id', ignored: 'value' },
+        'store-1',
+      ),
     ).toEqual({
       storeId: 'store-1',
       status: null,
