@@ -14,4 +14,12 @@ ALTER TYPE "UberOpsTicketStatus" ADD VALUE 'CLOSED';
 ALTER TYPE "UberOpsTicketType" ADD VALUE 'RECONCILIATION';
 
 -- AlterTable
-ALTER TABLE "Order" ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL;
+ALTER TABLE "Order"
+ADD COLUMN "updatedAt" TIMESTAMP(3);
+
+UPDATE "Order"
+SET "updatedAt" = "createdAt"
+WHERE "updatedAt" IS NULL;
+
+ALTER TABLE "Order"
+ALTER COLUMN "updatedAt" SET NOT NULL;
