@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { UberMenuUploadPayload } from '../../domain/menu/uber-menu.types';
 import {
   isPermanentPublicHttpsUrl,
@@ -23,11 +23,12 @@ export const DEFAULT_UBER_IMAGE_POLICY: UberImagePolicy = {
   concurrency: 4,
   maxResponseBytes: UBER_IMAGE_MAX_BYTES,
 };
+export const UBER_IMAGE_POLICY = Symbol('UBER_IMAGE_POLICY');
 @Injectable()
 export class UberImageValidator {
   constructor(
     private readonly http: UberHttpClient,
-    private readonly policy: UberImagePolicy = DEFAULT_UBER_IMAGE_POLICY,
+    @Inject(UBER_IMAGE_POLICY) private readonly policy: UberImagePolicy,
   ) {}
   async validate(payload: UberMenuUploadPayload) {
     const issues: UberMenuPayloadValidationIssue[] = [];
