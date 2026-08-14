@@ -13,7 +13,10 @@ import {
   type UberAuthConfigPort,
   type UberAuthHttpPort,
 } from './uber-token.provider';
-import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
+import {
+  type UberTelemetryPort,
+  UBER_TELEMETRY_PORT,
+} from '../../application/shared/uber-telemetry.port';
 import type { UberGatewayAuditPort } from '../../application/shared/uber-gateway-audit.port';
 import {
   createUberTransportFake,
@@ -58,6 +61,20 @@ describe('Uber gateways wire contract v1', () => {
     }).compile();
 
     expect(module.get(UberOrderGateway)).toBeInstanceOf(UberOrderGateway);
+  });
+
+  it('resolves the order detail adapter telemetry dependency through its Nest token', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        UberOrderDetailGatewayAdapter,
+        { provide: UberOrderGateway, useValue: {} },
+        { provide: UBER_TELEMETRY_PORT, useValue: { workflowLog: jest.fn() } },
+      ],
+    }).compile();
+
+    expect(module.get(UberOrderDetailGatewayAdapter)).toBeInstanceOf(
+      UberOrderDetailGatewayAdapter,
+    );
   });
 
   it('OAuth client credentials request fixes method, content type, grant and scope', async () => {
