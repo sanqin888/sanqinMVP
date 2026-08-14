@@ -6,25 +6,31 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
         app: [web, api]
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      # ✅ 先装 pnpm（不要写 version，避免与 packageManager 冲突）
+      # 先安装 pnpm。
+      # 不指定 version，使用 package.json 中的 packageManager 版本。
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
           run_install: false
 
-      # ✅ 再装 Node，并启用 pnpm cache（此时 pnpm 已存在）
-      - name: Setup Node (pnpm cache)
+      # 再安装 Node，并启用 pnpm cache。
+      - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: "20"
@@ -34,11 +40,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Generate Prisma Client (api only)
+        if: matrix.app == 'api'
+        run: pnpm --filter api prisma:generate
+
       - name: Lint (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} lint
 
       - name: Build (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} build
+
+      - name: Strict declaration check (${{ matrix.app }})
+        run: pnpm --filter ${{ matrix.app }} exec tsc -p tsconfig.strict.json --pretty false
+
+      - name: Strict declaration check (shared libraries)
+        if: matrix.app == 'api'
+        run: |
+          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
+          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
 
       - name: Test (api only)
         if: matrix.app == 'api'

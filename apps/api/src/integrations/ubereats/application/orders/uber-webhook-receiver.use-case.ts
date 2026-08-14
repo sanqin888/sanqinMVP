@@ -1,5 +1,5 @@
+import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
 import { createHash } from 'crypto';
-import { Inject, Injectable } from '@nestjs/common';
 import {
   canonicalizeUberWebhookPayload,
   parseUberWebhookEnvelope,
@@ -7,37 +7,29 @@ import {
   UberWebhookEnvelopeError,
 } from '../../domain/webhook/uber-webhook-envelope';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
-import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
-import { UberValidationError } from '../errors/uber-application.error';
+import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import {
-  UBER_TELEMETRY_PORT,
-  UBER_WEBHOOK_INBOX_PORT,
-  UBER_WEBHOOK_SIGNATURE_VERIFIER,
-  type UberTelemetryPort,
+  UberTransientUpstreamError,
+  UberValidationError,
+} from '../shared/uber-application.error';
+import {
   type UberWebhookInboxPort,
   type UberWebhookSignatureVerifier,
-} from '../ports/uber-order-processing.ports';
+} from './uber-order-processing.ports';
 
 /** Signature verification, contract parsing and one atomic inbox insert. */
-@Injectable()
 export class ReceiveUberWebhookUseCase {
   constructor(
-    @Inject(UBER_WEBHOOK_INBOX_PORT)
     private readonly inbox: UberWebhookInboxPort,
-    @Inject(UBER_WEBHOOK_SIGNATURE_VERIFIER)
     private readonly signatures: UberWebhookSignatureVerifier,
-    @Inject(UBER_TELEMETRY_PORT) private readonly telemetry: UberTelemetryPort,
+    private readonly telemetry: UberTelemetryPort,
   ) {}
 
   async execute(input: UberWebhookInput): Promise<void> {
-    const bytes =
-      typeof input.rawBody === 'string'
-        ? new TextEncoder().encode(input.rawBody)
-        : input.rawBody;
     this.signatures.verify({
       version: 'hmac-sha256-hex-v1',
       headers: input.headers,
-      rawBody: bytes,
+      rawBody: input.rawBody,
     });
     let parsed: ReturnType<typeof parseUberWebhookEnvelope>;
     try {
@@ -77,12 +69,22 @@ export class ReceiveUberWebhookUseCase {
         : normalized.startsWith('store.')
           ? 'store'
           : 'event';
-    const inserted = await this.inbox.enqueue({
-      eventId,
-      eventType: parsed.envelope.eventType,
-      externalOrderId: `${prefix}:${parsed.envelope.resourceId ?? eventId}`,
-      payload: parsed.payload,
-    });
+    let inserted: boolean;
+    try {
+      inserted = await this.inbox.enqueue({
+        eventId,
+        eventType: parsed.envelope.eventType,
+        externalOrderId: `${prefix}:${parsed.envelope.resourceId ?? eventId}`,
+        payload: parsed.payload,
+      });
+    } catch (cause) {
+      throw new UberTransientUpstreamError({
+        code: 'UBER_WEBHOOK_INBOX_UNAVAILABLE',
+        message: 'Uber webhook inbox 暂时不可用',
+        operation: 'webhook.enqueue',
+        cause,
+      });
+    }
     if (!inserted)
       this.telemetry.workflowLog('warn', 'duplicate webhook ignored');
   }

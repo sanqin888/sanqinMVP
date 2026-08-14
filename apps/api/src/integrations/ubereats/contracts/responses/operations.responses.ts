@@ -17,3 +17,24 @@ export class UberOpsTicketResponse {
 }
 export type UberOpsTicketListResponse = UberListResponse<UberOpsTicketResponse>;
 export type UberOperationMutationResponse = UberMutationResponse;
+export class UberOperationsSummaryResponse {
+  total!: number;
+  succeeded!: number;
+  failed!: number;
+  contractVersion!: '2';
+}
+
+export class UberReconciliationReportResponse {
+  reportStableId!: string;
+  totalOrders!: number;
+  totalAmountCents!: number;
+  syncedOrders!: number;
+  pendingOrders!: number;
+  failedSyncEvents!: number;
+  discrepancyOrders!: number;
+  rangeStart!: string;
+  rangeEnd!: string;
+  createdAt!: string;
+}
+export type UberReconciliationReportListResponse =
+  UberListResponse<UberReconciliationReportResponse>;

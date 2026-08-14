@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment -- typed framework/Prisma test doubles cross a dynamic boundary */
 import {
   Body,
   Controller,
@@ -10,8 +9,7 @@ import {
 } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
-import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
-import { executeUberMutation } from '../contracts/responses/ubereats.responses';
+import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import {
   UberAdminWrite,
   UberMfaAdminWrite,
@@ -22,7 +20,7 @@ import {
   GenerateUberReconciliationReportDto,
   OpsTicketListQuery,
   ReportListQuery,
-} from '../contracts/requests/ubereats.requests';
+} from '../contracts/requests/operations.requests';
 import {
   CreateUberOpsTicketUseCase,
   GenerateUberReconciliationReportUseCase,
@@ -33,7 +31,14 @@ import {
   presentOperationMutation,
   presentOperationsSummary,
   presentOpsTickets,
+  presentReconciliationReports,
 } from './operations.presenter';
+import type {
+  UberOperationMutationResponse,
+  UberOperationsSummaryResponse,
+  UberOpsTicketListResponse,
+  UberReconciliationReportListResponse,
+} from '../contracts/responses/operations.responses';
 
 @Controller('integrations/ubereats')
 @UseFilters(UberEatsExceptionFilter)
@@ -45,41 +50,31 @@ export class UberEatsOperationsController {
     private readonly retryTicket: RetryUberOpsTicketUseCase,
     private readonly queries: QueryUberOperationsSummary,
   ) {}
-  @Post('reports/reconciliation/generate')
-  @UberAdminWrite()
-  async generateReconciliationReport(
-    @Body() dto: GenerateUberReconciliationReportDto,
-  ) {
-    await this.generateReport.execute({
-      storeId: dto.storeId,
-      rangeStart: dto.rangeStart,
-      rangeEnd: dto.rangeEnd,
-    });
-    return presentOperationMutation();
-  }
-
   @Post('v2/reports/reconciliation/generate')
   @UberAdminWrite()
   async generateReconciliationReportV2(
     @Body() dto: GenerateUberReconciliationReportDto,
-  ) {
-    return executeUberMutation(() =>
-      this.generateReport.execute({
-        storeId: dto.storeId,
-        rangeStart: dto.rangeStart,
-        rangeEnd: dto.rangeEnd,
-      }),
-    );
+  ): Promise<UberOperationMutationResponse> {
+    const result = await this.generateReport.execute({
+      storeId: dto.storeId,
+      rangeStart: dto.rangeStart,
+      rangeEnd: dto.rangeEnd,
+    });
+    return presentOperationMutation(result.reportStableId);
   }
 
   @Get('reports/reconciliation')
-  async listReconciliationReports(@Query() query: ReportListQuery) {
+  async listReconciliationReports(
+    @Query() query: ReportListQuery,
+  ): Promise<UberReconciliationReportListResponse> {
     const result = await this.queries.listReports(query.storeId, query.limit);
-    return presentOpsTickets(result);
+    return presentReconciliationReports(result);
   }
 
   @Get('reports/reconciliation/summary')
-  async reconciliationSummary(@Query() query: ReportListQuery) {
+  async reconciliationSummary(
+    @Query() query: ReportListQuery,
+  ): Promise<UberOperationsSummaryResponse> {
     return presentOperationsSummary(
       await this.queries.reconciliation(query.storeId),
     );
@@ -87,40 +82,36 @@ export class UberEatsOperationsController {
 
   @Post('ops/tickets')
   @UberAdminWrite()
-  async createOpsTicket(@Body() dto: CreateUberOpsTicketDto): Promise<unknown> {
-    await this.createTicket.execute(dto);
-    return presentOperationMutation();
+  async createOpsTicket(
+    @Body() dto: CreateUberOpsTicketDto,
+  ): Promise<UberOperationMutationResponse> {
+    const result = await this.createTicket.execute(dto);
+    return presentOperationMutation(result.ticketStableId);
   }
 
   @Get('ops/tickets')
-  async listOpsTickets(@Query() query: OpsTicketListQuery): Promise<unknown> {
+  async listOpsTickets(
+    @Query() query: OpsTicketListQuery,
+  ): Promise<UberOpsTicketListResponse> {
     const result = await this.queries.listTickets(query.storeId, query.status);
     return presentOpsTickets(result);
   }
 
   @Get('ops/tickets/summary')
-  async opsTicketsSummary(@Query() query: OpsTicketListQuery) {
+  async opsTicketsSummary(
+    @Query() query: OpsTicketListQuery,
+  ): Promise<UberOperationsSummaryResponse> {
     return presentOperationsSummary(
       await this.queries.tickets(query.storeId, query.status),
     );
-  }
-
-  @Post('ops/tickets/:ticketStableId/retry')
-  @UberMfaAdminWrite()
-  async retryOpsTicket(
-    @Param('ticketStableId', ResourceIdPipe) ticketStableId: string,
-  ): Promise<unknown> {
-    await this.retryTicket.execute(ticketStableId);
-    return presentOperationMutation();
   }
 
   @Post('v2/ops/tickets/:ticketStableId/retry')
   @UberMfaAdminWrite()
   async retryOpsTicketV2(
     @Param('ticketStableId', ResourceIdPipe) ticketStableId: string,
-  ) {
-    return executeUberMutation(() => this.retryTicket.execute(ticketStableId), {
-      accepted: true,
-    });
+  ): Promise<UberOperationMutationResponse> {
+    const result = await this.retryTicket.execute(ticketStableId);
+    return presentOperationMutation(result.ticketStableId);
   }
 }

@@ -5,18 +5,19 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 
+import { ClaimAndExecuteUberOrderActionsUseCase } from '../../application/orders/claim-and-execute-uber-order-actions.use-case';
+import { ClaimAndProcessUberWebhookInboxUseCase } from '../../application/orders/claim-and-process-uber-webhook-inbox.use-case';
+import { ConfirmUberMenuPublicationsUseCase } from '../../application/menu/confirm-uber-menu-publications.use-case';
 import {
-  ClaimAndExecuteUberOrderActionsUseCase,
-  ClaimAndProcessUberWebhookInboxUseCase,
-  ConfirmUberMenuPublicationsUseCase,
-} from '../../application/workers/uber-background-task.use-cases';
-import {
-  UberConfigService,
+  UberWorkerConfigService,
   type UberWorkerKind,
-} from '../config/uber-config.service';
+} from './uber-worker-config.service';
 
 export interface UberWorkerMetrics {
   readonly lastSuccessfulAt: Date | null;
+  readonly lastAttemptAt: Date | null;
+  readonly lastFailureAt: Date | null;
+  readonly consecutiveFailures: number;
   readonly claimed: number;
   readonly failures: number;
   readonly backlog: number;
@@ -44,9 +45,11 @@ abstract class UberPollingWorkerAdapter
   private timer?: NodeJS.Timeout;
   private inFlight?: Promise<boolean>;
   private stopping = false;
-  private consecutiveFailures = 0;
   private metrics: UberWorkerMetrics = {
     lastSuccessfulAt: null,
+    lastAttemptAt: null,
+    lastFailureAt: null,
+    consecutiveFailures: 0,
     claimed: 0,
     failures: 0,
     backlog: 0,
@@ -55,7 +58,7 @@ abstract class UberPollingWorkerAdapter
   protected abstract readonly logger: Logger;
 
   protected constructor(
-    protected readonly config: UberConfigService,
+    protected readonly config: UberWorkerConfigService,
     private readonly kind: UberWorkerKind,
   ) {}
 
@@ -96,6 +99,7 @@ abstract class UberPollingWorkerAdapter
   }
 
   private async executePoll(): Promise<boolean> {
+    const attemptedAt = new Date();
     try {
       const policy = this.config.workerPolicies[this.kind];
       const laneSize = Math.ceil(
@@ -133,16 +137,24 @@ abstract class UberPollingWorkerAdapter
       );
       this.metrics = {
         lastSuccessfulAt: new Date(),
+        lastAttemptAt: attemptedAt,
+        lastFailureAt: this.metrics.lastFailureAt,
+        consecutiveFailures: 0,
         claimed: this.metrics.claimed + poll.claimed,
         failures: this.metrics.failures,
         backlog: poll.backlog,
         leaseRecoveries: this.metrics.leaseRecoveries + poll.leaseRecoveries,
       };
-      this.consecutiveFailures = 0;
       return true;
     } catch (error) {
-      this.consecutiveFailures += 1;
-      this.metrics = { ...this.metrics, failures: this.metrics.failures + 1 };
+      const failedAt = new Date();
+      this.metrics = {
+        ...this.metrics,
+        lastAttemptAt: attemptedAt,
+        lastFailureAt: failedAt,
+        consecutiveFailures: this.metrics.consecutiveFailures + 1,
+        failures: this.metrics.failures + 1,
+      };
       this.logger.error(
         `Uber worker poll failed: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -159,7 +171,7 @@ abstract class UberPollingWorkerAdapter
         const retryDelay = Math.min(
           policy.maxBackoffMs,
           policy.initialBackoffMs *
-            2 ** Math.max(0, this.consecutiveFailures - 1),
+            2 ** Math.max(0, this.metrics.consecutiveFailures - 1),
         );
         this.schedule(
           succeeded ? this.config.workerPollIntervalMs : retryDelay,
@@ -177,7 +189,7 @@ export class UberWebhookInboxWorkerAdapter extends UberPollingWorkerAdapter {
   protected readonly logger = new Logger(UberWebhookInboxWorkerAdapter.name);
   constructor(
     private readonly useCase: ClaimAndProcessUberWebhookInboxUseCase,
-    config: UberConfigService,
+    config: UberWorkerConfigService,
   ) {
     super(config, 'webhookInbox');
   }
@@ -191,7 +203,7 @@ export class UberOrderActionWorkerAdapter extends UberPollingWorkerAdapter {
   protected readonly logger = new Logger(UberOrderActionWorkerAdapter.name);
   constructor(
     private readonly useCase: ClaimAndExecuteUberOrderActionsUseCase,
-    config: UberConfigService,
+    config: UberWorkerConfigService,
   ) {
     super(config, 'orderAction');
   }
@@ -207,7 +219,7 @@ export class UberMenuPublishConfirmationWorkerAdapter extends UberPollingWorkerA
   );
   constructor(
     private readonly useCase: ConfirmUberMenuPublicationsUseCase,
-    config: UberConfigService,
+    config: UberWorkerConfigService,
   ) {
     super(config, 'menuConfirmation');
   }

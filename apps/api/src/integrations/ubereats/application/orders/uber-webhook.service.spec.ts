@@ -15,14 +15,16 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { createHmac } from 'crypto';
-import { UberConfigService } from '../../infrastructure/config/uber-config.service';
+import { UberCryptoConfigService } from '../../infrastructure/crypto/uber-crypto-config.service';
 import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
 import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.helpers';
+import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
+import type { UberWebhookInboxPort } from './uber-order-processing.ports';
 
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>
-  new UberConfigService({
+  new UberCryptoConfigService({
     UBER_EATS_OAUTH_STATE_SECRET: '0123456789abcdef0123456789ABCDEF',
     UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
   });
@@ -33,7 +35,7 @@ const inbox = () => ({
 const signed = (body: unknown) => {
   const rawBody = JSON.stringify(body);
   return {
-    rawBody,
+    rawBody: new TextEncoder().encode(rawBody),
     headers: {
       'x-uber-signature': createHmac('sha256', signingKey)
         .update(rawBody)
@@ -43,16 +45,52 @@ const signed = (body: unknown) => {
 };
 
 describe('Uber webhook use cases', () => {
+  it.each([
+    ['store.provisioned', true],
+    ['store.deprovisioned', false],
+  ] as const)(
+    '将 %s 的标准 envelope 更新到本地 provisioning 状态',
+    async (eventType, value) => {
+      const inboxPort = {
+        setStoreProvisioned: jest.fn().mockResolvedValue(true),
+      };
+      const telemetry = {
+        captureEvent: jest.fn().mockResolvedValue(undefined),
+        workflowLog: jest.fn(),
+      };
+      const handler = new HandleUberMerchantWebhookHandler(
+        inboxPort as never,
+        telemetry,
+      );
+
+      await handler.execute('evt-store', {
+        version: 1,
+        family: 'store-provisioning',
+        eventType,
+        eventId: 'evt-store',
+        resourceHref: 'https://api.uber.com/v1/eats/stores/store-1',
+        resourceId: 'store-1',
+        userId: 'org-1',
+        storeId: 'store-1',
+        provisioned: value,
+      });
+
+      expect(inboxPort.setStoreProvisioned).toHaveBeenCalledWith(
+        'store-1',
+        value,
+      );
+    },
+  );
+
   it('routes Uber ordering metadata to the order use case', async () => {
     const item = {
       eventId: 'evt-order-ordered',
-      eventType: 'orders.ready_for_pickup',
+      eventType: 'orders.notification',
       payload: {
-        event_type: 'orders.ready_for_pickup',
+        event_type: 'orders.notification',
         event_id: 'evt-order-ordered',
         resource_href: 'https://api.uber.com/v2/eats/order/order-1',
-        resource_id: 'order-1',
-        meta: { resource_id: 'store-1', user_id: 'user-1' },
+        meta: { resource_id: 'order-1', user_id: 'store-1' },
         event_time: '2026-08-10T12:00:00.000Z',
         resource_version: '42',
         sequence_number: '7',
@@ -62,9 +100,11 @@ describe('Uber webhook use cases', () => {
       businessVersion: 'v1',
     };
     const inboxPort = {
-      claimDue: jest.fn().mockResolvedValue([item]),
-      markSucceeded: jest.fn().mockResolvedValue(undefined),
-      markFailed: jest.fn().mockResolvedValue(undefined),
+      claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
+      markSucceeded: jest.fn().mockResolvedValue(true),
+      markUnsupported: jest.fn().mockResolvedValue(true),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
+      markFailed: jest.fn().mockResolvedValue(true),
       enqueue: jest.fn(),
       setStoreProvisioned: jest.fn(),
     };
@@ -92,6 +132,155 @@ describe('Uber webhook use cases', () => {
     expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
   });
 
+  it.each(['menus.deleted', 'store.mystery', 'completely.unknown'])(
+    '隔离未知事件 %s，不会错误标记为成功',
+    async (eventType) => {
+      type MarkUnsupportedCall = Parameters<
+        UberWebhookInboxPort['markUnsupported']
+      >;
+      const item = {
+        eventId: `evt-${eventType}`,
+        eventType,
+        payload: { secret: 'must-not-appear-in-alerts' },
+        leaseToken: 'lease',
+        idempotencyKey: 'stable-key',
+        businessVersion: 'v1',
+      };
+      const inboxPort = {
+        claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
+        markSucceeded: jest.fn(),
+        markUnsupported: jest
+          .fn<Promise<boolean>, MarkUnsupportedCall>()
+          .mockResolvedValue(true),
+        requeueUnsupported: jest.fn().mockResolvedValue(0),
+        markFailed: jest.fn(),
+        enqueue: jest.fn(),
+        setStoreProvisioned: jest.fn(),
+      };
+      const telemetry = {
+        captureEvent: jest.fn().mockResolvedValue(undefined),
+        workflowLog: jest.fn(),
+      };
+      const worker = new ProcessUberWebhookInboxUseCase(
+        inboxPort,
+        { execute: jest.fn() } as never,
+        { handle: jest.fn() } as never,
+        { execute: jest.fn() } as never,
+        telemetry,
+      );
+
+      await worker.execute();
+
+      expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
+      expect(inboxPort.markFailed).not.toHaveBeenCalled();
+      expect(inboxPort.markUnsupported).toHaveBeenCalledTimes(1);
+      const actualCall: MarkUnsupportedCall | undefined =
+        inboxPort.markUnsupported.mock.calls[0];
+      expect(actualCall).toBeDefined();
+      if (!actualCall) {
+        throw new Error('Expected markUnsupported to be called');
+      }
+      const [actualItem, actual] = actualCall;
+      expect(actualItem).toBe(item);
+      expect(actual.code).toBe('UBER_WEBHOOK_EVENT_UNSUPPORTED');
+      expect(actual.eventType).toBe(eventType);
+      expect(actual.businessVersion).toBe('v1');
+      expect(actual.safeSummary).toMatch(
+        /^type=.*;payloadSha256=[a-f0-9]{16}$/,
+      );
+      expect(telemetry.captureEvent).toHaveBeenCalledWith(
+        'ubereats_webhook_unsupported',
+        expect.objectContaining({ priority: 'high', eventType }),
+      );
+      expect(JSON.stringify(telemetry.captureEvent.mock.calls)).not.toContain(
+        'must-not-appear-in-alerts',
+      );
+    },
+  );
+
+  it('仍会完成已支持的 store 事件', async () => {
+    const item = {
+      eventId: 'evt-store',
+      eventType: 'store.provisioned',
+      payload: {
+        event_type: 'store.provisioned',
+        resource_href: 'https://api.uber.com/v1/eats/stores/store-1',
+        meta: { resource_id: 'store-1', user_id: 'org-1' },
+      },
+      leaseToken: 'lease',
+      idempotencyKey: 'key',
+      businessVersion: 'v1',
+    };
+    const inboxPort = {
+      claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
+      markSucceeded: jest.fn().mockResolvedValue(true),
+      markUnsupported: jest.fn(),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
+      markFailed: jest.fn(),
+      enqueue: jest.fn(),
+      setStoreProvisioned: jest.fn(),
+    };
+    const merchant = { execute: jest.fn().mockResolvedValue(undefined) };
+    const worker = new ProcessUberWebhookInboxUseCase(
+      inboxPort,
+      {} as never,
+      {} as never,
+      merchant as never,
+      { captureEvent: jest.fn(), workflowLog: jest.fn() },
+    );
+
+    await worker.execute();
+
+    expect(merchant.execute).toHaveBeenCalledWith(
+      item.eventId,
+      expect.objectContaining({ storeId: 'store-1', provisioned: true }),
+    );
+    expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
+    expect(inboxPort.markUnsupported).not.toHaveBeenCalled();
+  });
+
+  it('明确隔离 store.status.changed，既不调用 merchant 也不标记成功', async () => {
+    const item = {
+      eventId: 'evt-status',
+      eventType: 'store.status.changed',
+      payload: {
+        event_type: 'store.status.changed',
+        resource_href: 'https://api.uber.com/v1/eats/stores/store-1/status',
+        meta: { resource_id: 'store-1', user_id: 'org-1' },
+        status: 'ONLINE',
+      },
+      leaseToken: 'lease',
+      idempotencyKey: 'key',
+      businessVersion: 'v1',
+    };
+    const inboxPort = {
+      claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
+      markSucceeded: jest.fn(),
+      markUnsupported: jest.fn().mockResolvedValue(true),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
+      markFailed: jest.fn(),
+      enqueue: jest.fn(),
+      setStoreProvisioned: jest.fn(),
+    };
+    const merchant = { execute: jest.fn() };
+    const worker = new ProcessUberWebhookInboxUseCase(
+      inboxPort,
+      {} as never,
+      {} as never,
+      merchant as never,
+      { captureEvent: jest.fn(), workflowLog: jest.fn() },
+    );
+
+    await worker.execute();
+
+    expect(inboxPort.markUnsupported).toHaveBeenCalledWith(
+      item,
+      expect.objectContaining({ code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED' }),
+    );
+    expect(merchant.execute).not.toHaveBeenCalled();
+    expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
+  });
+
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {
     const uberWebhookInbox = inbox();
     const orders = {
@@ -113,8 +302,7 @@ describe('Uber webhook use cases', () => {
       event_type: 'orders.notification',
       event_id: 'evt-order-1',
       resource_href: 'https://api.uber.com/v2/eats/order/order-1',
-      resource_id: 'order-1',
-      meta: { resource_id: 'store-1', user_id: 'user-1' },
+      meta: { resource_id: 'order-1', user_id: 'store-1' },
     };
 
     await service.execute(signed(body));
@@ -155,6 +343,35 @@ describe('Uber webhook use cases', () => {
     expect(menu.processWebhookEvent).not.toHaveBeenCalled();
   });
 
+  it('数据库入箱失败时返回可重试错误而不伪装成功', async () => {
+    const uberWebhookInbox = inbox();
+    uberWebhookInbox.create.mockRejectedValueOnce(
+      new Error('database unavailable'),
+    );
+    const service = createReceiveUberWebhookUseCase(
+      { uberWebhookInbox } as unknown as ConstructorParameters<
+        typeof ReceiveUberWebhookUseCase
+      >[0],
+      config(),
+      undefined,
+    );
+
+    await expect(
+      service.execute(
+        signed({
+          event_type: 'orders.notification',
+          event_id: 'evt-db-failure',
+          resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+          meta: { resource_id: 'order-1', user_id: 'store-1' },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'UBER_WEBHOOK_INBOX_UNAVAILABLE',
+      retryable: true,
+      category: 'transient-upstream',
+    });
+  });
+
   it('拒绝无效签名且不会 claim inbox', async () => {
     const uberWebhookInbox = inbox();
     const service = createReceiveUberWebhookUseCase(
@@ -166,7 +383,7 @@ describe('Uber webhook use cases', () => {
 
     await expect(
       service.execute({
-        rawBody: '{}',
+        rawBody: new TextEncoder().encode('{}'),
         headers: { 'x-uber-signature': '0'.repeat(64) },
       }),
     ).rejects.toThrow('Uber webhook signature is invalid');
@@ -198,14 +415,60 @@ describe('ReceiveUberWebhookUseCase 最小依赖装配', () => {
     expect(ReceiveUberWebhookUseCase.length).toBe(3);
   });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
-    const webhookOnly = new UberConfigService({
+    const webhookOnly = new UberCryptoConfigService({
       UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
     });
     expect(() =>
       createReceiveUberWebhookUseCase({} as never, webhookOnly),
     ).not.toThrow();
     expect(() =>
-      createReceiveUberWebhookUseCase({} as never, new UberConfigService()),
+      createReceiveUberWebhookUseCase(
+        {} as never,
+        new UberCryptoConfigService(),
+      ),
     ).toThrow('UBER_EATS_WEBHOOK_SIGNING_KEY');
   });
+});
+
+it('逐条领取且旧 lease token 写回失败时 poll 明确失败', async () => {
+  const item = {
+    eventId: 'slow-event',
+    eventType: 'store.provisioned',
+    payload: {
+      event_type: 'store.provisioned',
+      resource_href: 'https://api.uber.com/v1/eats/stores/s1',
+      meta: { resource_id: 's1', user_id: 'u1' },
+    },
+    leaseToken: 'expired-worker-token',
+    idempotencyKey: 'stable-key',
+    businessVersion: 'v1',
+  };
+  const inboxPort = {
+    claimDue: jest.fn().mockResolvedValueOnce([item]),
+    markSucceeded: jest.fn().mockResolvedValue(false),
+    markFailed: jest.fn(),
+    markUnsupported: jest.fn(),
+    requeueUnsupported: jest.fn(),
+    enqueue: jest.fn(),
+    setStoreProvisioned: jest.fn(),
+  };
+  const telemetry = {
+    captureEvent: jest.fn().mockResolvedValue(undefined),
+    workflowLog: jest.fn(),
+  };
+  const worker = new ProcessUberWebhookInboxUseCase(
+    inboxPort,
+    {} as never,
+    {} as never,
+    { execute: jest.fn() } as never,
+    telemetry,
+  );
+  await expect(worker.execute(10)).rejects.toThrow('lease lost');
+  expect(inboxPort.claimDue).toHaveBeenCalledTimes(1);
+  expect(inboxPort.claimDue).toHaveBeenCalledWith(1);
+  expect(inboxPort.markFailed).not.toHaveBeenCalled();
+  expect(telemetry.workflowLog).toHaveBeenCalledWith(
+    'error',
+    expect.stringContaining('lease lost'),
+  );
 });

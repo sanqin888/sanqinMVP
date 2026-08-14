@@ -1,0 +1,9 @@
+{
+  "id": "fixture-order-001",
+  "store": { "id": "fixture-store-001" },
+  "current_state": "CREATED",
+  "cart": { "items": [] },
+  "payment": {
+    "charges": { "total": { "amount": 1200, "currency_code": "USD" } }
+  }
+}

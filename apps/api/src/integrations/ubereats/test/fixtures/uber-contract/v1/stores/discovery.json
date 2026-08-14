@@ -1,0 +1,13 @@
+{
+  "stores": [
+    {
+      "store_id": "fixture-store-001",
+      "name": "Contract Test Store",
+      "timezone": "Etc/UTC",
+      "pos_data": {
+        "integration_enabled": true,
+        "order_manager_client_id": "fixture-pos-001"
+      }
+    }
+  ]
+}

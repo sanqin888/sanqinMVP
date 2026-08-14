@@ -31,11 +31,16 @@ describe('RequestIdInterceptor', () => {
     return { context };
   };
 
-  const runIntercept = (method: string, url: string, statusCode: number) => {
+  const runIntercept = (
+    method: string,
+    url: string,
+    statusCode: number,
+    responseBody: unknown = 'ok',
+  ) => {
     const interceptor = new RequestIdInterceptor();
     const { context } = createContext(method, url, statusCode);
     interceptor
-      .intercept(context as never, { handle: () => of('ok') } as never)
+      .intercept(context as never, { handle: () => of(responseBody) } as never)
       .subscribe();
   };
 
@@ -101,5 +106,45 @@ describe('RequestIdInterceptor', () => {
         'POST /api/v1/clover/pay/online/quote - 201 (301ms)',
       ),
     );
+  });
+
+  it('suppresses print-status logs when the printer state is normal', () => {
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const loggerWarnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    runIntercept('GET', '/api/v1/pos/orders/order-1/print-status', 200, {
+      customerStatus: 'COMPLETED',
+      kitchenStatus: 'SKIPPED',
+    });
+
+    expect(loggerLogSpy).not.toHaveBeenCalled();
+    expect(loggerWarnSpy).not.toHaveBeenCalled();
+  });
+
+  it('warns when print-status reports a failed printer state', () => {
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const loggerWarnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    runIntercept(
+      'GET',
+      '/api/v1/pos/orders/order-1/print-status?source=board',
+      200,
+      { customerStatus: 'FAILED', kitchenStatus: 'COMPLETED' },
+    );
+
+    expect(loggerWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'GET /api/v1/pos/orders/order-1/print-status?source=board - 200',
+      ),
+    );
+    expect(loggerLogSpy).not.toHaveBeenCalled();
   });
 });

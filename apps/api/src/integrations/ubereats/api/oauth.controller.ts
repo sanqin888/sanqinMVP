@@ -15,7 +15,7 @@ import {
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 import type { Request, Response } from 'express';
 import { SESSION_COOKIE_NAME } from '../../../auth/session-auth.guard';
-import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
+import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import {
   UberAdminWrite,
   UberMfaAdminWrite,
@@ -26,7 +26,7 @@ import {
   OAuthCallbackQuery,
   ProvisionUberStoreDto,
   UpdatePosExternalStoreIdDto,
-} from '../contracts/requests/ubereats.requests';
+} from '../contracts/requests/oauth.requests';
 import {
   CompleteUberOAuthUseCase,
   StartUberOAuthUseCase,
@@ -98,8 +98,11 @@ export class UberEatsOAuthController {
         ? req.signedCookies[SESSION_COOKIE_NAME]
         : undefined;
     const result = await this.oauthComplete.exchangeAuthorizationCode(
-      query.code,
-      query.state,
+      {
+        code: query.code,
+        state: query.state,
+        error: query.error,
+      },
       callbackSessionId,
     );
     return presentOAuthCallback(result);

@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access -- typed framework/Prisma test doubles cross a dynamic boundary */
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
 } from '@nestjs/common';
 import {
@@ -17,9 +17,11 @@ import {
 } from '../orders/order-status';
 import type { OrderDto } from '../orders/dto/order.dto';
 import {
-  RequestUberOrderActionUseCase,
-  SyncUberOrderStatusUseCase,
-} from '../integrations/ubereats/application/orders/uber-order.use-cases';
+  UBER_EATS_ORDER_ACTIONS,
+  UBER_EATS_ORDER_STATUS_SYNC,
+  type UberEatsOrderActionsPort,
+  type UberEatsOrderStatusSyncPort,
+} from '../integrations/ubereats/public-api';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash } from 'crypto';
 
@@ -29,8 +31,10 @@ const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 export class PosOrdersService {
   constructor(
     private readonly orders: OrdersService,
-    private readonly uberOrderActions: RequestUberOrderActionUseCase,
-    private readonly uberOrderStatusSync: SyncUberOrderStatusUseCase,
+    @Inject(UBER_EATS_ORDER_ACTIONS)
+    private readonly uberOrderActions: UberEatsOrderActionsPort,
+    @Inject(UBER_EATS_ORDER_STATUS_SYNC)
+    private readonly uberOrderStatusSync: UberEatsOrderStatusSyncPort,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -60,7 +64,12 @@ export class PosOrdersService {
       // Uber action outbox. Read the committed order rather than advancing it
       // separately, which could otherwise lose the retryable action on failure.
       const current = await this.orders.getByStableId(orderStableId);
-      return this.advanceResult(current, result.actionResult);
+      return this.advanceResult(
+        current,
+        result.ok
+          ? result.actionResult
+          : { errorSummary: result.error.message },
+      );
     }
 
     if (order.status === 'ready' && externalOrderId) {
@@ -68,10 +77,10 @@ export class PosOrdersService {
         await this.uberOrderActions.getReadyForPickupAction(externalOrderId);
       if (action && action.status !== 'SUCCEEDED') {
         return this.advanceResult(order, {
-          actionId: action.id,
+          actionId: action.actionId,
           status: action.status,
           retryable: action.retryable,
-          errorSummary: action.lastError ? 'Uber 同步失败' : undefined,
+          errorSummary: action.error ? 'Uber 同步失败' : undefined,
         });
       }
     }
@@ -90,6 +99,22 @@ export class PosOrdersService {
     }
     const result =
       await this.uberOrderActions.retryReadyForPickup(externalOrderId);
+    return this.advanceResult(order, result);
+  }
+
+  async cancelUberOrder(
+    orderStableId: string,
+    reason?: string,
+  ): Promise<PosOrderAdvanceResult> {
+    const order = await this.orders.getByStableId(orderStableId);
+    const externalOrderId = this.getUberWebhookExternalOrderId(order);
+    if (!externalOrderId) {
+      throw new BadRequestException('只有 Uber 订单可以提交取消');
+    }
+    if (!['paid', 'making', 'ready'].includes(order.status)) {
+      throw new BadRequestException('当前 Uber 订单状态不允许取消');
+    }
+    const result = await this.uberOrderActions.cancel(externalOrderId, reason);
     return this.advanceResult(order, result);
   }
 

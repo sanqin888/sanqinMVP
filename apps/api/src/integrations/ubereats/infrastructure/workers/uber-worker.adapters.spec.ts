@@ -3,18 +3,37 @@ import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './uber-worker.adapters';
-import { UberConfigService } from '../config/uber-config.service';
+import { UberWorkerConfigService } from './uber-worker-config.service';
 
 describe('Uber durable worker adapters', () => {
   afterEach(() => jest.restoreAllMocks());
 
   const config = (env: Record<string, string> = {}) =>
-    new UberConfigService({
+    new UberWorkerConfigService({
       UBER_EATS_WORKER_ENABLED: 'true',
       UBER_EATS_WORKER_BATCH_SIZE: '1',
       UBER_EATS_WORKER_SHUTDOWN_TIMEOUT_MS: '100',
       ...env,
     });
+
+  it.each([
+    ['webhook inbox', UberWebhookInboxWorkerAdapter],
+    ['order action', UberOrderActionWorkerAdapter],
+    ['menu confirmation', UberMenuPublishConfirmationWorkerAdapter],
+  ])(
+    '%s delegates a poll exclusively to its injected use case',
+    async (_name, Worker) => {
+      const execute = jest.fn().mockResolvedValue(1);
+      const unrelated = jest.fn();
+      const adapter = new Worker({ execute, unrelated } as never, config());
+
+      await expect(adapter.runOnce()).resolves.toBe(true);
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledWith(1);
+      expect(unrelated).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ['webhook inbox', UberWebhookInboxWorkerAdapter],
@@ -51,6 +70,22 @@ describe('Uber durable worker adapters', () => {
     expect(execute).toHaveBeenCalledTimes(2);
   });
 
+  it('isolates an order-action use-case infrastructure error in the thin runner', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const execute = jest.fn().mockRejectedValue(new Error('database offline'));
+    const adapter = new UberOrderActionWorkerAdapter(
+      { execute } as never,
+      config(),
+    );
+
+    await expect(adapter.runOnce()).resolves.toBe(false);
+    expect(execute).toHaveBeenCalledWith(1);
+    expect(adapter.getMetrics()).toMatchObject({
+      failures: 1,
+      consecutiveFailures: 1,
+    });
+  });
+
   it('does not start new work after shutdown begins', async () => {
     let release!: () => void;
     const execute = jest.fn(
@@ -71,7 +106,7 @@ describe('Uber durable worker adapters', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  it('exposes successful claim and failure metrics', async () => {
+  it('atomically snapshots a success, a temporary failure, and recovery', async () => {
     const execute = jest
       .fn()
       .mockResolvedValueOnce(2)
@@ -81,9 +116,34 @@ describe('Uber durable worker adapters', () => {
       config(),
     );
     await adapter.runOnce();
+    const successful = adapter.getMetrics();
+    expect(successful).toMatchObject({
+      claimed: 2,
+      failures: 0,
+      consecutiveFailures: 0,
+      lastFailureAt: null,
+    });
+    expect(successful.lastAttemptAt).toBeInstanceOf(Date);
+    expect(successful.lastSuccessfulAt).toBeInstanceOf(Date);
+
     await adapter.runOnce();
-    expect(adapter.getMetrics()).toMatchObject({ claimed: 2, failures: 1 });
-    expect(adapter.getMetrics().lastSuccessfulAt).toBeInstanceOf(Date);
+    const failed = adapter.getMetrics();
+    expect(failed).toMatchObject({
+      claimed: 2,
+      failures: 1,
+      consecutiveFailures: 1,
+      lastSuccessfulAt: successful.lastSuccessfulAt,
+    });
+    expect(failed.lastAttemptAt).toBeInstanceOf(Date);
+    expect(failed.lastFailureAt).toBeInstanceOf(Date);
+
+    await adapter.runOnce();
+    expect(adapter.getMetrics()).toMatchObject({
+      claimed: 2,
+      failures: 1,
+      consecutiveFailures: 0,
+      lastFailureAt: failed.lastFailureAt,
+    });
   });
 
   it('does not overlap claims made by duplicate worker instances', async () => {
@@ -112,5 +172,21 @@ describe('Uber durable worker adapters', () => {
     );
     await adapter.runOnce();
     expect(adapter.getMetrics().leaseRecoveries).toBe(1);
+  });
+
+  it('replaces the current backlog snapshot when the backlog grows', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce({ claimed: 1, backlog: 2 })
+      .mockResolvedValueOnce({ claimed: 1, backlog: 7 });
+    const adapter = new UberWebhookInboxWorkerAdapter(
+      { execute } as never,
+      config(),
+    );
+
+    await adapter.runOnce();
+    expect(adapter.getMetrics().backlog).toBe(2);
+    await adapter.runOnce();
+    expect(adapter.getMetrics()).toMatchObject({ claimed: 2, backlog: 7 });
   });
 });

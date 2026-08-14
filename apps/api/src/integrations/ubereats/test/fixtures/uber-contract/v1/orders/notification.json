@@ -1,0 +1,6 @@
+{
+  "event_id": "fixture-event-001",
+  "event_type": "orders.notification",
+  "resource_href": "https://api.uber.com/v2/eats/order/fixture-order-001",
+  "resource_id": "fixture-order-001"
+}

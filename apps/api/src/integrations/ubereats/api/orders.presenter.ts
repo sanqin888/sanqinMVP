@@ -4,36 +4,35 @@ import {
   toUberMutationResponse,
 } from '../contracts/responses/ubereats.responses';
 import type {
+  UberOrderMutationResponse,
   UberOrderSummaryResponse,
   UberOrdersListResponse,
 } from '../contracts/responses/orders.responses';
-import { dateOf, numberOf, recordOf, textOf } from './presenter.utils';
+import type {
+  PendingUberOrdersResult,
+  PendingUberOrdersSummary,
+} from '../application/orders/list-pending-uber-orders.query';
+import { dateOf } from './presenter.utils';
 
 export const presentPendingOrders = (
-  result: unknown,
+  result: PendingUberOrdersResult,
 ): UberOrdersListResponse => {
-  const source = recordOf(result);
-  const items = Array.isArray(source.items)
-    ? source.items.map((value) => {
-        const order = recordOf(value);
-        return {
-          externalOrderId: textOf(order.externalOrderId) ?? '',
-          status: textOf(order.status) ?? '',
-          storeId: textOf(order.storeId) ?? textOf(order.uberStoreId),
-          createdAt: dateOf(order.createdAt),
-          updatedAt: dateOf(order.updatedAt),
-        };
-      })
-    : [];
+  const items = result.items.map((order) => ({
+    externalOrderId: order.externalOrderId ?? '',
+    status: order.status,
+    storeId: null,
+    createdAt: dateOf(order.createdAt),
+    updatedAt: null,
+  }));
   return toUberListResponse(items, 100);
 };
 export const presentOrderSummary = (
-  result: unknown,
+  result: PendingUberOrdersSummary,
 ): UberOrderSummaryResponse => {
-  const source = recordOf(result);
   return {
-    total: numberOf(source.total ?? source.count),
+    total: result.count,
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };
-export const presentOrderMutation = () => toUberMutationResponse();
+export const presentOrderMutation = (): UberOrderMutationResponse =>
+  toUberMutationResponse();

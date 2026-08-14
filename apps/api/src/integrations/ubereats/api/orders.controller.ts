@@ -1,22 +1,24 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment -- typed framework/Prisma test doubles cross a dynamic boundary */
 import { Body, Controller, Get, Param, Post, UseFilters } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
-import { ResourceIdPipe } from '../contracts/requests/resource-id.pipe';
+import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import {
   UberMfaAdminWrite,
   UberReadOnlyAdmin,
 } from './ubereats-access.decorator';
-import { SyncOrderStatusDto } from '../contracts/requests/ubereats.requests';
-import {
-  ListPendingUberOrdersQuery,
-  SyncUberOrderStatusUseCase,
-} from '../application/orders/uber-order.use-cases';
+import { SyncOrderStatusDto } from '../contracts/requests/orders.requests';
+import { ListPendingUberOrdersQuery } from '../application/orders/list-pending-uber-orders.query';
+import { SyncUberOrderStatusUseCase } from '../application/orders/sync-uber-order-status.use-case';
 import {
   presentOrderMutation,
   presentOrderSummary,
   presentPendingOrders,
 } from './orders.presenter';
+import type {
+  UberOrderMutationResponse,
+  UberOrderSummaryResponse,
+  UberOrdersListResponse,
+} from '../contracts/responses/orders.responses';
 
 @Controller('integrations/ubereats')
 @UseFilters(UberEatsExceptionFilter)
@@ -31,19 +33,19 @@ export class UberEatsOrdersController {
   async syncOrderStatus(
     @Param('externalOrderId', ResourceIdPipe) externalOrderId: string,
     @Body() dto: SyncOrderStatusDto,
-  ) {
+  ): Promise<UberOrderMutationResponse> {
     await this.statusSync.execute(externalOrderId, dto.status);
     return presentOrderMutation();
   }
 
   @Get('orders/pending')
-  async listPendingOrders() {
+  async listPendingOrders(): Promise<UberOrdersListResponse> {
     const result = await this.pendingOrders.list();
     return presentPendingOrders(result);
   }
 
   @Get('orders/pending/summary')
-  async pendingOrdersSummary() {
+  async pendingOrdersSummary(): Promise<UberOrderSummaryResponse> {
     return presentOrderSummary(await this.pendingOrders.summary());
   }
 }

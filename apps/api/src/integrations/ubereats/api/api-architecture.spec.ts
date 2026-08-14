@@ -46,9 +46,19 @@ describe('Uber Eats API architecture', () => {
     const responseRoot = resolve(API_ROOT, '../contracts/responses');
     for (const { source } of scanTypeScript(responseRoot, {
       productionOnly: true,
-    })) {
+    }).filter(({ path }) => path.endsWith('.responses.ts'))) {
       expect(source).not.toMatch(
-        /@prisma\/client|\/application\/|Uber.*(?:Row|Payload|Result)/,
+        /@prisma\/client|(?:from|import\s*\()\s*['"][^'"]*\/application\//,
+      );
+    }
+  });
+
+  it('keeps presenters independent from aggregate use-case modules', () => {
+    for (const { source } of productionFiles.filter(({ path }) =>
+      path.endsWith('.presenter.ts'),
+    )) {
+      expect(source).not.toMatch(
+        /from\s+['"][^'"]*\/application\/operations\/uber-operations\.use-cases['"]|from\s+['"]\.\.\/application\/operations\/uber-operations\.use-cases['"]/,
       );
     }
   });

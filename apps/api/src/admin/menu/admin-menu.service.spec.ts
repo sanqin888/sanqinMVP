@@ -17,13 +17,10 @@ jest.mock(
   }),
   { virtual: true },
 );
-jest.mock(
-  '../../integrations/ubereats/application/menu/uber-menu-availability.use-case',
-  () => ({
-    UberMenuAvailabilityUseCase: class {},
-  }),
-);
-
+import {
+  UBER_EATS_MENU_AVAILABILITY,
+  type UberEatsMenuAvailabilityPort,
+} from '../../integrations/ubereats/public-api';
 import { AdminMenuService } from './admin-menu.service';
 
 describe('AdminMenuService availability Uber status', () => {
@@ -41,12 +38,22 @@ describe('AdminMenuService availability Uber status', () => {
         ),
       },
     };
-    const uber = {
-      syncUberMenuItemAvailability: jest.fn().mockResolvedValue(syncResult),
+    const syncUberMenuItemAvailability = jest
+      .fn()
+      .mockResolvedValue(syncResult);
+    const uberProvider: {
+      provide: typeof UBER_EATS_MENU_AVAILABILITY;
+      useValue: jest.Mocked<UberEatsMenuAvailabilityPort>;
+    } = {
+      provide: UBER_EATS_MENU_AVAILABILITY,
+      useValue: {
+        syncUberMenuItemAvailability,
+        syncUberOptionItemAvailability: jest.fn(),
+      },
     };
     return {
-      service: new AdminMenuService(prisma as never, uber as never),
-      uber,
+      service: new AdminMenuService(prisma as never, uberProvider.useValue),
+      syncUberMenuItemAvailability,
     };
   };
 
@@ -55,18 +62,21 @@ describe('AdminMenuService availability Uber status', () => {
     ['PERMANENT_OFF', false],
     ['ON', true],
   ] as const)('%s 返回结构化 PENDING 状态', async (mode, available) => {
-    const { service, uber } = build({ status: 'PENDING', stores: [] });
+    const { service, syncUberMenuItemAvailability } = build({
+      status: 'PENDING',
+      stores: [],
+    });
     const result = await service.setItemAvailability('dish-1', mode);
     expect(result.uberSync.status).toBe('PENDING');
-    expect(uber.syncUberMenuItemAvailability).toHaveBeenCalledWith({
+    expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
       menuItemStableId: 'dish-1',
       isAvailable: available,
     });
   });
 
   it('上游异常不会伪装成功，并返回可重试的 FAILED 状态', async () => {
-    const { service, uber } = build(null);
-    uber.syncUberMenuItemAvailability.mockRejectedValue(new Error('upstream'));
+    const { service, syncUberMenuItemAvailability } = build(null);
+    syncUberMenuItemAvailability.mockRejectedValue(new Error('upstream'));
     const result = await service.setItemAvailability('dish-1', 'PERMANENT_OFF');
     expect(result.uberSync).toEqual(
       expect.objectContaining({ status: 'FAILED' }),

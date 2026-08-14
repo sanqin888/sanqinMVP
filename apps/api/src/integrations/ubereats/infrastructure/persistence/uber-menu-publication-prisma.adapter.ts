@@ -6,7 +6,7 @@ import type {
   UberMenuPublicationAttempt,
   UberMenuPublicationLease,
   UberMenuPublicationRepositoryPort,
-} from '../../application/ports/uber-menu-publication.ports';
+} from '../../application/menu/uber-menu-publication.ports';
 
 type PublicationRow = Prisma.UberMenuPublishVersionGetPayload<object>;
 
@@ -20,6 +20,36 @@ function responseId(payload: Prisma.JsonValue | null, key: string) {
 @Injectable()
 export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
+  async markPublishVersionSucceeded(
+    attemptId: string,
+    responsePayload: Record<string, unknown>,
+  ) {
+    await this.prisma.uberMenuPublishVersion.update({
+      where: { id: attemptId },
+      data: {
+        status: UberMenuPublishStatus.SUCCEEDED,
+        responsePayload: responsePayload as Prisma.InputJsonValue,
+        errorMessage: null,
+        errorDetails: undefined,
+        finishedAt: new Date(),
+      },
+    });
+  }
+  async markPublishVersionFailed(
+    attemptId: string,
+    errorMessage: string,
+    errors: Array<Record<string, unknown>> = [],
+  ) {
+    await this.prisma.uberMenuPublishVersion.update({
+      where: { id: attemptId },
+      data: {
+        status: UberMenuPublishStatus.FAILED,
+        errorMessage,
+        errorDetails: errors as Prisma.InputJsonValue,
+        finishedAt: new Date(),
+      },
+    });
+  }
   private dto(row: PublicationRow): UberMenuPublicationAttempt {
     return {
       attemptId: row.id,

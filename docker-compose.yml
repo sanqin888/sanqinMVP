@@ -1,3 +1,12 @@
+x-ubereats-runtime: &ubereats-runtime
+  UBER_EATS_RATE_LIMITER_MODE: "distributed"
+  UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL: ${UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL}
+  UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN: ${UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN}
+  # These values are populated in the deployment environment by its secrets manager.
+  UBER_CREDENTIAL_ENCRYPTION_KEYS: ${UBER_CREDENTIAL_ENCRYPTION_KEYS}
+  UBER_CREDENTIAL_ACTIVE_KEY_VERSION: ${UBER_CREDENTIAL_ACTIVE_KEY_VERSION}
+  UBER_CREDENTIAL_KEYS_SOURCE: "secrets-manager"
+
 services:
   db:
     image: postgres:15-alpine
@@ -16,6 +25,7 @@ services:
       dockerfile: Dockerfile.api
     restart: always
     environment:
+      <<: *ubereats-runtime
       NODE_ENV: "production"
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
       PORT: 4000
@@ -69,6 +79,7 @@ services:
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
       UBER_EATS_STORE_ID: "47f93365-f7dc-4b49-9e3b-a99e9915e558"
+      UBER_EATS_WORKER_ENABLED: "false"
       CLOVER_ENV: "production"
       CLOVER_BASE: "https://scl.clover.com"
       CLOVER_MERCHANT_ID: "XC3DQ9Z7D4YJ1"
@@ -101,6 +112,31 @@ services:
       - db
     volumes:
       - ./uploads:/app/uploads
+  ubereats-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["node", "apps/api/dist/ubereats-worker.main.js"]
+    restart: always
+    environment:
+      <<: *ubereats-runtime
+      NODE_ENV: "production"
+      DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
+      UBER_EATS_WORKER_ENABLED: "true"
+      UBER_EATS_WORKER_HEALTH_PORT: 4001
+      UBER_EATS_CLIENT_ID: "ji_NnxmUDZsh1WM_oz07zVZs1j9GKwry"
+      UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}
+      UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
+      UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
+      UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
+      UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
+      UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
+      UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}
+      UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS: "https://api.uber.com"
+    ports:
+      - "127.0.0.1:4001:4001"
+    depends_on:
+      - db
   web:
     build:
       context: .

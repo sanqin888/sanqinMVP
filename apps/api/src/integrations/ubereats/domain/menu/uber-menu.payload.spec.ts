@@ -32,6 +32,7 @@ const graph = {
     },
   ],
 };
+const urlContext = { publicBaseUrl: 'https://menu.example/' };
 
 describe('uber-menu-payload.builder', () => {
   it('reports invalid timezone and business hours as domain errors', () => {
@@ -53,7 +54,7 @@ describe('uber-menu-payload.builder', () => {
     ).toThrow(UberMenuScheduleValidationError);
   });
   it('builds the wire payload from a resolved menu graph', () => {
-    const payload = buildUberUploadMenuPayload(graph, [], 13);
+    const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
     expect(payload.menus[0]).toMatchObject({
       id: 'menu-1',
       category_ids: ['cat-1'],
@@ -79,7 +80,7 @@ describe('uber-menu-payload.builder', () => {
   });
 
   it('reports dangling payload references', () => {
-    const payload = buildUberUploadMenuPayload(graph, [], 13);
+    const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
     payload.categories[0].entities = [{ id: 'missing', type: 'ITEM' }];
     expect(validateUberMenuPayload(payload)).toEqual(
       expect.arrayContaining([
@@ -89,5 +90,40 @@ describe('uber-menu-payload.builder', () => {
         }),
       ]),
     );
+  });
+
+  it('resolves relative paths deterministically and preserves absolute URLs', () => {
+    const relativeGraph = {
+      ...graph,
+      items: [{ ...graph.items[0], imageUrl: '/images/noodles.jpg' }],
+    };
+    const originalEnv = process.env.PUBLIC_BASE_URL;
+    process.env.PUBLIC_BASE_URL = 'https://ignored.example';
+    const first = buildUberUploadMenuPayload(relativeGraph, [], 13, urlContext);
+    process.env.PUBLIC_BASE_URL = 'https://also-ignored.example';
+    const second = buildUberUploadMenuPayload(
+      relativeGraph,
+      [],
+      13,
+      urlContext,
+    );
+    process.env.PUBLIC_BASE_URL = originalEnv;
+    expect(first).toEqual(second);
+    expect(first.items[0].image_url).toBe(
+      'https://menu.example/images/noodles.jpg',
+    );
+
+    const absolute = buildUberUploadMenuPayload(
+      {
+        ...graph,
+        items: [
+          { ...graph.items[0], imageUrl: 'https://cdn.example/noodles.jpg' },
+        ],
+      },
+      [],
+      13,
+      urlContext,
+    );
+    expect(absolute.items[0].image_url).toBe('https://cdn.example/noodles.jpg');
   });
 });

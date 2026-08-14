@@ -1,4 +1,3 @@
-import { Inject, Injectable } from '@nestjs/common';
 import {
   UberValidationError,
   UberAuthenticationError,
@@ -7,21 +6,18 @@ import {
   UberOAuthTemporaryError,
   UberOAuthTerminalError,
   isUberApplicationError,
-} from '../errors/uber-application.error';
+} from '../shared/uber-application.error';
 import { randomBytes } from 'crypto';
+import { type UberOAuthTokenPort } from '../merchant/uber-merchant-api.ports';
 import {
-  UBER_OAUTH_TOKEN,
-  type UberOAuthTokenPort,
-} from '../ports/uber-api.ports';
-import {
-  UBER_MERCHANT_CONNECTION_REPOSITORY,
-  UBER_OAUTH_STATE_REPOSITORY,
   type UberMerchantConnectionRepositoryPort,
   type UberOAuthStatePort,
-} from '../ports/uber-persistence.ports';
+} from './uber-merchant-persistence.ports';
 
 export type UberOAuthErrorCode =
   | 'OAUTH_START_FAILED'
+  | 'OAUTH_USER_DENIED'
+  | 'OAUTH_AUTHORIZATION_INVALID'
   | 'OAUTH_CODE_MISSING'
   | 'OAUTH_STATE_INVALID_OR_EXPIRED'
   | 'OAUTH_SESSION_MISMATCH'
@@ -32,11 +28,16 @@ export type UberOAuthResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: { code: UberOAuthErrorCode } };
 
-@Injectable()
+export type UberOAuthCallback = {
+  code?: string;
+  state?: string;
+  /** Untrusted OAuth protocol value. Never include it in logs, HTML, or errors. */
+  error?: string;
+};
+
 export class StartUberOAuthUseCase {
   constructor(
-    @Inject(UBER_OAUTH_TOKEN) private readonly tokens: UberOAuthTokenPort,
-    @Inject(UBER_OAUTH_STATE_REPOSITORY)
+    private readonly tokens: UberOAuthTokenPort,
     private readonly states: UberOAuthStatePort,
   ) {}
   async buildMerchantAuthorizeUrl(
@@ -89,18 +90,14 @@ export class StartUberOAuthUseCase {
   }
 }
 
-@Injectable()
 export class CompleteUberOAuthUseCase {
   constructor(
-    @Inject(UBER_OAUTH_TOKEN) private readonly tokens: UberOAuthTokenPort,
-    @Inject(UBER_OAUTH_STATE_REPOSITORY)
+    private readonly tokens: UberOAuthTokenPort,
     private readonly states: UberOAuthStatePort,
-    @Inject(UBER_MERCHANT_CONNECTION_REPOSITORY)
     private readonly connections: UberMerchantConnectionRepositoryPort,
   ) {}
   async exchangeAuthorizationCode(
-    code: string | undefined,
-    state: string | undefined,
+    callback: UberOAuthCallback,
     adminSessionId: string | undefined,
     merchantContext?: string,
   ): Promise<
@@ -112,11 +109,10 @@ export class CompleteUberOAuthUseCase {
       connectedAt: Date;
     }>
   > {
-    if (!code) return { ok: false, error: { code: 'OAUTH_CODE_MISSING' } };
     let nonce: string | undefined;
     try {
       const request = await this.validate(
-        state,
+        callback.state,
         adminSessionId,
         merchantContext,
       );
@@ -130,6 +126,20 @@ export class CompleteUberOAuthUseCase {
           operation: 'merchant-oauth',
           message: 'OAuth 已最终失败',
         });
+
+      const authorizationError = this.authorizationError(callback.error);
+      if (authorizationError === 'denied') {
+        await this.states.failOAuthState(nonce, 'authorization-denied');
+        return { ok: false, error: { code: 'OAUTH_USER_DENIED' } };
+      }
+      if (authorizationError === 'temporary')
+        return { ok: false, error: { code: 'OAUTH_TEMPORARY_FAILURE' } };
+      if (authorizationError === 'invalid') {
+        await this.states.failOAuthState(nonce, 'authorization-invalid');
+        return { ok: false, error: { code: 'OAUTH_AUTHORIZATION_INVALID' } };
+      }
+      if (!callback.code)
+        return { ok: false, error: { code: 'OAUTH_CODE_MISSING' } };
 
       let token =
         request.status === 'EXCHANGED'
@@ -152,7 +162,7 @@ export class CompleteUberOAuthUseCase {
           });
         try {
           token = await this.tokens.exchangeAuthorizationCode(
-            code,
+            callback.code,
             request.redirectUri,
           );
         } catch (error) {
@@ -191,7 +201,6 @@ export class CompleteUberOAuthUseCase {
       await this.connections.upsertConnectionByUberUserId({
         ...token,
         connectedAt,
-        rawStoresSnapshot: null,
       });
       await this.states.completeOAuthState(nonce, connectedAt);
       return {
@@ -317,5 +326,14 @@ export class CompleteUberOAuthUseCase {
     return isUberApplicationError(error)
       ? error.category
       : 'transient-upstream';
+  }
+  private authorizationError(
+    error?: string,
+  ): 'denied' | 'temporary' | 'invalid' | null {
+    if (!error) return null;
+    if (error === 'access_denied') return 'denied';
+    if (error === 'server_error' || error === 'temporarily_unavailable')
+      return 'temporary';
+    return 'invalid';
   }
 }

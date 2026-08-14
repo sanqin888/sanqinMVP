@@ -24,6 +24,7 @@ describe('PosOrdersService', () => {
         actionResult: { status: 'SUCCEEDED', actionId: 'action_1' },
       }),
       accept: jest.fn().mockResolvedValue({ ok: true }),
+      cancel: jest.fn().mockResolvedValue({ ok: true }),
       getReadyForPickupAction: jest.fn().mockResolvedValue(null),
       retryReadyForPickup: jest.fn(),
     };
@@ -182,10 +183,15 @@ describe('PosOrdersService', () => {
     });
     const { service, orders, uberEats } = setup(ready);
     uberEats.getReadyForPickupAction.mockResolvedValue({
-      id: 'ready_action',
+      ok: false,
+      actionId: 'ready_action',
       status: 'FAILED',
       retryable: true,
-      lastError: 'timeout',
+      error: {
+        code: 'UNKNOWN',
+        message: 'timeout',
+        retryable: true,
+      },
     });
 
     await expect(service.advance('order_1')).resolves.toMatchObject({
@@ -212,7 +218,7 @@ describe('PosOrdersService', () => {
     expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
-  it('Uber 新订单由 webhook 落库后自动接单，POS 服务不承担 DENY 决策', () => {
+  it('POS 允许店员为已接单的 Uber 订单提交 CANCEL', async () => {
     const { service, uberEats } = setup(
       order({
         channel: 'ubereats',
@@ -221,10 +227,23 @@ describe('PosOrdersService', () => {
       }),
     );
 
-    expect(
-      'cancelUberOrder' in (service as unknown as Record<string, unknown>),
-    ).toBe(false);
+    await expect(
+      service.cancelUberOrder('order_1', '商品售罄'),
+    ).resolves.toMatchObject({
+      orderStableId: 'order_1',
+      uberActionStatus: null,
+    });
+    expect(uberEats.cancel).toHaveBeenCalledWith('external-123', '商品售罄');
     expect('denyUberOrder' in uberEats).toBe(false);
+  });
+
+  it('POS 拒绝为非 Uber 订单提交 CANCEL', async () => {
+    const { service, uberEats } = setup(order());
+
+    await expect(service.cancelUberOrder('order_1')).rejects.toThrow(
+      '只有 Uber 订单可以提交取消',
+    );
+    expect(uberEats.cancel).not.toHaveBeenCalled();
   });
 
   it('接单后人工退款要求凭证并在同一事务写入全额调整', async () => {

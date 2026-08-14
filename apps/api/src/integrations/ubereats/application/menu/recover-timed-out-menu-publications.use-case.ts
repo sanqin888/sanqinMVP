@@ -1,14 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import {
-  UBER_MENU_PUBLICATION_REPOSITORY,
-  type UberMenuPublicationRepositoryPort,
-} from '../ports/uber-menu-publication.ports';
+import { type UberMenuPublicationRepositoryPort } from './uber-menu-publication.ports';
 
 /** Application policy for deciding when an unconfirmed publication is stale. */
-@Injectable()
 export class RecoverTimedOutMenuPublicationsUseCase {
   constructor(
-    @Inject(UBER_MENU_PUBLICATION_REPOSITORY)
     private readonly publications: UberMenuPublicationRepositoryPort,
   ) {}
 

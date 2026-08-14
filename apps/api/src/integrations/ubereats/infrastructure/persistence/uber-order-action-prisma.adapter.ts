@@ -1,13 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderActionRepositoryPort,
   UberOrderActionTask,
-} from '../../application/ports/uber-order.ports';
+} from '../../application/orders/uber-order.ports';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
-type ClaimedRow = Omit<UberOrderActionTask, 'taskId'> & { id: string };
+type ClaimedRow = {
+  id: string;
+  leaseToken: string;
+  externalOrderId: string;
+  action: UberOrderActionTask['action'];
+  idempotencyKey: string;
+  businessVersion: string;
+  reasonCode: string | null;
+  reasonDetail: string | null;
+};
 
 /** Durable order-command queue. Prisma records are translated at this boundary. */
 @Injectable()
@@ -55,42 +65,73 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
   }): Promise<UberOrderActionTask[]> {
     const leaseToken = `${input.owner}:${randomUUID()}`;
     const expiresAt = new Date(input.now.getTime() + input.leaseDurationMs);
-    const rows = await this.prisma.$queryRawUnsafe<ClaimedRow[]>(
-      `WITH candidates AS (
+    const claimable = Prisma.sql`
+      (status = 'PENDING' AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= ${input.now}))
+      OR (status = 'FAILED' AND retryable = true AND "nextRetryAt" <= ${input.now})
+      OR (status = 'PROCESSING' AND "leaseExpiresAt" < ${input.now})
+    `;
+    const rows = await this.prisma.$queryRaw<ClaimedRow[]>`
+      WITH candidates AS (
         SELECT id FROM "UberOrderAction"
-        WHERE
-          (status = 'PENDING' AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= $1))
-          OR (status = 'FAILED' AND retryable = true AND "nextRetryAt" <= $1)
-          OR (status = 'PROCESSING' AND "leaseExpiresAt" < $1)
+        WHERE (${claimable})
         ORDER BY "updatedAt" ASC
         FOR UPDATE SKIP LOCKED
-        LIMIT $2
+        LIMIT ${input.limit}
       )
       UPDATE "UberOrderAction" action
-      SET status = 'PROCESSING', "leaseToken" = $3 || ':' || action.id,
-          "leaseExpiresAt" = $4, "attemptCount" = "attemptCount" + 1,
-          "updatedAt" = $1
+      SET status = 'PROCESSING', "leaseToken" = ${leaseToken} || ':' || action.id,
+          "leaseExpiresAt" = ${expiresAt}, "attemptCount" = "attemptCount" + 1,
+          "updatedAt" = ${input.now}
       FROM candidates WHERE action.id = candidates.id
       RETURNING action.id, action."leaseToken", action."externalOrderId", action.action,
-        action."idempotencyKey", action."businessVersion", action."reasonCode", action."reasonDetail"`,
-      input.now,
-      input.limit,
-      leaseToken,
-      expiresAt,
+        action."idempotencyKey", action."businessVersion", action."reasonCode", action."reasonDetail"
+    `;
+    return rows.map(
+      (row): UberOrderActionTask => ({
+        taskId: row.id,
+        leaseToken: row.leaseToken,
+        externalOrderId: row.externalOrderId,
+        action: row.action,
+        idempotencyKey: row.idempotencyKey,
+        businessVersion: row.businessVersion,
+        reasonCode: row.reasonCode,
+        reasonDetail: row.reasonDetail,
+      }),
     );
-    return rows.map(({ id, ...row }) => ({ taskId: id, ...row }));
   }
 
-  async markSucceeded(taskId: string, leaseToken: string): Promise<boolean> {
+  async getOrderStatus(
+    externalOrderId: string,
+  ): Promise<UberOrderStatus | null> {
+    const order = await this.prisma.order.findUnique({
+      where: { clientRequestId: `ubereats:${externalOrderId}` },
+      select: { status: true },
+    });
+    return (order?.status as UberOrderStatus | undefined) ?? null;
+  }
+
+  async complete(input: {
+    taskId: string;
+    leaseToken: string;
+    transition: { from: UberOrderStatus; to: UberOrderStatus } | null;
+  }): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       const claimed = await tx.uberOrderAction.findFirst({
-        where: { id: taskId, status: 'PROCESSING', leaseToken },
-        select: { externalOrderId: true, action: true },
+        where: {
+          id: input.taskId,
+          status: 'PROCESSING',
+          leaseToken: input.leaseToken,
+        },
+        select: { externalOrderId: true },
       });
       if (!claimed) return false;
       const completedAt = new Date();
       const updated = await tx.uberOrderAction.updateMany({
-        where: { id: taskId, status: 'PROCESSING', leaseToken },
+        where: {
+          id: input.taskId,
+          status: 'PROCESSING',
+          leaseToken: input.leaseToken,
+        },
         data: {
           status: 'SUCCEEDED',
           retryable: false,
@@ -101,21 +142,24 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         },
       });
       if (updated.count !== 1) return false;
-      if (claimed.action === 'ACCEPT') {
+      if (input.transition) {
+        const timestamps = {
+          makingAt:
+            input.transition.to === OrderStatus.making
+              ? completedAt
+              : undefined,
+          readyAt:
+            input.transition.to === OrderStatus.ready ? completedAt : undefined,
+        };
         await tx.order.updateMany({
           where: {
             clientRequestId: `ubereats:${claimed.externalOrderId}`,
-            status: { in: [OrderStatus.pending, OrderStatus.paid] },
+            status: input.transition.from as OrderStatus,
           },
-          data: { status: OrderStatus.making, makingAt: completedAt },
-        });
-      } else if (claimed.action === 'READY_FOR_PICKUP') {
-        await tx.order.updateMany({
-          where: {
-            clientRequestId: `ubereats:${claimed.externalOrderId}`,
-            status: { in: [OrderStatus.paid, OrderStatus.making] },
+          data: {
+            status: input.transition.to as OrderStatus,
+            ...timestamps,
           },
-          data: { status: OrderStatus.ready, readyAt: completedAt },
         });
       }
       return true;

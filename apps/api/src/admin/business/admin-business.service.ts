@@ -1,10 +1,13 @@
 // apps/api/src/admin/business/admin-business.service.ts
 
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import type { BusinessConfig, BusinessHour } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
-import { SyncUberStoreStatusUseCase } from '../../integrations/ubereats/application/merchant/uber-merchant-provisioning.service';
+import {
+  UBER_EATS_STORE_STATUS_SYNC,
+  type UberEatsStoreStatusSyncPort,
+} from '../../integrations/ubereats/public-api';
 
 export type DayConfigDto = {
   weekday: number; // 0-6
@@ -70,7 +73,8 @@ export class AdminBusinessService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly uberEatsService: SyncUberStoreStatusUseCase,
+    @Inject(UBER_EATS_STORE_STATUS_SYNC)
+    private readonly uberEatsService: UberEatsStoreStatusSyncPort,
   ) {}
 
   /**

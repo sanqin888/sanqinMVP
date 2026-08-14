@@ -1,38 +1,41 @@
 import { createHash } from 'crypto';
-import { Inject, Injectable } from '@nestjs/common';
-import { UberValidationError } from '../errors/uber-application.error';
+import { UberValidationError } from '../shared/uber-application.error';
 import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
 import {
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
 } from '../../domain/menu/uber-menu-payload.builder';
-import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
+import { buildUberIdempotencyKey } from '../orders/uber-idempotency-key';
 import {
-  UBER_MENU_GATEWAY,
-  UBER_MENU_IMAGE_PROBE,
-  UBER_MENU_PUBLICATION_REPOSITORY,
-  UBER_MENU_SNAPSHOT_REPOSITORY,
   type UberMenuGatewayPort,
   type UberMenuImageProbePort,
   type UberMenuPublicationRepositoryPort,
   type UberMenuPublishSnapshot,
   type UberMenuSnapshotRepositoryPort,
-} from '../ports/uber-menu-publication.ports';
+  type UberPublicBaseUrlPort,
+} from './uber-menu-publication.ports';
+import type { ProvisionedUberStoreQueryPort } from './uber-menu-draft.ports';
 
-@Injectable()
 export class PublishUberMenuUseCase {
   constructor(
-    @Inject(UBER_MENU_SNAPSHOT_REPOSITORY)
+    private readonly provisionedStores: ProvisionedUberStoreQueryPort,
     private readonly snapshots: UberMenuSnapshotRepositoryPort,
-    @Inject(UBER_MENU_PUBLICATION_REPOSITORY)
     private readonly publications: UberMenuPublicationRepositoryPort,
-    @Inject(UBER_MENU_GATEWAY) private readonly gateway: UberMenuGatewayPort,
-    @Inject(UBER_MENU_IMAGE_PROBE)
+    private readonly gateway: UberMenuGatewayPort,
     private readonly images: UberMenuImageProbePort,
+    private readonly urls: UberPublicBaseUrlPort,
   ) {}
 
   async execute(input: PublishMenuInput) {
-    const storeId = input.storeId?.trim() || 'default';
+    const posStoreId = input.storeId?.trim() || 'default';
+    const mapping =
+      await this.provisionedStores.resolveProvisionedUberStoreId(posStoreId);
+    if (!mapping)
+      throw this.validationError(
+        'UBER_STORE_NOT_PROVISIONED',
+        `POS 门店 ${posStoreId} 未配置或尚未 provision。`,
+      );
+    const storeId = mapping.uberStoreId;
     const snapshot = await this.snapshots.loadPublishSnapshot(storeId);
     if (!snapshot)
       throw this.validationError(
@@ -44,15 +47,19 @@ export class PublishUberMenuUseCase {
       graph,
       this.availability(snapshot.timezone),
       snapshot.taxRate,
+      { publicBaseUrl: this.urls.publicBaseUrl },
     );
     const validation = validateUberMenuPayload(payload);
     const imageResult = await this.images.validateImages(
-      graph.items
-        .filter((item) => item.imageUrl)
-        .map((item) => ({
-          itemStableId: item.sourceStableId,
-          url: item.imageUrl!,
-        })),
+      payload.items.flatMap((item) => {
+        if (!item.image_url) return [];
+        const source = graph.items.find(
+          (candidate) => candidate.id === item.id,
+        );
+        return source
+          ? [{ itemStableId: source.sourceStableId, url: item.image_url }]
+          : [];
+      }),
     );
     if (
       validation.some((issue) => issue.severity === 'ERROR') ||

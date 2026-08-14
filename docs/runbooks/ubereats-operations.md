@@ -2,9 +2,25 @@
 
 > 原则：先保存证据再处置；查询均使用只读账号并限定时间/门店。重试必须使用原 event/action 的幂等键。任何输出不得包含 access/refresh token、签名、完整 webhook、顾客电话或地址。
 
+## 部署前清单
+
+- [ ] API 与 `ubereats-worker` 使用同一配置版本，并均通过统一启动配置校验。
+- [ ] 常规生产设置 `UBER_EATS_RATE_LIMITER_MODE=distributed`，两个进程使用相同的 `UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL`/`UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN`；仅明确单副本时改用 `process` 并设置 `UBER_EATS_SINGLE_REPLICA=true`。
+- [ ] secrets manager 向两个进程注入相同的 `UBER_CREDENTIAL_ENCRYPTION_KEYS`、`UBER_CREDENTIAL_ACTIVE_KEY_VERSION` 和 `UBER_CREDENTIAL_KEYS_SOURCE=secrets-manager`，活动版本确实存在于 key ring。
+- [ ] 检查 Compose、源码、部署日志和工单均不含实际 credential key 或 Redis token。
+- [ ] 滚动发布前后确认 API/worker 的副本策略、限流模式和活动 key version 一致，再执行 OAuth/Webhook 健康验证。
+
 ## 通用关联与指标
 
 从告警的 `correlationId` 开始，在 `OpsEvent.payload` 中按 `eventId`、`externalOrderId`、`orderStableId`、`uberStoreId`、`posStoreId`、`menuPublishVersionStableId`、`orderActionId`、`opsTicketStableId` 或 `uberRequestId` 交叉定位。观察 `ubereats_webhook_*`、`ubereats_{inbox,outbox}_*`、`ubereats_api_*`、`ubereats_oauth_refresh_failed_total`、`ubereats_menu_*` 和 `ubereats_order_*` 指标；operation、outcome、eventType、failureCategory、queue 是唯一允许的指标标签。
+
+### Worker 健康、阈值与探针
+
+- readiness 使用 `/ready`（兼容路径 `/health`），只有 `status=ok` 返回 200；`starting`、`degraded`、`unhealthy` 均返回 503。`/live` 只验证 Node.js 事件循环和健康 HTTP server 仍能响应，不能用于判断队列消费者可接流量。
+- 默认 poll interval 为 15 秒，连续失败阈值由 `UBER_EATS_WORKER_UNHEALTHY_FAILURE_THRESHOLD` 配置（默认 3）。任一 adapter 达到 3 次连续失败，或最后成功距今超过 `poll interval × 失败阈值`（默认 45 秒），即为 `unhealthy` 并触发高优先级告警。
+- 首轮 poll 尚未全部完成为 `starting`；低于阈值的暂时失败、从未成功但已尝试、或任一队列存在 backlog 为 `degraded`。持续 5 分钟 degraded 或 backlog 连续三个采样周期增长应触发告警；恢复必须看到 `consecutiveFailures=0`、`lastSuccessfulAt` 前移且 backlog 开始下降。
+- 排障顺序：先比较 `/live` 与 `/ready`；再检查各 adapter 的 `lastAttemptAt`、`lastSuccessfulAt`、`lastFailureAt`、`consecutiveFailures` 和 `backlog`。`/live` 失败时检查进程/事件循环/OOM；`/live` 正常而 `/ready` 失败时检查数据库、Uber API、lease 与退避日志。不要通过放宽探针、重启循环或清空队列掩盖持续失败。
+- 优雅停机时发送 SIGTERM 后 readiness 将变为 503；平台应停止路由，并至少保留 `UBER_EATS_WORKER_SHUTDOWN_TIMEOUT_MS` 的终止宽限期；确认在途 poll 完成或超时后进程退出，且没有新 claim。
 
 ## 密钥轮换
 

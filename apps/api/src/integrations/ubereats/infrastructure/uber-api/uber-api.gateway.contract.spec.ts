@@ -1,32 +1,33 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- typed framework/Prisma test doubles cross a dynamic boundary */
+import type { UberGatewayRequest } from './uber-api.gateway';
 import { UberApiGatewayTransport } from './uber-api.gateway';
-
-const result = (status: number, data: Record<string, unknown> = {}) => ({
-  response: new Response(JSON.stringify(data), { status }),
-  text: JSON.stringify(data),
-  data,
-});
+import {
+  createUberAuthFake,
+  createUberHttpFake,
+  createUberRateLimiterFake,
+  uberHttpResult,
+} from '../../test/uber-api-test.helpers';
 
 describe('Uber API gateway contract', () => {
   it('routes inspect through the same rate limiter and request-id pipeline', async () => {
-    const inspected = result(200, { ok: true });
-    const release = jest.fn();
-    const feedback = jest.fn();
-    const limiter = {
-      acquire: jest.fn().mockResolvedValue({ release, feedback }),
-    };
-    const http = {
-      request: jest.fn().mockResolvedValue(inspected),
-      ensureSuccess: jest.fn(),
-    };
-    const config = {
-      apiBaseUrl: 'https://api.uber.com',
-      operationWeight: () => 3,
-    };
+    const inspected = uberHttpResult(200, { ok: true });
+    const release = jest.fn<() => void>();
+    const feedback =
+      jest.fn<
+        (result: { status: number; retryAfter: string | null }) => void
+      >();
+    const limiter = createUberRateLimiterFake();
+    limiter.acquire.mockResolvedValue({ release, feedback });
+    const http = createUberHttpFake();
+    http.request.mockResolvedValue(inspected);
+    const auth = createUberAuthFake();
+    auth.getAccessToken.mockResolvedValue('token');
     const gateway = new UberApiGatewayTransport(
-      http as never,
-      { getAccessToken: jest.fn().mockResolvedValue('token') } as never,
-      config,
+      http,
+      auth,
+      {
+        apiBaseUrl: 'https://api.uber.com',
+        operationWeight: () => 3,
+      },
       limiter,
     );
 
@@ -38,12 +39,12 @@ describe('Uber API gateway contract', () => {
         partitionKey: 'store-1',
       }),
     ).resolves.toBe(inspected);
-    expect(limiter.acquire).toHaveBeenCalledWith({
+    expect(limiter.acquire.mock.calls[0][0]).toEqual({
       partitionKey: 'store-1',
       operation: 'uber.store.inspect',
       weight: 3,
     });
-    expect(http.request.mock.calls[0][0].headers['X-Request-ID']).toEqual(
+    expect(http.request.mock.calls[0][0].headers?.['X-Request-ID']).toEqual(
       expect.any(String),
     );
     expect(feedback).toHaveBeenCalledWith({ status: 200, retryAfter: null });
@@ -51,18 +52,14 @@ describe('Uber API gateway contract', () => {
   });
 
   it('refreshes the token once on 401/403 without changing the idempotency key', async () => {
-    const http = {
-      request: jest
-        .fn()
-        .mockResolvedValueOnce(result(401))
-        .mockResolvedValueOnce(result(200, { accepted: true })),
-      ensureSuccess: jest.fn(),
-    };
-    const auth = {
-      getAccessToken: jest.fn().mockResolvedValue('expired'),
-      forceRefreshAccessToken: jest.fn().mockResolvedValue('fresh'),
-    };
-    const gateway = new UberApiGatewayTransport(http as never, auth as never, {
+    const http = createUberHttpFake();
+    http.request
+      .mockResolvedValueOnce(uberHttpResult(401))
+      .mockResolvedValueOnce(uberHttpResult(200, { accepted: true }));
+    const auth = createUberAuthFake();
+    auth.getAccessToken.mockResolvedValue('expired');
+    auth.forceRefreshAccessToken.mockResolvedValue('fresh');
+    const gateway = new UberApiGatewayTransport(http, auth, {
       apiBaseUrl: 'https://api.uber.com',
     });
 
@@ -77,7 +74,6 @@ describe('Uber API gateway contract', () => {
         idempotencyKey: 'order-task-1:v1',
       }),
     ).resolves.toEqual({ accepted: true });
-
     expect(auth.forceRefreshAccessToken).toHaveBeenCalledWith('eats.order');
     const [first, second] = http.request.mock.calls.map(([request]) => request);
     expect(first.idempotencyKey).toBe('order-task-1:v1');
@@ -86,20 +82,18 @@ describe('Uber API gateway contract', () => {
   });
 
   it('fails before auth/network when a write has no idempotency key', async () => {
-    const http = { request: jest.fn(), ensureSuccess: jest.fn() };
-    const auth = { getAccessToken: jest.fn() };
-    const gateway = new UberApiGatewayTransport(http as never, auth as never, {
+    const http = createUberHttpFake();
+    const auth = createUberAuthFake();
+    const gateway = new UberApiGatewayTransport(http, auth, {
       apiBaseUrl: 'https://api.uber.com',
     });
-
-    await expect(
-      gateway.request({
-        path: '/v1/eats/stores/store-1/status',
-        method: 'POST',
-        operation: 'uber.store.status',
-        scope: 'eats.store.status.write',
-      } as never),
-    ).rejects.toThrow('缺少幂等键');
+    const invalidWrite = {
+      path: '/v1/eats/stores/store-1/status',
+      method: 'POST',
+      operation: 'uber.store.status',
+      scope: 'eats.store.status.write',
+    } as UberGatewayRequest;
+    await expect(gateway.request(invalidWrite)).rejects.toThrow('缺少幂等键');
     expect(auth.getAccessToken).not.toHaveBeenCalled();
     expect(http.request).not.toHaveBeenCalled();
   });
@@ -110,8 +104,8 @@ describe('Uber API gateway contract', () => {
     ['https://api.uber.com', '//attacker.invalid/path'],
   ])('rejects unsafe base URL/path (%s, %s)', async (apiBaseUrl, path) => {
     const gateway = new UberApiGatewayTransport(
-      { request: jest.fn(), ensureSuccess: jest.fn() } as never,
-      { getAccessToken: jest.fn() } as never,
+      createUberHttpFake(),
+      createUberAuthFake(),
       { apiBaseUrl },
     );
     await expect(
@@ -123,30 +117,26 @@ describe('Uber API gateway contract', () => {
     ).rejects.toThrow();
   });
 
-  it('maps a terminal 429/5xx through the centralized safe error translator', async () => {
-    const inspected = result(429);
-    const translated = new Error('safe translated error');
-    const http = {
-      request: jest.fn().mockResolvedValue(inspected),
-      ensureSuccess: jest.fn(() => {
-        throw translated;
-      }),
-    };
-    const gateway = new UberApiGatewayTransport(
-      http as never,
-      { getAccessToken: jest.fn().mockResolvedValue('token') } as never,
-      { apiBaseUrl: 'https://api.uber.com' },
-    );
+  it('maps a terminal HTTP failure through the centralized gateway mapper', async () => {
+    const inspected = uberHttpResult(429, { code: 'rate-limit-exceeded' });
+    const http = createUberHttpFake();
+    http.request.mockResolvedValue(inspected);
+    const auth = createUberAuthFake();
+    auth.getAccessToken.mockResolvedValue('token');
+    const gateway = new UberApiGatewayTransport(http, auth, {
+      apiBaseUrl: 'https://api.uber.com',
+    });
     await expect(
       gateway.request({
         path: '/v1/eats/stores',
         operation: 'uber.store.list',
         scope: 'eats.store',
       }),
-    ).rejects.toBe(translated);
-    expect(http.ensureSuccess).toHaveBeenCalledWith(
-      inspected,
-      'uber.store.list',
-    );
+    ).rejects.toMatchObject({
+      category: 'rate-limited',
+      code: 'UBER_RATE_LIMIT_EXCEEDED',
+      operation: 'uber.store.list',
+      upstreamStatus: null,
+    });
   });
 });

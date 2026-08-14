@@ -14,7 +14,7 @@ import { UberReadOnlyAdmin } from './ubereats-access.decorator';
 
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 import { presentWebhookHealth } from './webhook.presenter';
-import { UberValidationError } from '../application/errors/uber-application.error';
+import { UberValidationError } from '../application/shared/uber-application.error';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
 @Controller('integrations/ubereats')

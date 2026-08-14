@@ -1,9 +1,9 @@
-import type { UberMenuUploadPayload } from '../../integrations/ubereats/domain/menu/uber-menu.types';
+export type MenuPublishPayload = Record<string, unknown>;
 export interface PreparedMenuPublish {
   storeId: string;
   uberStoreId: string;
   versionStableId: string;
-  payload: UberMenuUploadPayload;
+  payload: MenuPublishPayload;
 }
 export interface MenuPublishPort {
   prepare(input: unknown): Promise<PreparedMenuPublish>;

@@ -1,32 +1,58 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { UberAuthenticationError } from '../../domain/menu/uber-menu.types';
-import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
-import { summarizeUberDebugResponse } from '../../domain/shared/uber-integration.utils';
+import { summarizeUberDebugResponse } from '../shared/uber-log.utils';
 import type {
   UberMerchantApiPort,
   UberOAuthTokenPort,
   UberStoreApiPort,
-} from '../../application/ports/uber-api.ports';
-import { UberApiGatewayTransport } from './uber-api.gateway';
+} from '../../application/merchant/uber-merchant-api.ports';
+import {
+  UberApiGatewayTransport,
+  type UberGatewayTransportPort,
+} from './uber-api.gateway';
 import { UberAuthService } from './uber-token.provider';
-import { UberConfigService } from '../config/uber-config.service';
+import { UberCryptoConfigService } from '../crypto/uber-crypto-config.service';
+import type { UberMerchantIdentity } from '../../application/merchant/uber-merchant-api.ports';
+import {
+  UBER_MERCHANT_CREDENTIAL_STORE,
+  type UberMerchantCredentialStore,
+} from './uber-merchant-credential.port';
+import { isUberApplicationError } from '../../application/shared/uber-application.error';
+import {
+  UBER_GATEWAY_AUDIT_PORT,
+  type UberGatewayAuditEvent,
+  type UberGatewayAuditJsonValue,
+  type UberGatewayAuditPort,
+} from '../../application/shared/uber-gateway-audit.port';
+import { mapUberGatewayFailure } from './uber-error.mapper';
+import {
+  mapUberStoreDiscoveryWire,
+  mapUberStoreProvisionWire,
+} from './uber-store-wire.mapper';
 
-const object = (value: unknown): Record<string, unknown> | null =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-const string = (...values: unknown[]): string | null => {
-  for (const value of values)
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  return null;
+const SENSITIVE_AUDIT_KEY =
+  /(token|authorization|signature|secret|password|cookie|phone|address)/i;
+const sanitizeForAudit = (value: unknown): UberGatewayAuditJsonValue => {
+  if (value === null || ['string', 'boolean'].includes(typeof value))
+    return value as null | string | boolean;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) return value.map(sanitizeForAudit);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        SENSITIVE_AUDIT_KEY.test(key) ? '[REDACTED]' : sanitizeForAudit(child),
+      ]),
+    );
+  return '[UNSUPPORTED]';
 };
 
 @Injectable()
 export class UberOAuthTokenAdapter implements UberOAuthTokenPort {
   constructor(
     private readonly auth: UberAuthService,
-    @Inject(UberConfigService) private readonly config: UberConfigService,
+    @Inject(UberCryptoConfigService)
+    private readonly config: UberCryptoConfigService,
   ) {}
   getRedirectUri() {
     return this.auth.getMerchantRedirectUri();
@@ -49,74 +75,63 @@ export class UberOAuthTokenAdapter implements UberOAuthTokenPort {
   exchangeAuthorizationCode(code: string, redirectUri: string) {
     return this.auth.exchangeAuthorizationCode(code, redirectUri);
   }
-  refreshAccessToken(refreshToken: string, scope?: string) {
-    return this.auth.refreshMerchantAccessToken(refreshToken, scope);
-  }
 }
 
-/** Stateless adapter: only builds Uber requests and translates wire responses. */
+/** Merchant gateway: resolves credentials, refreshes them, and translates Uber wire responses. */
 @Injectable()
 export class UberMerchantApiAdapter
   implements UberMerchantApiPort, UberStoreApiPort
 {
-  constructor(private readonly transport: UberApiGatewayTransport) {}
+  private readonly credentialRequests = new Map<string, Promise<string>>();
 
-  async discoverStores(accessToken: string) {
+  constructor(
+    @Inject(UberApiGatewayTransport)
+    private readonly transport: UberGatewayTransportPort,
+    @Inject(UBER_MERCHANT_CREDENTIAL_STORE)
+    private readonly credentials: UberMerchantCredentialStore,
+    private readonly auth: UberAuthService,
+    @Inject(UBER_GATEWAY_AUDIT_PORT)
+    private readonly audit: UberGatewayAuditPort,
+  ) {}
+
+  async discoverStores(identity: UberMerchantIdentity) {
+    const accessToken = await this.accessTokenFor(identity);
     const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
-    const candidates = [raw.stores, raw.data, object(raw.data)?.stores];
-    const node = candidates.find(Array.isArray);
-    const stores: UberMerchantStore[] = !Array.isArray(node)
-      ? []
-      : node
-          .map(object)
-          .filter((v): v is Record<string, unknown> => !!v)
-          .map((store) => {
-            const location = object(store.location) ?? object(store.address);
-            const pos = object(store.pos_data);
-            return {
-              storeId:
-                string(store.store_id, store.id, store.uuid) ?? 'unknown',
-              storeName: string(store.name, store.store_name),
-              locationSummary: string(
-                store.location_summary,
-                location?.formatted_address,
-                [location?.address_line_one, location?.city, location?.country]
-                  .filter(
-                    (x): x is string => typeof x === 'string' && !!x.trim(),
-                  )
-                  .join(', '),
-              ),
-              integrationEnabled: pos?.integration_enabled === true,
-              posExternalStoreId: string(
-                pos?.order_manager_client_id,
-                pos?.pos_external_store_id,
-                store.pos_external_store_id,
-              ),
-              timezone: string(
-                store.timezone,
-                store.time_zone,
-                location?.timezone,
-                location?.time_zone,
-              ),
-              raw: store,
-            };
-          });
-    return { stores, raw };
+    await this.auditResponse({
+      operation: 'merchant.discover-stores',
+      merchantUberUserId: identity.merchantUberUserId,
+      outcome: 'RECEIVED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
+    return mapUberStoreDiscoveryWire(raw);
   }
 
-  provisionStore(
-    accessToken: string,
+  async provisionStore(
+    identity: UberMerchantIdentity,
     storeId: string,
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ) {
-    return this.request(
+    const accessToken = await this.accessTokenFor(identity);
+    const raw = await this.request(
       `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`,
       'POST',
       accessToken,
       payload,
       idempotencyKey,
     );
+    await this.auditResponse({
+      operation: 'merchant.provision-store',
+      merchantUberUserId: identity.merchantUberUserId,
+      storeId,
+      outcome: 'RECEIVED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
+    return mapUberStoreProvisionWire(raw);
   }
 
   async writeStatus(
@@ -139,11 +154,22 @@ export class UberMerchantApiAdapter
           idempotencyKey,
         });
         status = result.response.status;
+        await this.auditResponse({
+          operation: 'merchant.write-store-status',
+          storeId,
+          outcome: result.response.ok
+            ? 'SUCCEEDED'
+            : status === 409
+              ? 'REJECTED'
+              : 'FAILED',
+          upstreamStatus: status,
+          sanitizedRawResponse: sanitizeForAudit(result.data),
+          recordedAt: new Date(),
+        });
         if (result.response.ok || status === 409)
           return {
             uberStoreId: storeId,
-            ok: true,
-            status,
+            outcome: 'SUCCEEDED' as const,
             attempts: attempt,
             duplicate: status === 409,
           };
@@ -151,8 +177,9 @@ export class UberMerchantApiAdapter
         if (status !== 429 && status < 500)
           return {
             uberStoreId: storeId,
-            ok: false,
-            status,
+            outcome: 'FAILED' as const,
+            reason: 'UPSTREAM_REJECTED' as const,
+            retryable: false,
             attempts: attempt,
             error,
           };
@@ -166,11 +193,49 @@ export class UberMerchantApiAdapter
     }
     return {
       uberStoreId: storeId,
-      ok: false,
-      status,
+      outcome: 'FAILED' as const,
+      reason: 'UPSTREAM_UNAVAILABLE' as const,
+      retryable: true,
       attempts: maxAttempts,
       error: error || 'Uber 门店状态写入失败',
     };
+  }
+
+  private async accessTokenFor(
+    identity: UberMerchantIdentity,
+  ): Promise<string> {
+    const id = identity.merchantUberUserId.trim();
+    const inflight = this.credentialRequests.get(id);
+    if (inflight) return inflight;
+    const request = this.loadAndRefresh(id).finally(() =>
+      this.credentialRequests.delete(id),
+    );
+    this.credentialRequests.set(id, request);
+    return request;
+  }
+
+  private async loadAndRefresh(id: string): Promise<string> {
+    let credential = await this.credentials.loadCredential(id);
+    if (!credential) throw new Error('未找到 Uber 商户凭据');
+    if (
+      !credential.expiresAt ||
+      credential.expiresAt.getTime() > Date.now() + 60_000
+    )
+      return credential.accessToken;
+    if (!credential.refreshToken) throw new Error('Uber 商户凭据已过期');
+    const fresh = await this.auth.refreshMerchantAccessToken(
+      credential.refreshToken,
+      credential.scope ?? undefined,
+    );
+    const rotated = await this.credentials.rotateCredential({
+      merchantUberUserId: id,
+      expectedVersion: credential.version,
+      ...fresh,
+    });
+    if (rotated) return fresh.accessToken;
+    credential = await this.credentials.loadCredential(id);
+    if (!credential) throw new Error('未找到 Uber 商户凭据');
+    return credential.accessToken;
   }
 
   private async request(
@@ -194,16 +259,22 @@ export class UberMerchantApiAdapter
           : { ...common, method },
       );
     } catch (caught) {
-      if (caught instanceof BadRequestException) throw caught;
-      const error: UberAuthenticationError = {
-        upstreamStatus: 502,
-        code: 'UBER_API_ERROR',
-        message:
-          caught instanceof Error
-            ? caught.message.slice(0, 500)
-            : 'Uber request failed',
-      };
-      throw new BadRequestException({ ok: false, status: 502, error });
+      if (isUberApplicationError(caught)) throw caught;
+      throw mapUberGatewayFailure({
+        kind: 'transport',
+        operation: `${method} ${path}`,
+        code: 'UBER_NETWORK_ERROR',
+        cause: caught,
+      });
+    }
+  }
+
+  /** Audit persistence must never change the merchant operation's outcome. */
+  private async auditResponse(event: UberGatewayAuditEvent): Promise<void> {
+    try {
+      await this.audit.recordResponse(event);
+    } catch {
+      // Deliberately best-effort: gateway availability takes precedence over audit storage.
     }
   }
 }

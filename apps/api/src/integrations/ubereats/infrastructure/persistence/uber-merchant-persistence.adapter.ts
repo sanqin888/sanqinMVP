@@ -10,15 +10,25 @@ import type {
   UberMerchantConnectionRepositoryPort,
   UberMerchantStoreMapping,
   UberOAuthStatePort,
-  UberOperationsAlertRepositoryPort,
   UberStoreMappingRepositoryPort,
-} from '../../application/ports/uber-persistence.ports';
-import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
+} from '../../application/merchant/uber-merchant-persistence.ports';
+import type { UberOperationsAlertRepositoryPort } from '../../application/operations/uber-operations-alert.ports';
+import { redactUberLogText } from '../shared/uber-log.utils';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
-import { UberTelemetryService } from '../observability/uber-telemetry.service';
+import { UberTelemetryService } from './uber-telemetry.service';
+import type { UberMerchantCredentialStore } from '../uber-api/uber-merchant-credential.port';
 
-const json = (value: unknown) =>
-  JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+const mapStoreMapping = (
+  row: UberMerchantStoreMapping,
+): UberMerchantStoreMapping => ({
+  merchantUberUserId: row.merchantUberUserId,
+  uberStoreId: row.uberStoreId,
+  storeName: row.storeName,
+  locationSummary: row.locationSummary,
+  isProvisioned: row.isProvisioned,
+  provisionedAt: row.provisionedAt,
+  posExternalStoreId: row.posExternalStoreId,
+});
 
 @Injectable()
 export class UberOAuthStatePrismaAdapter implements UberOAuthStatePort {
@@ -138,7 +148,9 @@ export class UberOAuthStatePrismaAdapter implements UberOAuthStatePort {
 }
 
 @Injectable()
-export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnectionRepositoryPort {
+export class UberMerchantConnectionPrismaAdapter
+  implements UberMerchantConnectionRepositoryPort, UberMerchantCredentialStore
+{
   constructor(
     private readonly prisma: PrismaService,
     private readonly vault: UberCredentialVaultService,
@@ -151,35 +163,67 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
       : await this.prisma.uberMerchantConnection.findFirst({
           orderBy: { connectedAt: 'desc' },
         });
-    if (!row) return null;
-    if (!row.encryptedAccessToken) return null;
-    const accessToken = this.vault.decrypt(row.encryptedAccessToken);
+    if (!row?.encryptedAccessToken) return null;
     return {
-      ...row,
-      accessToken,
+      merchantUberUserId: row.merchantUberUserId,
+      expiresAt: row.expiresAt,
+      scope: row.scope,
+      tokenType: row.tokenType,
+      connectedAt: row.connectedAt,
+    };
+  }
+  async loadCredential(merchantUberUserId: string) {
+    const row = await this.prisma.uberMerchantConnection.findUnique({
+      where: { merchantUberUserId },
+    });
+    if (!row?.encryptedAccessToken) return null;
+    return {
+      merchantUberUserId: row.merchantUberUserId,
+      accessToken: this.vault.decrypt(row.encryptedAccessToken),
       refreshToken: row.encryptedRefreshToken
         ? this.vault.decrypt(row.encryptedRefreshToken)
         : null,
+      expiresAt: row.expiresAt,
+      scope: row.scope,
+      tokenType: row.tokenType,
+      version: row.updatedAt.toISOString(),
     };
+  }
+  async rotateCredential(
+    input: Parameters<UberMerchantCredentialStore['rotateCredential']>[0],
+  ) {
+    const updated = await this.prisma.uberMerchantConnection.updateMany({
+      where: {
+        merchantUberUserId: input.merchantUberUserId,
+        updatedAt: new Date(input.expectedVersion),
+      },
+      data: {
+        encryptedAccessToken: this.vault.encrypt(input.accessToken),
+        encryptedRefreshToken: input.refreshToken
+          ? this.vault.encrypt(input.refreshToken)
+          : null,
+        expiresAt: input.expiresAt,
+        scope: input.scope,
+        tokenType: input.tokenType,
+      },
+    });
+    return updated.count === 1;
   }
   async upsertConnectionByUberUserId(
     input: Parameters<
       UberMerchantConnectionRepositoryPort['upsertConnectionByUberUserId']
     >[0],
   ) {
-    const { uberUserId, ...connection } = input;
-    const encryptedAccessToken = this.vault.encrypt(input.accessToken);
-    const encryptedRefreshToken = input.refreshToken
-      ? this.vault.encrypt(input.refreshToken)
+    const { uberUserId, accessToken, refreshToken, ...connection } = input;
+    const encryptedAccessToken = this.vault.encrypt(accessToken);
+    const encryptedRefreshToken = refreshToken
+      ? this.vault.encrypt(refreshToken)
       : null;
-    return this.prisma.uberMerchantConnection.upsert({
+    const row = await this.prisma.uberMerchantConnection.upsert({
       where: { merchantUberUserId: uberUserId },
       create: {
         ...connection,
         merchantUberUserId: uberUserId,
-        rawStoresSnapshot: input.rawStoresSnapshot
-          ? json(input.rawStoresSnapshot)
-          : undefined,
         encryptedAccessToken,
         encryptedRefreshToken,
       },
@@ -192,38 +236,35 @@ export class UberMerchantConnectionPrismaAdapter implements UberMerchantConnecti
         connectedAt: input.connectedAt,
       },
     });
-  }
-  async saveStoresSnapshot(
-    merchantUberUserId: string,
-    raw: Record<string, unknown>,
-  ) {
-    await this.prisma.uberMerchantConnection.update({
-      where: { merchantUberUserId },
-      data: { rawStoresSnapshot: json(raw) },
-    });
+    return { connectedAt: row.connectedAt };
   }
 }
 
 @Injectable()
 export class UberStoreMappingPrismaAdapter implements UberStoreMappingRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
-  findMappings(merchantUberUserId: string, ids: string[]) {
-    return this.prisma.uberStoreMapping.findMany({
+  async findMappings(merchantUberUserId: string, ids: string[]) {
+    const rows = await this.prisma.uberStoreMapping.findMany({
       where: { merchantUberUserId, uberStoreId: { in: ids } },
     });
+    return rows.map(mapStoreMapping);
   }
-  listMappings() {
-    return this.prisma.uberStoreMapping.findMany({
+  async listMappings() {
+    const rows = await this.prisma.uberStoreMapping.findMany({
       orderBy: { uberStoreId: 'asc' },
     });
+    return rows.map(mapStoreMapping);
   }
-  findMapping(uberStoreId: string) {
-    return this.prisma.uberStoreMapping.findUnique({ where: { uberStoreId } });
+  async findMapping(uberStoreId: string) {
+    const row = await this.prisma.uberStoreMapping.findUnique({
+      where: { uberStoreId },
+    });
+    return row ? mapStoreMapping(row) : null;
   }
   async saveDiscovery(input: UberMerchantStoreMapping) {
     await this.prisma.uberStoreMapping.upsert({
       where: { uberStoreId: input.uberStoreId },
-      create: { ...input, rawPayload: json(input.rawPayload ?? {}) },
+      create: input,
       update: {
         merchantUberUserId: input.merchantUberUserId,
         storeName: input.storeName,
@@ -231,28 +272,28 @@ export class UberStoreMappingPrismaAdapter implements UberStoreMappingRepository
         ...(input.isProvisioned
           ? { isProvisioned: true, provisionedAt: input.provisionedAt }
           : {}),
-        rawPayload: json(input.rawPayload ?? {}),
       },
     });
   }
-  upsertMapping(input: UberMerchantStoreMapping) {
-    return this.prisma.uberStoreMapping.upsert({
+  async upsertMapping(input: UberMerchantStoreMapping) {
+    const row = await this.prisma.uberStoreMapping.upsert({
       where: { uberStoreId: input.uberStoreId },
-      create: { ...input, rawPayload: json(input.rawPayload ?? {}) },
-      update: { ...input, rawPayload: json(input.rawPayload ?? {}) },
+      create: input,
+      update: input,
     });
+    return mapStoreMapping(row);
   }
   async updatePosExternalStoreId(
     uberStoreId: string,
     posExternalStoreId: string,
   ) {
     const existing = await this.findMapping(uberStoreId);
-    return existing
-      ? this.prisma.uberStoreMapping.update({
-          where: { uberStoreId },
-          data: { posExternalStoreId },
-        })
-      : null;
+    if (!existing) return null;
+    const row = await this.prisma.uberStoreMapping.update({
+      where: { uberStoreId },
+      data: { posExternalStoreId },
+    });
+    return mapStoreMapping(row);
   }
 }
 
@@ -280,7 +321,8 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
   async createStoreStatusAlert(
     uberStoreId: string,
     error: string,
-    status: number,
+    reason: 'UPSTREAM_REJECTED' | 'UPSTREAM_UNAVAILABLE',
+    retryable: boolean,
     payload: Record<string, string>,
   ) {
     await this.prisma.uberOpsTicket.create({
@@ -294,8 +336,9 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
         context: {
           uberStoreId,
           targetStatus: payload.status,
-          uberHttpStatus: status,
-          errorCode: `UBER_HTTP_${status}`,
+          outcome: 'FAILED',
+          reason,
+          retryable,
         },
       },
     });

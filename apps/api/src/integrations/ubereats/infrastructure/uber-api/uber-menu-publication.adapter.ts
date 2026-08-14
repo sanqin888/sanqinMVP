@@ -1,20 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type {
   UberMenuGatewayPort,
   UberMenuImage,
   UberMenuImageProbePort,
-} from '../../application/ports/uber-menu-publication.ports';
+} from '../../application/menu/uber-menu-publication.ports';
 import { UberMenuGateway } from './uber-resource.gateways';
 import { UberImageValidator } from './uber-image.validator';
 
 @Injectable()
 export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
-  constructor(private readonly gateway: UberMenuGateway) {}
+  constructor(
+    @Inject(UberMenuGateway)
+    private readonly gateway: Pick<UberMenuGateway, 'request'>,
+  ) {}
   async uploadMenu(input: Parameters<UberMenuGatewayPort['uploadMenu']>[0]) {
     const response = await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
       scope: 'eats.store',
       operation: 'uber.menu.upload',
+      partitionKey: input.storeId,
       method: 'PUT',
       json: input.payload as unknown as Record<string, unknown>,
       idempotencyKey: input.idempotencyKey,
@@ -31,6 +35,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
       scope: 'eats.store',
       operation: 'uber.menu.read',
+      partitionKey: input.storeId,
       method: 'GET',
     });
     const raw = this.string(response.status)?.toUpperCase();

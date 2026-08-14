@@ -1,30 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { UberValidationError } from '../errors/uber-application.error';
-import { UBER_STORE_API, type UberStoreApiPort } from '../ports/uber-api.ports';
+import { UberValidationError } from '../shared/uber-application.error';
+import { type UberStoreApiPort } from '../merchant/uber-merchant-api.ports';
 import { createHash } from 'crypto';
-import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
+import { buildUberIdempotencyKey } from '../orders/uber-idempotency-key';
 import {
-  UBER_MERCHANT_CONNECTION_REPOSITORY,
-  UBER_OPERATIONS_ALERT_REPOSITORY,
-  UBER_STORE_MAPPING_REPOSITORY,
   type UberMerchantConnectionRepositoryPort,
-  type UberOperationsAlertRepositoryPort,
   type UberStoreMappingRepositoryPort,
-} from '../ports/uber-persistence.ports';
+} from './uber-merchant-persistence.ports';
+import type { UberOperationsAlertRepositoryPort } from '../operations/uber-operations-alert.ports';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;
   targetStatus: 'ONLINE' | 'PAUSED';
   reason?: string;
   pauseUntil?: string;
-};
-const object = (v: unknown): Record<string, unknown> | null =>
-  v && typeof v === 'object' && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null;
-const text = (...vs: unknown[]) => {
-  for (const v of vs) if (typeof v === 'string' && v.trim()) return v.trim();
-  return null;
 };
 const credentials = (v: unknown): boolean =>
   Array.isArray(v)
@@ -45,13 +33,10 @@ const sanitize = (v: unknown): unknown =>
             .map(([k, x]) => [k, sanitize(x)]),
         );
 
-@Injectable()
 export class ProvisionUberStoreUseCase {
   constructor(
-    @Inject(UBER_STORE_API) private readonly api: UberStoreApiPort,
-    @Inject(UBER_MERCHANT_CONNECTION_REPOSITORY)
+    private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
   async provisionStore(
@@ -86,7 +71,7 @@ export class ProvisionUberStoreUseCase {
         message: '未找到 Uber 商户授权',
       });
     const response = await this.api.provisionStore(
-      connection.accessToken,
+      { merchantUberUserId: connection.merchantUberUserId },
       id,
       payload,
       buildUberIdempotencyKey({
@@ -98,20 +83,14 @@ export class ProvisionUberStoreUseCase {
           .digest('hex'),
       }),
     );
-    const store = object(response.store);
-    const location = object(response.location) ?? object(response.address);
     const mapping = await this.mappings.upsertMapping({
       merchantUberUserId: connection.merchantUberUserId,
       uberStoreId: id,
-      storeName: text(store?.name, response.store_name),
-      locationSummary: text(
-        response.location_summary,
-        location?.formatted_address,
-      ),
+      storeName: response.storeName,
+      locationSummary: response.locationSummary,
       isProvisioned: true,
       provisionedAt: new Date(),
-      posExternalStoreId: text(response.pos_external_store_id),
-      rawPayload: response,
+      posExternalStoreId: response.posExternalStoreId,
     });
     return {
       ok: true,
@@ -123,7 +102,6 @@ export class ProvisionUberStoreUseCase {
     };
   }
 }
-@Injectable()
 export class DeprovisionUberStoreUseCase {
   revokeOrDeprovisionStore() {
     throw new UberValidationError({
@@ -134,13 +112,10 @@ export class DeprovisionUberStoreUseCase {
   }
 }
 
-@Injectable()
 export class SyncUberStoreStatusUseCase {
   constructor(
-    @Inject(UBER_STORE_API) private readonly api: UberStoreApiPort,
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
+    private readonly api: UberStoreApiPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
-    @Inject(UBER_OPERATIONS_ALERT_REPOSITORY)
     private readonly alerts: UberOperationsAlertRepositoryPort,
   ) {}
   async syncStoreStatusToUber(target?: UberStoreStatusTarget) {
@@ -170,9 +145,8 @@ export class SyncUberStoreStatusUseCase {
       const result = !mapping.isProvisioned
         ? {
             uberStoreId: mapping.uberStoreId,
-            ok: false,
-            skipped: true,
-            status: 422,
+            outcome: 'SKIPPED' as const,
+            reason: 'NOT_PROVISIONED' as const,
             attempts: 0,
             error: 'Uber 门店尚未 provision，未发送状态写请求',
           }
@@ -188,29 +162,38 @@ export class SyncUberStoreStatusUseCase {
           );
       results.push(result);
       await this.alerts.recordStoreStatusResult(result, payload);
-      if (
-        !result.ok &&
-        typeof result.status === 'number' &&
-        result.status >= 400 &&
-        result.status < 500
-      )
+      if (result.outcome === 'FAILED')
         await this.alerts.createStoreStatusAlert(
           mapping.uberStoreId,
-          typeof result.error === 'string'
-            ? result.error
-            : 'Uber 门店状态写入被拒绝',
-          result.status,
+          result.error,
+          result.reason,
+          result.retryable,
           payload,
         );
     }
-    const succeeded = results.filter((r) => r.ok).length;
+    const succeeded = results.filter((r) => r.outcome === 'SUCCEEDED').length;
+    if (results.length === 0)
+      return { outcome: 'SKIPPED' as const, reason: 'NO_STORES' as const };
+    if (succeeded === results.length)
+      return { outcome: 'SUCCEEDED' as const, synchronizedStores: succeeded };
+    const failedStores = results.length - succeeded;
+    const allSkipped = results.every((result) => result.outcome === 'SKIPPED');
+    if (allSkipped)
+      return {
+        outcome: 'SKIPPED' as const,
+        reason: 'NO_PROVISIONED_STORES' as const,
+      };
     return {
-      ok: results.length > 0 && succeeded === results.length,
-      total: results.length,
-      succeeded,
-      failed: results.length - succeeded,
-      payload,
-      results,
+      outcome: 'FAILED' as const,
+      synchronizedStores: succeeded,
+      failedStores,
+      error: {
+        code: 'UPSTREAM_REJECTED' as const,
+        message: '一个或多个 Uber 门店状态同步失败',
+        retryable: results.some(
+          (result) => result.outcome === 'FAILED' && result.retryable,
+        ),
+      },
     };
   }
   private parsePause(value?: string | null) {
