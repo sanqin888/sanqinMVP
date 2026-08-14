@@ -7,7 +7,7 @@ import {
   UberOAuthTerminalError,
   isUberApplicationError,
 } from '../shared/uber-application.error';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { type UberOAuthTokenPort } from '../merchant/uber-merchant-api.ports';
 import {
   type UberMerchantConnectionRepositoryPort,
@@ -102,7 +102,7 @@ export class CompleteUberOAuthUseCase {
     merchantContext?: string,
   ): Promise<
     UberOAuthResult<{
-      uberUserId: string;
+      connectionId: string;
       scope: string | null;
       tokenType: string | null;
       expiresAt: Date | null;
@@ -161,14 +161,15 @@ export class CompleteUberOAuthUseCase {
             message: 'OAuth 正在处理中',
           });
         try {
-          token = await this.tokens.exchangeAuthorizationCode(
+          const exchanged = await this.tokens.exchangeAuthorizationCode(
             callback.code,
             request.redirectUri,
           );
+          token = { ...exchanged, connectionId: randomUUID() };
         } catch (error) {
           const retryable = isUberApplicationError(error)
             ? error.retryable
-            : true;
+            : false;
           if (retryable && request.retryCount < 2) {
             await this.states.releaseOAuthStateForRetry(
               nonce,
@@ -198,7 +199,7 @@ export class CompleteUberOAuthUseCase {
       }
 
       const connectedAt = new Date();
-      await this.connections.upsertConnectionByUberUserId({
+      await this.connections.upsertConnectionByConnectionId({
         ...token,
         connectedAt,
       });
@@ -206,7 +207,7 @@ export class CompleteUberOAuthUseCase {
       return {
         ok: true,
         value: {
-          uberUserId: token.uberUserId,
+          connectionId: token.connectionId,
           scope: token.scope,
           tokenType: token.tokenType,
           expiresAt: token.expiresAt,
@@ -241,7 +242,7 @@ export class CompleteUberOAuthUseCase {
       });
     return {
       ok: true,
-      uberUserId: row.merchantUberUserId,
+      connectionId: row.connectionId,
       scope: row.scope,
       tokenType: row.tokenType,
       expiresAt: row.expiresAt,
@@ -308,14 +309,14 @@ export class CompleteUberOAuthUseCase {
   private completedValue(
     request: Awaited<ReturnType<UberOAuthStatePort['findOAuthState']>> & {},
   ) {
-    if (!request?.uberUserId || !request.connectedAt)
+    if (!request?.connectionId || !request.connectedAt)
       throw new UberOAuthTemporaryError({
         code: 'OAUTH_RESULT_INCOMPLETE',
         operation: 'merchant-oauth',
         message: 'OAuth 完成结果不完整',
       });
     return {
-      uberUserId: request.uberUserId,
+      connectionId: request.connectionId,
       scope: request.scope,
       tokenType: request.tokenType,
       expiresAt: request.tokenExpiresAt,
@@ -325,7 +326,9 @@ export class CompleteUberOAuthUseCase {
   private errorCategory(error: unknown): string {
     return isUberApplicationError(error)
       ? error.category
-      : 'transient-upstream';
+      : error instanceof TypeError
+        ? 'internal-contract'
+        : 'persistence';
   }
   private authorizationError(
     error?: string,

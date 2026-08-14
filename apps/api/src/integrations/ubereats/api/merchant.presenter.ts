@@ -31,11 +31,14 @@ export const presentMerchantStores = (
           isProvisioned: booleanOf(store.isProvisioned),
           provisionedAt: dateOf(store.provisionedAt),
           posExternalStoreId: textOf(store.posExternalStoreId),
+          isMapped: booleanOf(store.isMapped),
+          mappedConnectionId: textOf(store.mappedConnectionId),
+          requiresReconnect: booleanOf(store.requiresReconnect),
         };
       })
     : [];
   return {
-    merchantUberUserId: textOf(source.merchantUberUserId) ?? '',
+    connectionId: textOf(source.connectionId) ?? '',
     stores,
     pageInfo: {
       limit: stores.length,
@@ -52,7 +55,7 @@ export const presentMerchantConnection = (
 ): UberMerchantConnectionResponse => {
   const source = recordOf(result);
   return {
-    uberUserId: textOf(source.uberUserId) ?? '',
+    connectionId: textOf(source.connectionId) ?? '',
     scope: textOf(source.scope),
     tokenType: textOf(source.tokenType),
     expiresAt: dateOf(source.expiresAt),

@@ -1255,7 +1255,6 @@ model OpsEvent {
 
 model UberMerchantConnection {
   id                    String    @id @default(uuid()) @db.Uuid
-  merchantUberUserId    String    @unique
   encryptedAccessToken  String?
   encryptedRefreshToken String?
   expiresAt             DateTime?
@@ -1274,7 +1273,7 @@ model UberMerchantConnection {
 model UberStoreMapping {
   id                 String    @id @default(uuid()) @db.Uuid
   uberStoreId        String    @unique
-  merchantUberUserId String
+  connectionId       String    @db.Uuid
   storeName          String?
   locationSummary    String?
   isProvisioned      Boolean   @default(false)
@@ -1284,10 +1283,10 @@ model UberStoreMapping {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  merchantConnection UberMerchantConnection @relation(fields: [merchantUberUserId], references: [merchantUberUserId], onDelete: Cascade)
+  merchantConnection UberMerchantConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
-  @@unique([merchantUberUserId, uberStoreId])
-  @@index([merchantUberUserId, isProvisioned])
+  @@unique([connectionId, uberStoreId])
+  @@index([connectionId, isProvisioned])
 }
 
 model UberItemChannelConfig {
@@ -1528,7 +1527,7 @@ model UberOAuthStateRequest {
   retryCount              Int       @default(0)
   lastErrorCategory       String?
   encryptedExchangeResult String?
-  uberUserId              String?
+  connectionId            String?   @db.Uuid
   scope                   String?
   tokenType               String?
   tokenExpiresAt          DateTime?

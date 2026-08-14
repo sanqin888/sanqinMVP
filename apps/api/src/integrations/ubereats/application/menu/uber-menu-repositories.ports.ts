@@ -43,7 +43,7 @@ export type BusinessSchedule = {
 };
 export type MenuStoreMapping = {
   uberStoreId: string;
-  merchantUberUserId: string;
+  connectionId: string;
   posExternalStoreId: string | null;
   isProvisioned: boolean;
   timezone: string | null;

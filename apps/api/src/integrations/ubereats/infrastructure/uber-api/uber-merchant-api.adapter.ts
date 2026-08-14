@@ -99,7 +99,7 @@ export class UberMerchantApiAdapter
     const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
     await this.auditResponse({
       operation: 'merchant.discover-stores',
-      merchantUberUserId: identity.merchantUberUserId,
+      connectionId: identity.connectionId,
       outcome: 'RECEIVED',
       upstreamStatus: null,
       sanitizedRawResponse: sanitizeForAudit(raw),
@@ -124,7 +124,7 @@ export class UberMerchantApiAdapter
     );
     await this.auditResponse({
       operation: 'merchant.provision-store',
-      merchantUberUserId: identity.merchantUberUserId,
+      connectionId: identity.connectionId,
       storeId,
       outcome: 'RECEIVED',
       upstreamStatus: null,
@@ -204,7 +204,7 @@ export class UberMerchantApiAdapter
   private async accessTokenFor(
     identity: UberMerchantIdentity,
   ): Promise<string> {
-    const id = identity.merchantUberUserId.trim();
+    const id = identity.connectionId.trim();
     const inflight = this.credentialRequests.get(id);
     if (inflight) return inflight;
     const request = this.loadAndRefresh(id).finally(() =>
@@ -228,7 +228,7 @@ export class UberMerchantApiAdapter
       credential.scope ?? undefined,
     );
     const rotated = await this.credentials.rotateCredential({
-      merchantUberUserId: id,
+      connectionId: id,
       expectedVersion: credential.version,
       ...fresh,
     });

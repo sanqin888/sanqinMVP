@@ -125,9 +125,16 @@ export function createMerchantWiring(): Provider[] {
     },
     {
       provide: MapUberStoreUseCase,
-      inject: [UBER_STORE_MAPPING_REPOSITORY],
-      useFactory: (mappings: UberStoreMappingRepositoryPort) =>
-        new MapUberStoreUseCase(mappings),
+      useFactory: (
+        mappings: UberStoreMappingRepositoryPort,
+        api: UberMerchantApiPort,
+        connections: UberMerchantConnectionRepositoryPort,
+      ) => new MapUberStoreUseCase(mappings, api, connections),
+      inject: [
+        UBER_STORE_MAPPING_REPOSITORY,
+        UBER_MERCHANT_API,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+      ],
     },
     {
       provide: ProvisionUberStoreUseCase,

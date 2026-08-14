@@ -1,13 +1,16 @@
-import { DiscoverUberStoresUseCase } from './uber-merchant-store-mapping.service';
+import {
+  DiscoverUberStoresUseCase,
+  MapUberStoreUseCase,
+} from './uber-merchant-store-mapping.service';
 import {
   ProvisionUberStoreUseCase,
   SyncUberStoreStatusUseCase,
 } from './uber-merchant-provisioning.service';
 
-const connection = { merchantUberUserId: 'merchant-1' };
+const connection = { connectionId: 'merchant-1' };
 
 describe('Uber merchant gateway use-case boundaries', () => {
-  it('persists and presents a validated discovery result', async () => {
+  it('presents discovery candidates without binding before admin confirmation', async () => {
     const store = {
       storeId: 'uber-store-1',
       storeName: 'Fixture Store',
@@ -21,7 +24,6 @@ describe('Uber merchant gateway use-case boundaries', () => {
     };
     const mappings = {
       findMappings: jest.fn().mockResolvedValue([]),
-      saveDiscovery: jest.fn().mockResolvedValue(undefined),
     };
     const useCase = new DiscoverUberStoresUseCase(
       api,
@@ -33,7 +35,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       useCase.getMerchantStores(' merchant-1 '),
     ).resolves.toMatchObject({
       ok: true,
-      merchantUberUserId: 'merchant-1',
+      connectionId: 'merchant-1',
       count: 1,
       stores: [
         expect.objectContaining({
@@ -43,13 +45,6 @@ describe('Uber merchant gateway use-case boundaries', () => {
       ],
     });
     expect(api.discoverStores).toHaveBeenCalledWith(connection);
-    expect(mappings.saveDiscovery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        merchantUberUserId: 'merchant-1',
-        uberStoreId: 'uber-store-1',
-        isProvisioned: true,
-      }),
-    );
   });
 
   it.each([
@@ -63,7 +58,6 @@ describe('Uber merchant gateway use-case boundaries', () => {
     };
     const mappings = {
       findMappings: jest.fn(),
-      saveDiscovery: jest.fn(),
     };
     const useCase = new DiscoverUberStoresUseCase(
       { discoverStores: jest.fn().mockRejectedValue(failure) },
@@ -73,7 +67,70 @@ describe('Uber merchant gateway use-case boundaries', () => {
 
     await expect(useCase.getMerchantStores('merchant-1')).rejects.toBe(failure);
     expect(mappings.findMappings).not.toHaveBeenCalled();
-    expect(mappings.saveDiscovery).not.toHaveBeenCalled();
+  });
+
+  it('reauthorization reconnects an existing mapped store and preserves provisioning state', async () => {
+    const existing = {
+      connectionId: 'old-connection',
+      uberStoreId: 'uber-store-1',
+      storeName: 'SanQ',
+      locationSummary: 'Toronto',
+      isProvisioned: true,
+      provisionedAt: new Date('2026-01-01T00:00:00.000Z'),
+      posExternalStoreId: 'sanq-pos',
+    };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue(existing),
+      reconnectMapping: jest.fn().mockResolvedValue({
+        ...existing,
+        connectionId: 'new-connection',
+      }),
+    };
+    const useCase = new MapUberStoreUseCase(
+      mappings as never,
+      { discoverStores: jest.fn().mockResolvedValue({ stores: [{ storeId: 'uber-store-1' }] }) } as never,
+      { findConnection: jest.fn().mockResolvedValue({ connectionId: 'new-connection' }) } as never,
+    );
+
+    await expect(useCase.selectStore({
+      connectionId: 'new-connection',
+      reconnectFromConnectionId: 'old-connection',
+      storeId: 'uber-store-1',
+    })).resolves.toMatchObject({
+      mapping: {
+        connectionId: 'new-connection',
+        isProvisioned: true,
+        provisionedAt: existing.provisionedAt,
+        posExternalStoreId: 'sanq-pos',
+      },
+    });
+    expect(mappings.reconnectMapping).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fromConnectionId: 'old-connection',
+        toConnectionId: 'new-connection',
+      }),
+    );
+  });
+
+  it('does not let an unrelated connection hijack an existing mapping', async () => {
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'owner-connection',
+        uberStoreId: 'uber-store-1',
+      }),
+      reconnectMapping: jest.fn(),
+    };
+    const useCase = new MapUberStoreUseCase(
+      mappings as never,
+      { discoverStores: jest.fn().mockResolvedValue({ stores: [] }) } as never,
+      { findConnection: jest.fn().mockResolvedValue({ connectionId: 'attacker' }) } as never,
+    );
+    await expect(useCase.selectStore({
+      connectionId: 'attacker',
+      storeId: 'uber-store-1',
+      reconnectFromConnectionId: 'owner-connection',
+    })).rejects.toMatchObject({ code: 'STORE_NOT_AUTHORIZED' });
+    expect(mappings.reconnectMapping).not.toHaveBeenCalled();
   });
 
   it('persists a validated provision response and excludes credential fields', async () => {
@@ -87,6 +144,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       }),
     };
     const mappings = {
+      findMapping: jest.fn().mockResolvedValue({ ...connection, uberStoreId: 'uber-store-1', storeName: 'Fixture Store', locationSummary: 'Toronto', isProvisioned: false, provisionedAt: null, posExternalStoreId: null }),
       upsertMapping: jest.fn().mockResolvedValue({
         provisionedAt: new Date('2026-01-01T00:00:00.000Z'),
       }),
@@ -124,7 +182,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       code: 'UBER_STORE_PROVISION_MAPPING_FAILED',
       retryable: false,
     };
-    const mappings = { upsertMapping: jest.fn() };
+    const mappings = { findMapping: jest.fn().mockResolvedValue({ ...connection, uberStoreId: 'uber-store-1' }), upsertMapping: jest.fn() };
     const useCase = new ProvisionUberStoreUseCase(
       { provisionStore: jest.fn().mockRejectedValue(failure) },
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,

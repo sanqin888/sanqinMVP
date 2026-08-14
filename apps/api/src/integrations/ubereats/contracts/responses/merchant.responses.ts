@@ -8,10 +8,13 @@ export class UberMerchantStoreResponse {
   isProvisioned!: boolean;
   provisionedAt!: string | null;
   posExternalStoreId!: string | null;
+  isMapped!: boolean;
+  mappedConnectionId!: string | null;
+  requiresReconnect!: boolean;
 }
 
 export class UberMerchantStoresResponse {
-  merchantUberUserId!: string;
+  connectionId!: string;
   stores!: UberMerchantStoreResponse[];
   pageInfo!: {
     limit: number;
@@ -23,7 +26,7 @@ export class UberMerchantStoresResponse {
 }
 
 export class UberMerchantConnectionResponse {
-  uberUserId!: string;
+  connectionId!: string;
   scope!: string | null;
   tokenType!: string | null;
   expiresAt!: string | null;

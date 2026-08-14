@@ -1,6 +1,6 @@
 import { UberTransientUpstreamError } from '../shared/uber-application.error';
 import type {
-  UberOAuthIdentityTokens,
+  UberOAuthTokens,
   UberOAuthTokenPort,
 } from '../merchant/uber-merchant-api.ports';
 import type {
@@ -14,7 +14,6 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
   const nonce = 'nonce-1';
   const stateValue = `${now}.${nonce}.signature`;
   const token = {
-    uberUserId: '123e4567-e89b-42d3-a456-426614174000',
     accessToken: 'secret-access',
     refreshToken: 'secret-refresh',
     expiresAt: null,
@@ -37,13 +36,13 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       status: 'ISSUED',
       retryCount: 0,
       lastErrorCategory: null,
-      uberUserId: null,
+      connectionId: null,
       scope: null,
       tokenType: null,
       tokenExpiresAt: null,
       connectedAt: null,
     };
-    let recovery: UberOAuthIdentityTokens | null = null;
+    let recovery: (UberOAuthTokens & { connectionId: string }) | null = null;
     const failOAuthState = jest.fn((_nonce: string, category: string) => {
       row.status = 'FAILED';
       row.lastErrorCategory = category;
@@ -66,7 +65,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       saveExchangedTokens: jest.fn((value) => {
         recovery = { ...value };
         row.status = 'EXCHANGED';
-        row.uberUserId = value.uberUserId;
+        row.connectionId = value.connectionId;
         row.scope = value.scope;
         row.tokenType = value.tokenType;
         row.tokenExpiresAt = value.expiresAt;
@@ -90,14 +89,14 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       buildAuthorizeUrl: jest.fn(() => 'https://example.com/authorize'),
       exchangeAuthorizationCode,
     };
-    const upsertConnectionByUberUserId = jest.fn(() =>
+    const upsertConnectionByConnectionId = jest.fn(() =>
       Promise.resolve({
         connectedAt: new Date(),
       }),
     );
     const connections: UberMerchantConnectionRepositoryPort = {
       findConnection: jest.fn(() => Promise.resolve(null)),
-      upsertConnectionByUberUserId,
+      upsertConnectionByConnectionId,
     };
     return {
       row,
@@ -107,7 +106,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
       exchangeAuthorizationCode,
       verifyState,
       failOAuthState,
-      upsertConnectionByUberUserId,
+      upsertConnectionByConnectionId,
       useCase: new CompleteUberOAuthUseCase(tokens, states, connections),
     };
   };
@@ -160,7 +159,7 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
   it('token 成功后连接数据库失败会保留 EXCHANGED，并在重放时恢复而不重复兑换', async () => {
     const x = setup();
     jest
-      .mocked(x.upsertConnectionByUberUserId)
+      .mocked(x.upsertConnectionByConnectionId)
       .mockRejectedValueOnce(new Error('database unavailable'));
     expect(
       await x.useCase.exchangeAuthorizationCode(
@@ -194,9 +193,9 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
         { code: 'code', state: stateValue },
         'session-1',
       ),
-    ).toMatchObject({ ok: true, value: { uberUserId: token.uberUserId } });
+    ).toMatchObject({ ok: true, value: { connectionId: x.row.connectionId } });
     expect(x.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
-    expect(x.upsertConnectionByUberUserId).toHaveBeenCalledTimes(1);
+    expect(x.upsertConnectionByConnectionId).toHaveBeenCalledTimes(1);
   });
 
   it('验证 state 后将用户拒绝终结为稳定错误，且不兑换 code', async () => {

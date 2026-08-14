@@ -7,6 +7,7 @@ import {
   type UberStoreMappingRepositoryPort,
 } from './uber-merchant-persistence.ports';
 import type { UberOperationsAlertRepositoryPort } from '../operations/uber-operations-alert.ports';
+import { AppLogger } from '../../../../common/app-logger';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;
@@ -34,6 +35,7 @@ const sanitize = (v: unknown): unknown =>
         );
 
 export class ProvisionUberStoreUseCase {
+  private readonly logger = new AppLogger(ProvisionUberStoreUseCase.name);
   constructor(
     private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
@@ -61,7 +63,7 @@ export class ProvisionUberStoreUseCase {
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
         operation: 'merchant',
-        message: 'merchantUberUserId 不能为空',
+        message: 'connectionId 不能为空',
       });
     const connection = await this.connections.findConnection(merchantId.trim());
     if (!connection)
@@ -70,12 +72,19 @@ export class ProvisionUberStoreUseCase {
         operation: 'merchant',
         message: '未找到 Uber 商户授权',
       });
+    const selected = await this.mappings.findMapping(id);
+    if (!selected || selected.connectionId !== connection.connectionId)
+      throw new UberValidationError({
+        code: 'STORE_NOT_MAPPED',
+        operation: 'merchant',
+        message: '请先确认并保存 Uber 门店映射，再执行 provisioning',
+      });
     const response = await this.api.provisionStore(
-      { merchantUberUserId: connection.merchantUberUserId },
+      { connectionId: connection.connectionId },
       id,
       payload,
       buildUberIdempotencyKey({
-        taskId: `store-provision:${connection.merchantUberUserId}:${id}`,
+        taskId: `store-provision:${connection.connectionId}:${id}`,
         resourceId: id,
         action: 'PROVISION_STORE',
         businessVersion: createHash('sha256')
@@ -84,17 +93,21 @@ export class ProvisionUberStoreUseCase {
       }),
     );
     const mapping = await this.mappings.upsertMapping({
-      merchantUberUserId: connection.merchantUberUserId,
+      connectionId: connection.connectionId,
       uberStoreId: id,
-      storeName: response.storeName,
-      locationSummary: response.locationSummary,
+      storeName: response.storeName ?? selected.storeName,
+      locationSummary: response.locationSummary ?? selected.locationSummary,
       isProvisioned: true,
       provisionedAt: new Date(),
-      posExternalStoreId: response.posExternalStoreId,
+      posExternalStoreId:
+        response.posExternalStoreId ?? selected.posExternalStoreId,
     });
+    this.logger.log(
+      `[merchant.provisioning] storeId=${id} outcome=success`,
+    );
     return {
       ok: true,
-      merchantUberUserId: connection.merchantUberUserId,
+      connectionId: connection.connectionId,
       storeId: id,
       isProvisioned: true,
       provisionedAt: mapping.provisionedAt,

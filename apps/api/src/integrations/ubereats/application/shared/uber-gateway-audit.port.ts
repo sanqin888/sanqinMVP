@@ -7,7 +7,7 @@ export type UberGatewayAuditJsonValue = UberJsonValue;
 
 export interface UberGatewayAuditEvent {
   operation: string;
-  merchantUberUserId?: string;
+  connectionId?: string;
   orderId?: string;
   storeId?: string;
   outcome: 'RECEIVED' | 'SUCCEEDED' | 'REJECTED' | 'FAILED';

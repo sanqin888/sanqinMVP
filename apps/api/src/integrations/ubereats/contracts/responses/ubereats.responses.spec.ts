@@ -76,7 +76,7 @@ describe('Uber Eats public response contracts', () => {
       repositoryOnly: 42,
     };
     const store = presentMerchantStores({
-      merchantUberUserId: 'm1',
+      connectionId: 'm1',
       stores: [
         {
           ...internal,
@@ -89,7 +89,7 @@ describe('Uber Eats public response contracts', () => {
     }).stores[0];
     const connection = presentMerchantConnection({
       ...internal,
-      merchantUberUserId: 'm1',
+      connectionId: 'm1',
       scope: 'eats.store',
       tokenType: 'bearer',
       connectedAt: new Date(0),
