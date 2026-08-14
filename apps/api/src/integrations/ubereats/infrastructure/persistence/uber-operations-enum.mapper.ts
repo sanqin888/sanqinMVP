@@ -7,11 +7,7 @@ import type {
   UberOpsTicketPriority,
   UberOpsTicketStatus,
   UberOpsTicketType,
-<<<<<<< HEAD
 } from '../../application/operations/uber-operations.types';
-=======
-} from '../../domain/operations/uber-operations.types';
->>>>>>> origin/main
 
 const invert = <K extends string, V extends string>(mapping: Record<K, V>) =>
   Object.fromEntries(

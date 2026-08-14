@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-<<<<<<< HEAD
 import type { UberRateLimitConfig } from './uber-api-config.service';
 import { UberApiConfigService } from './uber-api-config.service';
 import {
@@ -13,44 +12,6 @@ export * from '../../application/shared/uber-rate-limiter.port';
 type Waiter = {
   request: UberRateLimitRequest;
   enqueuedAt: number;
-=======
-import type { UberRateLimitConfig } from '../config/uber-config.service';
-import { UberConfigService } from '../config/uber-config.service';
-
-export const UBER_RATE_LIMITER_PORT = Symbol('UBER_RATE_LIMITER_PORT');
-
-export type UberRateLimitRequest = {
-  partitionKey: string;
-  operation: string;
-  weight: number;
-};
-export type UberRateLimitFeedback = {
-  status: number;
-  retryAfter: string | null;
-};
-export interface UberRateLimitLease {
-  release(): void;
-  feedback(value: UberRateLimitFeedback): void;
-}
-export interface UberRateLimiterPort {
-  acquire(request: UberRateLimitRequest): Promise<UberRateLimitLease>;
-}
-
-export class UberRateLimitRejectedError extends Error {
-  constructor(
-    readonly reason: 'queue_full' | 'wait_timeout',
-    partition: string,
-  ) {
-    super(
-      `Uber API 限流器拒绝请求（reason=${reason}, partition=${partition}）`,
-    );
-    this.name = 'UberRateLimitRejectedError';
-  }
-}
-
-type Waiter = {
-  request: UberRateLimitRequest;
->>>>>>> origin/main
   resolve: (lease: UberRateLimitLease) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -73,7 +34,6 @@ type Partition = {
 export class ProcessUberRateLimiter implements UberRateLimiterPort {
   private readonly partitions = new Map<string, Partition>();
   constructor(
-<<<<<<< HEAD
     @Inject(UberApiConfigService) private readonly config: UberRateLimitConfig,
     private readonly metrics?: {
       increment(
@@ -91,9 +51,6 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
         labels?: Record<string, string>,
       ): void;
     },
-=======
-    @Inject(UberConfigService) private readonly config: UberRateLimitConfig,
->>>>>>> origin/main
   ) {}
 
   acquire(request: UberRateLimitRequest): Promise<UberRateLimitLease> {
@@ -102,13 +59,10 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
     if (this.canRun(state, request.weight))
       return Promise.resolve(this.grant(state, request));
     if (state.queue.length >= this.config.uberApiQueueLengthPerPartition) {
-<<<<<<< HEAD
       this.metrics?.increment('ubereats_rate_limit_rejected_total', {
         operation: request.operation,
         reason: 'queue_full',
       });
-=======
->>>>>>> origin/main
       return Promise.reject(
         new UberRateLimitRejectedError('queue_full', request.partitionKey),
       );
@@ -116,16 +70,12 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
     return new Promise((resolve, reject) => {
       const waiter: Waiter = {
         request,
-<<<<<<< HEAD
         enqueuedAt: Date.now(),
-=======
->>>>>>> origin/main
         resolve,
         reject,
         timeout: setTimeout(() => {
           const index = state.queue.indexOf(waiter);
           if (index >= 0) state.queue.splice(index, 1);
-<<<<<<< HEAD
           this.metrics?.gauge(
             'ubereats_rate_limit_queue_depth',
             state.queue.length,
@@ -135,8 +85,6 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
             operation: request.operation,
             reason: 'wait_timeout',
           });
-=======
->>>>>>> origin/main
           reject(
             new UberRateLimitRejectedError(
               'wait_timeout',
@@ -147,14 +95,11 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
         }, this.config.uberApiQueueWaitTimeoutMs),
       };
       state.queue.push(waiter);
-<<<<<<< HEAD
       this.metrics?.gauge(
         'ubereats_rate_limit_queue_depth',
         state.queue.length,
         { operation: request.operation },
       );
-=======
->>>>>>> origin/main
       this.schedule(state);
     });
   }
@@ -206,12 +151,9 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
       },
       feedback: ({ status, retryAfter }) => {
         if (status !== 429) return;
-<<<<<<< HEAD
         this.metrics?.increment('ubereats_api_429_total', {
           operation: request.operation,
         });
-=======
->>>>>>> origin/main
         state.cooldownUntil = Math.max(
           state.cooldownUntil,
           Date.now() + this.retryAfterMs(retryAfter),
@@ -228,7 +170,6 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
     ) {
       const waiter = state.queue.shift()!;
       clearTimeout(waiter.timeout);
-<<<<<<< HEAD
       this.metrics?.gauge(
         'ubereats_rate_limit_queue_depth',
         state.queue.length,
@@ -239,8 +180,6 @@ export class ProcessUberRateLimiter implements UberRateLimiterPort {
         Date.now() - waiter.enqueuedAt,
         { operation: waiter.request.operation },
       );
-=======
->>>>>>> origin/main
       waiter.resolve(this.grant(state, waiter.request));
     }
     this.schedule(state);

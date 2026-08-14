@@ -3,21 +3,13 @@ import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './uber-worker.adapters';
-<<<<<<< HEAD
 import { UberWorkerConfigService } from './uber-worker-config.service';
-=======
-import { UberConfigService } from '../config/uber-config.service';
->>>>>>> origin/main
 
 describe('Uber durable worker adapters', () => {
   afterEach(() => jest.restoreAllMocks());
 
   const config = (env: Record<string, string> = {}) =>
-<<<<<<< HEAD
     new UberWorkerConfigService({
-=======
-    new UberConfigService({
->>>>>>> origin/main
       UBER_EATS_WORKER_ENABLED: 'true',
       UBER_EATS_WORKER_BATCH_SIZE: '1',
       UBER_EATS_WORKER_SHUTDOWN_TIMEOUT_MS: '100',
@@ -27,7 +19,6 @@ describe('Uber durable worker adapters', () => {
   it.each([
     ['webhook inbox', UberWebhookInboxWorkerAdapter],
     ['order action', UberOrderActionWorkerAdapter],
-<<<<<<< HEAD
     ['menu confirmation', UberMenuPublishConfirmationWorkerAdapter],
   ])(
     '%s delegates a poll exclusively to its injected use case',
@@ -47,8 +38,6 @@ describe('Uber durable worker adapters', () => {
   it.each([
     ['webhook inbox', UberWebhookInboxWorkerAdapter],
     ['order action', UberOrderActionWorkerAdapter],
-=======
->>>>>>> origin/main
     ['menu publish confirmation', UberMenuPublishConfirmationWorkerAdapter],
   ])('%s prevents concurrent claims in one process', async (_name, Worker) => {
     let release!: () => void;
@@ -81,7 +70,6 @@ describe('Uber durable worker adapters', () => {
     expect(execute).toHaveBeenCalledTimes(2);
   });
 
-<<<<<<< HEAD
   it('isolates an order-action use-case infrastructure error in the thin runner', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const execute = jest.fn().mockRejectedValue(new Error('database offline'));
@@ -98,8 +86,6 @@ describe('Uber durable worker adapters', () => {
     });
   });
 
-=======
->>>>>>> origin/main
   it('does not start new work after shutdown begins', async () => {
     let release!: () => void;
     const execute = jest.fn(
@@ -120,11 +106,7 @@ describe('Uber durable worker adapters', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-<<<<<<< HEAD
   it('atomically snapshots a success, a temporary failure, and recovery', async () => {
-=======
-  it('exposes successful claim and failure metrics', async () => {
->>>>>>> origin/main
     const execute = jest
       .fn()
       .mockResolvedValueOnce(2)
@@ -134,7 +116,6 @@ describe('Uber durable worker adapters', () => {
       config(),
     );
     await adapter.runOnce();
-<<<<<<< HEAD
     const successful = adapter.getMetrics();
     expect(successful).toMatchObject({
       claimed: 2,
@@ -163,11 +144,6 @@ describe('Uber durable worker adapters', () => {
       consecutiveFailures: 0,
       lastFailureAt: failed.lastFailureAt,
     });
-=======
-    await adapter.runOnce();
-    expect(adapter.getMetrics()).toMatchObject({ claimed: 2, failures: 1 });
-    expect(adapter.getMetrics().lastSuccessfulAt).toBeInstanceOf(Date);
->>>>>>> origin/main
   });
 
   it('does not overlap claims made by duplicate worker instances', async () => {
@@ -197,7 +173,6 @@ describe('Uber durable worker adapters', () => {
     await adapter.runOnce();
     expect(adapter.getMetrics().leaseRecoveries).toBe(1);
   });
-<<<<<<< HEAD
 
   it('replaces the current backlog snapshot when the backlog grows', async () => {
     const execute = jest
@@ -214,6 +189,4 @@ describe('Uber durable worker adapters', () => {
     await adapter.runOnce();
     expect(adapter.getMetrics()).toMatchObject({ claimed: 2, backlog: 7 });
   });
-=======
->>>>>>> origin/main
 });

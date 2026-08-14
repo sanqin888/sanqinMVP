@@ -1,15 +1,10 @@
-<<<<<<< HEAD
 import { Inject, Injectable } from '@nestjs/common';
-=======
-import { BadRequestException, Injectable } from '@nestjs/common';
->>>>>>> origin/main
 import { isIP } from 'net';
 import { lookup } from 'dns/promises';
 import {
   UberApiGatewayTransport,
   type UberGatewayRequest,
   type UberResourceGateway,
-<<<<<<< HEAD
   type UberGatewayTransportPort,
 } from './uber-api.gateway';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
@@ -30,29 +25,16 @@ abstract class PrefixGateway implements UberResourceGateway {
     @Inject(UberApiGatewayTransport)
     protected readonly transport: UberGatewayTransportPort,
   ) {}
-=======
-} from './uber-api.gateway';
-import type { UberOrderActionGatewayPort } from '../../application/ports/uber-api.ports';
-import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
-
-abstract class PrefixGateway implements UberResourceGateway {
-  protected abstract readonly prefixes: readonly string[];
-  constructor(protected readonly transport: UberApiGatewayTransport) {}
->>>>>>> origin/main
 
   request<T = Record<string, unknown>>(
     request: UberGatewayRequest,
   ): Promise<T> {
     if (!this.prefixes.some((prefix) => request.path.startsWith(prefix)))
-<<<<<<< HEAD
       throw invalidResource(
         'UBER_RESOURCE_PATH_UNSUPPORTED',
         'Uber resource path 不属于此 gateway',
         request.operation,
       );
-=======
-      throw new BadRequestException('Uber resource path 不属于此 gateway');
->>>>>>> origin/main
     return this.transport.request<T>(request);
   }
 }
@@ -73,14 +55,7 @@ export class UberMenuGateway extends PrefixGateway {
 }
 
 @Injectable()
-<<<<<<< HEAD
 export class UberOrderGateway extends PrefixGateway {
-=======
-export class UberOrderGateway
-  extends PrefixGateway
-  implements UberOrderActionGatewayPort
-{
->>>>>>> origin/main
   protected readonly prefixes = [
     '/v1/eats/orders',
     '/v1/delivery/order',
@@ -88,11 +63,7 @@ export class UberOrderGateway
   ] as const;
 
   constructor(
-<<<<<<< HEAD
     transport: UberGatewayTransportPort,
-=======
-    transport: UberApiGatewayTransport,
->>>>>>> origin/main
     private readonly config: { resourceHrefAllowedOrigins: string },
   ) {
     super(transport);
@@ -103,15 +74,11 @@ export class UberOrderGateway
     try {
       url = new URL(resourceHref);
     } catch {
-<<<<<<< HEAD
       throw invalidResource(
         'UBER_RESOURCE_HREF_INVALID',
         'Uber resource_href 无效',
         'order.resource_href.validate',
       );
-=======
-      throw new BadRequestException('Uber resource_href 无效');
->>>>>>> origin/main
     }
     const allowed = new Set(
       this.config.resourceHrefAllowedOrigins
@@ -127,7 +94,6 @@ export class UberOrderGateway
       url.password ||
       !allowed.has(url.origin)
     )
-<<<<<<< HEAD
       throw invalidResource(
         'UBER_RESOURCE_HREF_ORIGIN_FORBIDDEN',
         'Uber resource_href 不属于允许的来源',
@@ -147,18 +113,10 @@ export class UberOrderGateway
         cause,
       });
     }
-=======
-      throw new BadRequestException('Uber resource_href 不属于允许的来源');
-
-    const addresses = isIP(url.hostname)
-      ? [{ address: url.hostname }]
-      : await lookup(url.hostname, { all: true, verbatim: true });
->>>>>>> origin/main
     if (
       !addresses.length ||
       addresses.some(({ address }) => !this.isPublic(address))
     )
-<<<<<<< HEAD
       throw invalidResource(
         'UBER_RESOURCE_ADDRESS_UNSAFE',
         'Uber resource_href 地址不安全',
@@ -171,18 +129,11 @@ export class UberOrderGateway
         'Uber resource_href path 不受支持',
         'order.resource_href.validate',
       );
-=======
-      throw new BadRequestException('Uber resource_href 地址不安全');
-    const path = `${url.pathname}${url.search}`;
-    if (!this.prefixes.some((prefix) => path.startsWith(prefix)))
-      throw new BadRequestException('Uber resource_href path 不受支持');
->>>>>>> origin/main
     return path;
   }
 
   inspect<T>(request: UberGatewayRequest) {
     if (!this.prefixes.some((prefix) => request.path.startsWith(prefix)))
-<<<<<<< HEAD
       throw invalidResource(
         'UBER_RESOURCE_PATH_UNSUPPORTED',
         'Uber order path 不受支持',
@@ -194,15 +145,6 @@ export class UberOrderGateway
   async sendActionCommand(
     externalOrderId: string,
     action: Exclude<UberOrderActionName, 'CANCEL'>,
-=======
-      throw new BadRequestException('Uber order path 不受支持');
-    return this.transport.inspect<T>(request);
-  }
-
-  async executeAction(
-    externalOrderId: string,
-    action: UberOrderActionName,
->>>>>>> origin/main
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ) {
@@ -217,13 +159,9 @@ export class UberOrderGateway
       method: 'POST',
       operation: `uber.order.${action.toLowerCase()}`,
       scope: 'eats.order',
-<<<<<<< HEAD
       // The action API does not carry a store id; coordinate it at the merchant
       // partition rather than incorrectly creating one quota per order.
       partitionKey: 'merchant:app',
-=======
-      partitionKey: externalOrderId,
->>>>>>> origin/main
       json: payload,
       idempotencyKey,
     });
@@ -231,10 +169,7 @@ export class UberOrderGateway
       ok: result.response.ok,
       status: result.response.status,
       data: result.data,
-<<<<<<< HEAD
       retryAfter: result.response.headers.get('retry-after'),
-=======
->>>>>>> origin/main
     };
   }
 

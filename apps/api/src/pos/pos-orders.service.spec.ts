@@ -24,10 +24,7 @@ describe('PosOrdersService', () => {
         actionResult: { status: 'SUCCEEDED', actionId: 'action_1' },
       }),
       accept: jest.fn().mockResolvedValue({ ok: true }),
-<<<<<<< HEAD
       cancel: jest.fn().mockResolvedValue({ ok: true }),
-=======
->>>>>>> origin/main
       getReadyForPickupAction: jest.fn().mockResolvedValue(null),
       retryReadyForPickup: jest.fn(),
     };

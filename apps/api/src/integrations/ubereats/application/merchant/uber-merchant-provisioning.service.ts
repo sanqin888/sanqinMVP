@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { UberValidationError } from '../shared/uber-application.error';
 import { type UberStoreApiPort } from '../merchant/uber-merchant-api.ports';
 import { createHash } from 'crypto';
@@ -8,21 +7,6 @@ import {
   type UberStoreMappingRepositoryPort,
 } from './uber-merchant-persistence.ports';
 import type { UberOperationsAlertRepositoryPort } from '../operations/uber-operations-alert.ports';
-=======
-import { Inject, Injectable } from '@nestjs/common';
-import { UberValidationError } from '../errors/uber-application.error';
-import { UBER_STORE_API, type UberStoreApiPort } from '../ports/uber-api.ports';
-import { createHash } from 'crypto';
-import { buildUberIdempotencyKey } from '../idempotency/uber-idempotency-key';
-import {
-  UBER_MERCHANT_CONNECTION_REPOSITORY,
-  UBER_OPERATIONS_ALERT_REPOSITORY,
-  UBER_STORE_MAPPING_REPOSITORY,
-  type UberMerchantConnectionRepositoryPort,
-  type UberOperationsAlertRepositoryPort,
-  type UberStoreMappingRepositoryPort,
-} from '../ports/uber-persistence.ports';
->>>>>>> origin/main
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;
@@ -30,17 +14,6 @@ export type UberStoreStatusTarget = {
   reason?: string;
   pauseUntil?: string;
 };
-<<<<<<< HEAD
-=======
-const object = (v: unknown): Record<string, unknown> | null =>
-  v && typeof v === 'object' && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null;
-const text = (...vs: unknown[]) => {
-  for (const v of vs) if (typeof v === 'string' && v.trim()) return v.trim();
-  return null;
-};
->>>>>>> origin/main
 const credentials = (v: unknown): boolean =>
   Array.isArray(v)
     ? v.some(credentials)
@@ -60,20 +33,10 @@ const sanitize = (v: unknown): unknown =>
             .map(([k, x]) => [k, sanitize(x)]),
         );
 
-<<<<<<< HEAD
 export class ProvisionUberStoreUseCase {
   constructor(
     private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
-=======
-@Injectable()
-export class ProvisionUberStoreUseCase {
-  constructor(
-    @Inject(UBER_STORE_API) private readonly api: UberStoreApiPort,
-    @Inject(UBER_MERCHANT_CONNECTION_REPOSITORY)
-    private readonly connections: UberMerchantConnectionRepositoryPort,
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
->>>>>>> origin/main
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
   async provisionStore(
@@ -108,11 +71,7 @@ export class ProvisionUberStoreUseCase {
         message: '未找到 Uber 商户授权',
       });
     const response = await this.api.provisionStore(
-<<<<<<< HEAD
       { merchantUberUserId: connection.merchantUberUserId },
-=======
-      connection.accessToken,
->>>>>>> origin/main
       id,
       payload,
       buildUberIdempotencyKey({
@@ -124,7 +83,6 @@ export class ProvisionUberStoreUseCase {
           .digest('hex'),
       }),
     );
-<<<<<<< HEAD
     const mapping = await this.mappings.upsertMapping({
       merchantUberUserId: connection.merchantUberUserId,
       uberStoreId: id,
@@ -133,22 +91,6 @@ export class ProvisionUberStoreUseCase {
       isProvisioned: true,
       provisionedAt: new Date(),
       posExternalStoreId: response.posExternalStoreId,
-=======
-    const store = object(response.store);
-    const location = object(response.location) ?? object(response.address);
-    const mapping = await this.mappings.upsertMapping({
-      merchantUberUserId: connection.merchantUberUserId,
-      uberStoreId: id,
-      storeName: text(store?.name, response.store_name),
-      locationSummary: text(
-        response.location_summary,
-        location?.formatted_address,
-      ),
-      isProvisioned: true,
-      provisionedAt: new Date(),
-      posExternalStoreId: text(response.pos_external_store_id),
-      rawPayload: response,
->>>>>>> origin/main
     });
     return {
       ok: true,
@@ -160,10 +102,6 @@ export class ProvisionUberStoreUseCase {
     };
   }
 }
-<<<<<<< HEAD
-=======
-@Injectable()
->>>>>>> origin/main
 export class DeprovisionUberStoreUseCase {
   revokeOrDeprovisionStore() {
     throw new UberValidationError({
@@ -174,20 +112,10 @@ export class DeprovisionUberStoreUseCase {
   }
 }
 
-<<<<<<< HEAD
 export class SyncUberStoreStatusUseCase {
   constructor(
     private readonly api: UberStoreApiPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
-=======
-@Injectable()
-export class SyncUberStoreStatusUseCase {
-  constructor(
-    @Inject(UBER_STORE_API) private readonly api: UberStoreApiPort,
-    @Inject(UBER_STORE_MAPPING_REPOSITORY)
-    private readonly mappings: UberStoreMappingRepositoryPort,
-    @Inject(UBER_OPERATIONS_ALERT_REPOSITORY)
->>>>>>> origin/main
     private readonly alerts: UberOperationsAlertRepositoryPort,
   ) {}
   async syncStoreStatusToUber(target?: UberStoreStatusTarget) {
@@ -217,14 +145,8 @@ export class SyncUberStoreStatusUseCase {
       const result = !mapping.isProvisioned
         ? {
             uberStoreId: mapping.uberStoreId,
-<<<<<<< HEAD
             outcome: 'SKIPPED' as const,
             reason: 'NOT_PROVISIONED' as const,
-=======
-            ok: false,
-            skipped: true,
-            status: 422,
->>>>>>> origin/main
             attempts: 0,
             error: 'Uber 门店尚未 provision，未发送状态写请求',
           }
@@ -240,7 +162,6 @@ export class SyncUberStoreStatusUseCase {
           );
       results.push(result);
       await this.alerts.recordStoreStatusResult(result, payload);
-<<<<<<< HEAD
       if (result.outcome === 'FAILED')
         await this.alerts.createStoreStatusAlert(
           mapping.uberStoreId,
@@ -273,31 +194,6 @@ export class SyncUberStoreStatusUseCase {
           (result) => result.outcome === 'FAILED' && result.retryable,
         ),
       },
-=======
-      if (
-        !result.ok &&
-        typeof result.status === 'number' &&
-        result.status >= 400 &&
-        result.status < 500
-      )
-        await this.alerts.createStoreStatusAlert(
-          mapping.uberStoreId,
-          typeof result.error === 'string'
-            ? result.error
-            : 'Uber 门店状态写入被拒绝',
-          result.status,
-          payload,
-        );
-    }
-    const succeeded = results.filter((r) => r.ok).length;
-    return {
-      ok: results.length > 0 && succeeded === results.length,
-      total: results.length,
-      succeeded,
-      failed: results.length - succeeded,
-      payload,
-      results,
->>>>>>> origin/main
     };
   }
   private parsePause(value?: string | null) {

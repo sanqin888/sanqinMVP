@@ -1,16 +1,9 @@
-<<<<<<< HEAD
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   constructorDependencyTypes,
   formatSourceViolation,
   interfaceMethods,
-=======
-import { existsSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
-import {
-  formatSourceViolation,
->>>>>>> origin/main
   importSpecifiers,
   importViolations,
   scanTypeScript,
@@ -19,7 +12,6 @@ import {
 
 const SOURCE_ROOT = resolve(__dirname, '../..');
 const BOUNDED_CONTEXT_ROOT = resolve(__dirname);
-<<<<<<< HEAD
 const PUBLIC_ENTRY_FILES = [
   'public-api.ts',
   'ubereats.module.ts',
@@ -60,24 +52,17 @@ const WHITE_BOX_TEST_FILES = new Set([
   'uber-rate-limiter-composition.spec.ts',
   'ubereats.module.spec.ts',
 ]);
-=======
->>>>>>> origin/main
 const LAYERS = [
   'api',
   'application',
   'contracts',
   'domain',
   'infrastructure',
-<<<<<<< HEAD
   'composition-root',
-=======
-  'composition',
->>>>>>> origin/main
 ] as const;
 type Layer = (typeof LAYERS)[number];
 
 const layerOf = (path: string): Layer | undefined =>
-<<<<<<< HEAD
   path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts') ||
   path === join(BOUNDED_CONTEXT_ROOT, 'worker.ts') ||
   path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, 'infrastructure/nest')}${sep}`)
@@ -87,19 +72,11 @@ const layerOf = (path: string): Layer | undefined =>
       : LAYERS.find((layer) =>
           path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, layer)}${sep}`),
         );
-=======
-  path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts')
-    ? 'composition'
-    : LAYERS.find((layer) =>
-        path.startsWith(`${join(BOUNDED_CONTEXT_ROOT, layer)}${sep}`),
-      );
->>>>>>> origin/main
 
 const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
   api: ['api', 'application', 'contracts'],
   application: ['application', 'contracts', 'domain'],
   contracts: ['contracts', 'domain'],
-<<<<<<< HEAD
   domain: ['contracts', 'domain'],
   infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
   'composition-root': [
@@ -110,11 +87,6 @@ const ALLOWED_LAYER_DEPENDENCIES: Record<Layer, readonly Layer[]> = {
     'infrastructure',
     'composition-root',
   ],
-=======
-  domain: ['domain'],
-  infrastructure: ['application', 'contracts', 'domain', 'infrastructure'],
-  composition: ['api', 'application', 'contracts', 'domain', 'infrastructure'],
->>>>>>> origin/main
 };
 
 describe('Uber Eats bounded-context architecture', () => {
@@ -123,7 +95,6 @@ describe('Uber Eats bounded-context architecture', () => {
   });
   const allSourceFiles = scanTypeScript(SOURCE_ROOT, { productionOnly: true });
 
-<<<<<<< HEAD
   it('allows only the designed top-level directories and public entry files', () => {
     const entries = readdirSync(BOUNDED_CONTEXT_ROOT, {
       withFileTypes: true,
@@ -235,9 +206,6 @@ describe('Uber Eats bounded-context architecture', () => {
   });
 
   it('keeps persistence adapters permanently limited to database I/O', () => {
-=======
-  it('keeps persistence adapters limited to database I/O during facade migration', () => {
->>>>>>> origin/main
     const persistenceRoot = join(
       BOUNDED_CONTEXT_ROOT,
       'infrastructure/persistence',
@@ -300,29 +268,20 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
-<<<<<<< HEAD
   it('requires external callers to use explicit UberEats public entries', () => {
-=======
-  it('forbids callers outside UberEats from importing its infrastructure', () => {
->>>>>>> origin/main
     const externalFiles = allSourceFiles.filter(
       ({ path }) => !path.startsWith(`${BOUNDED_CONTEXT_ROOT}${sep}`),
     );
 
     expect(
       importViolations(externalFiles, SOURCE_ROOT, (specifier) =>
-<<<<<<< HEAD
         /integrations\/ubereats\/(?:api|application|domain|contracts|infrastructure|providers)(?:\/|$)/.test(
           specifier,
         ),
-=======
-        /integrations\/ubereats\/infrastructure(?:\/|$)/.test(specifier),
->>>>>>> origin/main
       ),
     ).toEqual([]);
   });
 
-<<<<<<< HEAD
   it('applies a separate public-entry policy to tests', () => {
     const allTypeScriptFiles = scanTypeScript(SOURCE_ROOT);
     const testFiles = allTypeScriptFiles.filter(
@@ -471,8 +430,6 @@ describe('Uber Eats bounded-context architecture', () => {
     ).toEqual([]);
   });
 
-=======
->>>>>>> origin/main
   it('keeps every UberEats production file under a named layer', () => {
     const unlayered = boundedContextFiles
       .filter(
@@ -555,7 +512,6 @@ describe('Uber Eats bounded-context architecture', () => {
 
   it('keeps focused use cases behind application-owned ports', () => {
     for (const path of [
-<<<<<<< HEAD
       'application/menu/upsert-uber-item-channel-config.use-case.ts',
       'application/menu/upsert-uber-option-item-config.use-case.ts',
       'application/menu/read-uber-menu-draft.use-case.ts',
@@ -565,9 +521,6 @@ describe('Uber Eats bounded-context architecture', () => {
       'application/menu/bind-uber-draft-option-child-group.use-case.ts',
       'application/menu/unbind-uber-draft-option-child-group.use-case.ts',
       'application/menu/query-uber-menu-draft-diff.use-case.ts',
-=======
-      'application/menu/uber-menu-draft.use-case.ts',
->>>>>>> origin/main
       'application/menu/publish-uber-menu.use-case.ts',
       'application/menu/uber-menu-availability.use-case.ts',
       'application/orders/uber-order.use-cases.ts',
@@ -578,7 +531,6 @@ describe('Uber Eats bounded-context architecture', () => {
           (file) => file.path === join(BOUNDED_CONTEXT_ROOT, path),
         )?.source ?? '';
       expect(source).not.toMatch(/PrismaService|UberHttpClient/);
-<<<<<<< HEAD
       expect(source).toMatch(/(?:port|repository|gateway)/i);
     }
   });
@@ -672,12 +624,6 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
-=======
-      expect(source).toMatch(/(?:PORT|REPOSITORY|GATEWAY)/);
-    }
-  });
-
->>>>>>> origin/main
   it('forbids application imports of infrastructure and the removed merchant gateway', () => {
     for (const path of boundedContextFiles.filter(
       ({ path }) => layerOf(path) === 'application',
@@ -769,7 +715,6 @@ describe('Uber Eats bounded-context architecture', () => {
     ).toEqual([]);
   });
 
-<<<<<<< HEAD
   it('allows only one order-action gateway boundary and no legacy outbox channel', () => {
     const applicationSources = boundedContextFiles.filter(
       ({ path }) => layerOf(path) === 'application',
@@ -793,8 +738,6 @@ describe('Uber Eats bounded-context architecture', () => {
     ).toEqual([]);
   });
 
-=======
->>>>>>> origin/main
   it('keeps periodic timers inside infrastructure/workers', () => {
     const violations = boundedContextFiles
       .filter(
