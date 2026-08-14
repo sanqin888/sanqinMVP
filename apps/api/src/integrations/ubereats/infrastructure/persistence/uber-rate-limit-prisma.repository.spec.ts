@@ -56,8 +56,10 @@ describe('UberRateLimitPrismaRepository', () => {
     ).resolves.toEqual({ acquired: true });
 
     expect(queryRaw).toHaveBeenCalledTimes(2);
-    expect(queryRaw.mock.calls[0][0].join('?')).toContain(
-      'pg_advisory_xact_lock',
+    const advisoryLockSql = queryRaw.mock.calls[0][0].join('?');
+    expect(advisoryLockSql).toContain('pg_advisory_xact_lock');
+    expect(advisoryLockSql).toMatch(
+      /pg_advisory_xact_lock\([\s\S]*hashtextextended\([\s\S]*\)[\s\S]*\)::text AS "lockResult"/,
     );
     expect(queryRaw.mock.calls[1][0].join('?')).toContain('FOR UPDATE');
     expect(tx.uberRateLimitLease.deleteMany).toHaveBeenCalledWith({
