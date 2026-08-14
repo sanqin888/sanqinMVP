@@ -37,26 +37,40 @@ export function validateUberEatsStartupConfig(
     present(env.UBER_CREDENTIAL_ACTIVE_KEY_VERSION)
   ) {
     try {
-      const keyRing = JSON.parse(
-        env.UBER_CREDENTIAL_ENCRYPTION_KEYS!,
-      ) as Record<string, string>;
-      const activeVersion = env.UBER_CREDENTIAL_ACTIVE_KEY_VERSION!;
-      if (!Object.prototype.hasOwnProperty.call(keyRing, activeVersion)) {
+      const parsed: unknown = JSON.parse(env.UBER_CREDENTIAL_ENCRYPTION_KEYS!);
+      if (!isKeyRingObject(parsed)) {
         errors.push(
-          'UBER_CREDENTIAL_ACTIVE_KEY_VERSION 不在 credential key ring 中',
+          'UBER_CREDENTIAL_ENCRYPTION_KEYS 必须为普通 JSON object key ring',
         );
-      }
-      if (
-        Object.entries(keyRing).some(
-          ([version, value]) => !/^\d+$/.test(version) || !isBase64Key(value),
-        )
-      ) {
-        errors.push('UBER_CREDENTIAL_ENCRYPTION_KEYS 格式无效');
+      } else {
+        const activeVersion = env.UBER_CREDENTIAL_ACTIVE_KEY_VERSION!;
+        if (Object.keys(parsed).length === 0) {
+          errors.push('UBER_CREDENTIAL_ENCRYPTION_KEYS 不得为空对象');
+        }
+        if (!Object.prototype.hasOwnProperty.call(parsed, activeVersion)) {
+          errors.push(
+            'UBER_CREDENTIAL_ACTIVE_KEY_VERSION 不在 credential key ring 中',
+          );
+        }
+        if (
+          Object.entries(parsed).some(
+            ([version, value]) =>
+              !/^\d+$/.test(version) ||
+              typeof value !== 'string' ||
+              !isBase64Key(value),
+          )
+        ) {
+          errors.push('UBER_CREDENTIAL_ENCRYPTION_KEYS 格式无效');
+        }
       }
     } catch {
       errors.push('UBER_CREDENTIAL_ENCRYPTION_KEYS 必须为 JSON key ring');
     }
   }
+  throwIfInvalid(errors, env);
+}
+
+function throwIfInvalid(errors: string[], env: NodeJS.ProcessEnv): void {
   if (env.UBER_CREDENTIAL_KEYS_SOURCE !== 'env') {
     errors.push('UBER_CREDENTIAL_KEYS_SOURCE 必须为 env');
   }
@@ -73,4 +87,8 @@ function isBase64Key(value: string): boolean {
     return false;
   const decoded = Buffer.from(value, 'base64');
   return decoded.length === 32 && decoded.toString('base64') === value;
+}
+
+function isKeyRingObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

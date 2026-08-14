@@ -377,6 +377,7 @@ export class UberAuthService {
       operation: 'uber.oauth.token',
       weight: this.config.operationWeight('uber.oauth.token'),
     });
+    let requestError: unknown;
     try {
       const { response, data } =
         await this.httpClient.request<UberTokenResponse>({
@@ -389,7 +390,7 @@ export class UberAuthService {
           body,
           kind: 'token',
         });
-      lease?.feedback({
+      await lease?.feedback({
         status: response.status,
         retryAfter: response.headers.get('retry-after'),
       });
@@ -415,8 +416,18 @@ export class UberAuthService {
       }
 
       return data || {};
+    } catch (error) {
+      requestError = error;
+      throw error;
     } finally {
-      lease?.release();
+      try {
+        await lease?.release();
+      } catch (releaseError) {
+        this.logger.error(
+          `[token.rate-limit-release] error=${releaseError instanceof Error ? releaseError.name : 'UnknownError'}`,
+        );
+        if (requestError === undefined) throw releaseError;
+      }
     }
   }
 

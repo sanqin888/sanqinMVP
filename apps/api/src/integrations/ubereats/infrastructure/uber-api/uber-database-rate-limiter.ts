@@ -68,18 +68,18 @@ export class DatabaseUberRateLimiter implements UberRateLimiterPort {
   private lease(request: UberRateLimitRequest, id: string): UberRateLimitLease {
     let released = false;
     return {
-      release: () => {
+      release: async () => {
         if (!released) {
           released = true;
-          void this.repository.release(id);
+          await this.repository.release(id);
         }
       },
-      feedback: ({ status, retryAfter }) => {
+      feedback: async ({ status, retryAfter }) => {
         if (status !== 429) return;
         this.metrics?.increment('ubereats_api_429_total', {
           operation: request.operation,
         });
-        void this.repository.extendCooldown(
+        await this.repository.extendCooldown(
           request.partitionKey,
           new Date(Date.now() + this.retryAfterMs(retryAfter)),
         );

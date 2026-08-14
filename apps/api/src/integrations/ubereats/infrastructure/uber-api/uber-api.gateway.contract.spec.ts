@@ -10,11 +10,14 @@ import {
 describe('Uber API gateway contract', () => {
   it('routes inspect through the same rate limiter and request-id pipeline', async () => {
     const inspected = uberHttpResult(200, { ok: true });
-    const release = jest.fn<() => void>();
+    const release = jest.fn<() => Promise<void>>().mockResolvedValue();
     const feedback =
       jest.fn<
-        (result: { status: number; retryAfter: string | null }) => void
-      >();
+        (result: {
+          status: number;
+          retryAfter: string | null;
+        }) => Promise<void>
+      >().mockResolvedValue();
     const limiter = createUberRateLimiterFake();
     limiter.acquire.mockResolvedValue({ release, feedback });
     const http = createUberHttpFake();
@@ -49,6 +52,80 @@ describe('Uber API gateway contract', () => {
     );
     expect(feedback).toHaveBeenCalledWith({ status: 200, retryAfter: null });
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('awaits cooldown feedback and release before completing', async () => {
+    const limiter = createUberRateLimiterFake();
+    let finishFeedback: (() => void) | undefined;
+    let finishRelease: (() => void) | undefined;
+    const feedback = jest.fn(() =>
+      new Promise<void>((resolve) => {
+        finishFeedback = resolve;
+      }),
+    );
+    const release = jest.fn(() =>
+      new Promise<void>((resolve) => {
+        finishRelease = resolve;
+      }),
+    );
+    limiter.acquire.mockResolvedValue({ feedback, release });
+    const http = createUberHttpFake();
+    http.request.mockResolvedValue(uberHttpResult(429));
+    const auth = createUberAuthFake();
+    auth.getAccessToken.mockResolvedValue('token');
+    const gateway = new UberApiGatewayTransport(
+      http,
+      auth,
+      { apiBaseUrl: 'https://api.uber.com' },
+      limiter,
+    );
+    const result = gateway.inspect({
+      path: '/v1/eats/stores',
+      operation: 'uber.store.list',
+      scope: 'eats.store',
+    });
+    while (!feedback.mock.calls.length) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(release).not.toHaveBeenCalled();
+    finishFeedback?.();
+    while (!release.mock.calls.length) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(release).toHaveBeenCalledTimes(1);
+    let settled = false;
+    void result.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finishRelease?.();
+    await expect(result).resolves.toMatchObject({ response: { status: 429 } });
+  });
+
+  it('preserves the request error when release also fails', async () => {
+    const limiter = createUberRateLimiterFake();
+    limiter.acquire.mockResolvedValue({
+      feedback: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockRejectedValue(new Error('release failed')),
+    });
+    const http = createUberHttpFake();
+    http.request.mockRejectedValue(new Error('upstream failed'));
+    const auth = createUberAuthFake();
+    auth.getAccessToken.mockResolvedValue('token');
+    const gateway = new UberApiGatewayTransport(
+      http,
+      auth,
+      { apiBaseUrl: 'https://api.uber.com' },
+      limiter,
+    );
+    await expect(
+      gateway.request({
+        path: '/v1/eats/stores',
+        operation: 'uber.store.list',
+        scope: 'eats.store',
+      }),
+    ).rejects.toMatchObject({ code: 'UBER_NETWORK_ERROR' });
   });
 
   it('refreshes the token once on 401/403 without changing the idempotency key', async () => {
