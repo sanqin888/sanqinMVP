@@ -12,9 +12,10 @@ import {
   type UberRateLimiterPort,
   type UberRateLimitLease,
 } from './uber-rate-limiter';
-import type {
-  UberApiConfig,
-  UberRateLimitConfig,
+import {
+  UberApiConfigService,
+  type UberApiConfig,
+  type UberRateLimitConfig,
 } from './uber-api-config.service';
 import { mapUberGatewayFailure } from './uber-error.mapper';
 import { isUberApplicationError } from '../../application/shared/uber-application.error';
@@ -70,6 +71,7 @@ export class UberApiGatewayTransport {
   constructor(
     @Inject(UberHttpClient) private readonly http: UberGatewayHttpPort,
     @Inject(UberAuthService) private readonly auth: UberGatewayAuthPort,
+    @Inject(UberApiConfigService)
     private readonly config: UberApiConfig & Partial<UberRateLimitConfig>,
     @Optional()
     @Inject(UBER_RATE_LIMITER_PORT)
