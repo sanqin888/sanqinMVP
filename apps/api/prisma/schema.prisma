@@ -7,6 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model UberRateLimitState {
+  partitionKey  String               @id
+  tokens        Float
+  lastRefillAt  DateTime
+  cooldownUntil DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  leases        UberRateLimitLease[]
+}
+
+model UberRateLimitLease {
+  id           String             @id @db.Uuid
+  partitionKey String
+  expiresAt    DateTime
+  createdAt    DateTime           @default(now())
+  state        UberRateLimitState @relation(fields: [partitionKey], references: [partitionKey], onDelete: Cascade)
+
+  @@index([partitionKey, expiresAt])
+  @@index([expiresAt])
+}
+
 // === Enums ===
 
 enum FulfillmentType {

@@ -6,7 +6,7 @@ const key = Buffer.alloc(32, 7).toString('base64');
 const credentials = {
   UBER_CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ 3: key }),
   UBER_CREDENTIAL_ACTIVE_KEY_VERSION: '3',
-  UBER_CREDENTIAL_KEYS_SOURCE: 'secrets-manager',
+  UBER_CREDENTIAL_KEYS_SOURCE: 'env',
 };
 
 describe('Uber Eats startup configuration', () => {
@@ -31,17 +31,15 @@ describe('Uber Eats startup configuration', () => {
     expect(api).toContain('<<: *ubereats-runtime');
     expect(worker).toContain('<<: *ubereats-runtime');
     expect(db).not.toContain('<<: *ubereats-runtime');
-    expect(compose).toContain('UBER_CREDENTIAL_KEYS_SOURCE: "secrets-manager"');
+    expect(compose).toContain('UBER_CREDENTIAL_KEYS_SOURCE: "env"');
     expect(compose).not.toMatch(/UBER_CREDENTIAL_ENCRYPTION_KEYS:\s*["'{]/);
   });
 
-  it('accepts production distributed rate limiting', () => {
+  it('accepts production database rate limiting without Redis configuration', () => {
     expect(() =>
       validateUberEatsStartupConfig({
         NODE_ENV: 'production',
-        UBER_EATS_RATE_LIMITER_MODE: 'distributed',
-        UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL: 'https://redis.example',
-        UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN: 'token',
+        UBER_EATS_RATE_LIMITER_MODE: 'database',
         ...credentials,
       }),
     ).not.toThrow();
@@ -65,12 +63,25 @@ describe('Uber Eats startup configuration', () => {
     expect(() =>
       validateUberEatsStartupConfig({
         NODE_ENV: 'production',
-        UBER_EATS_RATE_LIMITER_MODE: 'distributed',
+        UBER_EATS_RATE_LIMITER_MODE: 'database',
         UBER_EATS_SINGLE_REPLICA: 'true',
       }),
     ).toThrow(
-      /6 项[\s\S]*REDIS_HTTP_URL[\s\S]*REDIS_HTTP_TOKEN[\s\S]*SINGLE_REPLICA[\s\S]*ENCRYPTION_KEYS[\s\S]*ACTIVE_KEY_VERSION[\s\S]*KEYS_SOURCE/,
+      /4 项[\s\S]*SINGLE_REPLICA[\s\S]*ENCRYPTION_KEYS[\s\S]*ACTIVE_KEY_VERSION[\s\S]*KEYS_SOURCE/,
     );
+  });
+
+  it.each([
+    ['invalid base64', 'not-base64'],
+    ['non-32-byte key', Buffer.alloc(31).toString('base64')],
+  ])('rejects %s credential material', (_label, invalidKey) => {
+    expect(() =>
+      validateUberEatsStartupConfig({
+        UBER_EATS_RATE_LIMITER_MODE: 'database',
+        ...credentials,
+        UBER_CREDENTIAL_ENCRYPTION_KEYS: JSON.stringify({ 3: invalidKey }),
+      }),
+    ).toThrow('格式无效');
   });
 
   it('rejects a credential key ring without its active version', () => {

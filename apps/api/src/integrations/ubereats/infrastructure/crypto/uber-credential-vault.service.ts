@@ -11,7 +11,7 @@ type Envelope = {
 
 /**
  * Uber credential envelope encryption. Key material must be injected by the
- * backend secrets manager; it must never use NEXT_PUBLIC_* or source defaults.
+ * deployment environment; it must never use NEXT_PUBLIC_* or source defaults.
  */
 @Injectable()
 export class UberCredentialVaultService {
@@ -40,11 +40,8 @@ export class UberCredentialVaultService {
       }
     }
 
-    if (
-      environment.NODE_ENV === 'production' &&
-      environment.UBER_CREDENTIAL_KEYS_SOURCE !== 'secrets-manager'
-    ) {
-      throw new Error('生产 Uber credential key 必须由 secrets manager 注入');
+    if (environment.UBER_CREDENTIAL_KEYS_SOURCE !== 'env') {
+      throw new Error('Uber credential key 必须由 environment 注入');
     }
   }
 

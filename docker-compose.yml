@@ -1,11 +1,9 @@
 x-ubereats-runtime: &ubereats-runtime
-  UBER_EATS_RATE_LIMITER_MODE: "distributed"
-  UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL: ${UBER_EATS_RATE_LIMIT_REDIS_HTTP_URL}
-  UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN: ${UBER_EATS_RATE_LIMIT_REDIS_HTTP_TOKEN}
-  # These values are populated in the deployment environment by its secrets manager.
+  UBER_EATS_RATE_LIMITER_MODE: "database"
+  # These values are populated from the deployment VM's environment/.env file.
   UBER_CREDENTIAL_ENCRYPTION_KEYS: ${UBER_CREDENTIAL_ENCRYPTION_KEYS}
   UBER_CREDENTIAL_ACTIVE_KEY_VERSION: ${UBER_CREDENTIAL_ACTIVE_KEY_VERSION}
-  UBER_CREDENTIAL_KEYS_SOURCE: "secrets-manager"
+  UBER_CREDENTIAL_KEYS_SOURCE: "env"
 
 services:
   db:
