@@ -1,21 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
-<<<<<<< HEAD
 import type { UberWebhookSignatureVerifier } from '../../application/orders/uber-order-processing.ports';
 import { UberAuthenticationError } from '../../application/shared/uber-application.error';
 import {
   UberCryptoConfigService,
   type UberWebhookSigningSecrets,
 } from './uber-crypto-config.service';
-=======
-import type { UberWebhookSignatureVerifier } from '../../application/ports/uber-order-processing.ports';
-import { UberAuthenticationError } from '../../application/errors/uber-application.error';
-import {
-  UberConfigService,
-  type UberWebhookConfig,
-  type UberWebhookSigningSecrets,
-} from '../config/uber-config.service';
->>>>>>> origin/main
 import {
   UBER_WEBHOOK_SIGNATURE_VERSION,
   type UberWebhookVerificationInput,
@@ -25,11 +15,7 @@ import {
 export class HmacUberWebhookSignatureVerifier implements UberWebhookSignatureVerifier {
   private readonly signingSecrets: UberWebhookSigningSecrets;
   constructor(
-<<<<<<< HEAD
     @Inject(UberCryptoConfigService) config: UberCryptoConfigService,
-=======
-    @Inject(UberConfigService) config: UberWebhookConfig,
->>>>>>> origin/main
     private readonly now: () => number = Date.now,
   ) {
     this.signingSecrets = config.getWebhookSigningSecrets();

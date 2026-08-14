@@ -1,5 +1,4 @@
 //apps/api/src/integrations/ubereats/uber-auth.service.ts
-<<<<<<< HEAD:apps/api/src/integrations/ubereats/infrastructure/uber-api/uber-token.provider.ts
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AppLogger } from '../../../../common/app-logger';
 import { UberHttpClient } from './uber-http.client';
@@ -21,12 +20,6 @@ export type UberAuthConfigPort = Pick<
   | 'tokenEndpoint'
   | 'operationWeight'
 >;
-=======
-import { Injectable, Optional } from '@nestjs/common';
-import { AppLogger } from '../../../../common/app-logger';
-import { UberHttpClient } from './uber-http.client';
-import { UberConfigService } from '../config/uber-config.service';
->>>>>>> origin/main:apps/api/src/integrations/ubereats/uber-auth.service.ts
 
 type UberTokenResponse = {
   access_token?: string;

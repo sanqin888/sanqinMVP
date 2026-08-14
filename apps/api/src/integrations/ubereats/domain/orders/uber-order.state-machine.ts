@@ -1,9 +1,5 @@
 import { createHash } from 'crypto';
-<<<<<<< HEAD
 import { normalizeUberEventType } from '../webhook/uber-event-type';
-=======
-import { normalizeUberEventType } from '../shared/uber-integration.utils';
->>>>>>> origin/main
 import { UberOrderActionNotAllowedError } from './uber-order.errors';
 import {
   UberOrderStatus,
@@ -19,11 +15,8 @@ const canRequestOrderAction = (
     return (
       status === UberOrderStatus.pending || status === UberOrderStatus.paid
     );
-<<<<<<< HEAD
   if (action === 'CANCEL')
     return status === UberOrderStatus.paid || status === UberOrderStatus.making;
-=======
->>>>>>> origin/main
   return status === UberOrderStatus.paid || status === UberOrderStatus.making;
 };
 
@@ -117,12 +110,9 @@ export const UberOrderStateMachine = {
     status: UberOrderStatus,
     action: UberOrderActionName,
   ): UberOrderStatus | null {
-<<<<<<< HEAD
     // Merchant-issued cancellation commands have their own action idempotency
     // key, but share the lifecycle decision with cancellation webhook events.
     if (action === 'CANCEL') return statusAfterCancellation(status);
-=======
->>>>>>> origin/main
     if (action === 'ACCEPT' && status === UberOrderStatus.pending)
       return UberOrderStatus.making;
     if (

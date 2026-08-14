@@ -3,11 +3,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberMenuPublishSnapshot,
   UberMenuSnapshotRepositoryPort,
-<<<<<<< HEAD
 } from '../../application/menu/uber-menu-publication.ports';
-=======
-} from '../../application/ports/uber-menu-publication.ports';
->>>>>>> origin/main
 
 /** Prisma rows are translated here; the application boundary only sees stable menu DTOs. */
 @Injectable()
@@ -15,14 +11,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
   constructor(private readonly prisma: PrismaService) {}
 
   async loadPublishSnapshot(
-<<<<<<< HEAD
     uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null> {
     const storeId = uberStoreId;
-=======
-    storeId: string,
-  ): Promise<UberMenuPublishSnapshot | null> {
->>>>>>> origin/main
     const [
       mapping,
       categories,

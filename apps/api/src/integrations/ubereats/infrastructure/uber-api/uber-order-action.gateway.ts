@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { Inject, Injectable } from '@nestjs/common';
 import type {
   UberOrderActionGatewayPort,
@@ -35,20 +34,6 @@ export class UberOrderCommandError
       : `Uber order command failed with HTTP ${status}`,
     readonly code?: string,
     readonly retryAfterMs: number | null = null,
-=======
-import { Injectable } from '@nestjs/common';
-import type {
-  UberOrderActionGatewayPort,
-  UberOrderDenial,
-} from '../../application/ports/uber-order.ports';
-import { UberOrderGateway } from './uber-resource.gateways';
-
-export class UberOrderCommandError extends Error {
-  constructor(
-    readonly status: number,
-    readonly retryable: boolean,
-    message = `Uber order command failed with HTTP ${status}`,
->>>>>>> origin/main
   ) {
     super(message);
     this.name = 'UberOrderCommandError';
@@ -58,14 +43,10 @@ export class UberOrderCommandError extends Error {
 /** Owns Uber endpoints, wire payloads and HTTP outcome semantics. */
 @Injectable()
 export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort {
-<<<<<<< HEAD
   constructor(
     @Inject(UberOrderGateway)
     private readonly gateway: Pick<UberOrderGateway, 'sendActionCommand'>,
   ) {}
-=======
-  constructor(private readonly gateway: UberOrderGateway) {}
->>>>>>> origin/main
 
   accept(input: { externalOrderId: string; idempotencyKey: string }) {
     return this.execute(input, 'ACCEPT', {});
@@ -83,7 +64,6 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
       },
     });
   }
-<<<<<<< HEAD
   cancel(input: {
     externalOrderId: string;
     idempotencyKey: string;
@@ -97,11 +77,6 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         explanation:
           input.denial?.reasonDetail?.trim() || 'Cancelled by merchant',
       },
-=======
-  cancel(input: { externalOrderId: string; idempotencyKey: string }) {
-    return this.execute(input, 'DENY', {
-      reason: { code: 'OTHER', explanation: 'Cancelled by merchant' },
->>>>>>> origin/main
     });
   }
   readyForPickup(input: { externalOrderId: string; idempotencyKey: string }) {
@@ -110,7 +85,6 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
 
   private async execute(
     input: { externalOrderId: string; idempotencyKey: string },
-<<<<<<< HEAD
     action: UberWireOrderAction,
     payload: Record<string, unknown>,
   ): Promise<void> {
@@ -154,25 +128,6 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
   }
 
-=======
-    action: 'ACCEPT' | 'DENY' | 'READY_FOR_PICKUP',
-    payload: Record<string, unknown>,
-  ): Promise<void> {
-    const outcome = await this.gateway.executeAction(
-      input.externalOrderId,
-      action,
-      payload,
-      input.idempotencyKey,
-    );
-    if (outcome.ok || (action === 'READY_FOR_PICKUP' && outcome.status === 409))
-      return;
-    throw new UberOrderCommandError(
-      outcome.status,
-      outcome.status === 429 || outcome.status >= 500,
-    );
-  }
-
->>>>>>> origin/main
   private reasonCode(value: string): string {
     const code = value.trim().toUpperCase();
     if (code === 'ITEM_UNAVAILABLE') return 'ITEM_AVAILABILITY';

@@ -2,7 +2,6 @@ import { UberCredentialVaultService } from './uber-credential-vault.service';
 
 const key = (byte: number) => Buffer.alloc(32, byte).toString('base64');
 
-<<<<<<< HEAD
 const isJsonObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -17,8 +16,6 @@ const hasStringTag = (
 ): value is Record<string, unknown> & { tag: string } =>
   typeof value.tag === 'string';
 
-=======
->>>>>>> origin/main
 describe('UberCredentialVaultService', () => {
   it('uses an authenticated, versioned envelope without exposing plaintext', () => {
     const vault = new UberCredentialVaultService({
@@ -27,11 +24,7 @@ describe('UberCredentialVaultService', () => {
     });
     const token = 'secret-access-token';
     const encrypted = vault.encrypt(token);
-<<<<<<< HEAD
     const envelope = parseJsonObject(encrypted);
-=======
-    const envelope = JSON.parse(encrypted) as Record<string, unknown>;
->>>>>>> origin/main
 
     expect(encrypted).not.toContain(token);
     expect(envelope.v).toBe(2);
@@ -61,14 +54,10 @@ describe('UberCredentialVaultService', () => {
     expect(rotatingVault.needsRotation(rotated)).toBe(false);
     expect(rotatingVault.decrypt(rotated)).toBe('refresh-secret');
 
-<<<<<<< HEAD
     const modified = parseJsonObject(rotated);
     if (!hasStringTag(modified)) {
       throw new Error('Encrypted credential envelope must contain a tag');
     }
-=======
-    const modified = JSON.parse(rotated) as { tag: string };
->>>>>>> origin/main
     const modifiedTag = Buffer.from(modified.tag, 'base64url');
     modifiedTag[0] ^= 1;
     modified.tag = modifiedTag.toString('base64url');

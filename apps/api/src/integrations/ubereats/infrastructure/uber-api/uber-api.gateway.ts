@@ -15,13 +15,9 @@ import {
 import type {
   UberApiConfig,
   UberRateLimitConfig,
-<<<<<<< HEAD
 } from './uber-api-config.service';
 import { mapUberGatewayFailure } from './uber-error.mapper';
 import { isUberApplicationError } from '../../application/shared/uber-application.error';
-=======
-} from '../config/uber-config.service';
->>>>>>> origin/main
 
 type UberGatewayRequestBase = Pick<
   UberHttpRequest,
@@ -57,7 +53,6 @@ export interface UberResourceGateway {
   request<T = Record<string, unknown>>(request: UberGatewayRequest): Promise<T>;
 }
 
-<<<<<<< HEAD
 export type UberGatewayHttpPort = Pick<UberHttpClient, 'request'>;
 export type UberGatewayAuthPort = Pick<
   UberAuthService,
@@ -68,20 +63,13 @@ export type UberGatewayTransportPort = Pick<
   'request' | 'inspect'
 >;
 
-=======
->>>>>>> origin/main
 @Injectable()
 export class UberApiGatewayTransport {
   private readonly logger = new AppLogger(UberApiGatewayTransport.name);
 
   constructor(
-<<<<<<< HEAD
     @Inject(UberHttpClient) private readonly http: UberGatewayHttpPort,
     @Inject(UberAuthService) private readonly auth: UberGatewayAuthPort,
-=======
-    private readonly http: UberHttpClient,
-    private readonly auth: UberAuthService,
->>>>>>> origin/main
     private readonly config: UberApiConfig & Partial<UberRateLimitConfig>,
     @Optional()
     @Inject(UBER_RATE_LIMITER_PORT)
@@ -104,11 +92,7 @@ export class UberApiGatewayTransport {
     const path = this.normalizePath(request.path);
     const baseUrl = this.normalizeBaseUrl(this.config.apiBaseUrl);
     const requestId = randomUUID();
-<<<<<<< HEAD
     const partition = request.partitionKey?.trim() || 'merchant:app';
-=======
-    const partition = request.partitionKey?.trim() || 'global';
->>>>>>> origin/main
     const lease = await this.acquire(partition, request.operation);
     const startedAt = Date.now();
     let status = 0;
@@ -129,7 +113,6 @@ export class UberApiGatewayTransport {
         status,
         retryAfter: result.response.headers.get('retry-after'),
       });
-<<<<<<< HEAD
       if (translateError && !result.response.ok)
         throw mapUberGatewayFailure({
           kind: 'http',
@@ -146,10 +129,6 @@ export class UberApiGatewayTransport {
         code: 'UBER_NETWORK_ERROR',
         cause,
       });
-=======
-      if (translateError) this.http.ensureSuccess(result, request.operation);
-      return result;
->>>>>>> origin/main
     } finally {
       this.logger.log(
         `[uber gateway metric] operation=${request.operation} partition=${partition} requestId=${requestId} status=${status || 'error'} latencyMs=${Date.now() - startedAt}`,
@@ -158,7 +137,6 @@ export class UberApiGatewayTransport {
     }
   }
 
-<<<<<<< HEAD
   private upstreamCode(data: unknown): string | null {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
     const body = data as Record<string, unknown>;
@@ -169,8 +147,6 @@ export class UberApiGatewayTransport {
     return value?.trim() ?? null;
   }
 
-=======
->>>>>>> origin/main
   private send<T>(
     request: UberGatewayRequest,
     baseUrl: string,

@@ -6,18 +6,6 @@ export type UberWebhookEnvelope = {
   eventId: string | null;
 };
 
-<<<<<<< HEAD
-=======
-export interface UberWebhookEnvelopePayloadV1 {
-  event_type: string;
-  resource_href: string;
-  event_id?: string;
-  id?: string;
-  meta: { resource_id: string; user_id: string };
-  [key: string]: unknown;
-}
-
->>>>>>> origin/main
 export interface UberWebhookEventV1 {
   version: 1;
   eventType: string;
@@ -34,15 +22,8 @@ export function parseUberWebhookEnvelopeV1(
   const meta = object(root?.meta);
   const eventType = text(root?.event_type);
   const resourceHref = text(root?.resource_href);
-<<<<<<< HEAD
   const resourceId = text(meta?.resource_id);
   const userId = text(meta?.user_id);
-=======
-  const legacyResourceId = text(root?.resource_id);
-  const resourceId = legacyResourceId ?? text(meta?.resource_id);
-  const userId =
-    text(meta?.user_id) ?? (legacyResourceId && text(meta?.resource_id));
->>>>>>> origin/main
   if (!eventType || !resourceHref || !resourceId || !userId) return null;
   return {
     version: 1,

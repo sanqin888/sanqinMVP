@@ -2,13 +2,8 @@
   "event_type": "orders.notification",
   "event_id": "evt_fixture_order_001",
   "resource_href": "https://api.uber.com/v2/eats/order/order_fixture_001",
-<<<<<<< HEAD
   "meta": {
     "resource_id": "order_fixture_001",
     "user_id": "store_fixture_001"
   }
-=======
-  "resource_id": "order_fixture_001",
-  "meta": { "resource_id": "store_fixture_001" }
->>>>>>> origin/main
 }

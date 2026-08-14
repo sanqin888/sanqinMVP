@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { Inject, Injectable } from '@nestjs/common';
 import type { UberOrderDetailQueryPort } from '../../application/orders/uber-order-query.ports';
 import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
@@ -21,26 +20,6 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       'pathFromResourceHref' | 'inspect'
     >,
     private readonly telemetry: Pick<UberTelemetryPort, 'workflowLog'>,
-=======
-import { Injectable } from '@nestjs/common';
-import {
-  UberNonRetryableUpstreamError,
-  UberTransientUpstreamError,
-} from '../../application/errors/uber-application.error';
-import type { UberOrderDetailGatewayPort } from '../../application/ports/uber-api.ports';
-import {
-  redactUberLogText,
-  summarizeUberDebugResponse,
-} from '../../domain/shared/uber-integration.utils';
-import { UberTelemetryService } from '../observability/uber-telemetry.service';
-import { UberOrderGateway } from './uber-resource.gateways';
-
-@Injectable()
-export class UberOrderDetailGatewayAdapter implements UberOrderDetailGatewayPort {
-  constructor(
-    private readonly gateway: UberOrderGateway,
-    private readonly telemetry: UberTelemetryService,
->>>>>>> origin/main
   ) {}
 
   async fetchOrderDetail(input: {
@@ -48,11 +27,7 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailGatewayPort
     eventType: string;
     eventId: string;
     resourceId: string | null;
-<<<<<<< HEAD
   }): Promise<UberOrderDetailResult> {
-=======
-  }): Promise<unknown> {
->>>>>>> origin/main
     const path = await this.gateway.pathFromResourceHref(input.resourceHref);
     const result = await this.gateway.inspect({
       path,
@@ -61,7 +36,6 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailGatewayPort
       scope: 'eats.store.orders.read',
       kind: 'orderDetail',
     });
-<<<<<<< HEAD
     if (result.response.ok) {
       const mapped = this.parser.parseResult(result.data);
       if (mapped.kind === 'parsed') return mapped;
@@ -73,30 +47,17 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailGatewayPort
       );
       return { kind: 'invalid', reason: mapped.reason };
     }
-=======
-    if (result.response.ok) return result.data;
->>>>>>> origin/main
 
     const detail = summarizeUberDebugResponse(result.data, result.text);
     this.telemetry.workflowLog(
       'error',
       `[ubereats order] detail fetch failed status=${result.response.status} eventType=${input.eventType} eventId=${input.eventId} resourceId=${input.resourceId ?? 'unknown'} detail=${redactUberLogText(detail)}`,
     );
-<<<<<<< HEAD
     throw mapUberGatewayFailure({
       kind: 'http',
       operation: 'order.fetch-detail',
       status: result.response.status,
       upstreamCode: null,
-=======
-    const ErrorType = [400, 401, 403, 404].includes(result.response.status)
-      ? UberNonRetryableUpstreamError
-      : UberTransientUpstreamError;
-    throw new ErrorType({
-      code: `UBER_ORDER_DETAIL_HTTP_${result.response.status}`,
-      message: 'Uber 订单详情不可用',
-      operation: 'order.fetch-detail',
->>>>>>> origin/main
     });
   }
 }

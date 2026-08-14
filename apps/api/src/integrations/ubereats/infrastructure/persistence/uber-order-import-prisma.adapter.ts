@@ -15,11 +15,7 @@ import type {
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
   UberOrderMenuMapping,
-<<<<<<< HEAD
 } from '../../application/orders/uber-order.ports';
-=======
-} from '../../application/ports/uber-order.ports';
->>>>>>> origin/main
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { ParsedUberModifier } from '../../domain/orders/uber-order.types';
 import { toUberOrderStatus } from './uber-order-status.mapper';
@@ -33,21 +29,13 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   ) {}
 
   async findMenuMappings(
-<<<<<<< HEAD
     uberStoreId: string,
-=======
-    storeId: string,
->>>>>>> origin/main
     externalItemIds: string[],
   ): Promise<UberOrderMenuMapping[]> {
     if (!externalItemIds.length) return [];
     const rows = await this.prisma.uberPublishedMenuItem.findMany({
       where: {
-<<<<<<< HEAD
         uberStoreId,
-=======
-        uberStoreId: storeId,
->>>>>>> origin/main
         uberItemId: { in: [...new Set(externalItemIds)] },
         publishVersion: {
           status: {
@@ -98,11 +86,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
 
   async saveImportedOrder(
     input: Parameters<UberOrderImportRepositoryPort['saveImportedOrder']>[0],
-<<<<<<< HEAD
   ): ReturnType<UberOrderImportRepositoryPort['saveImportedOrder']> {
-=======
-  ): Promise<{ orderId: string; created: boolean }> {
->>>>>>> origin/main
     const mapping = new Map(
       input.menuMappings.map((item) => [item.externalItemId, item]),
     );
@@ -133,21 +117,14 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       },
     }));
     const targetStatus = UberOrderStateMachine.eventStatus(input.eventType);
-<<<<<<< HEAD
     let savedAction: { taskId: string; created: boolean } | null = null;
-=======
->>>>>>> origin/main
     const saved = await this.ingestion.ingest(
       {
         channel: Channel.ubereats,
         paymentMethod: PaymentMethod.UBEREATS,
         externalOrderId: input.order.externalOrderId,
         clientRequestId: `ubereats:${input.order.externalOrderId}`,
-<<<<<<< HEAD
         storeId: input.posStoreId,
-=======
-        storeId: input.order.storeId ?? 'default',
->>>>>>> origin/main
         status: this.toPrismaStatus(targetStatus),
         paidAt: input.order.paidAt,
         fulfillmentType:
@@ -186,7 +163,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         emitPaidLifecycleEvent: false,
       },
       async (tx, order) => {
-<<<<<<< HEAD
         if (input.actionIntent) {
           // skipDuplicates emits ON CONFLICT DO NOTHING, so a concurrent replay
           // remains usable inside this transaction instead of aborting it.
@@ -205,8 +181,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
           });
           savedAction = { taskId: action.id, created: inserted.count === 1 };
         }
-=======
->>>>>>> origin/main
         if (input.cancellation) {
           await tx.uberOrderCancellation.upsert({
             where: { eventId: input.cursor.eventId },
@@ -262,15 +236,11 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         });
       },
     );
-<<<<<<< HEAD
     return {
       orderId: saved.orderId,
       created: saved.action === 'created',
       action: savedAction,
     };
-=======
-    return { orderId: saved.orderId, created: saved.action === 'created' };
->>>>>>> origin/main
   }
 
   private toPrismaStatus(status: string | null): OrderStatus {

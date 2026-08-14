@@ -1,6 +1,5 @@
 import {
   ExecuteUberOrderActionWorker,
-<<<<<<< HEAD
   ImportUberOrderUseCase,
   RequestUberOrderActionUseCase,
 } from './uber-order.use-cases';
@@ -293,13 +292,6 @@ describe('Uber order use-case boundaries', () => {
     expect(repository.saveImportedOrder).not.toHaveBeenCalled();
   });
 
-=======
-  RequestUberOrderActionUseCase,
-} from './uber-order.use-cases';
-import { UberOrderActionService } from './uber-order-action.service';
-
-describe('Uber order use-case boundaries', () => {
->>>>>>> origin/main
   it('requests an ACCEPT durable intent', async () => {
     const request = jest
       .fn()
@@ -315,7 +307,6 @@ describe('Uber order use-case boundaries', () => {
     expect(request).toHaveBeenCalledWith('order-1', 'ACCEPT');
   });
 
-<<<<<<< HEAD
   it.each([
     ['accept', ['order-1', 'ACCEPT']],
     [
@@ -423,14 +414,5 @@ describe('Uber order use-case boundaries', () => {
       { executeClaimed: jest.fn().mockRejectedValue(failure) } as never,
     );
     await expect(worker.execute()).rejects.toBe(failure);
-=======
-  it('delegates lease processing to the action service', async () => {
-    const process = jest.fn().mockResolvedValue(2);
-    const worker = new ExecuteUberOrderActionWorker({
-      process,
-    } as unknown as UberOrderActionService);
-    await expect(worker.execute(50)).resolves.toBe(2);
-    expect(process).toHaveBeenCalledWith(50, expect.stringMatching(/^worker-/));
->>>>>>> origin/main
   });
 });

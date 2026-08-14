@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { UberValidationError } from '../shared/uber-application.error';
 import { toUberEatsApplicationError } from '../shared/uber-domain-error.mapper';
 import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
@@ -33,24 +32,12 @@ import type { PublishUberMenuUseCase } from '../menu/publish-uber-menu.use-case'
 import type { UberMenuAvailabilityUseCase } from '../menu/uber-menu-availability.use-case';
 import type { SyncUberStoreStatusUseCase } from '../merchant/uber-merchant-provisioning.service';
 import type { SyncUberOrderStatusUseCase } from '../orders/sync-uber-order-status.use-case';
-=======
-import { Inject, Injectable } from '@nestjs/common';
-import type {
-  CreateOpsTicketInput,
-  GenerateReconciliationReportInput,
-  UberOpsTicketStatus,
-} from '../../domain/operations/uber-operations.types';
->>>>>>> origin/main
 
 export type CreateUberOpsTicketCommand = Omit<
   CreateOpsTicketInput,
   'context'
 > & {
-<<<<<<< HEAD
   targetOrderStatus?: UberOrderStatus;
-=======
-  targetOrderStatus?: import('../../domain/orders/uber-order.types').UberOrderStatus;
->>>>>>> origin/main
   isAvailable?: boolean;
   uberStoreId?: string;
   targetStoreStatus?: 'ONLINE' | 'PAUSED';
@@ -65,7 +52,6 @@ export type CreateUberOpsTicketCommand = Omit<
   };
 };
 
-<<<<<<< HEAD
 const invalidOperationsInput = (message: string): UberValidationError =>
   new UberValidationError({
     code: 'UBER_OPERATIONS_INPUT_INVALID',
@@ -73,8 +59,6 @@ const invalidOperationsInput = (message: string): UberValidationError =>
     operation: 'operations.validate',
   });
 
-=======
->>>>>>> origin/main
 export const mapCreateUberOpsTicketCommand = (
   command: CreateUberOpsTicketCommand,
 ): CreateOpsTicketInput => {
@@ -87,19 +71,9 @@ export const mapCreateUberOpsTicketCommand = (
     externalOrderId: command.externalOrderId,
     menuItemStableId: command.menuItemStableId,
   };
-<<<<<<< HEAD
   switch (command.type) {
     case 'ORDER_STATUS_SYNC':
       return { ...base, context: { targetStatus: command.targetOrderStatus! } };
-=======
-
-  switch (command.type) {
-    case 'ORDER_STATUS_SYNC':
-      return {
-        ...base,
-        context: { targetStatus: command.targetOrderStatus! },
-      };
->>>>>>> origin/main
     case 'MENU_ITEM_AVAILABILITY':
       return { ...base, context: { isAvailable: command.isAvailable! } };
     case 'STORE_STATUS_SYNC':
@@ -125,7 +99,6 @@ export const mapCreateUberOpsTicketCommand = (
       return base;
   }
 };
-<<<<<<< HEAD
 
 export class GenerateUberReconciliationReportUseCase {
   constructor(
@@ -394,71 +367,3 @@ const reportRange = (startValue?: string, endValue?: string) => {
     throw invalidOperationsInput('对账时间范围不合法：start 必须早于 end');
   return { rangeStart, rangeEnd };
 };
-=======
-export const UBER_OPERATIONS_PORT = Symbol('UBER_OPERATIONS_PORT');
-export interface UberOperationsPort {
-  generateReconciliationReport(
-    input: GenerateReconciliationReportInput,
-  ): Promise<any>;
-  listReconciliationReports(storeId?: string, limit?: number): Promise<any>;
-  getReconciliationSummary(storeId?: string): Promise<any>;
-  createOpsTicket(input: CreateOpsTicketInput): Promise<any>;
-  retryOpsTicket(id: string): Promise<any>;
-  listOpsTickets(storeId?: string, status?: UberOpsTicketStatus): Promise<any>;
-  getOpsTicketsSummary(
-    storeId?: string,
-    status?: UberOpsTicketStatus,
-  ): Promise<any>;
-}
-@Injectable()
-export class GenerateUberReconciliationReportUseCase {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
-  execute(input: GenerateReconciliationReportInput) {
-    return this.operations.generateReconciliationReport(input);
-  }
-}
-@Injectable()
-export class CreateUberOpsTicketUseCase {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
-  execute(command: CreateUberOpsTicketCommand) {
-    return this.operations.createOpsTicket(
-      mapCreateUberOpsTicketCommand(command),
-    );
-  }
-}
-@Injectable()
-export class RetryUberOpsTicketUseCase {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
-  execute(id: string) {
-    return this.operations.retryOpsTicket(id);
-  }
-}
-@Injectable()
-export class QueryUberOperationsSummary {
-  constructor(
-    @Inject(UBER_OPERATIONS_PORT)
-    private readonly operations: UberOperationsPort,
-  ) {}
-  listReports(storeId?: string, limit?: number) {
-    return this.operations.listReconciliationReports(storeId, limit);
-  }
-  reconciliation(storeId?: string) {
-    return this.operations.getReconciliationSummary(storeId);
-  }
-  listTickets(storeId?: string, status?: UberOpsTicketStatus) {
-    return this.operations.listOpsTickets(storeId, status);
-  }
-  tickets(storeId?: string, status?: UberOpsTicketStatus) {
-    return this.operations.getOpsTicketsSummary(storeId, status);
-  }
-}
->>>>>>> origin/main
