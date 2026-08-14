@@ -140,7 +140,6 @@ export class CompleteUberOAuthUseCase {
       }
       if (!callback.code)
         return { ok: false, error: { code: 'OAUTH_CODE_MISSING' } };
-
       let token =
         request.status === 'EXCHANGED'
           ? await this.states.loadExchangedTokens(nonce)

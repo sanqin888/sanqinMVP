@@ -1,7 +1,11 @@
 export type ContractDomain =
   | 'merchant'
+<<<<<<< HEAD
   | 'webhook-receive'
   | 'webhook-worker'
+=======
+  | 'webhook'
+>>>>>>> origin/main
   | 'orders'
   | 'menu'
   | 'operations';
@@ -10,7 +14,11 @@ export type ContractDomain =
 export type UberAcceptanceContract = readonly [
   scenario: string,
   input: string,
+<<<<<<< HEAD
   apiStatus: number | 'not-applicable',
+=======
+  apiStatus: number,
+>>>>>>> origin/main
   persistence: string,
   uberRequests: number | 'at-most-once' | 'until-confirmed',
   response: string,
@@ -76,7 +84,11 @@ export const acceptanceMatrix: Record<
       [...secrets, 'code', 'state'],
     ],
   ],
+<<<<<<< HEAD
   'webhook-receive': [
+=======
+  webhook: [
+>>>>>>> origin/main
     [
       'invalid-signature',
       'webhook-order.json + invalid signature',
@@ -84,6 +96,7 @@ export const acceptanceMatrix: Record<
       'no inbox row',
       0,
       'rejected',
+<<<<<<< HEAD
       'non-2xx asks Uber to redeliver; nothing was persisted',
       [...secrets, 'x-uber-signature'],
     ],
@@ -115,16 +128,26 @@ export const acceptanceMatrix: Record<
       0,
       'not acknowledged',
       'non-2xx asks Uber to redeliver because ownership was not acquired',
+=======
+      'not applicable',
+>>>>>>> origin/main
       [...secrets, 'x-uber-signature'],
     ],
     [
       'duplicate-event-id',
       'webhook-order.json twice',
       200,
+<<<<<<< HEAD
       'one committed inbox row; worker processes once',
       0,
       'acknowledged',
       'duplicate is safely acknowledged; no external retry requested',
+=======
+      'one inbox row; PROCESSED once',
+      0,
+      'acknowledged',
+      'same eventId is a no-op',
+>>>>>>> origin/main
       [...secrets, 'x-uber-signature'],
     ],
     [
@@ -134,6 +157,7 @@ export const acceptanceMatrix: Record<
       'one inbox row keyed by body hash',
       0,
       'acknowledged',
+<<<<<<< HEAD
       'duplicate is safely acknowledged; no external retry requested',
       [...secrets, 'x-uber-signature'],
     ],
@@ -177,6 +201,29 @@ export const acceptanceMatrix: Record<
       0,
       'original HTTP response remains 200',
       'operator recovery from durable inbox; no Uber redelivery',
+=======
+      'same bytes are a no-op',
+      [...secrets, 'x-uber-signature'],
+    ],
+    [
+      'retryable-handler-error',
+      'signed event; downstream timeout',
+      503,
+      'inbox=FAILED_RETRYABLE',
+      0,
+      'retry requested',
+      'later delivery may claim again',
+      [...secrets, 'x-uber-signature'],
+    ],
+    [
+      'terminal-handler-error',
+      'signed malformed event',
+      200,
+      'inbox=FAILED_TERMINAL',
+      0,
+      'acknowledged',
+      'redelivery is a no-op',
+>>>>>>> origin/main
       [...secrets, 'x-uber-signature'],
     ],
   ],
@@ -231,7 +278,11 @@ export const acceptanceMatrix: Record<
       'one pending ACCEPT',
       secrets,
     ],
+<<<<<<< HEAD
     ...(['ACCEPT', 'DENY', 'CANCEL', 'READY_FOR_PICKUP'] as const).flatMap(
+=======
+    ...(['ACCEPT', 'DENY', 'READY_FOR_PICKUP'] as const).flatMap(
+>>>>>>> origin/main
       (action) =>
         [
           [

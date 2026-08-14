@@ -1,10 +1,13 @@
 import { createHash } from 'crypto';
 import type { UberMenuGraphValidationIssue } from './uber-menu.types';
+<<<<<<< HEAD
 import type {
   UberMenuDraftFilters,
   UberMenuDraftSource,
 } from './uber-menu-draft-source';
 import { composeUberDisplayName } from './uber-menu-payload.builder';
+=======
+>>>>>>> origin/main
 
 export interface UberMenuGraphItem {
   id: string;
@@ -65,6 +68,7 @@ export interface UberMenuGraphSummary {
 }
 
 export function buildUberNodeId(
+<<<<<<< HEAD
   kind: 'menu' | 'category' | 'group' | 'item' | 'publish',
   storeId: string,
   stableId: string,
@@ -73,6 +77,13 @@ export function buildUberNodeId(
     .update(`${kind}:${storeId}:${stableId}`)
     .digest('hex')
     .slice(0, 24)}`;
+=======
+  kind: 'menu' | 'category' | 'group' | 'item',
+  storeId: string,
+  stableId: string,
+): string {
+  return `${kind}_${createHash('sha256').update(`${storeId}:${stableId}`).digest('hex').slice(0, 24)}`;
+>>>>>>> origin/main
 }
 export function summarizeUberMenuGraph(
   graph: Pick<UberMenuGraph, 'items' | 'categories' | 'groups'>,
@@ -374,6 +385,7 @@ export function validateUberMenuGraph(
     ? { kind: 'invalid', graph: normalized, warnings, errors, summary }
     : { kind: 'valid', graph: normalized, warnings, summary };
 }
+<<<<<<< HEAD
 
 /** Purely converts a persistence-independent draft snapshot into an Uber graph. */
 export function buildUberMenuGraph(
@@ -659,3 +671,5 @@ export function buildUberMenuGraph(
     mappingErrors: flattened.mappingErrors,
   };
 }
+=======
+>>>>>>> origin/main

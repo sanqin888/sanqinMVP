@@ -1,10 +1,19 @@
+<<<<<<< HEAD
 import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { summarizeUberDebugResponse } from '../shared/uber-log.utils';
+=======
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
+import type { UberAuthenticationError } from '../../domain/menu/uber-menu.types';
+import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
+import { summarizeUberDebugResponse } from '../../domain/shared/uber-integration.utils';
+>>>>>>> origin/main
 import type {
   UberMerchantApiPort,
   UberOAuthTokenPort,
   UberStoreApiPort,
+<<<<<<< HEAD
 } from '../../application/merchant/uber-merchant-api.ports';
 import {
   UberApiGatewayTransport,
@@ -45,14 +54,33 @@ const sanitizeForAudit = (value: unknown): UberGatewayAuditJsonValue => {
       ]),
     );
   return '[UNSUPPORTED]';
+=======
+} from '../../application/ports/uber-api.ports';
+import { UberApiGatewayTransport } from './uber-api.gateway';
+import { UberAuthService } from './uber-token.provider';
+import { UberConfigService } from '../config/uber-config.service';
+
+const object = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+const string = (...values: unknown[]): string | null => {
+  for (const value of values)
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  return null;
+>>>>>>> origin/main
 };
 
 @Injectable()
 export class UberOAuthTokenAdapter implements UberOAuthTokenPort {
   constructor(
     private readonly auth: UberAuthService,
+<<<<<<< HEAD
     @Inject(UberCryptoConfigService)
     private readonly config: UberCryptoConfigService,
+=======
+    @Inject(UberConfigService) private readonly config: UberConfigService,
+>>>>>>> origin/main
   ) {}
   getRedirectUri() {
     return this.auth.getMerchantRedirectUri();
@@ -75,13 +103,23 @@ export class UberOAuthTokenAdapter implements UberOAuthTokenPort {
   exchangeAuthorizationCode(code: string, redirectUri: string) {
     return this.auth.exchangeAuthorizationCode(code, redirectUri);
   }
+<<<<<<< HEAD
 }
 
 /** Merchant gateway: resolves credentials, refreshes them, and translates Uber wire responses. */
+=======
+  refreshAccessToken(refreshToken: string, scope?: string) {
+    return this.auth.refreshMerchantAccessToken(refreshToken, scope);
+  }
+}
+
+/** Stateless adapter: only builds Uber requests and translates wire responses. */
+>>>>>>> origin/main
 @Injectable()
 export class UberMerchantApiAdapter
   implements UberMerchantApiPort, UberStoreApiPort
 {
+<<<<<<< HEAD
   private readonly credentialRequests = new Map<string, Promise<string>>();
 
   constructor(
@@ -110,18 +148,72 @@ export class UberMerchantApiAdapter
 
   async provisionStore(
     identity: UberMerchantIdentity,
+=======
+  constructor(private readonly transport: UberApiGatewayTransport) {}
+
+  async discoverStores(accessToken: string) {
+    const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
+    const candidates = [raw.stores, raw.data, object(raw.data)?.stores];
+    const node = candidates.find(Array.isArray);
+    const stores: UberMerchantStore[] = !Array.isArray(node)
+      ? []
+      : node
+          .map(object)
+          .filter((v): v is Record<string, unknown> => !!v)
+          .map((store) => {
+            const location = object(store.location) ?? object(store.address);
+            const pos = object(store.pos_data);
+            return {
+              storeId:
+                string(store.store_id, store.id, store.uuid) ?? 'unknown',
+              storeName: string(store.name, store.store_name),
+              locationSummary: string(
+                store.location_summary,
+                location?.formatted_address,
+                [location?.address_line_one, location?.city, location?.country]
+                  .filter(
+                    (x): x is string => typeof x === 'string' && !!x.trim(),
+                  )
+                  .join(', '),
+              ),
+              integrationEnabled: pos?.integration_enabled === true,
+              posExternalStoreId: string(
+                pos?.order_manager_client_id,
+                pos?.pos_external_store_id,
+                store.pos_external_store_id,
+              ),
+              timezone: string(
+                store.timezone,
+                store.time_zone,
+                location?.timezone,
+                location?.time_zone,
+              ),
+              raw: store,
+            };
+          });
+    return { stores, raw };
+  }
+
+  provisionStore(
+    accessToken: string,
+>>>>>>> origin/main
     storeId: string,
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ) {
+<<<<<<< HEAD
     const accessToken = await this.accessTokenFor(identity);
     const raw = await this.request(
+=======
+    return this.request(
+>>>>>>> origin/main
       `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`,
       'POST',
       accessToken,
       payload,
       idempotencyKey,
     );
+<<<<<<< HEAD
     await this.auditResponse({
       operation: 'merchant.provision-store',
       merchantUberUserId: identity.merchantUberUserId,
@@ -132,6 +224,8 @@ export class UberMerchantApiAdapter
       recordedAt: new Date(),
     });
     return mapUberStoreProvisionWire(raw);
+=======
+>>>>>>> origin/main
   }
 
   async writeStatus(
@@ -154,6 +248,7 @@ export class UberMerchantApiAdapter
           idempotencyKey,
         });
         status = result.response.status;
+<<<<<<< HEAD
         await this.auditResponse({
           operation: 'merchant.write-store-status',
           storeId,
@@ -170,6 +265,13 @@ export class UberMerchantApiAdapter
           return {
             uberStoreId: storeId,
             outcome: 'SUCCEEDED' as const,
+=======
+        if (result.response.ok || status === 409)
+          return {
+            uberStoreId: storeId,
+            ok: true,
+            status,
+>>>>>>> origin/main
             attempts: attempt,
             duplicate: status === 409,
           };
@@ -177,9 +279,14 @@ export class UberMerchantApiAdapter
         if (status !== 429 && status < 500)
           return {
             uberStoreId: storeId,
+<<<<<<< HEAD
             outcome: 'FAILED' as const,
             reason: 'UPSTREAM_REJECTED' as const,
             retryable: false,
+=======
+            ok: false,
+            status,
+>>>>>>> origin/main
             attempts: attempt,
             error,
           };
@@ -193,14 +300,20 @@ export class UberMerchantApiAdapter
     }
     return {
       uberStoreId: storeId,
+<<<<<<< HEAD
       outcome: 'FAILED' as const,
       reason: 'UPSTREAM_UNAVAILABLE' as const,
       retryable: true,
+=======
+      ok: false,
+      status,
+>>>>>>> origin/main
       attempts: maxAttempts,
       error: error || 'Uber 门店状态写入失败',
     };
   }
 
+<<<<<<< HEAD
   private async accessTokenFor(
     identity: UberMerchantIdentity,
   ): Promise<string> {
@@ -238,6 +351,8 @@ export class UberMerchantApiAdapter
     return credential.accessToken;
   }
 
+=======
+>>>>>>> origin/main
   private async request(
     path: string,
     method: 'GET' | 'POST',
@@ -259,6 +374,7 @@ export class UberMerchantApiAdapter
           : { ...common, method },
       );
     } catch (caught) {
+<<<<<<< HEAD
       if (isUberApplicationError(caught)) throw caught;
       throw mapUberGatewayFailure({
         kind: 'transport',
@@ -275,6 +391,18 @@ export class UberMerchantApiAdapter
       await this.audit.recordResponse(event);
     } catch {
       // Deliberately best-effort: gateway availability takes precedence over audit storage.
+=======
+      if (caught instanceof BadRequestException) throw caught;
+      const error: UberAuthenticationError = {
+        upstreamStatus: 502,
+        code: 'UBER_API_ERROR',
+        message:
+          caught instanceof Error
+            ? caught.message.slice(0, 500)
+            : 'Uber request failed',
+      };
+      throw new BadRequestException({ ok: false, status: 502, error });
+>>>>>>> origin/main
     }
   }
 }

@@ -1,8 +1,12 @@
 import { join } from 'node:path';
 import {
+<<<<<<< HEAD
   formatSourceViolation,
   importViolations,
   portMethodReturnTypeViolations,
+=======
+  importViolations,
+>>>>>>> origin/main
   scanTypeScript,
 } from './test/architecture-test.utils';
 
@@ -22,6 +26,7 @@ describe('Uber Eats persistence architecture', () => {
 
     expect(violations).toEqual([]);
   });
+<<<<<<< HEAD
 
   it('contains Prisma implementation details inside infrastructure/persistence', () => {
     const root = join(__dirname);
@@ -262,4 +267,6 @@ describe('Uber Eats menu persistence dependency direction', () => {
 
     expect(violations).toEqual([]);
   });
+=======
+>>>>>>> origin/main
 });

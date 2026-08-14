@@ -90,3 +90,31 @@ export function toUberPublicError(
     ...(fieldErrors?.length ? { fieldErrors } : {}),
   };
 }
+<<<<<<< HEAD
+=======
+
+export async function executeUberMutation(
+  operation: () => Promise<unknown>,
+  options: { accepted?: boolean; operationId?: string } = {},
+): Promise<UberMutationResponse> {
+  const operationId = options.operationId ?? randomUUID();
+  try {
+    await operation();
+    return toUberMutationResponse(
+      options.accepted ? 'ACCEPTED' : 'SUCCEEDED',
+      operationId,
+    );
+  } catch {
+    return {
+      operationId,
+      status: 'FAILED',
+      error: toUberPublicError(
+        'UBER_OPERATION_FAILED',
+        '操作未完成，请稍后重试；如问题持续，请联系管理员并提供 correlationId。',
+        true,
+      ),
+      contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
+    };
+  }
+}
+>>>>>>> origin/main

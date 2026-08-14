@@ -32,7 +32,10 @@ const graph = {
     },
   ],
 };
+<<<<<<< HEAD
 const urlContext = { publicBaseUrl: 'https://menu.example/' };
+=======
+>>>>>>> origin/main
 
 describe('uber-menu-payload.builder', () => {
   it('reports invalid timezone and business hours as domain errors', () => {
@@ -54,7 +57,11 @@ describe('uber-menu-payload.builder', () => {
     ).toThrow(UberMenuScheduleValidationError);
   });
   it('builds the wire payload from a resolved menu graph', () => {
+<<<<<<< HEAD
     const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
+=======
+    const payload = buildUberUploadMenuPayload(graph, [], 13);
+>>>>>>> origin/main
     expect(payload.menus[0]).toMatchObject({
       id: 'menu-1',
       category_ids: ['cat-1'],
@@ -80,7 +87,11 @@ describe('uber-menu-payload.builder', () => {
   });
 
   it('reports dangling payload references', () => {
+<<<<<<< HEAD
     const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
+=======
+    const payload = buildUberUploadMenuPayload(graph, [], 13);
+>>>>>>> origin/main
     payload.categories[0].entities = [{ id: 'missing', type: 'ITEM' }];
     expect(validateUberMenuPayload(payload)).toEqual(
       expect.arrayContaining([
@@ -91,6 +102,7 @@ describe('uber-menu-payload.builder', () => {
       ]),
     );
   });
+<<<<<<< HEAD
 
   it('resolves relative paths deterministically and preserves absolute URLs', () => {
     const relativeGraph = {
@@ -126,4 +138,6 @@ describe('uber-menu-payload.builder', () => {
     );
     expect(absolute.items[0].image_url).toBe('https://cdn.example/noodles.jpg');
   });
+=======
+>>>>>>> origin/main
 });

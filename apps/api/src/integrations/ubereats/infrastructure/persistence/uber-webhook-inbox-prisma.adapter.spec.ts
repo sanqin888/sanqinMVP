@@ -6,14 +6,21 @@ jest.mock('@prisma/client', () => ({
 import { UberWebhookInboxPrismaAdapter } from './uber-webhook-inbox-prisma.adapter';
 
 describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
+<<<<<<< HEAD
   it('keeps same-order events ordered while allowing other resources', async () => {
+=======
+  it('claims only the oldest unfinished event per resource while allowing other resources', async () => {
+>>>>>>> origin/main
     let sql = '';
     const prisma = {
       $queryRaw: jest.fn((parts: TemplateStringsArray) => {
         sql = parts.join('?');
         return Promise.resolve([
           {
+<<<<<<< HEAD
             resultKind: 'CLAIMED',
+=======
+>>>>>>> origin/main
             eventId: 'order-a-1',
             eventType: 'orders.notification',
             payload: {},
@@ -22,7 +29,10 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
             resourceKey: 'order:a',
           },
           {
+<<<<<<< HEAD
             resultKind: 'CLAIMED',
+=======
+>>>>>>> origin/main
             eventId: 'order-b-1',
             eventType: 'orders.notification',
             payload: {},
@@ -35,6 +45,10 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
     };
     const adapter = new UberWebhookInboxPrismaAdapter(
       prisma as never,
+<<<<<<< HEAD
+=======
+      {} as never,
+>>>>>>> origin/main
       { workerLeaseDurationMs: 30_000 } as never,
     );
 
@@ -50,6 +64,7 @@ describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
     expect(sql).toContain('candidate."leaseExpiresAt" <= NOW()');
     expect(sql).toContain('FOR UPDATE OF candidate SKIP LOCKED');
   });
+<<<<<<< HEAD
 
   it('takes over an expired crashed lease and eventually releases the next ordered event', async () => {
     const telemetry = { captureEvent: jest.fn().mockResolvedValue(undefined) };
@@ -162,4 +177,6 @@ describe('UberWebhookInboxPrismaAdapter lease fencing', () => {
       );
     },
   );
+=======
+>>>>>>> origin/main
 });

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import {
   UberOrderActionGatewayAdapter,
   UberOrderCommandError,
@@ -35,13 +36,28 @@ describe('UberOrderActionGatewayAdapter', () => {
       .mockResolvedValue({ ok: true, status: 200, data: {} });
     const gateway = new UberOrderActionGatewayAdapter({
       sendActionCommand,
+=======
+import { UberOrderActionGatewayAdapter } from './uber-order-action.gateway';
+
+describe('UberOrderActionGatewayAdapter', () => {
+  it('owns the DENY reason wire payload', async () => {
+    const executeAction = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, data: {} });
+    const gateway = new UberOrderActionGatewayAdapter({
+      executeAction,
+>>>>>>> origin/main
     } as never);
     await gateway.deny({
       externalOrderId: 'order/1',
       idempotencyKey: 'key',
       denial: { reasonCode: 'ITEM_UNAVAILABLE', reasonDetail: 'sold out' },
     });
+<<<<<<< HEAD
     expect(sendActionCommand).toHaveBeenCalledWith(
+=======
+    expect(executeAction).toHaveBeenCalledWith(
+>>>>>>> origin/main
       'order/1',
       'DENY',
       {
@@ -51,6 +67,7 @@ describe('UberOrderActionGatewayAdapter', () => {
     );
   });
 
+<<<<<<< HEAD
   it.each([
     ['accept', undefined],
     ['deny', { denial: { reasonCode: 'STORE_CLOSED', reasonDetail: null } }],
@@ -168,5 +185,19 @@ describe('UberOrderActionGatewayAdapter', () => {
       status: null,
       message: 'Uber order command failed before receiving an HTTP response',
     });
+=======
+  it('treats a ready conflict as idempotent success', async () => {
+    const executeAction = jest
+      .fn()
+      .mockResolvedValue({ ok: false, status: 409, data: {} });
+    await expect(
+      new UberOrderActionGatewayAdapter({
+        executeAction,
+      } as never).readyForPickup({
+        externalOrderId: 'order-1',
+        idempotencyKey: 'key',
+      }),
+    ).resolves.toBeUndefined();
+>>>>>>> origin/main
   });
 });

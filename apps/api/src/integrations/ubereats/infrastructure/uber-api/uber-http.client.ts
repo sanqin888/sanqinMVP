@@ -3,7 +3,11 @@ import { AppLogger } from '../../../../common/app-logger';
 import {
   UberApplicationError,
   type UberErrorCategory,
+<<<<<<< HEAD:apps/api/src/integrations/ubereats/infrastructure/uber-api/uber-http.client.ts
 } from '../../application/shared/uber-application.error';
+=======
+} from '../../application/errors/uber-application.error';
+>>>>>>> origin/main:apps/api/src/integrations/ubereats/uber-http.client.ts
 
 export type UberRequestKind = 'token' | 'api' | 'orderDetail' | 'imageProbe';
 
@@ -23,7 +27,10 @@ export class UberApiError extends UberApplicationError {
   ) {
     super(category, uberCode, safeDetail, operation, retryable, {
       retryAfterMs,
+<<<<<<< HEAD:apps/api/src/integrations/ubereats/infrastructure/uber-api/uber-http.client.ts
       upstreamStatus: httpStatus,
+=======
+>>>>>>> origin/main:apps/api/src/integrations/ubereats/uber-http.client.ts
       cause,
     });
     this.name = 'UberApiError';

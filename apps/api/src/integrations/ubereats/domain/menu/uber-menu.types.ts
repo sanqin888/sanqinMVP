@@ -15,7 +15,10 @@ export type UberAuthenticationError = {
 };
 
 export type UberStoreScopedInput = {
+<<<<<<< HEAD
   /** Uber store id. Used by Uber-scoped draft/configuration endpoints. */
+=======
+>>>>>>> origin/main
   storeId?: string;
 };
 
@@ -58,9 +61,13 @@ export type UpdateDraftOptionInput = UberStoreScopedInput & {
   sortOrder?: number;
 };
 
+<<<<<<< HEAD
 export type PublishMenuInput = {
   /** Internal/POS store id (also the cloud print-task room id), not an Uber store id. */
   storeId?: string;
+=======
+export type PublishMenuInput = UberStoreScopedInput & {
+>>>>>>> origin/main
   dryRun?: boolean;
   timezoneConfirmed?: boolean;
   taxRateConfirmed?: boolean;

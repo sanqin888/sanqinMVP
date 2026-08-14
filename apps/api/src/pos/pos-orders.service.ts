@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access -- typed framework/Prisma test doubles cross a dynamic boundary */
 import {
   BadRequestException,
   ConflictException,
@@ -17,11 +18,17 @@ import {
 } from '../orders/order-status';
 import type { OrderDto } from '../orders/dto/order.dto';
 import {
+<<<<<<< HEAD
   UBER_EATS_ORDER_ACTIONS,
   UBER_EATS_ORDER_STATUS_SYNC,
   type UberEatsOrderActionsPort,
   type UberEatsOrderStatusSyncPort,
 } from '../integrations/ubereats/public-api';
+=======
+  RequestUberOrderActionUseCase,
+  SyncUberOrderStatusUseCase,
+} from '../integrations/ubereats/application/orders/uber-order.use-cases';
+>>>>>>> origin/main
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash } from 'crypto';
 
@@ -31,10 +38,15 @@ const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 export class PosOrdersService {
   constructor(
     private readonly orders: OrdersService,
+<<<<<<< HEAD
     @Inject(UBER_EATS_ORDER_ACTIONS)
     private readonly uberOrderActions: UberEatsOrderActionsPort,
     @Inject(UBER_EATS_ORDER_STATUS_SYNC)
     private readonly uberOrderStatusSync: UberEatsOrderStatusSyncPort,
+=======
+    private readonly uberOrderActions: RequestUberOrderActionUseCase,
+    private readonly uberOrderStatusSync: SyncUberOrderStatusUseCase,
+>>>>>>> origin/main
     private readonly prisma: PrismaService,
   ) {}
 
@@ -99,6 +111,7 @@ export class PosOrdersService {
     }
     const result =
       await this.uberOrderActions.retryReadyForPickup(externalOrderId);
+<<<<<<< HEAD
     return this.advanceResult(order, result);
   }
 
@@ -115,6 +128,8 @@ export class PosOrdersService {
       throw new BadRequestException('当前 Uber 订单状态不允许取消');
     }
     const result = await this.uberOrderActions.cancel(externalOrderId, reason);
+=======
+>>>>>>> origin/main
     return this.advanceResult(order, result);
   }
 

@@ -21,6 +21,11 @@ describe('Uber credential schema boundary', () => {
   it('持久化适配器不读取或写入明文 token 列', () => {
     const source = [
       'infrastructure/persistence/uber-merchant-persistence.adapter.ts',
+<<<<<<< HEAD
+=======
+      'infrastructure/persistence/uber-prisma.adapters.ts',
+      'infrastructure/menu/uber-menu-draft.adapter.ts',
+>>>>>>> origin/main
     ]
       .map((file) => readFileSync(resolve(__dirname, file), 'utf8'))
       .join('\n');

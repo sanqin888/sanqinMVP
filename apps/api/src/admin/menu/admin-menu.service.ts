@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return -- typed framework/Prisma test doubles cross a dynamic boundary */
 // apps/api/src/admin/menu/admin-menu.service.ts
 import {
   BadRequestException,
@@ -28,7 +29,6 @@ import {
   type UberEatsAvailabilitySyncResult,
   type UberEatsMenuAvailabilityPort,
 } from '../../integrations/ubereats/public-api';
-
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
 function toIso(value: Date | null | undefined): string | null {

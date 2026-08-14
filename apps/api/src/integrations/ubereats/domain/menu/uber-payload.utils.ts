@@ -105,6 +105,7 @@ export type UberMenuPayloadValidationIssue = {
   message: string;
 };
 
+<<<<<<< HEAD
 export type UberImageUrlResolutionContext = {
   /** An absolute public base URL validated by an infrastructure adapter. */
   publicBaseUrl: string;
@@ -115,12 +116,25 @@ export function resolveUberImageUrl(
   value: string | null,
   context: UberImageUrlResolutionContext,
 ): string | null {
+=======
+/** Convert the site's stored image path into the public URL Uber can fetch. */
+export function resolveUberImageUrl(value: string | null): string | null {
+>>>>>>> origin/main
   const imageUrl = value?.trim();
   if (!imageUrl) return null;
   if (!imageUrl.startsWith('/')) return imageUrl;
 
+<<<<<<< HEAD
   try {
     return new URL(imageUrl, context.publicBaseUrl).toString();
+=======
+  const publicBaseUrl =
+    process.env.PUBLIC_BASE_URL?.trim() ||
+    process.env.WEB_BASE_URL?.trim() ||
+    'https://sanq.ca';
+  try {
+    return new URL(imageUrl, publicBaseUrl).toString();
+>>>>>>> origin/main
   } catch {
     // Keep the invalid value so payload validation blocks the publish instead
     // of silently dropping the image from the menu.

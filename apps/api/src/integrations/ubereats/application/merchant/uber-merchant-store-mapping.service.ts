@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { UberValidationError } from '../shared/uber-application.error';
 import { type UberMerchantApiPort } from '../merchant/uber-merchant-api.ports';
 import {
@@ -9,18 +10,56 @@ export class DiscoverUberStoresUseCase {
   constructor(
     private readonly api: UberMerchantApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
+=======
+import { Inject, Injectable } from '@nestjs/common';
+import { UberValidationError } from '../errors/uber-application.error';
+import {
+  UBER_MERCHANT_API,
+  UBER_OAUTH_TOKEN,
+  type UberMerchantApiPort,
+  type UberOAuthTokenPort,
+} from '../ports/uber-api.ports';
+import {
+  UBER_MERCHANT_CONNECTION_REPOSITORY,
+  UBER_STORE_MAPPING_REPOSITORY,
+  type UberMerchantConnectionRepositoryPort,
+  type UberStoreMappingRepositoryPort,
+} from '../ports/uber-persistence.ports';
+
+@Injectable()
+export class DiscoverUberStoresUseCase {
+  constructor(
+    @Inject(UBER_MERCHANT_API) private readonly api: UberMerchantApiPort,
+    @Inject(UBER_OAUTH_TOKEN) private readonly tokens: UberOAuthTokenPort,
+    @Inject(UBER_MERCHANT_CONNECTION_REPOSITORY)
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    @Inject(UBER_STORE_MAPPING_REPOSITORY)
+>>>>>>> origin/main
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
   async getMerchantStores(id?: string) {
     const connection = await this.resolve(id);
+<<<<<<< HEAD
     const { stores } = await this.api.discoverStores({
       merchantUberUserId: connection.merchantUberUserId,
     });
+=======
+    const { stores, raw } = await this.api.discoverStores(
+      connection.accessToken,
+    );
+>>>>>>> origin/main
     const existing = await this.mappings.findMappings(
       connection.merchantUberUserId,
       stores.map((s) => s.storeId),
     );
     const byId = new Map(existing.map((m) => [m.uberStoreId, m]));
+<<<<<<< HEAD
+=======
+    await this.connections.saveStoresSnapshot(
+      connection.merchantUberUserId,
+      raw,
+    );
+>>>>>>> origin/main
     await Promise.all(
       stores.map((s) =>
         this.mappings.saveDiscovery({
@@ -31,6 +70,10 @@ export class DiscoverUberStoresUseCase {
           isProvisioned: s.integrationEnabled,
           provisionedAt: s.integrationEnabled ? new Date() : null,
           posExternalStoreId: s.posExternalStoreId,
+<<<<<<< HEAD
+=======
+          rawPayload: s.raw,
+>>>>>>> origin/main
         }),
       ),
     );
@@ -57,19 +100,53 @@ export class DiscoverUberStoresUseCase {
         operation: 'merchant',
         message: 'merchantUberUserId 不能为空',
       });
+<<<<<<< HEAD
     const row = await this.connections.findConnection(id.trim());
+=======
+    let row = await this.connections.findConnection(id.trim());
+>>>>>>> origin/main
     if (!row)
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
         operation: 'merchant',
         message: '未找到 Uber 商户授权',
       });
+<<<<<<< HEAD
+=======
+    if (row.expiresAt && row.expiresAt.getTime() <= Date.now() + 60_000) {
+      if (!row.refreshToken)
+        throw new UberValidationError({
+          code: 'INVALID_REQUEST',
+          operation: 'merchant',
+          message: 'Uber 商户凭据已过期',
+        });
+      const fresh = await this.tokens.refreshAccessToken(
+        row.refreshToken,
+        row.scope ?? undefined,
+      );
+      await this.connections.upsertConnectionByUberUserId({
+        ...row,
+        ...fresh,
+        uberUserId: row.merchantUberUserId,
+      });
+      row = { ...row, ...fresh };
+    }
+>>>>>>> origin/main
     return row;
   }
 }
 
+<<<<<<< HEAD
 export class MapUberStoreUseCase {
   constructor(private readonly mappings: UberStoreMappingRepositoryPort) {}
+=======
+@Injectable()
+export class MapUberStoreUseCase {
+  constructor(
+    @Inject(UBER_STORE_MAPPING_REPOSITORY)
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+>>>>>>> origin/main
   async updatePosExternalStoreId(
     uberStoreId: string,
     posExternalStoreId: string,

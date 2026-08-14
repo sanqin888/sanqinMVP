@@ -9,9 +9,12 @@ describe('UberOrderStateMachine', () => {
     expect(
       UberOrderStateMachine.afterCancellation('completed' as never),
     ).toBeNull();
+<<<<<<< HEAD
     expect(
       UberOrderStateMachine.afterConfirmedAction('making' as never, 'CANCEL'),
     ).toBe('refunded');
+=======
+>>>>>>> origin/main
   });
 
   it('validates commands and only advances after confirmed actions', () => {

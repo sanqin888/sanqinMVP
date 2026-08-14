@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import type {
   UberOrderCancelEventV1,
   UberOrderNotificationEventV1,
@@ -43,11 +44,52 @@ export class ImportUberOrderUseCase {
     private readonly detailGateway: UberOrderDetailQueryPort,
     private readonly actions: UberOrderActionService,
     private readonly storeMappings: UberStoreMappingRepositoryPort,
+=======
+import { Inject, Injectable } from '@nestjs/common';
+import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
+import type { UberOrderNotificationEventV1 } from '../../contracts/events/uber-order-notification.v1';
+import type { UberEventOrdering } from '../ports/uber-order-processing.ports';
+import {
+  UBER_ORDER_SYNC_PORT,
+  type UberOrderSyncPort,
+} from '../ports/uber-use-case.ports';
+import { UberOrderActionService } from './uber-order-action.service';
+import {
+  UBER_ORDER_IMPORT_REPOSITORY,
+  type UberOrderEventCursor,
+  type UberOrderImportRepositoryPort,
+} from '../ports/uber-order.ports';
+import {
+  UBER_ORDER_DETAIL_GATEWAY,
+  type UberOrderDetailGatewayPort,
+} from '../ports/uber-api.ports';
+import {
+  UberOrderPayloadParser,
+  validateUberOrderAmounts,
+} from '../../domain/orders/uber-order-payload.parser';
+import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
+
+/** Imports an event once, keyed by the Uber event id; the adapter owns its graph transaction. */
+@Injectable()
+export class ImportUberOrderUseCase {
+  private readonly parser = new UberOrderPayloadParser();
+
+  constructor(
+    @Inject(UBER_ORDER_IMPORT_REPOSITORY)
+    private readonly repository: UberOrderImportRepositoryPort,
+    @Inject(UBER_ORDER_DETAIL_GATEWAY)
+    private readonly detailGateway: UberOrderDetailGatewayPort,
+    private readonly actions: UberOrderActionService,
+>>>>>>> origin/main
   ) {}
   async execute(
     eventType: string,
     eventId: string,
+<<<<<<< HEAD
     payload: UberOrderNotificationEventV1 | UberOrderCancelEventV1,
+=======
+    payload: UberOrderNotificationEventV1,
+>>>>>>> origin/main
     ordering?: UberEventOrdering,
   ) {
     const normalizedEventType = normalizeUberEventType(eventType);
@@ -67,12 +109,17 @@ export class ImportUberOrderUseCase {
     }
     if (existing?.cursor && !this.isAfter(cursor, existing.cursor)) return;
 
+<<<<<<< HEAD
     const detail = await this.detailGateway.fetchOrderDetail({
+=======
+    const raw = await this.detailGateway.fetchOrderDetail({
+>>>>>>> origin/main
       resourceHref: payload.resourceHref,
       eventType: normalizedEventType,
       eventId,
       resourceId: externalOrderId ?? null,
     });
+<<<<<<< HEAD
     if (detail.kind === 'invalid') {
       if (externalOrderId)
         await this.actions.request(externalOrderId, 'DENY', {
@@ -123,11 +170,26 @@ export class ImportUberOrderUseCase {
         eventId,
         order.externalOrderId,
       );
+=======
+    const order = this.parser.parse(raw);
+    if (!order) {
+      if (externalOrderId)
+        await this.actions.request(externalOrderId, 'DENY', {
+          reasonCode: 'INVALID_ORDER',
+          reasonDetail: '订单详情无法解析',
+        });
+      return;
+    }
+>>>>>>> origin/main
     const externalIds = order.items
       .map((item) => item.externalItemId)
       .filter((id): id is string => !!id);
     const mappings = await this.repository.findMenuMappings(
+<<<<<<< HEAD
       uberStoreId,
+=======
+      order.storeId ?? '',
+>>>>>>> origin/main
       externalIds,
     );
     const byId = new Map(mappings.map((item) => [item.externalItemId, item]));
@@ -146,6 +208,7 @@ export class ImportUberOrderUseCase {
         Math.abs(expected - item.baseUnitPriceCents) > 1
       );
     });
+<<<<<<< HEAD
     const denial =
       mismatch || validateUberOrderAmounts(order).hasMaterialVariance
         ? {
@@ -164,13 +227,37 @@ export class ImportUberOrderUseCase {
     await this.repository.saveImportedOrder({
       order,
       posStoreId,
+=======
+    if (mismatch || validateUberOrderAmounts(order).hasMaterialVariance) {
+      await this.actions.request(order.externalOrderId, 'DENY', {
+        reasonCode: 'PRICE_MISMATCH',
+        reasonDetail: '订单金额与已发布菜单不一致',
+      });
+      return;
+    }
+    const cancellation = this.cancellation(normalizedEventType, order);
+    await this.repository.saveImportedOrder({
+      order,
+>>>>>>> origin/main
       eventType: normalizedEventType,
       cursor,
       menuMappings: mappings,
       cancellation,
+<<<<<<< HEAD
       actionIntent: decision,
       receivedAt: new Date(),
     });
+=======
+      receivedAt: new Date(),
+    });
+    // Deliberately outside the import transaction. A failed enqueue leaves the
+    // committed order replayable; the duplicate branch retries this intent.
+    await this.requestDecision(
+      order.externalOrderId,
+      normalizedEventType,
+      cancellation,
+    );
+>>>>>>> origin/main
   }
 
   processWebhookEvent(
@@ -190,8 +277,16 @@ export class ImportUberOrderUseCase {
     if (cancellation || this.isCancellation(eventType)) return;
     await this.actions.request(externalOrderId, 'ACCEPT');
   }
+<<<<<<< HEAD
   private cancellation(eventType: string, order: ParsedUberOrder) {
     if (!this.isCancellation(eventType)) return null;
+=======
+  private cancellation(
+    eventType: string,
+    order: ReturnType<UberOrderPayloadParser['parse']>,
+  ) {
+    if (!order || !this.isCancellation(eventType)) return null;
+>>>>>>> origin/main
     const value = order.cancellation ?? {
       cancelledBy: null,
       reasonCode: null,
@@ -229,8 +324,15 @@ export class ImportUberOrderUseCase {
   }
 }
 /** Cancellation is an event-idempotent order import with its own transaction boundary. */
+<<<<<<< HEAD
 export class CancelUberOrderUseCase extends ImportUberOrderUseCase {}
 /** Atomically creates an action intent; externalOrderId + action is the idempotency key. */
+=======
+@Injectable()
+export class CancelUberOrderUseCase extends ImportUberOrderUseCase {}
+/** Atomically creates an action intent; externalOrderId + action is the idempotency key. */
+@Injectable()
+>>>>>>> origin/main
 export class RequestUberOrderActionUseCase {
   constructor(private readonly actions: UberOrderActionService) {}
   async accept(id: string) {
@@ -239,6 +341,7 @@ export class RequestUberOrderActionUseCase {
   async deny(id: string, reasonCode: string, reasonDetail?: string) {
     return this.present(
       await this.actions.request(id, 'DENY', {
+<<<<<<< HEAD
         reasonCode: reasonCode.trim(),
         reasonDetail: reasonDetail?.trim() || null,
       }),
@@ -249,6 +352,10 @@ export class RequestUberOrderActionUseCase {
       await this.actions.request(id, 'CANCEL', {
         reasonCode: 'OTHER',
         reasonDetail: reason?.trim() || null,
+=======
+        reasonCode,
+        reasonDetail: reasonDetail ?? null,
+>>>>>>> origin/main
       }),
     );
   }
@@ -279,6 +386,7 @@ export class RequestUberOrderActionUseCase {
   }
 }
 /** Claims durable action leases and records each gateway result in a separate transaction. */
+<<<<<<< HEAD
 export class ExecuteUberOrderActionWorker {
   private static readonly LEASE_DURATION_MS = 30_000;
 
@@ -296,5 +404,35 @@ export class ExecuteUberOrderActionWorker {
     });
     await Promise.all(tasks.map((task) => this.actions.executeClaimed(task)));
     return tasks.length;
+=======
+@Injectable()
+export class ExecuteUberOrderActionWorker {
+  constructor(private readonly actions: UberOrderActionService) {}
+  execute(limit = 50) {
+    return this.actions.process(limit, `worker-${process.pid}`);
+  }
+}
+/** Synchronizes one state transition, keyed by externalOrderId + target status. */
+@Injectable()
+export class SyncUberOrderStatusUseCase {
+  constructor(
+    @Inject(UBER_ORDER_SYNC_PORT) private readonly orders: UberOrderSyncPort,
+  ) {}
+  execute(id: string, status: UberOrderStatus) {
+    return this.orders.syncOrderStatusToUber(id, status);
+  }
+}
+/** Read-only pending-order query; it never starts a transaction. */
+@Injectable()
+export class ListPendingUberOrdersQuery {
+  constructor(
+    @Inject(UBER_ORDER_SYNC_PORT) private readonly orders: UberOrderSyncPort,
+  ) {}
+  list() {
+    return this.orders.listPendingUberOrders();
+  }
+  summary() {
+    return this.orders.getPendingUberOrdersSummary();
+>>>>>>> origin/main
   }
 }

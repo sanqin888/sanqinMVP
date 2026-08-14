@@ -1,5 +1,6 @@
 import { UberOrderActionPrismaAdapter } from './uber-order-action-prisma.adapter';
 
+<<<<<<< HEAD
 const claimedRow = (id: string) => ({
   id,
   leaseToken: `worker:lease:${id}`,
@@ -18,6 +19,8 @@ type RawTag = (
 
 const sqlText = (strings: TemplateStringsArray) => strings.join('?');
 
+=======
+>>>>>>> origin/main
 const intent = {
   externalOrderId: 'order-1',
   action: 'ACCEPT' as const,
@@ -28,6 +31,7 @@ const intent = {
 };
 
 describe('UberOrderActionPrismaAdapter contract', () => {
+<<<<<<< HEAD
   it.each(['ACCEPT', 'DENY', 'CANCEL', 'READY_FOR_PICKUP'] as const)(
     'enqueues %s without interpreting its target order status',
     async (action) => {
@@ -52,6 +56,8 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     },
   );
 
+=======
+>>>>>>> origin/main
   it('returns the existing durable task after a duplicate enqueue race', async () => {
     const prisma = {
       uberOrderAction: {
@@ -64,6 +70,7 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     ).resolves.toEqual({ taskId: 'existing-task', created: false });
   });
 
+<<<<<<< HEAD
   it('uses one atomic SKIP LOCKED update and concurrent workers receive no duplicate', async () => {
     const queryRaw = jest
       .fn<ReturnType<RawTag>, Parameters<RawTag>>()
@@ -220,6 +227,24 @@ describe('UberOrderActionPrismaAdapter contract', () => {
   });
 
   it.each(['complete', 'markFailed'] as const)(
+=======
+  it('uses one SKIP LOCKED statement for concurrent claims', async () => {
+    const queryRaw = jest
+      .fn<Promise<unknown[]>, [string, ...unknown[]]>()
+      .mockResolvedValue([]);
+    const prisma = { $queryRawUnsafe: queryRaw };
+    await new UberOrderActionPrismaAdapter(prisma as never).claim({
+      limit: 10,
+      owner: 'worker-a',
+      now: new Date(0),
+      leaseDurationMs: 30_000,
+    });
+    expect(queryRaw.mock.calls).toHaveLength(1);
+    expect(queryRaw.mock.calls[0]?.[0]).toContain('SKIP LOCKED');
+  });
+
+  it.each(['markSucceeded', 'markFailed'] as const)(
+>>>>>>> origin/main
     '%s rejects an expired or replaced lease by returning false',
     async (method) => {
       const updateMany = jest
@@ -237,12 +262,17 @@ describe('UberOrderActionPrismaAdapter contract', () => {
       };
       const adapter = new UberOrderActionPrismaAdapter(prisma as never);
       const result =
+<<<<<<< HEAD
         method === 'complete'
           ? await adapter.complete({
               taskId: 'task',
               leaseToken: 'expired-token',
               transition: { from: 'pending', to: 'making' },
             })
+=======
+        method === 'markSucceeded'
+          ? await adapter.markSucceeded('task', 'expired-token')
+>>>>>>> origin/main
           : await adapter.markFailed('task', 'expired-token', {
               retryable: true,
               code: 'HTTP_503',

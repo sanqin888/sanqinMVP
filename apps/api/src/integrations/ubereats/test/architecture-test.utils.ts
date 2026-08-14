@@ -1,6 +1,10 @@
 import { readFileSync, readdirSync } from 'node:fs';
+<<<<<<< HEAD
 import { join, relative, sep } from 'node:path';
 import ts from 'typescript';
+=======
+import { join, relative } from 'node:path';
+>>>>>>> origin/main
 
 export type SourceFile = { path: string; source: string };
 
@@ -13,11 +17,15 @@ export const scanTypeScript = (
     const path = join(root, entry.name);
     if (entry.isDirectory()) return scanTypeScript(path, options);
     if (!entry.isFile() || !path.endsWith('.ts')) return [];
+<<<<<<< HEAD
     if (
       options.productionOnly &&
       (path.includes('.spec.') || path.includes(`${sep}test${sep}`))
     )
       return [];
+=======
+    if (options.productionOnly && path.includes('.spec.')) return [];
+>>>>>>> origin/main
     return [{ path, source: readFileSync(path, 'utf8') }];
   });
 
@@ -49,6 +57,7 @@ export const formatSourceViolation = (
   token: string,
 ): string => `${relative(root, file.path)} -> ${token}`;
 
+<<<<<<< HEAD
 export type InterfaceMethods = { interfaceName: string; methods: string[] };
 
 /** Reads interface method declarations structurally, without relying on text layout. */
@@ -190,6 +199,8 @@ export const portMethodReturnTypeViolations = (
   });
 };
 
+=======
+>>>>>>> origin/main
 export const writeGatewayViolations = (
   files: readonly SourceFile[],
   root: string,

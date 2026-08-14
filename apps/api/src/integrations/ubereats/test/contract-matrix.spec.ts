@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { acceptanceMatrix, ContractDomain } from './contract-matrix';
@@ -16,6 +17,17 @@ const domains: ContractDomain[] = [
   'merchant',
   'webhook-receive',
   'webhook-worker',
+=======
+/* eslint-disable @typescript-eslint/no-unsafe-assignment -- typed framework/Prisma test doubles cross a dynamic boundary */
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { acceptanceMatrix, ContractDomain } from './contract-matrix';
+import { parseUberWebhookEnvelopeV1 } from '../contracts/events/uber-webhook-envelope.v1';
+
+const domains: ContractDomain[] = [
+  'merchant',
+  'webhook',
+>>>>>>> origin/main
   'orders',
   'menu',
   'operations',
@@ -44,9 +56,13 @@ describe.each(domains)('Uber Eats %s integration contract', (domain) => {
         expect(value).toEqual(expect.any(String));
         expect(value).not.toHaveLength(0);
       }
+<<<<<<< HEAD
       expect(typeof status === 'number' || status === 'not-applicable').toBe(
         true,
       );
+=======
+      expect(status).toEqual(expect.any(Number));
+>>>>>>> origin/main
       expect(requests).toBeDefined();
       expect(forbidden).toEqual(
         expect.arrayContaining([
@@ -82,7 +98,11 @@ describe('Uber Eats sanitized payload fixtures', () => {
     '%s contains no real identity, address, credential or token field',
     (file) => {
       const text = readFileSync(join(fixtureDirectory, file), 'utf8');
+<<<<<<< HEAD
       const payload = parseJsonObject(text);
+=======
+      const payload = JSON.parse(text) as unknown;
+>>>>>>> origin/main
 
       expect(payload).toBeDefined();
       expect(text).not.toMatch(
@@ -94,6 +114,7 @@ describe('Uber Eats sanitized payload fixtures', () => {
 });
 
 describe('Uber Eats webhook contract matrix payload compatibility', () => {
+<<<<<<< HEAD
   it('separates HTTP ownership from asynchronous business outcomes', () => {
     const receive = acceptanceMatrix['webhook-receive'];
     const worker = acceptanceMatrix['webhook-worker'];
@@ -129,6 +150,10 @@ describe('Uber Eats webhook contract matrix payload compatibility', () => {
 
   it('keeps the webhook fixture compatible with the versioned envelope', () => {
     const payload = parseJsonObject(
+=======
+  it('keeps the webhook fixture compatible with the versioned envelope', () => {
+    const payload = JSON.parse(
+>>>>>>> origin/main
       readFileSync(join(__dirname, 'fixtures/webhook-order.json'), 'utf8'),
     );
     expect(parseUberWebhookEnvelopeV1(payload)).toMatchObject({ version: 1 });

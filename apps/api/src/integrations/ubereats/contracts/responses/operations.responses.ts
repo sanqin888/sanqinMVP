@@ -17,6 +17,7 @@ export class UberOpsTicketResponse {
 }
 export type UberOpsTicketListResponse = UberListResponse<UberOpsTicketResponse>;
 export type UberOperationMutationResponse = UberMutationResponse;
+<<<<<<< HEAD
 export class UberOperationsSummaryResponse {
   total!: number;
   succeeded!: number;
@@ -38,3 +39,5 @@ export class UberReconciliationReportResponse {
 }
 export type UberReconciliationReportListResponse =
   UberListResponse<UberReconciliationReportResponse>;
+=======
+>>>>>>> origin/main

@@ -1,9 +1,14 @@
+<<<<<<< HEAD
 import { Injectable, Optional } from '@nestjs/common';
+=======
+import { Injectable } from '@nestjs/common';
+>>>>>>> origin/main
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import type {
   UberWebhookInboxItem,
   UberWebhookInboxPort,
+<<<<<<< HEAD
 } from '../../application/orders/uber-order-processing.ports';
 import { redactUberLogText } from '../shared/uber-log.utils';
 import { PrismaService } from '../../../../prisma/prisma.service';
@@ -12,10 +17,19 @@ import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
 import { UberApplicationError } from '../../application/shared/uber-application.error';
 import type { UberJsonValue } from '../../application/shared/uber-json-value';
+=======
+} from '../../application/ports/uber-order-processing.ports';
+import { redactUberLogText } from '../../domain/shared/uber-integration.utils';
+import { PrismaService } from '../../../../prisma/prisma.service';
+import { UberPrismaAccessService } from './uber-prisma-access.service';
+import { buildUberIdempotencyKey } from '../../application/idempotency/uber-idempotency-key';
+import { UberConfigService } from '../config/uber-config.service';
+>>>>>>> origin/main
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   private static readonly MAX_ATTEMPTS = 8;
+<<<<<<< HEAD
   private readonly telemetry: UberTelemetryService;
 
   constructor(
@@ -25,6 +39,13 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   ) {
     this.telemetry = telemetry ?? new UberTelemetryService(prisma);
   }
+=======
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: UberPrismaAccessService,
+    private readonly config: UberConfigService,
+  ) {}
+>>>>>>> origin/main
   async enqueue(input: {
     eventId: string;
     eventType: string;
@@ -33,7 +54,11 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   }): Promise<boolean> {
     try {
       const businessVersion = 'v1';
+<<<<<<< HEAD
       await this.prisma.uberWebhookInbox.create({
+=======
+      await this.access.uberWebhookInboxRepository.create({
+>>>>>>> origin/main
         data: {
           ...input,
           status: 'PENDING',
@@ -65,6 +90,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     const leaseToken = randomUUID();
     const rows = await this.prisma.$queryRaw<
       Array<{
+<<<<<<< HEAD
         resultKind: 'CLAIMED' | 'AUTO_DEAD';
         eventId: string;
         eventType: string | null;
@@ -84,6 +110,16 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
             OR (exhausted.status = 'PROCESSING' AND exhausted."leaseExpiresAt" <= NOW()))
         RETURNING exhausted."eventId"
       ), candidates AS (
+=======
+        eventId: string;
+        eventType: string;
+        payload: unknown;
+        idempotencyKey: string;
+        businessVersion: string;
+      }>
+    >`
+      WITH candidates AS (
+>>>>>>> origin/main
         SELECT candidate.id FROM "UberWebhookInbox" candidate
         WHERE ((candidate.status IN ('PENDING', 'FAILED') AND (candidate."nextRetryAt" IS NULL OR candidate."nextRetryAt" <= NOW())) OR (candidate.status = 'PROCESSING' AND candidate."leaseExpiresAt" <= NOW()))
           AND candidate."attemptCount" < ${UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS}
@@ -91,6 +127,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
             SELECT 1 FROM "UberWebhookInbox" earlier
             WHERE earlier."externalOrderId" = candidate."externalOrderId"
               AND earlier.status NOT IN ('PROCESSED', 'DEAD')
+<<<<<<< HEAD
               AND NOT (earlier."attemptCount" >= ${UberWebhookInboxPrismaAdapter.MAX_ATTEMPTS}
                 AND (earlier.status IN ('PENDING', 'FAILED')
                   OR (earlier.status = 'PROCESSING' AND earlier."leaseExpiresAt" <= NOW())))
@@ -98,10 +135,17 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
           )
         ORDER BY candidate."createdAt" ASC, candidate.id ASC FOR UPDATE OF candidate SKIP LOCKED LIMIT ${limit}
       ), claimed AS (
+=======
+              AND (earlier."createdAt", earlier.id) < (candidate."createdAt", candidate.id)
+          )
+        ORDER BY candidate."createdAt" ASC, candidate.id ASC FOR UPDATE OF candidate SKIP LOCKED LIMIT ${limit}
+      )
+>>>>>>> origin/main
       UPDATE "UberWebhookInbox" inbox SET status = 'PROCESSING', "processingAt" = NOW(), "leaseToken" = ${leaseToken},
         "leaseExpiresAt" = NOW() + (${this.config.workerLeaseDurationMs} * INTERVAL '1 millisecond'), "attemptCount" = inbox."attemptCount" + 1
       FROM candidates WHERE inbox.id = candidates.id RETURNING inbox."eventId", inbox."eventType", inbox.payload,
         inbox."idempotencyKey", inbox."businessVersion", inbox."externalOrderId" AS "resourceKey"
+<<<<<<< HEAD
       )
       SELECT 'CLAIMED' AS "resultKind", claimed.* FROM claimed
       UNION ALL
@@ -135,6 +179,13 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   }
   async markSucceeded(item: UberWebhookInboxItem): Promise<boolean> {
     const result = await this.prisma.uberWebhookInbox.updateMany({
+=======
+    `;
+    return rows.map((row) => ({ ...row, leaseToken }));
+  }
+  async markSucceeded(item: UberWebhookInboxItem): Promise<void> {
+    await this.access.uberWebhookInboxRepository.updateMany({
+>>>>>>> origin/main
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -150,6 +201,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         structuredError: Prisma.DbNull,
       },
     });
+<<<<<<< HEAD
     return result.count === 1;
   }
   async markUnsupported(
@@ -197,13 +249,20 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         AND status = 'DEAD'
         AND "structuredError"->>'code' = 'UBER_WEBHOOK_EVENT_UNSUPPORTED'
     `;
+=======
+>>>>>>> origin/main
   }
   async markFailed(
     item: UberWebhookInboxItem,
     error: unknown,
     retryable: boolean,
+<<<<<<< HEAD
   ): Promise<boolean> {
     const current = await this.prisma.uberWebhookInbox.findUnique({
+=======
+  ): Promise<void> {
+    const current = await this.access.uberWebhookInboxRepository.findUnique({
+>>>>>>> origin/main
       where: { eventId: item.eventId },
       select: { attemptCount: true },
     });
@@ -213,7 +272,11 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
     const summary = redactUberLogText(
       error instanceof Error ? error.message : String(error),
     ).slice(0, 500);
+<<<<<<< HEAD
     const result = await this.prisma.uberWebhookInbox.updateMany({
+=======
+    await this.access.uberWebhookInboxRepository.updateMany({
+>>>>>>> origin/main
       where: {
         eventId: item.eventId,
         status: 'PROCESSING',
@@ -222,6 +285,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       data: {
         status: dead ? 'DEAD' : 'FAILED',
         errorSummary: summary || 'unknown error',
+<<<<<<< HEAD
         structuredError: {
           message: summary,
           retryable,
@@ -229,6 +293,9 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
             ? { code: error.code, operation: error.operation }
             : {}),
         },
+=======
+        structuredError: { message: summary, retryable },
+>>>>>>> origin/main
         nextRetryAt: dead
           ? null
           : new Date(
@@ -243,13 +310,20 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
         leaseExpiresAt: null,
       },
     });
+<<<<<<< HEAD
     return result.count === 1;
+=======
+>>>>>>> origin/main
   }
   async setStoreProvisioned(
     storeId: string,
     isProvisioned: boolean,
   ): Promise<boolean> {
+<<<<<<< HEAD
     const result = await this.prisma.uberStoreMapping.updateMany({
+=======
+    const result = await this.access.uberStoreMappingRepository.updateMany({
+>>>>>>> origin/main
       where: { uberStoreId: storeId },
       data: { isProvisioned, provisionedAt: isProvisioned ? new Date() : null },
     });

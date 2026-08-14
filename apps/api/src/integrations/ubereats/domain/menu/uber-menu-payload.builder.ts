@@ -7,7 +7,10 @@ import {
   resolveUberImageUrl,
   UBER_ITEM_DESCRIPTION_MAX_LENGTH,
   type UberMenuPayloadValidationIssue,
+<<<<<<< HEAD
   type UberImageUrlResolutionContext,
+=======
+>>>>>>> origin/main
   type UberServiceAvailability,
 } from './uber-payload.utils';
 
@@ -50,7 +53,10 @@ export function buildUberUploadMenuPayload(
   graph: UberUploadMenuGraph,
   serviceAvailability: UberServiceAvailability[],
   taxRatePercentage: number,
+<<<<<<< HEAD
   urlContext: UberImageUrlResolutionContext,
+=======
+>>>>>>> origin/main
 ): UberMenuUploadPayload {
   return {
     menus: [
@@ -66,6 +72,7 @@ export function buildUberUploadMenuPayload(
       title: { translations: { en_us: category.title } },
       entities: category.entities.map((id) => ({ id, type: 'ITEM' as const })),
     })),
+<<<<<<< HEAD
     items: graph.items.map((item) => {
       const imageUrl = resolveUberImageUrl(item.imageUrl, urlContext);
       return {
@@ -96,6 +103,35 @@ export function buildUberUploadMenuPayload(
           : {}),
       };
     }),
+=======
+    items: graph.items.map((item) => ({
+      id: item.id,
+      title: { translations: { en_us: item.title || item.sourceStableId } },
+      ...(item.description
+        ? { description: { translations: { en_us: item.description } } }
+        : {}),
+      price_info: { price: item.priceCents, overrides: [] },
+      tax_info: { tax_rate: taxRatePercentage, vat_rate_percentage: null },
+      modifier_group_ids: {
+        ids:
+          item.sourceType === 'OPTION_ITEM' || !item.modifierGroupIds.length
+            ? null
+            : item.modifierGroupIds,
+        overrides: [],
+      },
+      suspension_info: item.isAvailable
+        ? null
+        : {
+            suspension: {
+              suspend_until: Date.UTC(2099, 0, 1),
+              reason: 'Item unavailable',
+            },
+          },
+      ...(item.sourceType === 'MENU_ITEM' && resolveUberImageUrl(item.imageUrl)
+        ? { image_url: resolveUberImageUrl(item.imageUrl) as string }
+        : {}),
+    })),
+>>>>>>> origin/main
     modifier_groups: graph.groups.map((group) => ({
       id: group.id,
       title: { translations: { en_us: group.title } },

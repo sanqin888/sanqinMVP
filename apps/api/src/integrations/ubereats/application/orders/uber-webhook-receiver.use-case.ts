@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
 import { createHash } from 'crypto';
+=======
+import { createHash } from 'crypto';
+import { Inject, Injectable } from '@nestjs/common';
+>>>>>>> origin/main
 import {
   canonicalizeUberWebhookPayload,
   parseUberWebhookEnvelope,
@@ -7,6 +12,7 @@ import {
   UberWebhookEnvelopeError,
 } from '../../domain/webhook/uber-webhook-envelope';
 import type { UberWebhookInput } from '../../domain/webhook/uber-webhook.types';
+<<<<<<< HEAD
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import {
   UberTransientUpstreamError,
@@ -30,6 +36,39 @@ export class ReceiveUberWebhookUseCase {
       version: 'hmac-sha256-hex-v1',
       headers: input.headers,
       rawBody: input.rawBody,
+=======
+import { normalizeUberEventType } from '../../domain/shared/uber-integration.utils';
+import { UberValidationError } from '../errors/uber-application.error';
+import {
+  UBER_TELEMETRY_PORT,
+  UBER_WEBHOOK_INBOX_PORT,
+  UBER_WEBHOOK_SIGNATURE_VERIFIER,
+  type UberTelemetryPort,
+  type UberWebhookInboxPort,
+  type UberWebhookSignatureVerifier,
+} from '../ports/uber-order-processing.ports';
+
+/** Signature verification, contract parsing and one atomic inbox insert. */
+@Injectable()
+export class ReceiveUberWebhookUseCase {
+  constructor(
+    @Inject(UBER_WEBHOOK_INBOX_PORT)
+    private readonly inbox: UberWebhookInboxPort,
+    @Inject(UBER_WEBHOOK_SIGNATURE_VERIFIER)
+    private readonly signatures: UberWebhookSignatureVerifier,
+    @Inject(UBER_TELEMETRY_PORT) private readonly telemetry: UberTelemetryPort,
+  ) {}
+
+  async execute(input: UberWebhookInput): Promise<void> {
+    const bytes =
+      typeof input.rawBody === 'string'
+        ? new TextEncoder().encode(input.rawBody)
+        : input.rawBody;
+    this.signatures.verify({
+      version: 'hmac-sha256-hex-v1',
+      headers: input.headers,
+      rawBody: bytes,
+>>>>>>> origin/main
     });
     let parsed: ReturnType<typeof parseUberWebhookEnvelope>;
     try {
@@ -69,6 +108,7 @@ export class ReceiveUberWebhookUseCase {
         : normalized.startsWith('store.')
           ? 'store'
           : 'event';
+<<<<<<< HEAD
     let inserted: boolean;
     try {
       inserted = await this.inbox.enqueue({
@@ -85,6 +125,14 @@ export class ReceiveUberWebhookUseCase {
         cause,
       });
     }
+=======
+    const inserted = await this.inbox.enqueue({
+      eventId,
+      eventType: parsed.envelope.eventType,
+      externalOrderId: `${prefix}:${parsed.envelope.resourceId ?? eventId}`,
+      payload: parsed.payload,
+    });
+>>>>>>> origin/main
     if (!inserted)
       this.telemetry.workflowLog('warn', 'duplicate webhook ignored');
   }

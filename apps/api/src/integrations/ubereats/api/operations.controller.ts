@@ -8,7 +8,6 @@ import {
   UseFilters,
 } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
-
 import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import {
   UberAdminWrite,
@@ -113,5 +112,5 @@ export class UberEatsOperationsController {
   ): Promise<UberOperationMutationResponse> {
     const result = await this.retryTicket.execute(ticketStableId);
     return presentOperationMutation(result.ticketStableId);
-  }
+ }
 }

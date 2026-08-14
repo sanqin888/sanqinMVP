@@ -15,6 +15,7 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { createHmac } from 'crypto';
+<<<<<<< HEAD
 import { UberCryptoConfigService } from '../../infrastructure/crypto/uber-crypto-config.service';
 import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
@@ -25,6 +26,16 @@ import type { UberWebhookInboxPort } from './uber-order-processing.ports';
 const signingKey = 'uber-webhook-signing-key';
 const config = () =>
   new UberCryptoConfigService({
+=======
+import { UberConfigService } from '../../infrastructure/config/uber-config.service';
+import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use-case';
+import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
+import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.helpers';
+
+const signingKey = 'uber-webhook-signing-key';
+const config = () =>
+  new UberConfigService({
+>>>>>>> origin/main
     UBER_EATS_OAUTH_STATE_SECRET: '0123456789abcdef0123456789ABCDEF',
     UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
   });
@@ -35,7 +46,11 @@ const inbox = () => ({
 const signed = (body: unknown) => {
   const rawBody = JSON.stringify(body);
   return {
+<<<<<<< HEAD
     rawBody: new TextEncoder().encode(rawBody),
+=======
+    rawBody,
+>>>>>>> origin/main
     headers: {
       'x-uber-signature': createHmac('sha256', signingKey)
         .update(rawBody)
@@ -45,6 +60,7 @@ const signed = (body: unknown) => {
 };
 
 describe('Uber webhook use cases', () => {
+<<<<<<< HEAD
   it.each([
     ['store.provisioned', true],
     ['store.deprovisioned', false],
@@ -91,6 +107,18 @@ describe('Uber webhook use cases', () => {
         event_id: 'evt-order-ordered',
         resource_href: 'https://api.uber.com/v2/eats/order/order-1',
         meta: { resource_id: 'order-1', user_id: 'store-1' },
+=======
+  it('routes Uber ordering metadata to the order use case', async () => {
+    const item = {
+      eventId: 'evt-order-ordered',
+      eventType: 'orders.ready_for_pickup',
+      payload: {
+        event_type: 'orders.ready_for_pickup',
+        event_id: 'evt-order-ordered',
+        resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+        resource_id: 'order-1',
+        meta: { resource_id: 'store-1', user_id: 'user-1' },
+>>>>>>> origin/main
         event_time: '2026-08-10T12:00:00.000Z',
         resource_version: '42',
         sequence_number: '7',
@@ -100,11 +128,17 @@ describe('Uber webhook use cases', () => {
       businessVersion: 'v1',
     };
     const inboxPort = {
+<<<<<<< HEAD
       claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
       markSucceeded: jest.fn().mockResolvedValue(true),
       markUnsupported: jest.fn().mockResolvedValue(true),
       requeueUnsupported: jest.fn().mockResolvedValue(0),
       markFailed: jest.fn().mockResolvedValue(true),
+=======
+      claimDue: jest.fn().mockResolvedValue([item]),
+      markSucceeded: jest.fn().mockResolvedValue(undefined),
+      markFailed: jest.fn().mockResolvedValue(undefined),
+>>>>>>> origin/main
       enqueue: jest.fn(),
       setStoreProvisioned: jest.fn(),
     };
@@ -132,6 +166,7 @@ describe('Uber webhook use cases', () => {
     expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
   });
 
+<<<<<<< HEAD
   it.each(['menus.deleted', 'store.mystery', 'completely.unknown'])(
     '隔离未知事件 %s，不会错误标记为成功',
     async (eventType) => {
@@ -281,6 +316,8 @@ describe('Uber webhook use cases', () => {
     expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
   });
 
+=======
+>>>>>>> origin/main
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {
     const uberWebhookInbox = inbox();
     const orders = {
@@ -302,7 +339,12 @@ describe('Uber webhook use cases', () => {
       event_type: 'orders.notification',
       event_id: 'evt-order-1',
       resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+<<<<<<< HEAD
       meta: { resource_id: 'order-1', user_id: 'store-1' },
+=======
+      resource_id: 'order-1',
+      meta: { resource_id: 'store-1', user_id: 'user-1' },
+>>>>>>> origin/main
     };
 
     await service.execute(signed(body));
@@ -343,6 +385,7 @@ describe('Uber webhook use cases', () => {
     expect(menu.processWebhookEvent).not.toHaveBeenCalled();
   });
 
+<<<<<<< HEAD
   it('数据库入箱失败时返回可重试错误而不伪装成功', async () => {
     const uberWebhookInbox = inbox();
     uberWebhookInbox.create.mockRejectedValueOnce(
@@ -372,6 +415,8 @@ describe('Uber webhook use cases', () => {
     });
   });
 
+=======
+>>>>>>> origin/main
   it('拒绝无效签名且不会 claim inbox', async () => {
     const uberWebhookInbox = inbox();
     const service = createReceiveUberWebhookUseCase(
@@ -383,7 +428,11 @@ describe('Uber webhook use cases', () => {
 
     await expect(
       service.execute({
+<<<<<<< HEAD
         rawBody: new TextEncoder().encode('{}'),
+=======
+        rawBody: '{}',
+>>>>>>> origin/main
         headers: { 'x-uber-signature': '0'.repeat(64) },
       }),
     ).rejects.toThrow('Uber webhook signature is invalid');
@@ -415,13 +464,18 @@ describe('ReceiveUberWebhookUseCase 最小依赖装配', () => {
     expect(ReceiveUberWebhookUseCase.length).toBe(3);
   });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
+<<<<<<< HEAD
     const webhookOnly = new UberCryptoConfigService({
+=======
+    const webhookOnly = new UberConfigService({
+>>>>>>> origin/main
       UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
     });
     expect(() =>
       createReceiveUberWebhookUseCase({} as never, webhookOnly),
     ).not.toThrow();
     expect(() =>
+<<<<<<< HEAD
       createReceiveUberWebhookUseCase(
         {} as never,
         new UberCryptoConfigService(),
@@ -472,3 +526,9 @@ it('逐条领取且旧 lease token 写回失败时 poll 明确失败', async () 
     expect.stringContaining('lease lost'),
   );
 });
+=======
+      createReceiveUberWebhookUseCase({} as never, new UberConfigService()),
+    ).toThrow('UBER_EATS_WEBHOOK_SIGNING_KEY');
+  });
+});
+>>>>>>> origin/main
