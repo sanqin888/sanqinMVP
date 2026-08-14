@@ -3142,9 +3142,9 @@ export class OrdersService {
   // =========================
 
   /**
-   * Records a full-refund request without pretending that money has moved.
-   * Uber refunds currently require platform processing, so the order remains
-   * non-terminal until a future platform callback/outbox worker confirms it.
+   * Uber refunds remain pending until platform/manual confirmation. In-store
+   * refunds are staff-confirmed at the POS and are therefore recorded as a
+   * completed financial amendment immediately.
    */
   async createFullRefund(params: {
     orderStableId: string;
@@ -3168,6 +3168,41 @@ export class OrdersService {
       );
     }
 
+    // Restore loyalty effects (including actual STORE_BALANCE settlement)
+    // before recording the completed refund. rollbackOnRefund is ledger-
+    // idempotent, so a retry after a later database failure is safe.
+    const inStoreOrder = await this.prisma.order.findUnique({
+      where: { orderStableId: params.orderStableId },
+      select: {
+        id: true,
+        channel: true,
+        paymentMethod: true,
+        status: true,
+        totalCents: true,
+      },
+    });
+    if (inStoreOrder?.channel === Channel.in_store) {
+      if (inStoreOrder.status === 'refunded') {
+        throw new ConflictException('order is already refunded');
+      }
+      if (
+        params.originalPaymentMethod !== inStoreOrder.paymentMethod ||
+        params.refundMethod === PaymentMethod.UBEREATS ||
+        params.refundAmountCents !== inStoreOrder.totalCents
+      ) {
+        throw new BadRequestException('invalid in-store full refund request');
+      }
+      if (
+        inStoreOrder.paymentMethod === PaymentMethod.STORE_BALANCE &&
+        params.refundMethod !== PaymentMethod.STORE_BALANCE
+      ) {
+        throw new BadRequestException(
+          'store balance refunds must return to STORE_BALANCE',
+        );
+      }
+      await this.loyalty.rollbackOnRefund(inStoreOrder.id);
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(
         params.orderStableId,
@@ -3187,6 +3222,7 @@ export class OrdersService {
         );
       }
       const isUber = order.channel === Channel.ubereats;
+      const isInStore = order.channel === Channel.in_store;
       if (
         isUber &&
         (params.originalPaymentMethod !== PaymentMethod.UBEREATS ||
@@ -3207,26 +3243,85 @@ export class OrdersService {
         );
       }
 
-      await tx.orderAmendment.create({
-        data: {
+      const existing = await tx.orderAmendment.findFirst({
+        where: {
           orderId: order.id,
-          type: OrderAmendmentType.RETENDER,
-          paymentMethod: params.refundMethod,
-          reason: params.reason.trim(),
-          // No financial settlement has occurred yet; requested value and state
-          // live in summaryJson until platform/manual confirmation.
-          refundCents: 0,
-          summaryJson: {
-            kind: 'FULL_REFUND',
-            status: isUber ? 'PENDING_PLATFORM' : 'PENDING_MANUAL',
-            requestedRefundCents: params.refundAmountCents,
-            originalPaymentMethod: params.originalPaymentMethod,
-            refundMethod: params.refundMethod,
-            originalChannel: order.channel,
-          },
+          summaryJson: { path: ['kind'], equals: 'FULL_REFUND' },
         },
       });
-      return order;
+      if (!isInStore) {
+        if (!existing) {
+          await tx.orderAmendment.upsert({
+            where: { amendmentStableId: `full_refund_${order.id}` },
+            create: {
+              amendmentStableId: `full_refund_${order.id}`,
+              orderId: order.id,
+              type: OrderAmendmentType.RETENDER,
+              paymentMethod: params.refundMethod,
+              reason: params.reason.trim(),
+              refundCents: 0,
+              summaryJson: {
+                kind: 'FULL_REFUND',
+                status: isUber ? 'PENDING_PLATFORM' : 'PENDING_MANUAL',
+                requestedRefundCents: params.refundAmountCents,
+                originalPaymentMethod: params.originalPaymentMethod,
+                refundMethod: params.refundMethod,
+                originalChannel: order.channel,
+              },
+            },
+            update: {},
+          });
+        }
+        return order;
+      }
+
+      // The conditional write is the concurrency guard: only one request can
+      // move this order to refunded, even when two POS requests race.
+      const claimed = await tx.order.updateMany({
+        where: { id: order.id, status: { not: 'refunded' } },
+        data: { status: 'refunded' },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException('order is already refunded');
+      }
+
+      const amendmentData = {
+        orderId: order.id,
+        type: OrderAmendmentType.RETENDER,
+        paymentMethod: params.refundMethod,
+        reason: params.reason.trim(),
+        deltaCents: -params.refundAmountCents,
+        refundCents: params.refundAmountCents,
+        summaryJson: {
+          kind: 'FULL_REFUND',
+          status: 'CONFIRMED',
+          requestedRefundCents: params.refundAmountCents,
+          originalPaymentMethod: params.originalPaymentMethod,
+          refundMethod: params.refundMethod,
+          originalChannel: order.channel,
+        },
+      } satisfies Prisma.OrderAmendmentUncheckedCreateInput;
+      if (existing) {
+        await tx.orderAmendment.update({
+          where: { id: existing.id },
+          data: amendmentData,
+        });
+      } else {
+        await tx.orderAmendment.upsert({
+          where: { amendmentStableId: `full_refund_${order.id}` },
+          create: {
+            amendmentStableId: `full_refund_${order.id}`,
+            ...amendmentData,
+          },
+          update: {},
+        });
+      }
+      const completed = await tx.order.findUnique({
+        where: { id: order.id },
+        include: { items: true },
+      });
+      if (!completed) throw new NotFoundException('order not found');
+      return completed;
     });
 
     return {
@@ -3234,7 +3329,9 @@ export class OrdersService {
       outcome:
         updated.channel === Channel.ubereats
           ? 'pending_platform'
-          : 'pending_manual',
+          : updated.channel === Channel.in_store
+            ? 'refunded'
+            : 'pending_manual',
     };
   }
 

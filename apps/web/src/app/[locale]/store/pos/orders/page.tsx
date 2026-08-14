@@ -105,6 +105,7 @@ const COPY = {
       "退款申请已记录，等待 Uber Eats 平台处理；订单尚未标记为已退款。",
     refundPendingManual:
       "退款申请已记录，等待原支付渠道确认；订单尚未标记为已退款。",
+    refundSuccess: "退款成功。",
     advanceStatus: "推进状态",
     advanceProcessing: "推进中...",
     advanceSuccess: "订单状态已推进。",
@@ -247,6 +248,7 @@ const COPY = {
       "Refund request recorded and pending Uber Eats processing; the order is not marked refunded.",
     refundPendingManual:
       "Refund request recorded and awaiting confirmation from the original payment channel; the order is not marked refunded.",
+    refundSuccess: "Refund completed.",
     advanceStatus: "Advance status",
     advanceProcessing: "Advancing...",
     advanceSuccess: "Order status advanced.",
@@ -1673,7 +1675,7 @@ export default function PosOrdersPage() {
               ? copy.refundPendingPlatform
               : result.outcome === "pending_manual"
                 ? copy.refundPendingManual
-                : copy.actionSuccess,
+                : copy.refundSuccess,
             "success",
           );
         } catch (error) {
