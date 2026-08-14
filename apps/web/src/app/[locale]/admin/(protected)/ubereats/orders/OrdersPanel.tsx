@@ -1,0 +1,6 @@
+import { ResourceStatus } from '../dashboard/ResourceStatus';
+import type { PendingOrder, ResourceState } from '../types';
+function safeTime(input: string) { return new Date(input).toLocaleString(); }
+export function OrdersPanel({ orders, resource, retry }: { orders: PendingOrder[]; resource: ResourceState; retry: () => void }) {
+  return <section aria-label="pending-orders" className="rounded-xl border bg-white p-4"><h3 className="text-lg font-semibold">订单与运营</h3><ResourceStatus state={resource} retry={retry} /><table className="mt-3 min-w-full text-sm"><thead><tr className="border-b text-left text-slate-500"><th className="px-2 py-2">externalOrderId</th><th className="px-2 py-2">orderStableId</th><th className="px-2 py-2">status</th><th className="px-2 py-2">金额</th><th className="px-2 py-2">createdAt</th></tr></thead><tbody>{orders.map((order) => <tr key={order.externalOrderId} className="border-b"><td className="px-2 py-2">{order.externalOrderId}</td><td className="px-2 py-2">{order.orderStableId}</td><td className="px-2 py-2">{order.status}</td><td className="px-2 py-2">${(order.totalCents / 100).toFixed(2)}</td><td className="px-2 py-2">{safeTime(order.createdAt)}</td></tr>)}</tbody></table></section>;
+}
