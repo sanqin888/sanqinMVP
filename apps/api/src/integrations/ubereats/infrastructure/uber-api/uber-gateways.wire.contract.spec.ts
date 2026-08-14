@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Test } from '@nestjs/testing';
 import { UberHttpClient, UberApiError } from './uber-http.client';
+import { UberApiGatewayTransport } from './uber-api.gateway';
+import { UberApiConfigService } from './uber-api-config.service';
 import { UberMerchantApiAdapter } from './uber-merchant-api.adapter';
 import { UberMenuGatewayAdapter } from './uber-menu-publication.adapter';
 import { UberOrderActionGatewayAdapter } from './uber-order-action.gateway';
@@ -39,6 +42,24 @@ const fixture = (path: string): Record<string, unknown> => {
 };
 
 describe('Uber gateways wire contract v1', () => {
+  it('resolves the order gateway transport and configuration through Nest tokens', async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        UberOrderGateway,
+        {
+          provide: UberApiGatewayTransport,
+          useValue: createUberTransportFake(),
+        },
+        {
+          provide: UberApiConfigService,
+          useValue: { resourceHrefAllowedOrigins: 'https://api.uber.com' },
+        },
+      ],
+    }).compile();
+
+    expect(module.get(UberOrderGateway)).toBeInstanceOf(UberOrderGateway);
+  });
+
   it('OAuth client credentials request fixes method, content type, grant and scope', async () => {
     const http: jest.Mocked<UberAuthHttpPort> = {
       request: jest.fn<UberAuthHttpPort['request']>().mockResolvedValue({

@@ -10,6 +10,7 @@ import {
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import { mapUberGatewayFailure } from './uber-error.mapper';
+import { UberApiConfigService } from './uber-api-config.service';
 
 const invalidResource = (code: string, message: string, operation: string) =>
   new UberValidationError({
@@ -63,8 +64,13 @@ export class UberOrderGateway extends PrefixGateway {
   ] as const;
 
   constructor(
+    @Inject(UberApiGatewayTransport)
     transport: UberGatewayTransportPort,
-    private readonly config: { resourceHrefAllowedOrigins: string },
+    @Inject(UberApiConfigService)
+    private readonly config: Pick<
+      UberApiConfigService,
+      'resourceHrefAllowedOrigins'
+    >,
   ) {
     super(transport);
   }
