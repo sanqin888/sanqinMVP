@@ -82,7 +82,6 @@ async function main() {
       tierThresholdPlatinum: true,
 
       // Delivery provider toggles
-      enableDoorDash: true,
       enableUberDirect: true,
 
       // Store geo/address/support
@@ -350,7 +349,6 @@ async function main() {
           tierThresholdGold: businessConfig.tierThresholdGold,
           tierThresholdPlatinum: businessConfig.tierThresholdPlatinum,
 
-          enableDoorDash: businessConfig.enableDoorDash,
           enableUberDirect: businessConfig.enableUberDirect,
 
           storeLatitude: businessConfig.storeLatitude,
