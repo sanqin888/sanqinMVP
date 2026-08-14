@@ -34,13 +34,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       WEB_BASE_URL: "https://sanq.ca"
       PUBLIC_BASE_URL: "https://sanq.ca"
-      INTERNAL_API_BASE: "http://api:4000"
-      CURRENCY: "CAD"
-      PRICES_INCLUDE_TAX: "true"
       SALES_TAX_RATE: "0.13"
-      LOYALTY_EARN_PT_PER_DOLLAR: "0.01"
-      LOYALTY_REDEEM_DOLLAR_PER_POINT: "1"
-      LOYALTY_REFERRAL_PT_PER_DOLLAR: "0.01"
       CORS_ORIGIN: "https://sanq.ca,https://www.sanq.ca"
       GOOGLE_CLIENT_ID: "99749299344-bohhqb4i1322lbgjq894ak0n49t8clpb.apps.googleusercontent.com"
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
@@ -54,8 +48,6 @@ services:
       UBER_DIRECT_CLIENT_SECRET: ${UBER_DIRECT_CLIENT_SECRET}
       UBER_DIRECT_API_BASE: "https://api.uber.com"
       UBER_DIRECT_OAUTH_URL: "https://auth.uber.com/oauth/v2/token"
-      UBER_DIRECT_OAUTH_SCOPE: "eats.deliveries"
-      UBER_DIRECT_AUTH_SCHEME: "Bearer"
       UBER_DIRECT_STORE_BUSINESS_NAME: "SanQ Roujiamo"
       UBER_DIRECT_STORE_CONTACT: "San Qin"
       UBER_DIRECT_STORE_PHONE: "+1-437-808-6888"
@@ -65,20 +57,18 @@ services:
       UBER_DIRECT_STORE_PROVINCE: "ON"
       UBER_DIRECT_STORE_POSTAL_CODE: "M2N 5M6"
       UBER_DIRECT_STORE_COUNTRY: "CA"
-      UBER_EATS_CLIENT_ID: "ji_NnxmUDZsh1WM_oz07zVZs1j9GKwry"
+      UBER_EATS_CLIENT_ID: ${UBER_EATS_CLIENT_ID}
       UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}
       UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}
-      UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
-      UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
-      UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
+      UBER_EATS_AUTHORIZE_ENDPOINT: ${UBER_EATS_AUTHORIZE_ENDPOINT}
+      UBER_EATS_TOKEN_ENDPOINT: ${UBER_EATS_TOKEN_ENDPOINT}
+      UBER_EATS_API_BASE_URL: ${UBER_EATS_API_BASE_URL}
       UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS: "https://api.uber.com"
       UBER_EATS_APP_SCOPES: "eats.store eats.order eats.report eats.store.orders.read eats.store.status.write"
       UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
-      UBER_EATS_STORE_ID: "47f93365-f7dc-4b49-9e3b-a99e9915e558"
       UBER_EATS_WORKER_ENABLED: "false"
-      CLOVER_ENV: "production"
       CLOVER_BASE: "https://scl.clover.com"
       CLOVER_MERCHANT_ID: "XC3DQ9Z7D4YJ1"
       CLOVER_ACCESS_TOKEN: ${CLOVER_ACCESS_TOKEN}
@@ -92,8 +82,6 @@ services:
       AWS_SES_FROM_EMAIL: "no-reply@sanq.ca"
       AWS_SES_REGION: "ca-central-1"
       AWS_SES_CONFIGURATION_SET: "sanq-events"
-      LOYALTY_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/sanqin-loyalty-processing-prod"
-      CLOVER_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/clover-payment-webhooks-prod"
       SNS_TOPIC_ARN: "arn:aws:sns:ca-central-1:328944069269:sanqin-order-events-prod"
       SES_EVENTS_SQS_QUEUE_URL: "https://sqs.ca-central-1.amazonaws.com/328944069269/ses-events-queue"
       SENDGRID_API_KEY: "${SENDGRID_API_KEY}"
@@ -122,11 +110,11 @@ services:
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
       UBER_EATS_WORKER_ENABLED: "true"
       UBER_EATS_WORKER_HEALTH_PORT: 4001
-      UBER_EATS_CLIENT_ID: "ji_NnxmUDZsh1WM_oz07zVZs1j9GKwry"
+      UBER_EATS_CLIENT_ID: ${UBER_EATS_CLIENT_ID}
       UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}
-      UBER_EATS_API_BASE_URL: "https://test-api.uber.com"
-      UBER_EATS_TOKEN_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/token"
-      UBER_EATS_AUTHORIZE_ENDPOINT: "https://sandbox-login.uber.com/oauth/v2/authorize"
+      UBER_EATS_API_BASE_URL: ${UBER_EATS_API_BASE_URL}
+      UBER_EATS_TOKEN_ENDPOINT: ${UBER_EATS_TOKEN_ENDPOINT}
+      UBER_EATS_AUTHORIZE_ENDPOINT: ${UBER_EATS_AUTHORIZE_ENDPOINT}
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
       UBER_EATS_WEBHOOK_SIGNING_KEY: ${UBER_EATS_WEBHOOK_SIGNING_KEY}
@@ -148,10 +136,7 @@ services:
       - /home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro
     restart: always
     environment:
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      API_URL: "http://api:4000"
       API_UPSTREAM: "http://api:4000"
-      NEXTAUTH_URL: "https://sanq.ca"
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

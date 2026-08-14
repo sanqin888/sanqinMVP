@@ -15,14 +15,14 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
               <p className="break-all whitespace-pre-wrap text-sm text-slate-600">Authorize URL: {connectUrl?.authorizeUrl ?? '-'}</p>
             </div>
             <div className="rounded-xl border bg-white p-4">
-              <h3 className="text-lg font-semibold">B. 商户授权</h3>
+              <h3 className="text-lg font-semibold">B. 商户授权（{connection ? 'OAuth Connected' : '未连接'}）</h3>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => connectUrl?.authorizeUrl && navigator.clipboard.writeText(connectUrl.authorizeUrl)}>复制 Connect URL</button>
                 <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => window.open('/api/v1/integrations/ubereats/oauth/start', '_blank', 'noopener,noreferrer')}>打开 Uber OAuth</button>
                 <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => void retry()}>刷新授权状态</button>
               </div>
               <div className="mt-2 grid gap-2 text-sm md:grid-cols-2">
-                <p className="break-all whitespace-pre-wrap">merchantUberUserId：{connection?.merchantUberUserId ?? '-'}</p>
+                <p className="break-all whitespace-pre-wrap">connectionId：{connection?.connectionId ?? '-'}</p>
                 <p className="break-all whitespace-pre-wrap">scope：{connection?.scope ?? '-'}</p>
                 <p className="break-all whitespace-pre-wrap">tokenType：{connection?.tokenType ?? '-'}</p>
                 <p>expiresAt：{safeTime(connection?.expiresAt)}</p>
@@ -46,7 +46,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                         <td className="break-all whitespace-pre-wrap px-2 py-2 font-mono text-xs">{s.storeId}</td>
                         <td className="px-2 py-2">{s.storeName ?? '-'}</td>
                         <td className="break-all whitespace-pre-wrap px-2 py-2">{s.locationSummary ?? '-'}</td>
-                        <td className="px-2 py-2">{s.isProvisioned ? '已 provision' : '未 provision'}</td>
+                        <td className="px-2 py-2">{s.isProvisioned ? 'Provisioned' : s.isMapped ? 'Store Mapped' : '待确认'}</td>
                         <td className="min-w-56 px-2 py-2">
                           <div className="flex gap-2">
                             <input aria-label={`${s.storeName ?? s.storeId} 本地打印房间 Store ID`} className="min-w-0 flex-1 rounded border px-2 py-1 font-mono text-xs" value={posStoreIdDrafts[s.storeId] ?? s.posExternalStoreId ?? ''} placeholder="例如 4750_Yonge_Street" onChange={(event) => setPosStoreIdDrafts((current) => ({ ...current, [s.storeId]: event.target.value }))} />
@@ -68,9 +68,17 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                           </div>
                         </td>
                         <td className="px-2 py-2">
+                          {!s.isMapped && <button
+                            type="button"
+                            className="mr-2 rounded border px-2 py-1 text-xs"
+                            onClick={() => void runAction(`select-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/stores/select', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId: connection?.connectionId, storeId: s.storeId, storeName: s.storeName, locationSummary: s.locationSummary, reconnectFromConnectionId: s.requiresReconnect ? s.mappedConnectionId : undefined }),
+                            }).then(() => retry()), `已选择 ${s.storeName ?? s.storeId}`)}
+                          >{s.requiresReconnect ? '确认重新连接' : '选择此门店'}</button>}
                           <button
                             type="button"
-                            className="rounded border px-2 py-1 text-xs"
+                            className="rounded border px-2 py-1 text-xs disabled:opacity-40"
+                            disabled={!s.isMapped || actionLoading[`provision-${s.storeId}`]}
                             onClick={() => {
                               let payload: Record<string, unknown>;
                               try {
@@ -80,7 +88,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                                 return;
                               }
                               void runAction(`provision-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/provision', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merchantUberUserId: connection?.merchantUberUserId, storeId: s.storeId, payload: { ...payload, integrator_store_id: integratorStoreId || undefined } }),
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId: connection?.connectionId, storeId: s.storeId, payload: { ...payload, integrator_store_id: integratorStoreId || undefined } }),
                               }).then(() => {}), `已提交 ${s.storeId} 的 Provision`);
                             }}
                           >

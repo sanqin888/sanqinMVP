@@ -11,9 +11,9 @@ export type SummaryResponse = { count: number; updatedAt: string | null };
 export type OperationPhase = 'QUEUED' | 'PROCESSING' | 'WAITING_WEBHOOK' | 'RETRYABLE_FAILED' | 'MANUAL_REVIEW' | 'COMPLETED';
 
 export type OAuthConnectUrlResponse = { authorizeUrl: string; state: string };
-export type OAuthConnectionResponse = { merchantUberUserId: string; scope?: string | null; tokenType?: string | null; expiresAt?: string | null; connectedAt?: string | null };
-export type UberStore = { storeId: string; storeName?: string; locationSummary?: string; isProvisioned?: boolean; provisionedAt?: string | null; posExternalStoreId?: string | null; timezone?: string | null };
-export type OAuthStoresResponse = { merchantUberUserId?: string; stores: UberStore[] };
+export type OAuthConnectionResponse = { connectionId: string; scope?: string | null; tokenType?: string | null; expiresAt?: string | null; connectedAt?: string | null };
+export type UberStore = { storeId: string; storeName?: string; locationSummary?: string; isMapped?: boolean; mappedConnectionId?: string | null; requiresReconnect?: boolean; isProvisioned?: boolean; provisionedAt?: string | null; posExternalStoreId?: string | null; timezone?: string | null };
+export type OAuthStoresResponse = { connectionId?: string; stores: UberStore[] };
 export type PendingOrder = { externalOrderId: string; orderStableId: string; status: string; totalCents: number; createdAt: string; sourceEventType?: string | null };
 export type PendingOrdersResponse = UberListResponse<PendingOrder>;
 export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';

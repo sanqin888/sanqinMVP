@@ -4,7 +4,7 @@ export const UBER_MERCHANT_CREDENTIAL_STORE = Symbol(
 
 /** Infrastructure-only decrypted credential used immediately before an Uber call. */
 export type UberMerchantCredential = {
-  merchantUberUserId: string;
+  connectionId: string;
   accessToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
@@ -15,11 +15,9 @@ export type UberMerchantCredential = {
 
 /** Kept outside application ports so use cases cannot request plaintext tokens. */
 export interface UberMerchantCredentialStore {
-  loadCredential(
-    merchantUberUserId: string,
-  ): Promise<UberMerchantCredential | null>;
+  loadCredential(connectionId: string): Promise<UberMerchantCredential | null>;
   rotateCredential(input: {
-    merchantUberUserId: string;
+    connectionId: string;
     expectedVersion: string;
     accessToken: string;
     refreshToken: string | null;

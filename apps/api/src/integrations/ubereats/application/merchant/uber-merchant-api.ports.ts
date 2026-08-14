@@ -11,13 +11,6 @@ export type UberOAuthTokens = {
   tokenType: string | null;
 };
 
-/** Stable Uber subject returned by the authorization-code token exchange (`user_id`). */
-export type UberOAuthIdentity = {
-  uberUserId: string;
-};
-
-export type UberOAuthIdentityTokens = UberOAuthTokens & UberOAuthIdentity;
-
 /** OAuth capability. Configuration and token endpoint details remain outside application. */
 export interface UberOAuthTokenPort {
   getRedirectUri(): string;
@@ -27,11 +20,11 @@ export interface UberOAuthTokenPort {
   exchangeAuthorizationCode(
     code: string,
     redirectUri: string,
-  ): Promise<UberOAuthIdentityTokens>;
+  ): Promise<UberOAuthTokens>;
 }
 
 /** Merchant discovery capability; it translates the upstream wire model. */
-export type UberMerchantIdentity = { merchantUberUserId: string };
+export type UberMerchantIdentity = { connectionId: string };
 
 export interface UberMerchantApiPort {
   discoverStores(

@@ -14,7 +14,7 @@ export class MerchantQuery {
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  merchantUberUserId?: string;
+  connectionId?: string;
 }
 
 export class OAuthCallbackQuery {
@@ -41,11 +41,31 @@ export class ProvisionUberStoreDto {
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  merchantUberUserId!: string;
+  connectionId!: string;
 
   @IsOptional()
   @IsObject()
   payload?: Record<string, unknown>;
+}
+
+export class SelectUberStoreDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  connectionId!: string;
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  storeId!: string;
+  @IsOptional() @IsString() @MaxLength(256) storeName?: string;
+  @IsOptional() @IsString() @MaxLength(512) locationSummary?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  reconnectFromConnectionId?: string;
 }
 
 export class UpdatePosExternalStoreIdDto {

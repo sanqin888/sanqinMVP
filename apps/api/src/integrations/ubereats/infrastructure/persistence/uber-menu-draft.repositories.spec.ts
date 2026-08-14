@@ -172,7 +172,7 @@ describe('split Uber menu repositories field mapping', () => {
         uberStoreMapping: {
           findFirst: jest.fn().mockResolvedValue({
             uberStoreId: 'u',
-            merchantUberUserId: 'm',
+            connectionId: 'm',
             posExternalStoreId: 's',
             isProvisioned: true,
             rawPayload: { location: { time_zone: 'America/Toronto' } },
@@ -183,7 +183,7 @@ describe('split Uber menu repositories field mapping', () => {
     );
     expect(await repository.findByPosStoreId('s')).toEqual({
       uberStoreId: 'u',
-      merchantUberUserId: 'm',
+      connectionId: 'm',
       posExternalStoreId: 's',
       isProvisioned: true,
       timezone: 'America/Toronto',

@@ -25,6 +25,7 @@ import {
   MerchantQuery,
   OAuthCallbackQuery,
   ProvisionUberStoreDto,
+  SelectUberStoreDto,
   UpdatePosExternalStoreIdDto,
 } from '../contracts/requests/oauth.requests';
 import {
@@ -40,6 +41,7 @@ import {
   SyncUberStoreStatusUseCase,
 } from '../application/merchant/uber-merchant-provisioning.service';
 import { presentOAuthCallback, presentOAuthStart } from './oauth.presenter';
+import { AppLogger } from '../../../common/app-logger';
 import {
   presentMerchantConnection,
   presentMerchantMutation,
@@ -55,6 +57,7 @@ type OAuthRequestContext = {
 @Controller('integrations/ubereats')
 @UseFilters(UberEatsExceptionFilter)
 export class UberEatsOAuthController {
+  private readonly logger = new AppLogger(UberEatsOAuthController.name);
   constructor(
     private readonly oauthStart: StartUberOAuthUseCase,
     private readonly oauthComplete: CompleteUberOAuthUseCase,
@@ -105,6 +108,20 @@ export class UberEatsOAuthController {
       },
       callbackSessionId,
     );
+    if (result.ok) {
+      try {
+        const discovery = await this.storeDiscovery.getMerchantStores(
+          result.value.connectionId,
+        );
+        this.logger.log(
+          `[merchant.store-discovery] connectionId=${result.value.connectionId} count=${discovery.count}`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `[merchant.store-discovery] connectionId=${result.value.connectionId} outcome=failed error=${error instanceof Error ? error.name : 'unknown'}`,
+        );
+      }
+    }
     return presentOAuthCallback(result);
   }
 
@@ -118,7 +135,7 @@ export class UberEatsOAuthController {
   @UberReadOnlyAdmin()
   async oauthStores(@Query() query: MerchantQuery) {
     return presentMerchantStores(
-      await this.storeDiscovery.getMerchantStores(query.merchantUberUserId),
+      await this.storeDiscovery.getMerchantStores(query.connectionId),
     );
   }
 
@@ -135,13 +152,18 @@ export class UberEatsOAuthController {
     return presentMerchantMutation();
   }
 
+  @Post('oauth/stores/select')
+  @UberAdminWrite()
+  async selectStore(@Body() dto: SelectUberStoreDto) {
+    await this.storeMapping.selectStore(dto);
+    return presentMerchantMutation();
+  }
+
   @Get('oauth/connection')
   @UberReadOnlyAdmin()
   async oauthConnection(@Query() query: MerchantQuery) {
     return presentMerchantConnection(
-      await this.oauthComplete.getMerchantConnectionStatus(
-        query.merchantUberUserId,
-      ),
+      await this.oauthComplete.getMerchantConnectionStatus(query.connectionId),
     );
   }
 
@@ -151,7 +173,7 @@ export class UberEatsOAuthController {
     await this.storeProvisioning.provisionStore(
       dto.storeId,
       dto.payload,
-      dto.merchantUberUserId,
+      dto.connectionId,
     );
     return presentMerchantMutation();
   }

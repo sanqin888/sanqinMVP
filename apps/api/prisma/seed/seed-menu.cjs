@@ -108,7 +108,8 @@ async function main() {
       phone: toUpdateOptional(u.phone),
       phoneVerifiedAt: toDateOrNull(u.phoneVerifiedAt) ?? undefined,
 
-      name: toUpdateOptional(u.name),
+      firstName: toUpdateOptional(u.firstName),
+      lastName: toUpdateOptional(u.lastName),
 
       marketingEmailOptIn:
         typeof u.marketingEmailOptIn === "boolean"
@@ -141,7 +142,8 @@ async function main() {
       phone: toCreateOptional(u.phone),
       phoneVerifiedAt: toDateOrNull(u.phoneVerifiedAt),
 
-      name: toCreateOptional(u.name),
+      firstName: toCreateOptional(u.firstName),
+      lastName: toCreateOptional(u.lastName),
 
       marketingEmailOptIn: !!u.marketingEmailOptIn,
       marketingEmailOptInAt: toDateOrNull(u.marketingEmailOptInAt),
@@ -317,8 +319,6 @@ async function main() {
             ? c.tierThresholdPlatinum
             : 3000000,
 
-        enableDoorDash:
-          typeof c.enableDoorDash === "boolean" ? c.enableDoorDash : true,
         enableUberDirect:
           typeof c.enableUberDirect === "boolean" ? c.enableUberDirect : true,
       },
@@ -421,8 +421,6 @@ async function main() {
             ? c.tierThresholdPlatinum
             : undefined,
 
-        enableDoorDash:
-          typeof c.enableDoorDash === "boolean" ? c.enableDoorDash : undefined,
         enableUberDirect:
           typeof c.enableUberDirect === "boolean" ? c.enableUberDirect : undefined,
       },
