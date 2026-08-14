@@ -98,6 +98,11 @@ async function main() {
 
   // 0) Admin Users
   async function upsertAdminUser(u) {
+    // 兼容旧 snapshot：原来的单一 name 值完整保留在 firstName 中。
+    const firstName =
+      typeof u.firstName === "undefined" ? u.name : u.firstName;
+    const lastName = u.lastName;
+
     const updateDataBase = {
       role: "ADMIN",
       status: u.status ?? "ACTIVE",
@@ -108,7 +113,8 @@ async function main() {
       phone: toUpdateOptional(u.phone),
       phoneVerifiedAt: toDateOrNull(u.phoneVerifiedAt) ?? undefined,
 
-      name: toUpdateOptional(u.name),
+      firstName: toUpdateOptional(firstName),
+      lastName: toUpdateOptional(lastName),
 
       marketingEmailOptIn:
         typeof u.marketingEmailOptIn === "boolean"
@@ -141,7 +147,8 @@ async function main() {
       phone: toCreateOptional(u.phone),
       phoneVerifiedAt: toDateOrNull(u.phoneVerifiedAt),
 
-      name: toCreateOptional(u.name),
+      firstName: toCreateOptional(firstName),
+      lastName: toCreateOptional(lastName),
 
       marketingEmailOptIn: !!u.marketingEmailOptIn,
       marketingEmailOptInAt: toDateOrNull(u.marketingEmailOptInAt),
