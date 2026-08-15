@@ -62,7 +62,7 @@ export interface UberMenuDraftModifierTemplateSource {
 
 export interface UberMenuDraftItemConfigSource {
   menuItemStableId: string;
-  priceCents: number;
+  priceCents: number | null;
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;

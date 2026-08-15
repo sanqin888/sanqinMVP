@@ -102,6 +102,12 @@ import { UberMenuGateway } from '../../infrastructure/uber-api/uber-resource.gat
 import { UBER_EATS_MENU_AVAILABILITY } from '../../public-api';
 import { presentAvailabilitySync } from '../../contracts/responses/public-contract.mapper';
 import { UberPublicBaseUrlAdapter } from '../config/uber-public-base-url.adapter';
+import { UberMenuConfigImportUseCase } from '../../application/menu/uber-menu-config-import.use-case';
+import {
+  UBER_MENU_CONFIG_IMPORT_PORT,
+  type UberMenuConfigImportPort,
+} from '../../application/menu/uber-menu-config-import.ports';
+import { UberMenuConfigImportPrismaAdapter } from '../persistence/uber-menu-config-import-prisma.adapter';
 
 export function createMenuWiring(): Provider[] {
   return [
@@ -110,6 +116,11 @@ export function createMenuWiring(): Provider[] {
     UberImageValidator,
     UberMenuConfigQueryPrismaAdapter,
     UberMenuConfigWritePrismaAdapter,
+    UberMenuConfigImportPrismaAdapter,
+    {
+      provide: UBER_MENU_CONFIG_IMPORT_PORT,
+      useExisting: UberMenuConfigImportPrismaAdapter,
+    },
     UberMenuWriteTransactionPrismaAdapter,
     {
       provide: UBER_MENU_WRITE_TRANSACTION_PORT,
@@ -215,6 +226,12 @@ export function createMenuWiring(): Provider[] {
       inject: [UBER_MENU_CONFIG_QUERY_PORT],
       useFactory: (queries: UberMenuConfigQueryPort) =>
         new QueryUberMenuConfigUseCase(queries),
+    },
+    {
+      provide: UberMenuConfigImportUseCase,
+      inject: [UBER_MENU_CONFIG_IMPORT_PORT],
+      useFactory: (imports: UberMenuConfigImportPort) =>
+        new UberMenuConfigImportUseCase(imports),
     },
     {
       provide: UpsertUberItemChannelConfigUseCase,

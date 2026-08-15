@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   UseFilters,
 } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
@@ -22,6 +23,7 @@ import {
 } from './ubereats-access.decorator';
 import {
   PublishUberMenuDto,
+  UberMenuConfigImportDto,
   SyncUberMenuItemAvailabilityDto,
   SyncUberOptionItemAvailabilityDto,
   UpdateUberDraftGroupDto,
@@ -43,11 +45,13 @@ import { UnbindUberDraftOptionChildGroupUseCase } from '../application/menu/unbi
 import { QueryUberMenuDraftDiffUseCase } from '../application/menu/query-uber-menu-draft-diff.use-case';
 import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
 import { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
+import { UberMenuConfigImportUseCase } from '../application/menu/uber-menu-config-import.use-case';
 import {
   presentMenuDraft,
   presentMenuDiff,
   presentMenuList,
   presentMenuMutation,
+  presentMenuOperation,
 } from './menu.presenter';
 
 @Controller('integrations/ubereats')
@@ -67,6 +71,7 @@ export class UberEatsMenuController {
     private readonly draftDiffs: QueryUberMenuDraftDiffUseCase,
     private readonly publications: PublishUberMenuUseCase,
     private readonly availability: UberMenuAvailabilityUseCase,
+    private readonly configImports: UberMenuConfigImportUseCase,
   ) {}
   @Get('menu/channel/items')
   async listItemChannelConfigs(
@@ -210,17 +215,60 @@ export class UberEatsMenuController {
   @Post('menu/publish')
   @UberMfaAdminWrite()
   async publishMenu(@Body() dto: PublishUberMenuDto) {
-    await this.publications.execute({
+    const result = await this.publications.execute({
       storeId: dto.storeId,
       dryRun: dto.dryRun,
       timezoneConfirmed: dto.timezoneConfirmed,
       taxRateConfirmed: dto.taxRateConfirmed,
+      safetyFingerprint: dto.safetyFingerprint,
       excludedCategoryIds: dto.excludedCategoryIds,
       excludedGroupIds: dto.excludedGroupIds,
       excludedMenuItemStableIds: dto.excludedMenuItemStableIds,
       excludedOptionChoiceStableIds: dto.excludedOptionChoiceStableIds,
     });
-    return presentMenuMutation();
+    return presentMenuOperation(result);
+  }
+
+  @Post('menu/config-import/preview')
+  @UberAdminWrite()
+  async previewConfigImport(@Body() dto: UberMenuConfigImportDto) {
+    const result = await this.configImports.preview(
+      dto.sourceStoreId,
+      dto.targetStoreId,
+      dto.mode,
+    );
+    return presentMenuOperation(result);
+  }
+
+  @Post('menu/config-import/apply')
+  @UberMfaAdminWrite()
+  async applyConfigImport(
+    @Body() dto: UberMenuConfigImportDto,
+    @Req() req: { user?: { id?: string } },
+  ) {
+    const result = await this.configImports.apply(
+      dto.sourceStoreId,
+      dto.targetStoreId,
+      dto.mode ?? 'SKIP_EXISTING',
+      dto.previewFingerprint ?? '',
+      req.user!.id!,
+    );
+    return presentMenuOperation(result);
+  }
+
+  @Post('menu/draft/items/:menuItemStableId/restore-source-price')
+  @UberMfaAdminWrite()
+  async restoreSourcePrice(
+    @Param('menuItemStableId', ResourceIdPipe) menuItemStableId: string,
+    @Body() dto: { storeId: string },
+    @Req() req: { user?: { id?: string } },
+  ) {
+    const result = await this.configImports.restoreItemPrice(
+      dto.storeId,
+      menuItemStableId,
+      req.user!.id!,
+    );
+    return presentMenuOperation(result);
   }
 
   @Post('menu/items/:menuItemStableId/availability')

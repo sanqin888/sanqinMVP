@@ -20,6 +20,72 @@ function responseId(payload: Prisma.JsonValue | null, key: string) {
 @Injectable()
 export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
+  async findLastSucceededPayload(storeId: string) {
+    const row = await this.prisma.uberMenuPublishVersion.findFirst({
+      where: { storeId, status: UberMenuPublishStatus.SUCCEEDED },
+      orderBy: { createdAt: 'desc' },
+      select: { payload: true },
+    });
+    return row?.payload as unknown as
+      | import('../../domain/menu/uber-menu.types').UberMenuUploadPayload
+      | null;
+  }
+
+  async listIntentionalPriceRestores(storeId: string) {
+    const lastPublished = await this.prisma.uberMenuPublishVersion.findFirst({
+      where: { storeId, status: UberMenuPublishStatus.SUCCEEDED },
+      orderBy: { createdAt: 'desc' },
+      select: { finishedAt: true, createdAt: true },
+    });
+    const events = await this.prisma.opsEvent.findMany({
+      where: {
+        eventName: 'ubereats_menu_price_restored',
+        source: 'ubereats',
+        ...(lastPublished
+          ? {
+              createdAt: {
+                gt: lastPublished.finishedAt ?? lastPublished.createdAt,
+              },
+            }
+          : {}),
+      },
+      select: { payload: true },
+    });
+    return new Set(
+      events.flatMap((event) => {
+        const payload = event.payload as {
+          posStoreId?: unknown;
+          menuItemStableId?: unknown;
+        } | null;
+        return payload?.posStoreId === storeId &&
+          typeof payload.menuItemStableId === 'string'
+          ? [payload.menuItemStableId]
+          : [];
+      }),
+    );
+  }
+
+  async recordCriticalRiskAcknowledgement(input: {
+    storeId: string;
+    payloadHash: string;
+    criticalCount: number;
+  }) {
+    await this.prisma.opsEvent.upsert({
+      where: {
+        idempotencyKey: `uber:publish-risk:${input.storeId}:${input.payloadHash}`,
+      },
+      create: {
+        idempotencyKey: `uber:publish-risk:${input.storeId}:${input.payloadHash}`,
+        eventName: 'ubereats_menu_publish_risk_acknowledged',
+        source: 'ubereats',
+        payload: {
+          posStoreId: input.storeId,
+          criticalCount: input.criticalCount,
+        },
+      },
+      update: {},
+    });
+  }
   async markPublishVersionSucceeded(
     attemptId: string,
     responsePayload: Record<string, unknown>,

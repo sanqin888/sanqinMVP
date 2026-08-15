@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { publishMenu, uberApiFetch } from '../api/uberAdminApi';
 import { useUberMenuDraft } from '../hooks/useUberMenuDraft';
 import { ResourceStatus } from '../dashboard/ResourceStatus';
-import type { DraftNode, DraftTreeKey, StoreMenuTabKey, UberDraftCategoryNode, UberDraftGroupNode, UberDryRunResponse, UberStore } from '../types';
+import type { DraftNode, DraftTreeKey, StoreMenuTabKey, UberDraftCategoryNode, UberDraftGroupNode, UberDryRunResponse, UberMenuConfigImportPreview, UberStore } from '../types';
 import type { RunAction } from '../hooks/useUberMutationState';
 
 const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
@@ -27,6 +27,9 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
   const [timezoneConfirmed, setTimezoneConfirmed] = useState(false);
   const [taxRateConfirmed, setTaxRateConfirmed] = useState(false);
   const [dryRunSchedule, setDryRunSchedule] = useState<UberDryRunResponse | null>(null);
+  const [criticalRisksAcknowledged, setCriticalRisksAcknowledged] = useState(false);
+  const [importPreview, setImportPreview] = useState<UberMenuConfigImportPreview | null>(null);
+  const [importSourceStoreId, setImportSourceStoreId] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [inspectorDraft, setInspectorDraft] = useState<Record<string, unknown>>({});
   const [expandedNodeKeys, setExpandedNodeKeys] = useState<Set<string>>(() => new Set());
@@ -45,6 +48,9 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
     setTimezoneConfirmed(false);
     setTaxRateConfirmed(false);
     setDryRunSchedule(null);
+    setCriticalRisksAcknowledged(false);
+    setImportPreview(null);
+    setImportSourceStoreId('');
   }, [selectedStoreId]);
 
   const draftCategories = useMemo(
@@ -448,8 +454,8 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
                 </select>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('reload-draft', () => loadStoreMenuDraft(selectedStoreId), '菜单草稿已刷新', false)}>刷新草稿</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('save-node', saveSelectedNode, '当前节点已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存当前节点</button>
-                <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-dry', () => publishMenu<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then((result) => { setDryRunSchedule(result); setTaxRateConfirmed(false); }), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run</button>
-                <button type="button" disabled={formalPublishDisabled} title={timezoneMismatch ? '本地与 Uber 门店时区不一致' : !timezoneConfirmed ? '请先确认门店时区' : !taxRateConfirmed ? '请先执行 Dry Run 并确认税率' : blockingValidationIssues.length ? '请先修复阻断错误' : undefined} className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal', () => uberApiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, timezoneConfirmed, taxRateConfirmed, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('publish-dry', () => publishMenu<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then((result) => { setDryRunSchedule(result); setTaxRateConfirmed(false); setCriticalRisksAcknowledged(false); }), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run</button>
+                <button type="button" disabled={formalPublishDisabled} title={timezoneMismatch ? '本地与 Uber 门店时区不一致' : !timezoneConfirmed ? '请先确认门店时区' : !taxRateConfirmed ? '请先执行 Dry Run 并确认税率' : blockingValidationIssues.length ? '请先修复阻断错误' : undefined} className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal', () => uberApiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, timezoneConfirmed, taxRateConfirmed, safetyFingerprint: criticalRisksAcknowledged ? dryRunSchedule?.safety?.fingerprint : undefined, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => void runAction('refresh-diff', () => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }), '草稿与 Diff 已刷新', false)}>刷新 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('publish')}>查看本次 Diff</button>
                 <button type="button" className="rounded border px-3 py-2 text-xs" onClick={() => setStoreMenuTab('overview')}>查看上次发布版本</button>
@@ -470,6 +476,28 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
                 <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">最近生成 / draft fetchedAt</p><p className="mt-2 text-xl font-semibold">{safeTime(menuFetchedAt)}</p><p className="text-xs text-slate-500">最近发布：{safeTime(menuDraft?.lastPublishedVersion?.createdAt)}</p></div>
                 <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">结构统计</p><p className="mt-2 text-xl font-semibold">item {menuDraft?.sourceMenu.items ?? 0} / group {menuDraft?.sourceMenu.groups ?? 0}</p><p className="text-xs text-slate-500">option item {menuDraft?.sourceMenu.optionItems ?? 0}</p></div>
                 <div className="rounded-xl border bg-white p-4"><p className="text-sm text-slate-500">未发布差异</p><p className="mt-2 text-xl font-semibold">{menuDraft?.publishSummary.changedItems ?? 0}</p><p className="text-xs text-slate-500">provision：{selectedStore?.isProvisioned ? '已 provision' : '未 provision'}</p></div>
+              </div>
+            )}
+
+            {storeMenuTab === 'overview' && (
+              <div className="rounded-xl border bg-white p-4">
+                <h4 className="font-semibold">Uber Menu Configuration</h4>
+                <p className="mt-1 text-sm text-slate-500">只复制 stable-ID 菜单配置；不复制 OAuth、门店身份或发布历史，也不会自动发布。</p>
+                <div className="mt-3 flex gap-2">
+                  <select aria-label="Source Test Store" className="rounded border px-3 py-2 text-sm" value={importSourceStoreId} onChange={(event) => { setImportSourceStoreId(event.target.value); setImportPreview(null); }}><option value="">显式选择 Source Store</option>{stores.filter((store) => store.storeId !== selectedStoreId).map((store) => <option key={store.storeId} value={store.storeId}>{store.storeName ?? store.storeId}</option>)}</select>
+                  <button type="button" disabled={!importSourceStoreId || !selectedStoreId} className="rounded border px-3 py-2 text-sm disabled:opacity-40" onClick={() => void runAction('preview-config-import', () => uberApiFetch<UberMenuConfigImportPreview>('/integrations/ubereats/menu/config-import/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceStoreId: importSourceStoreId, targetStoreId: selectedStoreId, mode: 'SKIP_EXISTING' }) }).then(setImportPreview), '配置导入 Preview 已生成', false)}>Preview Import</button>
+                  {importPreview && <button type="button" className="rounded bg-slate-900 px-3 py-2 text-sm text-white" onClick={() => void runAction('apply-config-import', () => uberApiFetch('/integrations/ubereats/menu/config-import/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceStoreId: importPreview.sourceStoreId, targetStoreId: importPreview.targetStoreId, mode: 'SKIP_EXISTING', previewFingerprint: importPreview.fingerprint }) }).then(() => loadStoreMenuDraft(selectedStoreId)), '配置已导入；Draft 已重建但尚未发布', true)}>Apply（跳过 Production 冲突）</button>}
+                </div>
+                {importPreview && <div className="mt-3 text-sm">{Object.entries(importPreview.counts).map(([kind, count]) => <p key={kind}>{kind}: Create {count.create}, Update {count.update}, Unchanged {count.unchanged}, Conflicts {count.conflicts}</p>)}</div>}
+              </div>
+            )}
+
+            {dryRunSchedule?.safety && (
+              <div className={`rounded-xl border p-4 ${dryRunSchedule.safety.criticalCount ? 'border-red-400 bg-red-50' : 'border-emerald-300 bg-emerald-50'}`}>
+                <h4 className="font-semibold">Publish Safety Summary</h4>
+                <p>{dryRunSchedule.safety.criticalCount ? `⚠ ${dryRunSchedule.safety.criticalCount} 项 CRITICAL 风险，普通 Publish 已阻断。` : '✓ No unexpected override fallback'}</p>
+                {dryRunSchedule.safety.risks.map((risk) => <p key={`${risk.code}:${risk.entityId}`} className="text-sm">{risk.code} · {risk.entityId}: {String(risk.previousValue)} → {String(risk.currentValue)}</p>)}
+                {dryRunSchedule.safety.criticalCount > 0 && <label className="mt-2 flex gap-2 text-sm"><input type="checkbox" checked={criticalRisksAcknowledged} onChange={(event) => setCriticalRisksAcknowledged(event.target.checked)} />我已在 MFA 会话中逐项审阅并明确授权本次 full menu PUT</label>}
               </div>
             )}
 
@@ -532,6 +560,7 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
                       <label className="block"><span className="mb-1 block text-slate-500">priceCents</span><input type="number" className="w-full rounded border px-2 py-1" value={Number(inspectorDraft.priceCents ?? 0)} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, priceCents: Number(e.target.value) }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">isAvailable</span><select className="w-full rounded border px-2 py-1" value={String(Boolean(inspectorDraft.isAvailable))} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, isAvailable: e.target.value === 'true' }))}><option value="true">上架</option><option value="false">下架</option></select></label>
                       <button type="button" className="rounded border px-3 py-1.5" onClick={() => void runAction('save-node-item', saveSelectedNode, 'item 草稿已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存 item</button>
+                      <button type="button" className="rounded border border-amber-500 px-3 py-1.5 text-amber-800" onClick={() => void runAction('restore-source-price', () => uberApiFetch(`/integrations/ubereats/menu/draft/items/${encodeURIComponent(selectedNode.sourceStableId ?? selectedNode.id)}/restore-source-price`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId }) }).then(() => loadStoreMenuDraft(selectedStoreId)), '已恢复网站价格并记录操作意图', true)}>恢复网站价格</button>
                     </div>
                   ) : null}
                   {selectedNode?.type === 'group' ? (
@@ -628,8 +657,8 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
                     <li className="rounded border p-2">availabilityChanges: {menuDiff?.availabilityChanges.length ?? 0}</li>
                   </ul>
                   <div className="mt-3 flex gap-2">
-                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-dry-inline', () => publishMenu<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then((result) => { setDryRunSchedule(result); setTaxRateConfirmed(false); }), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run Publish</button>
-                    <button type="button" disabled={formalPublishDisabled} className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal-inline', () => uberApiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, timezoneConfirmed, taxRateConfirmed, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
+                    <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => void runAction('publish-dry-inline', () => publishMenu<UberDryRunResponse>('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: true, ...publishFilterPayload }) }).then((result) => { setDryRunSchedule(result); setTaxRateConfirmed(false); setCriticalRisksAcknowledged(false); }), 'Dry Run Publish 成功', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>Dry Run Publish</button>
+                    <button type="button" disabled={formalPublishDisabled} className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void runAction('publish-formal-inline', () => uberApiFetch('/integrations/ubereats/menu/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, dryRun: false, timezoneConfirmed, taxRateConfirmed, safetyFingerprint: criticalRisksAcknowledged ? dryRunSchedule?.safety?.fingerprint : undefined, ...publishFilterPayload }) }).then(() => {}), '已提交，等待 Uber 确认', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>正式 Publish</button>
                   </div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">

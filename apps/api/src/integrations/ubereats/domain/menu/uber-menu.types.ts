@@ -64,10 +64,29 @@ export type PublishMenuInput = {
   dryRun?: boolean;
   timezoneConfirmed?: boolean;
   taxRateConfirmed?: boolean;
+  /** Canonical payload fingerprint returned by the reviewed dry-run. */
+  safetyFingerprint?: string;
   excludedCategoryIds?: string[];
   excludedGroupIds?: string[];
   excludedMenuItemStableIds?: string[];
   excludedOptionChoiceStableIds?: string[];
+};
+
+export type UberValueSource = 'UBER_OVERRIDE' | 'SANQ_SOURCE';
+
+export type UberMenuPublishRisk = {
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  code:
+    | 'PUBLISHED_OVERRIDE_FALLBACK'
+    | 'RESOURCE_DELETED'
+    | 'MASS_CONFIGURATION_LOSS';
+  entityType: 'ITEM' | 'OPTION_ITEM' | 'CATEGORY' | 'MODIFIER_GROUP';
+  entityId: string;
+  field: string;
+  previousValue: unknown;
+  currentValue: unknown;
+  sourceValue?: unknown;
+  intentional?: boolean;
 };
 
 type UberCategoryEntityRef = {

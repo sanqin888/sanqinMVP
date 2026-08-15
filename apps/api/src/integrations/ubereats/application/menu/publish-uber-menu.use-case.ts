@@ -15,6 +15,11 @@ import {
   type UberPublicBaseUrlPort,
 } from './uber-menu-publication.ports';
 import type { ProvisionedUberStoreQueryPort } from './uber-menu-draft.ports';
+import {
+  type UberMenuPriceSource,
+  UberMenuPublishSafetyService,
+} from '../../domain/menu/uber-menu-publish-safety.service';
+import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
 
 export class PublishUberMenuUseCase {
   constructor(
@@ -36,7 +41,10 @@ export class PublishUberMenuUseCase {
         `POS 门店 ${posStoreId} 未配置或尚未 provision。`,
       );
     const storeId = mapping.uberStoreId;
-    const snapshot = await this.snapshots.loadPublishSnapshot(storeId);
+    const snapshot = await this.snapshots.loadPublishSnapshot(
+      posStoreId,
+      storeId,
+    );
     if (!snapshot)
       throw this.validationError(
         'UBER_STORE_NOT_PROVISIONED',
@@ -74,6 +82,45 @@ export class PublishUberMenuUseCase {
       totalItems: payload.items.length,
       changedItems: payload.items.length,
     };
+    const previous =
+      await this.publications.findLastSucceededPayload(posStoreId);
+    const intentionalRestores =
+      await this.publications.listIntentionalPriceRestores(posStoreId);
+    const safety = new UberMenuPublishSafetyService().evaluate({
+      previous,
+      current: payload,
+      priceSourcesByUberItemId: new Map<string, UberMenuPriceSource>([
+        ...snapshot.items.map(
+          (item) =>
+            [
+              buildUberNodeId('item', snapshot.storeId, item.stableId),
+              {
+                stableId: item.stableId,
+                entityType: 'ITEM' as const,
+                field: 'price' as const,
+                sourcePriceCents: item.sourcePriceCents,
+                overridePriceCents: item.overridePriceCents,
+                valueSource: item.priceValueSource,
+              },
+            ] as const,
+        ),
+        ...snapshot.modifierOptions.map(
+          (option) =>
+            [
+              buildUberNodeId('item', snapshot.storeId, option.stableId),
+              {
+                stableId: option.stableId,
+                entityType: 'OPTION_ITEM' as const,
+                field: 'priceDelta' as const,
+                sourcePriceCents: option.sourcePriceDeltaCents,
+                overridePriceCents: option.overridePriceDeltaCents,
+                valueSource: option.priceValueSource,
+              },
+            ] as const,
+        ),
+      ]),
+      intentionalRestoreItemIds: intentionalRestores,
+    });
     if (input.dryRun)
       return {
         ok: true,
@@ -83,6 +130,7 @@ export class PublishUberMenuUseCase {
         summary,
         payload,
         validation,
+        safety,
       };
     if (input.taxRateConfirmed !== true)
       throw this.validationError(
@@ -93,6 +141,20 @@ export class PublishUberMenuUseCase {
     const payloadHash = createHash('sha256')
       .update(JSON.stringify(payload))
       .digest('hex');
+    if (
+      safety.criticalCount > 0 &&
+      input.safetyFingerprint !== safety.fingerprint
+    )
+      throw this.validationError(
+        'UBER_MENU_CRITICAL_RISK_CONFIRMATION_REQUIRED',
+        `检测到 ${safety.criticalCount} 项高风险菜单变化，普通发布已阻断。请在 MFA 会话中查看 Dry Run 安全摘要并显式确认。`,
+      );
+    if (safety.criticalCount > 0)
+      await this.publications.recordCriticalRiskAcknowledgement({
+        storeId: posStoreId,
+        payloadHash,
+        criticalCount: safety.criticalCount,
+      });
     const idempotencyKey = buildUberIdempotencyKey({
       taskId: payloadHash,
       resourceId: `${storeId}:${snapshot.uberStoreId}`,
@@ -112,7 +174,7 @@ export class PublishUberMenuUseCase {
         summary,
       };
     const attempt = await this.publications.createAttempt({
-      storeId,
+      storeId: posStoreId,
       uberStoreId: snapshot.uberStoreId,
       idempotencyKey,
       businessVersion: payloadHash,
@@ -151,8 +213,10 @@ export class PublishUberMenuUseCase {
     const excludedGroups = new Set(input.excludedGroupIds ?? []);
     const excludedItems = new Set(input.excludedMenuItemStableIds ?? []);
     const excludedOptions = new Set(input.excludedOptionChoiceStableIds ?? []);
-    const itemId = (id: string) => `sanq:item:${id}`;
-    const groupId = (id: string) => `sanq:group:${id}`;
+    const itemId = (id: string) =>
+      buildUberNodeId('item', snapshot.storeId, id);
+    const groupId = (id: string) =>
+      buildUberNodeId('group', snapshot.storeId, id);
     const includedItems = snapshot.items.filter(
       (item) =>
         !excludedItems.has(item.stableId) &&
@@ -162,11 +226,11 @@ export class PublishUberMenuUseCase {
       (option) => !excludedOptions.has(option.stableId),
     );
     return {
-      menuId: `sanq:menu:${snapshot.storeId}`,
+      menuId: buildUberNodeId('menu', snapshot.storeId, snapshot.uberStoreId),
       categories: snapshot.categories
         .filter((c) => !excludedCategories.has(c.stableId))
         .map((c) => ({
-          id: `sanq:category:${c.stableId}`,
+          id: buildUberNodeId('category', snapshot.storeId, c.stableId),
           title: c.name,
           entities: c.itemStableIds
             .filter((id) => includedItems.some((item) => item.stableId === id))
