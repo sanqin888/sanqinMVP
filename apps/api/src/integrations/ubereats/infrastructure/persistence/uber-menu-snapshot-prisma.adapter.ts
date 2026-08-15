@@ -133,9 +133,10 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           priceCents: config?.priceCents ?? item.basePriceCents,
           sourcePriceCents: item.basePriceCents,
           overridePriceCents: config?.priceCents ?? null,
-          priceValueSource: config
-            ? ('UBER_OVERRIDE' as const)
-            : ('SANQ_SOURCE' as const),
+          priceValueSource:
+            config?.priceCents != null
+              ? ('UBER_OVERRIDE' as const)
+              : ('SANQ_SOURCE' as const),
           imageUrl: item.imageUrl,
           isAvailable: config?.isAvailable ?? item.isAvailable,
           modifierGroupStableIds: item.optionGroups.map(

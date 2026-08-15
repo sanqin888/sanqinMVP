@@ -16,6 +16,7 @@ import {
 } from './uber-menu-publication.ports';
 import type { ProvisionedUberStoreQueryPort } from './uber-menu-draft.ports';
 import { UberMenuPublishSafetyService } from '../../domain/menu/uber-menu-publish-safety.service';
+import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
 
 export class PublishUberMenuUseCase {
   constructor(
@@ -85,10 +86,11 @@ export class PublishUberMenuUseCase {
     const safety = new UberMenuPublishSafetyService().evaluate({
       previous,
       current: payload,
-      priceSources: new Map(
+      priceSourcesByUberItemId: new Map(
         snapshot.items.map((item) => [
-          item.stableId,
+          buildUberNodeId('item', snapshot.storeId, item.stableId),
           {
+            stableId: item.stableId,
             sourcePriceCents: item.sourcePriceCents,
             overridePriceCents: item.overridePriceCents,
             valueSource: item.priceValueSource,
@@ -189,8 +191,10 @@ export class PublishUberMenuUseCase {
     const excludedGroups = new Set(input.excludedGroupIds ?? []);
     const excludedItems = new Set(input.excludedMenuItemStableIds ?? []);
     const excludedOptions = new Set(input.excludedOptionChoiceStableIds ?? []);
-    const itemId = (id: string) => `sanq:item:${id}`;
-    const groupId = (id: string) => `sanq:group:${id}`;
+    const itemId = (id: string) =>
+      buildUberNodeId('item', snapshot.storeId, id);
+    const groupId = (id: string) =>
+      buildUberNodeId('group', snapshot.storeId, id);
     const includedItems = snapshot.items.filter(
       (item) =>
         !excludedItems.has(item.stableId) &&
@@ -200,11 +204,11 @@ export class PublishUberMenuUseCase {
       (option) => !excludedOptions.has(option.stableId),
     );
     return {
-      menuId: `sanq:menu:${snapshot.storeId}`,
+      menuId: buildUberNodeId('menu', snapshot.storeId, snapshot.uberStoreId),
       categories: snapshot.categories
         .filter((c) => !excludedCategories.has(c.stableId))
         .map((c) => ({
-          id: `sanq:category:${c.stableId}`,
+          id: buildUberNodeId('category', snapshot.storeId, c.stableId),
           title: c.name,
           entities: c.itemStableIds
             .filter((id) => includedItems.some((item) => item.stableId === id))

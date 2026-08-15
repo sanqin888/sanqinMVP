@@ -85,11 +85,6 @@ export interface UberMenuPublicationRepositoryPort {
     storeId: string,
   ): Promise<UberMenuUploadPayload | null>;
   listIntentionalPriceRestores(storeId: string): Promise<Set<string>>;
-  recordIntentionalPriceRestore(input: {
-    storeId: string;
-    menuItemStableId: string;
-    sourcePriceCents: number;
-  }): Promise<void>;
   recordCriticalRiskAcknowledgement(input: {
     storeId: string;
     payloadHash: string;

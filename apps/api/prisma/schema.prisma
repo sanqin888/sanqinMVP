@@ -1295,7 +1295,7 @@ model UberItemChannelConfig {
   storeId                  String    @default("default")
   uberStoreId              String?
   menuItemStableId         String
-  priceCents               Int
+  priceCents               Int?
   isAvailable              Boolean   @default(true)
   displayName              String?
   displayDescription       String?

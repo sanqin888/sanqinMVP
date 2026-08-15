@@ -148,7 +148,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
     return this.prisma.$transaction(async (tx) => {
       const item = await tx.menuItem.findUnique({
         where: { stableId: menuItemStableId },
-        select: { basePriceCents: true },
+        select: { basePriceCents: true, isAvailable: true },
       });
       if (!item)
         throw new UberValidationError({
@@ -156,9 +156,45 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
           message: '菜单项不存在。',
           operation: 'uber.menu.restore-price',
         });
-      await tx.uberItemChannelConfig.deleteMany({
-        where: { storeId, menuItemStableId },
+      const config = await tx.uberItemChannelConfig.findUnique({
+        where: {
+          storeId_menuItemStableId: { storeId, menuItemStableId },
+        },
+        select: {
+          id: true,
+          isAvailable: true,
+          displayName: true,
+          displayDescription: true,
+          uberStoreId: true,
+          externalItemId: true,
+          externalCategoryId: true,
+          lastPublishedPriceCents: true,
+          lastPublishedIsAvailable: true,
+          lastPublishedHash: true,
+          lastPublishedAt: true,
+          lastPublishError: true,
+        },
       });
+      if (config) {
+        await tx.uberItemChannelConfig.update({
+          where: { id: config.id },
+          data: { priceCents: null },
+        });
+        const canDelete =
+          config.isAvailable === item.isAvailable &&
+          config.displayName === null &&
+          config.displayDescription === null &&
+          config.uberStoreId === null &&
+          config.externalItemId === null &&
+          config.externalCategoryId === null &&
+          config.lastPublishedPriceCents === null &&
+          config.lastPublishedIsAvailable === null &&
+          config.lastPublishedHash === null &&
+          config.lastPublishedAt === null &&
+          config.lastPublishError === null;
+        if (canDelete)
+          await tx.uberItemChannelConfig.delete({ where: { id: config.id } });
+      }
       const occurredAt = new Date();
       await tx.opsEvent.create({
         data: {

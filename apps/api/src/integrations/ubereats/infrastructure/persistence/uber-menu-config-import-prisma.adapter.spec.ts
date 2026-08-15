@@ -25,7 +25,21 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
         return Promise.resolve(data);
       }),
       update: jest.fn(),
-      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      delete: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'production-row',
+        isAvailable: false,
+        displayName: 'Uber custom name',
+        displayDescription: 'Uber custom description',
+        uberStoreId: null,
+        externalItemId: null,
+        externalCategoryId: null,
+        lastPublishedPriceCents: null,
+        lastPublishedIsAvailable: null,
+        lastPublishedHash: null,
+        lastPublishedAt: null,
+        lastPublishError: null,
+      }),
     };
     const emptyDelegate = {
       findMany: jest.fn().mockResolvedValue([]),
@@ -40,7 +54,9 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       uberOptionChildGroupBinding: emptyDelegate,
       opsEvent: { create: jest.fn().mockResolvedValue({}) },
       menuItem: {
-        findUnique: jest.fn().mockResolvedValue({ basePriceCents: 749 }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ basePriceCents: 749, isAvailable: true }),
       },
     };
     const prisma = {
@@ -113,11 +129,22 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
     });
   });
 
-  it('deletes the override and records administrator intent in one transaction', async () => {
+  it('clears only price and records administrator intent in one transaction', async () => {
     const x = setup();
     await x.adapter.restoreItemPrice('production', 'pork', 'admin-1');
-    expect(x.itemDelegate.deleteMany).toHaveBeenCalledWith({
-      where: { storeId: 'production', menuItemStableId: 'pork' },
+    expect(x.itemDelegate.update).toHaveBeenCalledWith({
+      where: { id: 'production-row' },
+      data: { priceCents: null },
+    });
+    expect(x.itemDelegate.delete).not.toHaveBeenCalled();
+    const [lookup] = x.itemDelegate.findUnique.mock.calls[0] as unknown as [
+      { where: Record<string, unknown> },
+    ];
+    expect(lookup.where).toEqual({
+      storeId_menuItemStableId: {
+        storeId: 'production',
+        menuItemStableId: 'pork',
+      },
     });
     const [event] = x.prisma.opsEvent.create.mock.calls[0] as unknown as [
       { data: { eventName: string; payload: Record<string, unknown> } },

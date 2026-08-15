@@ -65,37 +65,6 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
     );
   }
 
-  async recordIntentionalPriceRestore(input: {
-    storeId: string;
-    menuItemStableId: string;
-    sourcePriceCents: number;
-  }) {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.uberItemChannelConfig.deleteMany({
-        where: {
-          storeId: input.storeId,
-          menuItemStableId: input.menuItemStableId,
-        },
-      });
-      await tx.opsEvent.upsert({
-        where: {
-          idempotencyKey: `uber:restore-price:${input.storeId}:${input.menuItemStableId}:${input.sourcePriceCents}`,
-        },
-        create: {
-          idempotencyKey: `uber:restore-price:${input.storeId}:${input.menuItemStableId}:${input.sourcePriceCents}`,
-          eventName: 'ubereats_menu_price_restored',
-          source: 'ubereats',
-          payload: {
-            posStoreId: input.storeId,
-            menuItemStableId: input.menuItemStableId,
-            sourcePriceCents: input.sourcePriceCents,
-          },
-        },
-        update: {},
-      });
-    });
-  }
-
   async recordCriticalRiskAcknowledgement(input: {
     storeId: string;
     payloadHash: string;

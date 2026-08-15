@@ -1,8 +1,13 @@
 import type { UberMenuUploadPayload } from './uber-menu.types';
+import { buildUberNodeId } from './uber-menu-graph.service';
 import {
   canonicalizeUberMenuPayload,
   UberMenuPublishSafetyService,
 } from './uber-menu-publish-safety.service';
+
+const STORE_ID = 'store-1';
+const ITEM_STABLE_ID = 'pork';
+const UBER_ITEM_ID = buildUberNodeId('item', STORE_ID, ITEM_STABLE_ID);
 
 const payload = (price = 1099): UberMenuUploadPayload => ({
   menus: [
@@ -17,12 +22,12 @@ const payload = (price = 1099): UberMenuUploadPayload => ({
     {
       id: 'category-a',
       title: { translations: { en_us: 'A' } },
-      entities: [{ id: 'sanq:item:pork', type: 'ITEM' }],
+      entities: [{ id: UBER_ITEM_ID, type: 'ITEM' }],
     },
   ],
   items: [
     {
-      id: 'sanq:item:pork',
+      id: UBER_ITEM_ID,
       title: { translations: { en_us: 'Pork Roujiamo' } },
       price_info: { price, overrides: [] },
       tax_info: { tax_rate: 0, vat_rate_percentage: null },
@@ -43,10 +48,11 @@ describe('UberMenuPublishSafetyService', () => {
     service.evaluate({
       previous: payload(),
       current: payload(currentPrice),
-      priceSources: new Map([
+      priceSourcesByUberItemId: new Map([
         [
-          'pork',
+          UBER_ITEM_ID,
           {
+            stableId: ITEM_STABLE_ID,
             sourcePriceCents: 999,
             overridePriceCents:
               source === 'UBER_OVERRIDE' ? currentPrice : null,
@@ -54,7 +60,7 @@ describe('UberMenuPublishSafetyService', () => {
           },
         ],
       ]),
-      intentionalRestoreItemIds: new Set(intentional ? ['pork'] : []),
+      intentionalRestoreItemIds: new Set(intentional ? [ITEM_STABLE_ID] : []),
     });
 
   it('does not warn when the published override remains unchanged', () => {
@@ -78,6 +84,35 @@ describe('UberMenuPublishSafetyService', () => {
     );
   });
 
+  it('detects 849 to 749 fallback with the real hashed Uber item id', () => {
+    expect(UBER_ITEM_ID).toMatch(/^sanq:[a-f0-9]{24}$/);
+    const result = service.evaluate({
+      previous: payload(849),
+      current: payload(749),
+      priceSourcesByUberItemId: new Map([
+        [
+          UBER_ITEM_ID,
+          {
+            stableId: ITEM_STABLE_ID,
+            sourcePriceCents: 749,
+            overridePriceCents: null,
+            valueSource: 'SANQ_SOURCE',
+          },
+        ],
+      ]),
+      intentionalRestoreItemIds: new Set(),
+    });
+    expect(result.risks).toContainEqual(
+      expect.objectContaining({
+        code: 'PUBLISHED_OVERRIDE_FALLBACK',
+        severity: 'CRITICAL',
+        entityId: ITEM_STABLE_ID,
+        previousValue: 849,
+        currentValue: 749,
+      }),
+    );
+  });
+
   it('distinguishes an intentional restore from accidental fallback', () => {
     expect(evaluate(999, 'SANQ_SOURCE', true).risks).toContainEqual(
       expect.objectContaining({ severity: 'INFO', intentional: true }),
@@ -94,7 +129,7 @@ describe('UberMenuPublishSafetyService', () => {
     );
     const common = {
       previous: null,
-      priceSources: new Map(),
+      priceSourcesByUberItemId: new Map(),
       intentionalRestoreItemIds: new Set<string>(),
     };
     expect(service.evaluate({ ...common, current: left }).fingerprint).toBe(
@@ -105,7 +140,7 @@ describe('UberMenuPublishSafetyService', () => {
   it('changes the safety fingerprint when the outgoing payload changes', () => {
     const common = {
       previous: null,
-      priceSources: new Map(),
+      priceSourcesByUberItemId: new Map(),
       intentionalRestoreItemIds: new Set<string>(),
     };
     expect(

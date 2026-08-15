@@ -6,6 +6,7 @@ import type {
 } from './uber-menu.types';
 
 type PriceSource = {
+  stableId: string;
   sourcePriceCents: number;
   overridePriceCents: number | null;
   valueSource: UberValueSource;
@@ -55,7 +56,7 @@ export class UberMenuPublishSafetyService {
   evaluate(input: {
     previous: UberMenuUploadPayload | null;
     current: UberMenuUploadPayload;
-    priceSources: ReadonlyMap<string, PriceSource>;
+    priceSourcesByUberItemId: ReadonlyMap<string, PriceSource>;
     intentionalRestoreItemIds: ReadonlySet<string>;
   }) {
     const previous = input.previous
@@ -90,8 +91,7 @@ export class UberMenuPublishSafetyService {
         });
         continue;
       }
-      const stableId = item.id.replace(/^sanq:item:/, '');
-      const source = input.priceSources.get(stableId);
+      const source = input.priceSourcesByUberItemId.get(item.id);
       const previousPrice = item.price_info.price;
       const currentPrice = next.price_info.price;
       if (
@@ -100,12 +100,14 @@ export class UberMenuPublishSafetyService {
         source.overridePriceCents === null &&
         currentPrice === source.sourcePriceCents
       ) {
-        const intentional = input.intentionalRestoreItemIds.has(stableId);
+        const intentional = input.intentionalRestoreItemIds.has(
+          source.stableId,
+        );
         risks.push({
           severity: intentional ? 'INFO' : 'CRITICAL',
           code: 'PUBLISHED_OVERRIDE_FALLBACK',
           entityType: 'ITEM',
-          entityId: stableId,
+          entityId: source.stableId,
           field: 'price',
           previousValue: previousPrice,
           currentValue: currentPrice,

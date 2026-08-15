@@ -41,7 +41,6 @@ describe('PublishUberMenuUseCase', () => {
     const publications = {
       findLastSucceededPayload: jest.fn().mockResolvedValue(null),
       listIntentionalPriceRestores: jest.fn().mockResolvedValue(new Set()),
-      recordIntentionalPriceRestore: jest.fn(),
       recordCriticalRiskAcknowledgement: jest.fn(),
       findSucceededAttempt: jest.fn().mockResolvedValue(null),
       createAttempt: jest.fn().mockResolvedValue({
