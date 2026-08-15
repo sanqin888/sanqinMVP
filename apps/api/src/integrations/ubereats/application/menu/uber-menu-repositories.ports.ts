@@ -12,7 +12,7 @@ export type MenuSnapshot = {
 export type ItemChannelConfig = {
   storeId: string;
   stableId: string;
-  priceCents: number;
+  priceCents: number | null;
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;

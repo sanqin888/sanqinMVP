@@ -11,9 +11,10 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
   constructor(private readonly prisma: PrismaService) {}
 
   async loadPublishSnapshot(
+    posStoreId: string,
     uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null> {
-    const storeId = uberStoreId;
+    const storeId = posStoreId;
     const [
       mapping,
       categories,
@@ -24,7 +25,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       groupConfigs,
     ] = await Promise.all([
       this.prisma.uberStoreMapping.findFirst({
-        where: { uberStoreId: storeId, isProvisioned: true },
+        where: {
+          uberStoreId,
+          posExternalStoreId: posStoreId,
+          isProvisioned: true,
+        },
         select: { uberStoreId: true },
       }),
       this.prisma.menuCategory.findMany({
@@ -126,6 +131,12 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
             config?.displayName || item.nameEn || item.nameZh || item.stableId,
           description: config?.displayDescription ?? item.ingredientsEn ?? null,
           priceCents: config?.priceCents ?? item.basePriceCents,
+          sourcePriceCents: item.basePriceCents,
+          overridePriceCents: config?.priceCents ?? null,
+          priceValueSource:
+            config?.priceCents != null
+              ? ('UBER_OVERRIDE' as const)
+              : ('SANQ_SOURCE' as const),
           imageUrl: item.imageUrl,
           isAvailable: config?.isAvailable ?? item.isAvailable,
           modifierGroupStableIds: item.optionGroups.map(
@@ -179,6 +190,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
               option.nameZh ||
               option.stableId,
             priceDeltaCents: config?.priceDeltaCents ?? option.priceDeltaCents,
+            sourcePriceDeltaCents: option.priceDeltaCents,
+            overridePriceDeltaCents: config?.priceDeltaCents ?? null,
+            priceValueSource: config
+              ? ('UBER_OVERRIDE' as const)
+              : ('SANQ_SOURCE' as const),
             isAvailable: config?.isAvailable ?? option.isAvailable,
             childGroupStableIds: [],
           };

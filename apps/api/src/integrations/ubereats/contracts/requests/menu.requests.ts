@@ -5,6 +5,7 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
@@ -182,6 +183,11 @@ export class PublishUberMenuDto {
   taxRateConfirmed?: boolean;
 
   @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  safetyFingerprint?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(100)
   @ArrayUnique()
@@ -208,6 +214,30 @@ export class PublishUberMenuDto {
   @ArrayUnique()
   @IsString({ each: true })
   excludedOptionChoiceStableIds?: string[];
+}
+
+export class UberMenuConfigImportDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  sourceStoreId!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  targetStoreId!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['SKIP_EXISTING', 'OVERWRITE'])
+  mode?: 'SKIP_EXISTING' | 'OVERWRITE';
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  previewFingerprint?: string;
 }
 
 export class SyncUberMenuItemAvailabilityDto {
