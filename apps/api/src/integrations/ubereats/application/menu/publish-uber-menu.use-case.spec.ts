@@ -116,6 +116,74 @@ describe('PublishUberMenuUseCase', () => {
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
   });
 
+  it('uses the outgoing hashed option id to detect option price fallback', async () => {
+    const x = setup();
+    x.snapshots.loadPublishSnapshot.mockResolvedValue({
+      ...snapshot,
+      items: snapshot.items.map((item) => ({
+        ...item,
+        modifierGroupStableIds: ['extras'],
+      })),
+      modifierGroups: [
+        {
+          stableId: 'extras',
+          name: 'Extras',
+          minSelect: 0,
+          maxSelect: 1,
+          optionStableIds: ['extra-cheese'],
+        },
+      ],
+      modifierOptions: [
+        {
+          stableId: 'extra-cheese',
+          name: 'Extra cheese',
+          priceDeltaCents: 50,
+          sourcePriceDeltaCents: 50,
+          overridePriceDeltaCents: null,
+          priceValueSource: 'SANQ_SOURCE' as const,
+          isAvailable: true,
+          childGroupStableIds: [],
+        },
+      ],
+    });
+    const initial = (await x.useCase.execute({
+      storeId: 'store-1',
+      dryRun: true,
+    })) as {
+      payload: {
+        items: Array<{
+          title: { translations: { en_us: string } };
+          price_info: { price: number };
+        }>;
+      };
+    };
+    const previous = structuredClone(initial.payload);
+    const publishedOption = previous.items.find(
+      (item) => item.title.translations.en_us === 'Extra cheese',
+    );
+    expect(publishedOption).toBeDefined();
+    publishedOption!.price_info.price = 150;
+    x.publications.findLastSucceededPayload.mockResolvedValue(previous);
+
+    await expect(
+      x.useCase.execute({ storeId: 'store-1', dryRun: true }),
+    ).resolves.toMatchObject({
+      safety: {
+        risks: [
+          expect.objectContaining({
+            severity: 'CRITICAL',
+            code: 'PUBLISHED_OVERRIDE_FALLBACK',
+            entityType: 'OPTION_ITEM',
+            entityId: 'extra-cheese',
+            field: 'priceDelta',
+            previousValue: 150,
+            currentValue: 50,
+          }),
+        ],
+      },
+    });
+  });
+
   it('CRITICAL override fallback 阻断普通发布，显式 MFA 确认后允许', async () => {
     const x = setup();
     const dryRun = (await x.useCase.execute({

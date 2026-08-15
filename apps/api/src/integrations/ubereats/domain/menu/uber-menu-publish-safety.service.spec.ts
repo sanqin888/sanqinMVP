@@ -8,6 +8,8 @@ import {
 const STORE_ID = 'store-1';
 const ITEM_STABLE_ID = 'pork';
 const UBER_ITEM_ID = buildUberNodeId('item', STORE_ID, ITEM_STABLE_ID);
+const OPTION_STABLE_ID = 'extra-cheese';
+const UBER_OPTION_ID = buildUberNodeId('item', STORE_ID, OPTION_STABLE_ID);
 
 const payload = (price = 1099): UberMenuUploadPayload => ({
   menus: [
@@ -38,6 +40,13 @@ const payload = (price = 1099): UberMenuUploadPayload => ({
   modifier_groups: [],
 });
 
+const optionPayload = (priceDeltaCents: number) => {
+  const result = payload(priceDeltaCents);
+  result.categories[0].entities[0].id = UBER_OPTION_ID;
+  result.items[0].id = UBER_OPTION_ID;
+  return result;
+};
+
 describe('UberMenuPublishSafetyService', () => {
   const service = new UberMenuPublishSafetyService();
   const evaluate = (
@@ -53,6 +62,8 @@ describe('UberMenuPublishSafetyService', () => {
           UBER_ITEM_ID,
           {
             stableId: ITEM_STABLE_ID,
+            entityType: 'ITEM',
+            field: 'price',
             sourcePriceCents: 999,
             overridePriceCents:
               source === 'UBER_OVERRIDE' ? currentPrice : null,
@@ -94,6 +105,8 @@ describe('UberMenuPublishSafetyService', () => {
           UBER_ITEM_ID,
           {
             stableId: ITEM_STABLE_ID,
+            entityType: 'ITEM',
+            field: 'price',
             sourcePriceCents: 749,
             overridePriceCents: null,
             valueSource: 'SANQ_SOURCE',
@@ -109,6 +122,40 @@ describe('UberMenuPublishSafetyService', () => {
         entityId: ITEM_STABLE_ID,
         previousValue: 849,
         currentValue: 749,
+      }),
+    );
+  });
+
+  it('detects a published option override falling back to the SanQ delta', () => {
+    expect(UBER_OPTION_ID).toMatch(/^sanq:[a-f0-9]{24}$/);
+    const result = service.evaluate({
+      previous: optionPayload(150),
+      current: optionPayload(50),
+      priceSourcesByUberItemId: new Map([
+        [
+          UBER_OPTION_ID,
+          {
+            stableId: OPTION_STABLE_ID,
+            entityType: 'OPTION_ITEM',
+            field: 'priceDelta',
+            sourcePriceCents: 50,
+            overridePriceCents: null,
+            valueSource: 'SANQ_SOURCE',
+          },
+        ],
+      ]),
+      intentionalRestoreItemIds: new Set(),
+    });
+    expect(result.risks).toContainEqual(
+      expect.objectContaining({
+        severity: 'CRITICAL',
+        code: 'PUBLISHED_OVERRIDE_FALLBACK',
+        entityType: 'OPTION_ITEM',
+        entityId: OPTION_STABLE_ID,
+        field: 'priceDelta',
+        previousValue: 150,
+        currentValue: 50,
+        sourceValue: 50,
       }),
     );
   });

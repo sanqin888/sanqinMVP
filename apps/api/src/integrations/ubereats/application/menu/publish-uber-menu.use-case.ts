@@ -15,7 +15,10 @@ import {
   type UberPublicBaseUrlPort,
 } from './uber-menu-publication.ports';
 import type { ProvisionedUberStoreQueryPort } from './uber-menu-draft.ports';
-import { UberMenuPublishSafetyService } from '../../domain/menu/uber-menu-publish-safety.service';
+import {
+  type UberMenuPriceSource,
+  UberMenuPublishSafetyService,
+} from '../../domain/menu/uber-menu-publish-safety.service';
 import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
 
 export class PublishUberMenuUseCase {
@@ -86,17 +89,36 @@ export class PublishUberMenuUseCase {
     const safety = new UberMenuPublishSafetyService().evaluate({
       previous,
       current: payload,
-      priceSourcesByUberItemId: new Map(
-        snapshot.items.map((item) => [
-          buildUberNodeId('item', snapshot.storeId, item.stableId),
-          {
-            stableId: item.stableId,
-            sourcePriceCents: item.sourcePriceCents,
-            overridePriceCents: item.overridePriceCents,
-            valueSource: item.priceValueSource,
-          },
-        ]),
-      ),
+      priceSourcesByUberItemId: new Map<string, UberMenuPriceSource>([
+        ...snapshot.items.map(
+          (item) =>
+            [
+              buildUberNodeId('item', snapshot.storeId, item.stableId),
+              {
+                stableId: item.stableId,
+                entityType: 'ITEM' as const,
+                field: 'price' as const,
+                sourcePriceCents: item.sourcePriceCents,
+                overridePriceCents: item.overridePriceCents,
+                valueSource: item.priceValueSource,
+              },
+            ] as const,
+        ),
+        ...snapshot.modifierOptions.map(
+          (option) =>
+            [
+              buildUberNodeId('item', snapshot.storeId, option.stableId),
+              {
+                stableId: option.stableId,
+                entityType: 'OPTION_ITEM' as const,
+                field: 'priceDelta' as const,
+                sourcePriceCents: option.sourcePriceDeltaCents,
+                overridePriceCents: option.overridePriceDeltaCents,
+                valueSource: option.priceValueSource,
+              },
+            ] as const,
+        ),
+      ]),
       intentionalRestoreItemIds: intentionalRestores,
     });
     if (input.dryRun)

@@ -5,8 +5,10 @@ import type {
   UberValueSource,
 } from './uber-menu.types';
 
-type PriceSource = {
+export type UberMenuPriceSource = {
   stableId: string;
+  entityType: 'ITEM' | 'OPTION_ITEM';
+  field: 'price' | 'priceDelta';
   sourcePriceCents: number;
   overridePriceCents: number | null;
   valueSource: UberValueSource;
@@ -56,7 +58,7 @@ export class UberMenuPublishSafetyService {
   evaluate(input: {
     previous: UberMenuUploadPayload | null;
     current: UberMenuUploadPayload;
-    priceSourcesByUberItemId: ReadonlyMap<string, PriceSource>;
+    priceSourcesByUberItemId: ReadonlyMap<string, UberMenuPriceSource>;
     intentionalRestoreItemIds: ReadonlySet<string>;
   }) {
     const previous = input.previous
@@ -78,20 +80,20 @@ export class UberMenuPublishSafetyService {
 
     const currentItems = new Map(current.items.map((item) => [item.id, item]));
     for (const item of previous.items) {
+      const source = input.priceSourcesByUberItemId.get(item.id);
       const next = currentItems.get(item.id);
       if (!next) {
         risks.push({
           severity: 'CRITICAL',
           code: 'RESOURCE_DELETED',
-          entityType: 'ITEM',
-          entityId: item.id,
+          entityType: source?.entityType ?? 'ITEM',
+          entityId: source?.stableId ?? item.id,
           field: 'resource',
           previousValue: 'PRESENT',
           currentValue: 'MISSING',
         });
         continue;
       }
-      const source = input.priceSourcesByUberItemId.get(item.id);
       const previousPrice = item.price_info.price;
       const currentPrice = next.price_info.price;
       if (
@@ -106,9 +108,9 @@ export class UberMenuPublishSafetyService {
         risks.push({
           severity: intentional ? 'INFO' : 'CRITICAL',
           code: 'PUBLISHED_OVERRIDE_FALLBACK',
-          entityType: 'ITEM',
+          entityType: source.entityType,
           entityId: source.stableId,
-          field: 'price',
+          field: source.field,
           previousValue: previousPrice,
           currentValue: currentPrice,
           sourceValue: source.sourcePriceCents,

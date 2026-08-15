@@ -190,6 +190,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
               option.nameZh ||
               option.stableId,
             priceDeltaCents: config?.priceDeltaCents ?? option.priceDeltaCents,
+            sourcePriceDeltaCents: option.priceDeltaCents,
+            overridePriceDeltaCents: config?.priceDeltaCents ?? null,
+            priceValueSource: config
+              ? ('UBER_OVERRIDE' as const)
+              : ('SANQ_SOURCE' as const),
             isAvailable: config?.isAvailable ?? option.isAvailable,
             childGroupStableIds: [],
           };

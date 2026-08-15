@@ -80,7 +80,7 @@ export type UberMenuPublishRisk = {
     | 'PUBLISHED_OVERRIDE_FALLBACK'
     | 'RESOURCE_DELETED'
     | 'MASS_CONFIGURATION_LOSS';
-  entityType: 'ITEM' | 'CATEGORY' | 'MODIFIER_GROUP';
+  entityType: 'ITEM' | 'OPTION_ITEM' | 'CATEGORY' | 'MODIFIER_GROUP';
   entityId: string;
   field: string;
   previousValue: unknown;

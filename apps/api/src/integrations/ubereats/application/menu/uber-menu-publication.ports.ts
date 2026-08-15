@@ -28,6 +28,9 @@ export type UberMenuSnapshotModifierOption = {
   stableId: string;
   name: string;
   priceDeltaCents: number;
+  sourcePriceDeltaCents: number;
+  overridePriceDeltaCents: number | null;
+  priceValueSource: 'UBER_OVERRIDE' | 'SANQ_SOURCE';
   isAvailable: boolean;
   childGroupStableIds: string[];
 };
