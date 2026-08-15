@@ -16,6 +16,9 @@ export type UberMenuSnapshotItem = {
   name: string;
   description: string | null;
   priceCents: number;
+  sourcePriceCents: number;
+  overridePriceCents: number | null;
+  priceValueSource: 'UBER_OVERRIDE' | 'SANQ_SOURCE';
   imageUrl: string | null;
   isAvailable: boolean;
   modifierGroupStableIds: string[];
@@ -51,8 +54,8 @@ export type UberMenuPublishSnapshot = {
 };
 
 export interface UberMenuSnapshotRepositoryPort {
-  /** Receives an already resolved Uber store id; adapters must not infer POS semantics. */
   loadPublishSnapshot(
+    posStoreId: string,
     uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null>;
 }
@@ -78,6 +81,20 @@ export type UberMenuPublicationLease = UberMenuPublicationAttempt & {
 };
 
 export interface UberMenuPublicationRepositoryPort {
+  findLastSucceededPayload(
+    storeId: string,
+  ): Promise<UberMenuUploadPayload | null>;
+  listIntentionalPriceRestores(storeId: string): Promise<Set<string>>;
+  recordIntentionalPriceRestore(input: {
+    storeId: string;
+    menuItemStableId: string;
+    sourcePriceCents: number;
+  }): Promise<void>;
+  recordCriticalRiskAcknowledgement(input: {
+    storeId: string;
+    payloadHash: string;
+    criticalCount: number;
+  }): Promise<void>;
   markPublishVersionSucceeded(
     attemptId: string,
     responsePayload: Record<string, unknown>,

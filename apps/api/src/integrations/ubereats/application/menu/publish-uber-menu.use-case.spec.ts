@@ -18,6 +18,9 @@ describe('PublishUberMenuUseCase', () => {
         name: 'Noodles',
         description: null,
         priceCents: 1200,
+        sourcePriceCents: 1000,
+        overridePriceCents: 1200,
+        priceValueSource: 'UBER_OVERRIDE' as const,
         imageUrl: null,
         isAvailable: true,
         modifierGroupStableIds: [],
@@ -36,6 +39,10 @@ describe('PublishUberMenuUseCase', () => {
       loadPublishSnapshot: jest.fn().mockResolvedValue(snapshot),
     };
     const publications = {
+      findLastSucceededPayload: jest.fn().mockResolvedValue(null),
+      listIntentionalPriceRestores: jest.fn().mockResolvedValue(new Set()),
+      recordIntentionalPriceRestore: jest.fn(),
+      recordCriticalRiskAcknowledgement: jest.fn(),
       findSucceededAttempt: jest.fn().mockResolvedValue(null),
       createAttempt: jest.fn().mockResolvedValue({
         attemptId: 'attempt-1',
@@ -86,7 +93,10 @@ describe('PublishUberMenuUseCase', () => {
     expect(
       x.provisionedStores.resolveProvisionedUberStoreId,
     ).toHaveBeenCalledWith('pos-room-1');
-    expect(x.snapshots.loadPublishSnapshot).toHaveBeenCalledWith('store-1');
+    expect(x.snapshots.loadPublishSnapshot).toHaveBeenCalledWith(
+      'pos-room-1',
+      'store-1',
+    );
   });
 
   it('POS store id 没有 provisioned mapping 时抛出应用错误', async () => {
@@ -105,6 +115,62 @@ describe('PublishUberMenuUseCase', () => {
     ).resolves.toMatchObject({ ok: true, dryRun: true });
     expect(x.publications.createAttempt).not.toHaveBeenCalled();
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
+  });
+
+  it('CRITICAL override fallback 阻断普通发布，显式 MFA 确认后允许', async () => {
+    const x = setup();
+    const dryRun = (await x.useCase.execute({
+      storeId: 'store-1',
+      dryRun: true,
+    })) as {
+      payload: { items: Array<{ price_info: { price: number } }> };
+      safety: { fingerprint: string };
+    };
+    const previous = structuredClone(dryRun.payload);
+    previous.items[0].price_info.price = 1300;
+    x.publications.findLastSucceededPayload.mockResolvedValue(previous);
+    x.snapshots.loadPublishSnapshot.mockResolvedValue({
+      ...snapshot,
+      items: snapshot.items.map((item) => ({
+        ...item,
+        priceCents: 1200,
+        sourcePriceCents: 1200,
+        overridePriceCents: null,
+        priceValueSource: 'SANQ_SOURCE' as const,
+      })),
+    });
+
+    await expect(
+      x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true }),
+    ).rejects.toMatchObject({
+      code: 'UBER_MENU_CRITICAL_RISK_CONFIRMATION_REQUIRED',
+    });
+    expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
+
+    await expect(
+      x.useCase.execute({
+        storeId: 'store-1',
+        taxRateConfirmed: true,
+        safetyFingerprint: dryRun.safety.fingerprint,
+      }),
+    ).rejects.toMatchObject({
+      code: 'UBER_MENU_CRITICAL_RISK_CONFIRMATION_REQUIRED',
+    });
+
+    const reviewed = (await x.useCase.execute({
+      storeId: 'store-1',
+      dryRun: true,
+    })) as { safety: { fingerprint: string } };
+    await expect(
+      x.useCase.execute({
+        storeId: 'store-1',
+        taxRateConfirmed: true,
+        safetyFingerprint: reviewed.safety.fingerprint,
+      }),
+    ).resolves.toMatchObject({ ok: true, dryRun: false });
+    expect(
+      x.publications.recordCriticalRiskAcknowledgement,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('重复的成功发布直接返回，不再次上传', async () => {

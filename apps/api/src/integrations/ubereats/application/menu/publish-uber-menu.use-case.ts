@@ -15,6 +15,7 @@ import {
   type UberPublicBaseUrlPort,
 } from './uber-menu-publication.ports';
 import type { ProvisionedUberStoreQueryPort } from './uber-menu-draft.ports';
+import { UberMenuPublishSafetyService } from '../../domain/menu/uber-menu-publish-safety.service';
 
 export class PublishUberMenuUseCase {
   constructor(
@@ -36,7 +37,10 @@ export class PublishUberMenuUseCase {
         `POS 门店 ${posStoreId} 未配置或尚未 provision。`,
       );
     const storeId = mapping.uberStoreId;
-    const snapshot = await this.snapshots.loadPublishSnapshot(storeId);
+    const snapshot = await this.snapshots.loadPublishSnapshot(
+      posStoreId,
+      storeId,
+    );
     if (!snapshot)
       throw this.validationError(
         'UBER_STORE_NOT_PROVISIONED',
@@ -74,6 +78,25 @@ export class PublishUberMenuUseCase {
       totalItems: payload.items.length,
       changedItems: payload.items.length,
     };
+    const previous =
+      await this.publications.findLastSucceededPayload(posStoreId);
+    const intentionalRestores =
+      await this.publications.listIntentionalPriceRestores(posStoreId);
+    const safety = new UberMenuPublishSafetyService().evaluate({
+      previous,
+      current: payload,
+      priceSources: new Map(
+        snapshot.items.map((item) => [
+          item.stableId,
+          {
+            sourcePriceCents: item.sourcePriceCents,
+            overridePriceCents: item.overridePriceCents,
+            valueSource: item.priceValueSource,
+          },
+        ]),
+      ),
+      intentionalRestoreItemIds: intentionalRestores,
+    });
     if (input.dryRun)
       return {
         ok: true,
@@ -83,6 +106,7 @@ export class PublishUberMenuUseCase {
         summary,
         payload,
         validation,
+        safety,
       };
     if (input.taxRateConfirmed !== true)
       throw this.validationError(
@@ -93,6 +117,20 @@ export class PublishUberMenuUseCase {
     const payloadHash = createHash('sha256')
       .update(JSON.stringify(payload))
       .digest('hex');
+    if (
+      safety.criticalCount > 0 &&
+      input.safetyFingerprint !== safety.fingerprint
+    )
+      throw this.validationError(
+        'UBER_MENU_CRITICAL_RISK_CONFIRMATION_REQUIRED',
+        `检测到 ${safety.criticalCount} 项高风险菜单变化，普通发布已阻断。请在 MFA 会话中查看 Dry Run 安全摘要并显式确认。`,
+      );
+    if (safety.criticalCount > 0)
+      await this.publications.recordCriticalRiskAcknowledgement({
+        storeId: posStoreId,
+        payloadHash,
+        criticalCount: safety.criticalCount,
+      });
     const idempotencyKey = buildUberIdempotencyKey({
       taskId: payloadHash,
       resourceId: `${storeId}:${snapshot.uberStoreId}`,
@@ -112,7 +150,7 @@ export class PublishUberMenuUseCase {
         summary,
       };
     const attempt = await this.publications.createAttempt({
-      storeId,
+      storeId: posStoreId,
       uberStoreId: snapshot.uberStoreId,
       idempotencyKey,
       businessVersion: payloadHash,

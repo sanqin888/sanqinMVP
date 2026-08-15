@@ -77,6 +77,28 @@ const draftFields = new Set([
   'imageUrl',
   'sortOrder',
   'entities',
+  'fingerprint',
+  'safety',
+  'semanticallyChanged',
+  'criticalCount',
+  'risks',
+  'intentional',
+  'previousValue',
+  'currentValue',
+  'sourceValue',
+  'sourceStoreId',
+  'targetStoreId',
+  'mode',
+  'counts',
+  'create',
+  'update',
+  'unchanged',
+  'conflicts',
+  'warnings',
+  'kind',
+  'stableId',
+  'source',
+  'target',
   'modifierGroupIds',
   'sourceMenuItemStableId',
   'displayName',
@@ -210,3 +232,5 @@ export const presentMenuDiff = (result: unknown): UberMenuDiffResponse => {
   };
 };
 export const presentMenuMutation = () => toUberMutationResponse();
+export const presentMenuOperation = (result: unknown): UberMenuPublicJson =>
+  presentDraftValue(result) as UberMenuPublicJson;
