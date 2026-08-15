@@ -8,6 +8,7 @@ import type {
   UberMenuDiffResponse,
   UberMenuItemResponse,
   UberMenuListResponse,
+  UberMenuPublicJson,
 } from '../contracts/responses/menu.responses';
 import {
   booleanOf,
@@ -64,7 +65,6 @@ const draftFields = new Set([
   'minSelect',
   'maxSelect',
   'optionItemIds',
-  'modifierGroupIds',
   'from',
   'to',
   'type',
@@ -72,6 +72,29 @@ const draftFields = new Set([
   'severity',
   'path',
   'message',
+  'description',
+  'basePriceCents',
+  'imageUrl',
+  'sortOrder',
+  'entities',
+  'modifierGroupIds',
+  'sourceMenuItemStableId',
+  'displayName',
+  'displayDescription',
+  'groups',
+  'items',
+  'options',
+  'childGroups',
+  'children',
+  'childGroupIds',
+  'source',
+  'status',
+  'sourcePath',
+  'compositeOptionItemId',
+  'day_of_week',
+  'time_periods',
+  'start_time',
+  'end_time',
 ]);
 const presentDraftValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(presentDraftValue);
@@ -99,24 +122,68 @@ export const presentMenuList = (
 
 export const presentMenuDraft = (result: unknown): UberMenuDraftResponse => {
   const source = recordOf(result),
-    draft = recordOf(source.uberDraft);
+    draft = recordOf(source.uberDraft),
+    sourceMenu = recordOf(source.sourceMenu),
+    sourceTree = recordOf(sourceMenu.tree),
+    draftTree = recordOf(draft.tree),
+    validation = recordOf(source.validation),
+    summary = recordOf(source.publishSummary),
+    published = source.lastPublishedVersion
+      ? recordOf(source.lastPublishedVersion)
+      : null;
+  const list = (value: unknown): UberMenuDraftResponse['mappingWarnings'] =>
+    Array.isArray(value)
+      ? (presentDraftValue(value) as UberMenuDraftResponse['mappingWarnings'])
+      : [];
   return {
     storeId: textOf(source.storeId),
-    summary: source.summary
-      ? (presentDraftValue(source.summary) as Record<string, unknown>)
+    sourceMenu: {
+      categories: numberOf(sourceMenu.categories),
+      items: numberOf(sourceMenu.items),
+      optionItems: numberOf(sourceMenu.optionItems),
+      groups: numberOf(sourceMenu.groups),
+      tree: { categories: list(sourceTree.categories) },
+    },
+    uberDraft: {
+      menuId: textOf(draft.menuId) ?? '',
+      categories: list(draft.categories),
+      items: list(draft.items),
+      groups: list(draft.groups),
+      edges: list(draft.edges),
+      tree: { categories: list(draftTree.categories) },
+      treeNodes: list(draft.treeNodes),
+      optionMappings: list(draft.optionMappings),
+    },
+    mappingWarnings: list(source.mappingWarnings),
+    mappingErrors: list(source.mappingErrors),
+    validation: {
+      warnings: list(validation.warnings),
+      errors: list(validation.errors),
+    },
+    publishSummary: {
+      totalItems: numberOf(summary.totalItems),
+      changedItems: numberOf(summary.changedItems),
+      totalCategories: numberOf(summary.totalCategories),
+      totalModifierGroups: numberOf(summary.totalModifierGroups),
+    },
+    serviceAvailability: list(source.serviceAvailability),
+    serviceAvailabilityTimezone:
+      textOf(source.serviceAvailabilityTimezone) ?? '',
+    dirty: booleanOf(source.dirty),
+    lastPublishedVersion: published
+      ? {
+          versionStableId: textOf(published.versionStableId) ?? '',
+          status: textOf(published.status) ?? '',
+          createdAt: dateOf(published.createdAt) ?? null,
+          totalItems: numberOf(published.totalItems),
+          changedItems: numberOf(published.changedItems),
+          errorMessage: textOf(published.errorMessage),
+          errorDetails: presentDraftValue(
+            published.errorDetails,
+          ) as UberMenuPublicJson,
+          finishedAt: dateOf(published.finishedAt) ?? null,
+        }
       : null,
-    categories: Array.isArray(draft.categories)
-      ? (presentDraftValue(draft.categories) as unknown[])
-      : [],
-    items: Array.isArray(draft.items)
-      ? (presentDraftValue(draft.items) as unknown[])
-      : [],
-    groups: Array.isArray(draft.groups)
-      ? (presentDraftValue(draft.groups) as unknown[])
-      : [],
-    edges: Array.isArray(draft.edges)
-      ? (presentDraftValue(draft.edges) as unknown[])
-      : [],
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };
@@ -128,6 +195,7 @@ export const presentMenuDiff = (result: unknown): UberMenuDiffResponse => {
       : [];
   return {
     storeId: textOf(source.storeId),
+    lastPublishedAt: dateOf(source.lastPublishedAt) ?? null,
     addedItems: list('addedItems'),
     modifiedItems: list('modifiedItems'),
     deletedItems: list('deletedItems'),
@@ -135,6 +203,9 @@ export const presentMenuDiff = (result: unknown): UberMenuDiffResponse => {
     modifiedGroups: list('modifiedGroups'),
     deletedGroups: list('deletedGroups'),
     hierarchyChanges: list('hierarchyChanges'),
+    deletedEdges: list('deletedEdges'),
+    priceChanges: list('priceChanges'),
+    availabilityChanges: list('availabilityChanges'),
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };
