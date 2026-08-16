@@ -9,7 +9,6 @@ export interface UberMenuDraftSource {
   optionConfigs: UberMenuDraftOptionConfigSource[];
   modifierConfigs: UberMenuDraftModifierConfigSource[];
   categoryConfigs: UberMenuDraftCategoryConfigSource[];
-  childGroupBindings: UberMenuDraftChildGroupBindingSource[];
 }
 
 export interface UberMenuDraftFilters {
@@ -87,12 +86,6 @@ export interface UberMenuDraftCategoryConfigSource {
   sortOrder: number | null;
   isActive: boolean;
 }
-export interface UberMenuDraftChildGroupBindingSource {
-  parentOptionChoiceStableId: string;
-  childTemplateGroupStableId: string;
-  isBound: boolean;
-}
-
 export const emptyUberMenuDraftFilters = (): UberMenuDraftFilters => ({
   excludedCategoryIds: new Set(),
   excludedGroupIds: new Set(),

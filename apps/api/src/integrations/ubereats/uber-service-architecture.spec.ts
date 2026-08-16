@@ -518,8 +518,6 @@ describe('Uber Eats bounded-context architecture', () => {
       'application/menu/update-uber-draft-item.use-case.ts',
       'application/menu/update-uber-draft-group.use-case.ts',
       'application/menu/update-uber-draft-option.use-case.ts',
-      'application/menu/bind-uber-draft-option-child-group.use-case.ts',
-      'application/menu/unbind-uber-draft-option-child-group.use-case.ts',
       'application/menu/query-uber-menu-draft-diff.use-case.ts',
       'application/menu/publish-uber-menu.use-case.ts',
       'application/menu/uber-menu-availability.use-case.ts',

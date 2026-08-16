@@ -48,7 +48,6 @@ describe('buildUberMenuGraph', () => {
         optionConfigs: [],
         modifierConfigs: [],
         categoryConfigs: [],
-        childGroupBindings: [],
       },
       emptyUberMenuDraftFilters(),
     );

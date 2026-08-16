@@ -390,7 +390,6 @@ export function buildUberMenuGraph(
     optionConfigs,
     modifierConfigs: modifierGroupConfigs,
     categoryConfigs,
-    childGroupBindings,
   } = source;
   const categoryConfigMap = new Map(
     categoryConfigs.map((config) => [config.menuCategoryStableId, config]),
@@ -407,19 +406,6 @@ export function buildUberMenuGraph(
       config,
     ]),
   );
-  const childGroupBindingMap = new Map<
-    string,
-    Array<{ childTemplateGroupStableId: string; isBound: boolean }>
-  >();
-  for (const binding of childGroupBindings) {
-    const list =
-      childGroupBindingMap.get(binding.parentOptionChoiceStableId) ?? [];
-    list.push({
-      childTemplateGroupStableId: binding.childTemplateGroupStableId,
-      isBound: binding.isBound,
-    });
-    childGroupBindingMap.set(binding.parentOptionChoiceStableId, list);
-  }
   const categoryById = new Map(
     categories.map((category) => [category.id, category]),
   );
@@ -499,18 +485,7 @@ export function buildUberMenuGraph(
           : choice.isAvailable;
       const optionPriceCents =
         optionConfig?.priceDeltaCents ?? choice.priceDeltaCents;
-      const sourceChildGroupStableIds = new Set(
-        choice.childTemplateGroupStableIds,
-      );
-      const bindings = childGroupBindingMap.get(choice.stableId) ?? [];
-      for (const binding of bindings) {
-        if (binding.isBound) {
-          sourceChildGroupStableIds.add(binding.childTemplateGroupStableId);
-        } else {
-          sourceChildGroupStableIds.delete(binding.childTemplateGroupStableId);
-        }
-      }
-      const childGroupIds = Array.from(sourceChildGroupStableIds).map(
+      const childGroupIds = choice.childTemplateGroupStableIds.map(
         (childTemplateGroupStableId) =>
           buildUberNodeId('group', storeId, childTemplateGroupStableId),
       );

@@ -9,6 +9,12 @@ import type { DraftNode, DraftTreeKey, StoreMenuTabKey, UberDraftCategoryNode, U
 import type { RunAction } from '../hooks/useUberMutationState';
 
 const UBER_ITEM_DESCRIPTION_MAX_LENGTH = 300;
+const requireSourceStableId = (node: DraftNode): string => {
+  if (!node.sourceStableId) {
+    throw new Error(`${node.type} 节点缺少本地 sourceStableId，已阻止使用 Uber graph ID 发起修改。`);
+  }
+  return node.sourceStableId;
+};
 const STORE_MENU_TABS: Array<{ key: StoreMenuTabKey; label: string }> = [
   { key: 'overview', label: '概览' },
   { key: 'mapping', label: '菜单映射' },
@@ -74,7 +80,7 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
       id: group.id,
       type: 'group',
       name: group.name,
-      sourceStableId: group.id,
+      sourceStableId: group.sourceTemplateGroupStableId,
       source,
       minSelect: group.minSelect,
       maxSelect: group.maxSelect,
@@ -86,12 +92,11 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
         source,
         priceDeltaCents: option.priceDeltaCents,
         isAvailable: option.isAvailable,
-        childGroupIds: option.childGroups.map((childGroup) => childGroup.id),
         children: option.childGroups.map((childGroup) => ({
           id: childGroup.id,
           type: 'group',
           name: childGroup.name,
-          sourceStableId: childGroup.id,
+          sourceStableId: childGroup.sourceTemplateGroupStableId,
           source,
           minSelect: childGroup.minSelect,
           maxSelect: childGroup.maxSelect,
@@ -402,7 +407,7 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
   const saveSelectedNode = useCallback(async () => {
     if (!selectedNode || !selectedStoreId) return;
     if (selectedNode.type === 'item') {
-      await uberApiFetch(`/integrations/ubereats/menu/draft/items/${encodeURIComponent(selectedNode.id)}`, {
+      await uberApiFetch(`/integrations/ubereats/menu/draft/items/${encodeURIComponent(requireSourceStableId(selectedNode))}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -416,7 +421,7 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
       return;
     }
     if (selectedNode.type === 'group') {
-      await uberApiFetch(`/integrations/ubereats/menu/draft/groups/${encodeURIComponent(selectedNode.id)}`, {
+      await uberApiFetch(`/integrations/ubereats/menu/draft/groups/${encodeURIComponent(requireSourceStableId(selectedNode))}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -430,7 +435,7 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
       return;
     }
     if (selectedNode.type === 'option') {
-      await uberApiFetch(`/integrations/ubereats/menu/draft/options/${encodeURIComponent(selectedNode.id)}`, {
+      await uberApiFetch(`/integrations/ubereats/menu/draft/options/${encodeURIComponent(requireSourceStableId(selectedNode))}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -560,7 +565,7 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
                       <label className="block"><span className="mb-1 block text-slate-500">priceCents</span><input type="number" className="w-full rounded border px-2 py-1" value={Number(inspectorDraft.priceCents ?? 0)} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, priceCents: Number(e.target.value) }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">isAvailable</span><select className="w-full rounded border px-2 py-1" value={String(Boolean(inspectorDraft.isAvailable))} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, isAvailable: e.target.value === 'true' }))}><option value="true">上架</option><option value="false">下架</option></select></label>
                       <button type="button" className="rounded border px-3 py-1.5" onClick={() => void runAction('save-node-item', saveSelectedNode, 'item 草稿已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存 item</button>
-                      <button type="button" className="rounded border border-amber-500 px-3 py-1.5 text-amber-800" onClick={() => void runAction('restore-source-price', () => uberApiFetch(`/integrations/ubereats/menu/draft/items/${encodeURIComponent(selectedNode.sourceStableId ?? selectedNode.id)}/restore-source-price`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId }) }).then(() => loadStoreMenuDraft(selectedStoreId)), '已恢复网站价格并记录操作意图', true)}>恢复网站价格</button>
+                      <button type="button" className="rounded border border-amber-500 px-3 py-1.5 text-amber-800" onClick={() => void runAction('restore-source-price', () => uberApiFetch(`/integrations/ubereats/menu/draft/items/${encodeURIComponent(requireSourceStableId(selectedNode))}/restore-source-price`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId }) }).then(() => loadStoreMenuDraft(selectedStoreId)), '已恢复网站价格并记录操作意图', true)}>恢复网站价格</button>
                     </div>
                   ) : null}
                   {selectedNode?.type === 'group' ? (
@@ -577,25 +582,6 @@ export function MenuWorkspace({ stores, runAction }: { stores: UberStore[]; runA
                       <label className="block"><span className="mb-1 block text-slate-500">displayName</span><input className="w-full rounded border px-2 py-1" value={String(inspectorDraft.displayName ?? '')} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, displayName: e.target.value }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">priceDeltaCents</span><input type="number" className="w-full rounded border px-2 py-1" value={Number(inspectorDraft.priceDeltaCents ?? 0)} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, priceDeltaCents: Number(e.target.value) }))} /></label>
                       <label className="block"><span className="mb-1 block text-slate-500">isAvailable</span><select className="w-full rounded border px-2 py-1" value={String(Boolean(inspectorDraft.isAvailable))} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, isAvailable: e.target.value === 'true' }))}><option value="true">上架</option><option value="false">下架</option></select></label>
-                      <div>
-                        <p className="mb-1 block text-slate-500">Attached child groups</p>
-                        <div className="space-y-1">
-                          {(selectedNode.childGroupIds ?? []).map((groupId) => (
-                            <div key={groupId} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
-                              <span>{groupId}</span>
-                              <button type="button" className="rounded border px-2 py-0.5" onClick={() => void runAction(`unbind-${selectedNode.id}-${groupId}`, () => uberApiFetch(`/integrations/ubereats/menu/draft/options/${selectedNode.id}/child-groups/${groupId}?storeId=${encodeURIComponent(selectedStoreId)}`, { method: 'DELETE' }).then(() => {}), `已解绑 ${groupId}`, false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>解绑</button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-2 flex gap-2">
-                          <input className="flex-1 rounded border px-2 py-1" placeholder="输入 groupId 绑定" value={String(inspectorDraft.attachGroupId ?? '')} onChange={(e) => setInspectorDraft((prev) => ({ ...prev, attachGroupId: e.target.value }))} />
-                          <button type="button" className="rounded border px-2 py-1" onClick={() => {
-                            const groupId = String(inspectorDraft.attachGroupId ?? '').trim();
-                            if (!groupId) return;
-                            void runAction(`bind-${selectedNode.id}-${groupId}`, () => uberApiFetch(`/integrations/ubereats/menu/draft/options/${selectedNode.id}/child-groups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: selectedStoreId, groupId }) }).then(() => {}), `已绑定 ${groupId}`, false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }));
-                          }}>绑定</button>
-                        </div>
-                      </div>
                       <button type="button" className="rounded border px-3 py-1.5" onClick={() => void runAction('save-node-option', saveSelectedNode, 'option 草稿已保存', false).then(() => loadStoreMenuDraft(selectedStoreId, { keepSelection: true }))}>保存 option</button>
                     </div>
                   ) : null}

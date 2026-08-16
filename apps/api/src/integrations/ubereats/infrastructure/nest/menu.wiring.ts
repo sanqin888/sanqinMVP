@@ -7,8 +7,6 @@ import { ReadUberMenuDraftUseCase } from '../../application/menu/read-uber-menu-
 import { UpdateUberDraftItemUseCase } from '../../application/menu/update-uber-draft-item.use-case';
 import { UpdateUberDraftGroupUseCase } from '../../application/menu/update-uber-draft-group.use-case';
 import { UpdateUberDraftOptionUseCase } from '../../application/menu/update-uber-draft-option.use-case';
-import { BindUberDraftOptionChildGroupUseCase } from '../../application/menu/bind-uber-draft-option-child-group.use-case';
-import { UnbindUberDraftOptionChildGroupUseCase } from '../../application/menu/unbind-uber-draft-option-child-group.use-case';
 import { QueryUberMenuDraftDiffUseCase } from '../../application/menu/query-uber-menu-draft-diff.use-case';
 import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
 import { PublishUberMenuUseCase } from '../../application/menu/publish-uber-menu.use-case';
@@ -28,8 +26,6 @@ import {
   type UberDraftItemCommandPort,
   type UberDraftGroupCommandPort,
   type UberDraftOptionCommandPort,
-  type UberOptionChildGroupBindCommandPort,
-  type UberOptionChildGroupUnbindCommandPort,
   type UberMenuDraftReadPort,
   type MenuItemExistenceQueryPort,
   type OptionChoiceExistenceQueryPort,
@@ -46,8 +42,6 @@ import {
   UBER_DRAFT_ITEM_COMMAND_PORT,
   UBER_DRAFT_GROUP_COMMAND_PORT,
   UBER_DRAFT_OPTION_COMMAND_PORT,
-  UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT,
-  UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT,
   UBER_MENU_DRAFT_READ_PORT,
 } from '../../application/menu/uber-menu-draft.ports';
 import {
@@ -161,14 +155,6 @@ export function createMenuWiring(): Provider[] {
     },
     {
       provide: UBER_DRAFT_OPTION_COMMAND_PORT,
-      useExisting: UberMenuDraftMutationPrismaAdapter,
-    },
-    {
-      provide: UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT,
-      useExisting: UberMenuDraftMutationPrismaAdapter,
-    },
-    {
-      provide: UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT,
       useExisting: UberMenuDraftMutationPrismaAdapter,
     },
     {
@@ -289,20 +275,6 @@ export function createMenuWiring(): Provider[] {
         transaction: UberMenuWriteTransactionPort<UberDraftOptionCommandPort>,
         optionChoices: OptionChoiceExistenceQueryPort,
       ) => new UpdateUberDraftOptionUseCase(transaction, optionChoices),
-    },
-    {
-      provide: BindUberDraftOptionChildGroupUseCase,
-      inject: [UBER_MENU_WRITE_TRANSACTION_PORT],
-      useFactory: (
-        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupBindCommandPort>,
-      ) => new BindUberDraftOptionChildGroupUseCase(transaction),
-    },
-    {
-      provide: UnbindUberDraftOptionChildGroupUseCase,
-      inject: [UBER_MENU_WRITE_TRANSACTION_PORT],
-      useFactory: (
-        transaction: UberMenuWriteTransactionPort<UberOptionChildGroupUnbindCommandPort>,
-      ) => new UnbindUberDraftOptionChildGroupUseCase(transaction),
     },
     {
       provide: QueryUberMenuDraftDiffUseCase,

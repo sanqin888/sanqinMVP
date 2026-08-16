@@ -21,8 +21,7 @@ type Definition = {
     | 'uberItemChannelConfig'
     | 'uberOptionItemConfig'
     | 'uberModifierGroupConfig'
-    | 'uberCategoryConfig'
-    | 'uberOptionChildGroupBinding';
+    | 'uberCategoryConfig';
   keys: string[];
   allowed: string[];
 };
@@ -68,16 +67,6 @@ const DEFINITIONS: Definition[] = [
     delegate: 'uberCategoryConfig',
     keys: ['menuCategoryStableId'],
     allowed: ['menuCategoryStableId', 'displayName', 'sortOrder', 'isActive'],
-  },
-  {
-    kind: 'bindings',
-    delegate: 'uberOptionChildGroupBinding',
-    keys: ['parentOptionChoiceStableId', 'childTemplateGroupStableId'],
-    allowed: [
-      'parentOptionChoiceStableId',
-      'childTemplateGroupStableId',
-      'isBound',
-    ],
   },
 ];
 const picked = (row: Row, keys: string[]): UberMenuConfigFields =>

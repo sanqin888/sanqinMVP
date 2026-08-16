@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Patch,
   Param,
@@ -28,7 +27,6 @@ import {
   SyncUberOptionItemAvailabilityDto,
   UpdateUberDraftGroupDto,
   UpdateUberDraftItemDto,
-  UpdateUberDraftOptionChildGroupDto,
   UpdateUberDraftOptionDto,
   UpsertUberOptionItemConfigDto,
   UpsertUberPriceBookItemDto,
@@ -40,8 +38,6 @@ import { ReadUberMenuDraftUseCase } from '../application/menu/read-uber-menu-dra
 import { UpdateUberDraftItemUseCase } from '../application/menu/update-uber-draft-item.use-case';
 import { UpdateUberDraftGroupUseCase } from '../application/menu/update-uber-draft-group.use-case';
 import { UpdateUberDraftOptionUseCase } from '../application/menu/update-uber-draft-option.use-case';
-import { BindUberDraftOptionChildGroupUseCase } from '../application/menu/bind-uber-draft-option-child-group.use-case';
-import { UnbindUberDraftOptionChildGroupUseCase } from '../application/menu/unbind-uber-draft-option-child-group.use-case';
 import { QueryUberMenuDraftDiffUseCase } from '../application/menu/query-uber-menu-draft-diff.use-case';
 import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
 import { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
@@ -66,8 +62,6 @@ export class UberEatsMenuController {
     private readonly draftItemUpdates: UpdateUberDraftItemUseCase,
     private readonly draftGroupUpdates: UpdateUberDraftGroupUseCase,
     private readonly draftOptionUpdates: UpdateUberDraftOptionUseCase,
-    private readonly optionChildGroupBindings: BindUberDraftOptionChildGroupUseCase,
-    private readonly optionChildGroupUnbindings: UnbindUberDraftOptionChildGroupUseCase,
     private readonly draftDiffs: QueryUberMenuDraftDiffUseCase,
     private readonly publications: PublishUberMenuUseCase,
     private readonly availability: UberMenuAvailabilityUseCase,
@@ -173,35 +167,6 @@ export class UberEatsMenuController {
     @Body() dto: UpdateUberDraftOptionDto,
   ) {
     await this.draftOptionUpdates.execute(optionItemId, dto);
-    return presentMenuMutation();
-  }
-
-  @Post('menu/draft/options/:optionItemId/child-groups')
-  @UberAdminWrite()
-  async bindOptionChildGroup(
-    @Param('optionItemId', ResourceIdPipe) optionItemId: string,
-    @Body() dto: UpdateUberDraftOptionChildGroupDto,
-  ) {
-    await this.optionChildGroupBindings.execute(
-      optionItemId,
-      dto.groupId,
-      dto.storeId,
-    );
-    return presentMenuMutation();
-  }
-
-  @Delete('menu/draft/options/:optionItemId/child-groups/:groupId')
-  @UberAdminWrite()
-  async unbindOptionChildGroup(
-    @Param('optionItemId', ResourceIdPipe) optionItemId: string,
-    @Param('groupId', ResourceIdPipe) groupId: string,
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
-  ) {
-    await this.optionChildGroupUnbindings.execute(
-      optionItemId,
-      groupId,
-      storeId,
-    );
     return presentMenuMutation();
   }
 
