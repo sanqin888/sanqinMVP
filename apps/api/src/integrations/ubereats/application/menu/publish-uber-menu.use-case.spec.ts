@@ -86,15 +86,23 @@ describe('PublishUberMenuUseCase', () => {
     };
   };
 
-  const lastUploadedPayload = (gateway: ReturnType<typeof setup>['gateway']) =>
-    (gateway.uploadMenu.mock.calls.at(-1)?.[0] as {
-      payload: {
-        items: Array<{
-          title: { translations: { en_us: string } };
-          price_info: { price: number };
-        }>;
-      };
-    }).payload;
+  type UploadedPayload = {
+    items: Array<{
+      title: { translations: { en_us: string } };
+      price_info: { price: number };
+    }>;
+  };
+
+  const lastUploadedPayload = (
+    gateway: ReturnType<typeof setup>['gateway'],
+  ): UploadedPayload => {
+    const calls = gateway.uploadMenu.mock.calls as unknown as Array<
+      [{ payload: UploadedPayload }]
+    >;
+    const request = calls.at(-1)?.[0];
+    if (!request) throw new Error('Expected an Uber menu upload call.');
+    return request.payload;
+  };
 
   it('先将 POS store id 解析为 Uber store id，再调用 snapshot adapter', async () => {
     const x = setup();
@@ -119,7 +127,10 @@ describe('PublishUberMenuUseCase', () => {
 
   it('dry-run 构建并校验 publish graph，但不暴露 payload 或创建发布尝试', async () => {
     const x = setup();
-    const result = await x.useCase.execute({ storeId: 'store-1', dryRun: true });
+    const result = await x.useCase.execute({
+      storeId: 'store-1',
+      dryRun: true,
+    });
     expect(result).toMatchObject({ ok: true, dryRun: true });
     expect(result).not.toHaveProperty('payload');
     expect(x.publications.createAttempt).not.toHaveBeenCalled();
