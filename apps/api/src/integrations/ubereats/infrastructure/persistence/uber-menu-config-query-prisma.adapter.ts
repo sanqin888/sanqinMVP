@@ -9,7 +9,7 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
   constructor(private readonly prisma: PrismaService) {}
 
   async listUberItemChannelConfigs(storeId?: string) {
-    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const normalizedStoreId = await this.canonicalStoreId(storeId);
     const items = await this.prisma.uberItemChannelConfig.findMany({
       where: { storeId: normalizedStoreId },
       orderBy: { updatedAt: 'desc' },
@@ -36,7 +36,7 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
   }
 
   async listUberPublishedMenuItems(storeId?: string) {
-    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const normalizedStoreId = await this.canonicalStoreId(storeId);
     const items = await this.prisma.uberPublishedMenuItem.findMany({
       where: {
         storeId: normalizedStoreId,
@@ -68,7 +68,7 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
   }
 
   async listUberOptionItemConfigs(storeId?: string) {
-    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const normalizedStoreId = await this.canonicalStoreId(storeId);
     const items = await this.prisma.uberOptionItemConfig.findMany({
       where: { storeId: normalizedStoreId },
       orderBy: { updatedAt: 'desc' },
@@ -91,5 +91,20 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
       count: items.length,
       items,
     };
+  }
+
+  private async canonicalStoreId(storeId?: string) {
+    const requestedStoreId = normalizeUberStoreId(storeId);
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
+      where: {
+        isProvisioned: true,
+        OR: [
+          { posExternalStoreId: requestedStoreId },
+          { uberStoreId: requestedStoreId },
+        ],
+      },
+      select: { posExternalStoreId: true },
+    });
+    return mapping?.posExternalStoreId?.trim() || requestedStoreId;
   }
 }
