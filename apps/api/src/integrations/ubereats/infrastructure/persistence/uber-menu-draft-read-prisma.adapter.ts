@@ -58,17 +58,24 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
   ) {}
 
   async getUberMenuDraft(storeId?: string) {
-    const normalizedStoreId = normalizeUberStoreId(storeId);
+    const requestedStoreId = normalizeUberStoreId(storeId);
     const storeMapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
-        uberStoreId: normalizedStoreId,
         isProvisioned: true,
+        OR: [
+          { posExternalStoreId: requestedStoreId },
+          { uberStoreId: requestedStoreId },
+        ],
       },
-      select: { uberStoreId: true },
+      select: { uberStoreId: true, posExternalStoreId: true },
     });
-    const uberStoreId =
-      storeMapping?.uberStoreId ?? `draft:${normalizedStoreId}`;
-    const graph = await this.buildUberMenuGraph(normalizedStoreId, uberStoreId);
+    const mappedPosStoreId = storeMapping?.posExternalStoreId?.trim() || null;
+    const isProvisioned = Boolean(storeMapping?.uberStoreId && mappedPosStoreId);
+    const posStoreId = mappedPosStoreId ?? requestedStoreId;
+    const uberStoreId = isProvisioned
+      ? storeMapping!.uberStoreId
+      : `draft:${requestedStoreId}`;
+    const graph = await this.buildUberMenuGraph(posStoreId, uberStoreId);
     const validation = validateUberMenuGraph(graph);
     const normalized = {
       graph: validation.graph,
@@ -86,7 +93,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     const summary = summarizeUberMenuGraph(normalized.graph);
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
-        where: { storeId: normalizedStoreId },
+        where: { storeId: posStoreId },
         orderBy: { createdAt: 'desc' },
         select: {
           versionStableId: true,
@@ -109,7 +116,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     const uberDraftTreeNodes = buildUberDraftTreeNodes(uberDraftCategories);
     const stableIdsByNodeId = this.stableIdsByNodeId(
       normalized.graph,
-      normalizedStoreId,
+      posStoreId,
     );
     const projectIssue = (issue: InternalValidationIssue) =>
       this.projectValidationIssue(issue, stableIdsByNodeId);
@@ -117,7 +124,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       stableIdsByNodeId.get(nodeId) ?? nodeId;
 
     return {
-      storeId: normalizedStoreId,
+      storeId: posStoreId,
       sourceMenu: {
         categories: graph.categories.length,
         items: graph.sourceItems.filter(
@@ -168,7 +175,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       },
       mappingWarnings: [
         ...payloadValidation.map(projectIssue),
-        ...(storeMapping?.uberStoreId
+        ...(isProvisioned
           ? []
           : [
               {
