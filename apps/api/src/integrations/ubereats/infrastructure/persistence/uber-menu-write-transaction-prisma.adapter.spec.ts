@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { PrismaService } from '../../../../prisma/prisma.service';
 import { UberMenuWriteTransactionPrismaAdapter } from './uber-menu-write-transaction-prisma.adapter';
 
