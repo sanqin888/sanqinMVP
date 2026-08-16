@@ -54,6 +54,7 @@ export const UBER_BUSINESS_SCHEDULE_QUERY_PORT = Symbol(
 
 export type UberProvisionedStoreMapping = {
   uberStoreId: string;
+  posExternalStoreId: string;
 };
 export type UberBusinessScheduleRecord = {
   timezone: string | null;
@@ -73,9 +74,12 @@ export interface OptionChoiceExistenceQueryPort {
   optionChoiceExists(stableId: string): Promise<boolean>;
 }
 export interface ProvisionedUberStoreQueryPort {
-  /** Resolves the POS store/print-room id supplied by menu publication callers. */
+  /**
+   * Accepts either the POS/print-room id or the Uber store id, then returns the
+   * provisioned mapping with the POS id as the canonical menu persistence scope.
+   */
   resolveProvisionedUberStoreId(
-    posStoreId: string,
+    storeId: string,
   ): Promise<UberProvisionedStoreMapping | null>;
 }
 export interface UberBusinessScheduleQueryPort {
