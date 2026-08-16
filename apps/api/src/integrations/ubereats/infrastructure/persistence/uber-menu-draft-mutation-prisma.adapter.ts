@@ -30,7 +30,7 @@ export class UberMenuDraftMutationPrismaAdapter
   constructor(private readonly prisma: PrismaService) {}
 
   async updateUberDraftItem(itemId: string, input: UpdateDraftItemInput) {
-    const normalizedStoreId = normalizeUberStoreId(input.storeId);
+    const normalizedStoreId = await this.canonicalStoreId(input.storeId);
 
     const menuItem = await this.prisma.menuItem.findUnique({
       where: { stableId: itemId },
@@ -91,7 +91,9 @@ export class UberMenuDraftMutationPrismaAdapter
   ) {
     const groupId = command.resourceKey.templateGroupStableId;
     const input = command.payload;
-    const normalizedStoreId = command.resourceKey.storeId;
+    const normalizedStoreId = await this.canonicalStoreId(
+      command.resourceKey.storeId,
+    );
     const template = await this.prisma.menuOptionGroupTemplate.findUnique({
       where: { stableId: groupId },
       select: {
@@ -157,7 +159,7 @@ export class UberMenuDraftMutationPrismaAdapter
     optionItemId: string,
     input: UpdateDraftOptionInput,
   ) {
-    const normalizedStoreId = normalizeUberStoreId(input.storeId);
+    const normalizedStoreId = await this.canonicalStoreId(input.storeId);
     const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
       where: { stableId: optionItemId },
       select: { priceDeltaCents: true, isAvailable: true },
@@ -207,5 +209,20 @@ export class UberMenuDraftMutationPrismaAdapter
             ]
           : [],
     };
+  }
+
+  private async canonicalStoreId(storeId?: string) {
+    const requestedStoreId = normalizeUberStoreId(storeId);
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
+      where: {
+        isProvisioned: true,
+        OR: [
+          { posExternalStoreId: requestedStoreId },
+          { uberStoreId: requestedStoreId },
+        ],
+      },
+      select: { posExternalStoreId: true },
+    });
+    return mapping?.posExternalStoreId?.trim() || requestedStoreId;
   }
 }
