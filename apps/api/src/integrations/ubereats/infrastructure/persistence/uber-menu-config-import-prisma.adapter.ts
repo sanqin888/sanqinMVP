@@ -112,29 +112,14 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
       });
     return this.prisma.$transaction(
       async (tx) => {
-        const current = await this.plan(
-          tx,
-          source,
-          target,
-          mode,
-          false,
-          false,
-        );
+        const current = await this.plan(tx, source, target, mode, false, false);
         if (current.fingerprint !== previewFingerprint)
           throw new UberValidationError({
             code: 'UBER_MENU_IMPORT_PREVIEW_STALE',
             message: '来源或目标配置在 Preview 后已变化，请重新 Preview。',
             operation: 'uber.menu.config.import',
           });
-        return this.plan(
-          tx,
-          source,
-          target,
-          mode,
-          true,
-          true,
-          administratorId,
-        );
+        return this.plan(tx, source, target, mode, true, true, administratorId);
       },
       { isolationLevel: 'Serializable' },
     );
