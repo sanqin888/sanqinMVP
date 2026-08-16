@@ -22,6 +22,26 @@ export type UberMenuDraftValidationIssue = {
   message: string;
 };
 
+type UberMenuDraftStableItem = {
+  sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+  stableId: string;
+  priceCents: number;
+  isAvailable: boolean;
+  hasDelta: boolean;
+};
+
+type UberMenuDraftStableGroup = {
+  stableId: string;
+  minSelect: number;
+  maxSelect: number;
+  optionStableIds: string[];
+};
+
+type UberMenuDraftStableCategory = {
+  stableId: string;
+  itemStableIds: string[];
+};
+
 export type UberMenuDraftResult = {
   storeId: string;
   sourceMenu: {
@@ -32,6 +52,10 @@ export type UberMenuDraftResult = {
     tree: { categories: UberMenuDraftJsonValue[] };
   };
   uberDraft: {
+    /** Internal stable-id projections used by diff; the API presenter does not expose these arrays. */
+    categories: UberMenuDraftStableCategory[];
+    items: UberMenuDraftStableItem[];
+    groups: UberMenuDraftStableGroup[];
     edges: UberMenuDraftEdgeDto[];
     tree: { categories: UberMenuDraftJsonValue[] };
     treeNodes: UberMenuDraftJsonValue[];

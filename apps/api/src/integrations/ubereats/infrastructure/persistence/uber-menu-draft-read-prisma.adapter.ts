@@ -113,6 +113,8 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     );
     const projectIssue = (issue: InternalValidationIssue) =>
       this.projectValidationIssue(issue, stableIdsByNodeId);
+    const stableIdOf = (nodeId: string) =>
+      stableIdsByNodeId.get(nodeId) ?? nodeId;
 
     return {
       storeId: normalizedStoreId,
@@ -128,6 +130,23 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
         tree: { categories: sourceDraftCategories },
       },
       uberDraft: {
+        categories: normalized.graph.categories.map((category) => ({
+          stableId: category.sourceStableId,
+          itemStableIds: category.entities.map(stableIdOf),
+        })),
+        items: normalized.graph.items.map((item) => ({
+          sourceType: item.sourceType,
+          stableId: item.sourceStableId,
+          priceCents: item.priceCents,
+          isAvailable: item.isAvailable,
+          hasDelta: item.hasDelta,
+        })),
+        groups: normalized.graph.groups.map((group) => ({
+          stableId: group.sourceStableId,
+          minSelect: group.minSelect,
+          maxSelect: group.maxSelect,
+          optionStableIds: group.optionItemIds.map(stableIdOf),
+        })),
         edges: buildUberDraftEdges(normalized.graph),
         tree: {
           categories: uberDraftCategories,
@@ -195,7 +214,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       issue.itemStableId ??
       issue.groupStableId ??
       (issue.sourceStableId
-        ? stableIdsByNodeId.get(issue.sourceStableId) ?? issue.sourceStableId
+        ? (stableIdsByNodeId.get(issue.sourceStableId) ?? issue.sourceStableId)
         : null) ??
       (issue.itemId ? stableIdsByNodeId.get(issue.itemId) : undefined) ??
       (issue.groupId ? stableIdsByNodeId.get(issue.groupId) : undefined) ??

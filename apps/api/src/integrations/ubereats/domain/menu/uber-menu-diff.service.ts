@@ -3,6 +3,7 @@ import type {
   UberMenuDraftEdgeDto,
   UberMenuDraftResult,
 } from './uber-menu-diff.types';
+import { buildUberNodeId } from './uber-menu-graph.service';
 
 const object = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -11,50 +12,65 @@ const object = (value: unknown): Record<string, unknown> | null =>
 const string = (value: unknown) =>
   typeof value === 'string' && value.length ? value : null;
 
-export function extractPublishedSnapshotFromPayload(payload: unknown) {
-  const itemIds = new Set<string>();
-  const groupIds = new Set<string>();
+export function extractPublishedSnapshotFromPayload(
+  payload: unknown,
+  resolveNodeId: (nodeId: string) => string | null = () => null,
+) {
   const edgeKeys = new Set<string>();
   const root = object(payload);
-  if (!root) return { itemIds, groupIds, edgeKeys };
+  if (!root) return { edgeKeys };
   for (const raw of Array.isArray(root.categories) ? root.categories : []) {
     const category = object(raw);
-    const id = string(category?.id);
-    if (!id) continue;
+    const categoryNodeId = string(category?.id);
+    const categoryStableId = categoryNodeId
+      ? resolveNodeId(categoryNodeId)
+      : null;
+    if (!categoryStableId) continue;
     for (const entity of Array.isArray(category?.entities)
       ? category.entities
       : []) {
-      const itemId = string(object(entity)?.id) ?? string(entity);
-      if (itemId) edgeKeys.add(`CATEGORY_ITEM:${id}->${itemId}`);
+      const itemNodeId = string(object(entity)?.id) ?? string(entity);
+      const itemStableId = itemNodeId ? resolveNodeId(itemNodeId) : null;
+      if (itemStableId) {
+        edgeKeys.add(
+          `CATEGORY_ITEM:${categoryStableId}->${itemStableId}`,
+        );
+      }
     }
   }
   for (const raw of Array.isArray(root.items) ? root.items : []) {
     const item = object(raw);
-    const id = string(item?.id);
-    if (!id) continue;
-    itemIds.add(id);
+    const itemNodeId = string(item?.id);
+    const itemStableId = itemNodeId ? resolveNodeId(itemNodeId) : null;
+    if (!itemStableId) continue;
     for (const group of Array.isArray(item?.modifier_group_ids)
       ? item.modifier_group_ids
       : []) {
-      const groupId = string(group);
-      if (groupId) edgeKeys.add(`ITEM_GROUP:${id}->${groupId}`);
+      const groupNodeId = string(group);
+      const groupStableId = groupNodeId ? resolveNodeId(groupNodeId) : null;
+      if (groupStableId) {
+        edgeKeys.add(`ITEM_GROUP:${itemStableId}->${groupStableId}`);
+      }
     }
   }
   for (const raw of Array.isArray(root.modifier_groups)
     ? root.modifier_groups
     : []) {
     const group = object(raw);
-    const id = string(group?.id);
-    if (!id) continue;
-    groupIds.add(id);
+    const groupNodeId = string(group?.id);
+    const groupStableId = groupNodeId ? resolveNodeId(groupNodeId) : null;
+    if (!groupStableId) continue;
     for (const rawOption of Array.isArray(group?.modifier_options)
       ? group.modifier_options
       : []) {
-      const optionId = string(object(rawOption)?.id);
-      if (optionId) edgeKeys.add(`GROUP_OPTION:${id}->${optionId}`);
+      const optionNodeId = string(object(rawOption)?.id);
+      const optionStableId = optionNodeId ? resolveNodeId(optionNodeId) : null;
+      if (optionStableId) {
+        edgeKeys.add(`GROUP_OPTION:${groupStableId}->${optionStableId}`);
+      }
     }
   }
-  return { itemIds, groupIds, edgeKeys };
+  return { edgeKeys };
 }
 
 export function decodeDraftEdgeKey(
@@ -69,17 +85,47 @@ export function buildUberMenuDraftDiff(input: {
   draft: UberMenuDraftResult;
   lastPublishedAt: Date | null;
   publishedPayload: unknown;
+  publishedCategoryIds: Iterable<string>;
   publishedMenuItemIds: Iterable<string>;
   publishedOptionItemIds: Iterable<string>;
+  publishedGroupIds: Iterable<string>;
 }): UberMenuDraftDiffResult {
-  const snapshot = extractPublishedSnapshotFromPayload(input.publishedPayload);
+  const publishedCategories = new Set(input.publishedCategoryIds);
   const publishedItems = new Set(input.publishedMenuItemIds);
   const publishedOptions = new Set(input.publishedOptionItemIds);
-  const changed = input.draft.uberDraft.items.filter((item) => item.hasDelta);
-  const itemIds = new Set(input.draft.uberDraft.items.map((item) => item.id));
-  const groupIds = new Set(
-    input.draft.uberDraft.groups.map((group) => group.id),
+  const publishedGroups = new Set(input.publishedGroupIds);
+  const currentCategories = new Set(
+    input.draft.uberDraft.categories.map((category) => category.stableId),
   );
+  const currentItems = new Set(
+    input.draft.uberDraft.items.map((item) => item.stableId),
+  );
+  const currentGroups = new Set(
+    input.draft.uberDraft.groups.map((group) => group.stableId),
+  );
+  const nodeStableIds = new Map<string, string>();
+  const remember = (
+    kind: 'category' | 'item' | 'group',
+    stableIds: Iterable<string>,
+  ) => {
+    for (const stableId of stableIds) {
+      nodeStableIds.set(
+        buildUberNodeId(kind, input.storeId, stableId),
+        stableId,
+      );
+    }
+  };
+  remember('category', new Set([...currentCategories, ...publishedCategories]));
+  remember(
+    'item',
+    new Set([...currentItems, ...publishedItems, ...publishedOptions]),
+  );
+  remember('group', new Set([...currentGroups, ...publishedGroups]));
+  const snapshot = extractPublishedSnapshotFromPayload(
+    input.publishedPayload,
+    (nodeId) => nodeStableIds.get(nodeId) ?? null,
+  );
+  const changed = input.draft.uberDraft.items.filter((item) => item.hasDelta);
   const edgeKeys = new Set(
     input.draft.uberDraft.edges.map(
       (edge) => `${edge.type}:${edge.from}->${edge.to}`,
@@ -91,35 +137,40 @@ export function buildUberMenuDraftDiff(input: {
     addedItems: changed
       .filter((item) =>
         item.sourceType === 'MENU_ITEM'
-          ? !publishedItems.has(item.sourceStableId)
-          : !publishedOptions.has(item.sourceStableId),
+          ? !publishedItems.has(item.stableId)
+          : !publishedOptions.has(item.stableId),
       )
-      .map((item) => item.sourceStableId),
+      .map((item) => item.stableId),
     modifiedItems: changed.map((item) => ({
       sourceType: item.sourceType,
-      stableId: item.sourceStableId,
+      stableId: item.stableId,
       priceCents: item.priceCents,
       isAvailable: item.isAvailable,
     })),
-    deletedItems: [...snapshot.itemIds].filter((id) => !itemIds.has(id)),
+    deletedItems: [...publishedItems, ...publishedOptions].filter(
+      (stableId) => !currentItems.has(stableId),
+    ),
     addedGroups: input.draft.uberDraft.groups
       .filter(
         (group) =>
-          group.optionItemIds.length > 0 && !snapshot.groupIds.has(group.id),
+          group.optionStableIds.length > 0 &&
+          !publishedGroups.has(group.stableId),
       )
-      .map((group) => group.sourceStableId),
+      .map((group) => group.stableId),
     modifiedGroups: input.draft.uberDraft.groups
       .filter(
         (group) =>
-          snapshot.groupIds.has(group.id) &&
+          publishedGroups.has(group.stableId) &&
           (group.minSelect > 0 || group.maxSelect > 1),
       )
       .map((group) => ({
-        stableId: group.sourceStableId,
+        stableId: group.stableId,
         minSelect: group.minSelect,
         maxSelect: group.maxSelect,
       })),
-    deletedGroups: [...snapshot.groupIds].filter((id) => !groupIds.has(id)),
+    deletedGroups: [...publishedGroups].filter(
+      (stableId) => !currentGroups.has(stableId),
+    ),
     hierarchyChanges: input.draft.uberDraft.edges.filter(
       (edge) => !snapshot.edgeKeys.has(`${edge.type}:${edge.from}->${edge.to}`),
     ),
@@ -129,12 +180,12 @@ export function buildUberMenuDraftDiff(input: {
       .filter((edge): edge is UberMenuDraftEdgeDto => edge !== null),
     priceChanges: changed.map((item) => ({
       sourceType: item.sourceType,
-      stableId: item.sourceStableId,
+      stableId: item.stableId,
       priceCents: item.priceCents,
     })),
     availabilityChanges: changed.map((item) => ({
       sourceType: item.sourceType,
-      stableId: item.sourceStableId,
+      stableId: item.stableId,
       isAvailable: item.isAvailable,
     })),
   };

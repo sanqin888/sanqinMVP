@@ -83,7 +83,9 @@ describe('Uber menu draft projector', () => {
       type: 'group',
     });
     expect(JSON.stringify({ categories, tree })).not.toContain('sanq:');
-    expect(JSON.stringify({ categories, tree })).not.toContain('sourceStableId');
+    expect(JSON.stringify({ categories, tree })).not.toContain(
+      'sourceStableId',
+    );
     expect(JSON.stringify(graph)).toBe(before);
   });
 

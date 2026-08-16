@@ -237,11 +237,7 @@ export class PublishUberMenuUseCase {
       categories: snapshot.categories
         .filter((category) => !excludedCategories.has(category.stableId))
         .map((category) => ({
-          id: buildUberNodeId(
-            'category',
-            snapshot.storeId,
-            category.stableId,
-          ),
+          id: buildUberNodeId('category', snapshot.storeId, category.stableId),
           title: category.name,
           entities: category.itemStableIds
             .filter((stableId) =>
