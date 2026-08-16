@@ -24,25 +24,40 @@ export class UberMenuDraftDiffPrismaAdapter implements UberMenuDraftDiffPort {
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true, requestPayload: true, payload: true },
     });
-    const [itemConfigs, optionConfigs] = await Promise.all([
-      this.prisma.uberItemChannelConfig.findMany({
-        where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
-        select: { menuItemStableId: true },
-      }),
-      this.prisma.uberOptionItemConfig.findMany({
-        where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
-        select: { optionChoiceStableId: true },
-      }),
-    ]);
+    const [categoryConfigs, itemConfigs, optionConfigs, groupConfigs] =
+      await Promise.all([
+        this.prisma.uberCategoryConfig.findMany({
+          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          select: { menuCategoryStableId: true },
+        }),
+        this.prisma.uberItemChannelConfig.findMany({
+          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          select: { menuItemStableId: true },
+        }),
+        this.prisma.uberOptionItemConfig.findMany({
+          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          select: { optionChoiceStableId: true },
+        }),
+        this.prisma.uberModifierGroupConfig.findMany({
+          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          select: { templateGroupStableId: true },
+        }),
+      ]);
     return buildUberMenuDraftDiff({
       storeId: normalizedStoreId,
       draft,
       lastPublishedAt: lastSuccess?.createdAt ?? null,
       publishedPayload:
         lastSuccess?.requestPayload ?? lastSuccess?.payload ?? null,
+      publishedCategoryIds: categoryConfigs.map(
+        (category) => category.menuCategoryStableId,
+      ),
       publishedMenuItemIds: itemConfigs.map((item) => item.menuItemStableId),
       publishedOptionItemIds: optionConfigs.map(
         (item) => item.optionChoiceStableId,
+      ),
+      publishedGroupIds: groupConfigs.map(
+        (group) => group.templateGroupStableId,
       ),
     });
   }

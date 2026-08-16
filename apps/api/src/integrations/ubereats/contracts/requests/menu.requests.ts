@@ -149,18 +149,6 @@ export class UpdateUberDraftOptionDto {
   storeId?: string;
 }
 
-export class UpdateUberDraftOptionChildGroupDto {
-  @IsString()
-  groupId!: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
-}
-
 export class PublishUberMenuDto {
   /** Internal/POS store id and cloud print-task room id; never an Uber store id. */
   @IsOptional()

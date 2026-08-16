@@ -1,19 +1,16 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import type {
   UberDraftGroupCommandPort,
   UberDraftItemCommandPort,
   UberDraftOptionCommandPort,
-  UberOptionChildGroupBindCommandPort,
-  UberOptionChildGroupUnbindCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
 import type {
   UpdateDraftItemInput,
   UpdateDraftOptionInput,
 } from '../../domain/menu/uber-menu.types';
 import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
-import { UberTelemetryService } from './uber-telemetry.service';
 
 const uberMenuValidation = (message: string) =>
   new UberValidationError({
@@ -28,18 +25,9 @@ export class UberMenuDraftMutationPrismaAdapter
   implements
     UberDraftItemCommandPort,
     UberDraftGroupCommandPort,
-    UberDraftOptionCommandPort,
-    UberOptionChildGroupBindCommandPort,
-    UberOptionChildGroupUnbindCommandPort
+    UberDraftOptionCommandPort
 {
-  private readonly telemetry: UberTelemetryService;
-
-  constructor(
-    private readonly prisma: PrismaService,
-    @Optional() telemetry?: UberTelemetryService,
-  ) {
-    this.telemetry = telemetry ?? new UberTelemetryService(prisma);
-  }
+  constructor(private readonly prisma: PrismaService) {}
 
   async updateUberDraftItem(itemId: string, input: UpdateDraftItemInput) {
     const normalizedStoreId = normalizeUberStoreId(input.storeId);
@@ -219,144 +207,5 @@ export class UberMenuDraftMutationPrismaAdapter
             ]
           : [],
     };
-  }
-
-  async bindUberDraftOptionChildGroup(
-    command: import('../../application/menu/uber-menu-draft.ports').UberOptionChildGroupBindingCommand,
-  ) {
-    const {
-      storeId: normalizedStoreId,
-      parentOptionChoiceStableId: optionItemId,
-      childTemplateGroupStableId: groupId,
-    } = command.resourceKey;
-    const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
-      where: { stableId: optionItemId },
-      select: { stableId: true },
-    });
-    if (!parentChoice) {
-      throw uberMenuValidation(`选项 ${optionItemId} 不存在`);
-    }
-
-    const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
-      where: { stableId: groupId },
-      select: { stableId: true },
-    });
-    if (!childGroup) {
-      throw uberMenuValidation(`模板组 ${groupId} 不存在`);
-    }
-
-    await this.prisma.uberOptionChildGroupBinding.upsert({
-      where: {
-        storeId_parentOptionChoiceStableId_childTemplateGroupStableId: {
-          storeId: normalizedStoreId,
-          parentOptionChoiceStableId: parentChoice.stableId,
-          childTemplateGroupStableId: childGroup.stableId,
-        },
-      },
-      create: {
-        storeId: normalizedStoreId,
-        parentOptionChoiceStableId: parentChoice.stableId,
-        childTemplateGroupStableId: childGroup.stableId,
-        isBound: true,
-      },
-      update: { isBound: true },
-    });
-
-    await this.telemetry.captureEvent(
-      'ubereats_draft_option_child_group_bound',
-      {
-        storeId: normalizedStoreId,
-        optionItemId,
-        groupId,
-        mode: 'uber_binding_only',
-      },
-      {
-        eventId: this.bindingEventKey(
-          'bound',
-          normalizedStoreId,
-          optionItemId,
-          groupId,
-        ),
-      },
-    );
-
-    return { ok: true, storeId: normalizedStoreId, optionItemId, groupId };
-  }
-
-  async unbindUberDraftOptionChildGroup(
-    command: import('../../application/menu/uber-menu-draft.ports').UberOptionChildGroupBindingCommand,
-  ) {
-    const {
-      storeId: normalizedStoreId,
-      parentOptionChoiceStableId: optionItemId,
-      childTemplateGroupStableId: groupId,
-    } = command.resourceKey;
-    const parentChoice = await this.prisma.menuOptionTemplateChoice.findUnique({
-      where: { stableId: optionItemId },
-      select: { stableId: true },
-    });
-    if (!parentChoice) {
-      throw uberMenuValidation(`选项 ${optionItemId} 不存在`);
-    }
-
-    const childGroup = await this.prisma.menuOptionGroupTemplate.findUnique({
-      where: { stableId: groupId },
-      select: { stableId: true },
-    });
-    if (!childGroup) {
-      throw uberMenuValidation(`模板组 ${groupId} 不存在`);
-    }
-
-    const row = await this.prisma.uberOptionChildGroupBinding.upsert({
-      where: {
-        storeId_parentOptionChoiceStableId_childTemplateGroupStableId: {
-          storeId: normalizedStoreId,
-          parentOptionChoiceStableId: parentChoice.stableId,
-          childTemplateGroupStableId: childGroup.stableId,
-        },
-      },
-      create: {
-        storeId: normalizedStoreId,
-        parentOptionChoiceStableId: parentChoice.stableId,
-        childTemplateGroupStableId: childGroup.stableId,
-        isBound: false,
-      },
-      update: { isBound: false },
-    });
-
-    await this.telemetry.captureEvent(
-      'ubereats_draft_option_child_group_unbound',
-      {
-        storeId: normalizedStoreId,
-        optionItemId,
-        groupId,
-        isBound: row.isBound,
-      },
-      {
-        eventId: this.bindingEventKey(
-          'unbound',
-          normalizedStoreId,
-          optionItemId,
-          groupId,
-        ),
-      },
-    );
-
-    return {
-      ok: true,
-      storeId: normalizedStoreId,
-      optionItemId,
-      groupId,
-      deletedCount: 1,
-    };
-  }
-
-  private bindingEventKey(
-    action: string,
-    storeId: string,
-    optionItemId: string,
-    groupId: string,
-  ): string {
-    return `uber-menu:binding:${action}:${encodeURIComponent(storeId)}:${encodeURIComponent(optionItemId)}:${encodeURIComponent(groupId)}`;
   }
 }

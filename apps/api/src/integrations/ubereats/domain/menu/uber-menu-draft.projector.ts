@@ -10,57 +10,61 @@ type DraftGraph = {
   groups: UberMenuGraphGroup[];
 };
 
+/**
+ * Projects the internal Uber publish graph into the Admin contract.
+ * Every public `id` below is a SanQ stableId; graph node ids never cross this boundary.
+ */
 export function buildDraftCategories(graph: DraftGraph) {
   const groupMap = new Map(graph.groups.map((group) => [group.id, group]));
   const itemMap = new Map(graph.items.map((item) => [item.id, item]));
   return graph.categories.map((category) => ({
-    id: category.id,
+    id: category.sourceStableId,
     name: category.title,
     items: category.entities
-      .map((id) => itemMap.get(id))
+      .map((nodeId) => itemMap.get(nodeId))
       .filter(
         (item): item is UberMenuGraphItem => item?.sourceType === 'MENU_ITEM',
       )
       .map((item) => ({
-        id: item.id,
-        sourceMenuItemStableId: item.sourceStableId,
+        id: item.sourceStableId,
         displayName: item.title,
         displayDescription: item.description,
         priceCents: item.priceCents,
         isAvailable: item.isAvailable,
         imageUrl: item.imageUrl,
-        groups: item.modifierGroupIds.flatMap((groupId) => {
-          const group = groupMap.get(groupId);
+        groups: item.modifierGroupIds.flatMap((groupNodeId) => {
+          const group = groupMap.get(groupNodeId);
           if (!group) return [];
           return [
             {
-              id: group.id,
+              id: group.sourceStableId,
               name: group.title,
               minSelect: group.minSelect,
               maxSelect: group.maxSelect,
-              options: group.optionItemIds.flatMap((optionId) => {
-                const option = itemMap.get(optionId);
+              options: group.optionItemIds.flatMap((optionNodeId) => {
+                const option = itemMap.get(optionNodeId);
                 if (!option) return [];
                 return [
                   {
-                    id: option.id,
-                    sourceOptionChoiceStableId: option.sourceStableId,
+                    id: option.sourceStableId,
                     displayName: option.title,
                     priceDeltaCents: option.priceCents,
                     isAvailable: option.isAvailable,
-                    childGroups: option.modifierGroupIds.flatMap((childId) => {
-                      const child = groupMap.get(childId);
-                      return child
-                        ? [
-                            {
-                              id: child.id,
-                              name: child.title,
-                              minSelect: child.minSelect,
-                              maxSelect: child.maxSelect,
-                            },
-                          ]
-                        : [];
-                    }),
+                    childGroups: option.modifierGroupIds.flatMap(
+                      (childNodeId) => {
+                        const child = groupMap.get(childNodeId);
+                        return child
+                          ? [
+                              {
+                                id: child.sourceStableId,
+                                name: child.title,
+                                minSelect: child.minSelect,
+                                maxSelect: child.maxSelect,
+                              },
+                            ]
+                          : [];
+                      },
+                    ),
                   },
                 ];
               }),
@@ -74,27 +78,50 @@ export function buildDraftCategories(graph: DraftGraph) {
 export function buildUberDraftEdges(
   graph: Pick<DraftGraph, 'categories' | 'items' | 'groups'>,
 ) {
+  const itemMap = new Map(graph.items.map((item) => [item.id, item]));
+  const groupMap = new Map(graph.groups.map((group) => [group.id, group]));
   return [
     ...graph.categories.flatMap((category) =>
-      category.entities.map((to) => ({
-        from: category.id,
-        to,
-        type: 'CATEGORY_ITEM',
-      })),
+      category.entities.flatMap((itemNodeId) => {
+        const item = itemMap.get(itemNodeId);
+        return item
+          ? [
+              {
+                from: category.sourceStableId,
+                to: item.sourceStableId,
+                type: 'CATEGORY_ITEM',
+              },
+            ]
+          : [];
+      }),
     ),
     ...graph.items.flatMap((item) =>
-      item.modifierGroupIds.map((to) => ({
-        from: item.id,
-        to,
-        type: 'ITEM_GROUP',
-      })),
+      item.modifierGroupIds.flatMap((groupNodeId) => {
+        const group = groupMap.get(groupNodeId);
+        return group
+          ? [
+              {
+                from: item.sourceStableId,
+                to: group.sourceStableId,
+                type: 'ITEM_GROUP',
+              },
+            ]
+          : [];
+      }),
     ),
     ...graph.groups.flatMap((group) =>
-      group.optionItemIds.map((to) => ({
-        from: group.id,
-        to,
-        type: 'GROUP_OPTION',
-      })),
+      group.optionItemIds.flatMap((optionNodeId) => {
+        const option = itemMap.get(optionNodeId);
+        return option
+          ? [
+              {
+                from: group.sourceStableId,
+                to: option.sourceStableId,
+                type: 'GROUP_OPTION',
+              },
+            ]
+          : [];
+      }),
     ),
   ];
 }
@@ -106,13 +133,11 @@ export function buildUberDraftTreeNodes(
     id: category.id,
     type: 'category',
     name: category.name,
-    sourceStableId: category.id,
     source: 'AUTO-MAPPED',
     children: category.items.map((item) => ({
       id: item.id,
       type: 'item',
       name: item.displayName,
-      sourceStableId: item.sourceMenuItemStableId,
       source: 'AUTO-MAPPED',
       priceCents: item.priceCents,
       isAvailable: item.isAvailable,
@@ -120,7 +145,6 @@ export function buildUberDraftTreeNodes(
         id: group.id,
         type: 'group',
         name: group.name,
-        sourceStableId: group.id,
         source: 'AUTO-MAPPED',
         minSelect: group.minSelect,
         maxSelect: group.maxSelect,
@@ -128,16 +152,13 @@ export function buildUberDraftTreeNodes(
           id: option.id,
           type: 'option',
           name: option.displayName,
-          sourceStableId: option.sourceOptionChoiceStableId,
           source: 'AUTO-MAPPED',
           priceDeltaCents: option.priceDeltaCents,
           isAvailable: option.isAvailable,
-          childGroupIds: option.childGroups.map((child) => child.id),
           children: option.childGroups.map((child) => ({
             id: child.id,
             type: 'group',
             name: child.name,
-            sourceStableId: child.id,
             source: 'AUTO-MAPPED',
             minSelect: child.minSelect,
             maxSelect: child.maxSelect,

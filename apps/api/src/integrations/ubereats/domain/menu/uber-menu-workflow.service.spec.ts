@@ -1,7 +1,6 @@
 import {
   decideMenuPayload,
   mergeMenuAvailability,
-  validateModifierBindings,
 } from './uber-menu-workflow.service';
 
 describe('Uber menu workflow domain service', () => {
@@ -27,16 +26,7 @@ describe('Uber menu workflow domain service', () => {
     expect(result.items[0].isAvailable).toBe(false);
     expect(snapshot.items[0].isAvailable).toBe(true);
   });
-  it('validates bindings and makes deterministic payload decisions', () => {
-    expect(
-      validateModifierBindings([
-        {
-          parentOptionStableId: 'same',
-          childGroupStableId: 'same',
-          isBound: true,
-        },
-      ]),
-    ).toHaveLength(1);
+  it('makes deterministic payload decisions', () => {
     expect(decideMenuPayload('hash', 'hash')).toEqual({
       kind: 'skip',
       reason: 'UNCHANGED',

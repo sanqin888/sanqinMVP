@@ -4,33 +4,36 @@ import {
   extractPublishedSnapshotFromPayload,
 } from './uber-menu-diff.service';
 import type { UberMenuDraftResult } from '../../application/menu/uber-menu-draft.ports';
+import { buildUberNodeId } from './uber-menu-graph.service';
 
 describe('Uber menu diff service', () => {
   it('tolerates an unparseable historical payload', () => {
     expect(extractPublishedSnapshotFromPayload('legacy')).toEqual({
-      itemIds: new Set(),
-      groupIds: new Set(),
       edgeKeys: new Set(),
     });
     expect(decodeDraftEdgeKey('broken')).toBeNull();
   });
 
-  it('compares added, modified and deleted items, groups and edges', () => {
+  it('compares added, modified and deleted resources using stable ids', () => {
+    const storeId = 'store';
+    const nodeId = (kind: 'category' | 'item' | 'group', stableId: string) =>
+      buildUberNodeId(kind, storeId, stableId);
     const draft = {
       uberDraft: {
+        categories: [
+          { stableId: 'kept-category', itemStableIds: ['kept-source'] },
+        ],
         items: [
           {
-            id: 'kept-item',
             sourceType: 'MENU_ITEM',
-            sourceStableId: 'kept-source',
+            stableId: 'kept-source',
             priceCents: 150,
             isAvailable: false,
             hasDelta: true,
           },
           {
-            id: 'new-option',
             sourceType: 'OPTION_ITEM',
-            sourceStableId: 'new-option-source',
+            stableId: 'new-option-source',
             priceCents: 25,
             isAvailable: true,
             hasDelta: true,
@@ -38,40 +41,61 @@ describe('Uber menu diff service', () => {
         ],
         groups: [
           {
-            id: 'kept-group',
-            sourceStableId: 'kept-group-source',
+            stableId: 'kept-group-source',
             minSelect: 1,
             maxSelect: 2,
-            optionItemIds: ['new-option'],
+            optionStableIds: ['new-option-source'],
           },
           {
-            id: 'new-group',
-            sourceStableId: 'new-group-source',
+            stableId: 'new-group-source',
             minSelect: 0,
             maxSelect: 1,
-            optionItemIds: ['new-option'],
+            optionStableIds: ['new-option-source'],
           },
         ],
-        edges: [{ from: 'kept-group', to: 'new-option', type: 'GROUP_OPTION' }],
+        edges: [
+          {
+            from: 'kept-group-source',
+            to: 'new-option-source',
+            type: 'GROUP_OPTION',
+          },
+        ],
       },
     } as UberMenuDraftResult;
     const result = buildUberMenuDraftDiff({
-      storeId: 'store',
+      storeId,
       draft,
       lastPublishedAt: new Date(0),
-      publishedMenuItemIds: ['kept-source'],
+      publishedCategoryIds: ['old-category', 'kept-category'],
+      publishedMenuItemIds: ['kept-source', 'deleted-item'],
       publishedOptionItemIds: [],
+      publishedGroupIds: ['kept-group-source', 'deleted-group'],
       publishedPayload: {
         categories: [
-          { id: 'old-category', entities: [{ id: 'deleted-item' }] },
+          {
+            id: nodeId('category', 'old-category'),
+            entities: [{ id: nodeId('item', 'deleted-item') }],
+          },
         ],
         items: [
-          { id: 'deleted-item', modifier_group_ids: ['deleted-group'] },
-          { id: 'kept-item', modifier_group_ids: ['kept-group'] },
+          {
+            id: nodeId('item', 'deleted-item'),
+            modifier_group_ids: [nodeId('group', 'deleted-group')],
+          },
+          {
+            id: nodeId('item', 'kept-source'),
+            modifier_group_ids: [nodeId('group', 'kept-group-source')],
+          },
         ],
         modifier_groups: [
-          { id: 'deleted-group', modifier_options: [{ id: 'deleted-item' }] },
-          { id: 'kept-group', modifier_options: [] },
+          {
+            id: nodeId('group', 'deleted-group'),
+            modifier_options: [{ id: nodeId('item', 'deleted-item') }],
+          },
+          {
+            id: nodeId('group', 'kept-group-source'),
+            modifier_options: [],
+          },
         ],
       },
     });
@@ -84,8 +108,12 @@ describe('Uber menu diff service', () => {
     ]);
     expect(result.deletedGroups).toEqual(['deleted-group']);
     expect(result.hierarchyChanges).toEqual([
-      { from: 'kept-group', to: 'new-option', type: 'GROUP_OPTION' },
+      {
+        from: 'kept-group-source',
+        to: 'new-option-source',
+        type: 'GROUP_OPTION',
+      },
     ]);
-    expect(result.deletedEdges).toHaveLength(4);
+    expect(JSON.stringify(result)).not.toContain('sanq:');
   });
 });

@@ -11,6 +11,12 @@ describe('Uber menu graph public identifiers', () => {
   ] as const)('preserves the published %s id', (kind, stableId, expected) => {
     expect(buildUberNodeId(kind, 'store-1', stableId)).toBe(expected);
   });
+
+  it('is deterministic for the same kind, storeId and stableId', () => {
+    const first = buildUberNodeId('item', 'store-1', 'item-stable-1');
+    expect(buildUberNodeId('item', 'store-1', 'item-stable-1')).toBe(first);
+    expect(buildUberNodeId('item', 'store-1', 'item-stable-1')).toBe(first);
+  });
 });
 
 describe('buildUberMenuGraph', () => {
@@ -48,7 +54,6 @@ describe('buildUberMenuGraph', () => {
         optionConfigs: [],
         modifierConfigs: [],
         categoryConfigs: [],
-        childGroupBindings: [],
       },
       emptyUberMenuDraftFilters(),
     );

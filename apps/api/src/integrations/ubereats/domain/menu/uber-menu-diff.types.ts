@@ -1,9 +1,4 @@
-import type {
-  UberMenuGraphCategory,
-  UberMenuGraphGroup,
-  UberMenuGraphItem,
-  UberMenuGraphSummary,
-} from './uber-menu-graph.service';
+import type { UberMenuGraphSummary } from './uber-menu-graph.service';
 
 export type UberMenuDraftJsonValue =
   | string
@@ -19,6 +14,34 @@ export type UberMenuDraftEdgeDto = {
   type: string;
 };
 
+export type UberMenuDraftValidationIssue = {
+  code: string;
+  severity: 'ERROR' | 'WARNING';
+  path: string;
+  stableId: string | null;
+  message: string;
+};
+
+type UberMenuDraftStableItem = {
+  sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+  stableId: string;
+  priceCents: number;
+  isAvailable: boolean;
+  hasDelta: boolean;
+};
+
+type UberMenuDraftStableGroup = {
+  stableId: string;
+  minSelect: number;
+  maxSelect: number;
+  optionStableIds: string[];
+};
+
+type UberMenuDraftStableCategory = {
+  stableId: string;
+  itemStableIds: string[];
+};
+
 export type UberMenuDraftResult = {
   storeId: string;
   sourceMenu: {
@@ -29,21 +52,21 @@ export type UberMenuDraftResult = {
     tree: { categories: UberMenuDraftJsonValue[] };
   };
   uberDraft: {
-    menuId: string;
-    categories: UberMenuGraphCategory[];
-    items: UberMenuGraphItem[];
-    groups: UberMenuGraphGroup[];
+    /** Internal stable-id projections used by diff; the API presenter does not expose these arrays. */
+    categories: UberMenuDraftStableCategory[];
+    items: UberMenuDraftStableItem[];
+    groups: UberMenuDraftStableGroup[];
     edges: UberMenuDraftEdgeDto[];
     tree: { categories: UberMenuDraftJsonValue[] };
     treeNodes: UberMenuDraftJsonValue[];
     optionMappings: UberMenuDraftJsonValue[];
   };
-  mappingErrors: Array<{ code: string; message: string }>;
+  mappingErrors: Array<{ code: string; stableId: string; message: string }>;
   validation: {
-    warnings: UberMenuDraftJsonValue[];
-    errors: UberMenuDraftJsonValue[];
+    warnings: UberMenuDraftValidationIssue[];
+    errors: UberMenuDraftValidationIssue[];
   };
-  mappingWarnings: UberMenuDraftJsonValue[];
+  mappingWarnings: UberMenuDraftValidationIssue[];
   publishSummary: UberMenuGraphSummary;
   serviceAvailability: UberMenuDraftJsonValue[];
   serviceAvailabilityTimezone: string;
