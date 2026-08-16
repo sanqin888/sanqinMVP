@@ -13,8 +13,10 @@ import {
   fingerprintUberMenuConfigState,
   type UberMenuConfigFingerprintValue,
 } from '../../domain/menu/uber-menu-config-import-fingerprint';
+import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 
 type Row = Record<string, unknown>;
+type MenuDb = PrismaService | Prisma.TransactionClient;
 type Definition = {
   kind: UberMenuConfigKind;
   delegate:
@@ -80,21 +82,29 @@ const emptyCount = () => ({ create: 0, update: 0, unchanged: 0, conflicts: 0 });
 @Injectable()
 export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPort {
   constructor(private readonly prisma: PrismaService) {}
-  preview(
+  async preview(
     sourceStoreId: string,
     targetStoreId: string,
     mode: UberMenuConfigImportMode,
   ) {
-    return this.plan(this.prisma, sourceStoreId, targetStoreId, mode, false);
+    const [source, target] = await Promise.all([
+      this.canonicalStoreId(this.prisma, sourceStoreId),
+      this.canonicalStoreId(this.prisma, targetStoreId),
+    ]);
+    return this.plan(this.prisma, source, target, mode, false);
   }
-  apply(
+  async apply(
     sourceStoreId: string,
     targetStoreId: string,
     mode: UberMenuConfigImportMode,
     previewFingerprint: string,
     administratorId: string,
   ) {
-    if (sourceStoreId === targetStoreId)
+    const [source, target] = await Promise.all([
+      this.canonicalStoreId(this.prisma, sourceStoreId),
+      this.canonicalStoreId(this.prisma, targetStoreId),
+    ]);
+    if (source === target)
       throw new UberValidationError({
         code: 'UBER_MENU_IMPORT_SAME_STORE',
         message: '来源与目标门店不能相同。',
@@ -104,8 +114,8 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
       async (tx) => {
         const current = await this.plan(
           tx,
-          sourceStoreId,
-          targetStoreId,
+          source,
+          target,
           mode,
           false,
           false,
@@ -118,8 +128,8 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
           });
         return this.plan(
           tx,
-          sourceStoreId,
-          targetStoreId,
+          source,
+          target,
           mode,
           true,
           true,
@@ -135,6 +145,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
     administratorId: string,
   ) {
     return this.prisma.$transaction(async (tx) => {
+      const canonicalStoreId = await this.canonicalStoreId(tx, storeId);
       const item = await tx.menuItem.findUnique({
         where: { stableId: menuItemStableId },
         select: { basePriceCents: true, isAvailable: true },
@@ -147,7 +158,10 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
         });
       const config = await tx.uberItemChannelConfig.findUnique({
         where: {
-          storeId_menuItemStableId: { storeId, menuItemStableId },
+          storeId_menuItemStableId: {
+            storeId: canonicalStoreId,
+            menuItemStableId,
+          },
         },
         select: {
           id: true,
@@ -190,7 +204,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
           eventName: 'ubereats_menu_price_restored',
           source: 'ubereats',
           payload: {
-            posStoreId: storeId,
+            posStoreId: canonicalStoreId,
             menuItemStableId,
             sourcePriceCents: item.basePriceCents,
             administratorId,
@@ -202,8 +216,22 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
       return { sourcePriceCents: item.basePriceCents };
     });
   }
+  private async canonicalStoreId(db: MenuDb, storeId: string) {
+    const requestedStoreId = normalizeUberStoreId(storeId);
+    const mapping = await db.uberStoreMapping.findFirst({
+      where: {
+        isProvisioned: true,
+        OR: [
+          { posExternalStoreId: requestedStoreId },
+          { uberStoreId: requestedStoreId },
+        ],
+      },
+      select: { posExternalStoreId: true },
+    });
+    return mapping?.posExternalStoreId?.trim() || requestedStoreId;
+  }
   private async plan(
-    db: PrismaService | Prisma.TransactionClient,
+    db: MenuDb,
     sourceStoreId: string,
     targetStoreId: string,
     mode: UberMenuConfigImportMode,
