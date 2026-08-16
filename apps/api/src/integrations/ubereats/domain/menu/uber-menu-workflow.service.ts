@@ -9,11 +9,6 @@ type MenuSnapshot = {
   }>;
 };
 type AvailabilityOverride = { stableId: string; isAvailable: boolean };
-type ModifierBinding = {
-  parentOptionStableId: string;
-  childGroupStableId: string;
-  isBound: boolean;
-};
 
 /** Applies channel overrides without allowing persistence rows to leak into the graph. */
 export function mergeMenuAvailability(
@@ -29,23 +24,6 @@ export function mergeMenuAvailability(
         item.isAvailable && (byId.get(item.stableId)?.isAvailable ?? true),
     })),
   };
-}
-
-export function validateModifierBindings(
-  bindings: readonly ModifierBinding[],
-): string[] {
-  const errors: string[] = [];
-  const seen = new Set<string>();
-  for (const binding of bindings.filter((value) => value.isBound)) {
-    if (binding.parentOptionStableId === binding.childGroupStableId)
-      errors.push(
-        `modifier binding cannot reference itself: ${binding.parentOptionStableId}`,
-      );
-    const key = `${binding.parentOptionStableId}:${binding.childGroupStableId}`;
-    if (seen.has(key)) errors.push(`duplicate modifier binding: ${key}`);
-    seen.add(key);
-  }
-  return errors;
 }
 
 export type MenuPayloadDecision =

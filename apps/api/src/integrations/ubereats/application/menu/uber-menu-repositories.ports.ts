@@ -25,12 +25,6 @@ export type ModifierConfig = {
   maxSelect: number;
   isActive: boolean;
 };
-export type ModifierBinding = {
-  storeId: string;
-  parentOptionStableId: string;
-  childGroupStableId: string;
-  isBound: boolean;
-};
 export type BusinessSchedule = {
   timezone: string | null;
   salesTaxRate: number | null;
@@ -58,9 +52,6 @@ export interface ItemChannelConfigRepository {
 export interface ModifierConfigRepository {
   list(storeId: string): Promise<ModifierConfig[]>;
 }
-export interface ModifierBindingRepository {
-  list(storeId: string): Promise<ModifierBinding[]>;
-}
 export interface BusinessScheduleRepository {
   get(): Promise<BusinessSchedule>;
 }
@@ -72,7 +63,6 @@ export type UberMenuRepositoryScope = {
   snapshots: MenuSnapshotRepository;
   itemChannels: ItemChannelConfigRepository;
   modifiers: ModifierConfigRepository;
-  bindings: ModifierBindingRepository;
   schedules: BusinessScheduleRepository;
   storeMappings: MenuStoreMappingRepository;
 };

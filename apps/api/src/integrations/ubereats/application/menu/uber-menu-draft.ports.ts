@@ -38,12 +38,6 @@ export const UBER_DRAFT_GROUP_COMMAND_PORT = Symbol(
 export const UBER_DRAFT_OPTION_COMMAND_PORT = Symbol(
   'UBER_DRAFT_OPTION_COMMAND_PORT',
 );
-export const UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT = Symbol(
-  'UBER_OPTION_CHILD_GROUP_BIND_COMMAND_PORT',
-);
-export const UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT = Symbol(
-  'UBER_OPTION_CHILD_GROUP_UNBIND_COMMAND_PORT',
-);
 export const UBER_MENU_DRAFT_DIFF_PORT = Symbol('UBER_MENU_DRAFT_DIFF_PORT');
 export const MENU_ITEM_EXISTENCE_QUERY_PORT = Symbol(
   'MENU_ITEM_EXISTENCE_QUERY_PORT',
@@ -173,11 +167,6 @@ export type UberGroupConfigResourceKey = Readonly<{
   storeId: string;
   templateGroupStableId: string;
 }>;
-export type UberOptionChildGroupBindingResourceKey = Readonly<{
-  storeId: string;
-  parentOptionChoiceStableId: string;
-  childTemplateGroupStableId: string;
-}>;
 
 export type UberIdempotentCommand<TKey, TPayload> = Readonly<{
   resourceKey: TKey;
@@ -197,23 +186,12 @@ export type UberGroupConfigCommand = UberIdempotentCommand<
   UberGroupConfigResourceKey,
   UpdateDraftGroupInput
 >;
-export type UberOptionChildGroupBindingCommand = UberIdempotentCommand<
-  UberOptionChildGroupBindingResourceKey,
-  { isBound: boolean }
->;
 export type UberDraftMutationResult<TConfig> = {
   ok: boolean;
   storeId: string;
   config: TConfig;
   warnings: string[];
 } & ({ itemId: string } | { groupId: string } | { optionItemId: string });
-export type UberDraftBindingResult = {
-  ok: boolean;
-  storeId: string;
-  optionItemId: string;
-  groupId: string;
-  deletedCount?: number;
-};
 
 export interface UberMenuConfigQueryPort {
   listUberItemChannelConfigs(
@@ -255,16 +233,6 @@ export interface UberDraftOptionCommandPort {
     id: string,
     input: UpdateDraftOptionInput,
   ): Promise<UberDraftMutationResult<UberOptionItemConfigDto>>;
-}
-export interface UberOptionChildGroupBindCommandPort {
-  bindUberDraftOptionChildGroup(
-    command: UberOptionChildGroupBindingCommand,
-  ): Promise<UberDraftBindingResult>;
-}
-export interface UberOptionChildGroupUnbindCommandPort {
-  unbindUberDraftOptionChildGroup(
-    command: UberOptionChildGroupBindingCommand,
-  ): Promise<UberDraftBindingResult>;
 }
 /**
  * Application-owned commit boundary for menu writes. Rejection from `work`

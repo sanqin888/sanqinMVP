@@ -7,8 +7,6 @@ import type {
   UberDraftOptionCommandPort,
   UberItemChannelConfigCommandPort,
   UberMenuWriteTransactionPort,
-  UberOptionChildGroupBindCommandPort,
-  UberOptionChildGroupUnbindCommandPort,
   UberOptionItemConfigCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
 import { UberMenuConfigWritePrismaAdapter } from './uber-menu-config-write-prisma.adapter';
@@ -19,9 +17,7 @@ type TransactionalMenuCommandPorts = UberItemChannelConfigCommandPort &
   UberOptionItemConfigCommandPort &
   UberDraftItemCommandPort &
   UberDraftGroupCommandPort &
-  UberDraftOptionCommandPort &
-  UberOptionChildGroupBindCommandPort &
-  UberOptionChildGroupUnbindCommandPort;
+  UberDraftOptionCommandPort;
 
 /** Prisma is confined to infrastructure; every callback is one database commit. */
 @Injectable()
@@ -48,7 +44,7 @@ export class UberMenuWriteTransactionPrismaAdapter implements UberMenuWriteTrans
       const client = transaction as Prisma.TransactionClient & PrismaService;
       const telemetry = new UberTelemetryService(client);
       const config = new UberMenuConfigWritePrismaAdapter(client, telemetry);
-      const draft = new UberMenuDraftMutationPrismaAdapter(client, telemetry);
+      const draft = new UberMenuDraftMutationPrismaAdapter(client);
       const commands: TransactionalMenuCommandPorts = {
         upsertUberItemChannelConfig: (input) =>
           config.upsertUberItemChannelConfig(input),
@@ -59,10 +55,6 @@ export class UberMenuWriteTransactionPrismaAdapter implements UberMenuWriteTrans
         updateUberDraftGroup: (command) => draft.updateUberDraftGroup(command),
         updateUberDraftOption: (id, input) =>
           draft.updateUberDraftOption(id, input),
-        bindUberDraftOptionChildGroup: (command) =>
-          draft.bindUberDraftOptionChildGroup(command),
-        unbindUberDraftOptionChildGroup: (command) =>
-          draft.unbindUberDraftOptionChildGroup(command),
       };
       return work(commands);
     });

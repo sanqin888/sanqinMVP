@@ -1,8 +1,5 @@
 import type { UberMenuUnitOfWork } from './uber-menu-repositories.ports';
-import {
-  mergeMenuAvailability,
-  validateModifierBindings,
-} from '../../domain/menu/uber-menu-workflow.service';
+import { mergeMenuAvailability } from '../../domain/menu/uber-menu-workflow.service';
 
 /** Owns the transaction and coordinates the independently replaceable menu repositories. */
 export class LoadUberMenuWorkflowUseCase {
@@ -10,26 +7,17 @@ export class LoadUberMenuWorkflowUseCase {
   execute(storeId: string) {
     if (!storeId.trim()) throw new TypeError('storeId must not be empty');
     return this.unitOfWork.execute(async (repositories) => {
-      const [
-        snapshot,
-        itemConfigs,
-        modifiers,
-        bindings,
-        schedule,
-        storeMapping,
-      ] = await Promise.all([
-        repositories.snapshots.load(),
-        repositories.itemChannels.list(storeId),
-        repositories.modifiers.list(storeId),
-        repositories.bindings.list(storeId),
-        repositories.schedules.get(),
-        repositories.storeMappings.findByPosStoreId(storeId),
-      ]);
+      const [snapshot, itemConfigs, modifiers, schedule, storeMapping] =
+        await Promise.all([
+          repositories.snapshots.load(),
+          repositories.itemChannels.list(storeId),
+          repositories.modifiers.list(storeId),
+          repositories.schedules.get(),
+          repositories.storeMappings.findByPosStoreId(storeId),
+        ]);
       return {
         snapshot: mergeMenuAvailability(snapshot, itemConfigs),
         modifiers,
-        bindings,
-        bindingErrors: validateModifierBindings(bindings),
         schedule,
         storeMapping,
       };

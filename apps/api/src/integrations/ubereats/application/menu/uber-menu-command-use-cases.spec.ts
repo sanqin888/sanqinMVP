@@ -6,12 +6,8 @@ import type {
   UberDraftOptionCommandPort,
   UberItemChannelConfigCommandPort,
   UberMenuWriteTransactionPort,
-  UberOptionChildGroupBindCommandPort,
-  UberOptionChildGroupUnbindCommandPort,
   UberOptionItemConfigCommandPort,
 } from './uber-menu-draft.ports';
-import { BindUberDraftOptionChildGroupUseCase } from './bind-uber-draft-option-child-group.use-case';
-import { UnbindUberDraftOptionChildGroupUseCase } from './unbind-uber-draft-option-child-group.use-case';
 import { UpdateUberDraftGroupUseCase } from './update-uber-draft-group.use-case';
 import { UpdateUberDraftItemUseCase } from './update-uber-draft-item.use-case';
 import { UpdateUberDraftOptionUseCase } from './update-uber-draft-option.use-case';
@@ -32,8 +28,6 @@ describe('Uber menu command use cases', () => {
       UpdateUberDraftItemUseCase,
       UpdateUberDraftGroupUseCase,
       UpdateUberDraftOptionUseCase,
-      BindUberDraftOptionChildGroupUseCase,
-      UnbindUberDraftOptionChildGroupUseCase,
     ];
 
     for (const UseCase of useCaseTypes) {
@@ -108,16 +102,8 @@ describe('Uber menu command use cases', () => {
 
   it('delegates each draft command once to its matching port operation', async () => {
     const updateGroup = jest.fn().mockResolvedValue('updated');
-    const bind = jest.fn().mockResolvedValue('bound');
-    const unbind = jest.fn().mockResolvedValue('unbound');
     const groupCommands: UberDraftGroupCommandPort = {
       updateUberDraftGroup: updateGroup,
-    };
-    const bindCommands: UberOptionChildGroupBindCommandPort = {
-      bindUberDraftOptionChildGroup: bind,
-    };
-    const unbindCommands: UberOptionChildGroupUnbindCommandPort = {
-      unbindUberDraftOptionChildGroup: unbind,
     };
 
     await expect(
@@ -126,18 +112,6 @@ describe('Uber menu command use cases', () => {
         {},
       ),
     ).resolves.toBe('updated');
-    await expect(
-      new BindUberDraftOptionChildGroupUseCase(
-        transaction(bindCommands),
-      ).execute('option-1', 'group-1', 'store-1'),
-    ).resolves.toBe('bound');
-    await expect(
-      new UnbindUberDraftOptionChildGroupUseCase(
-        transaction(unbindCommands),
-      ).execute('option-1', 'group-1', 'store-1'),
-    ).resolves.toBe('unbound');
     expect(updateGroup).toHaveBeenCalledTimes(1);
-    expect(bind).toHaveBeenCalledTimes(1);
-    expect(unbind).toHaveBeenCalledTimes(1);
   });
 });

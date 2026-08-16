@@ -51,7 +51,6 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       uberOptionItemConfig: emptyDelegate,
       uberModifierGroupConfig: emptyDelegate,
       uberCategoryConfig: emptyDelegate,
-      uberOptionChildGroupBinding: emptyDelegate,
       opsEvent: { create: jest.fn().mockResolvedValue({}) },
       menuItem: {
         findUnique: jest

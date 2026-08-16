@@ -6,7 +6,6 @@ import type {
   ItemChannelConfigRepository,
   MenuSnapshotRepository,
   MenuStoreMappingRepository,
-  ModifierBindingRepository,
   ModifierConfigRepository,
   UberMenuRepositoryScope,
   UberMenuUnitOfWork,
@@ -31,7 +30,6 @@ export class UberMenuDraftSourcePrismaRepository {
       optionConfigs,
       modifierConfigs,
       categoryConfigs,
-      childGroupBindings,
     ] = await Promise.all([
       this.db.menuCategory.findMany({
         where: { deletedAt: null },
@@ -143,14 +141,6 @@ export class UberMenuDraftSourcePrismaRepository {
           isActive: true,
         },
       }),
-      this.db.uberOptionChildGroupBinding.findMany({
-        where: { storeId },
-        select: {
-          parentOptionChoiceStableId: true,
-          childTemplateGroupStableId: true,
-          isBound: true,
-        },
-      }),
     ]);
 
     return {
@@ -177,7 +167,6 @@ export class UberMenuDraftSourcePrismaRepository {
       optionConfigs,
       modifierConfigs,
       categoryConfigs,
-      childGroupBindings,
     };
   }
 }
@@ -283,26 +272,6 @@ export class UberModifierConfigPrismaRepository implements ModifierConfigReposit
     }));
   }
 }
-export class UberModifierBindingPrismaRepository implements ModifierBindingRepository {
-  constructor(private readonly db: MenuDb) {}
-  async list(storeId: string) {
-    const rows = await this.db.uberOptionChildGroupBinding.findMany({
-      where: { storeId },
-      select: {
-        storeId: true,
-        parentOptionChoiceStableId: true,
-        childTemplateGroupStableId: true,
-        isBound: true,
-      },
-    });
-    return rows.map((row) => ({
-      storeId: row.storeId,
-      parentOptionStableId: row.parentOptionChoiceStableId,
-      childGroupStableId: row.childTemplateGroupStableId,
-      isBound: row.isBound,
-    }));
-  }
-}
 export class UberBusinessSchedulePrismaRepository implements BusinessScheduleRepository {
   constructor(private readonly db: MenuDb) {}
   async get() {
@@ -366,7 +335,6 @@ export const createUberMenuRepositoryScope = (
   snapshots: new UberMenuSnapshotPrismaRepository(db),
   itemChannels: new UberItemChannelConfigPrismaRepository(db),
   modifiers: new UberModifierConfigPrismaRepository(db),
-  bindings: new UberModifierBindingPrismaRepository(db),
   schedules: new UberBusinessSchedulePrismaRepository(db),
   storeMappings: new UberMenuStoreMappingPrismaRepository(db),
 });

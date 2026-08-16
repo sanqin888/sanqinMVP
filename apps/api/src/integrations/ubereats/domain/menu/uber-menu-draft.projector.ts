@@ -35,6 +35,7 @@ export function buildDraftCategories(graph: DraftGraph) {
           return [
             {
               id: group.id,
+              sourceTemplateGroupStableId: group.sourceStableId,
               name: group.title,
               minSelect: group.minSelect,
               maxSelect: group.maxSelect,
@@ -54,6 +55,7 @@ export function buildDraftCategories(graph: DraftGraph) {
                         ? [
                             {
                               id: child.id,
+                              sourceTemplateGroupStableId: child.sourceStableId,
                               name: child.title,
                               minSelect: child.minSelect,
                               maxSelect: child.maxSelect,
@@ -120,7 +122,7 @@ export function buildUberDraftTreeNodes(
         id: group.id,
         type: 'group',
         name: group.name,
-        sourceStableId: group.id,
+        sourceStableId: group.sourceTemplateGroupStableId,
         source: 'AUTO-MAPPED',
         minSelect: group.minSelect,
         maxSelect: group.maxSelect,
@@ -132,12 +134,11 @@ export function buildUberDraftTreeNodes(
           source: 'AUTO-MAPPED',
           priceDeltaCents: option.priceDeltaCents,
           isAvailable: option.isAvailable,
-          childGroupIds: option.childGroups.map((child) => child.id),
           children: option.childGroups.map((child) => ({
             id: child.id,
             type: 'group',
             name: child.name,
-            sourceStableId: child.id,
+            sourceStableId: child.sourceTemplateGroupStableId,
             source: 'AUTO-MAPPED',
             minSelect: child.minSelect,
             maxSelect: child.maxSelect,

@@ -9,12 +9,16 @@ describe('ResourceIdPipe', () => {
     expect(pipe.transform('store_123-abc')).toBe('store_123-abc');
   });
 
-  it.each([' leading-space', 'slash/value', '', 'a'.repeat(129), 123])(
-    'maps the invalid value %p to a bad request',
-    (value) => {
-      expect(() => pipe.transform(value)).toThrow(BadRequestException);
-    },
-  );
+  it.each([
+    ' leading-space',
+    'slash/value',
+    'sanq:04908fa5d8c35b2a4d875a61',
+    '',
+    'a'.repeat(129),
+    123,
+  ])('maps the invalid value %p to a bad request', (value) => {
+    expect(() => pipe.transform(value)).toThrow(BadRequestException);
+  });
 });
 
 describe('OptionalResourceIdPipe', () => {

@@ -15,8 +15,6 @@
 | `PATCH menu/draft/items/:itemId`                                | `UpdateUberDraftItemUseCase.execute`                | `UberDraftItemCommandPort.updateUberDraftItem`                          | `UberMenuDraftMutationPrismaAdapter` |
 | `PATCH menu/draft/groups/:groupId`                              | `UpdateUberDraftGroupUseCase.execute`               | `UberDraftGroupCommandPort.updateUberDraftGroup`                        | `UberMenuDraftMutationPrismaAdapter` |
 | `PATCH menu/draft/options/:optionItemId`                        | `UpdateUberDraftOptionUseCase.execute`              | `UberDraftOptionCommandPort.updateUberDraftOption`                      | `UberMenuDraftMutationPrismaAdapter` |
-| `POST menu/draft/options/:optionItemId/child-groups`            | `BindUberDraftOptionChildGroupUseCase.execute`      | `UberOptionChildGroupBindCommandPort.bindUberDraftOptionChildGroup`     | `UberMenuDraftMutationPrismaAdapter` |
-| `DELETE menu/draft/options/:optionItemId/child-groups/:groupId` | `UnbindUberDraftOptionChildGroupUseCase.execute`    | `UberOptionChildGroupUnbindCommandPort.unbindUberDraftOptionChildGroup` | `UberMenuDraftMutationPrismaAdapter` |
 | `GET menu/draft/diff`                                           | `QueryUberMenuDraftDiffUseCase.execute`             | `UberMenuDraftDiffPort.getUberMenuDraftDiff`                            | `UberMenuDraftDiffPrismaAdapter`     |
 
 ## Nest token 到实现的映射

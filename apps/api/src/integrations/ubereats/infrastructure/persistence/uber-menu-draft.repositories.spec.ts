@@ -4,7 +4,6 @@ import {
   UberItemChannelConfigPrismaRepository,
   UberMenuSnapshotPrismaRepository,
   UberMenuStoreMappingPrismaRepository,
-  UberModifierBindingPrismaRepository,
   UberModifierConfigPrismaRepository,
 } from './uber-menu-draft.repositories';
 
@@ -104,32 +103,6 @@ describe('split Uber menu repositories field mapping', () => {
         minSelect: 1,
         maxSelect: 1,
         isActive: true,
-      },
-    ]);
-  });
-
-  it('maps nested modifier bindings', async () => {
-    const repository = new UberModifierBindingPrismaRepository(
-      db({
-        uberOptionChildGroupBinding: {
-          findMany: jest.fn().mockResolvedValue([
-            {
-              storeId: 's',
-              parentOptionChoiceStableId: 'o',
-              childTemplateGroupStableId: 'g',
-              isBound: true,
-              createdAt: new Date(0),
-            },
-          ]),
-        },
-      }),
-    );
-    expect(await repository.list('s')).toEqual([
-      {
-        storeId: 's',
-        parentOptionStableId: 'o',
-        childGroupStableId: 'g',
-        isBound: true,
       },
     ]);
   });

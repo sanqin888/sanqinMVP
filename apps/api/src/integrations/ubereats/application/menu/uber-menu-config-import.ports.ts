@@ -1,9 +1,4 @@
-export type UberMenuConfigKind =
-  | 'items'
-  | 'options'
-  | 'groups'
-  | 'categories'
-  | 'bindings';
+export type UberMenuConfigKind = 'items' | 'options' | 'groups' | 'categories';
 export type UberMenuConfigImportMode = 'SKIP_EXISTING' | 'OVERWRITE';
 export type UberMenuConfigImportCount = {
   create: number;
