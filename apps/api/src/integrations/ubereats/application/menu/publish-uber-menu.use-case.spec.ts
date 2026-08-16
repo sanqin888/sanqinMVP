@@ -4,7 +4,7 @@ import { PublishUberMenuUseCase } from './publish-uber-menu.use-case';
 
 describe('PublishUberMenuUseCase', () => {
   const snapshot = {
-    storeId: 'store-1',
+    storeId: 'pos-room-1',
     uberStoreId: 'store-1',
     timezone: 'UTC',
     taxRate: 8,
@@ -31,9 +31,10 @@ describe('PublishUberMenuUseCase', () => {
   };
   const setup = () => {
     const provisionedStores = {
-      resolveProvisionedUberStoreId: jest
-        .fn()
-        .mockResolvedValue({ uberStoreId: 'store-1' }),
+      resolveProvisionedUberStoreId: jest.fn().mockResolvedValue({
+        uberStoreId: 'store-1',
+        posExternalStoreId: 'pos-room-1',
+      }),
     };
     const snapshots = {
       loadPublishSnapshot: jest.fn().mockResolvedValue(snapshot),
@@ -45,7 +46,7 @@ describe('PublishUberMenuUseCase', () => {
       findSucceededAttempt: jest.fn().mockResolvedValue(null),
       createAttempt: jest.fn().mockResolvedValue({
         attemptId: 'attempt-1',
-        storeId: 'store-1',
+        storeId: 'pos-room-1',
         idempotencyKey: 'key',
         businessVersion: 'version-1',
         status: 'CREATED',
@@ -110,6 +111,23 @@ describe('PublishUberMenuUseCase', () => {
     expect(
       x.provisionedStores.resolveProvisionedUberStoreId,
     ).toHaveBeenCalledWith('pos-room-1');
+    expect(x.snapshots.loadPublishSnapshot).toHaveBeenCalledWith(
+      'pos-room-1',
+      'store-1',
+    );
+  });
+
+  it('兼容 Uber store id 调用并归一到 POS store scope', async () => {
+    const x = setup();
+    await expect(
+      x.useCase.execute({ storeId: 'store-1', dryRun: true }),
+    ).resolves.toMatchObject({
+      storeId: 'pos-room-1',
+      uberStoreId: 'store-1',
+    });
+    expect(
+      x.provisionedStores.resolveProvisionedUberStoreId,
+    ).toHaveBeenCalledWith('store-1');
     expect(x.snapshots.loadPublishSnapshot).toHaveBeenCalledWith(
       'pos-room-1',
       'store-1',
