@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberMenuPublishSnapshot,
@@ -33,6 +33,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     const configStoreIds = Array.from(new Set([posStoreId, uberStoreId]));
     const [
       mapping,
+      businessConfig,
       categories,
       menuItems,
       templates,
@@ -47,6 +48,10 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           isProvisioned: true,
         },
         select: { uberStoreId: true },
+      }),
+      this.prisma.businessConfig.findUnique({
+        where: { id: 1 },
+        select: { timezone: true, salesTaxRate: true },
       }),
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null, isActive: true },
@@ -127,6 +132,24 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       }),
     ]);
     if (!mapping) return null;
+
+    const timezone = businessConfig?.timezone?.trim();
+    if (!timezone) {
+      throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
+    }
+    const salesTaxRate = businessConfig?.salesTaxRate;
+    if (
+      typeof salesTaxRate !== 'number' ||
+      !Number.isFinite(salesTaxRate) ||
+      salesTaxRate < 0 ||
+      salesTaxRate > 1
+    ) {
+      throw new BadRequestException(
+        'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+      );
+    }
+    const taxRate = Number((salesTaxRate * 100).toFixed(4));
+
     const itemConfigs = preferCanonicalStoreRows(
       rawItemConfigs,
       posStoreId,
@@ -184,8 +207,8 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     return {
       storeId,
       uberStoreId: mapping.uberStoreId,
-      timezone: process.env.UBER_MENU_TIMEZONE || 'America/Los_Angeles',
-      taxRate: Number(process.env.UBER_MENU_TAX_RATE_PERCENTAGE || 0),
+      timezone,
+      taxRate,
       categories: categories
         .map((category) => ({
           stableId: category.stableId,
