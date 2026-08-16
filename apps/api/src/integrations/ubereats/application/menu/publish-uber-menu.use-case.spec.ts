@@ -86,6 +86,16 @@ describe('PublishUberMenuUseCase', () => {
     };
   };
 
+  const lastUploadedPayload = (gateway: ReturnType<typeof setup>['gateway']) =>
+    (gateway.uploadMenu.mock.calls.at(-1)?.[0] as {
+      payload: {
+        items: Array<{
+          title: { translations: { en_us: string } };
+          price_info: { price: number };
+        }>;
+      };
+    }).payload;
+
   it('先将 POS store id 解析为 Uber store id，再调用 snapshot adapter', async () => {
     const x = setup();
     await x.useCase.execute({ storeId: 'pos-room-1', dryRun: true });
@@ -107,11 +117,11 @@ describe('PublishUberMenuUseCase', () => {
     expect(x.snapshots.loadPublishSnapshot).not.toHaveBeenCalled();
   });
 
-  it('dry-run 只构建 payload，不创建发布尝试', async () => {
+  it('dry-run 构建并校验 publish graph，但不暴露 payload 或创建发布尝试', async () => {
     const x = setup();
-    await expect(
-      x.useCase.execute({ storeId: 'store-1', dryRun: true }),
-    ).resolves.toMatchObject({ ok: true, dryRun: true });
+    const result = await x.useCase.execute({ storeId: 'store-1', dryRun: true });
+    expect(result).toMatchObject({ ok: true, dryRun: true });
+    expect(result).not.toHaveProperty('payload');
     expect(x.publications.createAttempt).not.toHaveBeenCalled();
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
   });
@@ -146,18 +156,8 @@ describe('PublishUberMenuUseCase', () => {
         },
       ],
     });
-    const initial = (await x.useCase.execute({
-      storeId: 'store-1',
-      dryRun: true,
-    })) as {
-      payload: {
-        items: Array<{
-          title: { translations: { en_us: string } };
-          price_info: { price: number };
-        }>;
-      };
-    };
-    const previous = structuredClone(initial.payload);
+    await x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true });
+    const previous = structuredClone(lastUploadedPayload(x.gateway));
     const publishedOption = previous.items.find(
       (item) => item.title.translations.en_us === 'Extra cheese',
     );
@@ -186,15 +186,14 @@ describe('PublishUberMenuUseCase', () => {
 
   it('CRITICAL override fallback 阻断普通发布，显式 MFA 确认后允许', async () => {
     const x = setup();
-    const dryRun = (await x.useCase.execute({
+    const staleReview = (await x.useCase.execute({
       storeId: 'store-1',
       dryRun: true,
-    })) as {
-      payload: { items: Array<{ price_info: { price: number } }> };
-      safety: { fingerprint: string };
-    };
-    const previous = structuredClone(dryRun.payload);
+    })) as { safety: { fingerprint: string } };
+    await x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true });
+    const previous = structuredClone(lastUploadedPayload(x.gateway));
     previous.items[0].price_info.price = 1300;
+    x.gateway.uploadMenu.mockClear();
     x.publications.findLastSucceededPayload.mockResolvedValue(previous);
     x.snapshots.loadPublishSnapshot.mockResolvedValue({
       ...snapshot,
@@ -218,7 +217,7 @@ describe('PublishUberMenuUseCase', () => {
       x.useCase.execute({
         storeId: 'store-1',
         taxRateConfirmed: true,
-        safetyFingerprint: dryRun.safety.fingerprint,
+        safetyFingerprint: staleReview.safety.fingerprint,
       }),
     ).rejects.toMatchObject({
       code: 'UBER_MENU_CRITICAL_RISK_CONFIRMATION_REQUIRED',
