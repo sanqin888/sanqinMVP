@@ -1,9 +1,4 @@
-import type {
-  UberMenuGraphCategory,
-  UberMenuGraphGroup,
-  UberMenuGraphItem,
-  UberMenuGraphSummary,
-} from './uber-menu-graph.service';
+import type { UberMenuGraphSummary } from './uber-menu-graph.service';
 
 export type UberMenuDraftJsonValue =
   | string
@@ -19,6 +14,14 @@ export type UberMenuDraftEdgeDto = {
   type: string;
 };
 
+export type UberMenuDraftValidationIssue = {
+  code: string;
+  severity: 'ERROR' | 'WARNING';
+  path: string;
+  stableId: string | null;
+  message: string;
+};
+
 export type UberMenuDraftResult = {
   storeId: string;
   sourceMenu: {
@@ -29,21 +32,17 @@ export type UberMenuDraftResult = {
     tree: { categories: UberMenuDraftJsonValue[] };
   };
   uberDraft: {
-    menuId: string;
-    categories: UberMenuGraphCategory[];
-    items: UberMenuGraphItem[];
-    groups: UberMenuGraphGroup[];
     edges: UberMenuDraftEdgeDto[];
     tree: { categories: UberMenuDraftJsonValue[] };
     treeNodes: UberMenuDraftJsonValue[];
     optionMappings: UberMenuDraftJsonValue[];
   };
-  mappingErrors: Array<{ code: string; message: string }>;
+  mappingErrors: Array<{ code: string; stableId: string; message: string }>;
   validation: {
-    warnings: UberMenuDraftJsonValue[];
-    errors: UberMenuDraftJsonValue[];
+    warnings: UberMenuDraftValidationIssue[];
+    errors: UberMenuDraftValidationIssue[];
   };
-  mappingWarnings: UberMenuDraftJsonValue[];
+  mappingWarnings: UberMenuDraftValidationIssue[];
   publishSummary: UberMenuGraphSummary;
   serviceAvailability: UberMenuDraftJsonValue[];
   serviceAvailabilityTimezone: string;

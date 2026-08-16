@@ -14,6 +14,7 @@ import {
   buildUberMenuGraph,
   summarizeUberMenuGraph,
   validateUberMenuGraph,
+  type UberMenuGraph,
 } from '../../domain/menu/uber-menu-graph.service';
 import { emptyUberMenuDraftFilters } from '../../domain/menu/uber-menu-draft-source';
 import {
@@ -34,6 +35,19 @@ const uberMenuValidation = (message: string) =>
     operation: 'menu.validate',
     upstreamStatus: null,
   });
+
+type InternalValidationIssue = {
+  code: string;
+  severity?: 'ERROR' | 'WARNING';
+  path?: string;
+  message: string;
+  sourceStableId?: string | null;
+  itemId?: string;
+  itemStableId?: string;
+  groupId?: string;
+  groupStableId?: string;
+  optionItemId?: string;
+};
 
 @Injectable()
 export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
@@ -93,6 +107,12 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       items: graph.sourceItems,
     });
     const uberDraftTreeNodes = buildUberDraftTreeNodes(uberDraftCategories);
+    const stableIdsByNodeId = this.stableIdsByNodeId(
+      normalized.graph,
+      normalizedStoreId,
+    );
+    const projectIssue = (issue: InternalValidationIssue) =>
+      this.projectValidationIssue(issue, stableIdsByNodeId);
 
     return {
       storeId: normalizedStoreId,
@@ -108,24 +128,27 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
         tree: { categories: sourceDraftCategories },
       },
       uberDraft: {
-        menuId: graph.menuId,
-        categories: normalized.graph.categories,
-        items: normalized.graph.items,
-        groups: normalized.graph.groups,
         edges: buildUberDraftEdges(normalized.graph),
         tree: {
           categories: uberDraftCategories,
         },
         treeNodes: uberDraftTreeNodes,
-        optionMappings: graph.optionMappings,
+        optionMappings: graph.optionMappings.map((mapping) => ({
+          stableId: mapping.sourceOptionChoiceStableId,
+          sourcePath: mapping.sourcePath,
+        })),
       },
-      mappingErrors: graph.mappingErrors,
+      mappingErrors: graph.mappingErrors.map((error) => ({
+        code: error.code,
+        stableId: error.sourceOptionChoiceStableId,
+        message: error.message,
+      })),
       validation: {
-        warnings: normalized.warnings,
-        errors: [...normalized.errors, ...payloadValidation],
+        warnings: normalized.warnings.map(projectIssue),
+        errors: [...normalized.errors, ...payloadValidation].map(projectIssue),
       },
       mappingWarnings: [
-        ...payloadValidation,
+        ...payloadValidation.map(projectIssue),
         ...(storeMapping?.uberStoreId
           ? []
           : [
@@ -133,7 +156,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
                 code: 'UBER_STORE_NOT_PROVISIONED',
                 severity: 'WARNING' as const,
                 path: '$',
-                sourceStableId: null,
+                stableId: null,
                 message:
                   '当前门店尚未完成 Uber store provision，返回的是本地 draft 图。',
               },
@@ -150,6 +173,49 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
               lastPublishedVersion.errorDetails as UberMenuDraftJsonValue,
           }
         : null,
+    };
+  }
+
+  private stableIdsByNodeId(graph: UberMenuGraph, storeId: string) {
+    return new Map<string, string>([
+      [graph.menuId, storeId],
+      ...graph.categories.map(
+        (category) => [category.id, category.sourceStableId] as const,
+      ),
+      ...graph.items.map((item) => [item.id, item.sourceStableId] as const),
+      ...graph.groups.map((group) => [group.id, group.sourceStableId] as const),
+    ]);
+  }
+
+  private projectValidationIssue(
+    issue: InternalValidationIssue,
+    stableIdsByNodeId: ReadonlyMap<string, string>,
+  ) {
+    const stableId =
+      issue.itemStableId ??
+      issue.groupStableId ??
+      (issue.sourceStableId
+        ? stableIdsByNodeId.get(issue.sourceStableId) ?? issue.sourceStableId
+        : null) ??
+      (issue.itemId ? stableIdsByNodeId.get(issue.itemId) : undefined) ??
+      (issue.groupId ? stableIdsByNodeId.get(issue.groupId) : undefined) ??
+      (issue.optionItemId
+        ? stableIdsByNodeId.get(issue.optionItemId)
+        : undefined) ??
+      null;
+    const replaceNodeIds = (value: string) => {
+      let result = value;
+      for (const [nodeId, sourceStableId] of stableIdsByNodeId) {
+        result = result.replaceAll(nodeId, sourceStableId);
+      }
+      return result;
+    };
+    return {
+      code: issue.code,
+      severity: issue.severity ?? 'ERROR',
+      path: replaceNodeIds(issue.path ?? '$'),
+      stableId,
+      message: replaceNodeIds(issue.message),
     };
   }
 

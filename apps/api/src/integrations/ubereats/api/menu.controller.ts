@@ -87,16 +87,16 @@ export class UberEatsMenuController {
     );
   }
 
-  @Post('menu/channel/items/:menuItemStableId')
+  @Post('menu/channel/items/:stableId')
   @UberAdminWrite()
   async upsertItemChannelConfig(
-    @Param('menuItemStableId', ResourceIdPipe) menuItemStableId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: UpsertUberPriceBookItemDto,
     @Query('storeId', OptionalResourceIdPipe) storeId?: string,
   ) {
     await this.itemConfigUpserts.execute({
       storeId,
-      menuItemStableId,
+      menuItemStableId: stableId,
       priceCents: dto.priceCents,
       isAvailable: dto.isAvailable,
       displayName: dto.displayName,
@@ -115,16 +115,16 @@ export class UberEatsMenuController {
     );
   }
 
-  @Post('menu/channel/options/:optionChoiceStableId')
+  @Post('menu/channel/options/:stableId')
   @UberAdminWrite()
   async upsertOptionChannelConfig(
-    @Param('optionChoiceStableId', ResourceIdPipe) optionChoiceStableId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: UpsertUberOptionItemConfigDto,
     @Query('storeId', OptionalResourceIdPipe) storeId?: string,
   ) {
     await this.optionConfigUpserts.execute({
       storeId,
-      optionChoiceStableId,
+      optionChoiceStableId: stableId,
       priceDeltaCents: dto.priceDeltaCents,
       isAvailable: dto.isAvailable,
       displayName: dto.displayName,
@@ -140,33 +140,33 @@ export class UberEatsMenuController {
     return presentMenuDraft(await this.draftReader.execute(storeId));
   }
 
-  @Patch('menu/draft/items/:itemId')
+  @Patch('menu/draft/items/:stableId')
   @UberAdminWrite()
   async patchDraftItem(
-    @Param('itemId', ResourceIdPipe) itemId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: UpdateUberDraftItemDto,
   ) {
-    await this.draftItemUpdates.execute(itemId, dto);
+    await this.draftItemUpdates.execute(stableId, dto);
     return presentMenuMutation();
   }
 
-  @Patch('menu/draft/groups/:groupId')
+  @Patch('menu/draft/groups/:stableId')
   @UberAdminWrite()
   async patchDraftGroup(
-    @Param('groupId', ResourceIdPipe) groupId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: UpdateUberDraftGroupDto,
   ) {
-    await this.draftGroupUpdates.execute(groupId, dto);
+    await this.draftGroupUpdates.execute(stableId, dto);
     return presentMenuMutation();
   }
 
-  @Patch('menu/draft/options/:optionItemId')
+  @Patch('menu/draft/options/:stableId')
   @UberAdminWrite()
   async patchDraftOption(
-    @Param('optionItemId', ResourceIdPipe) optionItemId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: UpdateUberDraftOptionDto,
   ) {
-    await this.draftOptionUpdates.execute(optionItemId, dto);
+    await this.draftOptionUpdates.execute(stableId, dto);
     return presentMenuMutation();
   }
 
@@ -221,43 +221,43 @@ export class UberEatsMenuController {
     return presentMenuOperation(result);
   }
 
-  @Post('menu/draft/items/:menuItemStableId/restore-source-price')
+  @Post('menu/draft/items/:stableId/restore-source-price')
   @UberMfaAdminWrite()
   async restoreSourcePrice(
-    @Param('menuItemStableId', ResourceIdPipe) menuItemStableId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: { storeId: string },
     @Req() req: { user?: { id?: string } },
   ) {
     const result = await this.configImports.restoreItemPrice(
       dto.storeId,
-      menuItemStableId,
+      stableId,
       req.user!.id!,
     );
     return presentMenuOperation(result);
   }
 
-  @Post('menu/items/:menuItemStableId/availability')
+  @Post('menu/items/:stableId/availability')
   @UberMfaAdminWrite()
   async syncMenuItemAvailability(
-    @Param('menuItemStableId', ResourceIdPipe) menuItemStableId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: SyncUberMenuItemAvailabilityDto,
   ) {
     await this.availability.syncUberMenuItemAvailability({
-      menuItemStableId,
+      menuItemStableId: stableId,
       isAvailable: dto.isAvailable,
       storeId: dto.storeId,
     });
     return presentMenuMutation();
   }
 
-  @Post('menu/options/:optionChoiceStableId/availability')
+  @Post('menu/options/:stableId/availability')
   @UberMfaAdminWrite()
   async syncOptionItemAvailability(
-    @Param('optionChoiceStableId', ResourceIdPipe) optionChoiceStableId: string,
+    @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: SyncUberOptionItemAvailabilityDto,
   ) {
     await this.availability.syncUberOptionItemAvailability({
-      optionChoiceStableId,
+      optionChoiceStableId: stableId,
       isAvailable: dto.isAvailable,
       storeId: dto.storeId,
     });

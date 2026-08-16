@@ -39,10 +39,6 @@ export class UberMenuDraftResponse {
     tree: { categories: UberMenuPublicJson[] };
   };
   uberDraft!: {
-    menuId: string;
-    categories: UberMenuPublicJson[];
-    items: UberMenuPublicJson[];
-    groups: UberMenuPublicJson[];
     edges: UberMenuPublicJson[];
     tree: { categories: UberMenuPublicJson[] };
     treeNodes: UberMenuPublicJson[];

@@ -1,12 +1,11 @@
 import { presentMenuDiff, presentMenuDraft } from './menu.presenter';
 
 const categoryTree = {
-  id: 'category-1',
+  id: 'category-stable-1',
   name: '主食',
   items: [
     {
-      id: 'item-1',
-      sourceMenuItemStableId: 'source-item-1',
+      id: 'item-stable-1',
       displayName: '肉夹馍',
       displayDescription: '现烤',
       priceCents: 1099,
@@ -14,14 +13,13 @@ const categoryTree = {
       imageUrl: 'https://cdn.example/item.jpg',
       groups: [
         {
-          id: 'group-1',
+          id: 'group-stable-1',
           name: '加料',
           minSelect: 0,
           maxSelect: 1,
           options: [
             {
-              id: 'option-1',
-              sourceOptionChoiceStableId: 'source-option-1',
+              id: 'option-stable-1',
               displayName: '加辣',
               priceDeltaCents: 0,
               isAvailable: true,
@@ -45,17 +43,17 @@ const internalDraft = {
     persistenceRevision: 42,
   },
   uberDraft: {
-    menuId: 'menu-1',
-    categories: [{ id: 'category-1', title: '主食', entities: ['item-1'] }],
-    items: [
-      { id: 'item-1', title: '肉夹馍', rawUberPayload: { secret: true } },
+    edges: [
+      {
+        from: 'category-stable-1',
+        to: 'item-stable-1',
+        type: 'CATEGORY_ITEM',
+      },
     ],
-    groups: [{ id: 'group-1', title: '加料', optionItemIds: ['option-1'] }],
-    edges: [{ from: 'category-1', to: 'item-1', type: 'CATEGORY_ITEM' }],
     tree: { categories: [categoryTree] },
     treeNodes: [
       {
-        id: 'category-1',
+        id: 'category-stable-1',
         type: 'category',
         name: '主食',
         source: 'AUTO-MAPPED',
@@ -64,11 +62,14 @@ const internalDraft = {
     ],
     optionMappings: [
       {
-        sourceOptionChoiceStableId: 'source-option-1',
-        compositeOptionItemId: 'option-1',
-        sourcePath: ['source-option-1'],
+        stableId: 'option-stable-1',
+        sourcePath: ['option-stable-1'],
       },
     ],
+    menuId: 'sanq:must-not-leak-menu',
+    categories: [{ id: 'sanq:must-not-leak-category' }],
+    items: [{ id: 'sanq:must-not-leak-item' }],
+    groups: [{ id: 'sanq:must-not-leak-group' }],
     accessToken: 'must-not-leak',
   },
   mappingWarnings: [
@@ -76,15 +77,17 @@ const internalDraft = {
       code: 'IMAGE_MISSING',
       severity: 'WARNING',
       path: '$.items[0]',
-      sourceStableId: 'source-item-1',
+      stableId: 'item-stable-1',
       message: '缺少图片',
+      sourceStableId: 'sanq:must-not-leak-warning',
     },
   ],
   mappingErrors: [
     {
       code: 'MAPPING_FAILED',
-      sourceOptionChoiceStableId: 'source-option-1',
+      stableId: 'option-stable-1',
       message: '映射失败',
+      sourceOptionChoiceStableId: 'sanq:must-not-leak-mapping',
     },
   ],
   validation: {
@@ -94,7 +97,7 @@ const internalDraft = {
         code: 'INVALID',
         severity: 'ERROR',
         path: '$.items[0]',
-        sourceStableId: 'source-item-1',
+        stableId: 'item-stable-1',
         message: '无效',
       },
     ],
@@ -129,45 +132,44 @@ const internalDraft = {
 };
 
 describe('menu public presenters', () => {
-  it('presents the complete menu workspace contract while retaining its security boundary', () => {
+  it('exposes only stable-id Admin draft resources', () => {
     const response = presentMenuDraft(internalDraft);
 
     expect(response.uberDraft.tree.categories[0]).toMatchObject(categoryTree);
     expect(response.sourceMenu.tree.categories[0]).toMatchObject(categoryTree);
     expect(response.uberDraft.treeNodes).toHaveLength(1);
-    expect(response.uberDraft.edges).toHaveLength(1);
-    expect(response.uberDraft.optionMappings).toHaveLength(1);
+    expect(response.uberDraft.edges).toEqual([
+      {
+        from: 'category-stable-1',
+        to: 'item-stable-1',
+        type: 'CATEGORY_ITEM',
+      },
+    ]);
+    expect(response.uberDraft.optionMappings).toEqual([
+      { stableId: 'option-stable-1', sourcePath: ['option-stable-1'] },
+    ]);
     expect(response.mappingWarnings[0]).toMatchObject({
       code: 'IMAGE_MISSING',
+      stableId: 'item-stable-1',
     });
-    expect(response.mappingErrors[0]).toMatchObject({ code: 'MAPPING_FAILED' });
-    expect(response.validation.errors[0]).toMatchObject({ code: 'INVALID' });
-    expect(response.publishSummary).toEqual({
-      totalItems: 2,
-      changedItems: 1,
-      totalCategories: 1,
-      totalModifierGroups: 1,
+    expect(response.validation.errors[0]).toMatchObject({
+      code: 'INVALID',
+      stableId: 'item-stable-1',
     });
-    expect(response.serviceAvailabilityTimezone).toBe('America/New_York');
-    expect(response.dirty).toBe(true);
-    expect(response.lastPublishedVersion?.createdAt).toBe(
-      '2026-01-01T00:00:00.000Z',
-    );
     expect(response.contractVersion).toBe('2');
 
-    // Exercise the same required property chain that previously crashed MenuWorkspace.
-    expect(
-      response.uberDraft.tree.categories.flatMap((category) => {
-        const record = category as { items: unknown[] };
-        return record.items;
-      }),
-    ).toHaveLength(1);
     const serialized = JSON.stringify(response);
     for (const forbidden of [
+      'sanq:',
+      'menuId',
+      'sourceStableId',
+      'sourceMenuItemStableId',
+      'sourceOptionChoiceStableId',
+      'sourceTemplateGroupStableId',
+      'compositeOptionItemId',
       'accessToken',
       'refreshToken',
       'clientSecret',
-      'rawUberPayload',
       'persistenceRevision',
       'stack',
       'must-not-leak',
