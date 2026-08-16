@@ -70,7 +70,9 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       select: { uberStoreId: true, posExternalStoreId: true },
     });
     const mappedPosStoreId = storeMapping?.posExternalStoreId?.trim() || null;
-    const isProvisioned = Boolean(storeMapping?.uberStoreId && mappedPosStoreId);
+    const isProvisioned = Boolean(
+      storeMapping?.uberStoreId && mappedPosStoreId,
+    );
     const posStoreId = mappedPosStoreId ?? requestedStoreId;
     const uberStoreId = isProvisioned
       ? storeMapping!.uberStoreId
@@ -124,7 +126,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       stableIdsByNodeId.get(nodeId) ?? nodeId;
 
     return {
-      storeId: posStoreId,
+      storeId: requestedStoreId,
       sourceMenu: {
         categories: graph.categories.length,
         items: graph.sourceItems.filter(
