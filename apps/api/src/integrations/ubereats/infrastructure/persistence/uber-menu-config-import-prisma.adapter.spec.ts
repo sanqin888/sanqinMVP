@@ -47,6 +47,7 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       update: jest.fn(),
     };
     const tx = {
+      uberStoreMapping: { findFirst: jest.fn().mockResolvedValue(null) },
       uberItemChannelConfig: itemDelegate,
       uberOptionItemConfig: emptyDelegate,
       uberModifierGroupConfig: emptyDelegate,
