@@ -9,12 +9,20 @@ const semantics = {
   sideEffects: 'DEDUPLICATE_BY_RESOURCE_AND_RESULTING_STATE',
   concurrency: 'CONVERGE_BY_UNIQUE_RESOURCE_KEY',
 } as const;
+const storeMapping = {
+  findFirst: jest.fn().mockResolvedValue({ posExternalStoreId: 'pos-room-1' }),
+};
 
 describe('UberMenuDraftMutationPrismaAdapter contract', () => {
+  beforeEach(() => {
+    storeMapping.findFirst.mockClear();
+  });
+
   it('upserts an item with source defaults and keeps the public field mapping', async () => {
     const upsert = jest.fn().mockResolvedValue({ menuItemStableId: 'item-1' });
     const adapter = new UberMenuDraftMutationPrismaAdapter(
       db({
+        uberStoreMapping: storeMapping,
         menuItem: {
           findUnique: jest
             .fn()
@@ -35,7 +43,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
-          storeId: 'store-1',
+          storeId: 'pos-room-1',
           menuItemStableId: 'item-1',
           priceCents: 1499,
           isAvailable: false,
@@ -46,7 +54,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
     );
     expect(result).toMatchObject({
       ok: true,
-      storeId: 'store-1',
+      storeId: 'pos-room-1',
       itemId: 'item-1',
       config: { menuItemStableId: 'item-1' },
       warnings: [],
@@ -59,6 +67,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
       .mockResolvedValue({ templateGroupStableId: 'group-1' });
     const adapter = new UberMenuDraftMutationPrismaAdapter(
       db({
+        uberStoreMapping: storeMapping,
         menuOptionGroupTemplate: {
           findUnique: jest.fn().mockResolvedValue({
             stableId: 'group-1',
@@ -80,10 +89,15 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
         payload: { storeId: 'store-1', required: true },
         semantics,
       }),
-    ).resolves.toMatchObject({ groupId: 'group-1', warnings: [] });
+    ).resolves.toMatchObject({
+      storeId: 'pos-room-1',
+      groupId: 'group-1',
+      warnings: [],
+    });
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
+          storeId: 'pos-room-1',
           displayName: 'Size',
           minSelect: 1,
           maxSelect: 2,
@@ -103,6 +117,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
       .mockResolvedValue({ optionChoiceStableId: 'option-1' });
     const adapter = new UberMenuDraftMutationPrismaAdapter(
       db({
+        uberStoreMapping: storeMapping,
         menuOptionTemplateChoice: { findUnique },
         uberOptionItemConfig: { upsert },
       }),
@@ -117,6 +132,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
+          storeId: 'pos-room-1',
           optionChoiceStableId: 'option-1',
           priceDeltaCents: 300,
           isAvailable: true,
