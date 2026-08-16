@@ -14,11 +14,23 @@ export class UberMenuDraftDiffPrismaAdapter implements UberMenuDraftDiffPort {
   ) {}
 
   async getUberMenuDraftDiff(storeId?: string) {
-    const normalizedStoreId = normalizeUberStoreId(storeId);
-    const draft = await this.drafts.getUberMenuDraft(normalizedStoreId);
+    const requestedStoreId = normalizeUberStoreId(storeId);
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
+      where: {
+        isProvisioned: true,
+        OR: [
+          { posExternalStoreId: requestedStoreId },
+          { uberStoreId: requestedStoreId },
+        ],
+      },
+      select: { posExternalStoreId: true },
+    });
+    const canonicalStoreId =
+      mapping?.posExternalStoreId?.trim() || requestedStoreId;
+    const draft = await this.drafts.getUberMenuDraft(requestedStoreId);
     const lastSuccess = await this.prisma.uberMenuPublishVersion.findFirst({
       where: {
-        storeId: normalizedStoreId,
+        storeId: canonicalStoreId,
         status: UberMenuPublishStatus.SUCCEEDED,
       },
       orderBy: { createdAt: 'desc' },
@@ -27,24 +39,24 @@ export class UberMenuDraftDiffPrismaAdapter implements UberMenuDraftDiffPort {
     const [categoryConfigs, itemConfigs, optionConfigs, groupConfigs] =
       await Promise.all([
         this.prisma.uberCategoryConfig.findMany({
-          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          where: { storeId: canonicalStoreId, lastPublishedAt: { not: null } },
           select: { menuCategoryStableId: true },
         }),
         this.prisma.uberItemChannelConfig.findMany({
-          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          where: { storeId: canonicalStoreId, lastPublishedAt: { not: null } },
           select: { menuItemStableId: true },
         }),
         this.prisma.uberOptionItemConfig.findMany({
-          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          where: { storeId: canonicalStoreId, lastPublishedAt: { not: null } },
           select: { optionChoiceStableId: true },
         }),
         this.prisma.uberModifierGroupConfig.findMany({
-          where: { storeId: normalizedStoreId, lastPublishedAt: { not: null } },
+          where: { storeId: canonicalStoreId, lastPublishedAt: { not: null } },
           select: { templateGroupStableId: true },
         }),
       ]);
     return buildUberMenuDraftDiff({
-      storeId: normalizedStoreId,
+      storeId: requestedStoreId,
       draft,
       lastPublishedAt: lastSuccess?.createdAt ?? null,
       publishedPayload:
