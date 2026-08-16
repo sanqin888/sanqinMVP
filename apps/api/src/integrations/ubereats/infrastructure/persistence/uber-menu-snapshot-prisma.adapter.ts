@@ -5,6 +5,21 @@ import type {
   UberMenuSnapshotRepositoryPort,
 } from '../../application/menu/uber-menu-publication.ports';
 
+const preferCanonicalStoreRows = <T extends { storeId: string }>(
+  rows: T[],
+  canonicalStoreId: string,
+  keyOf: (row: T) => string,
+): T[] => {
+  const byKey = new Map<string, T>();
+  for (const row of rows) {
+    if (row.storeId !== canonicalStoreId) byKey.set(keyOf(row), row);
+  }
+  for (const row of rows) {
+    if (row.storeId === canonicalStoreId) byKey.set(keyOf(row), row);
+  }
+  return Array.from(byKey.values());
+};
+
 /** Prisma rows are translated here; the application boundary only sees stable menu DTOs. */
 @Injectable()
 export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepositoryPort {
@@ -15,14 +30,15 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null> {
     const storeId = posStoreId;
+    const configStoreIds = Array.from(new Set([posStoreId, uberStoreId]));
     const [
       mapping,
       categories,
       menuItems,
       templates,
-      itemConfigs,
-      optionConfigs,
-      groupConfigs,
+      rawItemConfigs,
+      rawOptionConfigs,
+      rawGroupConfigs,
     ] = await Promise.all([
       this.prisma.uberStoreMapping.findFirst({
         where: {
@@ -78,8 +94,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
       }),
       this.prisma.uberItemChannelConfig.findMany({
-        where: { storeId },
+        where: { storeId: { in: configStoreIds } },
         select: {
+          storeId: true,
           menuItemStableId: true,
           priceCents: true,
           isAvailable: true,
@@ -88,8 +105,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
       }),
       this.prisma.uberOptionItemConfig.findMany({
-        where: { storeId },
+        where: { storeId: { in: configStoreIds } },
         select: {
+          storeId: true,
           optionChoiceStableId: true,
           priceDeltaCents: true,
           isAvailable: true,
@@ -97,8 +115,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
       }),
       this.prisma.uberModifierGroupConfig.findMany({
-        where: { storeId },
+        where: { storeId: { in: configStoreIds } },
         select: {
+          storeId: true,
           templateGroupStableId: true,
           displayName: true,
           minSelect: true,
@@ -108,6 +127,21 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       }),
     ]);
     if (!mapping) return null;
+    const itemConfigs = preferCanonicalStoreRows(
+      rawItemConfigs,
+      posStoreId,
+      (config) => config.menuItemStableId,
+    );
+    const optionConfigs = preferCanonicalStoreRows(
+      rawOptionConfigs,
+      posStoreId,
+      (config) => config.optionChoiceStableId,
+    );
+    const groupConfigs = preferCanonicalStoreRows(
+      rawGroupConfigs,
+      posStoreId,
+      (config) => config.templateGroupStableId,
+    );
     const categoryById = new Map(
       categories.map((category) => [category.id, category]),
     );

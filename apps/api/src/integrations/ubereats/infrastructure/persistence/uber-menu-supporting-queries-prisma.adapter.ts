@@ -33,11 +33,23 @@ export class UberMenuSupportingQueriesPrismaAdapter
     return choice !== null;
   }
 
-  async resolveProvisionedUberStoreId(posStoreId: string) {
-    return await this.prisma.uberStoreMapping.findFirst({
-      where: { posExternalStoreId: posStoreId, isProvisioned: true },
-      select: { uberStoreId: true },
+  async resolveProvisionedUberStoreId(storeId: string) {
+    const normalizedStoreId = storeId.trim();
+    if (!normalizedStoreId) return null;
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
+      where: {
+        isProvisioned: true,
+        OR: [
+          { posExternalStoreId: normalizedStoreId },
+          { uberStoreId: normalizedStoreId },
+        ],
+      },
+      select: { uberStoreId: true, posExternalStoreId: true },
     });
+    const posExternalStoreId = mapping?.posExternalStoreId?.trim();
+    return mapping && posExternalStoreId
+      ? { uberStoreId: mapping.uberStoreId, posExternalStoreId }
+      : null;
   }
 
   async readBusinessSchedule() {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { PrismaService } from '../../../../prisma/prisma.service';
 import { UberMenuWriteTransactionPrismaAdapter } from './uber-menu-write-transaction-prisma.adapter';
 
@@ -18,6 +19,13 @@ const itemCommand = {
   semantics,
 } as const;
 
+const storeMapping = () => ({
+  findFirst: jest.fn().mockResolvedValue({
+    uberStoreId: 'store-1',
+    posExternalStoreId: 'pos-room-1',
+  }),
+});
+
 describe('UberMenuWriteTransactionPrismaAdapter', () => {
   it('runs the write and durable telemetry on the transaction client', async () => {
     type OpsEventUpsert = (input: {
@@ -32,6 +40,7 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
       menuItemStableId: 'item-1',
     };
     const transactionClient = {
+      uberStoreMapping: storeMapping(),
       uberItemChannelConfig: { upsert: jest.fn().mockResolvedValue(row) },
       opsEvent: { upsert },
     };
@@ -48,7 +57,16 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
     );
 
     expect($transaction).toHaveBeenCalledTimes(1);
-    expect(transactionClient.uberItemChannelConfig.upsert).toHaveBeenCalled();
+    expect(transactionClient.uberStoreMapping.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isProvisioned: true }),
+      }),
+    );
+    expect(transactionClient.uberItemChannelConfig.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ storeId: 'pos-room-1' }),
+      }),
+    );
     expect(upsert).toHaveBeenCalled();
     expect(upsert.mock.calls[0]?.[0].create.eventName).toBe(
       'ubereats_price_book_item_upserted',
@@ -75,11 +93,13 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
         return Promise.reject(failure);
       });
     const rootClient = {
+      uberStoreMapping: storeMapping(),
       uberItemChannelConfig: { upsert: writeBusinessConfig(committed) },
       opsEvent: { upsert: writeEvent(committed) },
     };
     let transactionClient:
       | {
+          uberStoreMapping: ReturnType<typeof storeMapping>;
           uberItemChannelConfig: {
             upsert: jest.MockedFunction<DatabaseWrite>;
           };
@@ -94,6 +114,7 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
       ) => {
         const staged = { ...committed };
         transactionClient = {
+          uberStoreMapping: storeMapping(),
           uberItemChannelConfig: { upsert: writeBusinessConfig(staged) },
           opsEvent: { upsert: writeEvent(staged) },
         };

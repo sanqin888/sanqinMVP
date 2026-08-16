@@ -32,18 +32,21 @@ export class PublishUberMenuUseCase {
   ) {}
 
   async execute(input: PublishMenuInput) {
-    const posStoreId = input.storeId?.trim() || 'default';
+    const requestedStoreId = input.storeId?.trim() || 'default';
     const mapping =
-      await this.provisionedStores.resolveProvisionedUberStoreId(posStoreId);
+      await this.provisionedStores.resolveProvisionedUberStoreId(
+        requestedStoreId,
+      );
     if (!mapping)
       throw this.validationError(
         'UBER_STORE_NOT_PROVISIONED',
-        `POS 门店 ${posStoreId} 未配置或尚未 provision。`,
+        `门店 ${requestedStoreId} 未配置 POS 映射或尚未 provision。`,
       );
-    const storeId = mapping.uberStoreId;
+    const posStoreId = mapping.posExternalStoreId;
+    const uberStoreId = mapping.uberStoreId;
     const snapshot = await this.snapshots.loadPublishSnapshot(
       posStoreId,
-      storeId,
+      uberStoreId,
     );
     if (!snapshot)
       throw this.validationError(
@@ -126,7 +129,7 @@ export class PublishUberMenuUseCase {
       return {
         ok: true,
         dryRun: true,
-        storeId,
+        storeId: posStoreId,
         uberStoreId: snapshot.uberStoreId,
         summary,
         serviceAvailability,
@@ -164,7 +167,7 @@ export class PublishUberMenuUseCase {
       });
     const idempotencyKey = buildUberIdempotencyKey({
       taskId: payloadHash,
-      resourceId: `${storeId}:${snapshot.uberStoreId}`,
+      resourceId: `${posStoreId}:${snapshot.uberStoreId}`,
       action: 'PUBLISH_MENU',
       businessVersion: payloadHash,
     });
@@ -175,7 +178,7 @@ export class PublishUberMenuUseCase {
         ok: true,
         dryRun: false,
         duplicate: true,
-        storeId,
+        storeId: posStoreId,
         uberStoreId: snapshot.uberStoreId,
         versionStableId: succeeded.businessVersion,
         summary,
@@ -199,7 +202,7 @@ export class PublishUberMenuUseCase {
       return {
         ok: true,
         dryRun: false,
-        storeId,
+        storeId: posStoreId,
         uberStoreId: snapshot.uberStoreId,
         versionStableId: attempt.businessVersion,
         summary,

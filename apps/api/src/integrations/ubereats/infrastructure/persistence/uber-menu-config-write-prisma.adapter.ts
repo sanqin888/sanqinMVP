@@ -5,6 +5,7 @@ import type {
   UberItemChannelConfigCommandPort,
   UberOptionItemConfigCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
+import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 import { UberTelemetryService } from './uber-telemetry.service';
 
 @Injectable()
@@ -24,7 +25,9 @@ export class UberMenuConfigWritePrismaAdapter
     command: import('../../application/menu/uber-menu-draft.ports').UberItemConfigCommand,
   ) {
     const input = command.payload;
-    const normalizedStoreId = command.resourceKey.storeId;
+    const normalizedStoreId = await this.canonicalStoreId(
+      command.resourceKey.storeId,
+    );
 
     const row = await this.prisma.uberItemChannelConfig.upsert({
       where: {
@@ -89,7 +92,9 @@ export class UberMenuConfigWritePrismaAdapter
     command: import('../../application/menu/uber-menu-draft.ports').UberOptionConfigCommand,
   ) {
     const input = command.payload;
-    const normalizedStoreId = command.resourceKey.storeId;
+    const normalizedStoreId = await this.canonicalStoreId(
+      command.resourceKey.storeId,
+    );
 
     const row = await this.prisma.uberOptionItemConfig.upsert({
       where: {
@@ -150,6 +155,21 @@ export class UberMenuConfigWritePrismaAdapter
       storeId: normalizedStoreId,
       item: row,
     };
+  }
+
+  private async canonicalStoreId(storeId?: string) {
+    const requestedStoreId = normalizeUberStoreId(storeId);
+    const mapping = await this.prisma.uberStoreMapping.findFirst({
+      where: {
+        isProvisioned: true,
+        OR: [
+          { posExternalStoreId: requestedStoreId },
+          { uberStoreId: requestedStoreId },
+        ],
+      },
+      select: { posExternalStoreId: true },
+    });
+    return mapping?.posExternalStoreId?.trim() || requestedStoreId;
   }
 
   private eventKey(

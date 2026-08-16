@@ -14,6 +14,21 @@ import type { UberMenuDraftSource } from '../../domain/menu/uber-menu-draft-sour
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
 
+const preferCanonicalStoreRows = <T extends { storeId: string }>(
+  rows: T[],
+  canonicalStoreId: string,
+  keyOf: (row: T) => string,
+): T[] => {
+  const byKey = new Map<string, T>();
+  for (const row of rows) {
+    if (row.storeId !== canonicalStoreId) byKey.set(keyOf(row), row);
+  }
+  for (const row of rows) {
+    if (row.storeId === canonicalStoreId) byKey.set(keyOf(row), row);
+  }
+  return Array.from(byKey.values());
+};
+
 /** Owns the Prisma query shape and maps it to the domain graph snapshot. */
 export class UberMenuDraftSourcePrismaRepository {
   constructor(private readonly db: MenuDb) {}
@@ -22,6 +37,7 @@ export class UberMenuDraftSourcePrismaRepository {
     storeId: string,
     uberStoreId: string,
   ): Promise<UberMenuDraftSource> {
+    const configStoreIds = Array.from(new Set([storeId, uberStoreId]));
     const [
       categories,
       menuItems,
@@ -103,8 +119,9 @@ export class UberMenuDraftSourcePrismaRepository {
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       }),
       this.db.uberItemChannelConfig.findMany({
-        where: { storeId },
+        where: { storeId: { in: configStoreIds } },
         select: {
+          storeId: true,
           menuItemStableId: true,
           priceCents: true,
           isAvailable: true,
@@ -113,8 +130,9 @@ export class UberMenuDraftSourcePrismaRepository {
         },
       }),
       this.db.uberOptionItemConfig.findMany({
-        where: { storeId },
+        where: { storeId: { in: configStoreIds } },
         select: {
+          storeId: true,
           optionChoiceStableId: true,
           priceDeltaCents: true,
           isAvailable: true,
@@ -123,8 +141,9 @@ export class UberMenuDraftSourcePrismaRepository {
         },
       }),
       this.db.uberModifierGroupConfig.findMany({
-        where: { storeId },
+        where: { storeId: { in: configStoreIds } },
         select: {
+          storeId: true,
           templateGroupStableId: true,
           displayName: true,
           minSelect: true,
@@ -133,8 +152,9 @@ export class UberMenuDraftSourcePrismaRepository {
         },
       }),
       this.db.uberCategoryConfig.findMany({
-        where: { storeId },
+        where: { storeId: { in: configStoreIds } },
         select: {
+          storeId: true,
           menuCategoryStableId: true,
           displayName: true,
           sortOrder: true,
@@ -163,10 +183,26 @@ export class UberMenuDraftSourcePrismaRepository {
           ),
         })),
       })),
-      itemConfigs,
-      optionConfigs,
-      modifierConfigs,
-      categoryConfigs,
+      itemConfigs: preferCanonicalStoreRows(
+        itemConfigs,
+        storeId,
+        (row) => row.menuItemStableId,
+      ),
+      optionConfigs: preferCanonicalStoreRows(
+        optionConfigs,
+        storeId,
+        (row) => row.optionChoiceStableId,
+      ),
+      modifierConfigs: preferCanonicalStoreRows(
+        modifierConfigs,
+        storeId,
+        (row) => row.templateGroupStableId,
+      ),
+      categoryConfigs: preferCanonicalStoreRows(
+        categoryConfigs,
+        storeId,
+        (row) => row.menuCategoryStableId,
+      ),
     };
   }
 }
