@@ -32,9 +32,7 @@ export function extractPublishedSnapshotFromPayload(
       const itemNodeId = string(object(entity)?.id) ?? string(entity);
       const itemStableId = itemNodeId ? resolveNodeId(itemNodeId) : null;
       if (itemStableId) {
-        edgeKeys.add(
-          `CATEGORY_ITEM:${categoryStableId}->${itemStableId}`,
-        );
+        edgeKeys.add(`CATEGORY_ITEM:${categoryStableId}->${itemStableId}`);
       }
     }
   }
