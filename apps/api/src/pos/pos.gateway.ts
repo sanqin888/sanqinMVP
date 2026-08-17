@@ -189,9 +189,7 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
       jobCount,
     });
     await Promise.all(
-      dispatches.map(({ jobId, target }) =>
-        this.dispatchTarget(jobId, target),
-      ),
+      dispatches.map(({ jobId, target }) => this.dispatchTarget(jobId, target)),
     );
   }
 
