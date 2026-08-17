@@ -16,10 +16,7 @@ import type { UberOrderAdmissionDecision } from '../../domain/orders/uber-order-
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import { UberApplicationError } from '../shared/uber-application.error';
-import {
-  UberOrderAdmissionService,
-  UberOrderStoreMappingError,
-} from './uber-order-admission.service';
+import { UberOrderAdmissionService } from './uber-order-admission.service';
 
 export { UberOrderStoreMappingError } from './uber-order-admission.service';
 
