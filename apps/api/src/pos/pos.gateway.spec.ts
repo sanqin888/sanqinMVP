@@ -276,6 +276,61 @@ describe('PosGateway durable print delivery', () => {
     );
   });
 
+  it('pending dispatch 不统计或重复处理已达到真实发送上限的任务', async () => {
+    const logSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const { gateway, job, emit } = setup();
+    job.customerStatus = 'FAILED';
+    job.customerAttempts = 3;
+    job.customerFailureReason = 'ACK_TIMEOUT';
+    job.kitchenRequested = false;
+    job.kitchenStatus = 'SKIPPED';
+
+    await (
+      gateway as unknown as { dispatchPending(storeId: string): Promise<void> }
+    ).dispatchPending('store-1');
+
+    expect(emit).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'pos_print_pending_dispatch',
+        jobCount: 0,
+      }),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'pos_print_retry_stopped' }),
+    );
+  });
+
+  it('pending dispatch 保留仍可发送的目标但跳过同任务中已耗尽的目标', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const { gateway, job, emit } = setup();
+    job.customerStatus = 'FAILED';
+    job.customerAttempts = 3;
+    job.customerFailureReason = 'ACK_TIMEOUT';
+    job.kitchenStatus = 'PENDING';
+    job.kitchenAttempts = 0;
+
+    await (
+      gateway as unknown as { dispatchPending(storeId: string): Promise<void> }
+    ).dispatchPending('store-1');
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(
+      'PRINT_JOB',
+      expect.objectContaining({ target: 'kitchen' }),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'pos_print_retry_stopped' }),
+    );
+  });
+
   it('查询订单打印状态时返回最新任务且兼容店内 REPRINT 任务', async () => {
     const { gateway, posPrintJob } = setup();
 

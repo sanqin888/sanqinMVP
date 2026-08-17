@@ -1,4 +1,8 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
+import { AuthModule } from '../../auth/auth.module';
+import { MessagingModule } from '../../messaging/messaging.module';
+import { OrdersModule } from '../../orders/orders.module';
+import { PrismaModule } from '../../prisma/prisma.module';
 import { UberEatsMenuController } from './api/menu.controller';
 import { UberEatsOAuthController } from './api/oauth.controller';
 import { UberEatsOperationsController } from './api/operations.controller';
@@ -11,7 +15,7 @@ import {
 } from './infrastructure/workers/uber-worker.adapters';
 import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
 import {
-  UBER_EATS_COMPOSITION_PROVIDERS,
+  createUberEatsWorkerRuntimeModule,
   UberEatsModule,
 } from './ubereats.module';
 import { UBER_EATS_WORKER_PROVIDERS } from './worker';
@@ -58,8 +62,20 @@ describe('UberEats compositions', () => {
         : provider;
     const tokens = providers.map(providerToken);
 
-    expect(providers).toBe(UBER_EATS_COMPOSITION_PROVIDERS);
     expect(new Set(tokens).size).toBe(tokens.length);
+  });
+
+  it('keeps the worker runtime free of API feature modules', () => {
+    const workerRuntime = createUberEatsWorkerRuntimeModule(
+      UBER_EATS_WORKER_PROVIDERS,
+    );
+    const imports = workerRuntime.imports ?? [];
+
+    expect(imports).toEqual([PrismaModule]);
+    expect(imports).not.toContain(AuthModule);
+    expect(imports).not.toContain(OrdersModule);
+    expect(imports).not.toContain(MessagingModule);
+    expect(workerRuntime.controllers ?? []).toEqual([]);
   });
 
   it('keeps worker lifecycle providers outside the HTTP composition', () => {
