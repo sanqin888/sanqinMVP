@@ -187,6 +187,36 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     expect(snapshot?.modifierOptions[0]?.name).toBe('Uber Option Override');
   });
 
+  it('requests stable SanQ sort ordering for the entire publish graph', async () => {
+    const x = setup(
+      { timezone: 'America/Toronto', salesTaxRate: 0.13 },
+      bilingualRows,
+    );
+    const stableOrder = [{ sortOrder: 'asc' }, { id: 'asc' }];
+
+    await x.adapter.loadPublishSnapshot('pos-store', 'uber-store');
+
+    expect(x.prisma.menuCategory.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: stableOrder }),
+    );
+    expect(x.prisma.menuItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: stableOrder,
+        select: expect.objectContaining({
+          optionGroups: expect.objectContaining({ orderBy: stableOrder }),
+        }),
+      }),
+    );
+    expect(x.prisma.menuOptionGroupTemplate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: stableOrder,
+        select: expect.objectContaining({
+          options: expect.objectContaining({ orderBy: stableOrder }),
+        }),
+      }),
+    );
+  });
+
   it('rejects percentage-formatted BusinessConfig.salesTaxRate', async () => {
     const x = setup({ timezone: 'America/Toronto', salesTaxRate: 13 });
 
