@@ -15,7 +15,11 @@ import type {
 } from '@shared/menu';
 
 type AvailabilityMode = 'ON' | 'TEMP_TODAY_OFF' | 'PERMANENT_OFF';
-type UberSyncStatus = 'SYNC_REQUESTED' | 'SKIPPED_NOT_PUBLISHED' | 'FAILED';
+type UberSyncStatus =
+  | 'SYNCED'
+  | 'SYNC_REQUESTED'
+  | 'SKIPPED_NOT_PUBLISHED'
+  | 'FAILED';
 
 const COPY = {
   zh: {
@@ -154,6 +158,16 @@ function statusTone(label: string, labels: StatusLabels): string {
   if (label === labels.on) return 'bg-emerald-500/10 text-emerald-200 border-emerald-400/60';
   if (label === labels.offToday) return 'bg-amber-500/10 text-amber-200 border-amber-400/60';
   return 'bg-slate-700/60 text-slate-200 border-slate-500/60';
+}
+
+function getUberSyncLabel(status: UberSyncStatus, locale: Locale): string {
+  const zh = locale === 'zh';
+  if (status === 'SYNCED') return zh ? 'Uber 已同步' : 'Uber synced';
+  if (status === 'SYNC_REQUESTED')
+    return zh ? 'Uber 同步请求已提交' : 'Uber sync requested';
+  if (status === 'FAILED')
+    return zh ? 'Uber 同步失败，可重试' : 'Uber sync failed; retry available';
+  return zh ? '未发布到 Uber' : 'Not published to Uber';
 }
 
 export default function PosMenuManagementPage() {
@@ -410,13 +424,10 @@ export default function PosMenuManagementPage() {
                                       </span>
                                       {uberSyncByItem[item.stableId] && (
                                         <div className="mt-1 text-xs text-sky-300" role="status">
-                                          {uberSyncByItem[item.stableId] === 'SYNC_REQUESTED'
-                                            ? safeLocale === 'zh' ? 'Uber 同步请求已提交' : 'Uber sync requested'
-                                            : uberSyncByItem[item.stableId] === 'FAILED'
-                                              ? safeLocale === 'zh' ? 'Uber 同步失败，可重试' : 'Uber sync failed; retry available'
-                                              : uberSyncByItem[item.stableId] === 'SKIPPED_NOT_PUBLISHED'
-                                                ? safeLocale === 'zh' ? '未发布到 Uber' : 'Not published to Uber'
-                                                : safeLocale === 'zh' ? 'Uber 同步状态未知' : 'Unknown Uber sync status'}
+                                          {getUberSyncLabel(
+                                            uberSyncByItem[item.stableId],
+                                            safeLocale,
+                                          )}
                                         </div>
                                       )}
                                     </div>

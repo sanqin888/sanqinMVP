@@ -18,6 +18,8 @@ export interface UberMenuAvailabilityPort {
 
 export interface UberMenuAvailabilityQueryPort {
   isMenuItemPublishable(menuItemStableId: string): Promise<boolean>;
+  findMenuItemSuspendUntil(menuItemStableId: string): Promise<Date | null>;
+  findOptionSuspendUntil(optionChoiceStableId: string): Promise<Date | null>;
   findProvisionedStores(
     storeId?: string,
   ): Promise<Array<{ storeId: string; uberStoreId: string }>>;
@@ -31,6 +33,7 @@ export interface UberMenuAvailabilityCommandPort {
   ): Promise<void>;
   setOptionAvailability(
     storeId: string,
+    uberStoreId: string,
     optionChoiceStableId: string,
     isAvailable: boolean,
   ): Promise<void>;

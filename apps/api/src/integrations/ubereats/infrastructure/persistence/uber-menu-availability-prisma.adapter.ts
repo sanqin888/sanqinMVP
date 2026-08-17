@@ -29,6 +29,22 @@ export class UberMenuAvailabilityPrismaAdapter
     return item !== null;
   }
 
+  async findMenuItemSuspendUntil(menuItemStableId: string) {
+    const item = await this.prisma.menuItem.findFirst({
+      where: { stableId: menuItemStableId, deletedAt: null },
+      select: { tempUnavailableUntil: true },
+    });
+    return item?.tempUnavailableUntil ?? null;
+  }
+
+  async findOptionSuspendUntil(optionChoiceStableId: string) {
+    const option = await this.prisma.menuOptionTemplateChoice.findFirst({
+      where: { stableId: optionChoiceStableId, deletedAt: null },
+      select: { tempUnavailableUntil: true },
+    });
+    return option?.tempUnavailableUntil ?? null;
+  }
+
   async findProvisionedStores(storeId?: string) {
     const mappings = await this.prisma.uberStoreMapping.findMany({
       where: {
@@ -61,6 +77,7 @@ export class UberMenuAvailabilityPrismaAdapter
 
   async setOptionAvailability(
     storeId: string,
+    uberStoreId: string,
     optionChoiceStableId: string,
     isAvailable: boolean,
   ) {
@@ -70,11 +87,11 @@ export class UberMenuAvailabilityPrismaAdapter
       },
       create: {
         storeId,
-        uberStoreId: storeId,
+        uberStoreId,
         optionChoiceStableId,
         isAvailable,
       },
-      update: { uberStoreId: storeId, isAvailable },
+      update: { uberStoreId, isAvailable },
     });
   }
 
@@ -90,18 +107,16 @@ export class UberMenuAvailabilityPrismaAdapter
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,
         title: `Uber 商品可售状态同步失败：${input.menuItemStableId}`,
-        description: '本地状态已保存；请重试整份菜单发布。',
+        description: '本地状态已保存；请重试 Uber 商品可售状态同步。',
         menuItemStableId: input.menuItemStableId,
         lastError: input.error,
         context: {
-          publish: {
+          availability: {
             storeId: input.storeId,
-            dryRun: false,
-            taxRateConfirmed: true,
-            timezoneConfirmed: true,
+            uberStoreId: input.uberStoreId,
+            menuItemStableId: input.menuItemStableId,
+            isAvailable: input.isAvailable,
           },
-          uberStoreId: input.uberStoreId,
-          isAvailable: input.isAvailable,
         },
       },
     });

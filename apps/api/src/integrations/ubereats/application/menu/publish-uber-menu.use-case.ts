@@ -193,12 +193,14 @@ export class PublishUberMenuUseCase {
       totalItems: payload.items.length,
     });
     try {
-      const uploaded = await this.gateway.uploadMenu({
+      await this.gateway.uploadMenu({
         storeId: snapshot.uberStoreId,
         payload,
         idempotencyKey,
       });
-      await this.publications.markSubmitted(attempt.attemptId, uploaded);
+      await this.publications.markPublishVersionSucceeded(attempt.attemptId, {
+        status_code: 204,
+      });
       return {
         ok: true,
         dryRun: false,

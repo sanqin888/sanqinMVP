@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
-import { UberMenuPublishStatus, type Prisma } from '@prisma/client';
+import { Prisma, UberMenuPublishStatus } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberMenuPublicationAttempt,
@@ -193,6 +193,7 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
   ) {
     return this.claim(limit, lease, {
       status: UberMenuPublishStatus.SUBMITTED,
+      responsePayload: { not: Prisma.DbNull },
       AND: [
         {
           OR: [

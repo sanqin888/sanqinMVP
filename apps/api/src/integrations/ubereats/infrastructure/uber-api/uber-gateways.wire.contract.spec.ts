@@ -188,11 +188,9 @@ describe('Uber gateways wire contract v1', () => {
     });
   });
 
-  it('menu upload and confirmation use dedicated wire DTO fixtures', async () => {
+  it('menu upload and sparse item availability use their dedicated wire contracts', async () => {
     const transport = createUberTransportFake();
-    transport.request
-      .mockResolvedValueOnce(fixture('menu/upload-response.json'))
-      .mockResolvedValueOnce(fixture('menu/confirmation.json'));
+    transport.request.mockResolvedValue({});
     const adapter = new UberMenuGatewayAdapter(transport);
     const wireMenu = fixture('menu/upload-request.json');
     await adapter.uploadMenu({
@@ -200,7 +198,12 @@ describe('Uber gateways wire contract v1', () => {
       payload: wireMenu,
       idempotencyKey: 'menu:store-1:v1',
     });
-    await adapter.getMenuPublicationStatus({ storeId: 'store/1' });
+    await adapter.updateItemAvailability({
+      storeId: 'store/1',
+      itemId: 'item/1',
+      isAvailable: false,
+      idempotencyKey: 'availability:item-1:v1',
+    });
     expect(transport.request.mock.calls.map(([value]) => value)).toEqual([
       {
         path: '/v2/eats/stores/store%2F1/menus',
@@ -212,11 +215,21 @@ describe('Uber gateways wire contract v1', () => {
         idempotencyKey: 'menu:store-1:v1',
       },
       {
-        path: '/v2/eats/stores/store%2F1/menus',
+        path: '/v2/eats/stores/store%2F1/menus/items/item%2F1',
         scope: 'eats.store',
-        operation: 'uber.menu.read',
+        operation: 'uber.menu.item.availability.update',
         partitionKey: 'store/1',
-        method: 'GET',
+        method: 'POST',
+        json: {
+          suspension_info: {
+            suspension: {
+              suspend_until: 4070908800,
+              reason: 'Out of stock',
+            },
+            overrides: [],
+          },
+        },
+        idempotencyKey: 'availability:item-1:v1',
       },
     ]);
   });

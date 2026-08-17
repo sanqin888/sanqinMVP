@@ -61,13 +61,13 @@ describe('AdminMenuService availability Uber status', () => {
     ['TEMP_TODAY_OFF', false],
     ['PERMANENT_OFF', false],
     ['ON', true],
-  ] as const)('%s 返回结构化 PENDING 状态', async (mode, available) => {
+  ] as const)('%s 返回结构化 SYNCED 状态', async (mode, available) => {
     const { service, syncUberMenuItemAvailability } = build({
-      status: 'PENDING',
+      status: 'SYNCED',
       stores: [],
     });
     const result = await service.setItemAvailability('dish-1', mode);
-    expect(result.uberSync.status).toBe('PENDING');
+    expect(result.uberSync.status).toBe('SYNCED');
     expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
       menuItemStableId: 'dish-1',
       isAvailable: available,

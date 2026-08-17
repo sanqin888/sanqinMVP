@@ -43,6 +43,8 @@ describe('PublishUberMenuUseCase', () => {
       findLastSucceededPayload: jest.fn().mockResolvedValue(null),
       listIntentionalPriceRestores: jest.fn().mockResolvedValue(new Set()),
       recordCriticalRiskAcknowledgement: jest.fn(),
+      markPublishVersionSucceeded: jest.fn().mockResolvedValue(undefined),
+      markPublishVersionFailed: jest.fn().mockResolvedValue(undefined),
       findSucceededAttempt: jest.fn().mockResolvedValue(null),
       createAttempt: jest.fn().mockResolvedValue({
         attemptId: 'attempt-1',
@@ -59,11 +61,8 @@ describe('PublishUberMenuUseCase', () => {
       markConfirmed: jest.fn(),
     };
     const gateway = {
-      uploadMenu: jest.fn().mockResolvedValue({
-        uberRequestId: 'request-1',
-        uberResourceId: 'resource-1',
-      }),
-      getMenuPublicationStatus: jest.fn(),
+      uploadMenu: jest.fn().mockResolvedValue(undefined),
+      updateItemAvailability: jest.fn(),
     };
     const images = {
       validateImages: jest
@@ -280,13 +279,14 @@ describe('PublishUberMenuUseCase', () => {
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
   });
 
-  it('上传成功后标记 SUBMITTED', async () => {
+  it('上传 204 成功后直接标记 SUCCEEDED', async () => {
     const x = setup();
     await x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true });
-    expect(x.publications.markSubmitted).toHaveBeenCalledWith('attempt-1', {
-      uberRequestId: 'request-1',
-      uberResourceId: 'resource-1',
-    });
+    expect(x.publications.markPublishVersionSucceeded).toHaveBeenCalledWith(
+      'attempt-1',
+      { status_code: 204 },
+    );
+    expect(x.publications.markSubmitted).not.toHaveBeenCalled();
   });
 
   it('将网络上传失败标为可重试', async () => {
