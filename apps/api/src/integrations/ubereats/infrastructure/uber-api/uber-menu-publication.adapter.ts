@@ -7,6 +7,8 @@ import type {
 import { UberMenuGateway } from './uber-resource.gateways';
 import { UberImageValidator } from './uber-image.validator';
 
+const INDEFINITE_SUSPEND_UNTIL = Math.floor(Date.UTC(2099, 0, 1) / 1_000);
+
 @Injectable()
 export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
   constructor(
@@ -14,7 +16,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
     private readonly gateway: Pick<UberMenuGateway, 'request'>,
   ) {}
   async uploadMenu(input: Parameters<UberMenuGatewayPort['uploadMenu']>[0]) {
-    const response = await this.gateway.request<Record<string, unknown>>({
+    await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
       scope: 'eats.store',
       operation: 'uber.menu.upload',
@@ -23,37 +25,29 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
       json: input.payload as unknown as Record<string, unknown>,
       idempotencyKey: input.idempotencyKey,
     });
-    return {
-      uberRequestId: this.string(response.request_id),
-      uberResourceId: this.string(response.resource_id ?? response.id),
-    };
   }
-  async getMenuPublicationStatus(
-    input: Parameters<UberMenuGatewayPort['getMenuPublicationStatus']>[0],
+  async updateItemAvailability(
+    input: Parameters<UberMenuGatewayPort['updateItemAvailability']>[0],
   ) {
-    const response = await this.gateway.request<Record<string, unknown>>({
-      path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
+    await this.gateway.request<Record<string, unknown>>({
+      path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus/items/${encodeURIComponent(input.itemId)}`,
       scope: 'eats.store',
-      operation: 'uber.menu.read',
+      operation: 'uber.menu.item.availability.update',
       partitionKey: input.storeId,
-      method: 'GET',
+      method: 'POST',
+      json: {
+        suspension_info: {
+          suspension: input.isAvailable
+            ? null
+            : {
+                suspend_until: INDEFINITE_SUSPEND_UNTIL,
+                reason: 'Out of stock',
+              },
+          overrides: [],
+        },
+      },
+      idempotencyKey: input.idempotencyKey,
     });
-    const raw = this.string(response.status)?.toUpperCase();
-    const status =
-      raw === 'FAILED'
-        ? ('FAILED' as const)
-        : raw === 'PENDING' || raw === 'PROCESSING'
-          ? ('PENDING' as const)
-          : ('SUCCEEDED' as const);
-    return {
-      status,
-      uberRequestId: this.string(response.request_id),
-      errorCode: this.string(response.error_code),
-      errorMessage: this.string(response.error_message),
-    };
-  }
-  private string(value: unknown) {
-    return typeof value === 'string' && value ? value : null;
   }
 }
 
