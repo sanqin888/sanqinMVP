@@ -16,20 +16,11 @@ export interface UberMenuAvailabilityPort {
   ): Promise<UberAvailabilitySyncResult>;
 }
 
-export type UberAvailabilityItemConfig = {
-  storeId: string;
-  uberStoreId: string | null;
-  externalItemId: string | null;
-};
-
 export interface UberMenuAvailabilityQueryPort {
-  findItemConfigs(
-    menuItemStableId: string,
-    storeId?: string,
-  ): Promise<UberAvailabilityItemConfig[]>;
+  isMenuItemPublishable(menuItemStableId: string): Promise<boolean>;
   findProvisionedStores(
     storeId?: string,
-  ): Promise<Array<{ uberStoreId: string }>>;
+  ): Promise<Array<{ storeId: string; uberStoreId: string }>>;
 }
 
 export interface UberMenuAvailabilityCommandPort {
@@ -47,7 +38,6 @@ export interface UberMenuAvailabilityCommandPort {
     storeId: string;
     uberStoreId: string;
     menuItemStableId: string;
-    externalItemId: string;
     isAvailable: boolean;
     error: string;
   }): Promise<void>;
