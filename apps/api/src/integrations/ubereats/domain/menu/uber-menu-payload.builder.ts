@@ -11,6 +11,8 @@ import {
   type UberServiceAvailability,
 } from './uber-payload.utils';
 
+const INDEFINITE_SUSPEND_UNTIL = Math.floor(Date.UTC(2099, 0, 1) / 1_000);
+
 /** Combines the bilingual source names without introducing empty whitespace. */
 export function composeUberDisplayName(
   nameEn?: string | null,
@@ -87,7 +89,7 @@ export function buildUberUploadMenuPayload(
           ? null
           : {
               suspension: {
-                suspend_until: Date.UTC(2099, 0, 1),
+                suspend_until: INDEFINITE_SUSPEND_UNTIL,
                 reason: 'Item unavailable',
               },
             },
