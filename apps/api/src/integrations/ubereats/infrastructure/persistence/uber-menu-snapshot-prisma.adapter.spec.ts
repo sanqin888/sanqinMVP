@@ -72,9 +72,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
         isAvailable: true,
         imageUrl: null,
         ingredientsEn: null,
-        optionGroups: [
-          { templateGroup: { stableId: 'group-stable' } },
-        ],
+        optionGroups: [{ templateGroup: { stableId: 'group-stable' } }],
       },
     ],
     templates: [
