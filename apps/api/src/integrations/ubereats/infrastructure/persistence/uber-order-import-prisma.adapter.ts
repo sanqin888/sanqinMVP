@@ -11,6 +11,11 @@ import { createHash } from 'crypto';
 import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
 import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
+  readPositiveDurationMs,
+  resolvePosConnectivityStatus,
+} from '../../../../common/pos-connectivity';
 import type {
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
@@ -82,6 +87,18 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         ? this.readCursor(inbox.eventId, inbox.createdAt, inbox.payload)
         : null,
     };
+  }
+
+  async getPosStoreConnectivity(posStoreId: string) {
+    const devices = await this.prisma.posDevice.findMany({
+      where: { storeId: posStoreId, status: 'ACTIVE' },
+      select: { lastSeenAt: true, meta: true },
+    });
+    const offlineAfterMs = readPositiveDurationMs(
+      process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS,
+      DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
+    );
+    return resolvePosConnectivityStatus(devices, Date.now(), offlineAfterMs);
   }
 
   async saveImportedOrder(
@@ -164,8 +181,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       },
       async (tx, order) => {
         if (input.actionIntent) {
-          // skipDuplicates emits ON CONFLICT DO NOTHING, so a concurrent replay
-          // remains usable inside this transaction instead of aborting it.
           const inserted = await tx.uberOrderAction.createMany({
             data: {
               ...input.actionIntent,

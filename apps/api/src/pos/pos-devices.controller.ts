@@ -1,12 +1,24 @@
-//apps/api/src/pos/pos-devices.controller.ts
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { PosDeviceService } from './pos-device.service';
+import { PosDeviceGuard } from './pos-device.guard';
 import {
   POS_DEVICE_COOKIE_MAX_AGE_MS,
   POS_DEVICE_ID_COOKIE,
   POS_DEVICE_KEY_COOKIE,
 } from './pos-device.constants';
+
+type PosDeviceRequest = Request & {
+  posDevice?: { deviceStableId: string };
+};
 
 @Controller('pos/devices')
 export class PosDevicesController {
@@ -43,9 +55,17 @@ export class PosDevicesController {
       result.device.deviceStableId,
       cookieOptions,
     );
-
     res.cookie(POS_DEVICE_KEY_COOKIE, result.deviceKey, cookieOptions);
 
     return { success: true, deviceStableId: result.device.deviceStableId };
+  }
+
+  @Post('heartbeat')
+  @HttpCode(204)
+  @UseGuards(PosDeviceGuard)
+  async heartbeat(@Req() req: PosDeviceRequest): Promise<void> {
+    const deviceStableId = req.posDevice?.deviceStableId;
+    if (!deviceStableId) return;
+    await this.posDeviceService.recordConnectivityHeartbeat(deviceStableId);
   }
 }

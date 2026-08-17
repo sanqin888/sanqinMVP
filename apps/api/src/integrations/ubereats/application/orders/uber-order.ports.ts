@@ -53,6 +53,10 @@ export interface UberOrderImportRepositoryPort {
     status: UberOrderStatus;
     cursor: UberOrderEventCursor | null;
   } | null>;
+  getPosStoreConnectivity?(posStoreId: string): Promise<{
+    status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
+    lastHeartbeatAt: Date | null;
+  }>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
     posStoreId: string;

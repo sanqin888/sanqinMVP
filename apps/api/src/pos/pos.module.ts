@@ -1,29 +1,30 @@
-// apps/api/src/pos/pos.module.ts
 import { Module } from '@nestjs/common';
 import { PosSummaryController } from './pos-summary.controller';
 import { PosOrdersController } from './pos-orders.controller';
 import { PosSummaryService } from './pos-summary.service';
 import { AuthModule } from '../auth/auth.module';
 import { RolesGuard } from '../auth/roles.guard';
-import { PosDeviceModule } from './pos-device.module'; // 引入新模块
+import { PosDeviceModule } from './pos-device.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PosStoreStatusController } from './pos-store-status.controller';
 import { PosStoreStatusService } from './pos-store-status.service';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { PosOrdersService } from './pos-orders.service';
+import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.service';
+import { StoreStatusModule } from '../store/store-status.module';
 
 @Module({
   imports: [
     AuthModule,
-    PosDeviceModule, // 引入基础设备模块
+    PosDeviceModule,
     OrdersModule,
     PrismaModule,
     UberEatsModule,
+    StoreStatusModule,
   ],
   controllers: [
     PosSummaryController,
-    // PosDevicesController 已经移走
     PosOrdersController,
     PosStoreStatusController,
   ],
@@ -31,7 +32,7 @@ import { PosOrdersService } from './pos-orders.service';
     PosSummaryService,
     PosStoreStatusService,
     PosOrdersService,
-    // PosDeviceService, PosDeviceGuard 已经移走
+    PosConnectivityWatchdogService,
     RolesGuard,
   ],
 })

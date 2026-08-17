@@ -8,5 +8,6 @@ import { StoreStatusController } from './store-status.controller';
   imports: [PrismaModule],
   providers: [StoreStatusService],
   controllers: [StoreStatusController],
+  exports: [StoreStatusService],
 })
 export class StoreStatusModule {}
