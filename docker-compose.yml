@@ -108,6 +108,9 @@ services:
       <<: *ubereats-runtime
       NODE_ENV: "production"
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
+      TZ: "America/Toronto"
+      WEB_BASE_URL: "https://sanq.ca"
+      PUBLIC_BASE_URL: "https://sanq.ca"
       UBER_EATS_WORKER_ENABLED: "true"
       UBER_EATS_WORKER_HEALTH_PORT: 4001
       UBER_EATS_CLIENT_ID: ${UBER_EATS_CLIENT_ID}

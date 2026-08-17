@@ -187,6 +187,63 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     expect(snapshot?.modifierOptions[0]?.name).toBe('Uber Option Override');
   });
 
+  it('requests stable SanQ sort ordering for the entire publish graph', async () => {
+    const x = setup(
+      { timezone: 'America/Toronto', salesTaxRate: 0.13 },
+      bilingualRows,
+    );
+    const stableOrder = [{ sortOrder: 'asc' }, { id: 'asc' }];
+
+    await x.adapter.loadPublishSnapshot('pos-store', 'uber-store');
+
+    expect(x.prisma.menuCategory.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: stableOrder }),
+    );
+    expect(x.prisma.menuItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: stableOrder,
+        select: {
+          stableId: true,
+          categoryId: true,
+          nameEn: true,
+          nameZh: true,
+          basePriceCents: true,
+          isAvailable: true,
+          imageUrl: true,
+          ingredientsEn: true,
+          optionGroups: {
+            where: { isEnabled: true },
+            orderBy: stableOrder,
+            select: { templateGroup: { select: { stableId: true } } },
+          },
+        },
+      }),
+    );
+    expect(x.prisma.menuOptionGroupTemplate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: stableOrder,
+        select: {
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          defaultMinSelect: true,
+          defaultMaxSelect: true,
+          options: {
+            where: { deletedAt: null },
+            orderBy: stableOrder,
+            select: {
+              stableId: true,
+              nameEn: true,
+              nameZh: true,
+              priceDeltaCents: true,
+              isAvailable: true,
+            },
+          },
+        },
+      }),
+    );
+  });
+
   it('rejects percentage-formatted BusinessConfig.salesTaxRate', async () => {
     const x = setup({ timezone: 'America/Toronto', salesTaxRate: 13 });
 

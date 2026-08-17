@@ -345,6 +345,7 @@ function printEscPosTo(printerName, dataBuffer) {
 async function buildCustomerReceiptEscPos(params) {
   const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } =
     params;
+  const locale = params.locale === "en" ? "en" : "zh";
   const customerName =
     typeof params.customerName === "string" ? params.customerName.trim() : "";
 
