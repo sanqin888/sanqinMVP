@@ -29,6 +29,22 @@ export class UberMenuAvailabilityPrismaAdapter
     return item !== null;
   }
 
+  async findMenuItemSuspendUntil(menuItemStableId: string) {
+    const item = await this.prisma.menuItem.findFirst({
+      where: { stableId: menuItemStableId, deletedAt: null },
+      select: { tempUnavailableUntil: true },
+    });
+    return item?.tempUnavailableUntil ?? null;
+  }
+
+  async findOptionSuspendUntil(optionChoiceStableId: string) {
+    const option = await this.prisma.menuOptionTemplateChoice.findFirst({
+      where: { stableId: optionChoiceStableId, deletedAt: null },
+      select: { tempUnavailableUntil: true },
+    });
+    return option?.tempUnavailableUntil ?? null;
+  }
+
   async findProvisionedStores(storeId?: string) {
     const mappings = await this.prisma.uberStoreMapping.findMany({
       where: {
