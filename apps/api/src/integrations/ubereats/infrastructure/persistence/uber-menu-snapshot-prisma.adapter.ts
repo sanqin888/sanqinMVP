@@ -42,6 +42,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       rawItemConfigs,
       rawOptionConfigs,
       rawGroupConfigs,
+      rawCategoryConfigs,
     ] = await Promise.all([
       this.prisma.uberStoreMapping.findFirst({
         where: {
@@ -132,6 +133,14 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           isActive: true,
         },
       }),
+      this.prisma.uberCategoryConfig.findMany({
+        where: { storeId: { in: configStoreIds } },
+        select: {
+          storeId: true,
+          menuCategoryStableId: true,
+          displayName: true,
+        },
+      }),
     ]);
     if (!mapping) return null;
 
@@ -174,6 +183,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       posStoreId,
       (config) => config.templateGroupStableId,
     );
+    const categoryConfigs = preferCanonicalStoreRows(
+      rawCategoryConfigs,
+      posStoreId,
+      (config) => config.menuCategoryStableId,
+    );
     const categoryById = new Map(
       categories.map((category) => [category.id, category]),
     );
@@ -185,6 +199,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     );
     const groupConfig = new Map(
       groupConfigs.map((config) => [config.templateGroupStableId, config]),
+    );
+    const categoryConfig = new Map(
+      categoryConfigs.map((config) => [config.menuCategoryStableId, config]),
     );
     const items = menuItems
       .filter((item) => categoryById.has(item.categoryId))
@@ -221,15 +238,19 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       timezone,
       taxRate,
       categories: categories
-        .map((category) => ({
-          stableId: category.stableId,
-          name:
-            composeUberDisplayName(category.nameEn, category.nameZh) ||
-            category.stableId,
-          itemStableIds: items
-            .filter((item) => item.categoryStableId === category.stableId)
-            .map((item) => item.stableId),
-        }))
+        .map((category) => {
+          const config = categoryConfig.get(category.stableId);
+          return {
+            stableId: category.stableId,
+            name:
+              config?.displayName ||
+              composeUberDisplayName(category.nameEn, category.nameZh) ||
+              category.stableId,
+            itemStableIds: items
+              .filter((item) => item.categoryStableId === category.stableId)
+              .map((item) => item.stableId),
+          };
+        })
         .filter((category) => category.itemStableIds.length),
       items,
       modifierGroups: activeTemplates.map((template) => {
