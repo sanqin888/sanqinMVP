@@ -47,7 +47,6 @@ import {
 import {
   type UberMenuGatewayPort,
   type UberMenuImageProbePort,
-  type UberMenuPublishCommandPort,
   type UberMenuPublicationRepositoryPort,
   type UberMenuSnapshotRepositoryPort,
   UBER_MENU_GATEWAY,
@@ -318,11 +317,9 @@ export function createMenuWiring(): Provider[] {
     { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
     {
       provide: ConfirmUberMenuPublicationUseCase,
-      inject: [UBER_MENU_PUBLICATION_REPOSITORY, UBER_MENU_GATEWAY],
-      useFactory: (
-        publications: UberMenuPublicationRepositoryPort,
-        gateway: UberMenuGatewayPort,
-      ) => new ConfirmUberMenuPublicationUseCase(publications, gateway),
+      inject: [UBER_MENU_PUBLICATION_REPOSITORY],
+      useFactory: (publications: UberMenuPublicationRepositoryPort) =>
+        new ConfirmUberMenuPublicationUseCase(publications),
     },
     {
       provide: RecoverTimedOutMenuPublicationsUseCase,
@@ -341,16 +338,16 @@ export function createMenuWiring(): Provider[] {
       inject: [
         UBER_MENU_AVAILABILITY_QUERY,
         UBER_MENU_AVAILABILITY_COMMAND,
-        UBER_MENU_PUBLISH_COMMAND,
+        UBER_MENU_GATEWAY,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
         queries: UberMenuAvailabilityQueryPort,
         commands: UberMenuAvailabilityCommandPort,
-        publish: UberMenuPublishCommandPort,
+        gateway: UberMenuGatewayPort,
         telemetry: UberTelemetryPort,
       ) =>
-        new UberMenuAvailabilityUseCase(queries, commands, publish, telemetry),
+        new UberMenuAvailabilityUseCase(queries, commands, gateway, telemetry),
     },
     {
       provide: UBER_MENU_AVAILABILITY_PORT,
