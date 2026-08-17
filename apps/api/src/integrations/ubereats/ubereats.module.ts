@@ -1,7 +1,9 @@
-import { Module, type Provider } from '@nestjs/common';
+import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import { MessagingModule } from '../../messaging/messaging.module';
+import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrdersModule } from '../../orders/orders.module';
+import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { UberEatsMenuController } from './api/menu.controller';
 import { UberEatsOAuthController } from './api/oauth.controller';
@@ -32,8 +34,8 @@ import {
   UBER_EATS_STORE_STATUS_SYNC,
 } from './public-api';
 
-/** The complete provider graph assembled exclusively by the composition root. */
-export const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
+/** The complete provider graph assembled exclusively by this composition root. */
+const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
   {
     provide: UBER_EATS_STARTUP_CONFIG,
     useFactory: () => validateUberEatsStartupConfig(process.env),
@@ -67,6 +69,32 @@ export const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
     ) => new ConfirmUberMenuPublicationsUseCase(confirmations, recovery),
   },
 ];
+
+/**
+ * Private worker runtime view of the same Uber Eats composition root.
+ *
+ * The dedicated process intentionally gets no HTTP controllers, AuthModule,
+ * OrdersModule or MessagingModule. Cross-context implementation bridges are
+ * assembled here so the process bootstrap never reaches through module
+ * boundaries to Prisma or order internals.
+ */
+@Module({})
+class UberEatsWorkerRuntimeCompositionModule {}
+
+export function createUberEatsWorkerRuntimeModule(
+  workerProviders: readonly Provider[],
+): DynamicModule {
+  return {
+    module: UberEatsWorkerRuntimeCompositionModule,
+    imports: [PrismaModule],
+    providers: [
+      OrderEventsBus,
+      OrderIngestionService,
+      ...UBER_EATS_COMPOSITION_PROVIDERS,
+      ...workerProviders,
+    ],
+  };
+}
 
 /**
  * The sole Uber Eats Nest composition root. Public business capabilities are

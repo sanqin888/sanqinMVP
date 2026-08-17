@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -97,19 +97,32 @@ describe('Uber Eats framework-independent core architecture', () => {
     }
   });
 
-  it('keeps the dedicated worker out of API auth and feature-module graphs', () => {
-    const workerSource = readFileSync(
-      resolve(UBER_EATS_ROOT, '..', '..', 'ubereats-worker.module.ts'),
+  it('keeps the dedicated worker behind its entry and sole composition root', () => {
+    const apiRoot = resolve(UBER_EATS_ROOT, '..', '..');
+    const workerModulePath = resolve(apiRoot, 'ubereats-worker.module.ts');
+    const workerMain = readFileSync(
+      resolve(apiRoot, 'ubereats-worker.main.ts'),
+      'utf8',
+    );
+    const workerEntry = readFileSync(resolve(UBER_EATS_ROOT, 'worker.ts'), 'utf8');
+    const compositionRoot = readFileSync(
+      resolve(UBER_EATS_ROOT, 'ubereats.module.ts'),
       'utf8',
     );
 
-    expect(workerSource).toContain('UBER_EATS_COMPOSITION_PROVIDERS');
-    expect(workerSource).toContain('OrderIngestionService');
-    expect(workerSource).toContain('OrderEventsBus');
-    expect(workerSource).toMatch(/imports:\s*\[PrismaModule\]/);
-    expect(workerSource).not.toMatch(/\bUberEatsModule\b/);
-    expect(workerSource).not.toMatch(/orders\/orders\.module/);
-    expect(workerSource).not.toMatch(/messaging\/messaging\.module/);
-    expect(workerSource).not.toMatch(/auth\/auth\.module/);
+    expect(existsSync(workerModulePath)).toBe(false);
+    expect(workerMain).toContain("from './integrations/ubereats/worker'");
+    expect(workerMain).not.toMatch(/ubereats-worker\.module/);
+    expect(workerMain).not.toMatch(/(?:prisma|orders|messaging|auth)\//);
+    expect(workerEntry).toContain('createUberEatsWorkerRuntimeModule');
+    expect(workerEntry).not.toMatch(
+      /\.\.\/\.\.\/(?:prisma|orders|messaging|auth)\//,
+    );
+    expect(compositionRoot).toContain(
+      'function createUberEatsWorkerRuntimeModule',
+    );
+    expect(compositionRoot).not.toContain(
+      'export const UBER_EATS_COMPOSITION_PROVIDERS',
+    );
   });
 });

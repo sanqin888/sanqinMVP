@@ -1,8 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import { NestFactory } from '@nestjs/core';
 
-import { UberWorkerHealthService } from './integrations/ubereats/worker';
-import { UberEatsWorkerModule } from './ubereats-worker.module';
+import {
+  UBER_EATS_WORKER_RUNTIME_MODULE,
+  UberWorkerHealthService,
+} from './integrations/ubereats/worker';
 
 export function assertUberWorkerEnabled(
   env: NodeJS.ProcessEnv = process.env,
@@ -37,8 +39,9 @@ export function createHealthServer(health: UberWorkerHealthService): Server {
 
 async function bootstrap(): Promise<void> {
   assertUberWorkerEnabled();
-  const context =
-    await NestFactory.createApplicationContext(UberEatsWorkerModule);
+  const context = await NestFactory.createApplicationContext(
+    UBER_EATS_WORKER_RUNTIME_MODULE,
+  );
   context.enableShutdownHooks();
 
   const port = Number(process.env.UBER_EATS_WORKER_HEALTH_PORT ?? 4001);
