@@ -19,6 +19,7 @@ export class RequestIdInterceptor implements NestInterceptor {
     '/api/v1/pos/orders/board',
     '/api/v1/public/store-status',
     '/api/v1/pos/store-status',
+    '/api/v1/pos/devices/heartbeat',
   ];
   private readonly debugPaths = [
     '/api/v1/auth/me',

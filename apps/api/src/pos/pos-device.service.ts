@@ -1,8 +1,8 @@
-//apps/api/src/pospos-device.service.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import type { Prisma } from '@prisma/client';
+import { withPosConnectivityHeartbeatEnabled } from '../common/pos-connectivity';
 
 type PosDeviceMetaInput = Prisma.InputJsonValue;
 
@@ -95,6 +95,7 @@ export class PosDeviceService {
         deviceKeyHash: true,
         status: true,
         deviceStableId: true,
+        storeId: true,
         meta: true,
       },
     });
@@ -113,5 +114,22 @@ export class PosDeviceService {
     });
 
     return device;
+  }
+
+  async recordConnectivityHeartbeat(deviceStableId: string): Promise<void> {
+    const device = await this.prisma.posDevice.findUnique({
+      where: { deviceStableId },
+      select: { id: true, meta: true },
+    });
+    if (!device) return;
+
+    const nextMeta = withPosConnectivityHeartbeatEnabled(device.meta);
+    const current = isRecord(device.meta) ? device.meta : null;
+    if (current?.connectivityHeartbeatV1 === true) return;
+
+    await this.prisma.posDevice.update({
+      where: { id: device.id },
+      data: { meta: toJsonObject(nextMeta) },
+    });
   }
 }

@@ -146,13 +146,26 @@ export class ImportUberOrderUseCase {
         Math.abs(expected - item.baseUnitPriceCents) > 1
       );
     });
-    const denial =
+    const priceDenial =
       mismatch || validateUberOrderAmounts(order).hasMaterialVariance
         ? {
             reasonCode: 'PRICE_MISMATCH',
             reasonDetail: '订单金额与已发布菜单不一致',
           }
         : null;
+    const connectivity = this.repository.getPosStoreConnectivity
+      ? await this.repository.getPosStoreConnectivity(posStoreId)
+      : { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
+    const connectivityDenial =
+      connectivity.status === 'OFFLINE'
+        ? {
+            reasonCode: 'POS_OFFLINE',
+            reasonDetail: connectivity.lastHeartbeatAt
+              ? `POS connectivity offline; last heartbeat ${connectivity.lastHeartbeatAt.toISOString()}`
+              : 'POS connectivity offline; no recent heartbeat',
+          }
+        : null;
+    const denial = priceDenial ?? connectivityDenial;
     const cancellation = this.cancellation(normalizedEventType, order);
     const decision = cancellation
       ? null

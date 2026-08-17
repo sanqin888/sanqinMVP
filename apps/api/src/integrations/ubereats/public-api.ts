@@ -60,6 +60,15 @@ export interface UberEatsOrderStatusSyncPort {
   ): Promise<UberEatsOrderStatusSyncResult>;
 }
 
+export type UberEatsStoreStatusTarget = {
+  uberStoreId: string;
+  targetStatus: 'ONLINE' | 'PAUSED';
+  reason?: string;
+  pauseUntil?: string;
+};
+
 export interface UberEatsStoreStatusSyncPort {
-  syncStoreStatusToUber(): Promise<UberEatsStoreStatusSyncResult>;
+  syncStoreStatusToUber(
+    target?: UberEatsStoreStatusTarget,
+  ): Promise<UberEatsStoreStatusSyncResult>;
 }
