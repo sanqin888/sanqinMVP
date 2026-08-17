@@ -12,6 +12,7 @@ import { PosStoreStatusService } from './pos-store-status.service';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { PosOrdersService } from './pos-orders.service';
 import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.service';
+import { StoreStatusModule } from '../store/store-status.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.serv
     OrdersModule,
     PrismaModule,
     UberEatsModule,
+    StoreStatusModule,
   ],
   controllers: [
     PosSummaryController,

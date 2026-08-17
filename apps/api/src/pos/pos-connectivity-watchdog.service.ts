@@ -1,4 +1,9 @@
-import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import {
@@ -12,6 +17,7 @@ import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
 } from '../integrations/ubereats/public-api';
+import { StoreStatusService } from '../store/store-status.service';
 
 type RuntimeState = {
   phase: 'ONLINE' | 'OFFLINE' | 'RECOVERING';
@@ -42,11 +48,14 @@ export class PosConnectivityWatchdogService
   private timer?: NodeJS.Timeout;
   private inFlight?: Promise<void>;
   private stopping = false;
+  private scheduleOpen: boolean | null = null;
+  private openingGraceUntil = 0;
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uber: UberEatsStoreStatusSyncPort,
+    private readonly storeStatus: StoreStatusService,
   ) {}
 
   onModuleInit(): void {
@@ -85,6 +94,20 @@ export class PosConnectivityWatchdogService
   }
 
   private async poll(): Promise<void> {
+    const now = Date.now();
+    const schedule = await this.storeStatus.getCurrentStatus();
+    if (!schedule.isOpenBySchedule) {
+      this.scheduleOpen = false;
+      this.openingGraceUntil = 0;
+      return;
+    }
+
+    if (this.scheduleOpen !== true) {
+      this.scheduleOpen = true;
+      this.openingGraceUntil = now + this.offlineAfterMs;
+    }
+    if (now < this.openingGraceUntil) return;
+
     const devices = await this.prisma.posDevice.findMany({
       where: { status: 'ACTIVE' },
       select: { storeId: true, lastSeenAt: true, meta: true },
@@ -99,7 +122,6 @@ export class PosConnectivityWatchdogService
       byStore.set(device.storeId, current);
     }
 
-    const now = Date.now();
     for (const [storeId, storeDevices] of byStore) {
       const connectivity = resolvePosConnectivityStatus(
         storeDevices,
@@ -180,8 +202,9 @@ export class PosConnectivityWatchdogService
       previous.recoverySince === null ||
       now - previous.recoverySince < this.recoveryStableMs ||
       now < previous.nextSyncAttemptAt
-    )
+    ) {
       return;
+    }
 
     const config = await this.prisma.businessConfig.findUnique({
       where: { id: 1 },

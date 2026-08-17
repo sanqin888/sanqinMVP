@@ -4,12 +4,17 @@ import { useEffect } from "react";
 
 const KEEP_ALIVE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CONNECTIVITY_HEARTBEAT_INTERVAL_MS = 15_000;
+const STORE_SCHEDULE_CHECK_INTERVAL_MS = 60_000;
 const RENEW_AHEAD_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const LAST_CHECK_STORAGE_KEY = "pos-session-keepalive-last-check-at";
 const SESSION_EXPIRES_AT_STORAGE_KEY = "pos-session-expires-at";
 
 type MeResponse = {
   sessionExpiresAt?: string | null;
+};
+
+type StoreStatusResponse = {
+  isOpenBySchedule?: boolean;
 };
 
 function parseJsonRecord(payload: unknown): Record<string, unknown> | null {
@@ -37,6 +42,20 @@ function unwrapMeResponse(payload: unknown): MeResponse | null {
       typeof record.sessionExpiresAt === "string"
         ? record.sessionExpiresAt
         : null,
+  };
+}
+
+function unwrapStoreStatus(payload: unknown): StoreStatusResponse | null {
+  const record = parseJsonRecord(payload);
+  if (!record) return null;
+  const source =
+    typeof record.code === "string" ? parseJsonRecord(record.details) : record;
+  if (!source) return null;
+  return {
+    isOpenBySchedule:
+      typeof source.isOpenBySchedule === "boolean"
+        ? source.isOpenBySchedule
+        : undefined,
   };
 }
 
@@ -84,6 +103,17 @@ async function checkSessionIfDue(): Promise<void> {
   }
 }
 
+async function fetchHeartbeatSchedule(): Promise<boolean> {
+  const response = await fetch("/api/v1/public/store-status", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) return false;
+  const payload = (await response.json().catch(() => null)) as unknown;
+  return unwrapStoreStatus(payload)?.isOpenBySchedule === true;
+}
+
 async function sendConnectivityHeartbeat(): Promise<void> {
   try {
     await fetch("/api/v1/pos/devices/heartbeat", {
@@ -101,18 +131,31 @@ async function sendConnectivityHeartbeat(): Promise<void> {
 export function PosSessionKeepAlive() {
   useEffect(() => {
     let disposed = false;
+    let heartbeatEnabled = false;
 
     const sessionTick = () => {
       if (disposed) return;
       void checkSessionIfDue();
     };
     const heartbeatTick = () => {
-      if (disposed) return;
+      if (disposed || !heartbeatEnabled) return;
       void sendConnectivityHeartbeat();
+    };
+    const scheduleTick = async () => {
+      if (disposed) return;
+      try {
+        const enabled = await fetchHeartbeatSchedule();
+        if (disposed) return;
+        const justEnabled = enabled && !heartbeatEnabled;
+        heartbeatEnabled = enabled;
+        if (justEnabled) heartbeatTick();
+      } catch {
+        heartbeatEnabled = false;
+      }
     };
 
     sessionTick();
-    heartbeatTick();
+    void scheduleTick();
 
     const sessionIntervalId = window.setInterval(
       sessionTick,
@@ -122,11 +165,16 @@ export function PosSessionKeepAlive() {
       heartbeatTick,
       CONNECTIVITY_HEARTBEAT_INTERVAL_MS,
     );
+    const scheduleIntervalId = window.setInterval(
+      () => void scheduleTick(),
+      STORE_SCHEDULE_CHECK_INTERVAL_MS,
+    );
 
     return () => {
       disposed = true;
       window.clearInterval(sessionIntervalId);
       window.clearInterval(heartbeatIntervalId);
+      window.clearInterval(scheduleIntervalId);
     };
   }, []);
 

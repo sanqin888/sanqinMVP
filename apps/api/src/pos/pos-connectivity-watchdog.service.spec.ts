@@ -1,11 +1,12 @@
 import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.service';
 
 const heartbeatMeta = { connectivityHeartbeatV1: true };
+const NOW = 1_000_000;
 
 describe('PosConnectivityWatchdogService', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  function setup(lastSeenAt: Date) {
+  function setup(lastSeenAt: Date, isOpenBySchedule = true) {
     const prisma = {
       posDevice: {
         findMany: jest.fn().mockResolvedValue([
@@ -28,24 +29,38 @@ describe('PosConnectivityWatchdogService', () => {
         .fn()
         .mockResolvedValue({ outcome: 'SUCCEEDED', synchronizedStores: 1 }),
     };
+    const storeStatus = {
+      getCurrentStatus: jest.fn().mockResolvedValue({ isOpenBySchedule }),
+    };
     const service = new PosConnectivityWatchdogService(
       prisma as never,
       uber as never,
+      storeStatus as never,
     );
-    return { service, prisma, uber };
+    return { service, prisma, uber, storeStatus };
   }
 
-  it('does not write Uber status for a healthy first heartbeat snapshot', async () => {
-    const { service, uber } = setup(new Date());
+  it('does not check connectivity while the store is closed by schedule', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { service, prisma, uber } = setup(
+      new Date(NOW - 120_000),
+      false,
+    );
 
     await service.runOnce();
 
+    expect(prisma.posDevice.findMany).not.toHaveBeenCalled();
     expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
   });
 
-  it('pauses mapped Uber stores when the heartbeat is stale', async () => {
-    const { service, uber } = setup(new Date(Date.now() - 120_000));
+  it('allows an opening grace period before evaluating heartbeat age', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { service, uber } = setup(new Date(NOW - 120_000));
 
+    await service.runOnce();
+    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
+
+    nowSpy.mockReturnValue(NOW + 90_001);
     await service.runOnce();
 
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledWith({
