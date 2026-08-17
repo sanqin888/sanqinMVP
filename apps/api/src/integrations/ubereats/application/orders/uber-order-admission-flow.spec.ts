@@ -35,6 +35,14 @@ const storeMapping = {
   posExternalStoreId: 'pos-store-1',
 };
 
+const menuMappings = [
+  {
+    externalItemId: 'item-1',
+    menuItemStableId: 'menu-1',
+    expectedPriceCents: 100,
+  },
+];
+
 const createActions = (enqueue: EnqueueMock) =>
   new UberOrderActionService(
     { enqueue } as unknown as UberOrderActionRepositoryPort,
@@ -89,13 +97,7 @@ describe('Uber order admission flow', () => {
     const useCase = new ImportUberOrderUseCase(
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
-        findMenuMappings: jest.fn().mockResolvedValue([
-          {
-            externalItemId: 'item-1',
-            menuItemStableId: 'menu-1',
-            expectedPriceCents: 100,
-          },
-        ]),
+        findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
         getPosStoreConnectivity: jest.fn().mockResolvedValue({
           status: 'OFFLINE',
           lastHeartbeatAt: null,
@@ -116,5 +118,37 @@ describe('Uber order admission flow', () => {
       reasonCode: 'POS_OFFLINE',
     });
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('processes cancellation context without running new-order connectivity admission', async () => {
+    const enqueue: EnqueueMock = jest.fn();
+    const getPosStoreConnectivity = jest.fn();
+    const saved: { input?: ImportedOrderInput } = {};
+    const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
+      saved.input = input;
+      return Promise.resolve({
+        orderId: 'local-1',
+        created: false,
+        action: null,
+      });
+    });
+    const useCase = new ImportUberOrderUseCase(
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
+        getPosStoreConnectivity,
+        saveImportedOrder,
+      },
+      { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
+      createActions(enqueue),
+      { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+    );
+
+    await useCase.execute('orders.cancelled', 'event-2', notification);
+
+    expect(getPosStoreConnectivity).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(saved.input?.cancellation).toMatchObject({ kind: 'CANCELLED' });
+    expect(saved.input?.actionIntent).toBeNull();
   });
 });
