@@ -15,31 +15,50 @@ export class UberMenuAvailabilityPrismaAdapter
   implements UberMenuAvailabilityQueryPort, UberMenuAvailabilityCommandPort
 {
   constructor(private readonly prisma: PrismaService) {}
-  findItemConfigs(menuItemStableId: string, storeId?: string) {
-    return this.prisma.uberItemChannelConfig.findMany({
-      where: { menuItemStableId, ...(storeId ? { storeId } : {}) },
-      select: { storeId: true, uberStoreId: true, externalItemId: true },
+
+  async isMenuItemPublishable(menuItemStableId: string) {
+    const item = await this.prisma.menuItem.findFirst({
+      where: {
+        stableId: menuItemStableId,
+        deletedAt: null,
+        visibility: 'PUBLIC',
+        publishToUberEats: true,
+      },
+      select: { stableId: true },
     });
+    return item !== null;
   }
-  findProvisionedStores(storeId?: string) {
-    return this.prisma.uberStoreMapping.findMany({
+
+  async findProvisionedStores(storeId?: string) {
+    const mappings = await this.prisma.uberStoreMapping.findMany({
       where: {
         isProvisioned: true,
-        ...(storeId ? { uberStoreId: storeId } : {}),
+        ...(storeId
+          ? {
+              OR: [{ posExternalStoreId: storeId }, { uberStoreId: storeId }],
+            }
+          : {}),
       },
-      select: { uberStoreId: true },
+      select: { posExternalStoreId: true, uberStoreId: true },
     });
+    return mappings.map((mapping) => ({
+      storeId: mapping.posExternalStoreId?.trim() || mapping.uberStoreId,
+      uberStoreId: mapping.uberStoreId,
+    }));
   }
+
   async setItemAvailability(
     storeId: string,
     menuItemStableId: string,
     isAvailable: boolean,
   ) {
-    await this.prisma.uberItemChannelConfig.update({
+    await this.prisma.uberItemChannelConfig.upsert({
       where: { storeId_menuItemStableId: { storeId, menuItemStableId } },
-      data: { isAvailable },
+      create: { storeId, menuItemStableId, isAvailable },
+      update: { isAvailable },
     });
   }
+
   async setOptionAvailability(
     storeId: string,
     optionChoiceStableId: string,
@@ -58,6 +77,7 @@ export class UberMenuAvailabilityPrismaAdapter
       update: { uberStoreId: storeId, isAvailable },
     });
   }
+
   async createItemPublishFailure(
     input: Parameters<
       UberMenuAvailabilityCommandPort['createItemPublishFailure']
@@ -81,7 +101,6 @@ export class UberMenuAvailabilityPrismaAdapter
             timezoneConfirmed: true,
           },
           uberStoreId: input.uberStoreId,
-          externalItemId: input.externalItemId,
           isAvailable: input.isAvailable,
         },
       },

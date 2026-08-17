@@ -12,7 +12,8 @@ import type {
 
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
-/** Synchronizes availability with the stable menu-node id as idempotency key. */
+
+/** Synchronizes SanQ availability by stableId and republishes the affected Uber store. */
 export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
   constructor(
     private readonly queries: UberMenuAvailabilityQueryPort,
@@ -20,66 +21,59 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     private readonly publish: UberMenuPublishCommandPort,
     private readonly telemetry: Pick<UberTelemetryPort, 'captureEvent'>,
   ) {}
+
   async syncUberMenuItemAvailability(
     input: Parameters<
       UberMenuAvailabilityPort['syncUberMenuItemAvailability']
     >[0],
   ) {
     const requestedStoreId = input.storeId?.trim() || undefined;
-    const [configs, mappings] = await Promise.all([
-      this.queries.findItemConfigs(input.menuItemStableId, requestedStoreId),
-      this.queries.findProvisionedStores(),
-    ]);
+    const publishable = await this.queries.isMenuItemPublishable(
+      input.menuItemStableId,
+    );
     const stores: UberAvailabilitySyncResult['stores'] = [];
-    for (const config of configs) {
-      const mapping = mappings.find(
-        ({ uberStoreId }) =>
-          uberStoreId === config.storeId || uberStoreId === config.uberStoreId,
-      );
-      if (!mapping || !config.externalItemId) {
-        stores.push({
-          storeId: config.storeId,
-          uberStoreId: mapping?.uberStoreId ?? config.uberStoreId,
-          status: 'SKIPPED_NOT_PUBLISHED',
-        });
-        continue;
-      }
-      await this.commands.setItemAvailability(
-        config.storeId,
-        input.menuItemStableId,
-        input.isAvailable,
-      );
-      try {
-        const result = await this.publish.execute({
-          storeId: config.storeId,
-          dryRun: false,
-          taxRateConfirmed: true,
-          timezoneConfirmed: true,
-        });
-        stores.push({
-          storeId: config.storeId,
-          uberStoreId: mapping.uberStoreId,
-          status: 'PENDING',
-          versionStableId: result.versionStableId,
-        });
-      } catch (error) {
-        const message = errorMessage(error);
-        await this.commands.createItemPublishFailure({
-          storeId: config.storeId,
-          uberStoreId: mapping.uberStoreId,
-          menuItemStableId: input.menuItemStableId,
-          externalItemId: config.externalItemId,
-          isAvailable: input.isAvailable,
-          error: message,
-        });
-        stores.push({
-          storeId: config.storeId,
-          uberStoreId: mapping.uberStoreId,
-          status: 'FAILED',
-          error: message,
-        });
+
+    if (publishable) {
+      const mappings =
+        await this.queries.findProvisionedStores(requestedStoreId);
+      for (const mapping of mappings) {
+        await this.commands.setItemAvailability(
+          mapping.storeId,
+          input.menuItemStableId,
+          input.isAvailable,
+        );
+        try {
+          const result = await this.publish.execute({
+            storeId: mapping.storeId,
+            dryRun: false,
+            taxRateConfirmed: true,
+            timezoneConfirmed: true,
+          });
+          stores.push({
+            storeId: mapping.storeId,
+            uberStoreId: mapping.uberStoreId,
+            status: 'PENDING',
+            versionStableId: result.versionStableId,
+          });
+        } catch (error) {
+          const message = errorMessage(error);
+          await this.commands.createItemPublishFailure({
+            storeId: mapping.storeId,
+            uberStoreId: mapping.uberStoreId,
+            menuItemStableId: input.menuItemStableId,
+            isAvailable: input.isAvailable,
+            error: message,
+          });
+          stores.push({
+            storeId: mapping.storeId,
+            uberStoreId: mapping.uberStoreId,
+            status: 'FAILED',
+            error: message,
+          });
+        }
       }
     }
+
     const status = this.summarize(stores);
     await this.telemetry.captureEvent(
       'ubereats_menu_item_availability_sync_requested',
@@ -92,6 +86,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     );
     return { status, stores };
   }
+
   async syncUberOptionItemAvailability(
     input: Parameters<
       UberMenuAvailabilityPort['syncUberOptionItemAvailability']
