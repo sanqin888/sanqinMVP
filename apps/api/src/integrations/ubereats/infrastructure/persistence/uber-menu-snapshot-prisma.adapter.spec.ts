@@ -199,20 +199,49 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     expect(x.prisma.menuCategory.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: stableOrder }),
     );
-    expect(x.prisma.menuItem.findMany.mock.calls[0]?.[0]).toMatchObject({
-      orderBy: stableOrder,
-      select: {
-        optionGroups: { orderBy: stableOrder },
-      },
-    });
-    expect(
-      x.prisma.menuOptionGroupTemplate.findMany.mock.calls[0]?.[0],
-    ).toMatchObject({
-      orderBy: stableOrder,
-      select: {
-        options: { orderBy: stableOrder },
-      },
-    });
+    expect(x.prisma.menuItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: stableOrder,
+        select: {
+          stableId: true,
+          categoryId: true,
+          nameEn: true,
+          nameZh: true,
+          basePriceCents: true,
+          isAvailable: true,
+          imageUrl: true,
+          ingredientsEn: true,
+          optionGroups: {
+            where: { isEnabled: true },
+            orderBy: stableOrder,
+            select: { templateGroup: { select: { stableId: true } } },
+          },
+        },
+      }),
+    );
+    expect(x.prisma.menuOptionGroupTemplate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: stableOrder,
+        select: {
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          defaultMinSelect: true,
+          defaultMaxSelect: true,
+          options: {
+            where: { deletedAt: null },
+            orderBy: stableOrder,
+            select: {
+              stableId: true,
+              nameEn: true,
+              nameZh: true,
+              priceDeltaCents: true,
+              isAvailable: true,
+            },
+          },
+        },
+      }),
+    );
   });
 
   it('rejects percentage-formatted BusinessConfig.salesTaxRate', async () => {
