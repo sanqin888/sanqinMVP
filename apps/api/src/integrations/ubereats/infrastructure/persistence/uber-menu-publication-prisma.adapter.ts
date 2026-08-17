@@ -146,7 +146,7 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
         uberStoreId: input.uberStoreId,
         idempotencyKey: input.idempotencyKey,
         businessVersion: input.businessVersion,
-        status: UberMenuPublishStatus.CREATED,
+        status: UberMenuPublishStatus.SUBMITTED,
         totalItems: input.totalItems,
         changedItems: input.totalItems,
         requestPayload: input.payload as Prisma.InputJsonValue,
@@ -193,6 +193,7 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
   ) {
     return this.claim(limit, lease, {
       status: UberMenuPublishStatus.SUBMITTED,
+      responsePayload: { not: Prisma.DbNull },
       AND: [
         {
           OR: [
