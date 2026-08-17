@@ -151,6 +151,48 @@ describe('UberMenuAvailabilityUseCase', () => {
     expect(gateway.updateItemAvailability).not.toHaveBeenCalled();
   });
 
+  it('option 204 成功后返回 SYNCED，不保留旧的 PENDING 状态', async () => {
+    const { useCase, queries, commands, gateway, telemetry } = setup();
+    queries.findProvisionedStores.mockResolvedValue([
+      { storeId: 'pos-a', uberStoreId: 'uber-a' },
+    ]);
+    gateway.updateItemAvailability.mockResolvedValue(undefined);
+
+    const result = await useCase.syncUberOptionItemAvailability({
+      optionChoiceStableId: 'option-1',
+      isAvailable: false,
+    });
+
+    expect(commands.setOptionAvailability).toHaveBeenCalledWith(
+      'pos-a',
+      'uber-a',
+      'option-1',
+      false,
+    );
+    expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storeId: 'uber-a',
+        isAvailable: false,
+        suspendUntilEpochSeconds: null,
+      }),
+    );
+    expect(gateway.uploadMenu).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: 'SYNCED',
+      stores: [
+        {
+          storeId: 'pos-a',
+          uberStoreId: 'uber-a',
+          status: 'SYNCED',
+        },
+      ],
+    });
+    expect(telemetry.captureEvent).toHaveBeenCalledWith(
+      'ubereats_option_item_availability_synced',
+      expect.objectContaining({ status: 'SYNCED', stores: result.stores }),
+    );
+  });
+
   it('多门店 option 部分同步失败时返回 FAILED 并继续其他门店', async () => {
     const { useCase, queries, commands, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
