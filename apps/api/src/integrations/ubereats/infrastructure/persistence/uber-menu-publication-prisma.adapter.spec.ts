@@ -24,7 +24,9 @@ describe('UberMenuPublicationPrismaAdapter', () => {
       status: 'SUBMITTED',
       responsePayload: null,
     });
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [PublishedItemCreateManyInput]>()
+      .mockResolvedValue({ count: 1 });
     const tx = {
       uberMenuPublishVersion: { create: createVersion },
       uberPublishedMenuItem: { createMany },
@@ -61,9 +63,7 @@ describe('UberMenuPublicationPrismaAdapter', () => {
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(createVersion).toHaveBeenCalledTimes(1);
     expect(createMany).toHaveBeenCalledTimes(1);
-    const input = createMany.mock.calls[0]?.[0] as unknown as
-      | PublishedItemCreateManyInput
-      | undefined;
+    const input = createMany.mock.calls[0]?.[0];
     expect(input?.data).toHaveLength(1);
     expect(input?.data[0]).toMatchObject({
       publishVersionId: 'version-1',
