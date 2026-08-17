@@ -5,6 +5,7 @@ import type {
   UberMenuSnapshotRepositoryPort,
 } from '../../application/menu/uber-menu-publication.ports';
 import { UberValidationError } from '../../application/shared/uber-application.error';
+import { composeUberDisplayName } from '../../domain/menu/uber-menu-payload.builder';
 
 const preferCanonicalStoreRows = <T extends { storeId: string }>(
   rows: T[],
@@ -193,7 +194,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           stableId: item.stableId,
           categoryStableId: categoryById.get(item.categoryId)!.stableId,
           name:
-            config?.displayName || item.nameEn || item.nameZh || item.stableId,
+            config?.displayName ||
+            composeUberDisplayName(item.nameEn, item.nameZh) ||
+            item.stableId,
           description: config?.displayDescription ?? item.ingredientsEn ?? null,
           priceCents: config?.priceCents ?? item.basePriceCents,
           sourcePriceCents: item.basePriceCents,
@@ -220,7 +223,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       categories: categories
         .map((category) => ({
           stableId: category.stableId,
-          name: category.nameEn || category.nameZh || category.stableId,
+          name:
+            composeUberDisplayName(category.nameEn, category.nameZh) ||
+            category.stableId,
           itemStableIds: items
             .filter((item) => item.categoryStableId === category.stableId)
             .map((item) => item.stableId),
@@ -233,8 +238,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           stableId: template.stableId,
           name:
             config?.displayName ||
-            template.nameEn ||
-            template.nameZh ||
+            composeUberDisplayName(template.nameEn, template.nameZh) ||
             template.stableId,
           minSelect: config?.minSelect ?? template.defaultMinSelect,
           maxSelect:
@@ -251,8 +255,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
             stableId: option.stableId,
             name:
               config?.displayName ||
-              option.nameEn ||
-              option.nameZh ||
+              composeUberDisplayName(option.nameEn, option.nameZh) ||
               option.stableId,
             priceDeltaCents: config?.priceDeltaCents ?? option.priceDeltaCents,
             sourcePriceDeltaCents: option.priceDeltaCents,
