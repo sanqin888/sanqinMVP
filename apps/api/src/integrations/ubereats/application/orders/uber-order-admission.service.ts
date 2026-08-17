@@ -31,9 +31,13 @@ export class UberOrderStoreMappingError extends UberApplicationError {
   }
 }
 
-export type UberOrderAdmissionResult = {
+export type UberOrderImportContext = {
   posStoreId: string;
   menuMappings: UberOrderMenuMapping[];
+  missingItemReference: string | null;
+};
+
+export type UberOrderAdmissionResult = UberOrderImportContext & {
   canPersistOrder: boolean;
   decision: UberOrderAdmissionDecision;
 };
@@ -53,10 +57,10 @@ export class UberOrderAdmissionService {
     return this.policy.invalidDetail(reason);
   }
 
-  async evaluate(
+  async resolveImportContext(
     order: ParsedUberOrder,
     eventId: string,
-  ): Promise<UberOrderAdmissionResult> {
+  ): Promise<UberOrderImportContext> {
     const uberStoreId = order.uberStoreId?.trim();
     if (!uberStoreId)
       throw new UberOrderStoreMappingError(
@@ -112,8 +116,20 @@ export class UberOrderAdmissionService {
     const missingItemReference = itemWithoutExternalId
       ? 'MISSING_EXTERNAL_ITEM_ID'
       : (externalIds.find((id) => !byId.has(id)) ?? null);
+
+    return { posStoreId, menuMappings, missingItemReference };
+  }
+
+  async evaluate(
+    order: ParsedUberOrder,
+    eventId: string,
+  ): Promise<UberOrderAdmissionResult> {
+    const context = await this.resolveImportContext(order, eventId);
+    const byId = new Map(
+      context.menuMappings.map((item) => [item.externalItemId, item]),
+    );
     const hasPriceMismatch =
-      missingItemReference === null &&
+      context.missingItemReference === null &&
       order.items.some((item) => {
         const expected = byId.get(item.externalItemId ?? '')?.expectedPriceCents;
         return (
@@ -122,22 +138,22 @@ export class UberOrderAdmissionService {
         );
       });
     const connectivity =
-      missingItemReference === null && this.repository.getPosStoreConnectivity
-        ? await this.repository.getPosStoreConnectivity(posStoreId)
+      context.missingItemReference === null &&
+      this.repository.getPosStoreConnectivity
+        ? await this.repository.getPosStoreConnectivity(context.posStoreId)
         : { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
     const decision = this.policy.evaluate({
-      missingItemReference,
+      missingItemReference: context.missingItemReference,
       hasPriceMismatch,
       hasMaterialAmountVariance:
-        missingItemReference === null &&
+        context.missingItemReference === null &&
         validateUberOrderAmounts(order).hasMaterialVariance,
       connectivity,
     });
 
     return {
-      posStoreId,
-      menuMappings,
-      canPersistOrder: missingItemReference === null,
+      ...context,
+      canPersistOrder: context.missingItemReference === null,
       decision,
     };
   }
