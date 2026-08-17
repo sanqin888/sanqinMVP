@@ -146,7 +146,7 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
         uberStoreId: input.uberStoreId,
         idempotencyKey: input.idempotencyKey,
         businessVersion: input.businessVersion,
-        status: UberMenuPublishStatus.SUBMITTED,
+        status: UberMenuPublishStatus.CREATED,
         totalItems: input.totalItems,
         changedItems: input.totalItems,
         requestPayload: input.payload as Prisma.InputJsonValue,
