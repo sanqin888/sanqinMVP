@@ -138,21 +138,39 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
   async createAttempt(
     input: Parameters<UberMenuPublicationRepositoryPort['createAttempt']>[0],
   ) {
-    const row = await this.prisma.uberMenuPublishVersion.create({
-      data: {
-        id: randomUUID(),
-        versionStableId: randomUUID(),
-        storeId: input.storeId,
-        uberStoreId: input.uberStoreId,
-        idempotencyKey: input.idempotencyKey,
-        businessVersion: input.businessVersion,
-        status: UberMenuPublishStatus.SUBMITTED,
-        totalItems: input.totalItems,
-        changedItems: input.totalItems,
-        requestPayload: input.payload as Prisma.InputJsonValue,
-        payload: input.payload as Prisma.InputJsonValue,
-        checksum: input.payloadHash,
-      },
+    const publishedAt = new Date();
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.uberMenuPublishVersion.create({
+        data: {
+          id: randomUUID(),
+          versionStableId: randomUUID(),
+          storeId: input.storeId,
+          uberStoreId: input.uberStoreId,
+          idempotencyKey: input.idempotencyKey,
+          businessVersion: input.businessVersion,
+          status: UberMenuPublishStatus.SUBMITTED,
+          totalItems: input.totalItems,
+          changedItems: input.totalItems,
+          requestPayload: input.payload as Prisma.InputJsonValue,
+          payload: input.payload as Prisma.InputJsonValue,
+          checksum: input.payloadHash,
+        },
+      });
+      if (input.publishedItems.length)
+        await tx.uberPublishedMenuItem.createMany({
+          data: input.publishedItems.map((item) => ({
+            publishVersionId: created.id,
+            storeId: input.storeId,
+            uberStoreId: input.uberStoreId,
+            uberItemId: item.uberItemId,
+            menuItemStableId: item.menuItemStableId,
+            publishedPriceCents: item.publishedPriceCents,
+            publishedIsAvailable: item.publishedIsAvailable,
+            publishedName: item.publishedName,
+            publishedAt,
+          })),
+        });
+      return created;
     });
     return this.dto(row);
   }

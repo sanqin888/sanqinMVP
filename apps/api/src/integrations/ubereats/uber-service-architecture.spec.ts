@@ -36,6 +36,8 @@ const INTERNAL_LAYERS = [
 const WHITE_BOX_TEST_FILES = new Set([
   'api/operations.controller.spec.ts',
   'api/ubereats-exception.filter.spec.ts',
+  'application/orders/uber-order-admission-flow.spec.ts',
+  'application/orders/uber-order-admission.service.spec.ts',
   'application/orders/uber-order.use-cases.spec.ts',
   'application/orders/uber-webhook.service.spec.ts',
   'application/shared/uber-domain-error.mapper.spec.ts',

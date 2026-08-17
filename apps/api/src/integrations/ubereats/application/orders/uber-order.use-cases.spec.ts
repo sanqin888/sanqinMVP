@@ -261,11 +261,8 @@ describe('Uber order use-case boundaries', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('keeps concurrent duplicate deliveries as an idempotent repair path', async () => {
-    const request = jest.fn().mockResolvedValue({
-      taskId: 'same-action',
-      created: false,
-    });
+  it('treats duplicate event ids as a no-op without creating ACCEPT', async () => {
+    const request = jest.fn();
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
         orderId: 'local-1',
@@ -287,8 +284,8 @@ describe('Uber order use-case boundaries', () => {
       useCase.execute('orders.notification', 'event-1', notification),
     ]);
 
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(request).toHaveBeenCalledWith('order-1', 'ACCEPT');
+    expect(request).not.toHaveBeenCalled();
+    expect(repository.findMenuMappings).not.toHaveBeenCalled();
     expect(repository.saveImportedOrder).not.toHaveBeenCalled();
   });
 

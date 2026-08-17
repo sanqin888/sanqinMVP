@@ -83,6 +83,14 @@ export type UberMenuPublicationLease = UberMenuPublicationAttempt & {
   leaseToken: string;
 };
 
+export type UberPublishedMenuItemSnapshot = {
+  uberItemId: string;
+  menuItemStableId: string;
+  publishedPriceCents: number;
+  publishedIsAvailable: boolean;
+  publishedName: string;
+};
+
 export interface UberMenuPublicationRepositoryPort {
   findLastSucceededPayload(
     storeId: string,
@@ -113,6 +121,7 @@ export interface UberMenuPublicationRepositoryPort {
     payloadHash: string;
     payload: UberMenuUploadPayload;
     totalItems: number;
+    publishedItems: UberPublishedMenuItemSnapshot[];
   }): Promise<UberMenuPublicationAttempt>;
   markSubmitted(
     attemptId: string,
