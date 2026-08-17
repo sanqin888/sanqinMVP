@@ -151,7 +151,8 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     ) {
       throw new UberValidationError({
         code: 'UBER_TAX_RATE_INVALID',
-        message: 'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+        message:
+          'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
         operation: 'uber.menu.publish',
       });
     }
