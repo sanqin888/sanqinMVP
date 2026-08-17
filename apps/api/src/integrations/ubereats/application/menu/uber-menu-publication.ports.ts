@@ -153,26 +153,18 @@ export interface UberMenuPublicationRepositoryPort {
   ): Promise<boolean>;
 }
 
-export type UberMenuGatewayUploadResult = {
-  uberRequestId: string | null;
-  uberResourceId: string | null;
-};
-
 export interface UberMenuGatewayPort {
   uploadMenu(input: {
     storeId: string;
     payload: UberMenuUploadPayload;
     idempotencyKey: string;
-  }): Promise<UberMenuGatewayUploadResult>;
-  getMenuPublicationStatus(input: {
+  }): Promise<void>;
+  updateItemAvailability(input: {
     storeId: string;
-    uberResourceId: string;
-  }): Promise<{
-    status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
-    uberRequestId: string | null;
-    errorCode: string | null;
-    errorMessage: string | null;
-  }>;
+    itemId: string;
+    isAvailable: boolean;
+    idempotencyKey: string;
+  }): Promise<void>;
 }
 
 export type UberMenuImage = { itemStableId: string; url: string };
