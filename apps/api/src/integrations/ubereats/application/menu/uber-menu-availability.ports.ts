@@ -31,6 +31,7 @@ export interface UberMenuAvailabilityCommandPort {
   ): Promise<void>;
   setOptionAvailability(
     storeId: string,
+    uberStoreId: string,
     optionChoiceStableId: string,
     isAvailable: boolean,
   ): Promise<void>;
