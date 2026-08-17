@@ -47,7 +47,7 @@ export class UberMerchantResourceGateway extends PrefixGateway {
 
 @Injectable()
 export class UberStoreGateway extends PrefixGateway {
-  protected readonly prefixes = ['/v1/eats/stores'] as const;
+  protected readonly prefixes = ['/v1/eats/store'] as const;
 }
 
 @Injectable()
