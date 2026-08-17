@@ -183,6 +183,7 @@ export class PublishUberMenuUseCase {
         versionStableId: succeeded.businessVersion,
         summary,
       };
+    const payloadItemIds = new Set(payload.items.map((item) => item.id));
     const attempt = await this.publications.createAttempt({
       storeId: posStoreId,
       uberStoreId: snapshot.uberStoreId,
@@ -191,6 +192,15 @@ export class PublishUberMenuUseCase {
       payloadHash,
       payload,
       totalItems: payload.items.length,
+      publishedItems: graph.items
+        .filter((item) => payloadItemIds.has(item.id))
+        .map((item) => ({
+          uberItemId: item.id,
+          menuItemStableId: item.sourceStableId,
+          publishedPriceCents: item.priceCents,
+          publishedIsAvailable: item.isAvailable,
+          publishedName: item.title,
+        })),
     });
     try {
       await this.gateway.uploadMenu({
