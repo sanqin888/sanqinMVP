@@ -21,6 +21,21 @@ const preferCanonicalStoreRows = <T extends { storeId: string }>(
   return Array.from(byKey.values());
 };
 
+const preferCanonicalStoreRows = <T extends { storeId: string }>(
+  rows: T[],
+  canonicalStoreId: string,
+  keyOf: (row: T) => string,
+): T[] => {
+  const byKey = new Map<string, T>();
+  for (const row of rows) {
+    if (row.storeId !== canonicalStoreId) byKey.set(keyOf(row), row);
+  }
+  for (const row of rows) {
+    if (row.storeId === canonicalStoreId) byKey.set(keyOf(row), row);
+  }
+  return Array.from(byKey.values());
+};
+
 /** Prisma rows are translated here; the application boundary only sees stable menu DTOs. */
 @Injectable()
 export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepositoryPort {
