@@ -1,5 +1,16 @@
 import { PublishUberMenuUseCase } from './publish-uber-menu.use-case';
 
+type CreateAttemptInput = {
+  totalItems: number;
+  publishedItems: Array<{
+    uberItemId: string;
+    menuItemStableId: string;
+    publishedPriceCents: number;
+    publishedIsAvailable: boolean;
+    publishedName: string;
+  }>;
+};
+
 describe('PublishUberMenuUseCase published item snapshots', () => {
   it('把实际发送的 Uber nodeId 与 SanQ stableId 一起交给 publication repository', async () => {
     const createAttempt = jest.fn().mockResolvedValue({
@@ -72,19 +83,18 @@ describe('PublishUberMenuUseCase published item snapshots', () => {
 
     await useCase.execute({ storeId: 'pos-1', taxRateConfirmed: true });
 
-    expect(createAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        totalItems: 1,
-        publishedItems: [
-          {
-            uberItemId: expect.stringMatching(/^sanq:/),
-            menuItemStableId: 'item-1',
-            publishedPriceCents: 1200,
-            publishedIsAvailable: true,
-            publishedName: 'Noodles',
-          },
-        ],
-      }),
-    );
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    const input = createAttempt.mock.calls[0]?.[0] as unknown as
+      | CreateAttemptInput
+      | undefined;
+    expect(input?.totalItems).toBe(1);
+    expect(input?.publishedItems).toHaveLength(1);
+    expect(input?.publishedItems[0]).toMatchObject({
+      menuItemStableId: 'item-1',
+      publishedPriceCents: 1200,
+      publishedIsAvailable: true,
+      publishedName: 'Noodles',
+    });
+    expect(input?.publishedItems[0]?.uberItemId).toMatch(/^sanq:/);
   });
 });
