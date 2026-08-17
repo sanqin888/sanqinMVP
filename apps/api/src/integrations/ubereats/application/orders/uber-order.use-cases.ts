@@ -61,10 +61,7 @@ export class ImportUberOrderUseCase {
     const existing = externalOrderId
       ? await this.repository.findByExternalOrderId(externalOrderId)
       : null;
-    if (existing?.cursor?.eventId === eventId) {
-      await this.requestDecision(externalOrderId, normalizedEventType, null);
-      return;
-    }
+    if (existing?.cursor?.eventId === eventId) return;
     if (existing?.cursor && !this.isAfter(cursor, existing.cursor)) return;
 
     const detail = await this.detailGateway.fetchOrderDetail({
@@ -195,14 +192,6 @@ export class ImportUberOrderUseCase {
     return this.execute(eventType, eventId, payload, ordering);
   }
 
-  private async requestDecision(
-    externalOrderId: string,
-    eventType: string,
-    cancellation: unknown,
-  ): Promise<void> {
-    if (cancellation || this.isCancellation(eventType)) return;
-    await this.actions.request(externalOrderId, 'ACCEPT');
-  }
   private cancellation(eventType: string, order: ParsedUberOrder) {
     if (!this.isCancellation(eventType)) return null;
     const value = order.cancellation ?? {
