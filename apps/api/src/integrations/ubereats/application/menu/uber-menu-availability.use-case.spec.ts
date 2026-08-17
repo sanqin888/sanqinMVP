@@ -5,6 +5,8 @@ describe('UberMenuAvailabilityUseCase', () => {
   const setup = () => {
     const queries = {
       isMenuItemPublishable: jest.fn(),
+      findMenuItemSuspendUntil: jest.fn().mockResolvedValue(null),
+      findOptionSuspendUntil: jest.fn().mockResolvedValue(null),
       findProvisionedStores: jest.fn(),
     };
     const commands = {
@@ -54,6 +56,7 @@ describe('UberMenuAvailabilityUseCase', () => {
         storeId: 'uber-a',
         itemId: buildUberNodeId('item', 'pos-a', 'item-1'),
         isAvailable: false,
+        suspendUntilEpochSeconds: null,
       }),
     );
     expect(gateway.uploadMenu).not.toHaveBeenCalled();
@@ -70,6 +73,28 @@ describe('UberMenuAvailabilityUseCase', () => {
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_menu_item_availability_sync_requested',
       expect.objectContaining({ status: 'SYNCED', stores: result.stores }),
+    );
+  });
+
+  it('临时下架把本地结束时间转换为 Uber Unix 秒', async () => {
+    const { useCase, queries, gateway } = setup();
+    const suspendUntil = new Date('2090-01-02T03:04:05.000Z');
+    queries.isMenuItemPublishable.mockResolvedValue(true);
+    queries.findMenuItemSuspendUntil.mockResolvedValue(suspendUntil);
+    queries.findProvisionedStores.mockResolvedValue([
+      { storeId: 'pos-a', uberStoreId: 'uber-a' },
+    ]);
+    gateway.updateItemAvailability.mockResolvedValue(undefined);
+
+    await useCase.syncUberMenuItemAvailability({
+      menuItemStableId: 'item-1',
+      isAvailable: false,
+    });
+
+    expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        suspendUntilEpochSeconds: Math.floor(suspendUntil.getTime() / 1_000),
+      }),
     );
   });
 
@@ -168,6 +193,7 @@ describe('UberMenuAvailabilityUseCase', () => {
         storeId: 'a',
         itemId: buildUberNodeId('item', 'pos-a', 'option-1'),
         isAvailable: true,
+        suspendUntilEpochSeconds: null,
       }),
     );
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
