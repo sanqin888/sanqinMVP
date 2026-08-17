@@ -58,6 +58,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       }),
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null, isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         select: { id: true, stableId: true, nameEn: true, nameZh: true },
       }),
       this.prisma.menuItem.findMany({
@@ -66,6 +67,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           visibility: 'PUBLIC',
           publishToUberEats: true,
         },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         select: {
           stableId: true,
           categoryId: true,
@@ -77,12 +79,14 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           ingredientsEn: true,
           optionGroups: {
             where: { isEnabled: true },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
             select: { templateGroup: { select: { stableId: true } } },
           },
         },
       }),
       this.prisma.menuOptionGroupTemplate.findMany({
         where: { deletedAt: null, isAvailable: true },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         select: {
           stableId: true,
           nameEn: true,
@@ -91,6 +95,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           defaultMaxSelect: true,
           options: {
             where: { deletedAt: null },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
             select: {
               stableId: true,
               nameEn: true,
