@@ -38,13 +38,13 @@ describe('UberOrderAdmissionService', () => {
       { findMapping } as never,
     );
 
-    await expect(service.evaluate(parsedOrder(), 'event-1')).resolves.toMatchObject(
-      {
-        posStoreId: 'pos-store-1',
-        canPersistOrder: true,
-        decision: { kind: 'ACCEPT' },
-      },
-    );
+    await expect(
+      service.evaluate(parsedOrder(), 'event-1'),
+    ).resolves.toMatchObject({
+      posStoreId: 'pos-store-1',
+      canPersistOrder: true,
+      decision: { kind: 'ACCEPT' },
+    });
     expect(findMapping).toHaveBeenCalledWith('uber-store-1');
     expect(findMenuMappings).toHaveBeenCalledWith('uber-store-1', ['item-1']);
     expect(getPosStoreConnectivity).toHaveBeenCalledWith('pos-store-1');
@@ -60,24 +60,26 @@ describe('UberOrderAdmissionService', () => {
       { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
     );
 
-    await expect(service.evaluate(parsedOrder(), 'event-1')).resolves.toMatchObject(
-      {
-        canPersistOrder: false,
-        decision: {
-          kind: 'DENY',
-          denial: {
-            reasonCode: 'ITEM_UNAVAILABLE',
-            reasonDetail: '缺失菜单映射: item-1',
-          },
+    await expect(
+      service.evaluate(parsedOrder(), 'event-1'),
+    ).resolves.toMatchObject({
+      canPersistOrder: false,
+      decision: {
+        kind: 'DENY',
+        denial: {
+          reasonCode: 'ITEM_UNAVAILABLE',
+          reasonDetail: '缺失菜单映射: item-1',
         },
       },
-    );
+    });
     expect(getPosStoreConnectivity).not.toHaveBeenCalled();
   });
 
   it('rejects missing Uber item identity before persistence', async () => {
     const order = parsedOrder();
-    order.items[0].externalItemId = null;
+    const firstItem = order.items[0];
+    if (!firstItem) throw new Error('test fixture requires one order item');
+    firstItem.externalItemId = null;
     const service = new UberOrderAdmissionService(
       {
         findMenuMappings: jest.fn().mockResolvedValue([]),
@@ -105,15 +107,20 @@ describe('UberOrderAdmissionService', () => {
         posExternalStoreId: 'pos-store-1',
       },
     ],
-  ])('keeps store configuration failures retryable: %s', async (code, mapping) => {
-    const service = new UberOrderAdmissionService(
-      { findMenuMappings: jest.fn() } as never,
-      { findMapping: jest.fn().mockResolvedValue(mapping) } as never,
-    );
+  ])(
+    'keeps store configuration failures retryable: %s',
+    async (code, mapping) => {
+      const service = new UberOrderAdmissionService(
+        { findMenuMappings: jest.fn() } as never,
+        { findMapping: jest.fn().mockResolvedValue(mapping) } as never,
+      );
 
-    await expect(service.evaluate(parsedOrder(), 'event-1')).rejects.toMatchObject({
-      code,
-      retryable: true,
-    });
-  });
+      await expect(
+        service.evaluate(parsedOrder(), 'event-1'),
+      ).rejects.toMatchObject({
+        code,
+        retryable: true,
+      });
+    },
+  );
 });
