@@ -17,7 +17,7 @@ export const publicSyncError = (
 const presentAvailabilityStatus = (
   status: UberAvailabilitySyncStatus,
 ): UberEatsAvailabilitySyncStatus =>
-  status === 'PENDING' || status === 'SYNCED' ? 'SYNC_REQUESTED' : status;
+  status === 'PENDING' ? 'SYNC_REQUESTED' : status;
 
 export const presentAvailabilitySync = (
   result: UberAvailabilitySyncResult,
