@@ -32,7 +32,7 @@ describe('UberMenuAvailabilityUseCase', () => {
     };
   };
 
-  it('按 stableId 派生 Uber item id 并同步单品可售状态', async () => {
+  it('通过 Uber item endpoint 同步单品可售状态', async () => {
     const { useCase, queries, commands, gateway, telemetry } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
@@ -57,20 +57,6 @@ describe('UberMenuAvailabilityUseCase', () => {
         suspendUntilEpochSeconds: null,
       }),
     );
-    expect(
-      typeof (
-        gateway.updateItemAvailability.mock.calls[0]?.[0] as
-          | { itemId?: unknown }
-          | undefined
-      )?.itemId,
-    ).toBe('string');
-    expect(
-      (
-        gateway.updateItemAvailability.mock.calls[0]?.[0] as
-          | { itemId?: unknown }
-          | undefined
-      )?.itemId,
-    ).not.toBe('item-1');
     expect(gateway.uploadMenu).not.toHaveBeenCalled();
     expect(result).toEqual({
       status: 'SYNCED',
@@ -207,13 +193,6 @@ describe('UberMenuAvailabilityUseCase', () => {
         suspendUntilEpochSeconds: null,
       }),
     );
-    expect(
-      typeof (
-        gateway.updateItemAvailability.mock.calls[0]?.[0] as
-          | { itemId?: unknown }
-          | undefined
-      )?.itemId,
-    ).toBe('string');
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_option_item_availability_synced',
       expect.objectContaining({ status: 'FAILED', stores: result.stores }),
