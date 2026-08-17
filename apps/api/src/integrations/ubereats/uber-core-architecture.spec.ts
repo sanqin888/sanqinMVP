@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -95,5 +95,21 @@ describe('Uber Eats framework-independent core architecture', () => {
     for (const { source } of application) {
       expect(source).not.toMatch(/@(Injectable|Inject)\b/);
     }
+  });
+
+  it('keeps the dedicated worker out of API auth and feature-module graphs', () => {
+    const workerSource = readFileSync(
+      resolve(UBER_EATS_ROOT, '..', '..', 'ubereats-worker.module.ts'),
+      'utf8',
+    );
+
+    expect(workerSource).toContain('UBER_EATS_COMPOSITION_PROVIDERS');
+    expect(workerSource).toContain('OrderIngestionService');
+    expect(workerSource).toContain('OrderEventsBus');
+    expect(workerSource).toMatch(/imports:\s*\[PrismaModule\]/);
+    expect(workerSource).not.toMatch(/\bUberEatsModule\b/);
+    expect(workerSource).not.toMatch(/orders\/orders\.module/);
+    expect(workerSource).not.toMatch(/messaging\/messaging\.module/);
+    expect(workerSource).not.toMatch(/auth\/auth\.module/);
   });
 });
