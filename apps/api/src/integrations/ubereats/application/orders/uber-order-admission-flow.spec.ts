@@ -1,0 +1,117 @@
+import type {
+  UberOrderActionGatewayPort,
+  UberOrderActionRepositoryPort,
+  UberOrderImportRepositoryPort,
+} from './uber-order.ports';
+import { UberOrderActionService } from './uber-order-action.service';
+import { ImportUberOrderUseCase } from './uber-order.use-cases';
+import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
+import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
+
+type ImportedOrderInput = Parameters<
+  UberOrderImportRepositoryPort['saveImportedOrder']
+>[0];
+
+const notification = {
+  resourceId: 'order-1',
+  resourceHref: 'https://example.test/orders/order-1',
+} as UberOrderNotificationEventV1;
+
+const parsedDetail = {
+  kind: 'parsed' as const,
+  order: new UberOrderPayloadParser().parse({
+    id: 'order-1',
+    store_id: 'uber-store-1',
+    subtotal: 100,
+    total: 100,
+    items: [{ id: 'item-1', quantity: 1, price: 100, total_price: 100 }],
+  })!,
+};
+
+const storeMapping = {
+  uberStoreId: 'uber-store-1',
+  isProvisioned: true,
+  posExternalStoreId: 'pos-store-1',
+};
+
+const createActions = (enqueue: jest.Mock) =>
+  new UberOrderActionService(
+    { enqueue } as unknown as UberOrderActionRepositoryPort,
+    {} as UberOrderActionGatewayPort,
+  );
+
+describe('Uber order admission flow', () => {
+  it('queues one DENY only after admission rejects a missing published mapping', async () => {
+    const enqueue = jest.fn().mockResolvedValue({ taskId: 'deny-1', created: true });
+    const saveImportedOrder = jest.fn();
+    const getPosStoreConnectivity = jest.fn();
+    const useCase = new ImportUberOrderUseCase(
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        findMenuMappings: jest.fn().mockResolvedValue([]),
+        getPosStoreConnectivity,
+        saveImportedOrder,
+      },
+      { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
+      createActions(enqueue),
+      { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+    );
+
+    await useCase.execute('orders.notification', 'event-1', notification);
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalOrderId: 'order-1',
+        action: 'DENY',
+        reasonCode: 'ITEM_UNAVAILABLE',
+        reasonDetail: '缺失菜单映射: item-1',
+      }),
+    );
+    expect(getPosStoreConnectivity).not.toHaveBeenCalled();
+    expect(saveImportedOrder).not.toHaveBeenCalled();
+  });
+
+  it('persists a mapped POS_OFFLINE denial with the order instead of dispatching it inline', async () => {
+    const enqueue = jest.fn();
+    const saved: { input?: ImportedOrderInput } = {};
+    const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
+      saved.input = input;
+      return Promise.resolve({
+        orderId: 'local-1',
+        created: true,
+        action: { taskId: 'deny-1', created: true },
+      });
+    });
+    const useCase = new ImportUberOrderUseCase(
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        findMenuMappings: jest.fn().mockResolvedValue([
+          {
+            externalItemId: 'item-1',
+            menuItemStableId: 'menu-1',
+            expectedPriceCents: 100,
+          },
+        ]),
+        getPosStoreConnectivity: jest.fn().mockResolvedValue({
+          status: 'OFFLINE',
+          lastHeartbeatAt: null,
+        }),
+        saveImportedOrder,
+      },
+      { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
+      createActions(enqueue),
+      { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+    );
+
+    await useCase.execute('orders.notification', 'event-1', notification);
+
+    expect(saveImportedOrder).toHaveBeenCalledTimes(1);
+    expect(saved.input?.actionIntent).toMatchObject({
+      externalOrderId: 'order-1',
+      action: 'DENY',
+      reasonCode: 'POS_OFFLINE',
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+});
