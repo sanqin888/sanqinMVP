@@ -199,22 +199,20 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     expect(x.prisma.menuCategory.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: stableOrder }),
     );
-    expect(x.prisma.menuItem.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderBy: stableOrder,
-        select: expect.objectContaining({
-          optionGroups: expect.objectContaining({ orderBy: stableOrder }),
-        }),
-      }),
-    );
-    expect(x.prisma.menuOptionGroupTemplate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderBy: stableOrder,
-        select: expect.objectContaining({
-          options: expect.objectContaining({ orderBy: stableOrder }),
-        }),
-      }),
-    );
+    expect(x.prisma.menuItem.findMany.mock.calls[0]?.[0]).toMatchObject({
+      orderBy: stableOrder,
+      select: {
+        optionGroups: { orderBy: stableOrder },
+      },
+    });
+    expect(
+      x.prisma.menuOptionGroupTemplate.findMany.mock.calls[0]?.[0],
+    ).toMatchObject({
+      orderBy: stableOrder,
+      select: {
+        options: { orderBy: stableOrder },
+      },
+    });
   });
 
   it('rejects percentage-formatted BusinessConfig.salesTaxRate', async () => {
