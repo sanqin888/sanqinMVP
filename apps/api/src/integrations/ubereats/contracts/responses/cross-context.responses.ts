@@ -6,6 +6,7 @@ export type UberEatsSyncError = {
 };
 
 export type UberEatsAvailabilitySyncStatus =
+  | 'SYNCED'
   | 'SYNC_REQUESTED'
   | 'SKIPPED_NOT_PUBLISHED'
   | 'FAILED';
