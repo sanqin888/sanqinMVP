@@ -11,17 +11,29 @@ type CreateAttemptInput = {
   }>;
 };
 
+type CreateAttemptResult = {
+  attemptId: string;
+  storeId: string;
+  idempotencyKey: string;
+  businessVersion: string;
+  status: 'SUBMITTED';
+  uberRequestId: null;
+  uberResourceId: null;
+};
+
 describe('PublishUberMenuUseCase published item snapshots', () => {
   it('把实际发送的 Uber nodeId 与 SanQ stableId 一起交给 publication repository', async () => {
-    const createAttempt = jest.fn().mockResolvedValue({
-      attemptId: 'attempt-1',
-      storeId: 'pos-1',
-      idempotencyKey: 'key-1',
-      businessVersion: 'version-1',
-      status: 'SUBMITTED',
-      uberRequestId: null,
-      uberResourceId: null,
-    });
+    const createAttempt = jest
+      .fn<Promise<CreateAttemptResult>, [CreateAttemptInput]>()
+      .mockResolvedValue({
+        attemptId: 'attempt-1',
+        storeId: 'pos-1',
+        idempotencyKey: 'key-1',
+        businessVersion: 'version-1',
+        status: 'SUBMITTED',
+        uberRequestId: null,
+        uberResourceId: null,
+      });
     const useCase = new PublishUberMenuUseCase(
       {
         resolveProvisionedUberStoreId: jest.fn().mockResolvedValue({
@@ -84,9 +96,7 @@ describe('PublishUberMenuUseCase published item snapshots', () => {
     await useCase.execute({ storeId: 'pos-1', taxRateConfirmed: true });
 
     expect(createAttempt).toHaveBeenCalledTimes(1);
-    const input = createAttempt.mock.calls[0]?.[0] as unknown as
-      | CreateAttemptInput
-      | undefined;
+    const input = createAttempt.mock.calls[0]?.[0];
     expect(input?.totalItems).toBe(1);
     expect(input?.publishedItems).toHaveLength(1);
     expect(input?.publishedItems[0]).toMatchObject({
