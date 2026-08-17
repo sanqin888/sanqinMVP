@@ -2,70 +2,61 @@ import { ConfirmUberMenuPublicationUseCase } from './confirm-uber-menu-publicati
 
 const lease = (token = 'lease-current') => ({
   attemptId: 'attempt-1',
-  storeId: 'uber-store',
+  storeId: 'pos-store',
   idempotencyKey: 'key',
   businessVersion: 'version-1',
   status: 'SUBMITTED' as const,
   uberRequestId: null,
-  uberResourceId: 'resource-1',
+  uberResourceId: null,
   leaseToken: token,
 });
 
 describe('ConfirmUberMenuPublicationUseCase', () => {
-  it('PENDING 会携带 lease token 释放租约并延后重试', async () => {
+  it('将旧版 204 后遗留的 SUBMITTED 记录关闭为 SUCCEEDED', async () => {
     const repository = {
       claimDueConfirmations: jest.fn().mockResolvedValue([lease()]),
-      rescheduleConfirmation: jest.fn().mockResolvedValue(true),
-      markConfirmed: jest.fn(),
+      markConfirmed: jest.fn().mockResolvedValue(true),
     };
-    const gateway = {
-      getMenuPublicationStatus: jest
-        .fn()
-        .mockResolvedValue({ status: 'PENDING' }),
-    };
-    const useCase = new ConfirmUberMenuPublicationUseCase(
-      repository as never,
-      gateway as never,
-    );
-    await useCase.execute();
-    expect(repository.rescheduleConfirmation).toHaveBeenCalledWith(
+    const useCase = new ConfirmUberMenuPublicationUseCase(repository as never);
+
+    await expect(useCase.execute()).resolves.toBe(1);
+    expect(repository.markConfirmed).toHaveBeenCalledWith(
       'attempt-1',
       'lease-current',
-      expect.any(Date),
-    );
-    expect(repository.markConfirmed).not.toHaveBeenCalled();
-  });
-
-  it.each(['SUCCEEDED', 'FAILED'] as const)(
-    '%s 终态携带 lease token 幂等写回',
-    async (status) => {
-      const repository = {
-        claimDueConfirmations: jest.fn().mockResolvedValue([lease()]),
-        rescheduleConfirmation: jest.fn(),
-        markConfirmed: jest.fn().mockResolvedValue(false), // expired lease/terminal duplicate
-      };
-      const result = {
-        status,
-        uberRequestId: 'request-1',
-        uberResourceId: 'resource-1',
+      {
+        status: 'SUCCEEDED',
+        uberRequestId: null,
+        uberResourceId: null,
         errorCode: null,
         errorMessage: null,
-      };
-      const gateway = {
-        getMenuPublicationStatus: jest.fn().mockResolvedValue(result),
-      };
-      const useCase = new ConfirmUberMenuPublicationUseCase(
-        repository as never,
-        gateway as never,
-      );
-      await expect(useCase.execute()).resolves.toBe(1);
-      expect(repository.markConfirmed).toHaveBeenCalledWith(
-        'attempt-1',
-        'lease-current',
-        result,
-      );
-    },
-  );
+      },
+    );
+  });
+
+  it('保留旧记录已有的 Uber request/resource id', async () => {
+    const repository = {
+      claimDueConfirmations: jest.fn().mockResolvedValue([
+        {
+          ...lease(),
+          uberRequestId: 'request-1',
+          uberResourceId: 'resource-1',
+        },
+      ]),
+      markConfirmed: jest.fn().mockResolvedValue(true),
+    };
+    const useCase = new ConfirmUberMenuPublicationUseCase(repository as never);
+
+    await useCase.execute();
+    expect(repository.markConfirmed).toHaveBeenCalledWith(
+      'attempt-1',
+      'lease-current',
+      expect.objectContaining({
+        status: 'SUCCEEDED',
+        uberRequestId: 'request-1',
+        uberResourceId: 'resource-1',
+      }),
+    );
+  });
 
   it('并发 worker 只能处理 claim 返回给自己的记录', async () => {
     const repository = {
@@ -74,25 +65,13 @@ describe('ConfirmUberMenuPublicationUseCase', () => {
         .mockResolvedValueOnce([lease('winner')])
         .mockResolvedValueOnce([]),
       markConfirmed: jest.fn().mockResolvedValue(true),
-      rescheduleConfirmation: jest.fn(),
     };
-    const gateway = {
-      getMenuPublicationStatus: jest.fn().mockResolvedValue({
-        status: 'SUCCEEDED',
-        uberRequestId: null,
-        errorCode: null,
-        errorMessage: null,
-      }),
-    };
-    const useCase = new ConfirmUberMenuPublicationUseCase(
-      repository as never,
-      gateway as never,
-    );
+    const useCase = new ConfirmUberMenuPublicationUseCase(repository as never);
+
     await Promise.all([
       useCase.execute(20, 'worker-a'),
       useCase.execute(20, 'worker-b'),
     ]);
-    expect(gateway.getMenuPublicationStatus).toHaveBeenCalledTimes(1);
     expect(repository.markConfirmed).toHaveBeenCalledTimes(1);
   });
 });
