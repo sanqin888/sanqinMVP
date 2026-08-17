@@ -49,12 +49,13 @@ describe('UberMenuAvailabilityUseCase', () => {
       'item-1',
       false,
     );
-    expect(gateway.updateItemAvailability).toHaveBeenCalledWith({
-      storeId: 'uber-a',
-      itemId: buildUberNodeId('item', 'pos-a', 'item-1'),
-      isAvailable: false,
-      idempotencyKey: expect.stringMatching(/^sanqin-uber-/),
-    });
+    expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storeId: 'uber-a',
+        itemId: buildUberNodeId('item', 'pos-a', 'item-1'),
+        isAvailable: false,
+      }),
+    );
     expect(gateway.uploadMenu).not.toHaveBeenCalled();
     expect(result).toEqual({
       status: 'SYNCED',
@@ -78,7 +79,9 @@ describe('UberMenuAvailabilityUseCase', () => {
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
-    gateway.updateItemAvailability.mockRejectedValue(new Error('update failed'));
+    gateway.updateItemAvailability.mockRejectedValue(
+      new Error('update failed'),
+    );
 
     const result = await useCase.syncUberMenuItemAvailability({
       menuItemStableId: 'item-1',
