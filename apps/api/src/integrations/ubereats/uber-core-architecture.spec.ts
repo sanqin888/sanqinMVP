@@ -104,7 +104,10 @@ describe('Uber Eats framework-independent core architecture', () => {
       resolve(apiRoot, 'ubereats-worker.main.ts'),
       'utf8',
     );
-    const workerEntry = readFileSync(resolve(UBER_EATS_ROOT, 'worker.ts'), 'utf8');
+    const workerEntry = readFileSync(
+      resolve(UBER_EATS_ROOT, 'worker.ts'),
+      'utf8',
+    );
     const compositionRoot = readFileSync(
       resolve(UBER_EATS_ROOT, 'ubereats.module.ts'),
       'utf8',
