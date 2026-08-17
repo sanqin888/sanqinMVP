@@ -15,7 +15,7 @@ import type {
 } from '@shared/menu';
 
 type AvailabilityMode = 'ON' | 'TEMP_TODAY_OFF' | 'PERMANENT_OFF';
-type UberSyncStatus = 'SYNCED' | 'PENDING' | 'SKIPPED_NOT_PUBLISHED' | 'FAILED';
+type UberSyncStatus = 'SYNC_REQUESTED' | 'SKIPPED_NOT_PUBLISHED' | 'FAILED';
 
 const COPY = {
   zh: {
@@ -410,13 +410,13 @@ export default function PosMenuManagementPage() {
                                       </span>
                                       {uberSyncByItem[item.stableId] && (
                                         <div className="mt-1 text-xs text-sky-300" role="status">
-                                          {uberSyncByItem[item.stableId] === 'PENDING'
-                                            ? safeLocale === 'zh' ? '本地已下架、Uber 同步中' : 'Saved locally; syncing with Uber'
+                                          {uberSyncByItem[item.stableId] === 'SYNC_REQUESTED'
+                                            ? safeLocale === 'zh' ? 'Uber 同步请求已提交' : 'Uber sync requested'
                                             : uberSyncByItem[item.stableId] === 'FAILED'
                                               ? safeLocale === 'zh' ? 'Uber 同步失败，可重试' : 'Uber sync failed; retry available'
-                                              : uberSyncByItem[item.stableId] === 'SYNCED'
-                                                ? safeLocale === 'zh' ? 'Uber 同步成功' : 'Uber sync succeeded'
-                                                : safeLocale === 'zh' ? '未发布到 Uber' : 'Not published to Uber'}
+                                              : uberSyncByItem[item.stableId] === 'SKIPPED_NOT_PUBLISHED'
+                                                ? safeLocale === 'zh' ? '未发布到 Uber' : 'Not published to Uber'
+                                                : safeLocale === 'zh' ? 'Uber 同步状态未知' : 'Unknown Uber sync status'}
                                         </div>
                                       )}
                                     </div>
