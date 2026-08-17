@@ -61,6 +61,7 @@ export class UberMenuAvailabilityPrismaAdapter
 
   async setOptionAvailability(
     storeId: string,
+    uberStoreId: string,
     optionChoiceStableId: string,
     isAvailable: boolean,
   ) {
@@ -70,11 +71,11 @@ export class UberMenuAvailabilityPrismaAdapter
       },
       create: {
         storeId,
-        uberStoreId: storeId,
+        uberStoreId,
         optionChoiceStableId,
         isAvailable,
       },
-      update: { uberStoreId: storeId, isAvailable },
+      update: { uberStoreId, isAvailable },
     });
   }
 
@@ -90,18 +91,16 @@ export class UberMenuAvailabilityPrismaAdapter
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,
         title: `Uber 商品可售状态同步失败：${input.menuItemStableId}`,
-        description: '本地状态已保存；请重试整份菜单发布。',
+        description: '本地状态已保存；请重试 Uber 商品可售状态同步。',
         menuItemStableId: input.menuItemStableId,
         lastError: input.error,
         context: {
-          publish: {
+          availability: {
             storeId: input.storeId,
-            dryRun: false,
-            taxRateConfirmed: true,
-            timezoneConfirmed: true,
+            uberStoreId: input.uberStoreId,
+            menuItemStableId: input.menuItemStableId,
+            isAvailable: input.isAvailable,
           },
-          uberStoreId: input.uberStoreId,
-          isAvailable: input.isAvailable,
         },
       },
     });
