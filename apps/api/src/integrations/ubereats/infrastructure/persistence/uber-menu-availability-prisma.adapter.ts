@@ -35,10 +35,7 @@ export class UberMenuAvailabilityPrismaAdapter
         isProvisioned: true,
         ...(storeId
           ? {
-              OR: [
-                { posExternalStoreId: storeId },
-                { uberStoreId: storeId },
-              ],
+              OR: [{ posExternalStoreId: storeId }, { uberStoreId: storeId }],
             }
           : {}),
       },

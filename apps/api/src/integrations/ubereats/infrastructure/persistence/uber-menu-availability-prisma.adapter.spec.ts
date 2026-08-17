@@ -44,9 +44,11 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
   });
 
   it('门店筛选同时接受 POS storeId 与 Uber storeId，并返回 canonical POS storeId', async () => {
-    const findMany = jest.fn().mockResolvedValue([
-      { posExternalStoreId: 'pos-a', uberStoreId: 'uber-a' },
-    ]);
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([
+        { posExternalStoreId: 'pos-a', uberStoreId: 'uber-a' },
+      ]);
     const adapter = new UberMenuAvailabilityPrismaAdapter({
       uberStoreMapping: { findMany },
     } as never);
@@ -57,10 +59,7 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
     expect(findMany).toHaveBeenCalledWith({
       where: {
         isProvisioned: true,
-        OR: [
-          { posExternalStoreId: 'uber-a' },
-          { uberStoreId: 'uber-a' },
-        ],
+        OR: [{ posExternalStoreId: 'uber-a' }, { uberStoreId: 'uber-a' }],
       },
       select: { posExternalStoreId: true, uberStoreId: true },
     });
