@@ -29,6 +29,8 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
   async updateItemAvailability(
     input: Parameters<UberMenuGatewayPort['updateItemAvailability']>[0],
   ) {
+    const suspendUntil =
+      input.suspendUntilEpochSeconds ?? INDEFINITE_SUSPEND_UNTIL;
     await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus/items/${encodeURIComponent(input.itemId)}`,
       scope: 'eats.store',
@@ -40,7 +42,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
           suspension: input.isAvailable
             ? null
             : {
-                suspend_until: INDEFINITE_SUSPEND_UNTIL,
+                suspend_until: suspendUntil,
                 reason: 'Out of stock',
               },
           overrides: [],
