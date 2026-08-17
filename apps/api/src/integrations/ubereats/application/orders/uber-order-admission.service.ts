@@ -131,7 +131,9 @@ export class UberOrderAdmissionService {
     const hasPriceMismatch =
       context.missingItemReference === null &&
       order.items.some((item) => {
-        const expected = byId.get(item.externalItemId ?? '')?.expectedPriceCents;
+        const expected = byId.get(
+          item.externalItemId ?? '',
+        )?.expectedPriceCents;
         return (
           expected !== undefined &&
           Math.abs(expected - item.baseUnitPriceCents) > 1

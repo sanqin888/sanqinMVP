@@ -6,7 +6,11 @@ type InvalidOrderReason = Extract<
 >['reason'];
 
 export type UberOrderAdmissionDenial = {
-  reasonCode: 'INVALID_ORDER' | 'ITEM_UNAVAILABLE' | 'PRICE_MISMATCH' | 'POS_OFFLINE';
+  reasonCode:
+    | 'INVALID_ORDER'
+    | 'ITEM_UNAVAILABLE'
+    | 'PRICE_MISMATCH'
+    | 'POS_OFFLINE';
   reasonDetail: string;
 };
 

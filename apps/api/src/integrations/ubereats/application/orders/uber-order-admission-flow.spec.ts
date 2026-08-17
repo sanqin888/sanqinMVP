@@ -11,7 +11,9 @@ import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-web
 type ImportedOrderInput = Parameters<
   UberOrderImportRepositoryPort['saveImportedOrder']
 >[0];
-type EnqueueMock = jest.MockedFunction<UberOrderActionRepositoryPort['enqueue']>;
+type EnqueueMock = jest.MockedFunction<
+  UberOrderActionRepositoryPort['enqueue']
+>;
 
 const notification = {
   resourceId: 'order-1',
