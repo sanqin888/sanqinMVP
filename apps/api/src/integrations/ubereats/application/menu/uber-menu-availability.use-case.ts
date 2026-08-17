@@ -99,6 +99,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     for (const mapping of mappings) {
       await this.commands.setOptionAvailability(
         mapping.storeId,
+        mapping.uberStoreId,
         input.optionChoiceStableId,
         input.isAvailable,
       );
