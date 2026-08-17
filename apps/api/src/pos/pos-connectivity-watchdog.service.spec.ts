@@ -9,9 +9,11 @@ describe('PosConnectivityWatchdogService', () => {
   function setup(lastSeenAt: Date, isOpenBySchedule = true) {
     const prisma = {
       posDevice: {
-        findMany: jest.fn().mockResolvedValue([
-          { storeId: 'store-1', lastSeenAt, meta: heartbeatMeta },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { storeId: 'store-1', lastSeenAt, meta: heartbeatMeta },
+          ]),
       },
       uberStoreMapping: {
         findMany: jest
@@ -19,9 +21,7 @@ describe('PosConnectivityWatchdogService', () => {
           .mockResolvedValue([{ uberStoreId: 'uber-store-1' }]),
       },
       businessConfig: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ isTemporarilyClosed: false }),
+        findUnique: jest.fn().mockResolvedValue({ isTemporarilyClosed: false }),
       },
     };
     const uber = {
@@ -42,10 +42,7 @@ describe('PosConnectivityWatchdogService', () => {
 
   it('does not check connectivity while the store is closed by schedule', async () => {
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
-    const { service, prisma, uber } = setup(
-      new Date(NOW - 120_000),
-      false,
-    );
+    const { service, prisma, uber } = setup(new Date(NOW - 120_000), false);
 
     await service.runOnce();
 

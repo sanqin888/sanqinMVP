@@ -225,7 +225,8 @@ export class PosConnectivityWatchdogService
     const synced = await this.syncMappedUberStores(storeId, 'ONLINE');
     if (!synced) {
       previous.syncFailures += 1;
-      previous.nextSyncAttemptAt = now + this.retryDelayMs(previous.syncFailures);
+      previous.nextSyncAttemptAt =
+        now + this.retryDelayMs(previous.syncFailures);
       this.logger.error({
         event: 'pos_connectivity_uber_resume_failed',
         storeId,
