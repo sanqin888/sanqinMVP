@@ -163,6 +163,7 @@ export interface UberMenuGatewayPort {
     storeId: string;
     itemId: string;
     isAvailable: boolean;
+    suspendUntilEpochSeconds?: number | null;
     idempotencyKey: string;
   }): Promise<void>;
 }
