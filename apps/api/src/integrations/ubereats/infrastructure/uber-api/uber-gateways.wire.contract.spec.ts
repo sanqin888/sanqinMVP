@@ -169,7 +169,7 @@ describe('Uber gateways wire contract v1', () => {
 
   it('store status has a write scope and stable idempotency key', async () => {
     const transport = createUberTransportFake();
-    transport.inspect.mockResolvedValue(uberHttpResult(200));
+    transport.inspect.mockResolvedValue(uberHttpResult(204));
     const adapter = new UberMerchantApiAdapter(
       transport,
       undefined as never,
@@ -178,7 +178,7 @@ describe('Uber gateways wire contract v1', () => {
     );
     await adapter.writeStatus('store/1', { status: 'ONLINE' }, 'status:key:v1');
     expect(transport.inspect).toHaveBeenCalledWith({
-      path: '/v1/eats/stores/store%2F1/status',
+      path: '/v1/eats/store/store%2F1/status',
       method: 'POST',
       operation: 'uber.store.status',
       scope: 'eats.store.status.write',

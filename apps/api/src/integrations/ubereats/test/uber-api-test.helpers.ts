@@ -9,11 +9,16 @@ import type { UberHttpResult } from '../infrastructure/uber-api/uber-http.client
 export const uberHttpResult = <T extends Record<string, unknown>>(
   status: number,
   data = {} as T,
-): UberHttpResult<T> => ({
-  response: new Response(JSON.stringify(data), { status }),
-  text: JSON.stringify(data),
-  data,
-});
+): UberHttpResult<T> => {
+  const hasNullBody = status === 204 || status === 205 || status === 304;
+  const text = hasNullBody ? '' : JSON.stringify(data);
+
+  return {
+    response: new Response(hasNullBody ? null : text, { status }),
+    text,
+    data,
+  };
+};
 
 export const createUberHttpFake = (): jest.Mocked<UberGatewayHttpPort> => ({
   request: jest.fn(),
