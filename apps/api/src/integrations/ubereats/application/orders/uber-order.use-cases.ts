@@ -68,18 +68,32 @@ export class ImportUberOrderUseCase {
 
     const order = detail.order;
     const cancellation = this.cancellation(normalizedEventType, order);
-    const admission = await this.admission.evaluate(order, eventId);
-
-    if (cancellation && !admission.canPersistOrder) {
-      throw new UberApplicationError(
-        'business-conflict',
-        'UBER_ORDER_MENU_MAPPING_INCOMPLETE',
-        `Cancellation cannot be persisted until published menu mapping is available: event=${eventId}; externalOrder=${order.externalOrderId}`,
-        'order.cancellation.persist',
-        true,
-      );
+    if (cancellation) {
+      const context = await this.admission.resolveImportContext(order, eventId);
+      if (context.missingItemReference) {
+        throw new UberApplicationError(
+          'business-conflict',
+          'UBER_ORDER_MENU_MAPPING_INCOMPLETE',
+          `Cancellation cannot be persisted until published menu mapping is available: event=${eventId}; externalOrder=${order.externalOrderId}`,
+          'order.cancellation.persist',
+          true,
+        );
+      }
+      await this.repository.saveImportedOrder({
+        order,
+        posStoreId: context.posStoreId,
+        eventType: normalizedEventType,
+        cursor,
+        menuMappings: context.menuMappings,
+        cancellation,
+        actionIntent: null,
+        receivedAt: new Date(),
+      });
+      return;
     }
-    if (!cancellation && !admission.canPersistOrder) {
+
+    const admission = await this.admission.evaluate(order, eventId);
+    if (!admission.canPersistOrder) {
       await this.persistStandaloneDecision(
         order.externalOrderId,
         admission.decision,
@@ -87,17 +101,17 @@ export class ImportUberOrderUseCase {
       return;
     }
 
-    const actionIntent = cancellation
-      ? null
-      : this.buildAdmissionIntent(order.externalOrderId, admission.decision);
     await this.repository.saveImportedOrder({
       order,
       posStoreId: admission.posStoreId,
       eventType: normalizedEventType,
       cursor,
       menuMappings: admission.menuMappings,
-      cancellation,
-      actionIntent,
+      cancellation: null,
+      actionIntent: this.buildAdmissionIntent(
+        order.externalOrderId,
+        admission.decision,
+      ),
       receivedAt: new Date(),
     });
   }
