@@ -11,6 +11,7 @@ import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-web
 type ImportedOrderInput = Parameters<
   UberOrderImportRepositoryPort['saveImportedOrder']
 >[0];
+type EnqueueMock = jest.MockedFunction<UberOrderActionRepositoryPort['enqueue']>;
 
 const notification = {
   resourceId: 'order-1',
@@ -34,7 +35,7 @@ const storeMapping = {
   posExternalStoreId: 'pos-store-1',
 };
 
-const createActions = (enqueue: jest.Mock) =>
+const createActions = (enqueue: EnqueueMock) =>
   new UberOrderActionService(
     { enqueue } as unknown as UberOrderActionRepositoryPort,
     {} as UberOrderActionGatewayPort,
@@ -42,7 +43,9 @@ const createActions = (enqueue: jest.Mock) =>
 
 describe('Uber order admission flow', () => {
   it('queues one DENY only after admission rejects a missing published mapping', async () => {
-    const enqueue = jest.fn().mockResolvedValue({ taskId: 'deny-1', created: true });
+    const enqueue: EnqueueMock = jest
+      .fn()
+      .mockResolvedValue({ taskId: 'deny-1', created: true });
     const saveImportedOrder = jest.fn();
     const getPosStoreConnectivity = jest.fn();
     const useCase = new ImportUberOrderUseCase(
@@ -73,7 +76,7 @@ describe('Uber order admission flow', () => {
   });
 
   it('persists a mapped POS_OFFLINE denial with the order instead of dispatching it inline', async () => {
-    const enqueue = jest.fn();
+    const enqueue: EnqueueMock = jest.fn();
     const saved: { input?: ImportedOrderInput } = {};
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
