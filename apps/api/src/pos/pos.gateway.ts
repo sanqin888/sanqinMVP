@@ -149,24 +149,48 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
       where: {
         storeId,
         OR: [
-          { customerStatus: { in: ['PENDING', 'FAILED'] } },
-          { kitchenStatus: { in: ['PENDING', 'FAILED'] } },
+          {
+            customerRequested: true,
+            customerStatus: { in: ['PENDING', 'FAILED'] },
+            OR: [
+              { customerAttempts: { lt: this.maxAttempts } },
+              { customerFailureReason: 'CLIENT_OFFLINE' },
+            ],
+          },
+          {
+            kitchenRequested: true,
+            kitchenStatus: { in: ['PENDING', 'FAILED'] },
+            OR: [
+              { kitchenAttempts: { lt: this.maxAttempts } },
+              { kitchenFailureReason: 'CLIENT_OFFLINE' },
+            ],
+          },
         ],
       },
       orderBy: { createdAt: 'asc' },
       take: 100,
     });
+    const dispatches = jobs.flatMap((job) =>
+      (['customer', 'kitchen'] as const)
+        .filter(
+          (target) =>
+            job[`${target}Requested`] &&
+            ['PENDING', 'FAILED'].includes(job[`${target}Status`]) &&
+            (job[`${target}Attempts`] < this.maxAttempts ||
+              job[`${target}FailureReason`] === 'CLIENT_OFFLINE'),
+        )
+        .map((target) => ({ jobId: job.jobId, target })),
+    );
+    const jobCount = new Set(dispatches.map(({ jobId }) => jobId)).size;
     this.logger.log({
       event: 'pos_print_pending_dispatch',
       storeId,
       status: 'STARTED',
-      jobCount: jobs.length,
+      jobCount,
     });
     await Promise.all(
-      jobs.flatMap((job) =>
-        (['customer', 'kitchen'] as const).map((target) =>
-          this.dispatchTarget(job.jobId, target),
-        ),
+      dispatches.map(({ jobId, target }) =>
+        this.dispatchTarget(jobId, target),
       ),
     );
   }
