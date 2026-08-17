@@ -1,3 +1,4 @@
+import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
 import { UberMenuAvailabilityUseCase } from './uber-menu-availability.use-case';
 
 describe('UberMenuAvailabilityUseCase', () => {
@@ -11,29 +12,32 @@ describe('UberMenuAvailabilityUseCase', () => {
       setOptionAvailability: jest.fn(),
       createItemPublishFailure: jest.fn(),
     };
-    const publish = { execute: jest.fn() };
+    const gateway = {
+      uploadMenu: jest.fn(),
+      updateItemAvailability: jest.fn(),
+    };
     const telemetry = { captureEvent: jest.fn() };
     return {
       queries,
       commands,
-      publish,
+      gateway,
       telemetry,
       useCase: new UberMenuAvailabilityUseCase(
         queries,
         commands,
-        publish,
+        gateway,
         telemetry,
       ),
     };
   };
 
-  it('没有历史 externalItemId/config 也会按 stableId 同步并重新发布', async () => {
-    const { useCase, queries, commands, publish, telemetry } = setup();
+  it('按 stableId 派生 Uber item id 并同步单品可售状态', async () => {
+    const { useCase, queries, commands, gateway, telemetry } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
-    publish.execute.mockResolvedValue({ versionStableId: 'version-a' });
+    gateway.updateItemAvailability.mockResolvedValue(undefined);
 
     const result = await useCase.syncUberMenuItemAvailability({
       menuItemStableId: 'item-1',
@@ -45,36 +49,36 @@ describe('UberMenuAvailabilityUseCase', () => {
       'item-1',
       false,
     );
-    expect(publish.execute).toHaveBeenCalledWith({
-      storeId: 'pos-a',
-      dryRun: false,
-      taxRateConfirmed: true,
-      timezoneConfirmed: true,
+    expect(gateway.updateItemAvailability).toHaveBeenCalledWith({
+      storeId: 'uber-a',
+      itemId: buildUberNodeId('item', 'pos-a', 'item-1'),
+      isAvailable: false,
+      idempotencyKey: expect.stringMatching(/^sanqin-uber-/),
     });
+    expect(gateway.uploadMenu).not.toHaveBeenCalled();
     expect(result).toEqual({
-      status: 'PENDING',
+      status: 'SYNCED',
       stores: [
         {
           storeId: 'pos-a',
           uberStoreId: 'uber-a',
-          status: 'PENDING',
-          versionStableId: 'version-a',
+          status: 'SYNCED',
         },
       ],
     });
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_menu_item_availability_sync_requested',
-      expect.objectContaining({ status: 'PENDING', stores: result.stores }),
+      expect.objectContaining({ status: 'SYNCED', stores: result.stores }),
     );
   });
 
-  it('菜品发布失败时记录失败工单并继续返回 FAILED', async () => {
-    const { useCase, queries, commands, publish } = setup();
+  it('菜品同步失败时记录失败工单并返回 FAILED', async () => {
+    const { useCase, queries, commands, gateway } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
-    publish.execute.mockRejectedValue(new Error('publish failed'));
+    gateway.updateItemAvailability.mockRejectedValue(new Error('update failed'));
 
     const result = await useCase.syncUberMenuItemAvailability({
       menuItemStableId: 'item-1',
@@ -86,13 +90,13 @@ describe('UberMenuAvailabilityUseCase', () => {
       uberStoreId: 'uber-a',
       menuItemStableId: 'item-1',
       isAvailable: false,
-      error: 'publish failed',
+      error: 'update failed',
     });
     expect(result.status).toBe('FAILED');
   });
 
   it('未配置 publishToUberEats 的菜品返回 SKIPPED_NOT_PUBLISHED', async () => {
-    const { useCase, queries, commands, publish } = setup();
+    const { useCase, queries, commands, gateway } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(false);
 
     await expect(
@@ -104,11 +108,11 @@ describe('UberMenuAvailabilityUseCase', () => {
 
     expect(queries.findProvisionedStores).not.toHaveBeenCalled();
     expect(commands.setItemAvailability).not.toHaveBeenCalled();
-    expect(publish.execute).not.toHaveBeenCalled();
+    expect(gateway.updateItemAvailability).not.toHaveBeenCalled();
   });
 
   it('可发布菜品没有 provisioned store 时返回 SKIPPED_NOT_PUBLISHED', async () => {
-    const { useCase, queries, publish } = setup();
+    const { useCase, queries, gateway } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([]);
 
@@ -118,18 +122,18 @@ describe('UberMenuAvailabilityUseCase', () => {
         isAvailable: true,
       }),
     ).resolves.toEqual({ status: 'SKIPPED_NOT_PUBLISHED', stores: [] });
-    expect(publish.execute).not.toHaveBeenCalled();
+    expect(gateway.updateItemAvailability).not.toHaveBeenCalled();
   });
 
-  it('多门店 option 部分发布失败时返回 FAILED 并继续其他门店', async () => {
-    const { useCase, queries, commands, publish, telemetry } = setup();
+  it('多门店 option 部分同步失败时返回 FAILED 并继续其他门店', async () => {
+    const { useCase, queries, commands, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'a' },
       { storeId: 'pos-b', uberStoreId: 'b' },
     ]);
-    publish.execute
-      .mockResolvedValueOnce({ versionStableId: 'v-a' })
-      .mockRejectedValueOnce(new Error('publish b failed'));
+    gateway.updateItemAvailability
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('update b failed'));
 
     const result = await useCase.syncUberOptionItemAvailability({
       optionChoiceStableId: 'option-1',
@@ -138,10 +142,31 @@ describe('UberMenuAvailabilityUseCase', () => {
 
     expect(result.status).toBe('FAILED');
     expect(result.stores.map(({ status }) => status)).toEqual([
-      'PENDING',
+      'SYNCED',
       'FAILED',
     ]);
-    expect(commands.setOptionAvailability).toHaveBeenCalledTimes(2);
+    expect(commands.setOptionAvailability).toHaveBeenNthCalledWith(
+      1,
+      'pos-a',
+      'a',
+      'option-1',
+      true,
+    );
+    expect(commands.setOptionAvailability).toHaveBeenNthCalledWith(
+      2,
+      'pos-b',
+      'b',
+      'option-1',
+      true,
+    );
+    expect(gateway.updateItemAvailability).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        storeId: 'a',
+        itemId: buildUberNodeId('item', 'pos-a', 'option-1'),
+        isAvailable: true,
+      }),
+    );
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_option_item_availability_synced',
       expect.objectContaining({ status: 'FAILED', stores: result.stores }),
