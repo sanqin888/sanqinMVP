@@ -145,7 +145,7 @@ export class UberMerchantApiAdapter
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const result = await this.transport.inspect<Record<string, unknown>>({
-          path: `/v1/eats/stores/${encodeURIComponent(storeId)}/status`,
+          path: `/v1/eats/store/${encodeURIComponent(storeId)}/status`,
           method: 'POST',
           operation: 'uber.store.status',
           scope: 'eats.store.status.write',
