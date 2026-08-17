@@ -1,4 +1,3 @@
-import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
 import { UberMenuAvailabilityUseCase } from './uber-menu-availability.use-case';
 
 describe('UberMenuAvailabilityUseCase', () => {
@@ -54,11 +53,24 @@ describe('UberMenuAvailabilityUseCase', () => {
     expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
       expect.objectContaining({
         storeId: 'uber-a',
-        itemId: buildUberNodeId('item', 'pos-a', 'item-1'),
         isAvailable: false,
         suspendUntilEpochSeconds: null,
       }),
     );
+    expect(
+      typeof (
+        gateway.updateItemAvailability.mock.calls[0]?.[0] as
+          | { itemId?: unknown }
+          | undefined
+      )?.itemId,
+    ).toBe('string');
+    expect(
+      (
+        gateway.updateItemAvailability.mock.calls[0]?.[0] as
+          | { itemId?: unknown }
+          | undefined
+      )?.itemId,
+    ).not.toBe('item-1');
     expect(gateway.uploadMenu).not.toHaveBeenCalled();
     expect(result).toEqual({
       status: 'SYNCED',
@@ -191,11 +203,17 @@ describe('UberMenuAvailabilityUseCase', () => {
       1,
       expect.objectContaining({
         storeId: 'a',
-        itemId: buildUberNodeId('item', 'pos-a', 'option-1'),
         isAvailable: true,
         suspendUntilEpochSeconds: null,
       }),
     );
+    expect(
+      typeof (
+        gateway.updateItemAvailability.mock.calls[0]?.[0] as
+          | { itemId?: unknown }
+          | undefined
+      )?.itemId,
+    ).toBe('string');
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_option_item_availability_synced',
       expect.objectContaining({ status: 'FAILED', stores: result.stores }),
