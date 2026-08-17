@@ -1,5 +1,19 @@
 import { UberMenuPublicationPrismaAdapter } from './uber-menu-publication-prisma.adapter';
 
+type PublishedItemCreateManyInput = {
+  data: Array<{
+    publishVersionId: string;
+    storeId: string;
+    uberStoreId: string;
+    uberItemId: string;
+    menuItemStableId: string;
+    publishedPriceCents: number;
+    publishedIsAvailable: boolean;
+    publishedName: string;
+    publishedAt: Date;
+  }>;
+};
+
 describe('UberMenuPublicationPrismaAdapter', () => {
   it('在同一事务中创建发布版本和 Uber item 快照映射', async () => {
     const createVersion = jest.fn().mockResolvedValue({
@@ -46,20 +60,21 @@ describe('UberMenuPublicationPrismaAdapter', () => {
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(createVersion).toHaveBeenCalledTimes(1);
-    expect(createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          publishVersionId: 'version-1',
-          storeId: 'pos-1',
-          uberStoreId: 'uber-1',
-          uberItemId: 'sanq:item-1',
-          menuItemStableId: 'item-1',
-          publishedPriceCents: 1200,
-          publishedIsAvailable: true,
-          publishedName: 'Noodles',
-          publishedAt: expect.any(Date),
-        },
-      ],
+    expect(createMany).toHaveBeenCalledTimes(1);
+    const input = createMany.mock.calls[0]?.[0] as unknown as
+      | PublishedItemCreateManyInput
+      | undefined;
+    expect(input?.data).toHaveLength(1);
+    expect(input?.data[0]).toMatchObject({
+      publishVersionId: 'version-1',
+      storeId: 'pos-1',
+      uberStoreId: 'uber-1',
+      uberItemId: 'sanq:item-1',
+      menuItemStableId: 'item-1',
+      publishedPriceCents: 1200,
+      publishedIsAvailable: true,
+      publishedName: 'Noodles',
     });
+    expect(input?.data[0]?.publishedAt).toBeInstanceOf(Date);
   });
 });
