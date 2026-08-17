@@ -1,5 +1,6 @@
+import { randomUUID } from 'crypto';
 import type { UberMenuAvailabilityPort } from './uber-menu-availability.ports';
-import type { UberMenuPublishCommandPort } from './uber-menu-publication.ports';
+import type { UberMenuGatewayPort } from './uber-menu-publication.ports';
 import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type {
   UberMenuAvailabilityCommandPort,
@@ -9,16 +10,18 @@ import type {
   UberAvailabilitySyncResult,
   UberAvailabilitySyncStatus,
 } from '../../domain/menu/uber-menu.types';
+import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
+import { buildUberIdempotencyKey } from '../orders/uber-idempotency-key';
 
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
-/** Synchronizes SanQ availability by stableId and republishes the affected Uber store. */
+/** Synchronizes SanQ availability by stableId through Uber's sparse item update API. */
 export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
   constructor(
     private readonly queries: UberMenuAvailabilityQueryPort,
     private readonly commands: UberMenuAvailabilityCommandPort,
-    private readonly publish: UberMenuPublishCommandPort,
+    private readonly gateway: UberMenuGatewayPort,
     private readonly telemetry: Pick<UberTelemetryPort, 'captureEvent'>,
   ) {}
 
@@ -43,17 +46,15 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
           input.isAvailable,
         );
         try {
-          const result = await this.publish.execute({
-            storeId: mapping.storeId,
-            dryRun: false,
-            taxRateConfirmed: true,
-            timezoneConfirmed: true,
-          });
+          await this.updateUberItemAvailability(
+            mapping,
+            input.menuItemStableId,
+            input.isAvailable,
+          );
           stores.push({
             storeId: mapping.storeId,
             uberStoreId: mapping.uberStoreId,
-            status: 'PENDING',
-            versionStableId: result.versionStableId,
+            status: 'SYNCED',
           });
         } catch (error) {
           const message = errorMessage(error);
@@ -97,26 +98,24 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const mapping of mappings) {
       await this.commands.setOptionAvailability(
-        mapping.uberStoreId,
+        mapping.storeId,
         input.optionChoiceStableId,
         input.isAvailable,
       );
       try {
-        const result = await this.publish.execute({
-          storeId: mapping.uberStoreId,
-          dryRun: false,
-          taxRateConfirmed: true,
-          timezoneConfirmed: true,
-        });
+        await this.updateUberItemAvailability(
+          mapping,
+          input.optionChoiceStableId,
+          input.isAvailable,
+        );
         stores.push({
-          storeId: mapping.uberStoreId,
+          storeId: mapping.storeId,
           uberStoreId: mapping.uberStoreId,
-          status: 'PENDING',
-          versionStableId: result.versionStableId,
+          status: 'SYNCED',
         });
       } catch (error) {
         stores.push({
-          storeId: mapping.uberStoreId,
+          storeId: mapping.storeId,
           uberStoreId: mapping.uberStoreId,
           status: 'FAILED',
           error: errorMessage(error),
@@ -137,11 +136,32 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     return { status, stores };
   }
 
+  private async updateUberItemAvailability(
+    mapping: { storeId: string; uberStoreId: string },
+    stableId: string,
+    isAvailable: boolean,
+  ) {
+    const itemId = buildUberNodeId('item', mapping.storeId, stableId);
+    const taskId = randomUUID();
+    await this.gateway.updateItemAvailability({
+      storeId: mapping.uberStoreId,
+      itemId,
+      isAvailable,
+      idempotencyKey: buildUberIdempotencyKey({
+        taskId,
+        resourceId: `${mapping.uberStoreId}:${itemId}`,
+        action: 'UPDATE_ITEM_AVAILABILITY',
+        businessVersion: isAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+      }),
+    });
+  }
+
   private summarize(
     stores: UberAvailabilitySyncResult['stores'],
   ): UberAvailabilitySyncStatus {
     if (stores.some(({ status }) => status === 'FAILED')) return 'FAILED';
     if (stores.some(({ status }) => status === 'PENDING')) return 'PENDING';
+    if (stores.some(({ status }) => status === 'SYNCED')) return 'SYNCED';
     return 'SKIPPED_NOT_PUBLISHED';
   }
 }
