@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberMenuPublishSnapshot,
   UberMenuSnapshotRepositoryPort,
 } from '../../application/menu/uber-menu-publication.ports';
+import { UberValidationError } from '../../application/shared/uber-application.error';
 
 const preferCanonicalStoreRows = <T extends { storeId: string }>(
   rows: T[],
@@ -135,7 +136,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
 
     const timezone = businessConfig?.timezone?.trim();
     if (!timezone) {
-      throw new BadRequestException('发布 Uber 菜单前必须配置门店时区。');
+      throw new UberValidationError({
+        code: 'UBER_MENU_SCHEDULE_INVALID',
+        message: '发布 Uber 菜单前必须配置门店时区。',
+        operation: 'uber.menu.publish',
+      });
     }
     const salesTaxRate = businessConfig?.salesTaxRate;
     if (
@@ -144,9 +149,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       salesTaxRate < 0 ||
       salesTaxRate > 1
     ) {
-      throw new BadRequestException(
-        'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
-      );
+      throw new UberValidationError({
+        code: 'UBER_TAX_RATE_INVALID',
+        message: 'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+        operation: 'uber.menu.publish',
+      });
     }
     const taxRate = Number((salesTaxRate * 100).toFixed(4));
 
