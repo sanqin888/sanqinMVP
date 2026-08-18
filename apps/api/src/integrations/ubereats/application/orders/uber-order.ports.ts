@@ -84,6 +84,12 @@ export type UberOrderActionTask = {
   reasonDetail: string | null;
 };
 
+export type UberOrderActionContext = {
+  status: UberOrderStatus;
+  totalCents: number;
+  referenceAt: Date;
+};
+
 export interface UberOrderActionRepositoryPort {
   enqueue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>): Promise<{
     taskId: string;
@@ -95,7 +101,9 @@ export interface UberOrderActionRepositoryPort {
     now: Date;
     leaseDurationMs: number;
   }): Promise<UberOrderActionTask[]>;
-  getOrderStatus(externalOrderId: string): Promise<UberOrderStatus | null>;
+  getOrderContext(
+    externalOrderId: string,
+  ): Promise<UberOrderActionContext | null>;
   complete(input: {
     taskId: string;
     leaseToken: string;
@@ -127,6 +135,7 @@ export interface UberOrderActionGatewayPort {
   accept(input: {
     externalOrderId: string;
     idempotencyKey: string;
+    readyForPickupAt: Date;
   }): Promise<void>;
   deny(input: {
     externalOrderId: string;
