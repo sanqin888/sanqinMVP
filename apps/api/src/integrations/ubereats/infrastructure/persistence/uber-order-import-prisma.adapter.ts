@@ -240,19 +240,9 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
             data: { status: OrderStatus.refunded },
           });
         }
-        await tx.uberWebhookInbox.upsert({
-          where: { eventId: input.cursor.eventId },
-          create: {
-            eventId: input.cursor.eventId,
-            eventType: input.eventType,
-            externalOrderId: input.order.externalOrderId,
-            status: 'PROCESSED',
-            attemptCount: 1,
-            processedAt: new Date(),
-            payload: this.cursorJson(input.cursor),
-          },
-          update: { status: 'PROCESSED', processedAt: new Date() },
-        });
+        // UberWebhookInbox lifecycle is intentionally not owned here. The
+        // inbox worker that holds PROCESSING + leaseToken is the sole writer of
+        // PROCESSED/FAILED/DEAD via markSucceeded/markFailed/markUnsupported.
       },
     );
     return {
@@ -286,15 +276,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       value,
       ...this.flattenValues(value.children),
     ]);
-  }
-  private cursorJson(cursor: UberOrderEventCursor): Prisma.InputJsonValue {
-    return {
-      cursor: {
-        occurredAt: cursor.occurredAt?.toISOString() ?? null,
-        resourceVersion: cursor.resourceVersion,
-        sequence: cursor.sequence,
-      },
-    };
   }
   private readCursor(
     eventId: string,
