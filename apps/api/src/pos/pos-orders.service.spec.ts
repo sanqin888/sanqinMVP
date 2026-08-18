@@ -175,13 +175,15 @@ describe('PosOrdersService', () => {
     expect(orders.advance).not.toHaveBeenCalled();
   });
 
-  it('ready 同步失败后重复点击不会推进 completed', async () => {
+  it('Uber ready 到 completed 与 Uber action 状态完全脱钩', async () => {
     const ready = order({
       channel: 'ubereats',
       clientRequestId: 'ubereats:external-123',
       status: 'ready',
     });
+    const completed = { ...ready, status: 'completed' } as OrderDto;
     const { service, orders, uberEats } = setup(ready);
+    orders.advance.mockResolvedValue(completed);
     uberEats.getReadyForPickupAction.mockResolvedValue({
       ok: false,
       actionId: 'ready_action',
@@ -195,11 +197,11 @@ describe('PosOrdersService', () => {
     });
 
     await expect(service.advance('order_1')).resolves.toMatchObject({
-      status: 'ready',
-      uberActionStatus: 'FAILED',
-      actionId: 'ready_action',
+      status: 'completed',
     });
-    expect(orders.advance).not.toHaveBeenCalled();
+
+    expect(orders.advance).toHaveBeenCalledWith('order_1');
+    expect(uberEats.getReadyForPickupAction).not.toHaveBeenCalled();
     expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
