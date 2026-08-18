@@ -18,11 +18,13 @@ describe('PosConnectivityWatchdogService', () => {
   function setup(lastSeenAt: Date, isOpenBySchedule = true) {
     const prisma = {
       posDevice: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            { storeId: 'legacy-device-store-uuid', lastSeenAt, meta: heartbeatMeta },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            storeId: 'legacy-device-store-uuid',
+            lastSeenAt,
+            meta: heartbeatMeta,
+          },
+        ]),
       },
       uberStoreMapping: {
         findMany: jest
