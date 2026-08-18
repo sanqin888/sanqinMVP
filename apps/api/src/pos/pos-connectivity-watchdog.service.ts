@@ -13,6 +13,7 @@ import {
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../common/pos-connectivity';
+import { resolveConfiguredStoreId } from '../common/store-id';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
@@ -110,30 +111,19 @@ export class PosConnectivityWatchdogService
 
     const devices = await this.prisma.posDevice.findMany({
       where: { status: 'ACTIVE' },
-      select: { storeId: true, lastSeenAt: true, meta: true },
+      select: { lastSeenAt: true, meta: true },
     });
-    const byStore = new Map<
-      string,
-      Array<{ lastSeenAt: Date | null; meta: unknown }>
-    >();
-    for (const device of devices) {
-      const current = byStore.get(device.storeId) ?? [];
-      current.push({ lastSeenAt: device.lastSeenAt, meta: device.meta });
-      byStore.set(device.storeId, current);
-    }
-
-    for (const [storeId, storeDevices] of byStore) {
-      const connectivity = resolvePosConnectivityStatus(
-        storeDevices,
-        now,
-        this.offlineAfterMs,
-      );
-      if (connectivity.status === 'UNKNOWN') continue;
-      if (connectivity.status === 'OFFLINE') {
-        await this.handleOffline(storeId, connectivity.lastHeartbeatAt, now);
-      } else {
-        await this.handleOnline(storeId, now);
-      }
+    const storeId = resolveConfiguredStoreId();
+    const connectivity = resolvePosConnectivityStatus(
+      devices,
+      now,
+      this.offlineAfterMs,
+    );
+    if (connectivity.status === 'UNKNOWN') return;
+    if (connectivity.status === 'OFFLINE') {
+      await this.handleOffline(storeId, connectivity.lastHeartbeatAt, now);
+    } else {
+      await this.handleOnline(storeId, now);
     }
   }
 
