@@ -293,17 +293,42 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       !Array.isArray(root.cursor)
         ? root.cursor
         : {};
+    const occurredAtRaw =
+      typeof cursor.occurredAt === 'string'
+        ? cursor.occurredAt
+        : typeof root.event_time === 'string'
+          ? root.event_time
+          : typeof root.eventTime === 'string'
+            ? root.eventTime
+            : null;
+    const occurredAt = occurredAtRaw ? new Date(occurredAtRaw) : receivedAt;
+    const resourceVersionRaw =
+      typeof cursor.resourceVersion === 'string'
+        ? cursor.resourceVersion
+        : root.resource_version ?? root.resourceVersion;
+    const sequenceRaw =
+      typeof cursor.sequence === 'number'
+        ? cursor.sequence
+        : root.sequence_number ?? root.sequenceNumber;
+    const sequence =
+      typeof sequenceRaw === 'number'
+        ? sequenceRaw
+        : typeof sequenceRaw === 'string' && sequenceRaw.trim()
+          ? Number(sequenceRaw)
+          : null;
     return {
       eventId,
-      occurredAt:
-        typeof cursor.occurredAt === 'string'
-          ? new Date(cursor.occurredAt)
-          : receivedAt,
+      occurredAt: Number.isNaN(occurredAt.getTime()) ? receivedAt : occurredAt,
       resourceVersion:
-        typeof cursor.resourceVersion === 'string'
-          ? cursor.resourceVersion
+        typeof resourceVersionRaw === 'string'
+          ? resourceVersionRaw
+          : typeof resourceVersionRaw === 'number'
+            ? String(resourceVersionRaw)
+            : null,
+      sequence:
+        typeof sequence === 'number' && Number.isFinite(sequence)
+          ? sequence
           : null,
-      sequence: typeof cursor.sequence === 'number' ? cursor.sequence : null,
     };
   }
   private amendmentId(eventId: string): string {
