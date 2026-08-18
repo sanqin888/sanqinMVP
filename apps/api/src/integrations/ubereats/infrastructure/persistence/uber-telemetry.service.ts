@@ -72,6 +72,15 @@ const ATTRIBUTE_ALLOWLIST = new Set([
   'retryable',
   'amountDifferenceCents',
   'failureCategory',
+  'rootType',
+  'topLevelKeys',
+  'orderIdFields',
+  'totalFields',
+  'itemsShape',
+  'cartShape',
+  'cartItemsShape',
+  'paymentShape',
+  'chargesShape',
 ]);
 const LABEL_ALLOWLIST = new Set([
   'operation',
@@ -83,6 +92,8 @@ const LABEL_ALLOWLIST = new Set([
 ]);
 const SECRET_KEY =
   /(token|authorization|signature|secret|password|cookie|rawBody|payload|phone|address)/i;
+const ORDER_DETAIL_INVALID_MESSAGE =
+  /^\[ubereats order\] detail invalid category=(mapping|business) reason=(MALFORMED_PAYLOAD|MISSING_ORDER_ID|MISSING_TOTAL|EMPTY_ITEMS)$/;
 
 /** Uber Eats observability boundary: correlated events, safe logs and low-cardinality metrics. */
 @Injectable()
@@ -132,11 +143,21 @@ export class UberTelemetryService {
     this.logger[level](JSON.stringify(entry));
   }
 
-  /** Compatibility sink for workflow diagnostics: intentionally discards free text. */
-  workflowLog(level: LogLevel, message?: unknown, ...details: unknown[]): void {
-    void message;
-    void details;
-    this.log(level, 'ubereats_workflow_diagnostic');
+  /** Compatibility sink for workflow diagnostics: only structured allowlisted fields are emitted. */
+  workflowLog(
+    level: LogLevel,
+    message?: unknown,
+    details: Record<string, unknown> = {},
+  ): void {
+    this.log(
+      level,
+      'ubereats_workflow_diagnostic',
+      {},
+      {
+        ...this.workflowMessageAttributes(message),
+        ...details,
+      },
+    );
   }
 
   increment(name: UberMetricName, labels: MetricLabels = {}, value = 1): void {
@@ -160,6 +181,17 @@ export class UberTelemetryService {
   /** Dependency-neutral snapshot for a Prometheus/OpenTelemetry adapter. */
   metricSnapshot(): Readonly<Record<string, number>> {
     return Object.fromEntries(this.metrics);
+  }
+
+  private workflowMessageAttributes(message: unknown): Record<string, unknown> {
+    if (typeof message !== 'string') return {};
+    const match = ORDER_DETAIL_INVALID_MESSAGE.exec(message);
+    if (!match) return {};
+    return {
+      operation: 'order.detail.parse',
+      failureCategory: match[1],
+      reason: match[2],
+    };
   }
 
   private contextFrom(
