@@ -305,11 +305,11 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     const resourceVersionRaw =
       typeof cursor.resourceVersion === 'string'
         ? cursor.resourceVersion
-        : root.resource_version ?? root.resourceVersion;
+        : (root.resource_version ?? root.resourceVersion);
     const sequenceRaw =
       typeof cursor.sequence === 'number'
         ? cursor.sequence
-        : root.sequence_number ?? root.sequenceNumber;
+        : (root.sequence_number ?? root.sequenceNumber);
     const sequence =
       typeof sequenceRaw === 'number'
         ? sequenceRaw
