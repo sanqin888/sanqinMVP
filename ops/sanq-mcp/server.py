@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 mcp = FastMCP("SanQ VM")
 
@@ -17,6 +18,11 @@ DockerService = Literal["api", "web", "db", "ubereats-worker"]
 MAX_COMMAND_OUTPUT_CHARS = 120_000
 MAX_LOG_RESULT_LINES = 1_000
 MAX_CODE_RESULT_LINES = 300
+
+READ_ONLY_ANNOTATIONS = ToolAnnotations(
+    read_only_hint=True,
+    open_world_hint=False,
+)
 
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"""(?ix)
@@ -52,6 +58,17 @@ _URL_TOKEN_RE = re.compile(
     r"(?i)([?&](?:access_token|refresh_token|token|api_key)=)[^&#\s]+"
 )
 
+_FIXED_PROCESS_COMMANDS = {
+    ("date", "--iso-8601=seconds"),
+    ("uptime",),
+    ("free", "-h"),
+    ("df", "-h", "/"),
+    ("systemctl", "is-active", "docker"),
+    ("systemctl", "is-active", "sanq-mcp-tunnel"),
+}
+_ALLOWED_GIT_SUBCOMMANDS = {"status", "log", "diff", "show"}
+_ALLOWED_DOCKER_COMPOSE_SUBCOMMANDS = {"ps", "logs"}
+
 
 def _redact(text: str) -> str:
     if not text:
@@ -62,6 +79,35 @@ def _redact(text: str) -> str:
     return text
 
 
+def _assert_allowed_process(args: list[str]) -> None:
+    if not args:
+        raise ValueError("empty command is not allowed")
+
+    command = tuple(args)
+    if command in _FIXED_PROCESS_COMMANDS:
+        return
+
+    executable = args[0]
+    if executable == "git":
+        if len(args) < 2 or args[1] not in _ALLOWED_GIT_SUBCOMMANDS:
+            raise ValueError("only git status/log/diff/show are allowed")
+        return
+
+    if executable == "docker":
+        if (
+            len(args) < 3
+            or args[1] != "compose"
+            or args[2] not in _ALLOWED_DOCKER_COMPOSE_SUBCOMMANDS
+        ):
+            raise ValueError("only docker compose ps/logs are allowed")
+        return
+
+    if executable == "rg":
+        return
+
+    raise ValueError(f"process command is not allowed: {executable}")
+
+
 def _run(
     args: list[str],
     *,
@@ -69,14 +115,21 @@ def _run(
     timeout: int = 30,
     max_chars: int = MAX_COMMAND_OUTPUT_CHARS,
 ) -> str:
+    _assert_allowed_process(args)
+
+    env = os.environ.copy()
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+
     proc = subprocess.run(
         args,
         cwd=str(cwd),
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         timeout=timeout,
         check=False,
+        shell=False,
     )
     output = _redact(proc.stdout or "").rstrip()
     if len(output) > max_chars:
@@ -132,7 +185,18 @@ def _assert_safe_read_path(path: Path) -> None:
     if name == ".env" or name.startswith(".env."):
         raise ValueError("environment files are blocked")
 
-    if name in {"id_rsa", "id_ed25519", "secrets.json", "credentials.json"}:
+    if name in {
+        "id_rsa",
+        "id_ed25519",
+        "secrets.json",
+        "credentials",
+        "credentials.json",
+        "credentials.yaml",
+        "credentials.yml",
+    }:
+        raise ValueError("private credential files are blocked")
+
+    if name.startswith("service-account") and path.suffix.lower() == ".json":
         raise ValueError("private credential files are blocked")
 
     if path.suffix.lower() in {".pem", ".key", ".p12", ".pfx"}:
@@ -194,7 +258,7 @@ def _select_log_lines(
     return selected[-max_results:], len(match_indexes)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def system_status() -> str:
     """Inspect VM time, uptime/load, memory, root filesystem, and core service state."""
     sections = [
@@ -211,7 +275,7 @@ def system_status() -> str:
     return "\n\n".join(rendered)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def docker_status(
     service: DockerService | None = None,
     include_stopped: bool = False,
@@ -225,7 +289,7 @@ def docker_status(
     return _run(args)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def docker_logs(
     service: DockerService,
     tail: int = 300,
@@ -291,7 +355,7 @@ def docker_logs(
     return f"{header}\n" + "\n".join(selected)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def git_status(path: str = "") -> str:
     """Show branch and working-tree status, optionally scoped to a repository path."""
     args = ["git", "status", "-sb"]
@@ -301,7 +365,7 @@ def git_status(path: str = "") -> str:
     return _run(args)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def git_log(
     limit: int = 15,
     since: str = "",
@@ -342,7 +406,7 @@ def git_log(
     return _run(args)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def git_diff(
     path: str = "",
     staged: bool = False,
@@ -360,7 +424,7 @@ def git_diff(
     return _run(args)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def git_show(
     commit: str,
     path: str = "",
@@ -378,7 +442,7 @@ def git_show(
     return _run(args)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def read_file(
     path: str,
     start_line: int = 1,
@@ -415,7 +479,7 @@ def read_file(
     return _redact(rendered.rstrip())
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def search_code(
     query: str,
     max_results: int = 100,
@@ -433,7 +497,7 @@ def search_code(
     ignore_case: Case-insensitive matching.
     context: Number of surrounding lines to include (0..10).
     max_results: Maximum returned output lines (1..300).
-    Secret env files, node_modules, uploads/backups, and Git metadata are excluded.
+    Secret env files, credential/key files, node_modules, uploads/backups, and Git metadata are excluded.
     """
     query = _validate_plain_text(query, name="query", max_len=500)
     if not query:
@@ -448,6 +512,7 @@ def search_code(
     target = REPO_ROOT
     if path.strip():
         target = _resolve_repo_path(path)
+        _assert_safe_read_path(target)
 
     args = [
         "rg",
@@ -465,9 +530,33 @@ def search_code(
         "--glob",
         "!.env.*",
         "--glob",
+        "!**/.env",
+        "--glob",
+        "!**/.env.*",
+        "--glob",
         "!uploads/**",
         "--glob",
         "!backups/**",
+        "--glob",
+        "!**/credentials",
+        "--glob",
+        "!**/credentials.json",
+        "--glob",
+        "!**/credentials.yaml",
+        "--glob",
+        "!**/credentials.yml",
+        "--glob",
+        "!**/secrets.json",
+        "--glob",
+        "!**/service-account*.json",
+        "--glob",
+        "!**/*.pem",
+        "--glob",
+        "!**/*.key",
+        "--glob",
+        "!**/*.p12",
+        "--glob",
+        "!**/*.pfx",
     ]
     if not regex:
         args.append("--fixed-strings")
