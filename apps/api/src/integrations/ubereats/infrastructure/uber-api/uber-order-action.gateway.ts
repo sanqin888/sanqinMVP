@@ -51,11 +51,15 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
   accept(input: {
     externalOrderId: string;
     idempotencyKey: string;
-    readyForPickupAt: Date;
+    readyForPickupAt?: Date;
   }) {
-    return this.execute(input, 'ACCEPT', {
-      ready_for_pickup_time: input.readyForPickupAt.toISOString(),
-    });
+    return this.execute(
+      input,
+      'ACCEPT',
+      input.readyForPickupAt
+        ? { ready_for_pickup_time: input.readyForPickupAt.toISOString() }
+        : {},
+    );
   }
   deny(input: {
     externalOrderId: string;
