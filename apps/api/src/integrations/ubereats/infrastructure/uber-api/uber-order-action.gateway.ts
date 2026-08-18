@@ -48,8 +48,14 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     private readonly gateway: Pick<UberOrderGateway, 'sendActionCommand'>,
   ) {}
 
-  accept(input: { externalOrderId: string; idempotencyKey: string }) {
-    return this.execute(input, 'ACCEPT', {});
+  accept(input: {
+    externalOrderId: string;
+    idempotencyKey: string;
+    readyForPickupAt: Date;
+  }) {
+    return this.execute(input, 'ACCEPT', {
+      ready_for_pickup_time: input.readyForPickupAt.toISOString(),
+    });
   }
   deny(input: {
     externalOrderId: string;
