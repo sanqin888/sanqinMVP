@@ -5,6 +5,7 @@ import type {
 } from './uber-order.ports';
 import { UberOrderActionService } from './uber-order-action.service';
 
+const referenceAt = new Date('2026-08-18T18:00:00.000Z');
 const task: UberOrderActionTask = {
   taskId: 'task-1',
   leaseToken: 'lease-from-claim',
@@ -27,7 +28,11 @@ describe('UberOrderActionService contract', () => {
     const repository = {
       enqueue: jest.fn().mockResolvedValue({ taskId: 'task-1', created: true }),
       claim: jest.fn().mockResolvedValue([task]),
-      getOrderStatus: jest.fn().mockResolvedValue('pending'),
+      getOrderContext: jest.fn().mockResolvedValue({
+        status: 'pending',
+        totalCents: 1_000,
+        referenceAt,
+      }),
       complete: jest.fn().mockResolvedValue(true),
       markFailed: jest.fn().mockResolvedValue(true),
     } as jest.Mocked<UberOrderActionRepositoryPort>;
@@ -89,7 +94,11 @@ describe('UberOrderActionService contract', () => {
     '%s invokes only %s and commits its domain transition with the claimed lease',
     async (action, method, currentStatus, nextStatus) => {
       const { repository, gateway, service } = setup();
-      repository.getOrderStatus.mockResolvedValue(currentStatus);
+      repository.getOrderContext.mockResolvedValue({
+        status: currentStatus,
+        totalCents: 1_000,
+        referenceAt,
+      });
       const claimed = {
         ...task,
         action,
@@ -114,6 +123,32 @@ describe('UberOrderActionService contract', () => {
             : null,
         },
       ]);
+    },
+  );
+
+  it.each([
+    [1, '2026-08-18T18:10:00.000Z'],
+    [1_000, '2026-08-18T18:10:00.000Z'],
+    [1_001, '2026-08-18T18:15:00.000Z'],
+    [2_000, '2026-08-18T18:15:00.000Z'],
+    [2_001, '2026-08-18T18:20:00.000Z'],
+    [3_000, '2026-08-18T18:20:00.000Z'],
+    [3_001, '2026-08-18T18:25:00.000Z'],
+  ])(
+    'calculates ACCEPT ready time from totalCents=%s',
+    async (totalCents, expected) => {
+      const { repository, gateway, service } = setup();
+      repository.getOrderContext.mockResolvedValue({
+        status: 'pending',
+        totalCents,
+        referenceAt,
+      });
+
+      await service.executeClaimed(task);
+
+      expect(
+        gateway.accept.mock.calls[0][0].readyForPickupAt.toISOString(),
+      ).toBe(expected);
     },
   );
 
@@ -153,7 +188,11 @@ describe('UberOrderActionService contract', () => {
 
   it('dispatches a claimed CANCEL through the sole action gateway', async () => {
     const { repository, gateway, service } = setup();
-    repository.getOrderStatus.mockResolvedValue('making');
+    repository.getOrderContext.mockResolvedValue({
+      status: 'making',
+      totalCents: 1_000,
+      referenceAt,
+    });
     await service.executeClaimed({ ...task, action: 'CANCEL' });
     expect(gateway.cancel.mock.calls).toContainEqual([
       {
@@ -173,7 +212,7 @@ describe('UberOrderActionService contract', () => {
 
   it('completes without a transition when the order no longer exists', async () => {
     const { repository, service } = setup();
-    repository.getOrderStatus.mockResolvedValue(null);
+    repository.getOrderContext.mockResolvedValue(null);
 
     await service.executeClaimed(task);
 
@@ -288,11 +327,9 @@ describe('UberOrderActionService contract', () => {
     expect(repository.markFailed.mock.calls).toHaveLength(0);
   });
 
-  it('does not mark an upstream failure when the local status read fails', async () => {
+  it('does not mark an upstream failure when the local order context read fails', async () => {
     const { repository, gateway, service } = setup();
-    repository.getOrderStatus.mockRejectedValue(
-      new Error('database unavailable'),
-    );
+    repository.getOrderContext.mockRejectedValue(new Error('database unavailable'));
 
     await expect(service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
