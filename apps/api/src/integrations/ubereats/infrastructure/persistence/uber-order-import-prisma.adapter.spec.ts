@@ -37,14 +37,59 @@ const baseInput = {
   receivedAt: new Date('2026-08-18T15:00:01.000Z'),
 };
 
-const savedOrder = {
+type SavedResult = {
+  orderId: string;
+  orderStableId: string;
+  status: 'pending';
+  action: 'created' | 'updated';
+};
+
+const savedOrder: SavedResult = {
   orderId: 'order-db-1',
   orderStableId: 'stable-1',
   status: 'pending',
-  action: 'created' as const,
+  action: 'created',
 };
 
 describe('UberOrderImportPrismaAdapter inbox ownership', () => {
+  it('recovers ordering cursor from the original processed webhook envelope', async () => {
+    const adapter = new UberOrderImportPrismaAdapter(
+      {
+        order: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'order-db-1',
+            status: 'making',
+          }),
+        },
+        uberWebhookInbox: {
+          findFirst: jest.fn().mockResolvedValue({
+            eventId: 'evt-raw',
+            createdAt: new Date('2026-08-18T15:00:02.000Z'),
+            payload: {
+              event_time: '2026-08-18T15:00:00.000Z',
+              resource_version: '42',
+              sequence_number: '7',
+            },
+          }),
+        },
+      } as never,
+      {} as never,
+    );
+
+    await expect(
+      adapter.findByExternalOrderId('uber-order-1'),
+    ).resolves.toEqual({
+      orderId: 'order-db-1',
+      status: 'making',
+      cursor: {
+        eventId: 'evt-raw',
+        occurredAt: new Date('2026-08-18T15:00:00.000Z'),
+        resourceVersion: '42',
+        sequence: 7,
+      },
+    });
+  });
+
   it('never marks the webhook inbox terminal inside the order import transaction', async () => {
     const inboxUpsert = jest.fn();
     const inboxUpdate = jest.fn();
@@ -60,7 +105,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
         _policies: unknown,
         withinTransaction?: (
           transaction: typeof tx,
-          result: typeof savedOrder,
+          result: SavedResult,
         ) => Promise<void>,
       ) => {
         await withinTransaction?.(tx, savedOrder);
@@ -106,15 +151,15 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
         _policies: unknown,
         withinTransaction?: (
           transaction: typeof tx,
-          result: typeof savedOrder,
+          result: SavedResult,
         ) => Promise<void>,
       ) => {
         ingestionCount += 1;
-        const result = {
+        const result: SavedResult = {
           ...savedOrder,
-          action: ingestionCount === 1 ? ('created' as const) : ('updated' as const),
+          action: ingestionCount === 1 ? 'created' : 'updated',
         };
-        await withinTransaction?.(tx, result as typeof savedOrder);
+        await withinTransaction?.(tx, result);
         return result;
       },
     );
