@@ -329,7 +329,9 @@ describe('UberOrderActionService contract', () => {
 
   it('does not mark an upstream failure when the local order context read fails', async () => {
     const { repository, gateway, service } = setup();
-    repository.getOrderContext.mockRejectedValue(new Error('database unavailable'));
+    repository.getOrderContext.mockRejectedValue(
+      new Error('database unavailable'),
+    );
 
     await expect(service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
