@@ -10,6 +10,8 @@ build
 # Docker
 *.log
 /package-lock.json
+/backups/
+/uploads/
 
 # local env files
 .env.local
