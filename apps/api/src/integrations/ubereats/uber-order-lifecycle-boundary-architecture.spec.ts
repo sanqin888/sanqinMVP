@@ -11,7 +11,7 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     );
 
     expect(adapter).toContain('tx.opsEvent.createMany');
-    expect(adapter).toContain("source: ORDER_LIFECYCLE_OUTBOX_SOURCE");
+    expect(adapter).toContain('source: ORDER_LIFECYCLE_OUTBOX_SOURCE');
     expect(adapter).not.toMatch(/\bPosGateway\b|\bFulfillmentProcessor\b/);
     expect(adapter).not.toMatch(/pos\.gateway|fulfillment\.processor/);
   });
