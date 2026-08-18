@@ -72,22 +72,10 @@ export class PosOrdersService {
       );
     }
 
-    if (order.status === 'ready' && externalOrderId) {
-      const action =
-        await this.uberOrderActions.getReadyForPickupAction(externalOrderId);
-      if (action && action.status !== 'SUCCEEDED') {
-        return this.advanceResult(order, {
-          actionId: action.actionId,
-          status: action.status,
-          retryable: action.retryable,
-          errorSummary: action.error ? 'Uber 同步失败' : undefined,
-        });
-      }
-    }
-
-    // Uber does not document a merchant "complete" order action. In
-    // particular, ready -> completed remains local-only; all ordinary orders
-    // and other transitions continue through the existing local state flow.
+    // Uber does not document a merchant "complete" order action. Once the
+    // READY_FOR_PICKUP command has been confirmed, the worker advances the
+    // local order to ready. From that point on, ready -> completed is strictly
+    // a SanQ/POS lifecycle transition and must not depend on Uber state again.
     return this.advanceResult(await this.orders.advance(orderStableId));
   }
 
