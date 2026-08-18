@@ -240,19 +240,9 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
             data: { status: OrderStatus.refunded },
           });
         }
-        await tx.uberWebhookInbox.upsert({
-          where: { eventId: input.cursor.eventId },
-          create: {
-            eventId: input.cursor.eventId,
-            eventType: input.eventType,
-            externalOrderId: input.order.externalOrderId,
-            status: 'PROCESSED',
-            attemptCount: 1,
-            processedAt: new Date(),
-            payload: this.cursorJson(input.cursor),
-          },
-          update: { status: 'PROCESSED', processedAt: new Date() },
-        });
+        // UberWebhookInbox lifecycle is intentionally not owned here. The
+        // inbox worker that holds PROCESSING + leaseToken is the sole writer of
+        // PROCESSED/FAILED/DEAD via markSucceeded/markFailed/markUnsupported.
       },
     );
     return {
@@ -287,15 +277,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       ...this.flattenValues(value.children),
     ]);
   }
-  private cursorJson(cursor: UberOrderEventCursor): Prisma.InputJsonValue {
-    return {
-      cursor: {
-        occurredAt: cursor.occurredAt?.toISOString() ?? null,
-        resourceVersion: cursor.resourceVersion,
-        sequence: cursor.sequence,
-      },
-    };
-  }
   private readCursor(
     eventId: string,
     receivedAt: Date,
@@ -312,17 +293,42 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       !Array.isArray(root.cursor)
         ? root.cursor
         : {};
+    const occurredAtRaw =
+      typeof cursor.occurredAt === 'string'
+        ? cursor.occurredAt
+        : typeof root.event_time === 'string'
+          ? root.event_time
+          : typeof root.eventTime === 'string'
+            ? root.eventTime
+            : null;
+    const occurredAt = occurredAtRaw ? new Date(occurredAtRaw) : receivedAt;
+    const resourceVersionRaw =
+      typeof cursor.resourceVersion === 'string'
+        ? cursor.resourceVersion
+        : (root.resource_version ?? root.resourceVersion);
+    const sequenceRaw =
+      typeof cursor.sequence === 'number'
+        ? cursor.sequence
+        : (root.sequence_number ?? root.sequenceNumber);
+    const sequence =
+      typeof sequenceRaw === 'number'
+        ? sequenceRaw
+        : typeof sequenceRaw === 'string' && sequenceRaw.trim()
+          ? Number(sequenceRaw)
+          : null;
     return {
       eventId,
-      occurredAt:
-        typeof cursor.occurredAt === 'string'
-          ? new Date(cursor.occurredAt)
-          : receivedAt,
+      occurredAt: Number.isNaN(occurredAt.getTime()) ? receivedAt : occurredAt,
       resourceVersion:
-        typeof cursor.resourceVersion === 'string'
-          ? cursor.resourceVersion
+        typeof resourceVersionRaw === 'string'
+          ? resourceVersionRaw
+          : typeof resourceVersionRaw === 'number'
+            ? String(resourceVersionRaw)
+            : null,
+      sequence:
+        typeof sequence === 'number' && Number.isFinite(sequence)
+          ? sequence
           : null,
-      sequence: typeof cursor.sequence === 'number' ? cursor.sequence : null,
     };
   }
   private amendmentId(eventId: string): string {

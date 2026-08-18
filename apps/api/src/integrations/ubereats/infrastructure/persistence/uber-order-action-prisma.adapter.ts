@@ -19,6 +19,9 @@ type ClaimedRow = {
   reasonDetail: string | null;
 };
 
+const ORDER_LIFECYCLE_OUTBOX_SOURCE = 'orders.lifecycle';
+const ORDER_ACCEPTED_LIFECYCLE_EVENT = 'order.accepted';
+
 /** Durable order-command queue. Prisma records are translated at this boundary. */
 @Injectable()
 export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPort {
@@ -122,10 +125,14 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
           status: 'PROCESSING',
           leaseToken: input.leaseToken,
         },
-        select: { externalOrderId: true },
+        select: { externalOrderId: true, action: true },
       });
       if (!claimed) return false;
+
       const completedAt = new Date();
+      // Fence the complete operation with the exact lease first. Because this
+      // update, the local Order transition and lifecycle append share one
+      // transaction, any downstream DB error rolls all three back together.
       const updated = await tx.uberOrderAction.updateMany({
         where: {
           id: input.taskId,
@@ -142,25 +149,67 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         },
       });
       if (updated.count !== 1) return false;
+
       if (input.transition) {
-        const timestamps = {
-          makingAt:
-            input.transition.to === OrderStatus.making
-              ? completedAt
-              : undefined,
-          readyAt:
-            input.transition.to === OrderStatus.ready ? completedAt : undefined,
-        };
-        await tx.order.updateMany({
-          where: {
-            clientRequestId: `ubereats:${claimed.externalOrderId}`,
-            status: input.transition.from as OrderStatus,
-          },
-          data: {
-            status: input.transition.to as OrderStatus,
-            ...timestamps,
-          },
+        const clientRequestId = `ubereats:${claimed.externalOrderId}`;
+        const order = await tx.order.findUnique({
+          where: { clientRequestId },
+          select: { id: true, orderStableId: true, status: true },
         });
+        let reachedTarget = order?.status === input.transition.to;
+
+        if (order?.status === input.transition.from) {
+          const timestamps = {
+            makingAt:
+              input.transition.to === OrderStatus.making
+                ? completedAt
+                : undefined,
+            readyAt:
+              input.transition.to === OrderStatus.ready
+                ? completedAt
+                : undefined,
+          };
+          const transition = await tx.order.updateMany({
+            where: {
+              id: order.id,
+              status: input.transition.from as OrderStatus,
+            },
+            data: {
+              status: input.transition.to as OrderStatus,
+              ...timestamps,
+            },
+          });
+          reachedTarget = transition.count === 1;
+          if (!reachedTarget) {
+            const current = await tx.order.findUnique({
+              where: { id: order.id },
+              select: { status: true },
+            });
+            reachedTarget = current?.status === input.transition.to;
+          }
+        }
+
+        if (
+          order &&
+          reachedTarget &&
+          claimed.action === 'ACCEPT' &&
+          input.transition.to === OrderStatus.making
+        ) {
+          // Deterministic idempotencyKey makes an ACCEPT replay append the same
+          // logical fact. The API process consumes it and owns POS fulfillment.
+          await tx.opsEvent.createMany({
+            data: {
+              idempotencyKey: `order.accepted:${order.id}`,
+              eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
+              source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+              payload: {
+                orderId: order.id,
+                orderStableId: order.orderStableId,
+              },
+            },
+            skipDuplicates: true,
+          });
+        }
       }
       return true;
     });
