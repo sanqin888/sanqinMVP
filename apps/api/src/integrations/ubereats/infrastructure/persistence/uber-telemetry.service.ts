@@ -149,10 +149,15 @@ export class UberTelemetryService {
     message?: unknown,
     details: Record<string, unknown> = {},
   ): void {
-    this.log(level, 'ubereats_workflow_diagnostic', {}, {
-      ...this.workflowMessageAttributes(message),
-      ...details,
-    });
+    this.log(
+      level,
+      'ubereats_workflow_diagnostic',
+      {},
+      {
+        ...this.workflowMessageAttributes(message),
+        ...details,
+      },
+    );
   }
 
   increment(name: UberMetricName, labels: MetricLabels = {}, value = 1): void {
@@ -178,9 +183,7 @@ export class UberTelemetryService {
     return Object.fromEntries(this.metrics);
   }
 
-  private workflowMessageAttributes(
-    message: unknown,
-  ): Record<string, unknown> {
+  private workflowMessageAttributes(message: unknown): Record<string, unknown> {
     if (typeof message !== 'string') return {};
     const match = ORDER_DETAIL_INVALID_MESSAGE.exec(message);
     if (!match) return {};
