@@ -1,10 +1,14 @@
-import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
 import { UberOrderDetailGatewayAdapter } from './uber-order-detail.gateway';
+
+type WorkflowLog = (
+  level: 'debug' | 'log' | 'warn' | 'error',
+  message?: unknown,
+  details?: Record<string, unknown>,
+) => void;
 
 describe('UberOrderDetailGatewayAdapter diagnostics', () => {
   it('records only field shapes when a successful order detail cannot be mapped', async () => {
-    const workflowLog =
-      jest.fn<Pick<UberTelemetryPort, 'workflowLog'>['workflowLog']>();
+    const workflowLog = jest.fn<WorkflowLog>();
     const secret = 'Bearer super-secret-credential';
     const adapter = new UberOrderDetailGatewayAdapter(
       {
