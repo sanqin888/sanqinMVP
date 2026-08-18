@@ -13,6 +13,7 @@ import { EmailModule } from '../email/email.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
+import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import { OrderIngestionService } from './order-ingestion.service';
 
@@ -35,6 +36,7 @@ import { OrderIngestionService } from './order-ingestion.service';
     PrintPosPayloadService,
     NotificationProcessor,
     FulfillmentProcessor,
+    OrderLifecycleOutboxProcessor,
   ],
   exports: [OrdersService, OrderIngestionService, PrintPosPayloadService],
 })
