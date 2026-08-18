@@ -1,3 +1,4 @@
+import { resolveUberReadyForPickupAt } from '../../domain/orders/uber-order-preparation.policy';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import {
@@ -50,15 +51,23 @@ export class UberOrderActionService {
     // Local reads and writeback deliberately sit outside the upstream failure
     // handler. A database failure must leave the claim to expire, rather than
     // being mislabeled as a failed Uber command.
-    const currentStatus = await this.repository.getOrderStatus(
+    const orderContext = await this.repository.getOrderContext(
       task.externalOrderId,
     );
+    const currentStatus = orderContext?.status ?? null;
     try {
       const common = {
         externalOrderId: task.externalOrderId,
         idempotencyKey: task.idempotencyKey,
       };
-      if (task.action === 'ACCEPT') await this.gateway.accept(common);
+      if (task.action === 'ACCEPT')
+        await this.gateway.accept({
+          ...common,
+          readyForPickupAt: resolveUberReadyForPickupAt(
+            orderContext?.totalCents ?? 0,
+            orderContext?.referenceAt ?? new Date(),
+          ),
+        });
       else if (task.action === 'DENY')
         await this.gateway.deny({
           ...common,
