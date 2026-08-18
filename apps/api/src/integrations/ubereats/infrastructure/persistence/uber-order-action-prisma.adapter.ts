@@ -19,7 +19,8 @@ type ClaimedRow = {
   reasonDetail: string | null;
 };
 
-const ORDER_ACCEPTED_LIFECYCLE_EVENT = 'ORDER_ACCEPTED';
+const ORDER_LIFECYCLE_OUTBOX_SOURCE = 'orders.lifecycle';
+const ORDER_ACCEPTED_LIFECYCLE_EVENT = 'order.accepted';
 
 /** Durable order-command queue. Prisma records are translated at this boundary. */
 @Injectable()
@@ -130,7 +131,7 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
 
       const completedAt = new Date();
       // Fence the complete operation with the exact lease first. Because this
-      // update, the local Order transition and lifecycle insert share one
+      // update, the local Order transition and lifecycle append share one
       // transaction, any downstream DB error rolls all three back together.
       const updated = await tx.uberOrderAction.updateMany({
         where: {
@@ -194,16 +195,17 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
           claimed.action === 'ACCEPT' &&
           input.transition.to === OrderStatus.making
         ) {
-          // Deterministic eventKey makes an ACCEPT replay idempotent. The API
-          // process consumes this durable fact and owns POS/Fulfillment work.
-          await tx.orderLifecycleOutbox.createMany({
+          // Deterministic idempotencyKey makes an ACCEPT replay append the same
+          // logical fact. The API process consumes it and owns POS fulfillment.
+          await tx.opsEvent.createMany({
             data: {
-              eventKey: `order.accepted:${order.id}`,
-              orderId: order.id,
-              orderStableId: order.orderStableId,
-              eventType: ORDER_ACCEPTED_LIFECYCLE_EVENT,
-              status: 'PENDING',
-              nextRetryAt: completedAt,
+              idempotencyKey: `order.accepted:${order.id}`,
+              eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
+              source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+              payload: {
+                orderId: order.id,
+                orderStableId: order.orderStableId,
+              },
             },
             skipDuplicates: true,
           });
