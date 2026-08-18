@@ -112,6 +112,7 @@ const STRINGS = {
     pickupCodeLabel: "取餐码",
     acceptOrder: "接单",
     terminal: "终态",
+    syncingUber: "同步中…",
     reprintFront: "重打前台",
     printKitchen: "后厨小票",
     printPending: "待打印",
@@ -134,6 +135,7 @@ const STRINGS = {
     pickupCodeLabel: "Pickup",
     acceptOrder: "Accept",
     terminal: "Terminal",
+    syncingUber: "Syncing…",
     reprintFront: "Reprint front",
     printKitchen: "Kitchen",
     printPending: "Pending print",
@@ -236,6 +238,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const [isLoading, setIsLoading] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(true);
+  const [syncingReadyOrders, setSyncingReadyOrders] = useState<
+    Record<string, boolean>
+  >({});
 
   // ✅ 增强1：新 web 订单到达时，高亮闪烁（并自动展开）
   const [flash, setFlash] = useState(false);
@@ -402,6 +407,27 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           safeParseCreatedAtMs(a.createdAt) - safeParseCreatedAtMs(b.createdAt),
       );
     setOrders(visibleOrders);
+    setSyncingReadyOrders((prev) => {
+      const syncingIds = Object.keys(prev);
+      if (syncingIds.length === 0) return prev;
+      const currentById = new Map(
+        visibleOrders.map((order) => [order.orderStableId, order] as const),
+      );
+      const next = { ...prev };
+      let changed = false;
+      for (const sid of syncingIds) {
+        const current = currentById.get(sid);
+        if (
+          !current ||
+          current.channel !== "ubereats" ||
+          current.status !== "making"
+        ) {
+          delete next[sid];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
     const statuses = await Promise.all(
       visibleOrders.map(
         async (order) =>
@@ -488,11 +514,27 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   ]);
 
   const handleAdvance = useCallback(
-    async (orderStableId: string) => {
+    async (order: BoardOrder) => {
+      const orderStableId = order.orderStableId;
+      const isUberReadySync =
+        order.channel === "ubereats" && order.status === "making";
+      if (isUberReadySync) {
+        setSyncingReadyOrders((prev) => ({
+          ...prev,
+          [orderStableId]: true,
+        }));
+      }
       try {
         await advanceOrder(orderStableId);
         await fetchOrdersAndProcess();
       } catch (error) {
+        if (isUberReadySync) {
+          setSyncingReadyOrders((prev) => {
+            const next = { ...prev };
+            delete next[orderStableId];
+            return next;
+          });
+        }
         console.error("Failed to advance order:", error);
         alert(
           isZh
@@ -730,12 +772,16 @@ export function StoreBoardWidget(props: { locale: Locale }) {
               const operatorOrderTitle =
                 order.channel === "ubereats" ? order.pickupCode : sid;
               const next = NEXT_STATUS[order.status];
-              const advanceLabel = next
-                ? (order.channel === "ubereats" && order.status === "pending") ||
-                  order.status === "paid"
-                  ? t.acceptOrder
-                  : formatStatus(next, locale)
-                : t.terminal;
+              const isSyncingUberReady = Boolean(syncingReadyOrders[sid]);
+              const advanceLabel = isSyncingUberReady
+                ? t.syncingUber
+                : next
+                  ? (order.channel === "ubereats" &&
+                      order.status === "pending") ||
+                    order.status === "paid"
+                    ? t.acceptOrder
+                    : formatStatus(next, locale)
+                  : t.terminal;
 
               const isPendingUberEats =
                 order.channel === "ubereats" && order.status === "pending";
@@ -847,11 +893,12 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <button
                       type="button"
-                      onClick={() => handleAdvance(sid)}
-                      disabled={!next}
+                      onClick={() => handleAdvance(order)}
+                      disabled={!next || isSyncingUberReady}
+                      aria-busy={isSyncingUberReady}
                       className={[
                         "rounded-md border px-3 py-2 text-sm font-semibold transition",
-                        next
+                        next && !isSyncingUberReady
                           ? "border-slate-600 bg-slate-950/30 text-slate-100 hover:bg-slate-800/60"
                           : "cursor-not-allowed border-slate-800 bg-slate-950/30 text-slate-600",
                       ].join(" ")}
