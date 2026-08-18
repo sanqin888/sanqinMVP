@@ -44,10 +44,7 @@ export class OrderLifecycleOutboxProcessor
   ) {}
 
   onApplicationBootstrap(): void {
-    this.timer = setInterval(
-      () => void this.pollSafely(),
-      this.pollIntervalMs,
-    );
+    this.timer = setInterval(() => void this.pollSafely(), this.pollIntervalMs);
     this.timer.unref();
     void this.pollSafely();
   }
