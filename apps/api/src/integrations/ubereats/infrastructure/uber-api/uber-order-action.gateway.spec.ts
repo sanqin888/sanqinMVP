@@ -29,6 +29,28 @@ describe('UberOrderActionGatewayAdapter', () => {
     },
   );
 
+  it('maps the calculated ACCEPT ready time to ready_for_pickup_time', async () => {
+    const sendActionCommand = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 204, data: {} });
+    const adapter = new UberOrderActionGatewayAdapter({
+      sendActionCommand,
+    } as never);
+
+    await adapter.accept({
+      externalOrderId: 'order/1',
+      idempotencyKey: 'accept-key',
+      readyForPickupAt: new Date('2026-08-18T18:10:00.000Z'),
+    });
+
+    expect(sendActionCommand).toHaveBeenCalledWith(
+      'order/1',
+      'ACCEPT',
+      { ready_for_pickup_time: '2026-08-18T18:10:00.000Z' },
+      'accept-key',
+    );
+  });
+
   it('owns the DENY reason wire payload', async () => {
     const sendActionCommand = jest
       .fn()

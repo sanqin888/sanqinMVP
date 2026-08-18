@@ -103,14 +103,22 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
     );
   }
 
-  async getOrderStatus(
-    externalOrderId: string,
-  ): Promise<UberOrderStatus | null> {
+  async getOrderContext(externalOrderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { clientRequestId: `ubereats:${externalOrderId}` },
-      select: { status: true },
+      select: {
+        status: true,
+        totalCents: true,
+        paidAt: true,
+        createdAt: true,
+      },
     });
-    return (order?.status as UberOrderStatus | undefined) ?? null;
+    if (!order) return null;
+    return {
+      status: order.status as UberOrderStatus,
+      totalCents: order.totalCents,
+      referenceAt: order.paidAt ?? order.createdAt,
+    };
   }
 
   async complete(input: {
