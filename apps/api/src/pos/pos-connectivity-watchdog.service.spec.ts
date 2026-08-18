@@ -2,18 +2,29 @@ import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.serv
 
 const heartbeatMeta = { connectivityHeartbeatV1: true };
 const NOW = 1_000_000;
+const ORIGINAL_STORE_ID = process.env.STORE_ID;
 
 describe('PosConnectivityWatchdogService', () => {
-  afterEach(() => jest.restoreAllMocks());
+  beforeEach(() => {
+    process.env.STORE_ID = 'store-1';
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_STORE_ID === undefined) delete process.env.STORE_ID;
+    else process.env.STORE_ID = ORIGINAL_STORE_ID;
+    jest.restoreAllMocks();
+  });
 
   function setup(lastSeenAt: Date, isOpenBySchedule = true) {
     const prisma = {
       posDevice: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            { storeId: 'store-1', lastSeenAt, meta: heartbeatMeta },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            storeId: 'legacy-device-store-uuid',
+            lastSeenAt,
+            meta: heartbeatMeta,
+          },
+        ]),
       },
       uberStoreMapping: {
         findMany: jest
@@ -52,7 +63,7 @@ describe('PosConnectivityWatchdogService', () => {
 
   it('allows an opening grace period before evaluating heartbeat age', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
-    const { service, uber } = setup(new Date(NOW - 120_000));
+    const { service, prisma, uber } = setup(new Date(NOW - 120_000));
 
     await service.runOnce();
     expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
@@ -60,6 +71,10 @@ describe('PosConnectivityWatchdogService', () => {
     nowSpy.mockReturnValue(NOW + 90_001);
     await service.runOnce();
 
+    expect(prisma.uberStoreMapping.findMany).toHaveBeenCalledWith({
+      where: { posExternalStoreId: 'store-1', isProvisioned: true },
+      select: { uberStoreId: true },
+    });
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledWith({
       uberStoreId: 'uber-store-1',
       targetStatus: 'PAUSED',

@@ -16,6 +16,7 @@ import {
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
+import { resolveConfiguredStoreId } from '../../../../common/store-id';
 import type {
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
@@ -90,8 +91,11 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   }
 
   async getPosStoreConnectivity(posStoreId: string) {
+    if (posStoreId !== resolveConfiguredStoreId()) {
+      return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
+    }
     const devices = await this.prisma.posDevice.findMany({
-      where: { storeId: posStoreId, status: 'ACTIVE' },
+      where: { status: 'ACTIVE' },
       select: { lastSeenAt: true, meta: true },
     });
     const offlineAfterMs = readPositiveDurationMs(
