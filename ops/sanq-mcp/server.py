@@ -707,39 +707,112 @@ def _github_pr_summary(data: object) -> dict[str, object]:
     }
 
 
-def _github_checks_for_sha(commit: str) -> dict[str, object]:
+def _github_ci_for_sha(commit: str) -> dict[str, object]:
     owner, repo = _github_repo_parts()
     revision = _validate_revision(commit, name="commit")
     safe_sha = quote(revision, safe="")
 
-    checks_raw = _github_request(
+    workflows_raw = _github_request(
         "GET",
-        f"/repos/{owner}/{repo}/commits/{safe_sha}/check-runs?per_page=100",
+        f"/repos/{owner}/{repo}/actions/runs?head_sha={safe_sha}&per_page=20",
     )
     status_raw = _github_request(
         "GET",
         f"/repos/{owner}/{repo}/commits/{safe_sha}/status",
     )
 
-    checks: list[dict[str, object]] = []
-    if isinstance(checks_raw, dict):
-        raw_runs = checks_raw.get("check_runs")
+    workflows: list[dict[str, object]] = []
+    workflow_conclusions: list[str] = []
+    workflow_pending = False
+
+    if isinstance(workflows_raw, dict):
+        raw_runs = workflows_raw.get("workflow_runs")
         if isinstance(raw_runs, list):
-            for run in raw_runs[:100]:
+            for run in raw_runs[:20]:
                 if not isinstance(run, dict):
                     continue
-                app = run.get("app") if isinstance(run.get("app"), dict) else {}
-                checks.append(
+
+                run_id = run.get("id")
+                jobs: list[dict[str, object]] = []
+                if isinstance(run_id, int):
+                    jobs_raw = _github_request(
+                        "GET",
+                        f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+                        "?filter=latest&per_page=100",
+                    )
+                    if isinstance(jobs_raw, dict):
+                        raw_jobs = jobs_raw.get("jobs")
+                        if isinstance(raw_jobs, list):
+                            for job in raw_jobs[:100]:
+                                if not isinstance(job, dict):
+                                    continue
+                                raw_steps = job.get("steps")
+                                steps: list[dict[str, object]] = []
+                                if isinstance(raw_steps, list):
+                                    for step in raw_steps[:100]:
+                                        if not isinstance(step, dict):
+                                            continue
+                                        steps.append(
+                                            {
+                                                "number": step.get("number"),
+                                                "name": step.get("name"),
+                                                "status": step.get("status"),
+                                                "conclusion": step.get("conclusion"),
+                                            }
+                                        )
+                                jobs.append(
+                                    {
+                                        "id": job.get("id"),
+                                        "name": job.get("name"),
+                                        "status": job.get("status"),
+                                        "conclusion": job.get("conclusion"),
+                                        "html_url": job.get("html_url"),
+                                        "started_at": job.get("started_at"),
+                                        "completed_at": job.get("completed_at"),
+                                        "steps": steps,
+                                    }
+                                )
+
+                run_status = run.get("status")
+                run_conclusion = run.get("conclusion")
+                if run_status != "completed":
+                    workflow_pending = True
+                if isinstance(run_conclusion, str):
+                    workflow_conclusions.append(run_conclusion)
+
+                workflows.append(
                     {
+                        "id": run_id,
                         "name": run.get("name"),
-                        "status": run.get("status"),
-                        "conclusion": run.get("conclusion"),
-                        "details_url": run.get("details_url"),
-                        "started_at": run.get("started_at"),
-                        "completed_at": run.get("completed_at"),
-                        "app": app.get("name"),
+                        "display_title": run.get("display_title"),
+                        "event": run.get("event"),
+                        "status": run_status,
+                        "conclusion": run_conclusion,
+                        "html_url": run.get("html_url"),
+                        "run_number": run.get("run_number"),
+                        "run_attempt": run.get("run_attempt"),
+                        "created_at": run.get("created_at"),
+                        "updated_at": run.get("updated_at"),
+                        "jobs": jobs,
                     }
                 )
+
+    failure_conclusions = {
+        "failure",
+        "cancelled",
+        "timed_out",
+        "action_required",
+        "startup_failure",
+        "stale",
+    }
+    if workflow_pending:
+        actions_state = "pending"
+    elif any(item in failure_conclusions for item in workflow_conclusions):
+        actions_state = "failure"
+    elif workflows:
+        actions_state = "success"
+    else:
+        actions_state = "none"
 
     statuses: list[dict[str, object]] = []
     combined_state = None
@@ -763,8 +836,9 @@ def _github_checks_for_sha(commit: str) -> dict[str, object]:
     return {
         "repository": GITHUB_REPOSITORY,
         "commit": revision,
+        "actions_state": actions_state,
+        "workflow_runs": workflows,
         "combined_status": combined_state,
-        "check_runs": checks,
         "commit_statuses": statuses,
     }
 
@@ -1320,14 +1394,14 @@ def github_read_pr(number: int) -> str:
 
 @mcp.tool(annotations=GITHUB_READ_ANNOTATIONS)
 def github_commit_checks(commit: str) -> str:
-    """Read combined commit status and individual GitHub check runs."""
-    data = _github_checks_for_sha(commit)
+    """Read GitHub Actions workflow runs/jobs plus commit status for a commit."""
+    data = _github_ci_for_sha(commit)
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
 @mcp.tool(annotations=GITHUB_READ_ANNOTATIONS)
 def github_pr_checks(number: int) -> str:
-    """Read combined CI status and check runs for a pull request head commit."""
+    """Read GitHub Actions workflow runs/jobs and status for a PR head commit."""
     if number < 1:
         raise ValueError("number must be >= 1")
     owner, repo = _github_repo_parts()
@@ -1337,7 +1411,7 @@ def github_pr_checks(number: int) -> str:
     head = pr.get("head")
     if not isinstance(head, dict) or not isinstance(head.get("sha"), str):
         raise ValueError("pull request response is missing head SHA")
-    data = _github_checks_for_sha(head["sha"])
+    data = _github_ci_for_sha(head["sha"])
     data["pull_request"] = number
     return json.dumps(data, ensure_ascii=False, indent=2)
 
