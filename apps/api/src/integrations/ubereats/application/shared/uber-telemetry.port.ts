@@ -7,6 +7,7 @@ export interface UberTelemetryPort {
   workflowLog(
     level: 'debug' | 'log' | 'warn' | 'error',
     message?: unknown,
+    details?: Record<string, unknown>,
   ): void;
 }
 export const UBER_TELEMETRY_PORT = Symbol('UBER_TELEMETRY_PORT');
