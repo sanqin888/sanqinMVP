@@ -100,6 +100,43 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   };
 
   private readonly onAccepted = async (payload: { orderId: string }) => {
+    try {
+      await this.handleAcceptedLifecycle(payload);
+    } catch (error) {
+      // The in-memory bus remains a best-effort fast path for same-process
+      // orders. Durable lifecycle consumers call handleAcceptedLifecycle()
+      // directly and own retry/lease semantics themselves.
+      this.logger.error({
+        event: 'accepted_order_processing_failed',
+        orderId: payload.orderId,
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
+  };
+
+  constructor(
+    private readonly events: OrderEventsBus,
+    private readonly prisma: PrismaService,
+    private readonly uberDirect: UberDirectService,
+    private readonly posGateway: PosGateway,
+    private readonly printPosPayloadService: PrintPosPayloadService,
+  ) {}
+
+  onModuleInit() {
+    this.events.onOrderPaidVerified(this.onPaid);
+    this.events.onOrderAccepted(this.onAccepted);
+  }
+
+  onModuleDestroy() {
+    this.events.offOrderPaidVerified(this.onPaid);
+    this.events.offOrderAccepted(this.onAccepted);
+  }
+
+  /**
+   * Durable Order-lifecycle entrypoint. Failures are rethrown so the outbox
+   * consumer can retain/retry the event instead of acknowledging lost work.
+   */
+  async handleAcceptedLifecycle(payload: { orderId: string }): Promise<void> {
     this.logger.log({
       event: 'accepted_order_processing_started',
       orderId: payload.orderId,
@@ -155,7 +192,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         reason: 'PAYLOAD_BUILD_FAILED',
         errorType: error instanceof Error ? error.name : 'UnknownError',
       });
-      return;
+      throw error;
     }
 
     const targets = { customer: true, kitchen: true };
@@ -183,25 +220,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         reason: 'PRINT_JOB_CREATE_FAILED',
         errorType: error instanceof Error ? error.name : 'UnknownError',
       });
+      throw error;
     }
-  };
-
-  constructor(
-    private readonly events: OrderEventsBus,
-    private readonly prisma: PrismaService,
-    private readonly uberDirect: UberDirectService,
-    private readonly posGateway: PosGateway,
-    private readonly printPosPayloadService: PrintPosPayloadService,
-  ) {}
-
-  onModuleInit() {
-    this.events.onOrderPaidVerified(this.onPaid);
-    this.events.onOrderAccepted(this.onAccepted);
-  }
-
-  onModuleDestroy() {
-    this.events.offOrderPaidVerified(this.onPaid);
-    this.events.offOrderAccepted(this.onAccepted);
   }
 
   @OnEvent('order.reprint')
