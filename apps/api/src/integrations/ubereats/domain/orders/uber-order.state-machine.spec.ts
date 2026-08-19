@@ -14,6 +14,15 @@ describe('UberOrderStateMachine', () => {
     ).toBe('refunded');
   });
 
+  it('treats ACCEPT as acceptance only, not preparation start', () => {
+    expect(
+      UberOrderStateMachine.afterConfirmedAction('pending' as never, 'ACCEPT'),
+    ).toBe('paid');
+    expect(
+      UberOrderStateMachine.afterConfirmedAction('paid' as never, 'ACCEPT'),
+    ).toBe('paid');
+  });
+
   it('validates commands and only advances after confirmed actions', () => {
     expect(
       UberOrderStateMachine.canRequestAction(

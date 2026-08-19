@@ -10,21 +10,29 @@ export const UberOrderStatus = {
 export type UberOrderStatus =
   (typeof UberOrderStatus)[keyof typeof UberOrderStatus];
 
-type UberOrderMoneyDto = number | { amount?: number; value?: number };
+export type UberFulfillmentTiming = 'IMMEDIATE' | 'SCHEDULED';
+
+type UberOrderMoneyDto =
+  | number
+  | string
+  | { amount?: number; value?: number; amount_e5?: number };
 
 type UberOrderItemPriceDto =
   | UberOrderMoneyDto
   | {
       unit_price?: UberOrderMoneyDto;
       total_price?: UberOrderMoneyDto;
+      amount_e5?: number;
     };
+
+type UberOrderQuantityDto = number | { amount?: number };
 
 export type UberOrderModifierDto = {
   id?: string;
   modifier_id?: string;
   title?: string;
   name?: string;
-  quantity?: number;
+  quantity?: UberOrderQuantityDto;
   price?: UberOrderMoneyDto;
   price_delta?: UberOrderMoneyDto;
   special_instructions?: string;
@@ -36,11 +44,12 @@ export type UberOrderItemDto = {
   id?: string;
   instance_id?: string;
   line_item_id?: string;
+  cart_item_id?: string;
   item_id?: string;
   external_data?: string;
   title?: string;
   name?: string;
-  quantity?: number;
+  quantity?: UberOrderQuantityDto;
   price?: UberOrderItemPriceDto;
   unit_price?: UberOrderMoneyDto;
   total_price?: UberOrderMoneyDto;
@@ -54,11 +63,17 @@ export type UberOrderItemDto = {
 };
 
 export type UberOrderDetailDto = {
+  /** Order Fulfillment API v1 wraps the MerchantOrder in an `order` field. */
+  order?: UberOrderDetailDto;
   id?: string;
   order_id?: string;
+  external_id?: string;
   external_order_id?: string;
   display_id?: string;
   pickup_code?: string;
+  state?: string;
+  status?: string;
+  preparation_status?: string;
   store_id?: string;
   store?: {
     id?: string;
@@ -95,12 +110,22 @@ export type UberOrderDetailDto = {
   };
   items?: UberOrderItemDto[];
   cart?: { items?: UberOrderItemDto[]; special_instructions?: string };
+  carts?: Array<{ items?: UberOrderItemDto[] }>;
   customer?: {
     name?: string;
     full_name?: string;
     phone?: string;
     phone_number?: string;
   };
+  customers?: Array<{
+    name?: {
+      display_name?: string;
+      first_name?: string;
+      last_name?: string;
+    };
+    phone?: string;
+    phone_number?: string;
+  }>;
   eater?: {
     first_name?: string;
     last_name?: string;
@@ -113,6 +138,11 @@ export type UberOrderDetailDto = {
   type?: string;
   estimated_ready_for_pickup_at?: string;
   estimated_delivery_at?: string;
+  scheduled_ready_for_pickup_at?: string;
+  scheduled_order_target_delivery_time_range?: {
+    start_time?: string;
+    end_time?: string;
+  };
   special_instructions?: string;
   paid_at?: string;
   created_at?: string;
@@ -164,6 +194,9 @@ export type ParsedUberOrder = {
   hasPromotion: boolean;
   deliveryFeeCents: number;
   fulfillmentType: 'pickup' | 'delivery';
+  /** Parser always populates these; optionality preserves legacy adapter fixtures. */
+  fulfillmentTiming?: UberFulfillmentTiming;
+  scheduledReadyAt?: Date | null;
   estimatedReadyAt: Date | null;
   specialInstructions: string | null;
   items: ParsedUberOrderItem[];

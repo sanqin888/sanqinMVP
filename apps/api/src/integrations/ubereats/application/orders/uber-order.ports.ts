@@ -1,5 +1,6 @@
 import type {
   ParsedUberOrder,
+  UberFulfillmentTiming,
   UberOrderActionName,
   UberOrderStatus,
 } from '../../domain/orders/uber-order.types';
@@ -88,6 +89,9 @@ export type UberOrderActionContext = {
   status: UberOrderStatus;
   totalCents: number;
   referenceAt: Date;
+  /** Optional only for backward-compatible test/adapter implementations. */
+  fulfillmentTiming?: UberFulfillmentTiming;
+  scheduledReadyAt?: Date | null;
 };
 
 export interface UberOrderActionRepositoryPort {

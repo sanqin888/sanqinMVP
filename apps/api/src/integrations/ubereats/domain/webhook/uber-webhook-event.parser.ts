@@ -44,7 +44,10 @@ export interface UberEventOrdering {
 
 export function parseUberOrderNotificationV1(payload: unknown) {
   const event = parseUberWebhookEnvelopeV1(payload);
-  return event?.eventType === 'orders.notification'
+  const eventType = normalizeUberEventType(event?.eventType ?? '');
+  return event &&
+    (eventType === 'orders.notification' ||
+      eventType === 'orders.scheduled.notification')
     ? ({ ...event, family: 'order' } as UberOrderNotificationEventV1)
     : null;
 }
@@ -149,7 +152,8 @@ export function dispatchUberWebhookV1(input: {
       : { kind: 'invalid' };
   }
   const parser =
-    eventType === 'orders.notification'
+    eventType === 'orders.notification' ||
+    eventType === 'orders.scheduled.notification'
       ? parseUberOrderNotificationV1
       : eventType === 'orders.cancel'
         ? parseUberOrderCancelV1

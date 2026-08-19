@@ -2,6 +2,7 @@ jest.mock('@prisma/client', () => ({
   PrismaClient: class {},
   Channel: { web: 'web', ubereats: 'ubereats' },
   FulfillmentType: { pickup: 'pickup' },
+  OrderFulfillmentTiming: { IMMEDIATE: 'IMMEDIATE', SCHEDULED: 'SCHEDULED' },
   OrderStatus: {
     pending: 'pending',
     paid: 'paid',
@@ -89,6 +90,74 @@ describe('OrderIngestionService', () => {
     expect(tx.order.create).toHaveBeenCalledTimes(1);
     expect(tx.order.update).toHaveBeenCalledTimes(1);
     expect(tx.orderItem.deleteMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists scheduled timing separately from external estimated ready time', async () => {
+    const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
+    const externalEstimatedReadyAt = new Date('2026-08-19T22:26:00.000Z');
+    const create = jest.fn().mockImplementation(({ data }) => ({
+      ...data,
+      id: 'o1',
+      orderStableId: 's1',
+      status: 'pending',
+    }));
+    const tx = {
+      order: { findUnique: jest.fn().mockResolvedValue(null), create },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'i1' }),
+      },
+      uberOrderItemModifier: { createMany: jest.fn() },
+    };
+    const service = new OrderIngestionService(
+      {
+        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+      } as never,
+      {} as never,
+    );
+
+    await service.ingest(
+      {
+        ...(input as object),
+        fulfillmentTiming: 'SCHEDULED',
+        scheduledReadyAt,
+        externalSnapshot: { estimatedReadyAt: externalEstimatedReadyAt },
+        amounts: {
+          subtotalCents: 2_500,
+          subtotalAfterDiscountCents: 2_500,
+          couponDiscountCents: 0,
+          taxCents: 325,
+          deliveryFeeCents: 0,
+          totalCents: 2_500,
+          paymentTotalCents: 2_500,
+        },
+      } as never,
+      policies,
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        fulfillmentTiming: 'SCHEDULED',
+        scheduledReadyAt,
+        prepDurationMinutes: 20,
+        prepStartAt: new Date('2026-08-19T22:10:00.000Z'),
+        externalEstimatedReadyAt,
+      }) as unknown,
+    });
+  });
+
+  it('rejects a scheduled order without a stable scheduledReadyAt', async () => {
+    const service = new OrderIngestionService({} as never, {} as never);
+    await expect(
+      service.ingest(
+        {
+          ...(input as object),
+          fulfillmentTiming: 'SCHEDULED',
+          scheduledReadyAt: null,
+        } as never,
+        policies,
+      ),
+    ).rejects.toThrow('Scheduled orders require scheduledReadyAt');
   });
 
   it('显式映射 modifier 的持久化字段', async () => {

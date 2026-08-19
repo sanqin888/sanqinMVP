@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
+  OrderFulfillmentTiming,
   OrderStatus,
   PaymentMethod,
   UberMenuPublishStatus,
@@ -29,6 +30,8 @@ import { toUberOrderStatus } from './uber-order-status.mapper';
 /** Prisma implementation of the complete order-import persistence boundary. */
 @Injectable()
 export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPort {
+  private readonly logger = new Logger(UberOrderImportPrismaAdapter.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ingestion: OrderIngestionService,
@@ -139,6 +142,10 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     }));
     const targetStatus = UberOrderStateMachine.eventStatus(input.eventType);
     let savedAction: { taskId: string; created: boolean } | null = null;
+    const fulfillmentTiming =
+      input.order.fulfillmentTiming === 'SCHEDULED'
+        ? OrderFulfillmentTiming.SCHEDULED
+        : OrderFulfillmentTiming.IMMEDIATE;
     const saved = await this.ingestion.ingest(
       {
         channel: Channel.ubereats,
@@ -152,6 +159,8 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
           input.order.fulfillmentType === 'delivery'
             ? FulfillmentType.delivery
             : FulfillmentType.pickup,
+        fulfillmentTiming,
+        scheduledReadyAt: input.order.scheduledReadyAt,
         pickupCode: input.order.pickupCode,
         amounts: {
           subtotalCents: input.order.subtotalCents,
@@ -245,6 +254,27 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         // PROCESSED/FAILED/DEAD via markSucceeded/markFailed/markUnsupported.
       },
     );
+
+    if (fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED) {
+      const timing = await this.prisma.order.findUnique({
+        where: { id: saved.orderId },
+        select: {
+          scheduledReadyAt: true,
+          prepStartAt: true,
+          prepDurationMinutes: true,
+        },
+      });
+      this.logger.log({
+        event: 'scheduled_order_imported',
+        orderStableId: saved.orderStableId,
+        externalOrderId: input.order.externalOrderId,
+        channel: Channel.ubereats,
+        scheduledReadyAt: timing?.scheduledReadyAt?.toISOString() ?? null,
+        prepStartAt: timing?.prepStartAt?.toISOString() ?? null,
+        prepDurationMinutes: timing?.prepDurationMinutes ?? null,
+      });
+    }
+
     return {
       orderId: saved.orderId,
       created: saved.action === 'created',

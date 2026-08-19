@@ -35,7 +35,10 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
     eventId: string;
     resourceId: string | null;
   }): Promise<UberOrderDetailResult> {
-    const path = await this.gateway.pathFromResourceHref(input.resourceHref);
+    const resourcePath = await this.gateway.pathFromResourceHref(
+      input.resourceHref,
+    );
+    const path = withRequiredOrderExpansions(resourcePath);
     const result = await this.gateway.inspect({
       path,
       method: 'GET',
@@ -44,7 +47,9 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       kind: 'orderDetail',
     });
     if (result.response.ok) {
-      const mapped = this.parser.parseResult(result.data);
+      const mapped = this.parser.parseResult(result.data, {
+        eventType: input.eventType,
+      });
       if (mapped.kind === 'parsed') return mapped;
 
       // Never include response values here: they may contain credentials or PII.
@@ -75,11 +80,31 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
   }
 }
 
+/** v1 omits carts/payment unless explicitly expanded; v2 keeps its legacy path. */
+export function withRequiredOrderExpansions(path: string): string {
+  if (!path.startsWith('/v1/delivery/order/')) return path;
+  const separator = path.indexOf('?');
+  const pathname = separator >= 0 ? path.slice(0, separator) : path;
+  const search = separator >= 0 ? path.slice(separator + 1) : '';
+  const params = new URLSearchParams(search);
+  const expanded = new Set(
+    (params.get('expand') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  expanded.add('carts');
+  expanded.add('payment');
+  params.set('expand', [...expanded].join(','));
+  return `${pathname}?${params.toString()}`;
+}
+
 function summarizeOrderDetailShape(
   payload: unknown,
   eventType: string,
 ): Record<string, unknown> {
-  const root = asRecord(payload);
+  const envelope = asRecord(payload);
+  const root = asRecord(envelope?.order) ?? envelope;
   const cart = asRecord(root?.cart);
   const payment = asRecord(root?.payment);
   const charges = asRecord(payment?.charges);
@@ -96,12 +121,14 @@ function summarizeOrderDetailShape(
     rootType: valueShape(payload),
     topLevelKeys: safeTopLevelKeys(root),
     orderIdFields:
-      presentKeys(root, ['order_id', 'id', 'external_order_id']).join(',') ||
-      'none',
+      presentKeys(root, ['order_id', 'id', 'external_order_id', 'external_id']).join(
+        ',',
+      ) || 'none',
     totalFields: totalFields.join(',') || 'none',
     itemsShape: valueShape(root?.items),
     cartShape: valueShape(root?.cart),
     cartItemsShape: valueShape(cart?.items),
+    cartsShape: valueShape(root?.carts),
     paymentShape: valueShape(root?.payment),
     chargesShape: valueShape(payment?.charges),
   };
