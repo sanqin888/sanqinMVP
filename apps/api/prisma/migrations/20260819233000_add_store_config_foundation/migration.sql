@@ -303,10 +303,11 @@ ADD CONSTRAINT "Order_storeId_fkey"
 FOREIGN KEY ("storeId") REFERENCES "Store"("storeStableId")
 ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- This deployment has one canonical POS store. Normalize every currently
+-- provisioned Uber store mapping so future imported Orders satisfy the Store FK.
 UPDATE "UberStoreMapping"
 SET "posExternalStoreId" = '4750_Yonge_Street'
-WHERE "isProvisioned" = true
-  AND ("posExternalStoreId" IS NULL OR BTRIM("posExternalStoreId") = '');
+WHERE "isProvisioned" = true;
 
 -- Transitional compatibility bridge: existing services still write the
 -- singleton BusinessConfig. Mirror those writes into the new brand/store
@@ -422,13 +423,13 @@ BEGIN
     NEW."priorityPerKmCents",
     NEW."maxDeliveryRangeKm",
     NEW."priorityDefaultDistanceKm",
-    NEW."storeLatitude",
-    NEW."storeLongitude",
-    NEW."storeAddressLine1",
-    NEW."storeAddressLine2",
-    NEW."storeCity",
-    NEW."storeProvince",
-    NEW."storePostalCode",
+    COALESCE(NEW."storeLatitude", 43.760288),
+    COALESCE(NEW."storeLongitude", -79.412167),
+    COALESCE(NULLIF(BTRIM(NEW."storeAddressLine1"), ''), '4750 Yonge St.'),
+    COALESCE(NULLIF(BTRIM(NEW."storeAddressLine2"), ''), 'Unit 138'),
+    COALESCE(NULLIF(BTRIM(NEW."storeCity"), ''), 'Toronto'),
+    COALESCE(NULLIF(BTRIM(NEW."storeProvince"), ''), 'ON'),
+    COALESCE(NULLIF(BTRIM(NEW."storePostalCode"), ''), 'M2N 5M6'),
     NEW."salesTaxRate",
     NEW."enableUberDirect",
     CURRENT_TIMESTAMP
