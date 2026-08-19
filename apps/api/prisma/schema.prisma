@@ -352,6 +352,74 @@ model AuthChallenge {
   @@index([status, expiresAt])
 }
 
+model Store {
+  id            String         @id @default(uuid()) @db.Uuid
+  storeStableId String         @unique
+  name          String
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  config        StoreConfig?
+  posDevices    PosDevice[]
+  orders        Order[]
+  businessHours BusinessHour[]
+  holidays      Holiday[]
+}
+
+model StoreConfig {
+  storeId                   String   @id @db.Uuid
+  timezone                  String   @default("America/Toronto")
+  isTemporarilyClosed       Boolean  @default(false)
+  temporaryCloseReason      String?
+  publicNotice              String?
+  publicNoticeEn            String?
+  deliveryBaseFeeCents      Int      @default(600)
+  priorityPerKmCents        Int      @default(100)
+  maxDeliveryRangeKm        Float    @default(10.0)
+  priorityDefaultDistanceKm Float    @default(6.0)
+  latitude                  Float?
+  longitude                 Float?
+  addressLine1              String?
+  addressLine2              String?
+  city                      String?
+  province                  String?
+  postalCode                String?
+  countryCode               String   @default("CA")
+  phone                     String?
+  contactName               String?
+  salesTaxRate              Float    @default(0.13)
+  enableUberDirect          Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  store                     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+}
+
+model BrandConfig {
+  id                       Int      @id @default(1)
+  brandNameZh              String?
+  brandNameEn              String?
+  siteUrl                  String?
+  emailFromNameZh          String?
+  emailFromNameEn          String?
+  emailFromAddress         String?
+  smsSignature             String?
+  supportPhone             String?
+  supportEmail             String?
+  wechatAlipayExchangeRate Float    @default(1.0)
+  earnPtPerDollar          Float    @default(0.01)
+  redeemDollarPerPoint     Float    @default(1.0)
+  referralPtPerDollar      Float    @default(0.01)
+  tierMultiplierBronze     Float    @default(1.0)
+  tierMultiplierSilver     Float    @default(2.0)
+  tierMultiplierGold       Float    @default(3.0)
+  tierMultiplierPlatinum   Float    @default(5.0)
+  tierThresholdSilver      Int      @default(100000)
+  tierThresholdGold        Int      @default(1000000)
+  tierThresholdPlatinum    Int      @default(3000000)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
+
 model PosDevice {
   id                String          @id @default(uuid()) @db.Uuid
   deviceStableId    String          @unique @default(cuid())
@@ -363,6 +431,7 @@ model PosDevice {
   enrolledAt        DateTime        @default(now())
   lastSeenAt        DateTime?
   enrollmentKeyHash String          @unique
+  store             Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
 
   @@index([storeId])
 }
@@ -461,8 +530,9 @@ model Order {
   externalOrderNotes         String?
   externalEstimatedReadyAt   DateTime?
   externalPriceVarianceCents Int                     @default(0)
-  /// POS room identifier; for Uber orders this is UberStoreMapping.posExternalStoreId.
+  /// Stable POS room/external store identifier; references Store.storeStableId.
   storeId                    String?
+  store                      Store?                  @relation(fields: [storeId], references: [storeStableId], onDelete: Restrict)
   printJobs                  PosPrintJob[]
   amendments                 OrderAmendment[]
   items                      OrderItem[]
@@ -472,6 +542,7 @@ model Order {
   @@index([contactPhone, createdAt])
   @@index([rebillGroupId])
   @@index([userId, createdAt])
+  @@index([storeId])
   @@index([fulfillmentTiming, scheduleActivatedAt, prepStartAt, status])
 }
 
@@ -512,7 +583,7 @@ model Coupon {
   minSpendCents         Int?
   expiresAt             DateTime?
   issuedAt              DateTime             @default(now())
-  usedAt                DateTime?
+  usedAt                 DateTime?
   orderId               String?              @db.Uuid
   source                String?
   campaign              String?
@@ -521,7 +592,7 @@ model Coupon {
   isFrozen              Boolean              @default(false)
   isActive              Boolean              @default(true)
   startsAt              DateTime?
-  endsAt                DateTime?
+  endsAt                 DateTime?
   stackingPolicy        CouponStackingPolicy @default(EXCLUSIVE)
   userCoupons           UserCoupon[]
 
@@ -925,6 +996,8 @@ model RecipientFailureCounter {
   @@index([channel, failCount, updatedAt])
 }
 
+/// Transitional single-store compatibility model. New store-aware code must
+/// use Store/StoreConfig; brand-wide code should migrate to BrandConfig.
 model BusinessConfig {
   id                        Int      @id @default(1)
   storeName                 String   @unique
@@ -972,16 +1045,21 @@ model BusinessConfig {
 
 model BusinessHour {
   id           Int      @id @default(autoincrement())
+  storeId      String   @default(dbgenerated("'8a3d4c0e-4750-4f6a-9138-000000000001'::uuid")) @db.Uuid
   weekday      Int      @unique
   openMinutes  Int?
   closeMinutes Int?
   isClosed     Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, weekday])
 }
 
 model Holiday {
   id           Int      @id @default(autoincrement())
+  storeId      String   @default(dbgenerated("'8a3d4c0e-4750-4f6a-9138-000000000001'::uuid")) @db.Uuid
   date         DateTime
   name         String?
   isClosed     Boolean  @default(true)
@@ -989,6 +1067,9 @@ model Holiday {
   closeMinutes Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, date])
 }
 
 model MenuCategory {
