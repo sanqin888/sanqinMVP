@@ -57,7 +57,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
       input,
       'ACCEPT',
       input.readyForPickupAt
-        ? { ready_for_pickup_time: input.readyForPickupAt.toISOString() }
+        ? { pickup_time: Math.floor(input.readyForPickupAt.getTime() / 1_000) }
         : {},
     );
   }
