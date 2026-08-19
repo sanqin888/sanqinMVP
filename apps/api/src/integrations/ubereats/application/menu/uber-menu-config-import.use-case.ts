@@ -38,4 +38,15 @@ export class UberMenuConfigImportUseCase {
       administratorId,
     );
   }
+  restoreOptionPrice(
+    storeId: string,
+    optionChoiceStableId: string,
+    administratorId: string,
+  ) {
+    return this.imports.restoreOptionPrice(
+      storeId,
+      optionChoiceStableId,
+      administratorId,
+    );
+  }
 }
