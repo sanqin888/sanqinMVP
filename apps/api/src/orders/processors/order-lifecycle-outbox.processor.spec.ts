@@ -74,7 +74,7 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
     expect(fulfillment).not.toHaveBeenCalled();
     const acceptedStatement = sqlText(queryRaw.mock.calls[1][0]);
     expect(acceptedStatement).toContain("'IMMEDIATE'");
-    expect(acceptedStatement).toContain('order.prep_started');
+    expect(queryRaw.mock.calls[1]).toContain('order.prep_started');
     expect(queryRaw.mock.calls[1]).toContain('order.accepted');
   });
 
