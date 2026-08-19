@@ -29,7 +29,7 @@ describe('UberOrderActionGatewayAdapter', () => {
     },
   );
 
-  it('maps the calculated ACCEPT ready time to ready_for_pickup_time', async () => {
+  it('maps the calculated ACCEPT ready time to legacy pickup_time seconds', async () => {
     const sendActionCommand = jest
       .fn()
       .mockResolvedValue({ ok: true, status: 204, data: {} });
@@ -46,7 +46,7 @@ describe('UberOrderActionGatewayAdapter', () => {
     expect(sendActionCommand).toHaveBeenCalledWith(
       'order/1',
       'ACCEPT',
-      { ready_for_pickup_time: '2026-08-18T18:10:00.000Z' },
+      { pickup_time: 1_787_076_600 },
       'accept-key',
     );
   });
