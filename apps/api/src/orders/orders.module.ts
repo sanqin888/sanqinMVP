@@ -2,6 +2,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersController } from './orders.controller';
+import { ScheduledOrdersController } from './scheduled-orders.controller';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
@@ -14,8 +15,11 @@ import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
+import { ScheduledOrderProcessor } from './processors/scheduled-order.processor';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import { OrderIngestionService } from './order-ingestion.service';
+import { OrderPreparationService } from './order-preparation.service';
+import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 
 @Module({
   imports: [
@@ -29,15 +33,23 @@ import { OrderIngestionService } from './order-ingestion.service';
     EmailModule,
     MessagingModule,
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, ScheduledOrdersController],
   providers: [
     OrdersService,
     OrderIngestionService,
+    OrderPreparationService,
+    OrderSchedulingQueryService,
     PrintPosPayloadService,
     NotificationProcessor,
     FulfillmentProcessor,
     OrderLifecycleOutboxProcessor,
+    ScheduledOrderProcessor,
   ],
-  exports: [OrdersService, OrderIngestionService, PrintPosPayloadService],
+  exports: [
+    OrdersService,
+    OrderIngestionService,
+    OrderPreparationService,
+    PrintPosPayloadService,
+  ],
 })
 export class OrdersModule {}

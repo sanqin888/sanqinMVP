@@ -1,3 +1,4 @@
+import { normalizeUberEventType } from '../webhook/uber-event-type';
 import { UberOrderStateMachine } from './uber-order.state-machine';
 import type {
   ParsedUberModifier,
@@ -17,24 +18,34 @@ export type UberOrderPayloadParseResult =
         | 'MALFORMED_PAYLOAD'
         | 'MISSING_ORDER_ID'
         | 'MISSING_TOTAL'
-        | 'EMPTY_ITEMS';
+        | 'EMPTY_ITEMS'
+        | 'MISSING_SCHEDULED_READY_AT';
       category: 'mapping' | 'business';
     };
 
+type ParseContext = { eventType?: string };
+
 /** Database- and transport-free normalization of Uber webhook order bodies. */
 export class UberOrderPayloadParser {
-  parse(payload: unknown): ParsedUberOrder | null {
-    const result = this.parseResult(payload);
+  parse(payload: unknown, context?: ParseContext): ParsedUberOrder | null {
+    const result = this.parseResult(payload, context);
     return result.kind === 'parsed' ? result.order : null;
   }
 
-  parseResult(payload: unknown): UberOrderPayloadParseResult {
+  parseResult(
+    payload: unknown,
+    context?: ParseContext,
+  ): UberOrderPayloadParseResult {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       return invalid('MALFORMED_PAYLOAD', 'mapping');
-    const dto = payload as UberOrderDetailDto;
+    const root = payload as UberOrderDetailDto;
+    const dto = (
+      asObject(root.order) ? root.order : root
+    ) as UberOrderDetailDto;
     if (
       (dto.items !== undefined && !Array.isArray(dto.items)) ||
-      (dto.cart?.items !== undefined && !Array.isArray(dto.cart.items))
+      (dto.cart?.items !== undefined && !Array.isArray(dto.cart.items)) ||
+      (dto.carts !== undefined && !Array.isArray(dto.carts))
     )
       return invalid('MALFORMED_PAYLOAD', 'mapping');
     const charges = dto.payment?.charges;
@@ -43,6 +54,7 @@ export class UberOrderPayloadParser {
       dto.order_id,
       dto.id,
       dto.external_order_id,
+      dto.external_id,
     );
     const totalSource =
       dto.total ??
@@ -51,10 +63,28 @@ export class UberOrderPayloadParser {
       charges?.total_promo_applied;
     if (!externalOrderId) return invalid('MISSING_ORDER_ID', 'mapping');
     if (totalSource === undefined) return invalid('MISSING_TOTAL', 'mapping');
-    const wireItems = dto.items ?? dto.cart?.items ?? [];
+    const wireItems =
+      dto.items ??
+      dto.cart?.items ??
+      dto.carts?.flatMap((cart) => cart.items ?? []) ??
+      [];
     if (wireItems.length === 0) return invalid('EMPTY_ITEMS', 'business');
     if (wireItems.some((item) => !asObject(item)))
       return invalid('MALFORMED_PAYLOAD', 'mapping');
+
+    const scheduled =
+      normalizeUberEventType(context?.eventType ?? '') ===
+        'orders.scheduled.notification' ||
+      readString(dto.status)?.toUpperCase() === 'SCHEDULED';
+    const scheduledReadyAt = scheduled
+      ? readDate(
+          dto.scheduled_ready_for_pickup_at,
+          dto.scheduled_order_target_delivery_time_range?.start_time,
+        )
+      : null;
+    if (scheduled && !scheduledReadyAt)
+      return invalid('MISSING_SCHEDULED_READY_AT', 'mapping');
+
     const subtotalCents = readCents(
       dto.subtotal ?? dto.sub_total ?? charges?.sub_total ?? charges?.subtotal,
       dto.subtotal_cents,
@@ -95,10 +125,17 @@ export class UberOrderPayloadParser {
       dto.total_cents,
       subtotalCents - discountCents + taxCents + deliveryFeeCents,
     );
-    const customer = dto.customer ?? dto.eater ?? {};
+    const customer = dto.customer ?? {};
+    const v1Customer = dto.customers?.[0];
     const eaterName = [
       readString(dto.eater?.first_name),
       readString(dto.eater?.last_name),
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const v1CustomerName = [
+      readString(v1Customer?.name?.first_name),
+      readString(v1Customer?.name?.last_name),
     ]
       .filter(Boolean)
       .join(' ');
@@ -118,8 +155,19 @@ export class UberOrderPayloadParser {
           promoSubtotalCents !== null ||
           (promotions?.promotions?.length ?? 0) > 0,
         deliveryFeeCents,
-        contactName: readString(customer.name, customer.full_name, eaterName),
-        contactPhone: readString(customer.phone, customer.phone_number),
+        contactName: readString(
+          customer.name,
+          customer.full_name,
+          v1Customer?.name?.display_name,
+          v1CustomerName,
+          eaterName,
+        ),
+        contactPhone: readString(
+          customer.phone,
+          customer.phone_number,
+          v1Customer?.phone,
+          v1Customer?.phone_number,
+        ),
         paidAt:
           readDate(dto.paid_at, dto.created_at, dto.placed_at) ?? new Date(),
         fulfillmentType: readString(dto.fulfillment_type, dto.type)
@@ -127,6 +175,8 @@ export class UberOrderPayloadParser {
           .includes('deliver')
           ? 'delivery'
           : 'pickup',
+        fulfillmentTiming: scheduled ? 'SCHEDULED' : 'IMMEDIATE',
+        scheduledReadyAt,
         estimatedReadyAt: readDate(
           dto.estimated_ready_for_pickup_at,
           dto.estimated_delivery_at,
@@ -170,7 +220,7 @@ function invalid(
 export function parseUberOrderItem(
   item: UberOrderItemDto,
 ): ParsedUberOrderItem {
-  const quantity = Math.max(1, Math.round(item.quantity ?? 1));
+  const quantity = readQuantity(item.quantity);
   const price = asObject(item.price);
   const modifiers = [
     ...(item.modifiers ?? []).map((modifier) =>
@@ -198,7 +248,12 @@ export function parseUberOrderItem(
   );
   const unitPriceCents = suppliedUnit || Math.round(suppliedLine / quantity);
   return {
-    externalLineId: readString(item.line_item_id, item.instance_id, item.id),
+    externalLineId: readString(
+      item.line_item_id,
+      item.instance_id,
+      item.cart_item_id,
+      item.id,
+    ),
     externalItemId: readString(item.item_id, item.id),
     stableIdHint: readString(item.external_data),
     displayName: readString(item.title, item.name) ?? 'Unknown Uber item',
@@ -222,7 +277,7 @@ export function parseUberModifier(
     parentExternalId,
     displayName:
       readString(modifier.title, modifier.name) ?? 'Unknown modifier',
-    quantity: Math.max(1, Math.round(modifier.quantity ?? 1)),
+    quantity: readQuantity(modifier.quantity),
     priceDeltaCents: readCents(modifier.price_delta, modifier.price, 0),
     specialInstructions: readString(modifier.special_instructions),
     children: [
@@ -257,19 +312,23 @@ export function readCents(
   fallback: unknown,
   defaultValue: number,
 ): number {
-  const money = asObject(primary);
-  const value =
-    finite(primary) ??
-    finite(money?.amount) ??
-    finite(money?.value) ??
-    finite(fallback) ??
-    defaultValue;
+  const value = moneyCents(primary) ?? moneyCents(fallback) ?? defaultValue;
   return Math.max(0, Math.round(value));
 }
 export function readOptionalCents(value: unknown): number | null {
-  const money = asObject(value);
-  const amount = finite(value) ?? finite(money?.amount) ?? finite(money?.value);
+  const amount = moneyCents(value);
   return amount === null ? null : Math.max(0, Math.round(amount));
+}
+function moneyCents(value: unknown): number | null {
+  const money = asObject(value);
+  const amountE5 = finite(money?.amount_e5);
+  if (amountE5 !== null) return amountE5 / 1_000;
+  return finite(value) ?? finite(money?.amount) ?? finite(money?.value);
+}
+function readQuantity(value: unknown): number {
+  const object = asObject(value);
+  const quantity = finite(value) ?? finite(object?.amount) ?? 1;
+  return Math.max(1, Math.round(quantity));
 }
 function finite(value: unknown): number | null {
   const parsed =

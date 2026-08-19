@@ -22,5 +22,6 @@ export type UberOrderDetailResult =
         | 'MALFORMED_PAYLOAD'
         | 'MISSING_ORDER_ID'
         | 'MISSING_TOTAL'
-        | 'EMPTY_ITEMS';
+        | 'EMPTY_ITEMS'
+        | 'MISSING_SCHEDULED_READY_AT';
     };

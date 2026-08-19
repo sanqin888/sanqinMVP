@@ -1,13 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
+  OrderFulfillmentTiming,
   OrderStatus,
   PaymentMethod,
   Prisma,
 } from '@prisma/client';
 import { OrderEventsBus } from '../messaging/order-events.bus';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  resolveOrderPreparationMinutes,
+  resolveOrderPrepStartAt,
+} from './order-preparation-time.policy';
 
 export type NormalizedOrderItem = {
   productStableId: string;
@@ -57,6 +62,8 @@ export type NormalizedOrderInput = {
   status: OrderStatus;
   paidAt: Date;
   fulfillmentType: FulfillmentType;
+  fulfillmentTiming?: OrderFulfillmentTiming;
+  scheduledReadyAt?: Date | null;
   pickupCode?: string | null;
   amounts: {
     subtotalCents: number;
@@ -90,6 +97,8 @@ export type IngestionResult = {
 
 @Injectable()
 export class OrderIngestionService {
+  private readonly logger = new Logger(OrderIngestionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly orderEventsBus: OrderEventsBus,
@@ -118,6 +127,27 @@ export class OrderIngestionService {
         'External channel snapshot policy must be enabled for Uber Eats',
       );
     }
+
+    const fulfillmentTiming =
+      input.fulfillmentTiming ?? OrderFulfillmentTiming.IMMEDIATE;
+    if (
+      fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED &&
+      !input.scheduledReadyAt
+    ) {
+      throw new Error('Scheduled orders require scheduledReadyAt');
+    }
+    const prepDurationMinutes =
+      fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED
+        ? resolveOrderPreparationMinutes(input.amounts.totalCents)
+        : null;
+    const prepStartAt =
+      fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED &&
+      input.scheduledReadyAt
+        ? resolveOrderPrepStartAt(
+            input.amounts.totalCents,
+            input.scheduledReadyAt,
+          )
+        : null;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
@@ -149,6 +179,10 @@ export class OrderIngestionService {
         status: effectiveStatus,
         paidAt: input.paidAt,
         fulfillmentType: input.fulfillmentType,
+        fulfillmentTiming,
+        scheduledReadyAt: input.scheduledReadyAt ?? null,
+        prepDurationMinutes,
+        prepStartAt,
         pickupCode: input.pickupCode ?? existing?.pickupCode,
         contactName: input.contact?.name,
         contactEmail: input.contact?.email,
@@ -229,6 +263,18 @@ export class OrderIngestionService {
         orderId: result.orderId,
         amountCents: input.amounts.subtotalAfterDiscountCents,
         redeemValueCents: 0,
+      });
+    }
+
+    if (fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED) {
+      this.logger.log({
+        event: 'scheduled_order_waiting',
+        orderStableId: result.orderStableId,
+        externalOrderId: input.externalOrderId ?? null,
+        channel: input.channel,
+        scheduledReadyAt: input.scheduledReadyAt?.toISOString() ?? null,
+        prepStartAt: prepStartAt?.toISOString() ?? null,
+        prepDurationMinutes,
       });
     }
     return result;

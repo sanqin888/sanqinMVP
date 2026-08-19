@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
+import {
+  ORDER_ACCEPTED_LIFECYCLE_EVENT,
+  ORDER_LIFECYCLE_OUTBOX_SOURCE,
+  orderAcceptedIdempotencyKey,
+} from '../../../../orders/order-lifecycle';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderActionRepositoryPort,
@@ -18,9 +23,6 @@ type ClaimedRow = {
   reasonCode: string | null;
   reasonDetail: string | null;
 };
-
-const ORDER_LIFECYCLE_OUTBOX_SOURCE = 'orders.lifecycle';
-const ORDER_ACCEPTED_LIFECYCLE_EVENT = 'order.accepted';
 
 /** Durable order-command queue. Prisma records are translated at this boundary. */
 @Injectable()
@@ -111,6 +113,8 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         totalCents: true,
         paidAt: true,
         createdAt: true,
+        fulfillmentTiming: true,
+        scheduledReadyAt: true,
       },
     });
     if (!order) return null;
@@ -118,6 +122,11 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
       status: order.status as UberOrderStatus,
       totalCents: order.totalCents,
       referenceAt: order.paidAt ?? order.createdAt,
+      fulfillmentTiming:
+        order.fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED
+          ? ('SCHEDULED' as const)
+          : ('IMMEDIATE' as const),
+      scheduledReadyAt: order.scheduledReadyAt,
     };
   }
 
@@ -136,6 +145,13 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         select: { externalOrderId: true, action: true },
       });
       if (!claimed) return false;
+      if (
+        claimed.action === 'ACCEPT' &&
+        input.transition &&
+        input.transition.to !== OrderStatus.paid
+      ) {
+        throw new Error('Uber ACCEPT may only record local acceptance as paid');
+      }
 
       const completedAt = new Date();
       // Fence the complete operation with the exact lease first. Because this
@@ -197,17 +213,12 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
           }
         }
 
-        if (
-          order &&
-          reachedTarget &&
-          claimed.action === 'ACCEPT' &&
-          input.transition.to === OrderStatus.making
-        ) {
-          // Deterministic idempotencyKey makes an ACCEPT replay append the same
-          // logical fact. The API process consumes it and owns POS fulfillment.
+        if (order && reachedTarget && claimed.action === 'ACCEPT') {
+          // ACCEPT records acceptance only. Orders owns the separate decision to
+          // start preparation and will append order.prep_started transactionally.
           await tx.opsEvent.createMany({
             data: {
-              idempotencyKey: `order.accepted:${order.id}`,
+              idempotencyKey: orderAcceptedIdempotencyKey(order.id),
               eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
               source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
               payload: {

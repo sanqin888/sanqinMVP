@@ -36,6 +36,11 @@ enum FulfillmentType {
   delivery
 }
 
+enum OrderFulfillmentTiming {
+  IMMEDIATE
+  SCHEDULED
+}
+
 enum Channel {
   web
   in_store
@@ -410,6 +415,7 @@ model Order {
   id                         String                  @id @default(uuid()) @db.Uuid
   channel                    Channel                 @default(web)
   fulfillmentType            FulfillmentType         @default(pickup)
+  fulfillmentTiming          OrderFulfillmentTiming  @default(IMMEDIATE)
   userId                     String?
   clientRequestId            String?                 @unique
   status                     OrderStatus             @default(pending)
@@ -446,6 +452,10 @@ model Order {
   paidAt                     DateTime
   makingAt                   DateTime?
   readyAt                    DateTime?
+  scheduledReadyAt           DateTime?
+  prepStartAt                DateTime?
+  prepDurationMinutes        Int?
+  scheduleActivatedAt        DateTime?
   paymentMethod              PaymentMethod
   externalDisplayId          String?
   externalOrderNotes         String?
@@ -462,6 +472,7 @@ model Order {
   @@index([contactPhone, createdAt])
   @@index([rebillGroupId])
   @@index([userId, createdAt])
+  @@index([fulfillmentTiming, scheduleActivatedAt, prepStartAt, status])
 }
 
 model PosPrintJob {
@@ -752,7 +763,7 @@ model OrderAmendmentItem {
 model LoyaltyAccount {
   userId             String          @unique
   pointsMicro        BigInt          @default(0) // 积分池 (赠送 + 返利)
-  balanceMicro       BigInt          @default(0) // 余额池 (充值本金)
+  balanceMicro       BigInt          @default(0) // 余额池 (充值本金）
   tier               LoyaltyTier     @default(BRONZE)
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
@@ -770,7 +781,7 @@ model LoyaltyLedger {
   balanceAfterMicro BigInt
   note              String?
   createdAt         DateTime         @default(now())
-  id                String           @id @default(uuid()) @db.Uuid
+  id                 String           @id @default(uuid()) @db.Uuid
   ledgerStableId    String           @unique @default(cuid())
   accountId         String           @db.Uuid
   orderId           String?          @db.Uuid
