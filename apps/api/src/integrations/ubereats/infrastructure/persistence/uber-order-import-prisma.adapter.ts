@@ -299,7 +299,30 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   private modifierSnapshots(
     values: ParsedUberModifier[],
   ): Prisma.InputJsonValue {
-    return values as unknown as Prisma.InputJsonValue;
+    return this.flattenValues(values).map((modifier, sortOrder) => {
+      const templateGroupStableId =
+        modifier.parentExternalId ?? `uber-group:${sortOrder}`;
+      return {
+        templateGroupStableId,
+        nameEn: null,
+        nameZh: null,
+        displayName: null,
+        minSelect: 0,
+        maxSelect: null,
+        sortOrder,
+        choices: [
+          {
+            stableId: modifier.externalId ?? `uber-option:${sortOrder}`,
+            templateGroupStableId,
+            nameEn: null,
+            nameZh: null,
+            displayName: modifier.displayName,
+            priceDeltaCents: modifier.priceDeltaCents,
+            sortOrder: 0,
+          },
+        ],
+      };
+    }) as unknown as Prisma.InputJsonValue;
   }
 
   private flattenValues(values: ParsedUberModifier[]): ParsedUberModifier[] {
