@@ -192,4 +192,103 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     expect(inboxUpsert).not.toHaveBeenCalled();
     expect(inboxUpdate).not.toHaveBeenCalled();
   });
+
+  it('normalizes Uber modifiers into printable shared option snapshots', async () => {
+    let capturedInput: unknown;
+    const ingest = jest.fn(async (input: unknown) => {
+      capturedInput = input;
+      return savedOrder;
+    });
+    const adapter = new UberOrderImportPrismaAdapter(
+      {
+        uberModifierGroupConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              externalModifierGroupId: 'uber-group-spice',
+              templateGroupStableId: 'group-spice',
+              displayName: 'Level of Spice',
+              minSelect: 1,
+              maxSelect: 1,
+            },
+          ]),
+        },
+        uberOptionItemConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              externalItemId: 'uber-option-medium',
+              optionChoiceStableId: 'option-medium',
+              displayName: 'Medium Spicy',
+            },
+          ]),
+        },
+      } as never,
+      { ingest } as never,
+    );
+
+    await adapter.saveImportedOrder({
+      ...baseInput,
+      menuMappings: [
+        {
+          externalItemId: 'uber-item-1',
+          menuItemStableId: 'menu-item-1',
+          expectedPriceCents: 1_000,
+        },
+      ],
+      order: {
+        ...parsedOrder,
+        fulfillmentTiming: 'IMMEDIATE' as const,
+        scheduledReadyAt: null,
+        items: [
+          {
+            externalLineId: 'line-1',
+            externalItemId: 'uber-item-1',
+            stableIdHint: null,
+            displayName: 'SanQ Noodles',
+            quantity: 1,
+            baseUnitPriceCents: 1_000,
+            optionsUnitPriceCents: 0,
+            unitPriceCents: 1_000,
+            lineTotalCents: 1_000,
+            specialInstructions: 'no cilantro',
+            modifiers: [
+              {
+                externalId: 'uber-option-medium',
+                parentExternalId: 'uber-group-spice',
+                displayName: 'Medium Spicy',
+                quantity: 1,
+                priceDeltaCents: 0,
+                specialInstructions: null,
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(capturedInput).toMatchObject({
+      items: [
+        {
+          productStableId: 'menu-item-1',
+          external: { instructions: 'no cilantro' },
+          options: [
+            {
+              templateGroupStableId: 'group-spice',
+              displayName: 'Level of Spice',
+              minSelect: 1,
+              maxSelect: 1,
+              choices: [
+                {
+                  stableId: 'option-medium',
+                  templateGroupStableId: 'group-spice',
+                  displayName: 'Medium Spicy',
+                  priceDeltaCents: 0,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
 });
