@@ -100,6 +100,7 @@ _WORKSPACE_GIT_SUBCOMMANDS = {
     "log",
     "diff",
     "show",
+    "fetch",
     "switch",
     "checkout",
     "add",
@@ -107,6 +108,50 @@ _WORKSPACE_GIT_SUBCOMMANDS = {
     "push",
 }
 _ALLOWED_DOCKER_COMPOSE_SUBCOMMANDS = {"ps", "logs"}
+
+_SENSITIVE_REPO_GLOBS = (
+    ".git/**",
+    "**/.git/**",
+    ".env",
+    ".env.*",
+    "**/.env",
+    "**/.env.*",
+    ".ssh/**",
+    "**/.ssh/**",
+    "id_rsa",
+    "id_ed25519",
+    "**/id_rsa",
+    "**/id_ed25519",
+    "credentials",
+    "credentials.json",
+    "credentials.yaml",
+    "credentials.yml",
+    "**/credentials",
+    "**/credentials.json",
+    "**/credentials.yaml",
+    "**/credentials.yml",
+    "secrets.json",
+    "**/secrets.json",
+    "service-account*.json",
+    "**/service-account*.json",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "**/*.pem",
+    "**/*.key",
+    "**/*.p12",
+    "**/*.pfx",
+)
+_SEARCH_EXCLUDED_GLOBS = (
+    "node_modules/**",
+    "**/node_modules/**",
+    "uploads/**",
+    "**/uploads/**",
+    "backups/**",
+    "**/backups/**",
+    *_SENSITIVE_REPO_GLOBS,
+)
 
 _BLOCKED_DB_KEYWORDS_RE = re.compile(
     r"(?i)\b(?:INSERT|UPDATE|DELETE|MERGE|UPSERT|ALTER|DROP|CREATE|TRUNCATE|"
@@ -226,11 +271,31 @@ def _assert_safe_repo_path(path: Path, root: Path) -> None:
         raise ValueError("private key/certificate files are blocked")
 
 
+def _git_sensitive_pathspecs() -> list[str]:
+    return [f":(exclude,glob){pattern}" for pattern in _SENSITIVE_REPO_GLOBS]
+
+
+def _git_pathspec_args(root: Path, path: str = "") -> list[str]:
+    include = "."
+    if path.strip():
+        resolved = _resolve_under(root, path)
+        _assert_safe_repo_path(resolved, root)
+        include = _relative_to(root, resolved)
+    return ["--", include, *_git_sensitive_pathspecs()]
+
+
+def _rg_exclude_args() -> list[str]:
+    args: list[str] = []
+    for pattern in _SEARCH_EXCLUDED_GLOBS:
+        args.extend(["--glob", f"!{pattern}"])
+    return args
+
+
 def _validate_revision(revision: str, *, name: str = "commit") -> str:
     revision = _validate_plain_text(revision.strip(), name=name, max_len=120)
     if not revision:
         raise ValueError(f"{name} is required")
-    if not re.fullmatch(r"[A-Za-z0-9._/@{}^~:+-]+", revision):
+    if not re.fullmatch(r"[A-Za-z0-9._/@^~+-]+", revision):
         raise ValueError(f"{name} contains unsupported characters")
     if revision.startswith("-"):
         raise ValueError(f"{name} may not begin with '-'")
@@ -273,7 +338,8 @@ def _assert_allowed_process(args: list[str], *, cwd: Path, scope: ProcessScope) 
                 raise ValueError("workspace Git commands must run inside workspace")
             if subcommand not in _WORKSPACE_GIT_SUBCOMMANDS:
                 raise ValueError(
-                    "workspace Git allows status/log/diff/show/switch/checkout/add/commit/push only"
+                    "workspace Git allows status/log/diff/show/fetch/switch/checkout/"
+                    "add/commit/push only"
                 )
             return
         raise ValueError("git is not allowed in this process scope")
@@ -474,42 +540,6 @@ def _search_repo_code(
         "--no-heading",
         "--color",
         "never",
-        "--glob",
-        "!node_modules/**",
-        "--glob",
-        "!.git/**",
-        "--glob",
-        "!.env",
-        "--glob",
-        "!.env.*",
-        "--glob",
-        "!**/.env",
-        "--glob",
-        "!**/.env.*",
-        "--glob",
-        "!uploads/**",
-        "--glob",
-        "!backups/**",
-        "--glob",
-        "!**/credentials",
-        "--glob",
-        "!**/credentials.json",
-        "--glob",
-        "!**/credentials.yaml",
-        "--glob",
-        "!**/credentials.yml",
-        "--glob",
-        "!**/secrets.json",
-        "--glob",
-        "!**/service-account*.json",
-        "--glob",
-        "!**/*.pem",
-        "--glob",
-        "!**/*.key",
-        "--glob",
-        "!**/*.p12",
-        "--glob",
-        "!**/*.pfx",
     ]
     if not regex:
         args.append("--fixed-strings")
@@ -519,6 +549,7 @@ def _search_repo_code(
         args.extend(["--context", str(context)])
     if file_glob:
         args.extend(["--glob", file_glob])
+    args.extend(_rg_exclude_args())
 
     args.extend(["--", query, _relative_to(root, target)])
     output = _run(
@@ -575,10 +606,7 @@ def _git_log(
     if grep:
         args.append(f"--grep={grep}")
 
-    if path.strip():
-        resolved = _resolve_under(root, path)
-        args.extend(["--", _relative_to(root, resolved)])
-
+    args.extend(_git_pathspec_args(root, path))
     return _run(args, cwd=root, scope=scope)
 
 
@@ -595,9 +623,7 @@ def _git_diff(
         args.append("--staged")
     if stat:
         args.append("--stat")
-    if path.strip():
-        resolved = _resolve_under(root, path)
-        args.extend(["--", _relative_to(root, resolved)])
+    args.extend(_git_pathspec_args(root, path))
     return _run(args, cwd=root, scope=scope)
 
 
@@ -614,10 +640,20 @@ def _git_show(
     if stat:
         args.append("--stat")
     args.append(revision)
-    if path.strip():
-        resolved = _resolve_under(root, path)
-        args.extend(["--", _relative_to(root, resolved)])
+    args.extend(_git_pathspec_args(root, path))
     return _run(args, cwd=root, scope=scope)
+
+
+def _workspace_current_branch() -> str:
+    status = _run_workspace(["git", "status", "-sb", *_git_pathspec_args(WORKSPACE_ROOT)])
+    first_line = status.splitlines()[0] if status else ""
+    if not first_line.startswith("## "):
+        raise ValueError("unable to determine current workspace branch")
+    branch_info = first_line[3:]
+    if branch_info.startswith("HEAD "):
+        raise ValueError("workspace is in detached HEAD state")
+    branch = branch_info.split("...", 1)[0].split(" ", 1)[0].strip()
+    return _validate_branch(branch, name="current_branch")
 
 
 def _github_repo_parts() -> tuple[str, str]:
@@ -1056,9 +1092,7 @@ def docker_logs(
 def git_status(path: str = "") -> str:
     """Show read-only Git status for the production repository."""
     args = ["git", "status", "-sb"]
-    if path.strip():
-        resolved = _resolve_under(PROD_REPO_ROOT, path)
-        args.extend(["--", _relative_to(PROD_REPO_ROOT, resolved)])
+    args.extend(_git_pathspec_args(PROD_REPO_ROOT, path))
     return _run_prod(args)
 
 
@@ -1227,9 +1261,7 @@ def workspace_git_status(path: str = "") -> str:
     """Show Git status for the isolated workspace."""
     _assert_workspace_ready()
     args = ["git", "status", "-sb"]
-    if path.strip():
-        resolved = _resolve_under(WORKSPACE_ROOT, path)
-        args.extend(["--", _relative_to(WORKSPACE_ROOT, resolved)])
+    args.extend(_git_pathspec_args(WORKSPACE_ROOT, path))
     return _run_workspace(args)
 
 
@@ -1291,6 +1323,26 @@ def workspace_git_show(
 
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
+def workspace_git_fetch() -> str:
+    """Fetch the latest dev ref from fixed remote origin into origin/dev.
+
+    The working tree is not changed; create feature branches from origin/dev afterwards.
+    """
+    _assert_workspace_ready()
+    return _run_workspace(
+        [
+            "git",
+            "fetch",
+            "--no-tags",
+            "origin",
+            "+refs/heads/dev:refs/remotes/origin/dev",
+        ],
+        timeout=60,
+        max_chars=250_000,
+    )
+
+
+@mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
 def workspace_git_switch(
     branch: str,
     create: bool = False,
@@ -1330,7 +1382,9 @@ def workspace_git_add(paths: list[str]) -> str:
         resolved = _resolve_under(WORKSPACE_ROOT, path)
         _assert_safe_repo_path(resolved, WORKSPACE_ROOT)
         rel_paths.append(_relative_to(WORKSPACE_ROOT, resolved))
-    return _run_workspace(["git", "add", "--", *rel_paths])
+    return _run_workspace(
+        ["git", "add", "--", *rel_paths, *_git_sensitive_pathspecs()]
+    )
 
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
@@ -1345,12 +1399,21 @@ def workspace_git_commit(message: str) -> str:
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
 def workspace_git_push(branch: str, set_upstream: bool = False) -> str:
-    """Push workspace HEAD to the same named branch on fixed remote origin.
+    """Push the current feature branch to the same named branch on fixed origin.
 
-    Force pushes and arbitrary remotes/refspecs are intentionally not exposed.
+    Direct pushes to main/dev, cross-branch pushes, force pushes, and arbitrary
+    remotes/refspecs are intentionally not exposed. Changes must reach dev via PR.
     """
     _assert_workspace_ready()
     branch = _validate_branch(branch)
+    if branch.casefold() in {"main", "dev"}:
+        raise ValueError("direct pushes to main/dev are blocked; use a feature branch and PR")
+    current_branch = _workspace_current_branch()
+    if current_branch != branch:
+        raise ValueError(
+            "push target must match the current workspace feature branch "
+            f"({current_branch})"
+        )
     args = ["git", "push"]
     if set_upstream:
         args.append("--set-upstream")
@@ -1365,7 +1428,7 @@ def github_create_pr(
     base: str = "dev",
     body: str = "",
 ) -> str:
-    """Create a pull request in the single configured SanQ GitHub repository."""
+    """Create a feature-branch pull request targeting dev in the configured repo."""
     owner, repo = _github_repo_parts()
     title = _validate_plain_text(title.strip(), name="title", max_len=300)
     body = _validate_plain_text(body, name="body", max_len=20_000)
@@ -1373,6 +1436,10 @@ def github_create_pr(
     base = _validate_branch(base, name="base")
     if not title:
         raise ValueError("title is required")
+    if base != "dev":
+        raise ValueError("MCP-created pull requests must target dev")
+    if head.casefold() in {"main", "dev"}:
+        raise ValueError("pull request head must be a feature branch, not main/dev")
 
     data = _github_request(
         "POST",
