@@ -86,9 +86,12 @@ export class OrderLifecycleOutboxProcessor
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<DurableAcceptedEvent[]>`
         SELECT event.id,
-          event.payload->>'orderId' AS "orderId",
-          event.payload->>'orderStableId' AS "orderStableId"
+          orders.id::text AS "orderId",
+          orders."orderStableId" AS "orderStableId"
         FROM "OpsEvent" event
+        JOIN "Order" orders
+          ON orders.id::text = event.payload->>'orderId'
+          AND orders."orderStableId" = event.payload->>'orderStableId'
         WHERE event.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
           AND event."eventName" = ${ORDER_ACCEPTED_LIFECYCLE_EVENT}
           AND event.payload->>'orderId' IS NOT NULL

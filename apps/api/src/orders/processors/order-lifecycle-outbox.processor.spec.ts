@@ -55,6 +55,21 @@ describe('OrderLifecycleOutboxProcessor durable accepted replay', () => {
     expect(queryRaw.mock.calls[0]).toContain('order.accepted');
   });
 
+  it('skips orphan events before selecting valid work', async () => {
+    const queryRaw = jest
+      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      .mockResolvedValueOnce([acceptedEvent('valid')])
+      .mockResolvedValueOnce([]);
+    const fulfillment = jest.fn().mockResolvedValue(undefined);
+    const { processor } = processorWith(queryRaw, fulfillment);
+
+    await expect(processor.processOnce(2)).resolves.toBe(1);
+
+    expect(fulfillment).toHaveBeenCalledWith({ orderId: 'order-valid' });
+    const statement = sqlText(queryRaw.mock.calls[0][0]);
+    expect(statement).toContain('JOIN "Order" orders');
+  });
+
   it('replays the same event after a worker crash or transient fulfillment failure', async () => {
     const event = acceptedEvent('replay');
     const queryRaw = jest
