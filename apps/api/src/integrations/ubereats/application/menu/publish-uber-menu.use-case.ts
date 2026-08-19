@@ -244,8 +244,32 @@ export class PublishUberMenuUseCase {
         !excludedItems.has(item.stableId) &&
         !excludedCategories.has(item.categoryStableId),
     );
+    const referencedGroupStableIds = new Set(
+      includedItems.flatMap((item) => item.modifierGroupStableIds),
+    );
+    const includedGroups = snapshot.modifierGroups.filter(
+      (group) =>
+        referencedGroupStableIds.has(group.stableId) &&
+        !excludedGroups.has(group.stableId),
+    );
+    const referencedOptionStableIds = new Set(
+      includedGroups.flatMap((group) => group.optionStableIds),
+    );
     const includedOptions = snapshot.modifierOptions.filter(
-      (option) => !excludedOptions.has(option.stableId),
+      (option) =>
+        referencedOptionStableIds.has(option.stableId) &&
+        !excludedOptions.has(option.stableId),
+    );
+    const includedOptionStableIds = new Set(
+      includedOptions.map((option) => option.stableId),
+    );
+    const emittedGroups = includedGroups.filter((group) =>
+      group.optionStableIds.some((stableId) =>
+        includedOptionStableIds.has(stableId),
+      ),
+    );
+    const emittedGroupStableIds = new Set(
+      emittedGroups.map((group) => group.stableId),
     );
     return {
       menuId: buildUberNodeId('menu', snapshot.storeId, snapshot.uberStoreId),
@@ -271,7 +295,7 @@ export class PublishUberMenuUseCase {
           priceCents: item.priceCents,
           isAvailable: item.isAvailable,
           modifierGroupIds: item.modifierGroupStableIds
-            .filter((stableId) => !excludedGroups.has(stableId))
+            .filter((stableId) => emittedGroupStableIds.has(stableId))
             .map(groupNodeId),
           imageUrl: item.imageUrl,
         })),
@@ -287,20 +311,15 @@ export class PublishUberMenuUseCase {
           imageUrl: null,
         })),
       ],
-      groups: snapshot.modifierGroups
-        .filter((group) => !excludedGroups.has(group.stableId))
-        .map((group) => ({
-          id: groupNodeId(group.stableId),
-          title: group.name,
-          minSelect: group.minSelect,
-          maxSelect: group.maxSelect,
-          optionItemIds: group.optionStableIds
-            .filter((stableId) =>
-              includedOptions.some((option) => option.stableId === stableId),
-            )
-            .map(itemNodeId),
-        }))
-        .filter((group) => group.optionItemIds.length),
+      groups: emittedGroups.map((group) => ({
+        id: groupNodeId(group.stableId),
+        title: group.name,
+        minSelect: group.minSelect,
+        maxSelect: group.maxSelect,
+        optionItemIds: group.optionStableIds
+          .filter((stableId) => includedOptionStableIds.has(stableId))
+          .map(itemNodeId),
+      })),
     };
   }
 
