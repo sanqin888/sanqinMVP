@@ -66,12 +66,7 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
       },
     } as never);
 
-    await adapter.setOptionAvailability(
-      'pos-a',
-      'uber-a',
-      'option-1',
-      true,
-    );
+    await adapter.setOptionAvailability('pos-a', 'uber-a', 'option-1', true);
 
     expect(upsert).toHaveBeenCalledWith({
       where: {
@@ -96,24 +91,21 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
   it('option 没有 legacy override 时使用 SanQ 当前选项价，而不是 0', async () => {
     const upsert = jest.fn().mockResolvedValue({});
     const adapter = new UberMenuAvailabilityPrismaAdapter({
-      uberOptionItemConfig: { findMany: jest.fn().mockResolvedValue([]), upsert },
+      uberOptionItemConfig: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert,
+      },
       menuOptionTemplateChoice: {
         findUnique: jest.fn().mockResolvedValue({ priceDeltaCents: 250 }),
       },
     } as never);
 
-    await adapter.setOptionAvailability(
-      'pos-a',
-      'uber-a',
-      'option-1',
-      false,
-    );
+    await adapter.setOptionAvailability('pos-a', 'uber-a', 'option-1', false);
 
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({ priceDeltaCents: 250 }),
-      }),
-    );
+    const [call] = upsert.mock.calls[0] as unknown as [
+      { create: { priceDeltaCents: number } },
+    ];
+    expect(call.create.priceDeltaCents).toBe(250);
   });
 
   it('只把公开且 publishToUberEats 的 SanQ 菜品视为可发布', async () => {
