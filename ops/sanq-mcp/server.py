@@ -656,6 +656,32 @@ def _workspace_current_branch() -> str:
     return _validate_branch(branch, name="current_branch")
 
 
+def _assert_workspace_clean() -> None:
+    status = _run_workspace(["git", "status", "--porcelain"])
+    if status != "(no output)":
+        raise ValueError(
+            "workspace has uncommitted changes; finish or discard them before "
+            "creating a feature branch"
+        )
+
+
+def _fetch_workspace_dev() -> str:
+    result = _run_workspace(
+        [
+            "git",
+            "fetch",
+            "--no-tags",
+            "origin",
+            "+refs/heads/dev:refs/remotes/origin/dev",
+        ],
+        timeout=60,
+        max_chars=250_000,
+    )
+    if result.startswith("[command exited"):
+        raise ValueError(f"failed to fetch latest origin/dev:\n{result}")
+    return result
+
+
 def _github_repo_parts() -> tuple[str, str]:
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", GITHUB_REPOSITORY):
         raise ValueError("SANQ_GITHUB_REPOSITORY must use owner/repo format")
@@ -673,7 +699,7 @@ def _github_token() -> str:
 
 
 def _github_request(
-    method: Literal["GET", "POST"],
+    method: Literal["GET", "POST", "PUT"],
     path: str,
     *,
     payload: dict[str, object] | None = None,
@@ -1326,41 +1352,48 @@ def workspace_git_show(
 def workspace_git_fetch() -> str:
     """Fetch the latest dev ref from fixed remote origin into origin/dev.
 
-    The working tree is not changed; create feature branches from origin/dev afterwards.
+    The working tree is not changed. Feature branches should be created with
+    workspace_create_feature_branch().
     """
     _assert_workspace_ready()
-    return _run_workspace(
-        [
-            "git",
-            "fetch",
-            "--no-tags",
-            "origin",
-            "+refs/heads/dev:refs/remotes/origin/dev",
-        ],
-        timeout=60,
-        max_chars=250_000,
-    )
+    return _fetch_workspace_dev()
 
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
-def workspace_git_switch(
-    branch: str,
-    create: bool = False,
-    start_point: str = "",
-) -> str:
-    """Switch workspace branches; optionally create a branch from a validated start point."""
+def workspace_git_switch(branch: str) -> str:
+    """Switch to an existing validated workspace branch.
+
+    Creating branches through this tool is intentionally not supported. Use
+    workspace_create_feature_branch() so every new feature branch starts from
+    the latest fetched origin/dev.
+    """
     _assert_workspace_ready()
     branch = _validate_branch(branch)
-    args = ["git", "switch"]
-    if create:
-        args.extend(["-c", branch])
-        if start_point.strip():
-            args.append(_validate_revision(start_point, name="start_point"))
-    else:
-        if start_point.strip():
-            raise ValueError("start_point is only valid when create=true")
-        args.append(branch)
-    return _run_workspace(args)
+    return _run_workspace(["git", "switch", branch])
+
+
+@mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
+def workspace_create_feature_branch(branch: str) -> str:
+    """Fetch latest origin/dev and create a new feature branch from it.
+
+    The workspace must be clean. main/dev are reserved and cannot be created.
+    The start point and remote are fixed internally and cannot be supplied by
+    the caller.
+    """
+    _assert_workspace_ready()
+    branch = _validate_branch(branch)
+    if branch.casefold() in {"main", "dev"}:
+        raise ValueError("feature branch must not be main/dev")
+
+    _assert_workspace_clean()
+    fetch_output = _fetch_workspace_dev()
+    switch_output = _run_workspace(["git", "switch", "-c", branch, "origin/dev"])
+    if switch_output.startswith("[command exited"):
+        raise ValueError(
+            f"failed to create feature branch {branch!r} from origin/dev:\n"
+            f"{switch_output}"
+        )
+    return f"{fetch_output}\n{switch_output}"
 
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
@@ -1481,6 +1514,95 @@ def github_pr_checks(number: int) -> str:
     data = _github_ci_for_sha(head["sha"])
     data["pull_request"] = number
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+@mcp.tool(annotations=GITHUB_WRITE_ANNOTATIONS)
+def github_merge_pr(number: int) -> str:
+    """Squash-merge a CI-green same-repository feature PR into dev.
+
+    Only open, non-draft feature-branch PRs targeting dev are eligible. At least
+    one pull_request Actions run must exist and all Actions runs for the checked
+    head SHA must be successful. The merge request includes that exact head SHA
+    so a newly pushed commit cannot race past the CI gate.
+    """
+    if number < 1:
+        raise ValueError("number must be >= 1")
+
+    owner, repo = _github_repo_parts()
+    pr = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{number}")
+    if not isinstance(pr, dict):
+        raise ValueError("unexpected GitHub pull request response")
+    if pr.get("state") != "open":
+        raise ValueError("pull request must be open")
+    if pr.get("draft") is True:
+        raise ValueError("draft pull requests cannot be merged")
+
+    head = pr.get("head")
+    base = pr.get("base")
+    if not isinstance(head, dict) or not isinstance(base, dict):
+        raise ValueError("pull request response is missing head/base data")
+
+    head_ref_raw = head.get("ref")
+    head_sha_raw = head.get("sha")
+    if not isinstance(head_ref_raw, str) or not isinstance(head_sha_raw, str):
+        raise ValueError("pull request response is missing head branch or SHA")
+    head_ref = _validate_branch(head_ref_raw, name="head")
+    head_sha = _validate_revision(head_sha_raw, name="head_sha")
+
+    if base.get("ref") != "dev":
+        raise ValueError("MCP can only merge pull requests targeting dev")
+    if head_ref.casefold() in {"main", "dev"}:
+        raise ValueError("pull request head must be a feature branch, not main/dev")
+
+    head_repo = head.get("repo")
+    if not isinstance(head_repo, dict) or head_repo.get("full_name") != GITHUB_REPOSITORY:
+        raise ValueError("pull request head must belong to the configured repository")
+
+    if pr.get("mergeable") is not True:
+        raise ValueError("pull request is not currently mergeable")
+
+    checks = _github_ci_for_sha(head_sha)
+    workflows_raw = checks.get("workflow_runs")
+    workflows = workflows_raw if isinstance(workflows_raw, list) else []
+    pull_request_runs = [
+        run
+        for run in workflows
+        if isinstance(run, dict) and run.get("event") == "pull_request"
+    ]
+    if not pull_request_runs:
+        raise ValueError("no pull_request CI run exists for the current head SHA")
+    if checks.get("actions_state") != "success":
+        raise ValueError("GitHub Actions checks are not all successful")
+    if any(
+        run.get("status") != "completed" or run.get("conclusion") != "success"
+        for run in pull_request_runs
+    ):
+        raise ValueError("pull_request CI has not completed successfully")
+
+    merged = _github_request(
+        "PUT",
+        f"/repos/{owner}/{repo}/pulls/{number}/merge",
+        payload={"sha": head_sha, "merge_method": "squash"},
+    )
+    if not isinstance(merged, dict) or merged.get("merged") is not True:
+        message = merged.get("message") if isinstance(merged, dict) else None
+        raise ValueError(f"GitHub did not merge the pull request: {message or 'unknown reason'}")
+
+    return json.dumps(
+        {
+            "repository": GITHUB_REPOSITORY,
+            "pull_request": number,
+            "head": head_ref,
+            "head_sha": head_sha,
+            "base": "dev",
+            "merge_method": "squash",
+            "merged": True,
+            "merge_sha": merged.get("sha"),
+            "message": merged.get("message"),
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
