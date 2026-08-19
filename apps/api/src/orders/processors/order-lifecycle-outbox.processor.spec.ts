@@ -102,7 +102,9 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
       .mockResolvedValueOnce([event]);
     const fulfillment = jest
       .fn()
-      .mockRejectedValueOnce(new Error('process crashed before materialization'))
+      .mockRejectedValueOnce(
+        new Error('process crashed before materialization'),
+      )
       .mockResolvedValueOnce(undefined);
     const { processor, transaction } = processorWith({
       queryRaw,
