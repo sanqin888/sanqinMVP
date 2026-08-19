@@ -33,7 +33,9 @@ export class AdminPosDevicesService {
         });
 
     if (!store || !store.isActive) {
-      throw new BadRequestException('storeId does not reference an active store');
+      throw new BadRequestException(
+        'storeId does not reference an active store',
+      );
     }
     return store.id;
   }
