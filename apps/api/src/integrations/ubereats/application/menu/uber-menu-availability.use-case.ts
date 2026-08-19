@@ -44,6 +44,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
       for (const mapping of mappings) {
         await this.commands.setItemAvailability(
           mapping.storeId,
+          mapping.uberStoreId,
           input.menuItemStableId,
           input.isAvailable,
         );
