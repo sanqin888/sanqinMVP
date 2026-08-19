@@ -30,6 +30,22 @@ function safeTime(input?: string | null): string {
   return new Date(input).toLocaleString();
 }
 
+function formatRiskValue(field: string, value: unknown): string {
+  if (
+    typeof value === 'number' &&
+    (field === 'price' || field === 'priceDelta')
+  ) {
+    return `$${(value / 100).toFixed(2)}`;
+  }
+  return String(value);
+}
+
+function riskEntityTypeLabel(entityType: string): string {
+  if (entityType === 'ITEM') return '菜品';
+  if (entityType === 'OPTION_ITEM') return '选项';
+  return entityType;
+}
+
 export function MenuWorkspace({
   stores,
   runAction,
@@ -838,12 +854,18 @@ export function MenuWorkspace({
               ? `⚠ ${dryRunSchedule.safety.criticalCount} 项 CRITICAL 风险，普通 Publish 已阻断。`
               : '✓ No unexpected override fallback'}
           </p>
-          {dryRunSchedule.safety.risks.map((risk) => (
-            <p key={`${risk.code}:${risk.entityId}`} className="text-sm">
-              {risk.code} · {risk.entityId}: {String(risk.previousValue)} →{' '}
-              {String(risk.currentValue)}
-            </p>
-          ))}
+          {dryRunSchedule.safety.risks.map((risk) => {
+            const node = sourceNodeLookup.get(risk.entityId);
+            const entityName = node?.name ?? '未知菜单项';
+            return (
+              <p key={`${risk.code}:${risk.entityId}`} className="text-sm">
+                {risk.code} · {riskEntityTypeLabel(risk.entityType)}「
+                {entityName}」 · {risk.field}: {' '}
+                {formatRiskValue(risk.field, risk.previousValue)} →{' '}
+                {formatRiskValue(risk.field, risk.currentValue)}
+              </p>
+            );
+          })}
           {dryRunSchedule.safety.criticalCount > 0 ? (
             <label className="mt-2 flex gap-2 text-sm">
               <input
@@ -960,7 +982,7 @@ export function MenuWorkspace({
           <div className="rounded-xl border bg-white p-4">
             <h4 className="font-semibold">Inspector</h4>
             <p className="mt-2 text-sm text-slate-500">
-              当前 stableId：{selectedNode?.id ?? '-'}
+              当前：{selectedNode?.name ?? '-'}
             </p>
             {selectedNode?.type === 'item' ? (
               <div className="mt-3 space-y-2 text-sm">
@@ -1055,13 +1077,17 @@ export function MenuWorkspace({
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ storeId: selectedStoreId }),
                           },
-                        ).then(() => loadStoreMenuDraft(selectedStoreId)),
-                      '已恢复网站价格并记录操作意图',
+                        ).then(() =>
+                          loadStoreMenuDraft(selectedStoreId, {
+                            keepSelection: true,
+                          }),
+                        ),
+                      '已恢复当前菜品的网站价格',
                       true,
                     );
                   }}
                 >
-                  恢复网站价格
+                  恢复当前菜品网站价格
                 </button>
               </div>
             ) : null}
@@ -1208,6 +1234,33 @@ export function MenuWorkspace({
                   }
                 >
                   保存 option
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-amber-500 px-3 py-1.5 text-amber-800"
+                  onClick={() => {
+                    if (!selectedNode) return;
+                    void runAction(
+                      'restore-option-source-price',
+                      () =>
+                        uberApiFetch(
+                          `/integrations/ubereats/menu/draft/options/${encodeURIComponent(selectedNode.id)}/restore-source-price`,
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ storeId: selectedStoreId }),
+                          },
+                        ).then(() =>
+                          loadStoreMenuDraft(selectedStoreId, {
+                            keepSelection: true,
+                          }),
+                        ),
+                      '已恢复当前选项的网站价格',
+                      true,
+                    );
+                  }}
+                >
+                  恢复当前选项网站价格
                 </button>
               </div>
             ) : null}
