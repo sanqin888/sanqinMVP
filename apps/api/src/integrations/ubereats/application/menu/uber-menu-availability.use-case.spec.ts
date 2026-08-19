@@ -47,6 +47,7 @@ describe('UberMenuAvailabilityUseCase', () => {
 
     expect(commands.setItemAvailability).toHaveBeenCalledWith(
       'pos-a',
+      'uber-a',
       'item-1',
       false,
     );
