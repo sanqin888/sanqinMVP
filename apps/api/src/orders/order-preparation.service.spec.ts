@@ -18,6 +18,26 @@ type RawTag = (
   ...values: unknown[]
 ) => Promise<unknown[]>;
 
+type CapturedTag = {
+  tag: RawTag;
+  getStrings: () => TemplateStringsArray | null;
+  getValues: () => unknown[];
+};
+
+const captureTag = (rows: unknown[]): CapturedTag => {
+  let strings: TemplateStringsArray | null = null;
+  let values: unknown[] = [];
+  return {
+    tag: async (input, ...interpolations) => {
+      strings = input;
+      values = interpolations;
+      return rows;
+    },
+    getStrings: () => strings,
+    getValues: () => values,
+  };
+};
+
 const scheduled = (status = 'paid', activatedAt: Date | null = null) => ({
   id: 'order-1',
   orderStableId: 'stable-1',
@@ -35,13 +55,11 @@ const sqlText = (strings: TemplateStringsArray) => strings.join('?');
 describe('OrderPreparationService', () => {
   it('activates a scheduled order and appends prep_started in the same transaction', async () => {
     const now = new Date('2026-08-19T22:10:03.000Z');
-    const queryRaw = jest
-      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
-      .mockResolvedValue([scheduled()]);
+    const query = captureTag([scheduled()]);
     const update = jest.fn().mockResolvedValue({});
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
-      $queryRaw: queryRaw,
+      $queryRaw: query.tag,
       order: { update },
       opsEvent: { createMany },
     };
@@ -49,7 +67,9 @@ describe('OrderPreparationService', () => {
       $transaction: (work: (client: unknown) => unknown) => work(tx),
     } as never);
 
-    await expect(service.activateScheduledOrder('order-1', now)).resolves.toEqual(
+    await expect(
+      service.activateScheduledOrder('order-1', now),
+    ).resolves.toEqual(
       expect.objectContaining({ outcome: 'activated', status: 'making' }),
     );
 
@@ -73,12 +93,13 @@ describe('OrderPreparationService', () => {
   });
 
   it('is idempotent when the order is already making', async () => {
+    const query = captureTag([
+      scheduled('making', new Date('2026-08-19T22:10:00.000Z')),
+    ]);
     const update = jest.fn();
     const createMany = jest.fn();
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        scheduled('making', new Date('2026-08-19T22:10:00.000Z')),
-      ]),
+      $queryRaw: query.tag,
       order: { update },
       opsEvent: { createMany },
     };
@@ -94,12 +115,10 @@ describe('OrderPreparationService', () => {
   });
 
   it('claims only due, unactivated, accepted, producible scheduled orders with SKIP LOCKED', async () => {
-    const queryRaw = jest
-      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
-      .mockResolvedValue([]);
+    const query = captureTag([]);
     const service = new OrderPreparationService({
       $transaction: (work: (client: unknown) => unknown) =>
-        work({ $queryRaw: queryRaw }),
+        work({ $queryRaw: query.tag }),
     } as never);
 
     await expect(
@@ -108,21 +127,24 @@ describe('OrderPreparationService', () => {
       ),
     ).resolves.toBe(false);
 
-    const statement = sqlText(queryRaw.mock.calls[0][0]);
+    const strings = query.getStrings();
+    if (!strings) throw new Error('expected scheduler query');
+    const statement = sqlText(strings);
     expect(statement).toContain('"fulfillmentTiming" = \'SCHEDULED\'');
     expect(statement).toContain('"scheduleActivatedAt" IS NULL');
     expect(statement).toContain('"prepStartAt" <=');
     expect(statement).toContain("orders.status IN ('pending'");
     expect(statement).toContain('"eventName" =');
     expect(statement).toContain('FOR UPDATE OF orders SKIP LOCKED');
-    expect(queryRaw.mock.calls[0]).toContain('order.accepted');
+    expect(query.getValues()).toContain('order.accepted');
   });
 
   it('skips cancelled/refunded or otherwise non-producible states during explicit activation', async () => {
+    const query = captureTag([scheduled('refunded')]);
     const update = jest.fn();
     const createMany = jest.fn();
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([scheduled('refunded')]),
+      $queryRaw: query.tag,
       order: { update },
       opsEvent: { createMany },
     };

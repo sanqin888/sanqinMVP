@@ -95,8 +95,8 @@ describe('OrderIngestionService', () => {
   it('persists scheduled timing separately from external estimated ready time', async () => {
     const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
     const externalEstimatedReadyAt = new Date('2026-08-19T22:26:00.000Z');
-    const create = jest.fn().mockImplementation(({ data }) => ({
-      ...data,
+    const create = jest.fn((args: { data: Record<string, unknown> }) => ({
+      ...args.data,
       id: 'o1',
       orderStableId: 's1',
       status: 'pending',

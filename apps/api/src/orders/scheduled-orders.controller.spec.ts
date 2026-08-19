@@ -1,6 +1,8 @@
 import { ScheduledOrdersController } from './scheduled-orders.controller';
 
-const timing = (fulfillmentTiming: 'IMMEDIATE' | 'SCHEDULED' = 'SCHEDULED') => ({
+const timing = (
+  fulfillmentTiming: 'IMMEDIATE' | 'SCHEDULED' = 'SCHEDULED',
+) => ({
   orderStableId: 'stable-1',
   status: 'paid',
   fulfillmentTiming,
@@ -33,9 +35,9 @@ describe('ScheduledOrdersController', () => {
       preparation as never,
     );
 
-    await expect(controller.startPreparationEarly('stable-1')).resolves.toEqual(
-      expect.objectContaining({ status: 'making' }),
-    );
+    await expect(
+      controller.startPreparationEarly('stable-1'),
+    ).resolves.toEqual(expect.objectContaining({ status: 'making' }));
     expect(preparation.activateScheduledOrderByStableId).toHaveBeenCalledWith(
       'stable-1',
     );
@@ -43,7 +45,9 @@ describe('ScheduledOrdersController', () => {
 
   it('rejects early-start for an immediate order', async () => {
     const controller = new ScheduledOrdersController(
-      { findByStableId: jest.fn().mockResolvedValue(timing('IMMEDIATE')) } as never,
+      {
+        findByStableId: jest.fn().mockResolvedValue(timing('IMMEDIATE')),
+      } as never,
       { activateScheduledOrderByStableId: jest.fn() } as never,
     );
     await expect(controller.startPreparationEarly('stable-1')).rejects.toThrow(

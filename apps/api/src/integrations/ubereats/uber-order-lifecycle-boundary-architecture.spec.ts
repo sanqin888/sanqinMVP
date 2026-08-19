@@ -21,7 +21,9 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     const lifecycle = source(
       '../../orders/processors/order-lifecycle-outbox.processor.ts',
     );
-    const scheduler = source('../../orders/processors/scheduled-order.processor.ts');
+    const scheduler = source(
+      '../../orders/processors/scheduled-order.processor.ts',
+    );
     const activation = source('../../orders/order-preparation.service.ts');
     const worker = source('worker.ts');
     const uberModule = source('ubereats.module.ts');
@@ -44,6 +46,8 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
       'domain/orders/uber-order-preparation.policy.ts',
     );
     expect(uberPolicy).toContain("from '@shared/order'");
-    expect(uberPolicy).not.toMatch(/apps\/api|\.\.\/\.\.\/\.\.\/\.\.\/orders/);
+    expect(uberPolicy).not.toMatch(
+      /apps\/api|\.\.\/\.\.\/\.\.\/\.\.\/orders/,
+    );
   });
 });

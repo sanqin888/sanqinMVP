@@ -67,7 +67,13 @@ describe('UberOrderActionService contract', () => {
       service.buildIntent({ externalOrderId: 'order-1', action: 'ACCEPT' })
         .idempotencyKey,
     );
-    expect(new Set([accept.idempotencyKey, cancel.idempotencyKey, deny.idempotencyKey]).size).toBe(3);
+    expect(
+      new Set([
+        accept.idempotencyKey,
+        cancel.idempotencyKey,
+        deny.idempotencyKey,
+      ]).size,
+    ).toBe(3);
   });
 
   it.each([
@@ -93,16 +99,16 @@ describe('UberOrderActionService contract', () => {
         reasonCode: action === 'DENY' ? 'ITEM_UNAVAILABLE' : null,
       });
 
-      expect(gateway[method]).toHaveBeenCalledWith(
+      expect(gateway[method].mock.calls[0][0]).toEqual(
         expect.objectContaining({ externalOrderId: 'order-1' }),
       );
-      expect(repository.complete).toHaveBeenCalledWith({
-        taskId: 'task-1',
-        leaseToken: 'lease-from-claim',
-        transition: nextStatus
-          ? { from: currentStatus, to: nextStatus }
-          : null,
-      });
+      expect(repository.complete.mock.calls).toContainEqual([
+        {
+          taskId: 'task-1',
+          leaseToken: 'lease-from-claim',
+          transition: nextStatus ? { from: currentStatus, to: nextStatus } : null,
+        },
+      ]);
     },
   );
 
@@ -114,22 +120,25 @@ describe('UberOrderActionService contract', () => {
     [2_001, '2026-08-18T18:20:00.000Z'],
     [3_000, '2026-08-18T18:20:00.000Z'],
     [3_001, '2026-08-18T18:25:00.000Z'],
-  ])('calculates immediate ACCEPT ready time for %s cents', async (totalCents, expected) => {
-    const { repository, gateway, service } = setup();
-    repository.getOrderContext.mockResolvedValue({
-      status: 'pending',
-      totalCents,
-      referenceAt,
-      fulfillmentTiming: 'IMMEDIATE',
-      scheduledReadyAt: null,
-    });
+  ])(
+    'calculates immediate ACCEPT ready time for %s cents',
+    async (totalCents, expected) => {
+      const { repository, gateway, service } = setup();
+      repository.getOrderContext.mockResolvedValue({
+        status: 'pending',
+        totalCents,
+        referenceAt,
+        fulfillmentTiming: 'IMMEDIATE',
+        scheduledReadyAt: null,
+      });
 
-    await service.executeClaimed(task);
+      await service.executeClaimed(task);
 
-    expect(gateway.accept.mock.calls[0][0].readyForPickupAt.toISOString()).toBe(
-      expected,
-    );
-  });
+      expect(
+        gateway.accept.mock.calls[0][0].readyForPickupAt.toISOString(),
+      ).toBe(expected);
+    },
+  );
 
   it('uses scheduledReadyAt for scheduled ACCEPT and only records acceptance', async () => {
     const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
@@ -144,14 +153,16 @@ describe('UberOrderActionService contract', () => {
 
     await service.executeClaimed(task);
 
-    expect(gateway.accept).toHaveBeenCalledWith(
+    expect(gateway.accept.mock.calls[0][0]).toEqual(
       expect.objectContaining({ readyForPickupAt: scheduledReadyAt }),
     );
-    expect(repository.complete).toHaveBeenCalledWith({
-      taskId: 'task-1',
-      leaseToken: 'lease-from-claim',
-      transition: { from: 'pending', to: 'paid' },
-    });
+    expect(repository.complete.mock.calls).toContainEqual([
+      {
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+        transition: { from: 'pending', to: 'paid' },
+      },
+    ]);
   });
 
   it.each([
@@ -171,12 +182,12 @@ describe('UberOrderActionService contract', () => {
 
     await service.executeClaimed(task);
 
-    expect(repository.markFailed).toHaveBeenCalledWith(
+    expect(repository.markFailed.mock.calls).toContainEqual([
       'task-1',
       'lease-from-claim',
       expect.objectContaining({ retryable }),
-    );
-    expect(repository.complete).not.toHaveBeenCalled();
+    ]);
+    expect(repository.complete.mock.calls).toHaveLength(0);
   });
 
   it('keeps claimed work recoverable when local context or success writeback fails', async () => {
@@ -187,8 +198,8 @@ describe('UberOrderActionService contract', () => {
     await expect(contextFailure.service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
     );
-    expect(contextFailure.gateway.accept).not.toHaveBeenCalled();
-    expect(contextFailure.repository.markFailed).not.toHaveBeenCalled();
+    expect(contextFailure.gateway.accept.mock.calls).toHaveLength(0);
+    expect(contextFailure.repository.markFailed.mock.calls).toHaveLength(0);
 
     const writebackFailure = setup();
     writebackFailure.repository.complete.mockRejectedValue(
@@ -197,6 +208,6 @@ describe('UberOrderActionService contract', () => {
     await expect(writebackFailure.service.executeClaimed(task)).rejects.toThrow(
       'database unavailable',
     );
-    expect(writebackFailure.repository.markFailed).not.toHaveBeenCalled();
+    expect(writebackFailure.repository.markFailed.mock.calls).toHaveLength(0);
   });
 });

@@ -15,27 +15,21 @@ const scheduledNotification = {
 
 describe('Uber scheduled webhook routing', () => {
   it('recognizes orders.scheduled.notification as an order notification', () => {
-    expect(parseUberOrderNotificationV1(scheduledNotification)).toEqual(
-      expect.objectContaining({
-        family: 'order',
-        eventType: 'orders.scheduled.notification',
-        resourceId: 'order-1',
-      }),
-    );
+    const event = parseUberOrderNotificationV1(scheduledNotification);
+    expect(event?.family).toBe('order');
+    expect(event?.eventType).toBe('orders.scheduled.notification');
+    expect(event?.resourceId).toBe('order-1');
   });
 
   it('dispatches scheduled notifications through the existing order import path', () => {
-    expect(
-      dispatchUberWebhookV1({
-        eventType: 'orders.scheduled.notification',
-        businessVersion: 'v1',
-        payload: scheduledNotification,
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        kind: 'order',
-        event: expect.objectContaining({ family: 'order' }),
-      }),
-    );
+    const result = dispatchUberWebhookV1({
+      eventType: 'orders.scheduled.notification',
+      businessVersion: 'v1',
+      payload: scheduledNotification,
+    });
+
+    expect(result.kind).toBe('order');
+    if (result.kind !== 'order') throw new Error('expected order dispatch');
+    expect(result.event.family).toBe('order');
   });
 });
