@@ -13,21 +13,46 @@ import type {
 import type { UberMenuDraftSource } from '../../domain/menu/uber-menu-draft-source';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
+type ScopedRows<T> = {
+  default?: T;
+  uber?: T;
+  canonical?: T;
+};
 
-const preferCanonicalStoreRows = <T extends { storeId: string }>(
+const groupScopedRows = <T extends { storeId: string }>(
   rows: T[],
   canonicalStoreId: string,
+  uberStoreId: string,
   keyOf: (row: T) => string,
-): T[] => {
-  const byKey = new Map<string, T>();
+): Map<string, ScopedRows<T>> => {
+  const byKey = new Map<string, ScopedRows<T>>();
   for (const row of rows) {
-    if (row.storeId !== canonicalStoreId) byKey.set(keyOf(row), row);
+    const key = keyOf(row);
+    const scoped = byKey.get(key) ?? {};
+    if (row.storeId === canonicalStoreId) scoped.canonical = row;
+    else if (row.storeId === uberStoreId) scoped.uber = row;
+    else if (row.storeId === 'default') scoped.default = row;
+    byKey.set(key, scoped);
   }
-  for (const row of rows) {
-    if (row.storeId === canonicalStoreId) byKey.set(keyOf(row), row);
-  }
-  return Array.from(byKey.values());
+  return byKey;
 };
+
+const restoredItemIds = (
+  events: Array<{ payload: unknown }>,
+  posStoreId: string,
+): Set<string> =>
+  new Set(
+    events.flatMap((event) => {
+      const payload = event.payload as {
+        posStoreId?: unknown;
+        menuItemStableId?: unknown;
+      } | null;
+      return payload?.posStoreId === posStoreId &&
+        typeof payload.menuItemStableId === 'string'
+        ? [payload.menuItemStableId]
+        : [];
+    }),
+  );
 
 /** Owns the Prisma query shape and maps it to the domain graph snapshot. */
 export class UberMenuDraftSourcePrismaRepository {
@@ -37,15 +62,16 @@ export class UberMenuDraftSourcePrismaRepository {
     storeId: string,
     uberStoreId: string,
   ): Promise<UberMenuDraftSource> {
-    const configStoreIds = Array.from(new Set([storeId, uberStoreId]));
+    const configStoreIds = Array.from(new Set([storeId, uberStoreId, 'default']));
     const [
       categories,
       menuItems,
       modifierTemplates,
-      itemConfigs,
-      optionConfigs,
-      modifierConfigs,
-      categoryConfigs,
+      rawItemConfigs,
+      rawOptionConfigs,
+      rawModifierConfigs,
+      rawCategoryConfigs,
+      restoreEvents,
     ] = await Promise.all([
       this.db.menuCategory.findMany({
         where: { deletedAt: null },
@@ -161,7 +187,66 @@ export class UberMenuDraftSourcePrismaRepository {
           isActive: true,
         },
       }),
+      this.db.opsEvent.findMany({
+        where: {
+          eventName: 'ubereats_menu_price_restored',
+          source: 'ubereats',
+        },
+        select: { payload: true },
+      }),
     ]);
+
+    const restoredItems = restoredItemIds(restoreEvents, storeId);
+    const itemConfigs = Array.from(
+      groupScopedRows(
+        rawItemConfigs,
+        storeId,
+        uberStoreId,
+        (row) => row.menuItemStableId,
+      ).entries(),
+    ).flatMap(([stableId, scoped]) => {
+      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+      if (!base) return [];
+      const priceCents = scoped.canonical
+        ? scoped.canonical.priceCents != null || restoredItems.has(stableId)
+          ? scoped.canonical.priceCents
+          : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null)
+        : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null);
+      return [{ ...base, priceCents }];
+    });
+    const optionConfigs = Array.from(
+      groupScopedRows(
+        rawOptionConfigs,
+        storeId,
+        uberStoreId,
+        (row) => row.optionChoiceStableId,
+      ).values(),
+    ).flatMap((scoped) => {
+      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+      return base ? [base] : [];
+    });
+    const modifierConfigs = Array.from(
+      groupScopedRows(
+        rawModifierConfigs,
+        storeId,
+        uberStoreId,
+        (row) => row.templateGroupStableId,
+      ).values(),
+    ).flatMap((scoped) => {
+      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+      return base ? [base] : [];
+    });
+    const categoryConfigs = Array.from(
+      groupScopedRows(
+        rawCategoryConfigs,
+        storeId,
+        uberStoreId,
+        (row) => row.menuCategoryStableId,
+      ).values(),
+    ).flatMap((scoped) => {
+      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+      return base ? [base] : [];
+    });
 
     return {
       storeId,
@@ -183,26 +268,10 @@ export class UberMenuDraftSourcePrismaRepository {
           ),
         })),
       })),
-      itemConfigs: preferCanonicalStoreRows(
-        itemConfigs,
-        storeId,
-        (row) => row.menuItemStableId,
-      ),
-      optionConfigs: preferCanonicalStoreRows(
-        optionConfigs,
-        storeId,
-        (row) => row.optionChoiceStableId,
-      ),
-      modifierConfigs: preferCanonicalStoreRows(
-        modifierConfigs,
-        storeId,
-        (row) => row.templateGroupStableId,
-      ),
-      categoryConfigs: preferCanonicalStoreRows(
-        categoryConfigs,
-        storeId,
-        (row) => row.menuCategoryStableId,
-      ),
+      itemConfigs,
+      optionConfigs,
+      modifierConfigs,
+      categoryConfigs,
     };
   }
 }
