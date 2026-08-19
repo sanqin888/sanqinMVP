@@ -49,10 +49,8 @@ describe('OrderLifecycleOutboxProcessor durable accepted replay', () => {
     const statement = sqlText(queryRaw.mock.calls[0][0]);
     expect(statement).toContain('FOR UPDATE OF event SKIP LOCKED');
     expect(statement).toContain('JOIN "Order" orders');
-    expect(statement).toContain('orders.id::text = event.payload->>\'orderId\'');
-    expect(statement).toContain(
-      'orders."orderStableId" = event.payload->>\'orderStableId\'',
-    );
+    expect(statement).toContain('orders.id::text = event.payload');
+    expect(statement).toContain('orders."orderStableId" = event.payload');
     expect(statement).toContain('NOT EXISTS');
     expect(statement).toContain('FROM "PosPrintJob" job');
     expect(statement).toContain("job.kind = 'AUTO'");
@@ -76,7 +74,9 @@ describe('OrderLifecycleOutboxProcessor durable accepted replay', () => {
     expect(fulfillment).toHaveBeenCalledWith({ orderId: 'order-valid' });
     const statement = sqlText(queryRaw.mock.calls[0][0]);
     expect(statement).toContain('JOIN "Order" orders');
-    expect(statement).toContain('ORDER BY event."createdAt" ASC, event.id ASC');
+    expect(statement).toContain(
+      'ORDER BY event."createdAt" ASC, event.id ASC',
+    );
   });
 
   it('replays the same event after a worker crash or transient fulfillment failure', async () => {
