@@ -48,11 +48,35 @@ describe('OrderLifecycleOutboxProcessor durable accepted replay', () => {
     expect(queryRaw).toHaveBeenCalledTimes(2);
     const statement = sqlText(queryRaw.mock.calls[0][0]);
     expect(statement).toContain('FOR UPDATE OF event SKIP LOCKED');
+    expect(statement).toContain('JOIN "Order" orders');
+    expect(statement).toContain('orders.id::text = event.payload->>\'orderId\'');
+    expect(statement).toContain(
+      'orders."orderStableId" = event.payload->>\'orderStableId\'',
+    );
     expect(statement).toContain('NOT EXISTS');
     expect(statement).toContain('FROM "PosPrintJob" job');
     expect(statement).toContain("job.kind = 'AUTO'");
     expect(queryRaw.mock.calls[0]).toContain('orders.lifecycle');
     expect(queryRaw.mock.calls[0]).toContain('order.accepted');
+  });
+
+  it('does not let an older orphan event block a newer valid accepted order', async () => {
+    const queryRaw = jest
+      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      // The SQL join excludes an older lifecycle event whose Order was deleted,
+      // so the first row returned to the processor is the newer valid event.
+      .mockResolvedValueOnce([acceptedEvent('valid')])
+      .mockResolvedValueOnce([]);
+    const fulfillment = jest.fn().mockResolvedValue(undefined);
+    const { processor } = processorWith(queryRaw, fulfillment);
+
+    await expect(processor.processOnce(2)).resolves.toBe(1);
+
+    expect(fulfillment).toHaveBeenCalledTimes(1);
+    expect(fulfillment).toHaveBeenCalledWith({ orderId: 'order-valid' });
+    const statement = sqlText(queryRaw.mock.calls[0][0]);
+    expect(statement).toContain('JOIN "Order" orders');
+    expect(statement).toContain('ORDER BY event."createdAt" ASC, event.id ASC');
   });
 
   it('replays the same event after a worker crash or transient fulfillment failure', async () => {
