@@ -699,7 +699,7 @@ def _github_token() -> str:
 
 
 def _github_request(
-    method: Literal["GET", "POST"],
+    method: Literal["GET", "POST", "PUT"],
     path: str,
     *,
     payload: dict[str, object] | None = None,
@@ -1514,6 +1514,95 @@ def github_pr_checks(number: int) -> str:
     data = _github_ci_for_sha(head["sha"])
     data["pull_request"] = number
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+@mcp.tool(annotations=GITHUB_WRITE_ANNOTATIONS)
+def github_merge_pr(number: int) -> str:
+    """Squash-merge a CI-green same-repository feature PR into dev.
+
+    Only open, non-draft feature-branch PRs targeting dev are eligible. At least
+    one pull_request Actions run must exist and all Actions runs for the checked
+    head SHA must be successful. The merge request includes that exact head SHA
+    so a newly pushed commit cannot race past the CI gate.
+    """
+    if number < 1:
+        raise ValueError("number must be >= 1")
+
+    owner, repo = _github_repo_parts()
+    pr = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{number}")
+    if not isinstance(pr, dict):
+        raise ValueError("unexpected GitHub pull request response")
+    if pr.get("state") != "open":
+        raise ValueError("pull request must be open")
+    if pr.get("draft") is True:
+        raise ValueError("draft pull requests cannot be merged")
+
+    head = pr.get("head")
+    base = pr.get("base")
+    if not isinstance(head, dict) or not isinstance(base, dict):
+        raise ValueError("pull request response is missing head/base data")
+
+    head_ref_raw = head.get("ref")
+    head_sha_raw = head.get("sha")
+    if not isinstance(head_ref_raw, str) or not isinstance(head_sha_raw, str):
+        raise ValueError("pull request response is missing head branch or SHA")
+    head_ref = _validate_branch(head_ref_raw, name="head")
+    head_sha = _validate_revision(head_sha_raw, name="head_sha")
+
+    if base.get("ref") != "dev":
+        raise ValueError("MCP can only merge pull requests targeting dev")
+    if head_ref.casefold() in {"main", "dev"}:
+        raise ValueError("pull request head must be a feature branch, not main/dev")
+
+    head_repo = head.get("repo")
+    if not isinstance(head_repo, dict) or head_repo.get("full_name") != GITHUB_REPOSITORY:
+        raise ValueError("pull request head must belong to the configured repository")
+
+    if pr.get("mergeable") is not True:
+        raise ValueError("pull request is not currently mergeable")
+
+    checks = _github_ci_for_sha(head_sha)
+    workflows_raw = checks.get("workflow_runs")
+    workflows = workflows_raw if isinstance(workflows_raw, list) else []
+    pull_request_runs = [
+        run
+        for run in workflows
+        if isinstance(run, dict) and run.get("event") == "pull_request"
+    ]
+    if not pull_request_runs:
+        raise ValueError("no pull_request CI run exists for the current head SHA")
+    if checks.get("actions_state") != "success":
+        raise ValueError("GitHub Actions checks are not all successful")
+    if any(
+        run.get("status") != "completed" or run.get("conclusion") != "success"
+        for run in pull_request_runs
+    ):
+        raise ValueError("pull_request CI has not completed successfully")
+
+    merged = _github_request(
+        "PUT",
+        f"/repos/{owner}/{repo}/pulls/{number}/merge",
+        payload={"sha": head_sha, "merge_method": "squash"},
+    )
+    if not isinstance(merged, dict) or merged.get("merged") is not True:
+        message = merged.get("message") if isinstance(merged, dict) else None
+        raise ValueError(f"GitHub did not merge the pull request: {message or 'unknown reason'}")
+
+    return json.dumps(
+        {
+            "repository": GITHUB_REPOSITORY,
+            "pull_request": number,
+            "head": head_ref,
+            "head_sha": head_sha,
+            "base": "dev",
+            "merge_method": "squash",
+            "merged": True,
+            "merge_sha": merged.get("sha"),
+            "message": merged.get("message"),
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)

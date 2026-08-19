@@ -4,7 +4,7 @@ on:
   push:
     branches: [dev, main]
   pull_request:
-    branches: [main]
+    branches: [dev, main]
 
 permissions:
   contents: read
@@ -21,6 +21,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Compile SanQ MCP server
+        if: matrix.app == 'api'
+        run: python3 -m py_compile ops/sanq-mcp/server.py
 
       # 先安装 pnpm。
       # 不指定 version，使用 package.json 中的 packageManager 版本。
