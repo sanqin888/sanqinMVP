@@ -42,6 +42,11 @@ export interface UberMenuConfigImportPort {
     menuItemStableId: string,
     administratorId: string,
   ): Promise<{ sourcePriceCents: number }>;
+  restoreOptionPrice(
+    storeId: string,
+    optionChoiceStableId: string,
+    administratorId: string,
+  ): Promise<{ sourcePriceDeltaCents: number }>;
 }
 export const UBER_MENU_CONFIG_IMPORT_PORT = Symbol(
   'UBER_MENU_CONFIG_IMPORT_PORT',
