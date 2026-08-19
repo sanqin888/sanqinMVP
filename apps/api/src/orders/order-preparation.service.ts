@@ -46,7 +46,12 @@ export class OrderPreparationService {
       return await this.prisma.$transaction(async (tx) => {
         const order = await this.lockById(tx, orderId);
         if (!order) return this.missingResult(orderId);
-        return this.activateLocked(tx, order, now, OrderFulfillmentTiming.IMMEDIATE);
+        return this.activateLocked(
+          tx,
+          order,
+          now,
+          OrderFulfillmentTiming.IMMEDIATE,
+        );
       });
     } catch (error) {
       this.logFailure(orderId, error);
@@ -66,7 +71,12 @@ export class OrderPreparationService {
       return await this.prisma.$transaction(async (tx) => {
         const order = await this.lockById(tx, orderId);
         if (!order) return this.missingResult(orderId);
-        return this.activateLocked(tx, order, now, OrderFulfillmentTiming.SCHEDULED);
+        return this.activateLocked(
+          tx,
+          order,
+          now,
+          OrderFulfillmentTiming.SCHEDULED,
+        );
       });
     } catch (error) {
       this.logFailure(orderId, error);
@@ -96,7 +106,12 @@ export class OrderPreparationService {
         `;
         const order = rows[0];
         if (!order) return this.missingResult(orderStableId);
-        return this.activateLocked(tx, order, now, OrderFulfillmentTiming.SCHEDULED);
+        return this.activateLocked(
+          tx,
+          order,
+          now,
+          OrderFulfillmentTiming.SCHEDULED,
+        );
       });
     } catch (error) {
       this.logFailure(orderStableId, error);
@@ -225,7 +240,12 @@ export class OrderPreparationService {
     if (expectedTiming === OrderFulfillmentTiming.SCHEDULED) {
       this.logger.log({ event: 'scheduled_order_activation_started', ...fields });
       const delaySeconds = order.prepStartAt
-        ? Math.max(0, Math.floor((now.getTime() - order.prepStartAt.getTime()) / 1000))
+        ? Math.max(
+            0,
+            Math.floor(
+              (now.getTime() - order.prepStartAt.getTime()) / 1000,
+            ),
+          )
         : 0;
       if (delaySeconds > 0) {
         this.logger.warn({
@@ -301,7 +321,12 @@ export class OrderPreparationService {
       prepStartAt: order.prepStartAt?.toISOString() ?? null,
       activatedAt: order.scheduleActivatedAt?.toISOString() ?? null,
       delaySeconds: order.prepStartAt
-        ? Math.max(0, Math.floor((now.getTime() - order.prepStartAt.getTime()) / 1000))
+        ? Math.max(
+            0,
+            Math.floor(
+              (now.getTime() - order.prepStartAt.getTime()) / 1000,
+            ),
+          )
         : 0,
     };
   }

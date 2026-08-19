@@ -26,7 +26,9 @@ type ClaimedRow = {
 
 /** Durable order-command queue. Prisma records are translated at this boundary. */
 @Injectable()
-export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPort {
+export class UberOrderActionPrismaAdapter
+  implements UberOrderActionRepositoryPort
+{
   constructor(private readonly prisma: PrismaService) {}
 
   async enqueue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>) {

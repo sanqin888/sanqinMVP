@@ -9,15 +9,15 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { createHash } from 'crypto';
-import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
-import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
-import { PrismaService } from '../../../../prisma/prisma.service';
 import {
   DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
 import { resolveConfiguredStoreId } from '../../../../common/store-id';
+import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
+import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
@@ -29,7 +29,9 @@ import { toUberOrderStatus } from './uber-order-status.mapper';
 
 /** Prisma implementation of the complete order-import persistence boundary. */
 @Injectable()
-export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPort {
+export class UberOrderImportPrismaAdapter
+  implements UberOrderImportRepositoryPort
+{
   private readonly logger = new Logger(UberOrderImportPrismaAdapter.name);
 
   constructor(
@@ -115,7 +117,8 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       input.menuMappings.map((item) => [item.externalItemId, item]),
     );
     const items: NormalizedOrderItem[] = input.order.items.map((item) => ({
-      productStableId: mapping.get(item.externalItemId ?? '')!.menuItemStableId,
+      productStableId:
+        mapping.get(item.externalItemId ?? '')!.menuItemStableId,
       quantity: item.quantity,
       displayName: item.displayName,
       nameEn: null,
@@ -301,12 +304,14 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   ): Prisma.InputJsonValue {
     return values as unknown as Prisma.InputJsonValue;
   }
+
   private flattenValues(values: ParsedUberModifier[]): ParsedUberModifier[] {
     return values.flatMap((value) => [
       value,
       ...this.flattenValues(value.children),
     ]);
   }
+
   private readCursor(
     eventId: string,
     receivedAt: Date,
@@ -361,6 +366,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
           : null,
     };
   }
+
   private amendmentId(eventId: string): string {
     return `uber_cancel_${createHash('sha256').update(eventId).digest('hex')}`;
   }
