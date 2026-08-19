@@ -8,6 +8,7 @@ type SnapshotRows = {
   optionConfigs?: unknown[];
   groupConfigs?: unknown[];
   categoryConfigs?: unknown[];
+  restoreEvents?: unknown[];
 };
 
 describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
@@ -45,6 +46,9 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
       },
       uberCategoryConfig: {
         findMany: jest.fn().mockResolvedValue(rows.categoryConfigs ?? []),
+      },
+      opsEvent: {
+        findMany: jest.fn().mockResolvedValue(rows.restoreEvents ?? []),
       },
     };
     return {
@@ -185,6 +189,125 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     expect(snapshot?.items[0]?.name).toBe('Uber Item Override');
     expect(snapshot?.modifierGroups[0]?.name).toBe('Uber Group Override');
     expect(snapshot?.modifierOptions[0]?.name).toBe('Uber Option Override');
+  });
+
+  it('inherits legacy Uber price when availability-only canonical row has null price', async () => {
+    const x = setup(
+      { timezone: 'America/Toronto', salesTaxRate: 0.13 },
+      {
+        ...bilingualRows,
+        itemConfigs: [
+          {
+            storeId: 'uber-store',
+            menuItemStableId: 'item-stable',
+            priceCents: 1229,
+            isAvailable: true,
+            displayName: null,
+            displayDescription: null,
+          },
+          {
+            storeId: 'pos-store',
+            menuItemStableId: 'item-stable',
+            priceCents: null,
+            isAvailable: false,
+            displayName: null,
+            displayDescription: null,
+          },
+        ],
+      },
+    );
+
+    const snapshot = await x.adapter.loadPublishSnapshot(
+      'pos-store',
+      'uber-store',
+    );
+
+    expect(snapshot?.items[0]).toMatchObject({
+      priceCents: 1229,
+      overridePriceCents: 1229,
+      priceValueSource: 'UBER_OVERRIDE',
+      isAvailable: false,
+    });
+  });
+
+  it('keeps an explicitly restored item on the SanQ source price', async () => {
+    const x = setup(
+      { timezone: 'America/Toronto', salesTaxRate: 0.13 },
+      {
+        ...bilingualRows,
+        itemConfigs: [
+          {
+            storeId: 'uber-store',
+            menuItemStableId: 'item-stable',
+            priceCents: 1229,
+            isAvailable: true,
+            displayName: null,
+            displayDescription: null,
+          },
+          {
+            storeId: 'pos-store',
+            menuItemStableId: 'item-stable',
+            priceCents: null,
+            isAvailable: true,
+            displayName: null,
+            displayDescription: null,
+          },
+        ],
+        restoreEvents: [
+          {
+            payload: {
+              posStoreId: 'pos-store',
+              menuItemStableId: 'item-stable',
+            },
+          },
+        ],
+      },
+    );
+
+    const snapshot = await x.adapter.loadPublishSnapshot(
+      'pos-store',
+      'uber-store',
+    );
+
+    expect(snapshot?.items[0]).toMatchObject({
+      priceCents: 1099,
+      overridePriceCents: null,
+      priceValueSource: 'SANQ_SOURCE',
+    });
+  });
+
+  it('reads legacy default-scoped option overrides deterministically', async () => {
+    const x = setup(
+      { timezone: 'America/Toronto', salesTaxRate: 0.13 },
+      {
+        ...bilingualRows,
+        optionConfigs: [
+          {
+            storeId: 'default',
+            optionChoiceStableId: 'option-stable',
+            priceDeltaCents: 260,
+            isAvailable: true,
+            displayName: null,
+          },
+        ],
+      },
+    );
+
+    const snapshot = await x.adapter.loadPublishSnapshot(
+      'pos-store',
+      'uber-store',
+    );
+
+    expect(snapshot?.modifierOptions[0]).toMatchObject({
+      priceDeltaCents: 260,
+      overridePriceDeltaCents: 260,
+      priceValueSource: 'UBER_OVERRIDE',
+    });
+    expect(x.prisma.uberOptionItemConfig.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { storeId: { in: ['pos-store', 'uber-store', 'default'] } },
+      }),
+    );
   });
 
   it('requests stable SanQ sort ordering for the entire publish graph', async () => {
