@@ -25,21 +25,13 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
         return Promise.resolve(data);
       }),
       update: jest.fn(),
-      delete: jest.fn(),
-      findUnique: jest.fn().mockResolvedValue({
-        id: 'production-row',
-        isAvailable: false,
-        displayName: 'Uber custom name',
-        displayDescription: 'Uber custom description',
-        uberStoreId: null,
-        externalItemId: null,
-        externalCategoryId: null,
-        lastPublishedPriceCents: null,
-        lastPublishedIsAvailable: null,
-        lastPublishedHash: null,
-        lastPublishedAt: null,
-        lastPublishError: null,
-      }),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    const optionDelegate = {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn(),
+      update: jest.fn(),
+      upsert: jest.fn().mockResolvedValue({}),
     };
     const emptyDelegate = {
       findMany: jest.fn().mockResolvedValue([]),
@@ -49,7 +41,7 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
     const tx = {
       uberStoreMapping: { findFirst: jest.fn().mockResolvedValue(null) },
       uberItemChannelConfig: itemDelegate,
-      uberOptionItemConfig: emptyDelegate,
+      uberOptionItemConfig: optionDelegate,
       uberModifierGroupConfig: emptyDelegate,
       uberCategoryConfig: emptyDelegate,
       opsEvent: { create: jest.fn().mockResolvedValue({}) },
@@ -57,6 +49,11 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
         findUnique: jest
           .fn()
           .mockResolvedValue({ basePriceCents: 749, isAvailable: true }),
+      },
+      menuOptionTemplateChoice: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ priceDeltaCents: 200, isAvailable: true }),
       },
     };
     const prisma = {
@@ -68,6 +65,7 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
     return {
       state,
       itemDelegate,
+      optionDelegate,
       prisma,
       adapter: new UberMenuConfigImportPrismaAdapter(prisma as never),
     };
@@ -129,23 +127,26 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
     });
   });
 
-  it('clears only price and records administrator intent in one transaction', async () => {
+  it('restores only the selected item price and records administrator intent', async () => {
     const x = setup();
     await x.adapter.restoreItemPrice('production', 'pork', 'admin-1');
-    expect(x.itemDelegate.update).toHaveBeenCalledWith({
-      where: { id: 'production-row' },
-      data: { priceCents: null },
-    });
-    expect(x.itemDelegate.delete).not.toHaveBeenCalled();
-    const [lookup] = x.itemDelegate.findUnique.mock.calls[0] as unknown as [
-      { where: Record<string, unknown> },
-    ];
-    expect(lookup.where).toEqual({
-      storeId_menuItemStableId: {
+    expect(x.itemDelegate.upsert).toHaveBeenCalledTimes(1);
+    expect(x.itemDelegate.upsert).toHaveBeenCalledWith({
+      where: {
+        storeId_menuItemStableId: {
+          storeId: 'production',
+          menuItemStableId: 'pork',
+        },
+      },
+      create: {
         storeId: 'production',
         menuItemStableId: 'pork',
+        priceCents: null,
+        isAvailable: true,
       },
+      update: { priceCents: null },
     });
+    expect(x.optionDelegate.upsert).not.toHaveBeenCalled();
     const [event] = x.prisma.opsEvent.create.mock.calls[0] as unknown as [
       { data: { eventName: string; payload: Record<string, unknown> } },
     ];
@@ -156,6 +157,36 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       sourcePriceCents: 749,
       administratorId: 'admin-1',
     });
-    expect(typeof event.data.payload.occurredAt).toBe('string');
+  });
+
+  it('restores only the selected option price', async () => {
+    const x = setup();
+    await x.adapter.restoreOptionPrice('production', 'extra', 'admin-1');
+    expect(x.optionDelegate.upsert).toHaveBeenCalledTimes(1);
+    expect(x.optionDelegate.upsert).toHaveBeenCalledWith({
+      where: {
+        storeId_optionChoiceStableId: {
+          storeId: 'production',
+          optionChoiceStableId: 'extra',
+        },
+      },
+      create: {
+        storeId: 'production',
+        optionChoiceStableId: 'extra',
+        priceDeltaCents: 200,
+        isAvailable: true,
+      },
+      update: { priceDeltaCents: 200 },
+    });
+    expect(x.itemDelegate.upsert).not.toHaveBeenCalled();
+    const [event] = x.prisma.opsEvent.create.mock.calls[0] as unknown as [
+      { data: { eventName: string; payload: Record<string, unknown> } },
+    ];
+    expect(event.data.payload).toMatchObject({
+      posStoreId: 'production',
+      optionChoiceStableId: 'extra',
+      sourcePriceDeltaCents: 200,
+      administratorId: 'admin-1',
+    });
   });
 });
