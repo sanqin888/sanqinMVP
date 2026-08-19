@@ -656,6 +656,32 @@ def _workspace_current_branch() -> str:
     return _validate_branch(branch, name="current_branch")
 
 
+def _assert_workspace_clean() -> None:
+    status = _run_workspace(["git", "status", "--porcelain"])
+    if status != "(no output)":
+        raise ValueError(
+            "workspace has uncommitted changes; finish or discard them before "
+            "creating a feature branch"
+        )
+
+
+def _fetch_workspace_dev() -> str:
+    result = _run_workspace(
+        [
+            "git",
+            "fetch",
+            "--no-tags",
+            "origin",
+            "+refs/heads/dev:refs/remotes/origin/dev",
+        ],
+        timeout=60,
+        max_chars=250_000,
+    )
+    if result.startswith("[command exited"):
+        raise ValueError(f"failed to fetch latest origin/dev:\n{result}")
+    return result
+
+
 def _github_repo_parts() -> tuple[str, str]:
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", GITHUB_REPOSITORY):
         raise ValueError("SANQ_GITHUB_REPOSITORY must use owner/repo format")
@@ -1326,41 +1352,48 @@ def workspace_git_show(
 def workspace_git_fetch() -> str:
     """Fetch the latest dev ref from fixed remote origin into origin/dev.
 
-    The working tree is not changed; create feature branches from origin/dev afterwards.
+    The working tree is not changed. Feature branches should be created with
+    workspace_create_feature_branch().
     """
     _assert_workspace_ready()
-    return _run_workspace(
-        [
-            "git",
-            "fetch",
-            "--no-tags",
-            "origin",
-            "+refs/heads/dev:refs/remotes/origin/dev",
-        ],
-        timeout=60,
-        max_chars=250_000,
-    )
+    return _fetch_workspace_dev()
 
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
-def workspace_git_switch(
-    branch: str,
-    create: bool = False,
-    start_point: str = "",
-) -> str:
-    """Switch workspace branches; optionally create a branch from a validated start point."""
+def workspace_git_switch(branch: str) -> str:
+    """Switch to an existing validated workspace branch.
+
+    Creating branches through this tool is intentionally not supported. Use
+    workspace_create_feature_branch() so every new feature branch starts from
+    the latest fetched origin/dev.
+    """
     _assert_workspace_ready()
     branch = _validate_branch(branch)
-    args = ["git", "switch"]
-    if create:
-        args.extend(["-c", branch])
-        if start_point.strip():
-            args.append(_validate_revision(start_point, name="start_point"))
-    else:
-        if start_point.strip():
-            raise ValueError("start_point is only valid when create=true")
-        args.append(branch)
-    return _run_workspace(args)
+    return _run_workspace(["git", "switch", branch])
+
+
+@mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
+def workspace_create_feature_branch(branch: str) -> str:
+    """Fetch latest origin/dev and create a new feature branch from it.
+
+    The workspace must be clean. main/dev are reserved and cannot be created.
+    The start point and remote are fixed internally and cannot be supplied by
+    the caller.
+    """
+    _assert_workspace_ready()
+    branch = _validate_branch(branch)
+    if branch.casefold() in {"main", "dev"}:
+        raise ValueError("feature branch must not be main/dev")
+
+    _assert_workspace_clean()
+    fetch_output = _fetch_workspace_dev()
+    switch_output = _run_workspace(["git", "switch", "-c", branch, "origin/dev"])
+    if switch_output.startswith("[command exited"):
+        raise ValueError(
+            f"failed to create feature branch {branch!r} from origin/dev:\n"
+            f"{switch_output}"
+        )
+    return f"{fetch_output}\n{switch_output}"
 
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
