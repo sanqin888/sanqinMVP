@@ -39,9 +39,9 @@ export class UberOrderPayloadParser {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
       return invalid('MALFORMED_PAYLOAD', 'mapping');
     const root = payload as UberOrderDetailDto;
-    const dto = (asObject(root.order)
-      ? root.order
-      : root) as UberOrderDetailDto;
+    const dto = (
+      asObject(root.order) ? root.order : root
+    ) as UberOrderDetailDto;
     if (
       (dto.items !== undefined && !Array.isArray(dto.items)) ||
       (dto.cart?.items !== undefined && !Array.isArray(dto.cart.items)) ||

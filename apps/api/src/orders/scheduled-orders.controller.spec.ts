@@ -35,9 +35,9 @@ describe('ScheduledOrdersController', () => {
       preparation as never,
     );
 
-    await expect(
-      controller.startPreparationEarly('stable-1'),
-    ).resolves.toEqual(expect.objectContaining({ status: 'making' }));
+    await expect(controller.startPreparationEarly('stable-1')).resolves.toEqual(
+      expect.objectContaining({ status: 'making' }),
+    );
     expect(preparation.activateScheduledOrderByStableId).toHaveBeenCalledWith(
       'stable-1',
     );

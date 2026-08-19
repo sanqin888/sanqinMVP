@@ -38,7 +38,8 @@ export class ScheduledOrderProcessor
   async processOnce(limit = 25, now = new Date()): Promise<number> {
     let activated = 0;
     for (let index = 0; index < limit; index += 1) {
-      const processed = await this.preparation.activateNextDueScheduledOrder(now);
+      const processed =
+        await this.preparation.activateNextDueScheduledOrder(now);
       if (!processed) break;
       activated += 1;
     }

@@ -18,9 +18,7 @@ describe('ScheduledOrderProcessor', () => {
   });
 
   it('respects the per-scan limit', async () => {
-    const activateNextDueScheduledOrder = jest
-      .fn()
-      .mockResolvedValue(true);
+    const activateNextDueScheduledOrder = jest.fn().mockResolvedValue(true);
     const processor = new ScheduledOrderProcessor({
       activateNextDueScheduledOrder,
     } as never);

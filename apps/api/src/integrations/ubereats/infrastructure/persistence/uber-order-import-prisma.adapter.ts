@@ -29,9 +29,7 @@ import { toUberOrderStatus } from './uber-order-status.mapper';
 
 /** Prisma implementation of the complete order-import persistence boundary. */
 @Injectable()
-export class UberOrderImportPrismaAdapter
-  implements UberOrderImportRepositoryPort
-{
+export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPort {
   private readonly logger = new Logger(UberOrderImportPrismaAdapter.name);
 
   constructor(
@@ -117,8 +115,7 @@ export class UberOrderImportPrismaAdapter
       input.menuMappings.map((item) => [item.externalItemId, item]),
     );
     const items: NormalizedOrderItem[] = input.order.items.map((item) => ({
-      productStableId:
-        mapping.get(item.externalItemId ?? '')!.menuItemStableId,
+      productStableId: mapping.get(item.externalItemId ?? '')!.menuItemStableId,
       quantity: item.quantity,
       displayName: item.displayName,
       nameEn: null,

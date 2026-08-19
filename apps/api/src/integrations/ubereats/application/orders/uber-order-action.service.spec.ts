@@ -106,7 +106,9 @@ describe('UberOrderActionService contract', () => {
         {
           taskId: 'task-1',
           leaseToken: 'lease-from-claim',
-          transition: nextStatus ? { from: currentStatus, to: nextStatus } : null,
+          transition: nextStatus
+            ? { from: currentStatus, to: nextStatus }
+            : null,
         },
       ]);
     },

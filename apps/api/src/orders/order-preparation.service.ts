@@ -1,14 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  OrderFulfillmentTiming,
-  OrderStatus,
-  Prisma,
-} from '@prisma/client';
+import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   ORDER_PREP_STARTED_LIFECYCLE_EVENT,
+  orderAcceptedIdempotencyKey,
   orderPrepStartedIdempotencyKey,
 } from './order-lifecycle';
 
@@ -202,12 +199,7 @@ export class OrderPreparationService {
   ): Promise<OrderPreparationActivationResult> {
     if (order.fulfillmentTiming !== expectedTiming) {
       this.logSkipped(order, 'FULFILLMENT_TIMING_MISMATCH');
-      return {
-        outcome: 'skipped',
-        orderId: order.id,
-        orderStableId: order.orderStableId,
-        status: order.status,
-      };
+      return this.skippedResult(order);
     }
 
     if (
@@ -228,23 +220,24 @@ export class OrderPreparationService {
       order.status !== OrderStatus.paid
     ) {
       this.logSkipped(order, `STATUS_${order.status.toUpperCase()}`);
-      return {
-        outcome: 'skipped',
-        orderId: order.id,
-        orderStableId: order.orderStableId,
-        status: order.status,
-      };
+      return this.skippedResult(order);
+    }
+
+    if (!(await this.hasAcceptedLifecycle(tx, order.id))) {
+      this.logSkipped(order, 'NOT_ACCEPTED');
+      return this.skippedResult(order);
     }
 
     const fields = this.logFields(order, now);
     if (expectedTiming === OrderFulfillmentTiming.SCHEDULED) {
-      this.logger.log({ event: 'scheduled_order_activation_started', ...fields });
+      this.logger.log({
+        event: 'scheduled_order_activation_started',
+        ...fields,
+      });
       const delaySeconds = order.prepStartAt
         ? Math.max(
             0,
-            Math.floor(
-              (now.getTime() - order.prepStartAt.getTime()) / 1000,
-            ),
+            Math.floor((now.getTime() - order.prepStartAt.getTime()) / 1000),
           )
         : 0;
       if (delaySeconds > 0) {
@@ -296,6 +289,30 @@ export class OrderPreparationService {
     };
   }
 
+  private async hasAcceptedLifecycle(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ): Promise<boolean> {
+    const accepted = await tx.opsEvent.findFirst({
+      where: {
+        idempotencyKey: orderAcceptedIdempotencyKey(orderId),
+        source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+        eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
+      },
+      select: { id: true },
+    });
+    return accepted !== null;
+  }
+
+  private skippedResult(order: LockedOrder): OrderPreparationActivationResult {
+    return {
+      outcome: 'skipped',
+      orderId: order.id,
+      orderStableId: order.orderStableId,
+      status: order.status,
+    };
+  }
+
   private logSkipped(order: LockedOrder, reason: string): void {
     this.logger.log({
       event: 'scheduled_order_activation_skipped',
@@ -323,9 +340,7 @@ export class OrderPreparationService {
       delaySeconds: order.prepStartAt
         ? Math.max(
             0,
-            Math.floor(
-              (now.getTime() - order.prepStartAt.getTime()) / 1000,
-            ),
+            Math.floor((now.getTime() - order.prepStartAt.getTime()) / 1000),
           )
         : 0,
     };

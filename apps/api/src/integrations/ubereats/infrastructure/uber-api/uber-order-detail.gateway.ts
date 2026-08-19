@@ -121,9 +121,12 @@ function summarizeOrderDetailShape(
     rootType: valueShape(payload),
     topLevelKeys: safeTopLevelKeys(root),
     orderIdFields:
-      presentKeys(root, ['order_id', 'id', 'external_order_id', 'external_id']).join(
-        ',',
-      ) || 'none',
+      presentKeys(root, [
+        'order_id',
+        'id',
+        'external_order_id',
+        'external_id',
+      ]).join(',') || 'none',
     totalFields: totalFields.join(',') || 'none',
     itemsShape: valueShape(root?.items),
     cartShape: valueShape(root?.cart),

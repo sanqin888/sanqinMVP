@@ -61,26 +61,21 @@ describe('Uber scheduled order normalization', () => {
     );
   });
 
-  it(
-    'rejects scheduled notifications that do not contain a stable scheduled target',
-    () => {
-      expect(
-        new UberOrderPayloadParser().parseResult(
-          {
-            id: 'scheduled-order-2',
-            total: 1_000,
-            estimated_ready_for_pickup_at: '2026-08-19T22:14:00.000Z',
-            items: [
-              { id: 'item-1', title: 'Dish', quantity: 1, price: 1_000 },
-            ],
-          },
-          { eventType: 'orders.scheduled.notification' },
-        ),
-      ).toEqual({
-        kind: 'invalid',
-        reason: 'MISSING_SCHEDULED_READY_AT',
-        category: 'mapping',
-      });
-    },
-  );
+  it('rejects scheduled notifications that do not contain a stable scheduled target', () => {
+    expect(
+      new UberOrderPayloadParser().parseResult(
+        {
+          id: 'scheduled-order-2',
+          total: 1_000,
+          estimated_ready_for_pickup_at: '2026-08-19T22:14:00.000Z',
+          items: [{ id: 'item-1', title: 'Dish', quantity: 1, price: 1_000 }],
+        },
+        { eventType: 'orders.scheduled.notification' },
+      ),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'MISSING_SCHEDULED_READY_AT',
+      category: 'mapping',
+    });
+  });
 });

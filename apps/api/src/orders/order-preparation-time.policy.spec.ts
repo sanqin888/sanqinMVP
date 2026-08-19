@@ -12,12 +12,9 @@ describe('order preparation-time policy', () => {
     [2_001, 20],
     [3_000, 20],
     [3_001, 25],
-  ])(
-    'maps %i cents to %i preparation minutes',
-    (totalCents, minutes) => {
-      expect(resolveOrderPreparationMinutes(totalCents)).toBe(minutes);
-    },
-  );
+  ])('maps %i cents to %i preparation minutes', (totalCents, minutes) => {
+    expect(resolveOrderPreparationMinutes(totalCents)).toBe(minutes);
+  });
 
   it('derives prepStartAt from scheduledReadyAt using the same policy', () => {
     expect(
