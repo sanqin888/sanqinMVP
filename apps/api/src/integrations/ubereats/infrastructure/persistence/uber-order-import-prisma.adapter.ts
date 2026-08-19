@@ -15,7 +15,9 @@ import {
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
 import { resolveConfiguredStoreId } from '../../../../common/store-id';
-import type { OrderItemOptionsSnapshot } from '../../../../orders/order-item-options';
+import type {
+  OrderItemOptionsSnapshot,
+} from '../../../../orders/order-item-options';
 import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
 import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
