@@ -62,7 +62,9 @@ export class UberMenuDraftSourcePrismaRepository {
     storeId: string,
     uberStoreId: string,
   ): Promise<UberMenuDraftSource> {
-    const configStoreIds = Array.from(new Set([storeId, uberStoreId, 'default']));
+    const configStoreIds = Array.from(
+      new Set([storeId, uberStoreId, 'default']),
+    );
     const [
       categories,
       menuItems,
