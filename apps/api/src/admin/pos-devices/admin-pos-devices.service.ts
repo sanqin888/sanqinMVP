@@ -1,9 +1,10 @@
 //apps/api/src/admin/pos-devices/admin-pos-devices.service.ts
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePosDeviceDto } from './dto/create-pos-device.dto';
 import { PosDeviceStatus } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
+import { resolveConfiguredStoreId } from '../../common/store-id';
 
 @Injectable()
 export class AdminPosDevicesService {
@@ -20,9 +21,27 @@ export class AdminPosDevicesService {
     return createHash('sha256').update(key).digest('hex');
   }
 
+  private async resolveStoreUuid(requestedStoreId?: string): Promise<string> {
+    const store = requestedStoreId
+      ? await this.prisma.store.findUnique({
+          where: { id: requestedStoreId },
+          select: { id: true, isActive: true },
+        })
+      : await this.prisma.store.findUnique({
+          where: { storeStableId: resolveConfiguredStoreId() },
+          select: { id: true, isActive: true },
+        });
+
+    if (!store || !store.isActive) {
+      throw new BadRequestException('storeId does not reference an active store');
+    }
+    return store.id;
+  }
+
   async create(dto: CreatePosDeviceDto) {
     const enrollmentCode = this.generateEnrollmentCode();
     const enrollmentKeyHash = this.hashKey(enrollmentCode);
+    const storeId = await this.resolveStoreUuid(dto.storeId);
 
     // deviceKeyHash 是必填的，但创建时设备还未绑定，给一个初始占位符
     // 当 POS 端调用 claim 接口时，这个值会被更新为真实的通信密钥哈希
@@ -33,7 +52,7 @@ export class AdminPosDevicesService {
     const device = await this.prisma.posDevice.create({
       data: {
         name: dto.name,
-        storeId: dto.storeId ?? '00000000-0000-0000-0000-000000000000', // 默认 UUID，根据实际业务调整
+        storeId,
         enrollmentKeyHash,
         deviceKeyHash: initialDeviceKeyHash,
         status: 'ACTIVE',
