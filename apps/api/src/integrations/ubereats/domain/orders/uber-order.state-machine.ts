@@ -110,11 +110,16 @@ export const UberOrderStateMachine = {
     status: UberOrderStatus,
     action: UberOrderActionName,
   ): UberOrderStatus | null {
+    // ACCEPT means the merchant accepted the offer. It no longer means local
+    // preparation began; Orders materializes prep_started separately.
+    if (
+      action === 'ACCEPT' &&
+      (status === UberOrderStatus.pending || status === UberOrderStatus.paid)
+    )
+      return UberOrderStatus.paid;
     // Merchant-issued cancellation commands have their own action idempotency
     // key, but share the lifecycle decision with cancellation webhook events.
     if (action === 'CANCEL') return statusAfterCancellation(status);
-    if (action === 'ACCEPT' && status === UberOrderStatus.pending)
-      return UberOrderStatus.making;
     if (
       action === 'READY_FOR_PICKUP' &&
       (status === UberOrderStatus.paid || status === UberOrderStatus.making)

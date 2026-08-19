@@ -9,7 +9,7 @@ type WorkflowLog = (
 describe('UberOrderDetailGatewayAdapter diagnostics', () => {
   it('records only field shapes when a successful order detail cannot be mapped', async () => {
     const workflowLog = jest.fn<WorkflowLog>();
-    const secret = 'Bearer super-secret-credential';
+    const secret = 'Bearer [REDACTED]';
     const adapter = new UberOrderDetailGatewayAdapter(
       {
         pathFromResourceHref: jest.fn().mockResolvedValue('/orders/1'),
@@ -53,6 +53,7 @@ describe('UberOrderDetailGatewayAdapter diagnostics', () => {
         itemsShape: 'missing',
         cartShape: 'object',
         cartItemsShape: 'array(1)',
+        cartsShape: 'missing',
         paymentShape: 'object',
         chargesShape: 'object',
       },

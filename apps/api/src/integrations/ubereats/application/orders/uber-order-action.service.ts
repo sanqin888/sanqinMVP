@@ -63,10 +63,14 @@ export class UberOrderActionService {
       if (task.action === 'ACCEPT')
         await this.gateway.accept({
           ...common,
-          readyForPickupAt: resolveUberReadyForPickupAt(
-            orderContext?.totalCents ?? 0,
-            orderContext?.referenceAt ?? new Date(),
-          ),
+          readyForPickupAt:
+            orderContext?.fulfillmentTiming === 'SCHEDULED' &&
+            orderContext.scheduledReadyAt
+              ? orderContext.scheduledReadyAt
+              : resolveUberReadyForPickupAt(
+                  orderContext?.totalCents ?? 0,
+                  orderContext?.referenceAt ?? new Date(),
+                ),
         });
       else if (task.action === 'DENY')
         await this.gateway.deny({
