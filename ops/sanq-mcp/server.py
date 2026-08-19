@@ -746,6 +746,57 @@ def _github_request(
         raise ValueError("GitHub API returned invalid JSON") from exc
 
 
+def _github_download_text(path: str, *, max_chars: int) -> str:
+    owner, repo = _github_repo_parts()
+    prefix = f"/repos/{owner}/{repo}"
+    if not path.startswith(prefix):
+        raise ValueError("GitHub request path is outside the configured repository")
+    if not 1_000 <= max_chars <= 250_000:
+        raise ValueError("max_chars must be between 1000 and 250000")
+
+    request = Request(
+        f"{GITHUB_API_BASE}{path}",
+        method="GET",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "sanq-mcp",
+        },
+    )
+    # Job logs are downloaded through a signed redirect. Keep the repository PAT
+    # on the initial api.github.com request only; urllib does not forward
+    # unredirected headers to the signed storage URL.
+    request.add_unredirected_header("Authorization", f"Bearer {_github_token()}")
+
+    tail = bytearray()
+    total_bytes = 0
+    try:
+        with urlopen(request, timeout=20) as response:
+            while True:
+                chunk = response.read(65_536)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                tail.extend(chunk)
+                if len(tail) > max_chars:
+                    del tail[: len(tail) - max_chars]
+    except HTTPError as exc:
+        body = exc.read(20_000).decode("utf-8", errors="replace")
+        raise ValueError(
+            f"GitHub API returned HTTP {exc.code}: {_redact(body)}"
+        ) from exc
+    except URLError as exc:
+        raise ValueError(f"GitHub API request failed: {exc.reason}") from exc
+
+    text = _redact(bytes(tail).decode("utf-8", errors="replace")).rstrip()
+    truncated = total_bytes > max_chars
+    header = (
+        f"[downloaded_bytes={total_bytes} returned_chars={len(text)} "
+        f"truncated={str(truncated).lower()}]"
+    )
+    return f"{header}\n{text or '(no output)'}"
+
+
 def _github_pr_summary(data: object) -> dict[str, object]:
     if not isinstance(data, dict):
         raise ValueError("unexpected GitHub pull request response")
@@ -1514,6 +1565,19 @@ def github_pr_checks(number: int) -> str:
     data = _github_ci_for_sha(head["sha"])
     data["pull_request"] = number
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+@mcp.tool(annotations=GITHUB_READ_ANNOTATIONS)
+def github_job_logs(job_id: int, max_chars: int = MAX_COMMAND_OUTPUT_CHARS) -> str:
+    """Read bounded, redacted GitHub Actions log text for one job."""
+    if job_id < 1:
+        raise ValueError("job_id must be >= 1")
+    owner, repo = _github_repo_parts()
+    logs = _github_download_text(
+        f"/repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
+        max_chars=max_chars,
+    )
+    return f"[repository={GITHUB_REPOSITORY} job_id={job_id}]\n{logs}"
 
 
 @mcp.tool(annotations=GITHUB_WRITE_ANNOTATIONS)
