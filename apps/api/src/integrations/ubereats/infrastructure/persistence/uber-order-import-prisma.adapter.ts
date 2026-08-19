@@ -15,7 +15,6 @@ import {
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
 import { resolveConfiguredStoreId } from '../../../../common/store-id';
-import type { OrderItemOptionsSnapshot } from '../../../../orders/order-item-options';
 import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
 import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
@@ -297,39 +296,33 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return (status && map[status]) || OrderStatus.pending;
   }
 
-  private modifierSnapshots(values: ParsedUberModifier[]): Prisma.InputJsonValue {
-    const snapshots = new Map<string, OrderItemOptionsSnapshot[number]>();
-
-    for (const [sortOrder, modifier] of this.flattenValues(values).entries()) {
-      const templateGroupStableId = `uber:${modifier.parentExternalId ?? 'ungrouped'}`;
-      let group = snapshots.get(templateGroupStableId);
-      if (!group) {
-        group = {
-          templateGroupStableId,
-          nameEn: null,
-          nameZh: null,
-          displayName: null,
-          minSelect: 0,
-          maxSelect: null,
-          sortOrder: snapshots.size,
-          choices: [],
-        };
-        snapshots.set(templateGroupStableId, group);
-      }
-
-      group.choices.push({
-        stableId:
-          modifier.externalId ?? `${templateGroupStableId}:${sortOrder}`,
+  private modifierSnapshots(
+    values: ParsedUberModifier[],
+  ): Prisma.InputJsonValue {
+    return this.flattenValues(values).map((modifier, sortOrder) => {
+      const templateGroupStableId =
+        modifier.parentExternalId ?? `uber-group:${sortOrder}`;
+      return {
         templateGroupStableId,
         nameEn: null,
         nameZh: null,
-        displayName: modifier.displayName,
-        priceDeltaCents: modifier.priceDeltaCents,
-        sortOrder: group.choices.length,
-      });
-    }
-
-    return [...snapshots.values()] as unknown as Prisma.InputJsonValue;
+        displayName: null,
+        minSelect: 0,
+        maxSelect: null,
+        sortOrder,
+        choices: [
+          {
+            stableId: modifier.externalId ?? `uber-option:${sortOrder}`,
+            templateGroupStableId,
+            nameEn: null,
+            nameZh: null,
+            displayName: modifier.displayName,
+            priceDeltaCents: modifier.priceDeltaCents,
+            sortOrder: 0,
+          },
+        ],
+      };
+    }) as unknown as Prisma.InputJsonValue;
   }
 
   private flattenValues(values: ParsedUberModifier[]): ParsedUberModifier[] {
