@@ -336,25 +336,22 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       };
     }
 
-    const externalGroupIds = [
-      ...new Set(
-        values
-          .map((value) => value.parentExternalId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
-    const externalOptionIds = [
-      ...new Set(
-        values
-          .map((value) => value.externalId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
+    const externalGroupIds = new Set<string>();
+    const externalOptionIds = new Set<string>();
+    for (const value of values) {
+      if (value.parentExternalId) {
+        externalGroupIds.add(value.parentExternalId);
+      }
+      if (value.externalId) {
+        externalOptionIds.add(value.externalId);
+      }
+    }
+
     const [groups, options] = await Promise.all([
       this.prisma.uberModifierGroupConfig.findMany({
         where: {
           storeId,
-          externalModifierGroupId: { in: externalGroupIds },
+          externalModifierGroupId: { in: [...externalGroupIds] },
         },
         select: {
           externalModifierGroupId: true,
@@ -365,7 +362,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         },
       }),
       this.prisma.uberOptionItemConfig.findMany({
-        where: { storeId, externalItemId: { in: externalOptionIds } },
+        where: { storeId, externalItemId: { in: [...externalOptionIds] } },
         select: {
           externalItemId: true,
           optionChoiceStableId: true,
@@ -374,22 +371,22 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       }),
     ]);
 
-    return {
-      groupsByExternalId: new Map(
-        groups.flatMap((group) =>
-          group.externalModifierGroupId
-            ? [[group.externalModifierGroupId, group] as const]
-            : [],
-        ),
-      ),
-      optionsByExternalId: new Map(
-        options.flatMap((option) =>
-          option.externalItemId
-            ? [[option.externalItemId, option] as const]
-            : [],
-        ),
-      ),
-    };
+    const groupsByExternalId: ModifierSnapshotContext['groupsByExternalId'] =
+      new Map();
+    for (const group of groups) {
+      if (group.externalModifierGroupId) {
+        groupsByExternalId.set(group.externalModifierGroupId, group);
+      }
+    }
+    const optionsByExternalId: ModifierSnapshotContext['optionsByExternalId'] =
+      new Map();
+    for (const option of options) {
+      if (option.externalItemId) {
+        optionsByExternalId.set(option.externalItemId, option);
+      }
+    }
+
+    return { groupsByExternalId, optionsByExternalId };
   }
 
   private modifierSnapshots(
