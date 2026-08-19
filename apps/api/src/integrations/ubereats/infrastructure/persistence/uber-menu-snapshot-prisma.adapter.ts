@@ -7,20 +7,46 @@ import type {
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import { composeUberDisplayName } from '../../domain/menu/uber-menu-payload.builder';
 
-const preferCanonicalStoreRows = <T extends { storeId: string }>(
+type ScopedRows<T> = {
+  default?: T;
+  uber?: T;
+  canonical?: T;
+};
+
+const groupScopedRows = <T extends { storeId: string }>(
   rows: T[],
   canonicalStoreId: string,
+  uberStoreId: string,
   keyOf: (row: T) => string,
-): T[] => {
-  const byKey = new Map<string, T>();
+): Map<string, ScopedRows<T>> => {
+  const byKey = new Map<string, ScopedRows<T>>();
   for (const row of rows) {
-    if (row.storeId !== canonicalStoreId) byKey.set(keyOf(row), row);
+    const key = keyOf(row);
+    const scoped = byKey.get(key) ?? {};
+    if (row.storeId === canonicalStoreId) scoped.canonical = row;
+    else if (row.storeId === uberStoreId) scoped.uber = row;
+    else if (row.storeId === 'default') scoped.default = row;
+    byKey.set(key, scoped);
   }
-  for (const row of rows) {
-    if (row.storeId === canonicalStoreId) byKey.set(keyOf(row), row);
-  }
-  return Array.from(byKey.values());
+  return byKey;
 };
+
+const restoredItemIds = (
+  events: Array<{ payload: unknown }>,
+  posStoreId: string,
+): Set<string> =>
+  new Set(
+    events.flatMap((event) => {
+      const payload = event.payload as {
+        posStoreId?: unknown;
+        menuItemStableId?: unknown;
+      } | null;
+      return payload?.posStoreId === posStoreId &&
+        typeof payload.menuItemStableId === 'string'
+        ? [payload.menuItemStableId]
+        : [];
+    }),
+  );
 
 /** Prisma rows are translated here; the application boundary only sees stable menu DTOs. */
 @Injectable()
@@ -32,7 +58,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null> {
     const storeId = posStoreId;
-    const configStoreIds = Array.from(new Set([posStoreId, uberStoreId]));
+    const configStoreIds = Array.from(
+      new Set([posStoreId, uberStoreId, 'default']),
+    );
     const [
       mapping,
       businessConfig,
@@ -43,6 +71,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       rawOptionConfigs,
       rawGroupConfigs,
       rawCategoryConfigs,
+      restoreEvents,
     ] = await Promise.all([
       this.prisma.uberStoreMapping.findFirst({
         where: {
@@ -146,6 +175,13 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           displayName: true,
         },
       }),
+      this.prisma.opsEvent.findMany({
+        where: {
+          eventName: 'ubereats_menu_price_restored',
+          source: 'ubereats',
+        },
+        select: { payload: true },
+      }),
     ]);
     if (!mapping) return null;
 
@@ -172,41 +208,67 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       });
     }
     const taxRate = Number((salesTaxRate * 100).toFixed(4));
+    const restoredItems = restoredItemIds(restoreEvents, posStoreId);
 
-    const itemConfigs = preferCanonicalStoreRows(
+    const itemScopes = groupScopedRows(
       rawItemConfigs,
       posStoreId,
+      uberStoreId,
       (config) => config.menuItemStableId,
     );
-    const optionConfigs = preferCanonicalStoreRows(
-      rawOptionConfigs,
-      posStoreId,
-      (config) => config.optionChoiceStableId,
+    const itemConfig = new Map(
+      Array.from(itemScopes.entries()).flatMap(([stableId, scoped]) => {
+        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+        if (!base) return [];
+        const priceCents = scoped.canonical
+          ? scoped.canonical.priceCents != null || restoredItems.has(stableId)
+            ? scoped.canonical.priceCents
+            : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null)
+          : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null);
+        return [[stableId, { ...base, priceCents }] as const];
+      }),
     );
-    const groupConfigs = preferCanonicalStoreRows(
-      rawGroupConfigs,
-      posStoreId,
-      (config) => config.templateGroupStableId,
+    const optionConfig = new Map(
+      Array.from(
+        groupScopedRows(
+          rawOptionConfigs,
+          posStoreId,
+          uberStoreId,
+          (config) => config.optionChoiceStableId,
+        ).entries(),
+      ).flatMap(([stableId, scoped]) => {
+        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+        return base ? ([[stableId, base]] as const) : [];
+      }),
     );
-    const categoryConfigs = preferCanonicalStoreRows(
-      rawCategoryConfigs,
-      posStoreId,
-      (config) => config.menuCategoryStableId,
+    const groupConfig = new Map(
+      Array.from(
+        groupScopedRows(
+          rawGroupConfigs,
+          posStoreId,
+          uberStoreId,
+          (config) => config.templateGroupStableId,
+        ).entries(),
+      ).flatMap(([stableId, scoped]) => {
+        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+        return base ? ([[stableId, base]] as const) : [];
+      }),
+    );
+    const categoryConfig = new Map(
+      Array.from(
+        groupScopedRows(
+          rawCategoryConfigs,
+          posStoreId,
+          uberStoreId,
+          (config) => config.menuCategoryStableId,
+        ).entries(),
+      ).flatMap(([stableId, scoped]) => {
+        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
+        return base ? ([[stableId, base]] as const) : [];
+      }),
     );
     const categoryById = new Map(
       categories.map((category) => [category.id, category]),
-    );
-    const itemConfig = new Map(
-      itemConfigs.map((config) => [config.menuItemStableId, config]),
-    );
-    const optionConfig = new Map(
-      optionConfigs.map((config) => [config.optionChoiceStableId, config]),
-    );
-    const groupConfig = new Map(
-      groupConfigs.map((config) => [config.templateGroupStableId, config]),
-    );
-    const categoryConfig = new Map(
-      categoryConfigs.map((config) => [config.menuCategoryStableId, config]),
     );
     const items = menuItems
       .filter((item) => categoryById.has(item.categoryId))
@@ -286,9 +348,10 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
             priceDeltaCents: config?.priceDeltaCents ?? option.priceDeltaCents,
             sourcePriceDeltaCents: option.priceDeltaCents,
             overridePriceDeltaCents: config?.priceDeltaCents ?? null,
-            priceValueSource: config
-              ? ('UBER_OVERRIDE' as const)
-              : ('SANQ_SOURCE' as const),
+            priceValueSource:
+              config?.priceDeltaCents != null
+                ? ('UBER_OVERRIDE' as const)
+                : ('SANQ_SOURCE' as const),
             isAvailable: config?.isAvailable ?? option.isAvailable,
             childGroupStableIds: [],
           };

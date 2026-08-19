@@ -141,48 +141,21 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
           message: '菜单项不存在。',
           operation: 'uber.menu.restore-price',
         });
-      const config = await tx.uberItemChannelConfig.findUnique({
+      await tx.uberItemChannelConfig.upsert({
         where: {
           storeId_menuItemStableId: {
             storeId: canonicalStoreId,
             menuItemStableId,
           },
         },
-        select: {
-          id: true,
-          isAvailable: true,
-          displayName: true,
-          displayDescription: true,
-          uberStoreId: true,
-          externalItemId: true,
-          externalCategoryId: true,
-          lastPublishedPriceCents: true,
-          lastPublishedIsAvailable: true,
-          lastPublishedHash: true,
-          lastPublishedAt: true,
-          lastPublishError: true,
+        create: {
+          storeId: canonicalStoreId,
+          menuItemStableId,
+          priceCents: null,
+          isAvailable: item.isAvailable,
         },
+        update: { priceCents: null },
       });
-      if (config) {
-        await tx.uberItemChannelConfig.update({
-          where: { id: config.id },
-          data: { priceCents: null },
-        });
-        const canDelete =
-          config.isAvailable === item.isAvailable &&
-          config.displayName === null &&
-          config.displayDescription === null &&
-          config.uberStoreId === null &&
-          config.externalItemId === null &&
-          config.externalCategoryId === null &&
-          config.lastPublishedPriceCents === null &&
-          config.lastPublishedIsAvailable === null &&
-          config.lastPublishedHash === null &&
-          config.lastPublishedAt === null &&
-          config.lastPublishError === null;
-        if (canDelete)
-          await tx.uberItemChannelConfig.delete({ where: { id: config.id } });
-      }
       const occurredAt = new Date();
       await tx.opsEvent.create({
         data: {
@@ -199,6 +172,56 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
         },
       });
       return { sourcePriceCents: item.basePriceCents };
+    });
+  }
+  async restoreOptionPrice(
+    storeId: string,
+    optionChoiceStableId: string,
+    administratorId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const canonicalStoreId = await this.canonicalStoreId(tx, storeId);
+      const option = await tx.menuOptionTemplateChoice.findUnique({
+        where: { stableId: optionChoiceStableId },
+        select: { priceDeltaCents: true, isAvailable: true },
+      });
+      if (!option)
+        throw new UberValidationError({
+          code: 'UBER_MENU_OPTION_NOT_FOUND',
+          message: '菜单选项不存在。',
+          operation: 'uber.menu.restore-option-price',
+        });
+      await tx.uberOptionItemConfig.upsert({
+        where: {
+          storeId_optionChoiceStableId: {
+            storeId: canonicalStoreId,
+            optionChoiceStableId,
+          },
+        },
+        create: {
+          storeId: canonicalStoreId,
+          optionChoiceStableId,
+          priceDeltaCents: option.priceDeltaCents,
+          isAvailable: option.isAvailable,
+        },
+        update: { priceDeltaCents: option.priceDeltaCents },
+      });
+      const occurredAt = new Date();
+      await tx.opsEvent.create({
+        data: {
+          eventName: 'ubereats_menu_price_restored',
+          source: 'ubereats',
+          payload: {
+            posStoreId: canonicalStoreId,
+            optionChoiceStableId,
+            sourcePriceDeltaCents: option.priceDeltaCents,
+            administratorId,
+            occurredAt: occurredAt.toISOString(),
+          },
+          occurredAt,
+        },
+      });
+      return { sourcePriceDeltaCents: option.priceDeltaCents };
     });
   }
   private async canonicalStoreId(db: MenuDb, storeId: string) {

@@ -65,13 +65,39 @@ export class UberMenuAvailabilityPrismaAdapter
 
   async setItemAvailability(
     storeId: string,
+    uberStoreId: string,
     menuItemStableId: string,
     isAvailable: boolean,
   ) {
+    const legacyRows = await this.prisma.uberItemChannelConfig.findMany({
+      where: {
+        menuItemStableId,
+        storeId: { in: Array.from(new Set([uberStoreId, 'default'])) },
+      },
+      select: {
+        storeId: true,
+        priceCents: true,
+        displayName: true,
+        displayDescription: true,
+      },
+    });
+    const inherited =
+      legacyRows.find((row) => row.storeId === uberStoreId) ??
+      legacyRows.find((row) => row.storeId === 'default') ??
+      null;
+
     await this.prisma.uberItemChannelConfig.upsert({
       where: { storeId_menuItemStableId: { storeId, menuItemStableId } },
-      create: { storeId, menuItemStableId, isAvailable },
-      update: { isAvailable },
+      create: {
+        storeId,
+        uberStoreId,
+        menuItemStableId,
+        priceCents: inherited?.priceCents ?? null,
+        displayName: inherited?.displayName ?? null,
+        displayDescription: inherited?.displayDescription ?? null,
+        isAvailable,
+      },
+      update: { uberStoreId, isAvailable },
     });
   }
 
@@ -81,6 +107,29 @@ export class UberMenuAvailabilityPrismaAdapter
     optionChoiceStableId: string,
     isAvailable: boolean,
   ) {
+    const [legacyRows, sourceOption] = await Promise.all([
+      this.prisma.uberOptionItemConfig.findMany({
+        where: {
+          optionChoiceStableId,
+          storeId: { in: Array.from(new Set([uberStoreId, 'default'])) },
+        },
+        select: {
+          storeId: true,
+          priceDeltaCents: true,
+          displayName: true,
+          displayDescription: true,
+        },
+      }),
+      this.prisma.menuOptionTemplateChoice.findUnique({
+        where: { stableId: optionChoiceStableId },
+        select: { priceDeltaCents: true },
+      }),
+    ]);
+    const inherited =
+      legacyRows.find((row) => row.storeId === uberStoreId) ??
+      legacyRows.find((row) => row.storeId === 'default') ??
+      null;
+
     await this.prisma.uberOptionItemConfig.upsert({
       where: {
         storeId_optionChoiceStableId: { storeId, optionChoiceStableId },
@@ -89,6 +138,10 @@ export class UberMenuAvailabilityPrismaAdapter
         storeId,
         uberStoreId,
         optionChoiceStableId,
+        priceDeltaCents:
+          inherited?.priceDeltaCents ?? sourceOption?.priceDeltaCents ?? 0,
+        displayName: inherited?.displayName ?? null,
+        displayDescription: inherited?.displayDescription ?? null,
         isAvailable,
       },
       update: { uberStoreId, isAvailable },

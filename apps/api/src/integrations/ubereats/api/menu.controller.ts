@@ -236,6 +236,21 @@ export class UberEatsMenuController {
     return presentMenuOperation(result);
   }
 
+  @Post('menu/draft/options/:stableId/restore-source-price')
+  @UberMfaAdminWrite()
+  async restoreOptionSourcePrice(
+    @Param('stableId', ResourceIdPipe) stableId: string,
+    @Body() dto: { storeId: string },
+    @Req() req: { user?: { id?: string } },
+  ) {
+    const result = await this.configImports.restoreOptionPrice(
+      dto.storeId,
+      stableId,
+      req.user!.id!,
+    );
+    return presentMenuOperation(result);
+  }
+
   @Post('menu/items/:stableId/availability')
   @UberMfaAdminWrite()
   async syncMenuItemAvailability(
