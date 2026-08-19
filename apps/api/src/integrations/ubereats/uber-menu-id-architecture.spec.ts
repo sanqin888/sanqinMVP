@@ -8,7 +8,7 @@ describe('Uber Eats menu id architecture', () => {
   it('keeps the Admin editor independent from Uber publish node ids', () => {
     const webRoot = resolve(
       __dirname,
-      '../../../../web/src/app/[locale]/admin/(protected)/ubereats',
+      '../../../../web/src/app/[locale]/(site)/admin/(protected)/ubereats',
     );
     const files = scanTypeScript(webRoot, { productionOnly: true });
     const forbidden =

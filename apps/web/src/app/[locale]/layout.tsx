@@ -4,15 +4,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { LOCALES, isLocale } from "@/lib/i18n/locales";
 import { localeAlternates } from "@/lib/i18n/path";
-import Link from "next/link";
-import LocaleSwitcher from "@/components/LocaleSwitcher";
-import Image from "next/image";
-import AnalyticsConsentControls from "@/components/AnalyticsConsentControls";
 
 export const dynamicParams = false;
 
 export async function generateStaticParams() {
-  return LOCALES.map((l) => ({ locale: l }));
+  return LOCALES.map((locale) => ({ locale }));
 }
 
 export async function generateMetadata({
@@ -34,7 +30,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function I18nLayout({
+export default async function LocaleLayout({
   children,
   params,
 }: {
@@ -44,57 +40,5 @@ export default async function I18nLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
-  const isZh = locale === "zh";
-  const year = new Date().getFullYear();
-
-  return (
-    <div className="min-h-screen">
-      <header className="mx-auto flex max-w-5xl items-center justify-between border-b px-4 py-4">        <Link href={`/${locale}`} className="font-semiboldflex flex items-center gap-2">
-        {/* 新增：Logo 图片 */}
-        <div className="relative h-8 w-16 rounded-md bg-white">
-          <Image
-            src="/images/sanqinLOGO.png"
-            alt="Logo"
-            fill
-            sizes="64px"
-            className="object-contain"
-          />
-        </div>
-          {isZh ? "三秦肉夹馍" : "SanQ Roujiamo"}
-        </Link>
-        <LocaleSwitcher locale={locale as "zh" | "en"} />
-      </header>
-
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-
-      <footer className="mx-auto mt-8 max-w-5xl border-t px-4 py-6 text-sm text-gray-500">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            <Link href={`/${locale}/membership/rules`} className="hover:text-gray-800">
-              {isZh ? "会员规则" : "Membership rules"}
-            </Link>
-            <Link href={`/${locale}/legal/privacy`} className="hover:text-gray-800">
-              {isZh ? "隐私政策" : "Privacy"}
-            </Link>
-            <Link href={`/${locale}/legal/terms`} className="hover:text-gray-800">
-              {isZh ? "网站条款" : "Terms"}
-            </Link>
-            <Link href={`/${locale}/legal/refund`} className="hover:text-gray-800">
-              {isZh ? "退款/取消" : "Refunds"}
-            </Link>
-            <Link href={`/${locale}/legal/allergen`} className="hover:text-gray-800">
-              {isZh ? "过敏原说明" : "Allergen info"}
-            </Link>
-            <Link href={`/${locale}/legal/contact`} className="hover:text-gray-800">
-              {isZh ? "联系我们" : "Contact us"}
-            </Link>
-          </div>
-          <div className="flex flex-col items-start gap-2 sm:items-end">
-            <AnalyticsConsentControls locale={locale as "zh" | "en"} />
-            <div className="text-xs text-gray-400">© {year} San Qin. All rights reserved.</div>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
+  return <>{children}</>;
 }
