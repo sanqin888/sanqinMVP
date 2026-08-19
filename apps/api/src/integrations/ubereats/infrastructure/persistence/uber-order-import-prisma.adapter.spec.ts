@@ -195,9 +195,9 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
 
   it('normalizes Uber modifiers into printable shared option snapshots', async () => {
     let capturedInput: unknown;
-    const ingest = jest.fn(async (input: unknown) => {
+    const ingest = jest.fn((input: unknown) => {
       capturedInput = input;
-      return savedOrder;
+      return Promise.resolve(savedOrder);
     });
     const adapter = new UberOrderImportPrismaAdapter(
       {
