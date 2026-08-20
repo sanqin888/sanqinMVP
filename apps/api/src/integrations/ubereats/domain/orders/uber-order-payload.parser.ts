@@ -76,12 +76,15 @@ export class UberOrderPayloadParser {
       normalizeUberEventType(context?.eventType ?? '') ===
         'orders.scheduled.notification' ||
       readString(dto.status)?.toUpperCase() === 'SCHEDULED';
-    const scheduledReadyAt = scheduled
-      ? readDate(
-          dto.scheduled_ready_for_pickup_at,
-          dto.scheduled_order_target_delivery_time_range?.start_time,
-        )
-      : null;
+    // For Order Fulfillment API v1, the delivery target window is when Uber
+    // intends to deliver the order, not when the kitchen must have it ready.
+    // The kitchen-ready target is preparation_time.ready_for_pickup_time.
+    const externalReadyAt = readDate(
+      dto.preparation_time?.ready_for_pickup_time,
+      dto.estimated_ready_for_pickup_at,
+      dto.scheduled_ready_for_pickup_at,
+    );
+    const scheduledReadyAt = scheduled ? externalReadyAt : null;
     if (scheduled && !scheduledReadyAt)
       return invalid('MISSING_SCHEDULED_READY_AT', 'mapping');
 
@@ -177,10 +180,8 @@ export class UberOrderPayloadParser {
           : 'pickup',
         fulfillmentTiming: scheduled ? 'SCHEDULED' : 'IMMEDIATE',
         scheduledReadyAt,
-        estimatedReadyAt: readDate(
-          dto.estimated_ready_for_pickup_at,
-          dto.estimated_delivery_at,
-        ),
+        estimatedReadyAt:
+          externalReadyAt ?? readDate(dto.estimated_delivery_at),
         specialInstructions: readString(
           dto.special_instructions,
           dto.cart?.special_instructions,

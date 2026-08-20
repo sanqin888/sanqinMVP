@@ -33,7 +33,9 @@ import { OrderSchedulingQueryService } from './order-scheduling-query.service';
     EmailModule,
     MessagingModule,
   ],
-  controllers: [OrdersController, ScheduledOrdersController],
+  // Nest/Express registers routes in controller order. Keep static
+  // /orders/scheduled ahead of OrdersController's /orders/:orderStableId.
+  controllers: [ScheduledOrdersController, OrdersController],
   providers: [
     OrdersService,
     OrderIngestionService,

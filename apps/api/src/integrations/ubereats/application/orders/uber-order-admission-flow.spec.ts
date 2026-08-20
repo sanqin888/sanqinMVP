@@ -122,7 +122,7 @@ describe('Uber order admission flow', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it('processes cancellation context without running new-order connectivity admission', async () => {
+  it('processes v1 orders.failure as cancellation without new-order connectivity admission', async () => {
     const enqueue: EnqueueMock = jest.fn();
     const getPosStoreConnectivity = jest.fn();
     const saved: { input?: ImportedOrderInput } = {};
@@ -146,7 +146,7 @@ describe('Uber order admission flow', () => {
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
     );
 
-    await useCase.execute('orders.cancelled', 'event-2', notification);
+    await useCase.execute('orders.failure', 'event-2', notification);
 
     expect(getPosStoreConnectivity).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
