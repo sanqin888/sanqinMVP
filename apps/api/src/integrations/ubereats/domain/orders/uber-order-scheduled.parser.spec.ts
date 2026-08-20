@@ -119,6 +119,25 @@ describe('Uber scheduled order normalization', () => {
     delete order.deliveries;
     delete order.scheduled_order_target_delivery_time_range;
 
+    const parsed = new UberOrderPayloadParser().parse(payload, {
+      eventType: 'orders.scheduled.notification',
+    });
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        fulfillmentTiming: 'SCHEDULED',
+        scheduledReadyAt: new Date('2026-08-22T18:00:00.000Z'),
+        estimatedReadyAt: null,
+      }),
+    );
+  });
+
+  it('rejects a scheduled order only when neither ready time nor schedule target exists', () => {
+    const payload = fixture('detail-scheduled');
+    const order = payload.order as Record<string, unknown>;
+    delete order.preparation_time;
+    delete order.scheduled_order_target_delivery_time_range;
+
     expect(
       new UberOrderPayloadParser().parseResult(payload, {
         eventType: 'orders.scheduled.notification',
