@@ -16,7 +16,7 @@ import {
 const envelope = {
   event_type: 'orders.notification',
   event_id: 'evt-1',
-  resource_href: 'https://api.uber.com/v1/eats/orders/order-1',
+  resource_href: 'https://api.uber.com/v1/delivery/order/order-1',
   meta: { resource_id: 'order-1', user_id: 'store-1' },
 };
 
@@ -74,14 +74,26 @@ describe('Uber webhook event domain parser', () => {
     expect(duplicate).toEqual(first);
   });
 
-  it('uses a dedicated parser for the official order cancellation shape', () => {
-    expect(parseUberOrderCancelV1(fixture('orders.cancel'))).toMatchObject({
+  it('uses orders.failure as the Order Fulfillment 1.0.0 cancellation event', () => {
+    expect(parseUberOrderCancelV1(fixture('orders.failure'))).toMatchObject({
       version: 1,
       family: 'order-cancel',
-      eventType: 'orders.cancel',
+      eventType: 'orders.failure',
       resourceId: 'order-redacted',
     });
-    expect(parseUberOrderNotificationV1(fixture('orders.cancel'))).toBeNull();
+    expect(parseUberOrderNotificationV1(fixture('orders.failure'))).toBeNull();
+  });
+
+  it('does not accept the pre-1.0.0 cancellation event in the v1 dispatcher', () => {
+    const payload = { ...envelope, event_type: 'orders.cancel' };
+    expect(parseUberOrderCancelV1(payload)).toBeNull();
+    expect(
+      dispatchUberWebhookV1({
+        eventType: 'orders.cancel',
+        businessVersion: 'v1',
+        payload,
+      }),
+    ).toEqual({ kind: 'unsupported', reason: 'event' });
   });
 
   it.each([
@@ -123,10 +135,16 @@ describe('Uber webhook event domain parser', () => {
     expect(parseUberStoreProvisioningV1(payload)).toBeNull();
   });
 
-  it('accepts the versioned lifecycle fixture only as orders.notification', () => {
+  it('accepts both 1.0.0 new-order webhook families', () => {
     expect(
       parseUberOrderNotificationV1(fixture('orders.notification')),
     ).toMatchObject({ family: 'order', eventType: 'orders.notification' });
+    expect(
+      parseUberOrderNotificationV1(fixture('orders.scheduled.notification')),
+    ).toMatchObject({
+      family: 'order',
+      eventType: 'orders.scheduled.notification',
+    });
     expect(
       parseUberOrderNotificationV1({
         ...envelope,
@@ -168,9 +186,7 @@ describe('Uber webhook event domain parser', () => {
       expect(
         parseUberMenuNotificationV1({
           meta: { user_id: 'store-1', resource_id: 'publication-1' },
-          data: {
-            status,
-          },
+          data: { status },
         })?.status,
       ).toBe(status.toUpperCase());
     },
@@ -180,9 +196,7 @@ describe('Uber webhook event domain parser', () => {
     expect(
       parseUberMenuNotificationV1({
         meta: { user_id: 'store-1', resource_id: 'publication-1' },
-        data: {
-          status: 'cancelled',
-        },
+        data: { status: 'cancelled' },
       }),
     ).toBeNull();
   });

@@ -12,112 +12,116 @@ export type UberOrderStatus =
 
 export type UberFulfillmentTiming = 'IMMEDIATE' | 'SCHEDULED';
 
-type UberOrderMoneyDto =
-  | number
-  | string
-  | { amount?: number; value?: number; amount_e5?: number };
-
-type UberOrderItemPriceDto =
-  | UberOrderMoneyDto
-  | {
-      unit_price?: UberOrderMoneyDto;
-      total_price?: UberOrderMoneyDto;
-      amount_e5?: number;
-    };
-
-type UberOrderQuantityDto = number | { amount?: number };
-
-export type UberOrderModifierDto = {
-  id?: string;
-  modifier_id?: string;
-  title?: string;
-  name?: string;
-  quantity?: UberOrderQuantityDto;
-  price?: UberOrderMoneyDto;
-  price_delta?: UberOrderMoneyDto;
-  special_instructions?: string;
-  modifiers?: UberOrderModifierDto[];
-  selected_items?: UberOrderModifierDto[];
+/**
+ * Uber Order Fulfillment API 1.0.0 wire DTOs.
+ * These types stay inside the UberEats bounded context; only ParsedUberOrder
+ * crosses the application boundary into the generic Orders ingestion contract.
+ */
+export type UberOrderMoneyV1 = {
+  amount_e5?: number;
+  currency_code?: string;
+  formatted?: string;
 };
 
-export type UberOrderItemDto = {
+export type UberOrderMoneySummaryV1 = {
+  display_amount?: string | number;
+  net?: UberOrderMoneyV1;
+  tax?: UberOrderMoneyV1;
+  gross?: UberOrderMoneyV1;
+  is_tax_inclusive?: boolean;
+};
+
+export type UberOrderQuantityV1 = {
+  amount?: number;
+  unit?: string;
+  in_sellable_unit?: {
+    amount_e5?: number;
+  };
+  in_priceable_unit?: {
+    amount_e5?: number;
+  };
+};
+
+export type UberOrderCartItemV1 = {
   id?: string;
-  instance_id?: string;
-  line_item_id?: string;
   cart_item_id?: string;
-  item_id?: string;
-  external_data?: string;
+  customer_id?: string;
   title?: string;
-  name?: string;
-  quantity?: UberOrderQuantityDto;
-  price?: UberOrderItemPriceDto;
-  unit_price?: UberOrderMoneyDto;
-  total_price?: UberOrderMoneyDto;
-  special_instructions?: string;
-  modifiers?: UberOrderModifierDto[];
+  external_data?: string;
+  quantity?: UberOrderQuantityV1;
+  default_quantity?: {
+    amount?: number;
+    unit?: string;
+  };
+  customer_requests?: {
+    special_instructions?: string;
+  };
   selected_modifier_groups?: Array<{
     id?: string;
     title?: string;
-    selected_items?: UberOrderModifierDto[];
+    external_data?: string;
+    selected_items?: UberOrderCartItemV1[];
   }>;
 };
 
-export type UberOrderDetailDto = {
-  /** Order Fulfillment API v1 wraps the MerchantOrder in an `order` field. */
-  order?: UberOrderDetailDto;
+export type UberOrderPriceBreakdownV1 = {
+  cart_item_id?: string;
+  price_type?: string;
+  quantity?: UberOrderQuantityV1;
+  total?: UberOrderMoneySummaryV1;
+  discount?: {
+    total?: UberOrderMoneySummaryV1;
+    quantity?: UberOrderQuantityV1;
+  };
+  unit?: UberOrderMoneySummaryV1;
+  base_non_loyalty_unit?: UberOrderMoneySummaryV1;
+};
+
+export type UberOrderPaymentDetailV1 = {
+  order_total?: UberOrderMoneySummaryV1;
+  item_charges?: {
+    total?: UberOrderMoneySummaryV1;
+    subtotal_including_promos?: UberOrderMoneySummaryV1;
+    price_breakdown?: UberOrderPriceBreakdownV1[];
+  };
+  fees?: {
+    total?: UberOrderMoneySummaryV1;
+    details?: Array<{
+      id?: string;
+      amount?: UberOrderMoneySummaryV1;
+    }>;
+  };
+  promotions?: {
+    total?: UberOrderMoneySummaryV1;
+    details?: Array<{
+      external_promotion_id?: string;
+      type?: string;
+      promotion_uuid?: string;
+    }>;
+    order_total_excluding_promos?: UberOrderMoneySummaryV1;
+  };
+  adjustment?: {
+    total?: UberOrderMoneySummaryV1;
+  };
+};
+
+export type UberOrderFulfillmentV1 = {
   id?: string;
-  order_id?: string;
-  external_id?: string;
-  external_order_id?: string;
   display_id?: string;
-  pickup_code?: string;
+  external_id?: string;
   state?: string;
   status?: string;
   preparation_status?: string;
-  store_id?: string;
+  ordering_platform?: string;
+  fulfillment_type?: string;
+  created_time?: string | number;
+  completed_time?: string | number;
   store?: {
     id?: string;
-  };
-  subtotal?: UberOrderMoneyDto;
-  sub_total?: UberOrderMoneyDto;
-  subtotal_cents?: number;
-  tax?: UberOrderMoneyDto;
-  tax_cents?: number;
-  total?: UberOrderMoneyDto;
-  total_cents?: number;
-  discount?: UberOrderMoneyDto;
-  discount_cents?: number;
-  discountCents?: number;
-  delivery_fee?: UberOrderMoneyDto;
-  payment?: {
-    charges?: {
-      total?: UberOrderMoneyDto;
-      sub_total?: UberOrderMoneyDto;
-      subtotal?: UberOrderMoneyDto;
-      tax?: UberOrderMoneyDto;
-      delivery_fee?: UberOrderMoneyDto;
-      total_fee?: UberOrderMoneyDto;
-      total_promo_applied?: UberOrderMoneyDto;
-      sub_total_promo_applied?: UberOrderMoneyDto;
-      tax_promo_applied?: UberOrderMoneyDto;
-    };
-    promotions?: {
-      promotions?: Array<{
-        promo_discount_value?: number;
-        promo_delivery_fee_value?: number;
-      }>;
-    } | null;
-  };
-  items?: UberOrderItemDto[];
-  cart?: { items?: UberOrderItemDto[]; special_instructions?: string };
-  carts?: Array<{ items?: UberOrderItemDto[] }>;
-  customer?: {
     name?: string;
-    full_name?: string;
-    phone?: string;
-    phone_number?: string;
   };
   customers?: Array<{
+    id?: string;
     name?: {
       display_name?: string;
       first_name?: string;
@@ -126,43 +130,28 @@ export type UberOrderDetailDto = {
     phone?: string;
     phone_number?: string;
   }>;
-  eater?: {
-    first_name?: string;
-    last_name?: string;
-    name?: string;
-    full_name?: string;
-    phone?: string;
-    phone_number?: string;
+  carts?: Array<{
+    id?: string;
+    items?: UberOrderCartItemV1[];
+    special_instructions?: string;
+  }>;
+  payment?: {
+    payment_detail?: UberOrderPaymentDetailV1;
   };
-  fulfillment_type?: string;
-  type?: string;
-  estimated_ready_for_pickup_at?: string;
-  estimated_delivery_at?: string;
-  /** Order Fulfillment API v1 source of truth for when food is ready for pickup. */
   preparation_time?: {
     ready_for_pickup_time_secs?: number;
     source?: string;
     ready_for_pickup_time?: string;
   };
-  /** Legacy compatibility field; v1 uses preparation_time.ready_for_pickup_time. */
-  scheduled_ready_for_pickup_at?: string;
   scheduled_order_target_delivery_time_range?: {
     start_time?: string;
     end_time?: string;
   };
-  special_instructions?: string;
-  paid_at?: string;
-  created_at?: string;
-  placed_at?: string;
-  cancelled_at?: string;
-  canceled_at?: string;
-  cancellation?: {
-    cancelled_by?: string;
-    canceled_by?: string;
-    reason?: string;
-    reason_code?: string;
-    details?: string;
-  };
+};
+
+/** Official Get Order response envelope for Order Fulfillment API 1.0.0. */
+export type UberOrderDetailV1Response = {
+  order: UberOrderFulfillmentV1;
 };
 
 export type ParsedUberModifier = {
@@ -201,7 +190,7 @@ export type ParsedUberOrder = {
   hasPromotion: boolean;
   deliveryFeeCents: number;
   fulfillmentType: 'pickup' | 'delivery';
-  /** Parser always populates these; optionality preserves legacy adapter fixtures. */
+  /** Parser always populates these; optionality preserves adapter test doubles. */
   fulfillmentTiming?: UberFulfillmentTiming;
   scheduledReadyAt?: Date | null;
   estimatedReadyAt: Date | null;

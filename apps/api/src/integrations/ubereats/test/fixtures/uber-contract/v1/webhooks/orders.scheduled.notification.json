@@ -1,0 +1,8 @@
+{
+  "event_id": "fixture-order-scheduled-notification-v1",
+  "event_type": "orders.scheduled.notification",
+  "event_time": 1787230860000,
+  "resource_href": "https://api.uber.com/v1/delivery/order/order-scheduled-redacted",
+  "meta": { "resource_id": "order-scheduled-redacted", "user_id": "store-redacted" },
+  "webhook_meta": { "webhook_config_id": "order-webhooks", "webhook_msg_timestamp": 1787230860, "webhook_msg_uuid": "fixture-message-scheduled" }
+}

@@ -19,6 +19,7 @@ import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.ser
 import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
+  UberOrderCancellationDecision,
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
   UberOrderMenuMapping,
@@ -106,6 +107,33 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
     );
     return resolvePosConnectivityStatus(devices, Date.now(), offlineAfterMs);
+  }
+
+  async saveExistingOrderCancellation(
+    input: Parameters<
+      UberOrderImportRepositoryPort['saveExistingOrderCancellation']
+    >[0],
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({
+        where: {
+          id: input.orderId,
+          clientRequestId: `ubereats:${input.externalOrderId}`,
+        },
+        select: { id: true, totalCents: true },
+      });
+      if (!order)
+        throw new Error(
+          `Uber order disappeared before cancellation: ${input.externalOrderId}`,
+        );
+      await this.persistCancellation(tx, {
+        orderId: order.id,
+        externalOrderId: input.externalOrderId,
+        totalCents: order.totalCents,
+        cursor: input.cursor,
+        cancellation: input.cancellation,
+      });
+    });
   }
 
   async saveImportedOrder(
@@ -210,43 +238,12 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
           savedAction = { taskId: action.id, created: inserted.count === 1 };
         }
         if (input.cancellation) {
-          await tx.uberOrderCancellation.upsert({
-            where: { eventId: input.cursor.eventId },
-            create: {
-              orderId: order.orderId,
-              externalOrderId: input.order.externalOrderId,
-              eventId: input.cursor.eventId,
-              ...input.cancellation,
-            },
-            update: {},
-          });
-          const refundCents = Math.max(0, input.order.totalCents);
-          await tx.orderAmendment.upsert({
-            where: {
-              amendmentStableId: this.amendmentId(input.cursor.eventId),
-            },
-            create: {
-              amendmentStableId: this.amendmentId(input.cursor.eventId),
-              orderId: order.orderId,
-              type: 'RETENDER',
-              paymentMethod: PaymentMethod.UBEREATS,
-              reason:
-                input.cancellation.reasonDetail ??
-                input.cancellation.reasonCode ??
-                'Uber cancellation confirmed',
-              deltaCents: -refundCents,
-              refundCents,
-              summaryJson: {
-                kind: 'UBER_CANCELLATION',
-                status: 'CONFIRMED',
-                eventId: input.cursor.eventId,
-              },
-            },
-            update: {},
-          });
-          await tx.order.update({
-            where: { id: order.orderId },
-            data: { status: OrderStatus.refunded },
+          await this.persistCancellation(tx, {
+            orderId: order.orderId,
+            externalOrderId: input.order.externalOrderId,
+            totalCents: input.order.totalCents,
+            cursor: input.cursor,
+            cancellation: input.cancellation,
           });
         }
         // UberWebhookInbox lifecycle is intentionally not owned here. The
@@ -280,6 +277,56 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       created: saved.action === 'created',
       action: savedAction,
     };
+  }
+
+  private async persistCancellation(
+    tx: Prisma.TransactionClient,
+    input: {
+      orderId: string;
+      externalOrderId: string;
+      totalCents: number;
+      cursor: UberOrderEventCursor;
+      cancellation: UberOrderCancellationDecision;
+    },
+  ): Promise<void> {
+    await tx.uberOrderCancellation.upsert({
+      where: { eventId: input.cursor.eventId },
+      create: {
+        orderId: input.orderId,
+        externalOrderId: input.externalOrderId,
+        eventId: input.cursor.eventId,
+        ...input.cancellation,
+      },
+      update: {},
+    });
+    const refundCents = Math.max(0, input.totalCents);
+    await tx.orderAmendment.upsert({
+      where: {
+        amendmentStableId: this.amendmentId(input.cursor.eventId),
+      },
+      create: {
+        amendmentStableId: this.amendmentId(input.cursor.eventId),
+        orderId: input.orderId,
+        type: 'RETENDER',
+        paymentMethod: PaymentMethod.UBEREATS,
+        reason:
+          input.cancellation.reasonDetail ??
+          input.cancellation.reasonCode ??
+          'Uber cancellation confirmed',
+        deltaCents: -refundCents,
+        refundCents,
+        summaryJson: {
+          kind: 'UBER_CANCELLATION',
+          status: 'CONFIRMED',
+          eventId: input.cursor.eventId,
+        },
+      },
+      update: {},
+    });
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: { status: OrderStatus.refunded },
+    });
   }
 
   private toPrismaStatus(status: string | null): OrderStatus {

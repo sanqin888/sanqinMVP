@@ -1,8 +1,8 @@
 {
   "source": "Uber Developers — Webhooks (payload shape adapted; all identifiers and secrets are synthetic)",
-  "rawBodyUtf8": "{\"event_id\":\"fixture-event-1\",\"event_type\":\"orders.notification\",\"resource_href\":\"https://api.uber.com/v2/eats/order/fixture-order-1\",\"meta\":{\"resource_id\":\"fixture-store-1\"}}",
+  "rawBodyUtf8": "{\"event_id\":\"fixture-event-1\",\"event_type\":\"orders.notification\",\"resource_href\":\"https://api.uber.com/v1/delivery/order/fixture-order-1\",\"meta\":{\"resource_id\":\"fixture-store-1\"}}",
   "activeSecret": "fixture-active-signing-secret",
-  "activeSignatureHex": "88a3026da9f8cbbaf1eaa1b3588542fb98cdf7928fce07af21d348f8fdc1c53a",
+  "activeSignatureHex": "6725033ee245f9e95d2c23c1d1328e6126bef47bfe8808d37b534152c6dbc363",
   "previousSecret": "fixture-previous-signing-secret",
-  "previousSignatureHex": "a46c629e64ed029b3ca99560a35c828ad185b49f7cb5005320e1bd460e47a45d"
+  "previousSignatureHex": "4e9d9b7d33b820c73dd36f060e4b6483dbc71ca4ad41f685b64c7613c4cffd3e"
 }

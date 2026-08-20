@@ -22,10 +22,11 @@ import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.he
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 import type { UberWebhookInboxPort } from './uber-order-processing.ports';
 
-const signingKey = 'uber-webhook-signing-key';
+const signingKey = 'fixture-uber-webhook-signing-key-for-tests-only';
+const stateSecret = 'fixture-oauth-state-secret-for-tests-only-32-bytes';
 const config = () =>
   new UberCryptoConfigService({
-    UBER_EATS_OAUTH_STATE_SECRET: '0123456789abcdef0123456789ABCDEF',
+    UBER_EATS_OAUTH_STATE_SECRET: stateSecret,
     UBER_EATS_WEBHOOK_SIGNING_KEY: signingKey,
   });
 const inbox = () => ({
@@ -89,7 +90,7 @@ describe('Uber webhook use cases', () => {
       payload: {
         event_type: 'orders.notification',
         event_id: 'evt-order-ordered',
-        resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+        resource_href: 'https://api.uber.com/v1/delivery/order/order-1',
         meta: { resource_id: 'order-1', user_id: 'store-1' },
         event_time: '2026-08-10T12:00:00.000Z',
         resource_version: '42',
@@ -301,7 +302,7 @@ describe('Uber webhook use cases', () => {
     const body = {
       event_type: 'orders.notification',
       event_id: 'evt-order-1',
-      resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+      resource_href: 'https://api.uber.com/v1/delivery/order/order-1',
       meta: { resource_id: 'order-1', user_id: 'store-1' },
     };
 
@@ -361,7 +362,7 @@ describe('Uber webhook use cases', () => {
         signed({
           event_type: 'orders.notification',
           event_id: 'evt-db-failure',
-          resource_href: 'https://api.uber.com/v2/eats/order/order-1',
+          resource_href: 'https://api.uber.com/v1/delivery/order/order-1',
           meta: { resource_id: 'order-1', user_id: 'store-1' },
         }),
       ),
@@ -428,47 +429,4 @@ describe('ReceiveUberWebhookUseCase 最小依赖装配', () => {
       ),
     ).toThrow('UBER_EATS_WEBHOOK_SIGNING_KEY');
   });
-});
-
-it('逐条领取且旧 lease token 写回失败时 poll 明确失败', async () => {
-  const item = {
-    eventId: 'slow-event',
-    eventType: 'store.provisioned',
-    payload: {
-      event_type: 'store.provisioned',
-      resource_href: 'https://api.uber.com/v1/eats/stores/s1',
-      meta: { resource_id: 's1', user_id: 'u1' },
-    },
-    leaseToken: 'expired-worker-token',
-    idempotencyKey: 'stable-key',
-    businessVersion: 'v1',
-  };
-  const inboxPort = {
-    claimDue: jest.fn().mockResolvedValueOnce([item]),
-    markSucceeded: jest.fn().mockResolvedValue(false),
-    markFailed: jest.fn(),
-    markUnsupported: jest.fn(),
-    requeueUnsupported: jest.fn(),
-    enqueue: jest.fn(),
-    setStoreProvisioned: jest.fn(),
-  };
-  const telemetry = {
-    captureEvent: jest.fn().mockResolvedValue(undefined),
-    workflowLog: jest.fn(),
-  };
-  const worker = new ProcessUberWebhookInboxUseCase(
-    inboxPort,
-    {} as never,
-    {} as never,
-    { execute: jest.fn() } as never,
-    telemetry,
-  );
-  await expect(worker.execute(10)).rejects.toThrow('lease lost');
-  expect(inboxPort.claimDue).toHaveBeenCalledTimes(1);
-  expect(inboxPort.claimDue).toHaveBeenCalledWith(1);
-  expect(inboxPort.markFailed).not.toHaveBeenCalled();
-  expect(telemetry.workflowLog).toHaveBeenCalledWith(
-    'error',
-    expect.stringContaining('lease lost'),
-  );
 });

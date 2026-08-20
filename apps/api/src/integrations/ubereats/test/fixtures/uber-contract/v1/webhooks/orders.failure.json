@@ -1,0 +1,8 @@
+{
+  "event_id": "fixture-order-failure-v1",
+  "event_type": "orders.failure",
+  "event_time": 1787230920000,
+  "resource_href": "https://api.uber.com/v1/delivery/order/order-redacted",
+  "meta": { "resource_id": "order-redacted", "user_id": "store-redacted" },
+  "webhook_meta": { "webhook_config_id": "order-webhooks", "webhook_msg_timestamp": 1787230920, "webhook_msg_uuid": "fixture-message-failure" }
+}
