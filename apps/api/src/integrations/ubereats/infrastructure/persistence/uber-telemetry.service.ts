@@ -93,7 +93,7 @@ const LABEL_ALLOWLIST = new Set([
 const SECRET_KEY =
   /(token|authorization|signature|secret|password|cookie|rawBody|payload|phone|address)/i;
 const ORDER_DETAIL_INVALID_MESSAGE =
-  /^\[ubereats order\] detail invalid category=(mapping|business) reason=(MALFORMED_PAYLOAD|MISSING_ORDER_ID|MISSING_TOTAL|EMPTY_ITEMS)$/;
+  /^\[ubereats order\] detail invalid category=(mapping|business) reason=(MALFORMED_PAYLOAD|MISSING_ORDER_ID|MISSING_TOTAL|EMPTY_ITEMS|MISSING_SCHEDULED_READY_AT)$/;
 
 /** Uber Eats observability boundary: correlated events, safe logs and low-cardinality metrics. */
 @Injectable()

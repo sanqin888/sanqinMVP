@@ -84,7 +84,9 @@ SanQ 只接受 Order Fulfillment 1.0.0 **Get Order response** shape：顶层必�
 - `payment.payment_detail.order_total` → order total / tax
 - `payment.payment_detail.item_charges` → subtotal / promotions / line pricing
 - `preparation_time.ready_for_pickup_time` → Uber kitchen-ready time
-- `scheduled_order_target_delivery_time_range` **不是** kitchen-ready time
+- `scheduled_order_target_delivery_time_range.start_time` → 仅在 Uber 未提供 kitchen-ready
+  estimate 时作为 SanQ 本地预约调度锚点；它**不是** Uber kitchen-ready time，也不得作为
+  `ready_for_pickup_time` 回传
 
 不得恢复 `item.price`、`payment.charges`、顶层 `items/total/total_cents` 等旧 Order schema
 fallback，也不得增加裸 MerchantOrder response fallback。
@@ -101,7 +103,12 @@ fallback，也不得增加裸 MerchantOrder response fallback。
 `orders.scheduled.notification`：
 
 - `fulfillmentTiming = SCHEDULED`
-- `scheduledReadyAt = preparation_time.ready_for_pickup_time`
+- 优先 `scheduledReadyAt = preparation_time.ready_for_pickup_time`
+- 若 Test Store / Uber 初始 scheduled detail 尚未返回 `preparation_time`，则
+  `scheduledReadyAt = scheduled_order_target_delivery_time_range.start_time`，仅作为 Orders
+  bounded-context 的本地调度 fallback；`externalEstimatedReadyAt = null`
+- Scheduled ACCEPT 只有在 `externalEstimatedReadyAt` 存在时才发送
+  `ready_for_pickup_time`；不得把 delivery target fallback 冒充为 kitchen-ready time
 - 后续 activation / prep-start / POS print 继续由 Orders bounded-context 的通用 scheduled
   fulfillment + durable lifecycle/outbox 机制负责
 

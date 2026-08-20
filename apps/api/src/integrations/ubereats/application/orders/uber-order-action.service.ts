@@ -63,10 +63,13 @@ export class UberOrderActionService {
       if (task.action === 'ACCEPT')
         await this.gateway.accept({
           ...common,
+          // A scheduled order may only have Uber's target delivery window when
+          // first created. That window is sufficient for SanQ's local queue but
+          // is not a kitchen-ready estimate, so only echo an actual Uber
+          // preparation estimate back as ready_for_pickup_time.
           readyForPickupAt:
-            orderContext?.fulfillmentTiming === 'SCHEDULED' &&
-            orderContext.scheduledReadyAt
-              ? orderContext.scheduledReadyAt
+            orderContext?.fulfillmentTiming === 'SCHEDULED'
+              ? (orderContext.externalEstimatedReadyAt ?? undefined)
               : resolveUberReadyForPickupAt(
                   orderContext?.totalCents ?? 0,
                   orderContext?.referenceAt ?? new Date(),

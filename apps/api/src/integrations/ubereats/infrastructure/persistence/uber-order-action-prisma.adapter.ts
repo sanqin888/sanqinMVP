@@ -115,6 +115,7 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         createdAt: true,
         fulfillmentTiming: true,
         scheduledReadyAt: true,
+        externalEstimatedReadyAt: true,
       },
     });
     if (!order) return null;
@@ -127,6 +128,7 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
           ? ('SCHEDULED' as const)
           : ('IMMEDIATE' as const),
       scheduledReadyAt: order.scheduledReadyAt,
+      externalEstimatedReadyAt: order.externalEstimatedReadyAt,
     };
   }
 
