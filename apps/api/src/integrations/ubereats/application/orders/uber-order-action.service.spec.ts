@@ -27,6 +27,7 @@ const setup = (overrides: Partial<UberOrderActionGatewayPort> = {}) => {
       referenceAt,
       fulfillmentTiming: 'IMMEDIATE',
       scheduledReadyAt: null,
+      externalEstimatedReadyAt: null,
     }),
     complete: jest.fn().mockResolvedValue(true),
     markFailed: jest.fn().mockResolvedValue(true),
@@ -91,6 +92,7 @@ describe('UberOrderActionService contract', () => {
         referenceAt,
         fulfillmentTiming: 'IMMEDIATE',
         scheduledReadyAt: null,
+        externalEstimatedReadyAt: null,
       });
 
       await service.executeClaimed({
@@ -132,17 +134,18 @@ describe('UberOrderActionService contract', () => {
         referenceAt,
         fulfillmentTiming: 'IMMEDIATE',
         scheduledReadyAt: null,
+        externalEstimatedReadyAt: null,
       });
 
       await service.executeClaimed(task);
 
       expect(
-        gateway.accept.mock.calls[0][0].readyForPickupAt.toISOString(),
+        gateway.accept.mock.calls[0][0].readyForPickupAt?.toISOString(),
       ).toBe(expected);
     },
   );
 
-  it('uses scheduledReadyAt for scheduled ACCEPT and only records acceptance', async () => {
+  it('uses the Uber preparation estimate for scheduled ACCEPT and only records acceptance', async () => {
     const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
     const { repository, gateway, service } = setup();
     repository.getOrderContext.mockResolvedValue({
@@ -151,6 +154,7 @@ describe('UberOrderActionService contract', () => {
       referenceAt,
       fulfillmentTiming: 'SCHEDULED',
       scheduledReadyAt,
+      externalEstimatedReadyAt: scheduledReadyAt,
     });
 
     await service.executeClaimed(task);
@@ -158,6 +162,34 @@ describe('UberOrderActionService contract', () => {
     expect(gateway.accept.mock.calls[0][0]).toEqual(
       expect.objectContaining({ readyForPickupAt: scheduledReadyAt }),
     );
+    expect(repository.complete.mock.calls).toContainEqual([
+      {
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+        transition: { from: 'pending', to: 'paid' },
+      },
+    ]);
+  });
+
+  it('does not echo a scheduled delivery-target fallback to Uber as ready_for_pickup_time', async () => {
+    const localScheduleTarget = new Date('2026-08-19T23:00:00.000Z');
+    const { repository, gateway, service } = setup();
+    repository.getOrderContext.mockResolvedValue({
+      status: 'pending',
+      totalCents: 2_500,
+      referenceAt,
+      fulfillmentTiming: 'SCHEDULED',
+      scheduledReadyAt: localScheduleTarget,
+      externalEstimatedReadyAt: null,
+    });
+
+    await service.executeClaimed(task);
+
+    expect(gateway.accept.mock.calls[0][0]).toEqual({
+      externalOrderId: 'order-1',
+      idempotencyKey: 'key-1',
+      readyForPickupAt: undefined,
+    });
     expect(repository.complete.mock.calls).toContainEqual([
       {
         taskId: 'task-1',

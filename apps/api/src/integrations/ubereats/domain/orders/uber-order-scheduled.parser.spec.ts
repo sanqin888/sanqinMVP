@@ -47,10 +47,29 @@ describe('Uber scheduled order normalization', () => {
     );
   });
 
-  it('does not treat the scheduled delivery window as kitchen ready time', () => {
+  it('uses the scheduled delivery target only as a local scheduling fallback', () => {
     const payload = fixture('detail-scheduled');
     const order = payload.order as Record<string, unknown>;
     delete order.preparation_time;
+
+    const parsed = new UberOrderPayloadParser().parse(payload, {
+      eventType: 'orders.scheduled.notification',
+    });
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        fulfillmentTiming: 'SCHEDULED',
+        scheduledReadyAt: new Date('2026-08-22T18:00:00.000Z'),
+        estimatedReadyAt: null,
+      }),
+    );
+  });
+
+  it('rejects a scheduled order only when neither ready time nor schedule target exists', () => {
+    const payload = fixture('detail-scheduled');
+    const order = payload.order as Record<string, unknown>;
+    delete order.preparation_time;
+    delete order.scheduled_order_target_delivery_time_range;
 
     expect(
       new UberOrderPayloadParser().parseResult(payload, {
