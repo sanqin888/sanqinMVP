@@ -1,6 +1,7 @@
 {
-  "reason": {
-    "code": "ITEM_AVAILABILITY",
-    "explanation": "Synthetic unavailable item"
+  "deny_reason": {
+    "type": "ITEM_ISSUE",
+    "info": "Synthetic unavailable item",
+    "client_error_code": "ITEM_UNAVAILABLE"
   }
 }

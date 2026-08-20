@@ -53,6 +53,34 @@ export class ImportUberOrderUseCase {
     if (existing?.cursor?.eventId === eventId) return;
     if (existing?.cursor && !this.isAfter(cursor, existing.cursor)) return;
 
+    // Order Fulfillment 1.0.0 emits orders.failure as soon as the order fails;
+    // Uber explicitly warns that an immediate detail read may itself fail. Once
+    // SanQ owns the order, the signed webhook resource id is sufficient to
+    // persist the cancellation without coupling local lifecycle to a second API.
+    if (normalizedEventType === 'orders.failure') {
+      if (!externalOrderId || !existing)
+        throw new UberApplicationError(
+          'business-conflict',
+          'UBER_ORDER_FAILURE_BEFORE_IMPORT',
+          `Uber failure arrived before local order import: event=${eventId}; externalOrder=${externalOrderId ?? 'unknown'}`,
+          'order.failure.persist',
+          true,
+        );
+      await this.repository.saveExistingOrderCancellation({
+        orderId: existing.orderId,
+        externalOrderId,
+        cursor,
+        cancellation: {
+          kind: 'CANCELLED',
+          cancelledBy: null,
+          reasonCode: 'UBER_ORDER_FAILURE',
+          reasonDetail: null,
+          occurredAt: cursor.occurredAt ?? new Date(),
+        },
+      });
+      return;
+    }
+
     const detail = await this.detailGateway.fetchOrderDetail({
       resourceHref: payload.resourceHref,
       eventType: normalizedEventType,
@@ -164,12 +192,9 @@ export class ImportUberOrderUseCase {
   }
 
   private isCancellation(eventType: string): boolean {
-    return [
-      'orders.cancelled',
-      'orders.cancel',
-      'orders.failure',
-      'orders.rejected',
-    ].includes(eventType);
+    return ['orders.cancelled', 'orders.cancel', 'orders.rejected'].includes(
+      eventType,
+    );
   }
 
   private isAfter(

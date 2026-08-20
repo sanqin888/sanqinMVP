@@ -57,11 +57,7 @@ export class UberMenuGateway extends PrefixGateway {
 
 @Injectable()
 export class UberOrderGateway extends PrefixGateway {
-  protected readonly prefixes = [
-    '/v1/eats/orders',
-    '/v1/delivery/order',
-    '/v2/eats/order',
-  ] as const;
+  protected readonly prefixes = ['/v1/delivery/order'] as const;
 
   constructor(
     @Inject(UberApiGatewayTransport)
@@ -150,23 +146,24 @@ export class UberOrderGateway extends PrefixGateway {
 
   async sendActionCommand(
     externalOrderId: string,
-    action: Exclude<UberOrderActionName, 'CANCEL'>,
+    action: UberOrderActionName,
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ) {
     const id = encodeURIComponent(externalOrderId);
-    const path = {
-      ACCEPT: `/v1/eats/orders/${id}/accept_pos_order`,
-      DENY: `/v1/eats/orders/${id}/deny_pos_order`,
-      READY_FOR_PICKUP: `/v1/delivery/order/${id}/ready`,
-    }[action];
+    const suffix: Record<UberOrderActionName, string> = {
+      ACCEPT: 'accept',
+      DENY: 'deny',
+      READY_FOR_PICKUP: 'ready',
+      CANCEL: 'cancel',
+    };
     const result = await this.inspect({
-      path,
+      path: `/v1/delivery/order/${id}/${suffix[action]}`,
       method: 'POST',
       operation: `uber.order.${action.toLowerCase()}`,
       scope: 'eats.order',
-      // The action API does not carry a store id; coordinate it at the merchant
-      // partition rather than incorrectly creating one quota per order.
+      // Order Fulfillment actions are merchant-scoped; do not create one limiter
+      // partition per order id.
       partitionKey: 'merchant:app',
       json: payload,
       idempotencyKey,

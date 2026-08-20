@@ -58,6 +58,12 @@ export interface UberOrderImportRepositoryPort {
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
     lastHeartbeatAt: Date | null;
   }>;
+  saveExistingOrderCancellation(input: {
+    orderId: string;
+    externalOrderId: string;
+    cursor: UberOrderEventCursor;
+    cancellation: UberOrderCancellationDecision;
+  }): Promise<void>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
     posStoreId: string;
