@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  mapUberEventTypeToOrderStatus,
   UberOrderPayloadParser,
   validateUberOrderAmounts,
 } from './uber-order-payload.parser';
@@ -17,7 +16,7 @@ const fixture = (name: string): unknown =>
 describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
   const parser = new UberOrderPayloadParser();
 
-  it('maps a real-shaped immediate MerchantOrder without legacy fallbacks', () => {
+  it('maps a real-shaped immediate MerchantOrder without field guessing', () => {
     const order = parser.parse(fixture('detail.json'), {
       eventType: 'orders.notification',
     });
@@ -92,21 +91,16 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
     );
   });
 
-  it('rejects a legacy-shaped order instead of guessing v2 fields', () => {
+  it('rejects a payload that is not the 1.0.0 MerchantOrder contract', () => {
     expect(
       parser.parseResult(
-        {
-          id: 'legacy-order',
-          items: [{ id: 'legacy-item', price: 1000 }],
-          payment: { charges: { total: 1000 } },
-        },
+        { id: 'not-a-v1-merchant-order' },
         { eventType: 'orders.notification' },
       ),
-    ).toMatchObject({ kind: 'invalid' });
-  });
-
-  it('maps lifecycle events while keeping cancellations out of local status transitions', () => {
-    expect(mapUberEventTypeToOrderStatus('orders.ready')).toBe('ready');
-    expect(mapUberEventTypeToOrderStatus('orders.cancelled')).toBeNull();
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'MALFORMED_PAYLOAD',
+      category: 'mapping',
+    });
   });
 });

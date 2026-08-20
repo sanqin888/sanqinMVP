@@ -235,51 +235,50 @@ describe('Uber gateways wire contract v1', () => {
   });
 
   it.each([
-    ['accept', 'accept_pos_order', 'orders/accept-request.json'],
-    ['deny', 'deny_pos_order', 'orders/deny-request.json'],
-    ['readyForPickup', 'ready', 'orders/ready-request.json'],
+    ['accept', 'ACCEPT', 'orders/accept-request.json'],
+    ['deny', 'DENY', 'orders/deny-request.json'],
+    ['cancel', 'CANCEL', 'orders/cancel-request.json'],
+    ['readyForPickup', 'READY_FOR_PICKUP', 'orders/ready-request.json'],
   ] as const)(
-    '%s maps domain input to the explicit Uber command wire schema',
-    async (method, suffix, bodyFixture) => {
+    '%s maps domain input to the explicit Order Fulfillment 1.0.0 wire schema',
+    async (method, action, bodyFixture) => {
       const sendActionCommand = jest
         .fn()
         .mockResolvedValue({ ok: true, status: 200 });
-      const adapter = new UberOrderActionGatewayAdapter({
-        sendActionCommand,
-      });
+      const adapter = new UberOrderActionGatewayAdapter({ sendActionCommand });
       const common = {
         externalOrderId: 'order/1',
         idempotencyKey: `${method}:v1`,
       };
-      if (method === 'deny')
-        await adapter.deny({
+      if (method === 'accept')
+        await adapter.accept({
+          ...common,
+          readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
+        });
+      else if (method === 'deny' || method === 'cancel')
+        await adapter[method]({
           ...common,
           denial: {
             reasonCode: 'ITEM_UNAVAILABLE',
             reasonDetail: 'Synthetic unavailable item',
           },
         });
-      else await adapter[method](common);
-      const action =
-        method === 'accept'
-          ? 'ACCEPT'
-          : method === 'deny'
-            ? 'DENY'
-            : 'READY_FOR_PICKUP';
+      else await adapter.readyForPickup(common);
+
       expect(sendActionCommand).toHaveBeenCalledWith(
         'order/1',
         action,
         fixture(bodyFixture),
         `${method}:v1`,
       );
-      expect(suffix).toEqual(expect.any(String));
     },
   );
 
   it.each([
-    ['ACCEPT', '/v1/eats/orders/order%2F1/accept_pos_order'],
-    ['DENY', '/v1/eats/orders/order%2F1/deny_pos_order'],
+    ['ACCEPT', '/v1/delivery/order/order%2F1/accept'],
+    ['DENY', '/v1/delivery/order/order%2F1/deny'],
     ['READY_FOR_PICKUP', '/v1/delivery/order/order%2F1/ready'],
+    ['CANCEL', '/v1/delivery/order/order%2F1/cancel'],
   ] as const)(
     'order gateway fixes %s method, escaped path, scope and body',
     async (action, path) => {
@@ -288,9 +287,7 @@ describe('Uber gateways wire contract v1', () => {
         .mockResolvedValue({ response: new Response('{}'), data: {} });
       const gateway = new UberOrderGateway(
         { request: jest.fn(), inspect },
-        {
-          resourceHrefAllowedOrigins: 'https://api.uber.com',
-        },
+        { resourceHrefAllowedOrigins: 'https://api.uber.com' },
       );
       await gateway.sendActionCommand('order/1', action, {}, `${action}:v1`);
       expect(inspect).toHaveBeenCalledWith({
@@ -305,11 +302,11 @@ describe('Uber gateways wire contract v1', () => {
     },
   );
 
-  it('order detail is GET-only and maps terminal upstream errors', async () => {
+  it('order detail is v1 GET-only with carts/payment expansion and maps terminal upstream errors', async () => {
     const gateway = {
       pathFromResourceHref: jest
         .fn()
-        .mockResolvedValue('/v2/eats/order/order-1'),
+        .mockResolvedValue('/v1/delivery/order/order-1'),
       inspect: jest.fn().mockResolvedValue({
         response: new Response(
           JSON.stringify(fixture('errors/unauthorized.json')),
@@ -325,7 +322,7 @@ describe('Uber gateways wire contract v1', () => {
     });
     await expect(
       adapter.fetchOrderDetail({
-        resourceHref: 'https://api.uber.com/v2/eats/order/order-1',
+        resourceHref: 'https://api.uber.com/v1/delivery/order/order-1',
         eventType: 'orders.notification',
         eventId: 'event-1',
         resourceId: 'order-1',
@@ -335,25 +332,27 @@ describe('Uber gateways wire contract v1', () => {
       retryable: false,
     });
     expect(gateway.inspect).toHaveBeenCalledWith({
-      path: '/v2/eats/order/order-1',
+      path: '/v1/delivery/order/order-1?expand=carts%2Cpayment',
       method: 'GET',
       operation: 'uber.order.detail',
-      scope: 'eats.store.orders.read',
+      scope: 'eats.order',
       kind: 'orderDetail',
     });
   });
 
   it.each([
-    ['mapping', 'MISSING_ORDER_ID', { total: 100, items: [{}] }],
-    ['business', 'EMPTY_ITEMS', { id: 'order-1', total: 100, items: [] }],
+    ['mapping', 'MISSING_ORDER_ID', { carts: [] }],
+    ['business', 'EMPTY_ITEMS', { id: 'order-1', carts: [] }],
   ] as const)(
     'classifies a successful but invalid order detail as %s/%s without auditing its payload',
     async (category, reason, data) => {
-      const credential = 'Bearer super-secret-credential';
+      const credential = 'Bearer fixture-sensitive-value';
       const workflowLog = jest.fn();
       const adapter = new UberOrderDetailGatewayAdapter(
         {
-          pathFromResourceHref: jest.fn().mockResolvedValue('/orders/1'),
+          pathFromResourceHref: jest
+            .fn()
+            .mockResolvedValue('/v1/delivery/order/order-1'),
           inspect: jest.fn().mockResolvedValue({
             response: new Response(null, { status: 200 }),
             data: { ...data, authorization: credential },
@@ -365,7 +364,7 @@ describe('Uber gateways wire contract v1', () => {
 
       await expect(
         adapter.fetchOrderDetail({
-          resourceHref: 'https://api.uber.com/orders/1',
+          resourceHref: 'https://api.uber.com/v1/delivery/order/order-1',
           eventType: 'orders.notification',
           eventId: 'event-1',
           resourceId: 'order-1',
@@ -376,7 +375,7 @@ describe('Uber gateways wire contract v1', () => {
         `[ubereats order] detail invalid category=${category} reason=${reason}`,
       );
       expect(JSON.stringify(workflowLog.mock.calls)).not.toContain(
-        'super-secret-credential',
+        'fixture-sensitive-value',
       );
     },
   );
@@ -390,7 +389,7 @@ describe('Uber gateways wire contract v1', () => {
     ]) {
       expect(() =>
         gateway.request({
-          path: '/v1/eats/orders/1',
+          path: '/v1/delivery/order/1',
           scope: 'eats.order',
           operation: 'wrong',
         }),
@@ -414,7 +413,7 @@ describe('Uber HTTP wire headers and error map', () => {
       .spyOn(global, 'fetch')
       .mockResolvedValue(new Response('{}'));
     await new UberHttpClient().request({
-      url: 'https://api.uber.com/v1/eats/orders/fixture/accept_pos_order',
+      url: 'https://api.uber.com/v1/delivery/order/fixture/accept',
       method: 'POST',
       accessToken: 'fixture-not-real',
       idempotencyKey: 'accept:v1',
@@ -422,7 +421,7 @@ describe('Uber HTTP wire headers and error map', () => {
       json: {},
     });
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.uber.com/v1/eats/orders/fixture/accept_pos_order',
+      'https://api.uber.com/v1/delivery/order/fixture/accept',
       expect.objectContaining({
         method: 'POST',
         body: '{}',

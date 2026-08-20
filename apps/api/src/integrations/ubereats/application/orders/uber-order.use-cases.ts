@@ -11,7 +11,6 @@ import {
   type UberOrderImportRepositoryPort,
 } from './uber-order.ports';
 import { type UberOrderDetailQueryPort } from './uber-order-query.ports';
-import type { ParsedUberOrder } from '../../domain/orders/uber-order.types';
 import type { UberOrderAdmissionDecision } from '../../domain/orders/uber-order-admission.policy';
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
@@ -54,9 +53,9 @@ export class ImportUberOrderUseCase {
     if (existing?.cursor && !this.isAfter(cursor, existing.cursor)) return;
 
     // Order Fulfillment 1.0.0 emits orders.failure as soon as the order fails;
-    // Uber explicitly warns that an immediate detail read may itself fail. Once
-    // SanQ owns the order, the signed webhook resource id is sufficient to
-    // persist the cancellation without coupling local lifecycle to a second API.
+    // Uber warns that an immediate detail read may itself fail. Once SanQ owns
+    // the order, the signed webhook resource id is sufficient to persist the
+    // cancellation without coupling local lifecycle to another detail request.
     if (normalizedEventType === 'orders.failure') {
       if (!externalOrderId || !existing)
         throw new UberApplicationError(
@@ -95,31 +94,6 @@ export class ImportUberOrderUseCase {
     }
 
     const order = detail.order;
-    const cancellation = this.cancellation(normalizedEventType, order);
-    if (cancellation) {
-      const context = await this.admission.resolveImportContext(order, eventId);
-      if (context.missingItemReference) {
-        throw new UberApplicationError(
-          'business-conflict',
-          'UBER_ORDER_MENU_MAPPING_INCOMPLETE',
-          `Cancellation cannot be persisted until published menu mapping is available: event=${eventId}; externalOrder=${order.externalOrderId}`,
-          'order.cancellation.persist',
-          true,
-        );
-      }
-      await this.repository.saveImportedOrder({
-        order,
-        posStoreId: context.posStoreId,
-        eventType: normalizedEventType,
-        cursor,
-        menuMappings: context.menuMappings,
-        cancellation,
-        actionIntent: null,
-        receivedAt: new Date(),
-      });
-      return;
-    }
-
     const admission = await this.admission.evaluate(order, eventId);
     if (!admission.canPersistOrder) {
       await this.persistStandaloneDecision(
@@ -173,28 +147,6 @@ export class ImportUberOrderUseCase {
     if (decision.kind !== 'DENY')
       throw new Error('Standalone Uber admission decision must be DENY');
     await this.actions.request(externalOrderId, 'DENY', decision.denial);
-  }
-
-  private cancellation(eventType: string, order: ParsedUberOrder) {
-    if (!this.isCancellation(eventType)) return null;
-    const value = order.cancellation ?? {
-      cancelledBy: null,
-      reasonCode: null,
-      reasonDetail: null,
-      occurredAt: new Date(),
-    };
-    return {
-      kind: eventType.endsWith('rejected')
-        ? ('REJECTED' as const)
-        : ('CANCELLED' as const),
-      ...value,
-    };
-  }
-
-  private isCancellation(eventType: string): boolean {
-    return ['orders.cancelled', 'orders.cancel', 'orders.rejected'].includes(
-      eventType,
-    );
   }
 
   private isAfter(

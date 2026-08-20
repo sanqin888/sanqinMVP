@@ -1,8 +1,7 @@
 import { UberOrderStateMachine } from './uber-order.state-machine';
 
 describe('UberOrderStateMachine', () => {
-  it('never maps cancellation into an arbitrary local status', () => {
-    expect(UberOrderStateMachine.eventStatus('orders.cancelled')).toBeNull();
+  it('keeps cancellation as an explicit lifecycle decision', () => {
     expect(UberOrderStateMachine.afterCancellation('making' as never)).toBe(
       'refunded',
     );

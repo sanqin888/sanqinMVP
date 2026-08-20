@@ -21,7 +21,6 @@
     "webhooks/orders.notification.json",
     "webhooks/orders.scheduled.notification.json",
     "webhooks/orders.failure.json",
-    "webhooks/orders.cancel.json",
     "webhooks/store.provisioned.json",
     "webhooks/store.deprovisioned.json",
     "webhooks/store.status.changed.json"
