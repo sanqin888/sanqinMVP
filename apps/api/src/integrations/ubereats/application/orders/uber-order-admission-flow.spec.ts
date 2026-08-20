@@ -19,10 +19,7 @@ type EnqueueMock = jest.MockedFunction<
 
 const fixture: unknown = JSON.parse(
   readFileSync(
-    join(
-      __dirname,
-      '../../test/fixtures/uber-contract/v1/orders/detail.json',
-    ),
+    join(__dirname, '../../test/fixtures/uber-contract/v1/orders/detail.json'),
     'utf8',
   ),
 ) as unknown;
@@ -129,7 +126,9 @@ describe('Uber order admission flow', () => {
 
   it('processes orders.failure directly against the existing order', async () => {
     const enqueue: EnqueueMock = jest.fn();
-    const saveExistingOrderCancellation = jest.fn().mockResolvedValue(undefined);
+    const saveExistingOrderCancellation = jest
+      .fn()
+      .mockResolvedValue(undefined);
     const fetchOrderDetail = jest.fn();
     const useCase = new ImportUberOrderUseCase(
       {

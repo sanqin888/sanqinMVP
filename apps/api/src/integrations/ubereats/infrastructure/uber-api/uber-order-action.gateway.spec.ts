@@ -106,29 +106,36 @@ describe('UberOrderActionGatewayAdapter Order Fulfillment 1.0.0', () => {
     ['DENY', 409],
     ['CANCEL', 404],
     ['READY_FOR_PICKUP', 409],
-  ] as const)('treats repeated %s terminal response as idempotent', async (action, status) => {
-    const sendActionCommand = jest
-      .fn()
-      .mockResolvedValue({ ok: false, status, data: {} });
-    const adapter = new UberOrderActionGatewayAdapter({
-      sendActionCommand,
-    } as never);
-    const common = { externalOrderId: 'order-1', idempotencyKey: 'key' };
-    if (action === 'ACCEPT')
-      await expect(
-        adapter.accept({
-          ...common,
-          readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
-        }),
-      ).resolves.toBeUndefined();
-    else if (action === 'DENY')
-      await expect(
-        adapter.deny({ ...common, denial: { reasonCode: 'OTHER', reasonDetail: null } }),
-      ).resolves.toBeUndefined();
-    else if (action === 'CANCEL')
-      await expect(adapter.cancel(common)).resolves.toBeUndefined();
-    else await expect(adapter.readyForPickup(common)).resolves.toBeUndefined();
-  });
+  ] as const)(
+    'treats repeated %s terminal response as idempotent',
+    async (action, status) => {
+      const sendActionCommand = jest
+        .fn()
+        .mockResolvedValue({ ok: false, status, data: {} });
+      const adapter = new UberOrderActionGatewayAdapter({
+        sendActionCommand,
+      } as never);
+      const common = { externalOrderId: 'order-1', idempotencyKey: 'key' };
+      if (action === 'ACCEPT')
+        await expect(
+          adapter.accept({
+            ...common,
+            readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
+          }),
+        ).resolves.toBeUndefined();
+      else if (action === 'DENY')
+        await expect(
+          adapter.deny({
+            ...common,
+            denial: { reasonCode: 'OTHER', reasonDetail: null },
+          }),
+        ).resolves.toBeUndefined();
+      else if (action === 'CANCEL')
+        await expect(adapter.cancel(common)).resolves.toBeUndefined();
+      else
+        await expect(adapter.readyForPickup(common)).resolves.toBeUndefined();
+    },
+  );
 
   it('exposes only stable upstream facts for an HTTP failure', async () => {
     const sendActionCommand = jest.fn().mockResolvedValue({

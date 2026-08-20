@@ -56,7 +56,11 @@ export class UberOrderPayloadParser {
     const paymentDetail = dto.payment?.payment_detail;
     const orderTotal = paymentDetail?.order_total;
     const itemCharges = paymentDetail?.item_charges;
-    if (!orderTotal || !itemCharges || !Array.isArray(itemCharges.price_breakdown))
+    if (
+      !orderTotal ||
+      !itemCharges ||
+      !Array.isArray(itemCharges.price_breakdown)
+    )
       return invalid('MISSING_TOTAL', 'mapping');
     const totalCents = summaryGrossCents(orderTotal);
     if (totalCents === null) return invalid('MISSING_TOTAL', 'mapping');
@@ -74,7 +78,9 @@ export class UberOrderPayloadParser {
     const scheduled =
       normalizeUberEventType(context?.eventType ?? '') ===
         'orders.scheduled.notification' || dto.status === 'SCHEDULED';
-    const externalReadyAt = readDate(dto.preparation_time?.ready_for_pickup_time);
+    const externalReadyAt = readDate(
+      dto.preparation_time?.ready_for_pickup_time,
+    );
     const scheduledReadyAt = scheduled ? externalReadyAt : null;
     if (scheduled && !scheduledReadyAt)
       return invalid('MISSING_SCHEDULED_READY_AT', 'mapping');
@@ -88,12 +94,10 @@ export class UberOrderPayloadParser {
     const subtotalAfterPromosCents =
       summaryNetOrGrossCents(itemCharges.subtotal_including_promos) ??
       subtotalCents;
-    const discountCents = Math.max(
-      0,
-      subtotalCents - subtotalAfterPromosCents,
-    );
+    const discountCents = Math.max(0, subtotalCents - subtotalAfterPromosCents);
     const taxCents = moneyCents(orderTotal.tax) ?? 0;
-    const deliveryFeeCents = summaryNetOrGrossCents(paymentDetail.fees?.total) ?? 0;
+    const deliveryFeeCents =
+      summaryNetOrGrossCents(paymentDetail.fees?.total) ?? 0;
     const customer = dto.customers?.[0];
     const customerName = [
       readString(customer?.name?.first_name),
@@ -117,7 +121,8 @@ export class UberOrderPayloadParser {
         totalCents,
         discountCents,
         hasPromotion:
-          discountCents > 0 || (paymentDetail.promotions?.details?.length ?? 0) > 0,
+          discountCents > 0 ||
+          (paymentDetail.promotions?.details?.length ?? 0) > 0,
         deliveryFeeCents,
         contactName: readString(
           customer?.name?.display_name,
@@ -204,7 +209,9 @@ export function parseUberOrderItemV1(
     optionsUnitPriceCents,
     unitPriceCents,
     lineTotalCents: unitPriceCents * quantity,
-    specialInstructions: readString(item.customer_requests?.special_instructions),
+    specialInstructions: readString(
+      item.customer_requests?.special_instructions,
+    ),
     modifiers: parsedModifiers,
   };
 }
@@ -233,7 +240,9 @@ function parseUberModifierV1(
     displayName: readString(item.title) ?? 'Unknown modifier',
     quantity: readQuantity(item.quantity),
     priceDeltaCents,
-    specialInstructions: readString(item.customer_requests?.special_instructions),
+    specialInstructions: readString(
+      item.customer_requests?.special_instructions,
+    ),
     children: children.filter(
       (child): child is ParsedUberModifier => child !== null,
     ),

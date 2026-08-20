@@ -59,11 +59,19 @@ describe('Uber order use-case boundaries', () => {
   it.each([
     [
       'terminal',
-      { category: 'authentication', code: 'UBER_SCOPE_INSUFFICIENT', retryable: false },
+      {
+        category: 'authentication',
+        code: 'UBER_SCOPE_INSUFFICIENT',
+        retryable: false,
+      },
     ],
     [
       'transient',
-      { category: 'transient-upstream', code: 'UBER_NETWORK_ERROR', retryable: true },
+      {
+        category: 'transient-upstream',
+        code: 'UBER_NETWORK_ERROR',
+        retryable: true,
+      },
     ],
   ] as const)(
     'propagates a %s order-detail failure without importing or denying',
@@ -161,7 +169,9 @@ describe('Uber order use-case boundaries', () => {
   });
 
   it('persists orders.failure for an existing order without fetching detail', async () => {
-    const saveExistingOrderCancellation = jest.fn().mockResolvedValue(undefined);
+    const saveExistingOrderCancellation = jest
+      .fn()
+      .mockResolvedValue(undefined);
     const fetchOrderDetail = jest.fn();
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
@@ -255,7 +265,11 @@ describe('Uber order use-case boundaries', () => {
     ['accept', ['order-1', 'ACCEPT']],
     [
       'deny',
-      ['order-1', 'DENY', { reasonCode: 'STORE_CLOSED', reasonDetail: 'closed' }],
+      [
+        'order-1',
+        'DENY',
+        { reasonCode: 'STORE_CLOSED', reasonDetail: 'closed' },
+      ],
     ],
     [
       'cancel',

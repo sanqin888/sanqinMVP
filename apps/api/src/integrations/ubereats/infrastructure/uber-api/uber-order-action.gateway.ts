@@ -174,9 +174,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
       'OTHER',
     ]);
     const mapped = aliases[reasonCode] ?? reasonCode;
-    const type = supported.has(mapped as UberOrderFailureReasonType)
-      ? (mapped as UberOrderFailureReasonType)
-      : 'OTHER';
+    const type = supported.has(mapped) ? mapped : 'OTHER';
     return {
       type,
       info: denial.reasonDetail?.trim() || denial.reasonCode.trim(),

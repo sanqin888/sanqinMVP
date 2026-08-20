@@ -16,9 +16,12 @@ const fixture = (name: string): Record<string, unknown> =>
 
 describe('Uber scheduled order normalization', () => {
   it('maps v1 preparation_time to SCHEDULED ready time without using delivery target', () => {
-    const parsed = new UberOrderPayloadParser().parse(fixture('detail-scheduled'), {
-      eventType: 'orders.scheduled.notification',
-    });
+    const parsed = new UberOrderPayloadParser().parse(
+      fixture('detail-scheduled'),
+      {
+        eventType: 'orders.scheduled.notification',
+      },
+    );
 
     expect(parsed).toEqual(
       expect.objectContaining({

@@ -36,10 +36,14 @@ describe('Uber Order Fulfillment API 1.0.0 architecture', () => {
       join(ROOT, 'infrastructure/uber-api/uber-resource.gateways.ts'),
       'utf8',
     );
-    expect(gateways).toContain("UberOrderGateway extends PrefixGateway");
-    expect(gateways).toContain("protected readonly prefixes = ['/v1/delivery/order']");
-    expect(gateways).toContain("UberMenuGateway extends PrefixGateway");
-    expect(gateways).toContain("protected readonly prefixes = ['/v2/eats/stores']");
+    expect(gateways).toContain('UberOrderGateway extends PrefixGateway');
+    expect(gateways).toContain(
+      "protected readonly prefixes = ['/v1/delivery/order']",
+    );
+    expect(gateways).toContain('UberMenuGateway extends PrefixGateway');
+    expect(gateways).toContain(
+      "protected readonly prefixes = ['/v2/eats/stores']",
+    );
   });
 
   it('pins Order detail and all four actions to eats.order', () => {

@@ -104,8 +104,8 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       orderAmendment: { upsert: amendmentUpsert },
     };
     const prisma = {
-      $transaction: jest.fn(async (work: (client: typeof tx) => Promise<void>) =>
-        work(tx),
+      $transaction: jest.fn(
+        async (work: (client: typeof tx) => Promise<void>) => work(tx),
       ),
     };
     const adapter = new UberOrderImportPrismaAdapter(

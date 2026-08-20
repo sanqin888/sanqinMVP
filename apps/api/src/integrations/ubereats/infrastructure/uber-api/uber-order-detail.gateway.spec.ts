@@ -12,9 +12,7 @@ describe('Uber Order Fulfillment 1.0.0 detail expansion', () => {
       withRequiredOrderExpansions(
         '/v1/delivery/order/order-1?expand=deliveries,carts',
       ),
-    ).toBe(
-      '/v1/delivery/order/order-1?expand=deliveries%2Ccarts%2Cpayment',
-    );
+    ).toBe('/v1/delivery/order/order-1?expand=deliveries%2Ccarts%2Cpayment');
   });
 
   it('rejects non Order Fulfillment detail paths', () => {
