@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { UberOrderImportPrismaAdapter } from './uber-order-import-prisma.adapter';
 
 const parsedOrder = {
@@ -52,6 +53,8 @@ const savedOrder: SavedResult = {
 };
 
 describe('UberOrderImportPrismaAdapter inbox ownership', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('recovers ordering cursor from the original processed webhook envelope', async () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {
@@ -91,8 +94,12 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
   });
 
   it('persists orders.failure against the existing order without requiring detail data', async () => {
+    const log = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
     const findFirst = jest.fn().mockResolvedValue({
       id: 'order-db-1',
+      orderStableId: 'stable-1',
       totalCents: 1_130,
     });
     const cancellationUpsert = jest.fn().mockResolvedValue({});
@@ -105,7 +112,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        async (work: (client: typeof tx) => Promise<void>) => work(tx),
+        async (work: (client: typeof tx) => Promise<unknown>) => work(tx),
       ),
     };
     const adapter = new UberOrderImportPrismaAdapter(
@@ -137,7 +144,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
         id: 'order-db-1',
         clientRequestId: 'ubereats:uber-order-1',
       },
-      select: { id: true, totalCents: true },
+      select: { id: true, orderStableId: true, totalCents: true },
     });
     expect(cancellationUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -163,6 +170,15 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     expect(orderUpdate).toHaveBeenCalledWith({
       where: { id: 'order-db-1' },
       data: { status: 'refunded' },
+    });
+    expect(log).toHaveBeenCalledWith({
+      event: 'uber_order_cancelled',
+      eventId: 'evt-failure-1',
+      orderStableId: 'stable-1',
+      externalOrderId: 'uber-order-1',
+      channel: 'ubereats',
+      reasonCode: 'UBER_ORDER_FAILURE',
+      refundCents: 1_130,
     });
   });
 
