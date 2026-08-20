@@ -164,7 +164,7 @@ describe('Uber API gateway contract', () => {
 
     await expect(
       gateway.request({
-        path: '/v1/eats/orders/1/accept_pos_order',
+        path: '/v1/delivery/order/1/accept',
         method: 'POST',
         operation: 'uber.order.accept',
         scope: 'eats.order',

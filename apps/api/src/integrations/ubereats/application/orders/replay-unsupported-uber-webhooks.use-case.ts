@@ -5,18 +5,11 @@ export class ReplayUnsupportedUberWebhooksUseCase {
   private static readonly BUSINESS_VERSION = 'v1';
   private static readonly SUPPORTED_EVENT_TYPES = [
     'orders.notification',
-    'orders.accepted',
-    'orders.in_progress',
-    'orders.making',
-    'orders.ready_for_pickup',
-    'orders.completed',
-    'orders.cancelled',
-    'orders.cancel',
-    'orders.rejected',
+    'orders.scheduled.notification',
+    'orders.failure',
     'menus.notification',
     'store.provisioned',
     'store.deprovisioned',
-    'store.status.changed',
   ];
 
   constructor(private readonly inbox: UberWebhookInboxPort) {}

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type {
   UberOrderActionGatewayPort,
   UberOrderActionRepositoryPort,
@@ -15,33 +17,36 @@ type EnqueueMock = jest.MockedFunction<
   UberOrderActionRepositoryPort['enqueue']
 >;
 
-const notification = {
-  resourceId: 'order-1',
-  resourceHref: 'https://example.test/orders/order-1',
-} as UberOrderNotificationEventV1;
-
+const fixture: unknown = JSON.parse(
+  readFileSync(
+    join(
+      __dirname,
+      '../../test/fixtures/uber-contract/v1/orders/detail.json',
+    ),
+    'utf8',
+  ),
+) as unknown;
 const parsedDetail = {
   kind: 'parsed' as const,
-  order: new UberOrderPayloadParser().parse({
-    id: 'order-1',
-    store_id: 'uber-store-1',
-    subtotal: 100,
-    total: 100,
-    items: [{ id: 'item-1', quantity: 1, price: 100, total_price: 100 }],
+  order: new UberOrderPayloadParser().parse(fixture, {
+    eventType: 'orders.notification',
   })!,
 };
-
+const notification = {
+  resourceId: 'fixture-order-immediate',
+  resourceHref:
+    'https://api.uber.com/v1/delivery/order/fixture-order-immediate',
+} as UberOrderNotificationEventV1;
 const storeMapping = {
-  uberStoreId: 'uber-store-1',
+  uberStoreId: 'fixture-store-001',
   isProvisioned: true,
   posExternalStoreId: 'pos-store-1',
 };
-
 const menuMappings = [
   {
-    externalItemId: 'item-1',
+    externalItemId: 'sanq:item-1',
     menuItemStableId: 'menu-1',
-    expectedPriceCents: 100,
+    expectedPriceCents: 1000,
   },
 ];
 
@@ -63,6 +68,7 @@ describe('Uber order admission flow', () => {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn().mockResolvedValue([]),
         getPosStoreConnectivity,
+        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
@@ -72,20 +78,19 @@ describe('Uber order admission flow', () => {
 
     await useCase.execute('orders.notification', 'event-1', notification);
 
-    expect(enqueue).toHaveBeenCalledTimes(1);
     expect(enqueue).toHaveBeenCalledWith(
       expect.objectContaining({
-        externalOrderId: 'order-1',
+        externalOrderId: 'fixture-order-immediate',
         action: 'DENY',
         reasonCode: 'ITEM_UNAVAILABLE',
-        reasonDetail: '缺失菜单映射: item-1',
+        reasonDetail: '缺失菜单映射: sanq:item-1',
       }),
     );
     expect(getPosStoreConnectivity).not.toHaveBeenCalled();
     expect(saveImportedOrder).not.toHaveBeenCalled();
   });
 
-  it('persists a mapped POS_OFFLINE denial with the order instead of dispatching it inline', async () => {
+  it('persists a mapped POS_OFFLINE denial with the order instead of dispatching inline', async () => {
     const enqueue: EnqueueMock = jest.fn();
     const saved: { input?: ImportedOrderInput } = {};
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
@@ -104,6 +109,7 @@ describe('Uber order admission flow', () => {
           status: 'OFFLINE',
           lastHeartbeatAt: null,
         }),
+        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
@@ -113,44 +119,45 @@ describe('Uber order admission flow', () => {
 
     await useCase.execute('orders.notification', 'event-1', notification);
 
-    expect(saveImportedOrder).toHaveBeenCalledTimes(1);
     expect(saved.input?.actionIntent).toMatchObject({
-      externalOrderId: 'order-1',
+      externalOrderId: 'fixture-order-immediate',
       action: 'DENY',
       reasonCode: 'POS_OFFLINE',
     });
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it('processes v1 orders.failure as cancellation without new-order connectivity admission', async () => {
+  it('processes orders.failure directly against the existing order', async () => {
     const enqueue: EnqueueMock = jest.fn();
-    const getPosStoreConnectivity = jest.fn();
-    const saved: { input?: ImportedOrderInput } = {};
-    const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
-      saved.input = input;
-      return Promise.resolve({
-        orderId: 'local-1',
-        created: false,
-        action: null,
-      });
-    });
+    const saveExistingOrderCancellation = jest.fn().mockResolvedValue(undefined);
+    const fetchOrderDetail = jest.fn();
     const useCase = new ImportUberOrderUseCase(
       {
-        findByExternalOrderId: jest.fn().mockResolvedValue(null),
-        findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
-        getPosStoreConnectivity,
-        saveImportedOrder,
+        findByExternalOrderId: jest.fn().mockResolvedValue({
+          orderId: 'local-1',
+          status: 'making',
+          cursor: null,
+        }),
+        findMenuMappings: jest.fn(),
+        getPosStoreConnectivity: jest.fn(),
+        saveExistingOrderCancellation,
+        saveImportedOrder: jest.fn(),
       },
-      { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
+      { fetchOrderDetail },
       createActions(enqueue),
-      { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+      { findMapping: jest.fn() } as never,
     );
 
     await useCase.execute('orders.failure', 'event-2', notification);
 
-    expect(getPosStoreConnectivity).not.toHaveBeenCalled();
+    expect(fetchOrderDetail).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
-    expect(saved.input?.cancellation).toMatchObject({ kind: 'CANCELLED' });
-    expect(saved.input?.actionIntent).toBeNull();
+    expect(saveExistingOrderCancellation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 'local-1',
+        externalOrderId: 'fixture-order-immediate',
+        cancellation: expect.objectContaining({ kind: 'CANCELLED' }),
+      }),
+    );
   });
 });

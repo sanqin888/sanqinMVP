@@ -1,20 +1,25 @@
 import { withRequiredOrderExpansions } from './uber-order-detail.gateway';
 
-describe('Uber order detail v1 expansion', () => {
-  it('adds carts and payment expansion for v1 Order Fulfillment details', () => {
+describe('Uber Order Fulfillment 1.0.0 detail expansion', () => {
+  it('adds carts and payment expansions', () => {
     expect(withRequiredOrderExpansions('/v1/delivery/order/order-1')).toBe(
       '/v1/delivery/order/order-1?expand=carts%2Cpayment',
     );
   });
 
-  it('preserves existing expansions and does not rewrite legacy v2 paths', () => {
+  it('preserves other official expansions while ensuring required ones', () => {
     expect(
       withRequiredOrderExpansions(
-        '/v1/delivery/order/order-1?expand=store,carts',
+        '/v1/delivery/order/order-1?expand=deliveries,carts',
       ),
-    ).toBe('/v1/delivery/order/order-1?expand=store%2Ccarts%2Cpayment');
-    expect(withRequiredOrderExpansions('/v2/eats/order/order-1')).toBe(
-      '/v2/eats/order/order-1',
+    ).toBe(
+      '/v1/delivery/order/order-1?expand=deliveries%2Ccarts%2Cpayment',
+    );
+  });
+
+  it('rejects non Order Fulfillment detail paths', () => {
+    expect(() => withRequiredOrderExpansions('/v1/unknown/order-1')).toThrow(
+      'Order Fulfillment API 1.0.0',
     );
   });
 });

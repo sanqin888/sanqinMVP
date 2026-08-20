@@ -16,6 +16,7 @@ export interface UberOrderCancelEventV1 extends UberWebhookEventV1 {
   family: 'order-cancel';
   resourceHref: string;
   userId: string;
+  eventType: 'orders.failure';
 }
 export interface UberStoreProvisioningEventV1 extends UberWebhookEventV1 {
   family: 'store-provisioning';
@@ -52,12 +53,16 @@ export function parseUberOrderNotificationV1(payload: unknown) {
     : null;
 }
 
+/** Order Fulfillment API 1.0.0 cancellation webhook. */
 export function parseUberOrderCancelV1(payload: unknown) {
   const event = parseUberWebhookEnvelopeV1(payload);
   const eventType = normalizeUberEventType(event?.eventType ?? '');
-  return event &&
-    (eventType === 'orders.cancel' || eventType === 'orders.failure')
-    ? ({ ...event, family: 'order-cancel' } as UberOrderCancelEventV1)
+  return event && eventType === 'orders.failure'
+    ? ({
+        ...event,
+        family: 'order-cancel',
+        eventType: 'orders.failure',
+      } as UberOrderCancelEventV1)
     : null;
 }
 
@@ -157,7 +162,7 @@ export function dispatchUberWebhookV1(input: {
     eventType === 'orders.notification' ||
     eventType === 'orders.scheduled.notification'
       ? parseUberOrderNotificationV1
-      : eventType === 'orders.cancel' || eventType === 'orders.failure'
+      : eventType === 'orders.failure'
         ? parseUberOrderCancelV1
         : eventType === 'menus.notification'
           ? parseUberMenuNotificationV1

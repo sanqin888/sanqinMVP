@@ -1,17 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { UberOrderDetailQueryPort } from '../../application/orders/uber-order-query.ports';
+import type {
+  UberOrderDetailQueryPort,
+  UberOrderDetailResult,
+} from '../../application/orders/uber-order-query.ports';
 import {
   type UberTelemetryPort,
   UBER_TELEMETRY_PORT,
 } from '../../application/shared/uber-telemetry.port';
+import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
 import {
   redactUberLogText,
   summarizeUberDebugResponse,
 } from '../shared/uber-log.utils';
-import { UberOrderGateway } from './uber-resource.gateways';
-import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
 import { mapUberGatewayFailure } from './uber-error.mapper';
-import type { UberOrderDetailResult } from '../../application/orders/uber-order-query.ports';
+import { UberOrderGateway } from './uber-resource.gateways';
 
 const SENSITIVE_DIAGNOSTIC_KEY =
   /(token|authorization|signature|secret|password|cookie|rawbody|payload|phone|address)/i;
@@ -19,6 +21,7 @@ const SENSITIVE_DIAGNOSTIC_KEY =
 @Injectable()
 export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
   private readonly parser = new UberOrderPayloadParser();
+
   constructor(
     @Inject(UberOrderGateway)
     private readonly gateway: Pick<
@@ -43,7 +46,7 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       path,
       method: 'GET',
       operation: 'uber.order.detail',
-      scope: orderReadScope(path),
+      scope: 'eats.order',
       kind: 'orderDetail',
     });
     if (result.response.ok) {
@@ -52,7 +55,6 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       });
       if (mapped.kind === 'parsed') return mapped;
 
-      // Never include response values here: they may contain credentials or PII.
       const level = mapped.category === 'mapping' ? 'error' : 'warn';
       this.telemetry.workflowLog(
         level,
@@ -61,7 +63,7 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       this.telemetry.workflowLog(
         level,
         '[ubereats order] detail shape',
-        summarizeOrderDetailShape(result.data, input.eventType),
+        summarizeOrderFulfillmentV1Shape(result.data, input.eventType),
       );
       return { kind: 'invalid', reason: mapped.reason };
     }
@@ -80,18 +82,10 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
   }
 }
 
-/** Order Fulfillment API v1 uses eats.order; legacy v2 detail reads use store read scope. */
-export function orderReadScope(
-  path: string,
-): 'eats.order' | 'eats.store.orders.read' {
-  return path.startsWith('/v1/delivery/order/')
-    ? 'eats.order'
-    : 'eats.store.orders.read';
-}
-
-/** v1 omits carts/payment unless explicitly expanded; v2 keeps its legacy path. */
+/** Order Fulfillment API 1.0.0 requires carts/payment to map the SanQ order. */
 export function withRequiredOrderExpansions(path: string): string {
-  if (!path.startsWith('/v1/delivery/order/')) return path;
+  if (!path.startsWith('/v1/delivery/order/'))
+    throw new Error('Uber order detail must use Order Fulfillment API 1.0.0');
   const separator = path.indexOf('?');
   const pathname = separator >= 0 ? path.slice(0, separator) : path;
   const search = separator >= 0 ? path.slice(separator + 1) : '';
@@ -108,41 +102,31 @@ export function withRequiredOrderExpansions(path: string): string {
   return `${pathname}?${params.toString()}`;
 }
 
-function summarizeOrderDetailShape(
+function summarizeOrderFulfillmentV1Shape(
   payload: unknown,
   eventType: string,
 ): Record<string, unknown> {
   const envelope = asRecord(payload);
-  const root = asRecord(envelope?.order) ?? envelope;
-  const cart = asRecord(root?.cart);
-  const payment = asRecord(root?.payment);
-  const charges = asRecord(payment?.charges);
-  const totalFields = [
-    ...presentKeys(root, ['total', 'total_cents']),
-    ...presentKeys(charges, ['total', 'total_promo_applied']).map(
-      (key) => `payment.charges.${key}`,
-    ),
-  ];
+  const order = asRecord(envelope?.order) ?? envelope;
+  const payment = asRecord(order?.payment);
+  const paymentDetail = asRecord(payment?.payment_detail);
+  const itemCharges = asRecord(paymentDetail?.item_charges);
 
   return {
     operation: 'order.detail.shape',
+    contract: 'order-fulfillment-1.0.0',
     eventType,
     rootType: valueShape(payload),
-    topLevelKeys: safeTopLevelKeys(root),
-    orderIdFields:
-      presentKeys(root, [
-        'order_id',
-        'id',
-        'external_order_id',
-        'external_id',
-      ]).join(',') || 'none',
-    totalFields: totalFields.join(',') || 'none',
-    itemsShape: valueShape(root?.items),
-    cartShape: valueShape(root?.cart),
-    cartItemsShape: valueShape(cart?.items),
-    cartsShape: valueShape(root?.carts),
-    paymentShape: valueShape(root?.payment),
-    chargesShape: valueShape(payment?.charges),
+    topLevelKeys: safeTopLevelKeys(order),
+    orderIdShape: valueShape(order?.id),
+    cartsShape: valueShape(order?.carts),
+    customersShape: valueShape(order?.customers),
+    paymentShape: valueShape(order?.payment),
+    paymentDetailShape: valueShape(payment?.payment_detail),
+    orderTotalShape: valueShape(paymentDetail?.order_total),
+    itemChargesShape: valueShape(paymentDetail?.item_charges),
+    priceBreakdownShape: valueShape(itemCharges?.price_breakdown),
+    preparationTimeShape: valueShape(order?.preparation_time),
   };
 }
 
@@ -150,14 +134,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
-}
-
-function presentKeys(
-  value: Record<string, unknown> | null,
-  keys: readonly string[],
-): string[] {
-  if (!value) return [];
-  return keys.filter((key) => Object.prototype.hasOwnProperty.call(value, key));
 }
 
 function safeTopLevelKeys(value: Record<string, unknown> | null): string {
