@@ -8,6 +8,14 @@
     "created_time": "2026-08-20T13:15:00.000Z",
     "store": { "id": "fixture-store-001" },
     "customers": [{ "id": "fixture-customer-004", "name": { "display_name": "Fixture S" } }],
+    "deliveries": [
+      {
+        "id": "fixture-delivery-004",
+        "status": "SCHEDULED",
+        "estimated_pick_up_time": "2026-08-22T17:35:00.000Z",
+        "estimated_dropoff_time": "2026-08-22T18:00:00.000Z"
+      }
+    ],
     "carts": [
       {
         "id": "fixture-cart-004",

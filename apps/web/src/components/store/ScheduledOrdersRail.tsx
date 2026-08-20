@@ -138,15 +138,6 @@ export function ScheduledOrdersRail({
                 key={order.orderStableId}
                 className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 shadow-sm"
               >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="rounded-full border border-amber-400/60 bg-amber-400/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
-                    {isZh ? "预约单" : "Scheduled"}
-                  </span>
-                  <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300">
-                    {channelLabel(order.channel)}
-                  </span>
-                </div>
-
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="text-[11px] text-slate-400">
@@ -156,6 +147,9 @@ export function ScheduledOrdersRail({
                       {formatClock(order.productionStartAt, locale)}
                     </div>
                   </div>
+                  <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300">
+                    {channelLabel(order.channel)}
+                  </span>
                 </div>
 
                 <div className="mt-2 rounded-xl bg-slate-800/80 px-2.5 py-2">

@@ -63,6 +63,35 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
     });
   });
 
+  it('returns fulfillment timing for board orders after scheduled activation', async () => {
+    const orderFindMany = jest.fn().mockResolvedValue([
+      { orderStableId: 'scheduled-1', fulfillmentTiming: 'SCHEDULED' },
+      { orderStableId: 'immediate-1', fulfillmentTiming: 'IMMEDIATE' },
+    ]);
+    const service = new OrderSchedulingQueryService({
+      order: { findMany: orderFindMany },
+    } as never);
+
+    const result = await service.findTimingsByStableIds([
+      'scheduled-1',
+      'immediate-1',
+      'scheduled-1',
+    ]);
+
+    expect(result).toEqual(
+      new Map([
+        ['scheduled-1', 'SCHEDULED'],
+        ['immediate-1', 'IMMEDIATE'],
+      ]),
+    );
+    expect(orderFindMany).toHaveBeenCalledWith({
+      where: {
+        orderStableId: { in: ['scheduled-1', 'immediate-1'] },
+      },
+      select: { orderStableId: true, fulfillmentTiming: true },
+    });
+  });
+
   it('returns an empty queue when the authenticated device store no longer exists', async () => {
     const orderFindMany = jest.fn();
     const service = new OrderSchedulingQueryService({

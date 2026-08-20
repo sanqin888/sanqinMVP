@@ -27,7 +27,11 @@ import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
 import type { OrderStatus } from '../orders/order-status';
-import { OrderAmendmentType, PaymentMethod } from '@prisma/client';
+import {
+  OrderAmendmentType,
+  OrderFulfillmentTiming,
+  PaymentMethod,
+} from '@prisma/client';
 import type { OrderDto } from '../orders/dto/order.dto';
 import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -40,6 +44,10 @@ import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 type PosDeviceRequest = Request & {
   posDevice?: { storeId: string };
+};
+
+type PosBoardOrderDto = OrderDto & {
+  fulfillmentTiming: OrderFulfillmentTiming;
 };
 
 class CreateFullRefundDto {
@@ -120,7 +128,7 @@ export class PosOrdersController {
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
     @Query('sinceMinutes', new DefaultValuePipe(1440), ParseIntPipe)
     sinceMinutes?: number,
-  ): Promise<OrderDto[]> {
+  ): Promise<PosBoardOrderDto[]> {
     const statusIn = statusRaw
       ? (statusRaw
           .split(',')
@@ -144,14 +152,21 @@ export class PosOrdersController {
       this.orders.board({ statusIn, channelIn, limit, sinceMinutes }),
       this.schedulingQuery.listUpcomingForDeviceStore(deviceStoreId),
     ]);
-    if (upcomingScheduledOrders.length === 0) return boardOrders;
+    const timings = await this.schedulingQuery.findTimingsByStableIds(
+      boardOrders.map((order) => order.orderStableId),
+    );
 
-    const scheduledIds = new Set(
+    const upcomingScheduledIds = new Set(
       upcomingScheduledOrders.map((order) => order.orderStableId),
     );
-    return boardOrders.filter(
-      (order) => !scheduledIds.has(order.orderStableId),
-    );
+
+    return boardOrders
+      .filter((order) => !upcomingScheduledIds.has(order.orderStableId))
+      .map((order) => ({
+        ...order,
+        fulfillmentTiming:
+          timings.get(order.orderStableId) ?? OrderFulfillmentTiming.IMMEDIATE,
+      }));
   }
 
   @Get(':orderStableId')
