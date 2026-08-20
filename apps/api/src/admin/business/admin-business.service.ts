@@ -784,13 +784,12 @@ export class AdminBusinessService {
         'BusinessHour table is empty, initializing 7 closed days by default',
       );
 
-      const data: Omit<BusinessHour, 'id' | 'createdAt' | 'updatedAt'>[] =
-        Array.from({ length: 7 }).map((_, weekday) => ({
-          weekday,
-          openMinutes: 0,
-          closeMinutes: 0,
-          isClosed: true,
-        }));
+      const data = Array.from({ length: 7 }).map((_, weekday) => ({
+        weekday,
+        openMinutes: 0,
+        closeMinutes: 0,
+        isClosed: true,
+      }));
 
       await this.prisma.businessHour.createMany({
         data,

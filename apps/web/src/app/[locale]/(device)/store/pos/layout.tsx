@@ -1,11 +1,12 @@
-// apps/web/src/app/[locale]/store/pos/layout.tsx
-import { redirect } from 'next/navigation';
-import { cookies, headers } from 'next/headers';
-import type { ReactNode } from 'react';
-import type { Locale } from '@/lib/i18n/locales';
-import { PosSessionKeepAlive } from './PosSessionKeepAlive';
+// apps/web/src/app/[locale]/(device)/store/pos/layout.tsx
+import { redirect } from "next/navigation";
+import { cookies, headers } from "next/headers";
+import type { ReactNode } from "react";
+import type { Locale } from "@/lib/i18n/locales";
+import { PosDeviceFrame } from "@/components/store/PosDeviceFrame";
+import { PosSessionKeepAlive } from "./PosSessionKeepAlive";
 
-const SESSION_COOKIE_NAME = 'session_id';
+const SESSION_COOKIE_NAME = "session_id";
 
 type StaffSessionResponse = {
   userStableId?: string;
@@ -21,17 +22,16 @@ type ApiEnvelope<T> = {
 
 async function getBaseUrl(): Promise<string | null> {
   const headerStore = await headers();
-  const host =
-    headerStore.get('x-forwarded-host') ?? headerStore.get('host');
+  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
   if (!host) return null;
-  const proto = headerStore.get('x-forwarded-proto') ?? 'http';
+  const proto = headerStore.get("x-forwarded-proto") ?? "http";
   return `${proto}://${host}`;
 }
 
 function unwrapEnvelope<T>(payload: unknown): T | null {
-  if (!payload || typeof payload !== 'object') return null;
+  if (!payload || typeof payload !== "object") return null;
 
-  if ('code' in payload) {
+  if ("code" in payload) {
     const env = payload as ApiEnvelope<T>;
     return (env.details ?? null) as T | null;
   }
@@ -47,11 +47,11 @@ async function fetchStaffSession(): Promise<StaffSessionResponse | null> {
   const cookieHeader = cookieStore
     .getAll()
     .map(({ name, value }) => `${name}=${value}`)
-    .join('; ');
+    .join("; ");
 
   const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-    cache: 'no-store',
+    cache: "no-store",
   });
 
   if (!res.ok) return null;
@@ -68,7 +68,7 @@ export default async function PosLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const safeLocale: Locale = locale === 'zh' || locale === 'en' ? locale : 'en';
+  const safeLocale: Locale = locale === "zh" || locale === "en" ? locale : "en";
 
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
@@ -79,14 +79,14 @@ export default async function PosLayout({
   const session = await fetchStaffSession();
   const role = session?.role;
 
-  if (role !== 'ADMIN' && role !== 'STAFF') {
+  if (role !== "ADMIN" && role !== "STAFF") {
     redirect(`/${safeLocale}/store/pos/login`);
   }
 
   return (
     <>
       <PosSessionKeepAlive />
-      {children}
+      <PosDeviceFrame locale={safeLocale}>{children}</PosDeviceFrame>
     </>
   );
 }
