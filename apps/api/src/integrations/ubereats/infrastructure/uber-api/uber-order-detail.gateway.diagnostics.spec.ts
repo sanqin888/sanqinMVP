@@ -18,19 +18,21 @@ describe('UberOrderDetailGatewayAdapter diagnostics', () => {
         inspect: jest.fn().mockResolvedValue({
           response: new Response(null, { status: 200 }),
           data: {
-            id: 'order-1',
-            carts: [
-              {
-                items: [
-                  {
-                    id: 'item-1',
-                    cart_item_id: 'cart-item-1',
-                    quantity: { amount: 1 },
-                  },
-                ],
-              },
-            ],
-            payment: {},
+            order: {
+              id: 'order-1',
+              carts: [
+                {
+                  items: [
+                    {
+                      id: 'item-1',
+                      cart_item_id: 'cart-item-1',
+                      quantity: { amount: 1 },
+                    },
+                  ],
+                },
+              ],
+              payment: {},
+            },
             authorization: secret,
           },
           text: '',
