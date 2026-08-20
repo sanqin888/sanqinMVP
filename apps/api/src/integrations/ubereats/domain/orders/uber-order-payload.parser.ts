@@ -96,7 +96,8 @@ export class UberOrderPayloadParser {
       dto.scheduled_order_target_delivery_time_range?.start_time,
     );
     const targetFallbackReadyAt =
-      scheduledTargetAt && rawFulfillmentType?.toUpperCase() === 'DELIVERY_BY_UBER'
+      scheduledTargetAt &&
+      rawFulfillmentType?.toUpperCase() === 'DELIVERY_BY_UBER'
         ? new Date(
             scheduledTargetAt.getTime() - SCHEDULED_DELIVERY_FALLBACK_LEAD_MS,
           )

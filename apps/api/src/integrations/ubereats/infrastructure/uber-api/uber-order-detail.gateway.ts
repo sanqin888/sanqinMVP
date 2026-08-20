@@ -43,7 +43,8 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       input.resourceHref,
     );
     const path =
-      normalizeUberEventType(input.eventType) === 'orders.scheduled.notification'
+      normalizeUberEventType(input.eventType) ===
+      'orders.scheduled.notification'
         ? withScheduledOrderExpansions(resourcePath)
         : withRequiredOrderExpansions(resourcePath);
     const result = await this.gateway.inspect({
