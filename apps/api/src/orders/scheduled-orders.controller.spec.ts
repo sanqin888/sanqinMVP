@@ -14,6 +14,49 @@ const timing = (
 });
 
 describe('ScheduledOrdersController', () => {
+  it('lists scheduled orders only for the authenticated POS device store', async () => {
+    const query = {
+      listUpcomingForDeviceStore: jest.fn().mockResolvedValue([
+        {
+          orderStableId: 'stable-1',
+          orderNumber: 'A1234',
+          channel: 'ubereats',
+          productionStartAt: '2026-08-19T22:10:00.000Z',
+          scheduledFor: '2026-08-19T22:30:00.000Z',
+          itemCount: 2,
+        },
+      ]),
+    };
+    const controller = new ScheduledOrdersController(query as never, {} as never);
+
+    await expect(
+      controller.listScheduledOrders({
+        posDevice: { storeId: 'store-uuid-1' },
+      } as never),
+    ).resolves.toEqual({
+      orders: [
+        expect.objectContaining({
+          orderStableId: 'stable-1',
+          orderNumber: 'A1234',
+        }),
+      ],
+    });
+    expect(query.listUpcomingForDeviceStore).toHaveBeenCalledWith(
+      'store-uuid-1',
+    );
+  });
+
+  it('rejects a queue read when the POS device store context is unavailable', async () => {
+    const controller = new ScheduledOrdersController(
+      { listUpcomingForDeviceStore: jest.fn() } as never,
+      {} as never,
+    );
+
+    await expect(controller.listScheduledOrders({} as never)).rejects.toThrow(
+      'POS device store unavailable',
+    );
+  });
+
   it('manual early start delegates to the same scheduled activation command', async () => {
     const query = {
       findByStableId: jest

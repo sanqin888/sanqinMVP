@@ -14,6 +14,8 @@ export type ScheduledOrderSummary = {
   itemCount: number;
 };
 
+export type ScheduledOrdersRailStatus = "loading" | "ready" | "error";
+
 function channelLabel(channel: ScheduledOrderSummary["channel"]): string {
   switch (channel) {
     case "ubereats":
@@ -53,12 +55,35 @@ function formatCountdown(target: string, nowMs: number, locale: Locale): string 
   return rest > 0 ? `in ${hours}h ${rest}m` : `in ${hours}h`;
 }
 
+function emptyStateCopy(status: ScheduledOrdersRailStatus, isZh: boolean) {
+  if (status === "loading") {
+    return {
+      title: isZh ? "正在加载预约订单" : "Loading scheduled orders",
+      detail: isZh ? "正在读取当前门店的未来制作队列。" : "Reading this store's upcoming production queue.",
+    };
+  }
+  if (status === "error") {
+    return {
+      title: isZh ? "预约队列暂不可用" : "Scheduled queue unavailable",
+      detail: isZh ? "系统会自动重试，请勿将此状态视为暂无预约单。" : "The system will retry automatically; this does not mean the queue is empty.",
+    };
+  }
+  return {
+    title: isZh ? "暂无预约订单" : "No scheduled orders",
+    detail: isZh
+      ? "预约单会在这里按开始制作时间排列。"
+      : "Scheduled orders will appear here by production start time.",
+  };
+}
+
 export function ScheduledOrdersRail({
   locale,
   orders = [],
+  status = "ready",
 }: {
   locale: Locale;
   orders?: ScheduledOrderSummary[];
+  status?: ScheduledOrdersRailStatus;
 }) {
   const isZh = locale === "zh";
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -77,6 +102,7 @@ export function ScheduledOrdersRail({
       ),
     [orders],
   );
+  const emptyCopy = emptyStateCopy(status, isZh);
 
   return (
     <aside className="flex h-dvh min-h-0 flex-col border-r border-slate-700 bg-slate-950 px-3 py-4 text-slate-50">
@@ -93,12 +119,10 @@ export function ScheduledOrdersRail({
         {sortedOrders.length === 0 ? (
           <div className="flex h-full min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 px-3 text-center">
             <div className="text-sm font-medium text-slate-300">
-              {isZh ? "暂无预约订单" : "No scheduled orders"}
+              {emptyCopy.title}
             </div>
             <div className="mt-1 text-[11px] leading-relaxed text-slate-500">
-              {isZh
-                ? "预约单会在这里按开始制作时间排列。"
-                : "Scheduled orders will appear here by production start time."}
+              {emptyCopy.detail}
             </div>
           </div>
         ) : (

@@ -7,7 +7,41 @@ import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
-import { ScheduledOrdersRail } from "@/components/store/ScheduledOrdersRail";
+import {
+  ScheduledOrdersRail,
+  type ScheduledOrderSummary,
+  type ScheduledOrdersRailStatus,
+} from "@/components/store/ScheduledOrdersRail";
+
+const SCHEDULED_ORDERS_REFRESH_MS = 15_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isScheduledOrderSummary(value: unknown): value is ScheduledOrderSummary {
+  if (!isRecord(value)) return false;
+  const channel = value.channel;
+  return (
+    typeof value.orderStableId === "string" &&
+    typeof value.orderNumber === "string" &&
+    (channel === "web" || channel === "in_store" || channel === "ubereats") &&
+    typeof value.productionStartAt === "string" &&
+    typeof value.scheduledFor === "string" &&
+    typeof value.itemCount === "number"
+  );
+}
+
+function parseScheduledOrders(value: unknown): ScheduledOrderSummary[] {
+  if (!isRecord(value) || !Array.isArray(value.orders)) {
+    throw new Error("Invalid scheduled orders response");
+  }
+  const orders = value.orders.filter(isScheduledOrderSummary);
+  if (orders.length !== value.orders.length) {
+    throw new Error("Invalid scheduled order item");
+  }
+  return orders;
+}
 
 function PosToolbarLocalePortal({ locale }: { locale: Locale }) {
   const [target, setTarget] = useState<HTMLDivElement | null>(null);
@@ -46,12 +80,55 @@ export function PosDeviceFrame({
   const pathname = usePathname();
   const normalizedPath = pathname?.replace(/\/$/, "") ?? "";
   const isOrderingPage = normalizedPath === `/${locale}/store/pos`;
+  const [scheduledOrders, setScheduledOrders] = useState<
+    ScheduledOrderSummary[]
+  >([]);
+  const [scheduledStatus, setScheduledStatus] =
+    useState<ScheduledOrdersRailStatus>("loading");
+
+  useEffect(() => {
+    if (!isOrderingPage) return;
+
+    let cancelled = false;
+
+    async function loadScheduledOrders() {
+      try {
+        const response = await fetch("/api/v1/orders/scheduled", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Scheduled orders request failed");
+        const payload = (await response.json()) as unknown;
+        const orders = parseScheduledOrders(payload);
+        if (cancelled) return;
+        setScheduledOrders(orders);
+        setScheduledStatus("ready");
+      } catch {
+        if (!cancelled) setScheduledStatus("error");
+      }
+    }
+
+    void loadScheduledOrders();
+    const timer = window.setInterval(
+      () => void loadScheduledOrders(),
+      SCHEDULED_ORDERS_REFRESH_MS,
+    );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isOrderingPage]);
 
   if (!isOrderingPage) return <>{children}</>;
 
   return (
     <div className="grid h-dvh w-screen grid-cols-[clamp(208px,16vw,224px)_minmax(0,1fr)] overflow-hidden bg-slate-950 text-slate-50">
-      <ScheduledOrdersRail locale={locale} />
+      <ScheduledOrdersRail
+        locale={locale}
+        orders={scheduledOrders}
+        status={scheduledStatus}
+      />
       <div
         data-pos-ordering-main
         className="pos-device-ordering-main min-h-0 min-w-0 overflow-hidden"
