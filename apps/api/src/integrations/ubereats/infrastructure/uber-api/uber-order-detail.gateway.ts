@@ -43,7 +43,7 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       path,
       method: 'GET',
       operation: 'uber.order.detail',
-      scope: 'eats.store.orders.read',
+      scope: orderReadScope(path),
       kind: 'orderDetail',
     });
     if (result.response.ok) {
@@ -78,6 +78,15 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       upstreamCode: null,
     });
   }
+}
+
+/** Order Fulfillment API v1 uses eats.order; legacy v2 detail reads use store read scope. */
+export function orderReadScope(
+  path: string,
+): 'eats.order' | 'eats.store.orders.read' {
+  return path.startsWith('/v1/delivery/order/')
+    ? 'eats.order'
+    : 'eats.store.orders.read';
 }
 
 /** v1 omits carts/payment unless explicitly expanded; v2 keeps its legacy path. */
