@@ -10,7 +10,9 @@ describe('OrdersModule route registration', () => {
       OrdersModule,
     ) as unknown[];
 
-    expect(controllers.indexOf(ScheduledOrdersController)).toBeGreaterThanOrEqual(0);
+    expect(
+      controllers.indexOf(ScheduledOrdersController),
+    ).toBeGreaterThanOrEqual(0);
     expect(controllers.indexOf(OrdersController)).toBeGreaterThanOrEqual(0);
     expect(controllers.indexOf(ScheduledOrdersController)).toBeLessThan(
       controllers.indexOf(OrdersController),

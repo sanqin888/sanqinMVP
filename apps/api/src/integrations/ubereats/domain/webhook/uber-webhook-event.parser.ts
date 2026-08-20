@@ -55,7 +55,8 @@ export function parseUberOrderNotificationV1(payload: unknown) {
 export function parseUberOrderCancelV1(payload: unknown) {
   const event = parseUberWebhookEnvelopeV1(payload);
   const eventType = normalizeUberEventType(event?.eventType ?? '');
-  return event && (eventType === 'orders.cancel' || eventType === 'orders.failure')
+  return event &&
+    (eventType === 'orders.cancel' || eventType === 'orders.failure')
     ? ({ ...event, family: 'order-cancel' } as UberOrderCancelEventV1)
     : null;
 }
