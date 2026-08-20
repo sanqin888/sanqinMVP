@@ -54,7 +54,8 @@ export function parseUberOrderNotificationV1(payload: unknown) {
 
 export function parseUberOrderCancelV1(payload: unknown) {
   const event = parseUberWebhookEnvelopeV1(payload);
-  return event?.eventType === 'orders.cancel'
+  const eventType = normalizeUberEventType(event?.eventType ?? '');
+  return event && (eventType === 'orders.cancel' || eventType === 'orders.failure')
     ? ({ ...event, family: 'order-cancel' } as UberOrderCancelEventV1)
     : null;
 }
@@ -155,7 +156,7 @@ export function dispatchUberWebhookV1(input: {
     eventType === 'orders.notification' ||
     eventType === 'orders.scheduled.notification'
       ? parseUberOrderNotificationV1
-      : eventType === 'orders.cancel'
+      : eventType === 'orders.cancel' || eventType === 'orders.failure'
         ? parseUberOrderCancelV1
         : eventType === 'menus.notification'
           ? parseUberMenuNotificationV1
@@ -181,14 +182,13 @@ export function dispatchUberWebhookV1(input: {
 function parseOrdering(payload: unknown): UberEventOrdering {
   const root = webhookObject(payload);
   const meta = webhookObject(root?.meta);
-  const timestamp = webhookText(
+  const occurredAt = parseEventTime(
     root?.event_time,
     root?.event_timestamp,
     root?.occurred_at,
     root?.created_at,
     meta?.event_time,
   );
-  const occurredAt = timestamp ? new Date(timestamp) : null;
   const rawSequence = root?.sequence ?? root?.sequence_number ?? meta?.sequence;
   const sequence =
     typeof rawSequence === 'number' && Number.isSafeInteger(rawSequence)
@@ -197,8 +197,7 @@ function parseOrdering(payload: unknown): UberEventOrdering {
         ? Number(rawSequence)
         : null;
   return {
-    occurredAt:
-      occurredAt && !Number.isNaN(occurredAt.getTime()) ? occurredAt : null,
+    occurredAt,
     resourceVersion: webhookText(
       root?.resource_version,
       root?.version,
@@ -207,4 +206,30 @@ function parseOrdering(payload: unknown): UberEventOrdering {
     sequence:
       sequence !== null && Number.isSafeInteger(sequence) ? sequence : null,
   };
+}
+
+/** Uber webhook event_time has appeared as Unix seconds and milliseconds. */
+function parseEventTime(...values: unknown[]): Date | null {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const millis = Math.abs(value) < 100_000_000_000 ? value * 1_000 : value;
+      const parsed = new Date(millis);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+      continue;
+    }
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const normalized = value.trim();
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+      const numeric = Number(normalized);
+      if (Number.isFinite(numeric)) {
+        const millis =
+          Math.abs(numeric) < 100_000_000_000 ? numeric * 1_000 : numeric;
+        const parsed = new Date(millis);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+      }
+    }
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
 }

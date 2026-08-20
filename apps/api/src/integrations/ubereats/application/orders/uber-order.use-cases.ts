@@ -164,9 +164,12 @@ export class ImportUberOrderUseCase {
   }
 
   private isCancellation(eventType: string): boolean {
-    return ['orders.cancelled', 'orders.cancel', 'orders.rejected'].includes(
-      eventType,
-    );
+    return [
+      'orders.cancelled',
+      'orders.cancel',
+      'orders.failure',
+      'orders.rejected',
+    ].includes(eventType);
   }
 
   private isAfter(
