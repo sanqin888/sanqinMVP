@@ -27,6 +27,8 @@ export type UberOrderPayloadParseResult =
 type ParseContext = { eventType?: string };
 type PriceIndex = Map<string, UberOrderPriceBreakdownV1>;
 
+const SCHEDULED_DELIVERY_FALLBACK_LEAD_MS = 30 * 60 * 1_000;
+
 /** Strict mapper for Uber Order Fulfillment API 1.0.0 Get Order responses. */
 export class UberOrderPayloadParser {
   parse(payload: unknown, context?: ParseContext): ParsedUberOrder | null {
@@ -75,21 +77,39 @@ export class UberOrderPayloadParser {
       (item): item is ParsedUberOrderItem => item !== null,
     );
 
+    const rawFulfillmentType = readString(dto.fulfillment_type);
+    const fulfillmentType = rawFulfillmentType
+      ?.toLowerCase()
+      .includes('deliver')
+      ? 'delivery'
+      : 'pickup';
     const scheduled =
       normalizeUberEventType(context?.eventType ?? '') ===
       'orders.scheduled.notification';
     const externalReadyAt = readDate(
       dto.preparation_time?.ready_for_pickup_time,
     );
+    const courierPickupAt = earliestDate(
+      (dto.deliveries ?? []).map((delivery) => delivery.estimated_pick_up_time),
+    );
     const scheduledTargetAt = readDate(
       dto.scheduled_order_target_delivery_time_range?.start_time,
     );
-    // Uber may omit preparation_time when a scheduled order is first created.
-    // Keep the delivery target distinct from Uber's kitchen-ready estimate: it
-    // is only a local scheduling anchor and must not be echoed back upstream as
-    // ready_for_pickup_time.
+    const targetFallbackReadyAt =
+      scheduledTargetAt &&
+      rawFulfillmentType?.toUpperCase() === 'DELIVERY_BY_UBER'
+        ? new Date(
+            scheduledTargetAt.getTime() - SCHEDULED_DELIVERY_FALLBACK_LEAD_MS,
+          )
+        : scheduledTargetAt;
+    // The target range is the eater's delivery window, not a kitchen-ready
+    // timestamp. Prefer Uber's preparation estimate, then courier pickup ETA.
+    // Sandbox may omit both because no courier is required; only in that final
+    // fallback do we reserve 30 minutes before the delivery-window start. The
+    // derived fallback remains local and is never echoed upstream as Uber's own
+    // ready_for_pickup_time estimate.
     const scheduledReadyAt = scheduled
-      ? (externalReadyAt ?? scheduledTargetAt)
+      ? (externalReadyAt ?? courierPickupAt ?? targetFallbackReadyAt)
       : null;
     if (scheduled && !scheduledReadyAt)
       return invalid('MISSING_SCHEDULED_READY_AT', 'mapping');
@@ -139,11 +159,7 @@ export class UberOrderPayloadParser {
         ),
         contactPhone: readString(customer?.phone, customer?.phone_number),
         paidAt: readDate(dto.created_time) ?? new Date(),
-        fulfillmentType: readString(dto.fulfillment_type)
-          ?.toLowerCase()
-          .includes('deliver')
-          ? 'delivery'
-          : 'pickup',
+        fulfillmentType,
         fulfillmentTiming: scheduled ? 'SCHEDULED' : 'IMMEDIATE',
         scheduledReadyAt,
         estimatedReadyAt: externalReadyAt,
@@ -339,6 +355,14 @@ function readDate(...values: unknown[]): Date | null {
     if (!Number.isNaN(date.getTime())) return date;
   }
   return null;
+}
+
+function earliestDate(values: unknown[]): Date | null {
+  const dates = values
+    .map((value) => readDate(value))
+    .filter((value): value is Date => value !== null);
+  if (dates.length === 0) return null;
+  return new Date(Math.min(...dates.map((value) => value.getTime())));
 }
 
 function flattenModifiers(values: ParsedUberModifier[]): ParsedUberModifier[] {

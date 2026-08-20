@@ -130,6 +130,12 @@ export type UberOrderFulfillmentV1 = {
     phone?: string;
     phone_number?: string;
   }>;
+  deliveries?: Array<{
+    id?: string;
+    status?: string;
+    estimated_pick_up_time?: string;
+    estimated_dropoff_time?: string;
+  }>;
   carts?: Array<{
     id?: string;
     items?: UberOrderCartItemV1[];

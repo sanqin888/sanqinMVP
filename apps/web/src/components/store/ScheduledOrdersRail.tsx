@@ -41,11 +41,13 @@ function formatClock(value: string, locale: Locale): string {
 
 function formatCountdown(target: string, nowMs: number, locale: Locale): string {
   const targetMs = new Date(target).getTime();
-  if (!Number.isFinite(targetMs)) return locale === "zh" ? "时间待确认" : "Time pending";
+  if (!Number.isFinite(targetMs))
+    return locale === "zh" ? "时间待确认" : "Time pending";
 
   const minutes = Math.ceil((targetMs - nowMs) / 60_000);
   if (minutes <= 0) return locale === "zh" ? "现在制作" : "Start now";
-  if (minutes < 60) return locale === "zh" ? `${minutes} 分钟后` : `in ${minutes} min`;
+  if (minutes < 60)
+    return locale === "zh" ? `${minutes} 分钟后` : `in ${minutes} min`;
 
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -59,13 +61,17 @@ function emptyStateCopy(status: ScheduledOrdersRailStatus, isZh: boolean) {
   if (status === "loading") {
     return {
       title: isZh ? "正在加载预约订单" : "Loading scheduled orders",
-      detail: isZh ? "正在读取当前门店的未来制作队列。" : "Reading this store's upcoming production queue.",
+      detail: isZh
+        ? "正在读取当前门店的未来制作队列。"
+        : "Reading this store's upcoming production queue.",
     };
   }
   if (status === "error") {
     return {
       title: isZh ? "预约队列暂不可用" : "Scheduled queue unavailable",
-      detail: isZh ? "系统会自动重试，请勿将此状态视为暂无预约单。" : "The system will retry automatically; this does not mean the queue is empty.",
+      detail: isZh
+        ? "系统会自动重试，请勿将此状态视为暂无预约单。"
+        : "The system will retry automatically; this does not mean the queue is empty.",
     };
   }
   return {

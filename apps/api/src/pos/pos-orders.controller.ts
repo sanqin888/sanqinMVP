@@ -1,5 +1,6 @@
 //apps/api/src/pos/pos-orders.controller.ts
 import {
+  BadRequestException,
   Body,
   Controller,
   DefaultValuePipe,
@@ -10,20 +11,27 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  UnauthorizedException,
   UseGuards,
   UsePipes,
-  BadRequestException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from './pos-device.guard';
 import { OrdersService } from '../orders/orders.service';
+import { OrderSchedulingQueryService } from '../orders/order-scheduling-query.service';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
 import type { OrderStatus } from '../orders/order-status';
-import { OrderAmendmentType, PaymentMethod } from '@prisma/client';
+import {
+  OrderAmendmentType,
+  OrderFulfillmentTiming,
+  PaymentMethod,
+} from '@prisma/client';
 import type { OrderDto } from '../orders/dto/order.dto';
 import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -33,6 +41,14 @@ import { PosGateway } from './pos.gateway';
 import { PosOrdersService } from './pos-orders.service';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+
+type PosDeviceRequest = Request & {
+  posDevice?: { storeId: string };
+};
+
+type PosBoardOrderDto = OrderDto & {
+  fulfillmentTiming: OrderFulfillmentTiming;
+};
 
 class CreateFullRefundDto {
   @IsString()
@@ -74,6 +90,7 @@ export class PosOrdersController {
     private readonly eventEmitter: EventEmitter2,
     private readonly posGateway: PosGateway,
     private readonly posOrders: PosOrdersService,
+    private readonly schedulingQuery: OrderSchedulingQueryService,
   ) {}
 
   @Post()
@@ -104,13 +121,14 @@ export class PosOrdersController {
   }
 
   @Get('board')
-  board(
+  async board(
+    @Req() req: PosDeviceRequest,
     @Query('status') statusRaw?: string,
     @Query('channel') channelRaw?: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
     @Query('sinceMinutes', new DefaultValuePipe(1440), ParseIntPipe)
     sinceMinutes?: number,
-  ): Promise<OrderDto[]> {
+  ): Promise<PosBoardOrderDto[]> {
     const statusIn = statusRaw
       ? (statusRaw
           .split(',')
@@ -125,7 +143,30 @@ export class PosOrdersController {
           .filter(Boolean) as Array<'web' | 'in_store' | 'ubereats'>)
       : undefined;
 
-    return this.orders.board({ statusIn, channelIn, limit, sinceMinutes });
+    const deviceStoreId = req.posDevice?.storeId;
+    if (!deviceStoreId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+
+    const [boardOrders, upcomingScheduledOrders] = await Promise.all([
+      this.orders.board({ statusIn, channelIn, limit, sinceMinutes }),
+      this.schedulingQuery.listUpcomingForDeviceStore(deviceStoreId),
+    ]);
+    const timings = await this.schedulingQuery.findTimingsByStableIds(
+      boardOrders.map((order) => order.orderStableId),
+    );
+
+    const upcomingScheduledIds = new Set(
+      upcomingScheduledOrders.map((order) => order.orderStableId),
+    );
+
+    return boardOrders
+      .filter((order) => !upcomingScheduledIds.has(order.orderStableId))
+      .map((order) => ({
+        ...order,
+        fulfillmentTiming:
+          timings.get(order.orderStableId) ?? OrderFulfillmentTiming.IMMEDIATE,
+      }));
   }
 
   @Get(':orderStableId')

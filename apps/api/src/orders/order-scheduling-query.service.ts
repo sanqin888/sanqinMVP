@@ -38,6 +38,24 @@ export class OrderSchedulingQueryService {
     };
   }
 
+  async findTimingsByStableIds(
+    orderStableIds: string[],
+  ): Promise<Map<string, OrderFulfillmentTiming>> {
+    const stableIds = [
+      ...new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
+    ];
+    if (stableIds.length === 0) return new Map();
+
+    const orders = await this.prisma.order.findMany({
+      where: { orderStableId: { in: stableIds } },
+      select: { orderStableId: true, fulfillmentTiming: true },
+    });
+
+    return new Map(
+      orders.map((order) => [order.orderStableId, order.fulfillmentTiming]),
+    );
+  }
+
   /**
    * Resolve the authenticated POS device's canonical Store UUID before reading
    * Order.storeId, which intentionally stores Store.storeStableId.

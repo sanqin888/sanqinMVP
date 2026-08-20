@@ -8,6 +8,7 @@ import {
   UBER_TELEMETRY_PORT,
 } from '../../application/shared/uber-telemetry.port';
 import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
+import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import {
   redactUberLogText,
   summarizeUberDebugResponse,
@@ -41,7 +42,11 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
     const resourcePath = await this.gateway.pathFromResourceHref(
       input.resourceHref,
     );
-    const path = withRequiredOrderExpansions(resourcePath);
+    const path =
+      normalizeUberEventType(input.eventType) ===
+      'orders.scheduled.notification'
+        ? withScheduledOrderExpansions(resourcePath)
+        : withRequiredOrderExpansions(resourcePath);
     const result = await this.gateway.inspect({
       path,
       method: 'GET',
@@ -102,6 +107,23 @@ export function withRequiredOrderExpansions(path: string): string {
   return `${pathname}?${params.toString()}`;
 }
 
+/** Scheduled Uber delivery timing can additionally use courier pickup ETA. */
+export function withScheduledOrderExpansions(path: string): string {
+  const requiredPath = withRequiredOrderExpansions(path);
+  const separator = requiredPath.indexOf('?');
+  const pathname = requiredPath.slice(0, separator);
+  const params = new URLSearchParams(requiredPath.slice(separator + 1));
+  const expanded = new Set(
+    (params.get('expand') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  expanded.add('deliveries');
+  params.set('expand', [...expanded].join(','));
+  return `${pathname}?${params.toString()}`;
+}
+
 function summarizeOrderFulfillmentV1Shape(
   payload: unknown,
   eventType: string,
@@ -121,6 +143,7 @@ function summarizeOrderFulfillmentV1Shape(
     orderIdShape: valueShape(order?.id),
     cartsShape: valueShape(order?.carts),
     customersShape: valueShape(order?.customers),
+    deliveriesShape: valueShape(order?.deliveries),
     paymentShape: valueShape(order?.payment),
     paymentDetailShape: valueShape(payment?.payment_detail),
     orderTotalShape: valueShape(paymentDetail?.order_total),
