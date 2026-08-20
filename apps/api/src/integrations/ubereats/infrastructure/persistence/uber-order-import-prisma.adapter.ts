@@ -114,13 +114,13 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       UberOrderImportRepositoryPort['saveExistingOrderCancellation']
     >[0],
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    const cancellation = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({
         where: {
           id: input.orderId,
           clientRequestId: `ubereats:${input.externalOrderId}`,
         },
-        select: { id: true, totalCents: true },
+        select: { id: true, orderStableId: true, totalCents: true },
       });
       if (!order)
         throw new Error(
@@ -133,6 +133,20 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         cursor: input.cursor,
         cancellation: input.cancellation,
       });
+      return {
+        orderStableId: order.orderStableId,
+        refundCents: Math.max(0, order.totalCents),
+      };
+    });
+
+    this.logger.log({
+      event: 'uber_order_cancelled',
+      eventId: input.cursor.eventId,
+      orderStableId: cancellation.orderStableId,
+      externalOrderId: input.externalOrderId,
+      channel: Channel.ubereats,
+      reasonCode: input.cancellation.reasonCode,
+      refundCents: cancellation.refundCents,
     });
   }
 
