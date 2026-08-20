@@ -51,6 +51,7 @@ import { OrderSchedulingQueryService } from './order-scheduling-query.service';
     OrdersService,
     OrderIngestionService,
     OrderPreparationService,
+    OrderSchedulingQueryService,
     PrintPosPayloadService,
   ],
 })
