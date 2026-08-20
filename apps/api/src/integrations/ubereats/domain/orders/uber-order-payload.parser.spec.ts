@@ -16,7 +16,7 @@ const fixture = (name: string): unknown =>
 describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
   const parser = new UberOrderPayloadParser();
 
-  it('maps a real-shaped immediate MerchantOrder without field guessing', () => {
+  it('maps a real-shaped immediate Get Order response without field guessing', () => {
     const order = parser.parse(fixture('detail.json'), {
       eventType: 'orders.notification',
     });
@@ -91,10 +91,31 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
     );
   });
 
-  it('rejects a payload that is not the 1.0.0 MerchantOrder contract', () => {
+  it('derives fulfillment timing from the webhook contract, not detail status guessing', () => {
+    const order = parser.parse(fixture('detail-scheduled.json'), {
+      eventType: 'orders.notification',
+    });
+    expect(order?.fulfillmentTiming).toBe('IMMEDIATE');
+    expect(order?.scheduledReadyAt).toBeNull();
+  });
+
+  it('rejects a bare MerchantOrder without the official Get Order envelope', () => {
+    const response = fixture('detail.json') as { order?: unknown };
+    expect(
+      parser.parseResult(response.order, {
+        eventType: 'orders.notification',
+      }),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'MALFORMED_PAYLOAD',
+      category: 'mapping',
+    });
+  });
+
+  it('rejects a payload that is not the 1.0.0 Get Order contract', () => {
     expect(
       parser.parseResult(
-        { id: 'not-a-v1-merchant-order' },
+        { id: 'not-a-v1-get-order-response' },
         { eventType: 'orders.notification' },
       ),
     ).toEqual({

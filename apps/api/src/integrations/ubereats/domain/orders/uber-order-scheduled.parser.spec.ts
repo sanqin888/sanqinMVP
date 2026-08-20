@@ -25,7 +25,7 @@ describe('Uber scheduled order normalization', () => {
 
     expect(parsed).toEqual(
       expect.objectContaining({
-        externalOrderId: 'fixture-scheduled-order-001',
+        externalOrderId: 'fixture-order-scheduled',
         fulfillmentTiming: 'SCHEDULED',
         scheduledReadyAt: new Date('2026-08-22T17:30:00.000Z'),
         estimatedReadyAt: new Date('2026-08-22T17:30:00.000Z'),

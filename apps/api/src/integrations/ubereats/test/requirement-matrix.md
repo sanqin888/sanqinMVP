@@ -74,7 +74,8 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 
 ### Order detail mapper contract
 
-SanQ 只接受 Order Fulfillment 1.0.0 MerchantOrder shape。关键映射：
+SanQ 只接受 Order Fulfillment 1.0.0 **Get Order response** shape：顶层必须是
+`{ "order": MerchantOrder }`，不得把裸 `MerchantOrder` 当作兼容 response。关键映射：
 
 - `order.id` → `ParsedUberOrder.externalOrderId`
 - `order.store.id` → Uber store mapping key
@@ -86,7 +87,7 @@ SanQ 只接受 Order Fulfillment 1.0.0 MerchantOrder shape。关键映射：
 - `scheduled_order_target_delivery_time_range` **不是** kitchen-ready time
 
 不得恢复 `item.price`、`payment.charges`、顶层 `items/total/total_cents` 等旧 Order schema
-fallback。
+fallback，也不得增加裸 MerchantOrder response fallback。
 
 ### Immediate / Scheduled
 
@@ -104,7 +105,8 @@ fallback。
 - 后续 activation / prep-start / POS print 继续由 Orders bounded-context 的通用 scheduled
   fulfillment + durable lifecycle/outbox 机制负责
 
-Scheduled **不是**新的 `OrderStatus`。
+Fulfillment timing 由 webhook contract 决定，不通过 detail `status` 猜测。Scheduled **不是**
+新的 `OrderStatus`。
 
 ## Order webhook 清单
 
