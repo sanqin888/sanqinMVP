@@ -149,7 +149,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     expect(mappings.reconnectMapping).not.toHaveBeenCalled();
   });
 
-  it('persists a validated provision response and excludes credential fields', async () => {
+  it('persists a validated provision response and enables scheduled order webhooks', async () => {
     const api = {
       provisionStore: jest.fn().mockResolvedValue({
         storeId: 'uber-store-1',
@@ -180,7 +180,16 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
 
     await expect(
-      useCase.provisionStore(' uber-store-1 ', { enabled: true }, 'merchant-1'),
+      useCase.provisionStore(
+        ' uber-store-1 ',
+        {
+          enabled: true,
+          webhooks_config: {
+            delivery_status_webhooks: { is_enabled: true },
+          },
+        },
+        'merchant-1',
+      ),
     ).resolves.toMatchObject({
       ok: true,
       storeId: 'uber-store-1',
@@ -189,7 +198,14 @@ describe('Uber merchant gateway use-case boundaries', () => {
     expect(api.provisionStore).toHaveBeenCalledWith(
       connection,
       'uber-store-1',
-      { enabled: true },
+      {
+        enabled: true,
+        webhooks_config: {
+          delivery_status_webhooks: { is_enabled: true },
+          schedule_order_webhooks: { is_enabled: true },
+          webhooks_version: '1.0.0',
+        },
+      },
       expect.stringMatching(/^sanqin-uber-/),
     );
     expect(mappings.upsertMapping).toHaveBeenCalledWith(

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { OrderFulfillmentTiming, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { OrderFulfillmentTimingDto } from './dto/order-fulfillment-timing.dto';
+import type { ScheduledOrderSummaryDto } from './dto/scheduled-order-summary.dto';
 
 @Injectable()
 export class OrderSchedulingQueryService {
@@ -34,5 +36,58 @@ export class OrderSchedulingQueryService {
       externalEstimatedReadyAt:
         order.externalEstimatedReadyAt?.toISOString() ?? null,
     };
+  }
+
+  /**
+   * Resolve the authenticated POS device's canonical Store UUID before reading
+   * Order.storeId, which intentionally stores Store.storeStableId.
+   */
+  async listUpcomingForDeviceStore(
+    deviceStoreId: string,
+  ): Promise<ScheduledOrderSummaryDto[]> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: deviceStoreId },
+      select: { storeStableId: true },
+    });
+    if (!store) return [];
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        storeId: store.storeStableId,
+        fulfillmentTiming: OrderFulfillmentTiming.SCHEDULED,
+        scheduleActivatedAt: null,
+        status: { in: [OrderStatus.pending, OrderStatus.paid] },
+        prepStartAt: { not: null },
+        scheduledReadyAt: { not: null },
+      },
+      select: {
+        orderStableId: true,
+        clientRequestId: true,
+        externalDisplayId: true,
+        channel: true,
+        prepStartAt: true,
+        scheduledReadyAt: true,
+        items: { select: { qty: true } },
+      },
+      orderBy: [{ prepStartAt: 'asc' }, { createdAt: 'asc' }],
+      take: 100,
+    });
+
+    return orders.flatMap((order) => {
+      if (!order.prepStartAt || !order.scheduledReadyAt) return [];
+      return [
+        {
+          orderStableId: order.orderStableId,
+          orderNumber:
+            order.externalDisplayId ??
+            order.clientRequestId ??
+            order.orderStableId,
+          channel: order.channel,
+          productionStartAt: order.prepStartAt.toISOString(),
+          scheduledFor: order.scheduledReadyAt.toISOString(),
+          itemCount: order.items.reduce((sum, item) => sum + item.qty, 0),
+        },
+      ];
+    });
   }
 }
