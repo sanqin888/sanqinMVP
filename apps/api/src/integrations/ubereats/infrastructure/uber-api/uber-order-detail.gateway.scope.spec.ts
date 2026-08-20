@@ -3,6 +3,12 @@ import {
   orderReadScope,
 } from './uber-order-detail.gateway';
 
+type WorkflowLog = (
+  level: 'debug' | 'log' | 'warn' | 'error',
+  message?: unknown,
+  details?: Record<string, unknown>,
+) => void;
+
 describe('UberOrderDetailGatewayAdapter order read scopes', () => {
   it.each([
     ['/v1/delivery/order/order-1', 'eats.order'],
@@ -20,6 +26,7 @@ describe('UberOrderDetailGatewayAdapter order read scopes', () => {
         data: {},
         text: '',
       });
+      const workflowLog = jest.fn<WorkflowLog>();
       const adapter = new UberOrderDetailGatewayAdapter(
         {
           pathFromResourceHref: jest
@@ -27,7 +34,7 @@ describe('UberOrderDetailGatewayAdapter order read scopes', () => {
             .mockResolvedValue('/v1/delivery/order/order-1'),
           inspect,
         },
-        { workflowLog: jest.fn() },
+        { workflowLog },
       );
 
       await expect(
