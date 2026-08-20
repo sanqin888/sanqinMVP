@@ -1,0 +1,55 @@
+{
+  "order": {
+    "id": "fixture-order-promotion",
+    "display_id": "A1003",
+    "state": "OFFERED",
+    "status": "ACTIVE",
+    "fulfillment_type": "DELIVERY_BY_UBER",
+    "created_time": "2026-08-20T13:10:00.000Z",
+    "store": { "id": "fixture-store-001" },
+    "customers": [{ "id": "fixture-customer-003", "name": { "display_name": "Fixture P" } }],
+    "carts": [
+      {
+        "id": "fixture-cart-003",
+        "items": [
+          {
+            "id": "sanq:item-3",
+            "cart_item_id": "cart-line-3",
+            "title": "Fixture Promo Item",
+            "quantity": { "amount": 1, "unit": "PIECE" },
+            "selected_modifier_groups": []
+          }
+        ]
+      }
+    ],
+    "payment": {
+      "payment_detail": {
+        "order_total": {
+          "net": { "amount_e5": 1200000, "currency_code": "CAD" },
+          "tax": { "amount_e5": 156000, "currency_code": "CAD" },
+          "gross": { "amount_e5": 1356000, "currency_code": "CAD" }
+        },
+        "item_charges": {
+          "total": { "net": { "amount_e5": 1500000, "currency_code": "CAD" } },
+          "subtotal_including_promos": { "net": { "amount_e5": 1200000, "currency_code": "CAD" } },
+          "price_breakdown": [
+            {
+              "cart_item_id": "cart-line-3",
+              "price_type": "ITEM",
+              "quantity": { "amount": 1, "unit": "PIECE" },
+              "unit": { "net": { "amount_e5": 1500000, "currency_code": "CAD" } },
+              "total": { "net": { "amount_e5": 1500000, "currency_code": "CAD" } }
+            }
+          ]
+        },
+        "promotions": {
+          "total": { "net": { "amount_e5": 300000, "currency_code": "CAD" } },
+          "details": [{ "external_promotion_id": "fixture-promo", "type": "ITEM_PROMOTION" }],
+          "order_total_excluding_promos": { "gross": { "amount_e5": 1695000, "currency_code": "CAD" } }
+        },
+        "fees": { "total": { "net": { "amount_e5": 0, "currency_code": "CAD" } } }
+      }
+    },
+    "preparation_time": { "ready_for_pickup_time": "2026-08-20T13:25:00.000Z" }
+  }
+}
