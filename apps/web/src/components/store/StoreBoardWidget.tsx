@@ -28,6 +28,7 @@ type BoardOrder = {
 
   channel: "web" | "in_store" | "ubereats";
   status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
+  fulfillmentTiming: "IMMEDIATE" | "SCHEDULED";
 
   subtotalCents: number;
   taxCents: number;
@@ -109,6 +110,7 @@ const STRINGS = {
     noOrders: "暂无订单",
     statusLabel: "状态",
     totalLabel: "合计",
+    scheduledOrder: "预约单",
     pickupCodeLabel: "取餐码",
     acceptOrder: "接单",
     terminal: "终态",
@@ -132,6 +134,7 @@ const STRINGS = {
     noOrders: "No orders",
     statusLabel: "Status",
     totalLabel: "Total",
+    scheduledOrder: "Scheduled",
     pickupCodeLabel: "Pickup",
     acceptOrder: "Accept",
     terminal: "Terminal",
@@ -861,8 +864,15 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                     </div>
 
                     <div className="text-right shrink-0">
-                      <div className="px-2 py-1 rounded-full bg-slate-800 text-xs text-slate-200 inline-block">
-                        {formatChannel(order.channel, locale)}
+                      <div className="flex items-center justify-end gap-1.5">
+                        {order.fulfillmentTiming === "SCHEDULED" && (
+                          <div className="inline-block rounded-full border border-amber-400/60 bg-amber-400/10 px-2 py-1 text-xs font-semibold text-amber-200">
+                            {t.scheduledOrder}
+                          </div>
+                        )}
+                        <div className="inline-block rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-200">
+                          {formatChannel(order.channel, locale)}
+                        </div>
                       </div>
                       <div className="text-slate-300 mt-2 text-sm">
                         {t.totalLabel}: {formatMoney(order.totalCents)}

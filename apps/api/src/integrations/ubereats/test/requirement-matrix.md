@@ -49,13 +49,14 @@ Test Store 当前配置：
 
 Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notification`、
 `orders.failure` resource 均使用 `/v1/delivery/order/{order_id}`。Detail 的 `carts`、
-`payment` 默认可省略，所以 SanQ 显式请求 `expand=carts,payment`。
+`payment` 默认可省略，所以普通单显式请求 `expand=carts,payment`；预约单另外请求
+`deliveries`，用于在 Uber 未提供 `preparation_time` 时读取 courier pickup ETA。
 
 | 核对项 | 正式契约 / 当前代码配置 | 结论 |
 | ------ | ------------------------ | ---- |
 | OAuth grant | app token：`POST /oauth/v2/token`、`client_credentials` | 保持现有 capability token provider |
 | Order scope | `eats.order` | Order detail/actions 不再切 `eats.store.orders.read` |
-| Order detail | `GET /v1/delivery/order/{order_id}?expand=carts,payment` | Order Fulfillment API 1.0.0 唯一 detail 路径 |
+| Order detail | `GET /v1/delivery/order/{order_id}?expand=carts,payment`；scheduled 追加 `deliveries` | Order Fulfillment API 1.0.0 唯一 detail 路径 |
 | Order actions | `POST /v1/delivery/order/{order_id}/{accept\|deny\|ready\|cancel}` | 四种业务 action 使用同一 API Suite |
 | Menu | `PUT/GET /v2/eats/stores/{store_id}/menus` | Menu capability 独立版本；本任务不修改 |
 | Provisioning | `PATCH/POST /v1/eats/stores/{store_id}/pos_data`（按现有 adapter） | `webhooks_version=1.0.0` + scheduled webhook enabled |
@@ -65,7 +66,7 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 
 | Capability | Method / path | Scope | Production code | Contract evidence |
 | ---------- | ------------- | ----- | --------------- | ----------------- |
-| Order detail | `GET /v1/delivery/order/{order_id}?expand=carts,payment` | `eats.order` | `infrastructure/uber-api/uber-order-detail.gateway.ts` | `v1/orders/detail*.json` |
+| Order detail | `GET /v1/delivery/order/{order_id}?expand=carts,payment`；scheduled 追加 `deliveries` | `eats.order` | `infrastructure/uber-api/uber-order-detail.gateway.ts` | `v1/orders/detail*.json` |
 | Accept | `POST /v1/delivery/order/{order_id}/accept` | `eats.order` | `uber-resource.gateways.ts` + `uber-order-action.gateway.ts` | `v1/orders/accept-request.json` |
 | Deny | `POST /v1/delivery/order/{order_id}/deny` | `eats.order` | 同上 | `v1/orders/deny-request.json` |
 | Ready | `POST /v1/delivery/order/{order_id}/ready` | `eats.order` | 同上 | `v1/orders/ready-request.json` |
@@ -84,9 +85,9 @@ SanQ 只接受 Order Fulfillment 1.0.0 **Get Order response** shape：顶层必�
 - `payment.payment_detail.order_total` → order total / tax
 - `payment.payment_detail.item_charges` → subtotal / promotions / line pricing
 - `preparation_time.ready_for_pickup_time` → Uber kitchen-ready time
-- `scheduled_order_target_delivery_time_range.start_time` → 仅在 Uber 未提供 kitchen-ready
-  estimate 时作为 SanQ 本地预约调度锚点；它**不是** Uber kitchen-ready time，也不得作为
-  `ready_for_pickup_time` 回传
+- `deliveries[].estimated_pick_up_time` → Uber courier pickup ETA；仅在 scheduled detail 读取
+- `scheduled_order_target_delivery_time_range.start_time` → 顾客目标送达窗口起点；它**不是**
+  Uber kitchen-ready time，也不得直接作为 `ready_for_pickup_time` 回传
 
 不得恢复 `item.price`、`payment.charges`、顶层 `items/total/total_cents` 等旧 Order schema
 fallback，也不得增加裸 MerchantOrder response fallback。
@@ -103,12 +104,23 @@ fallback，也不得增加裸 MerchantOrder response fallback。
 `orders.scheduled.notification`：
 
 - `fulfillmentTiming = SCHEDULED`
+- 本地 `scheduledReadyAt` 代表门店应完成制作、可交给 courier / 顾客的时间，不代表顾客
+  delivery window
 - 优先 `scheduledReadyAt = preparation_time.ready_for_pickup_time`
-- 若 Test Store / Uber 初始 scheduled detail 尚未返回 `preparation_time`，则
-  `scheduledReadyAt = scheduled_order_target_delivery_time_range.start_time`，仅作为 Orders
-  bounded-context 的本地调度 fallback；`externalEstimatedReadyAt = null`
+- 若 Uber 未提供 `preparation_time`，其次使用最早的
+  `deliveries[].estimated_pick_up_time`
+- 若 `DELIVERY_BY_UBER` 在 Test Store / 初始 scheduled detail 中两种 pickup estimate 都缺失，
+  最后才使用本地保守 fallback：
+  `scheduled_order_target_delivery_time_range.start_time - 30 minutes`
+- 上述 30 分钟只是 SanQ 在缺少 Uber 动态 pickup ETA 时的本地 fallback，**不是** Uber 固定
+  配送时长；生产订单只要 Uber 提供动态 pickup estimate 就不得套用该 fallback
+- 非 `DELIVERY_BY_UBER` 的 scheduled pickup 不扣上述配送 fallback
+- `externalEstimatedReadyAt` 仍只保存 Uber `preparation_time.ready_for_pickup_time`
 - Scheduled ACCEPT 只有在 `externalEstimatedReadyAt` 存在时才发送
-  `ready_for_pickup_time`；不得把 delivery target fallback 冒充为 kitchen-ready time
+  `ready_for_pickup_time`；不得把 courier ETA 或本地 delivery fallback 冒充为 Uber
+  kitchen-ready estimate 回传
+- Orders bounded-context 再从 `scheduledReadyAt` 扣除 SanQ 通用金额准备时长得到
+  `prepStartAt`
 - 后续 activation / prep-start / POS print 继续由 Orders bounded-context 的通用 scheduled
   fulfillment + durable lifecycle/outbox 机制负责
 
@@ -120,7 +132,7 @@ Fulfillment timing 由 webhook contract 决定，不通过 detail `status` 猜�
 | 官方事件名 | API 配置 | 处理策略 | Contract fixture |
 | ---------- | -------- | -------- | ---------------- |
 | `orders.notification` | Order Fulfillment 1.0.0 | 拉取 v1 detail，映射并 admission/import | `webhooks/orders.notification.json` |
-| `orders.scheduled.notification` | 1.0.0 + scheduled enabled | 与普通单共用 mapper；仅 timing 不同 | `webhooks/orders.scheduled.notification.json` |
+| `orders.scheduled.notification` | 1.0.0 + scheduled enabled | 与普通单共用 mapper；增加 deliveries expansion 并解析 scheduled timing | `webhooks/orders.scheduled.notification.json` |
 | `orders.failure` | Order Fulfillment 1.0.0 | 已存在本地订单时直接按 external order id 落 cancellation；不要求 detail 再次可读 | `webhooks/orders.failure.json` |
 
 非 1.0.0 cancellation webhook 不属于 SanQ 当前 Order contract，不提供兼容 parser。

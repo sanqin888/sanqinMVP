@@ -6,7 +6,10 @@ describe('PosOrdersController Uber orders', () => {
     createFullRefund: jest.fn(),
   };
   const posOrders = { cancelUberOrder: jest.fn() };
-  const schedulingQuery = { listUpcomingForDeviceStore: jest.fn() };
+  const schedulingQuery = {
+    listUpcomingForDeviceStore: jest.fn(),
+    findTimingsByStableIds: jest.fn(),
+  };
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
@@ -26,6 +29,12 @@ describe('PosOrdersController Uber orders', () => {
     schedulingQuery.listUpcomingForDeviceStore.mockResolvedValue([
       { orderStableId: 'scheduled_1' },
     ]);
+    schedulingQuery.findTimingsByStableIds.mockResolvedValue(
+      new Map([
+        ['scheduled_1', 'SCHEDULED'],
+        ['immediate_1', 'IMMEDIATE'],
+      ]),
+    );
 
     await expect(
       controller.board(
@@ -35,17 +44,43 @@ describe('PosOrdersController Uber orders', () => {
         80,
         180,
       ),
-    ).resolves.toEqual([{ orderStableId: 'immediate_1' }]);
+    ).resolves.toEqual([
+      { orderStableId: 'immediate_1', fulfillmentTiming: 'IMMEDIATE' },
+    ]);
 
     expect(schedulingQuery.listUpcomingForDeviceStore).toHaveBeenCalledWith(
       'store-uuid-1',
     );
+    expect(schedulingQuery.findTimingsByStableIds).toHaveBeenCalledWith([
+      'scheduled_1',
+      'immediate_1',
+    ]);
     expect(orders.board).toHaveBeenCalledWith({
       statusIn: ['pending', 'paid', 'making', 'ready'],
       channelIn: undefined,
       limit: 80,
       sinceMinutes: 180,
     });
+  });
+
+  it('已激活预约单进入右侧看板后仍保留预约身份', async () => {
+    orders.board.mockResolvedValue([{ orderStableId: 'scheduled_active' }]);
+    schedulingQuery.listUpcomingForDeviceStore.mockResolvedValue([]);
+    schedulingQuery.findTimingsByStableIds.mockResolvedValue(
+      new Map([['scheduled_active', 'SCHEDULED']]),
+    );
+
+    await expect(
+      controller.board(
+        { posDevice: { storeId: 'store-uuid-1' } } as never,
+        'pending,paid,making,ready',
+        undefined,
+        80,
+        180,
+      ),
+    ).resolves.toEqual([
+      { orderStableId: 'scheduled_active', fulfillmentTiming: 'SCHEDULED' },
+    ]);
   });
 
   it('POS 将店员主动取消提交到 Uber CANCEL 应用边界', async () => {
