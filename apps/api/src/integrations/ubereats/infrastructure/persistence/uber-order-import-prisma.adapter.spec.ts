@@ -90,6 +90,82 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     });
   });
 
+  it('persists orders.failure against the existing order without requiring detail data', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 'order-db-1',
+      totalCents: 1_130,
+    });
+    const cancellationUpsert = jest.fn().mockResolvedValue({});
+    const amendmentUpsert = jest.fn().mockResolvedValue({});
+    const orderUpdate = jest.fn().mockResolvedValue({});
+    const tx = {
+      order: { findFirst, update: orderUpdate },
+      uberOrderCancellation: { upsert: cancellationUpsert },
+      orderAmendment: { upsert: amendmentUpsert },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (work: (client: typeof tx) => Promise<void>) =>
+        work(tx),
+      ),
+    };
+    const adapter = new UberOrderImportPrismaAdapter(
+      prisma as never,
+      {} as never,
+    );
+    const occurredAt = new Date('2026-08-20T13:30:09.000Z');
+
+    await adapter.saveExistingOrderCancellation({
+      orderId: 'order-db-1',
+      externalOrderId: 'uber-order-1',
+      cursor: {
+        eventId: 'evt-failure-1',
+        occurredAt,
+        resourceVersion: null,
+        sequence: null,
+      },
+      cancellation: {
+        kind: 'CANCELLED',
+        cancelledBy: null,
+        reasonCode: 'UBER_ORDER_FAILURE',
+        reasonDetail: null,
+        occurredAt,
+      },
+    });
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'order-db-1',
+        clientRequestId: 'ubereats:uber-order-1',
+      },
+      select: { id: true, totalCents: true },
+    });
+    expect(cancellationUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { eventId: 'evt-failure-1' },
+        create: expect.objectContaining({
+          orderId: 'order-db-1',
+          externalOrderId: 'uber-order-1',
+          eventId: 'evt-failure-1',
+          kind: 'CANCELLED',
+          reasonCode: 'UBER_ORDER_FAILURE',
+        }) as unknown,
+      }),
+    );
+    expect(amendmentUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          orderId: 'order-db-1',
+          refundCents: 1_130,
+          deltaCents: -1_130,
+        }) as unknown,
+      }),
+    );
+    expect(orderUpdate).toHaveBeenCalledWith({
+      where: { id: 'order-db-1' },
+      data: { status: 'refunded' },
+    });
+  });
+
   it('never marks the webhook inbox terminal inside the order import transaction', async () => {
     const inboxUpsert = jest.fn();
     const inboxUpdate = jest.fn();
