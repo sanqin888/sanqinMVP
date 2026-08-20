@@ -22,7 +22,9 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
     } as never);
 
     await expect(
-      service.listUpcomingForDeviceStore('8a3d4c0e-4750-4f6a-9138-000000000001'),
+      service.listUpcomingForDeviceStore(
+        '8a3d4c0e-4750-4f6a-9138-000000000001',
+      ),
     ).resolves.toEqual([
       {
         orderStableId: 'stable-1',
@@ -38,18 +40,27 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
       where: { id: '8a3d4c0e-4750-4f6a-9138-000000000001' },
       select: { storeStableId: true },
     });
-    expect(orderFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          storeId: '4750_Yonge_Street',
-          fulfillmentTiming: 'SCHEDULED',
-          scheduleActivatedAt: null,
-          status: { in: ['pending', 'paid'] },
-        }),
-        orderBy: [{ prepStartAt: 'asc' }, { createdAt: 'asc' }],
-        take: 100,
-      }),
-    );
+    expect(orderFindMany).toHaveBeenCalledWith({
+      where: {
+        storeId: '4750_Yonge_Street',
+        fulfillmentTiming: 'SCHEDULED',
+        scheduleActivatedAt: null,
+        status: { in: ['pending', 'paid'] },
+        prepStartAt: { not: null },
+        scheduledReadyAt: { not: null },
+      },
+      select: {
+        orderStableId: true,
+        clientRequestId: true,
+        externalDisplayId: true,
+        channel: true,
+        prepStartAt: true,
+        scheduledReadyAt: true,
+        items: { select: { qty: true } },
+      },
+      orderBy: [{ prepStartAt: 'asc' }, { createdAt: 'asc' }],
+      take: 100,
+    });
   });
 
   it('returns an empty queue when the authenticated device store no longer exists', async () => {
