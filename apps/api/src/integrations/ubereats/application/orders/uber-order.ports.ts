@@ -98,6 +98,8 @@ export type UberOrderActionContext = {
   /** Optional only for backward-compatible test/adapter implementations. */
   fulfillmentTiming?: UberFulfillmentTiming;
   scheduledReadyAt?: Date | null;
+  /** Uber-provided kitchen-ready estimate; null when SanQ only has a schedule target. */
+  externalEstimatedReadyAt?: Date | null;
 };
 
 export interface UberOrderActionRepositoryPort {
@@ -145,7 +147,7 @@ export interface UberOrderActionGatewayPort {
   accept(input: {
     externalOrderId: string;
     idempotencyKey: string;
-    readyForPickupAt: Date;
+    readyForPickupAt?: Date;
   }): Promise<void>;
   deny(input: {
     externalOrderId: string;

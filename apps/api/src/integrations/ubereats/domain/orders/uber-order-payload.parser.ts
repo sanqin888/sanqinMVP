@@ -81,7 +81,16 @@ export class UberOrderPayloadParser {
     const externalReadyAt = readDate(
       dto.preparation_time?.ready_for_pickup_time,
     );
-    const scheduledReadyAt = scheduled ? externalReadyAt : null;
+    const scheduledTargetAt = readDate(
+      dto.scheduled_order_target_delivery_time_range?.start_time,
+    );
+    // Uber may omit preparation_time when a scheduled order is first created.
+    // Keep the delivery target distinct from Uber's kitchen-ready estimate: it
+    // is only a local scheduling anchor and must not be echoed back upstream as
+    // ready_for_pickup_time.
+    const scheduledReadyAt = scheduled
+      ? (externalReadyAt ?? scheduledTargetAt)
+      : null;
     if (scheduled && !scheduledReadyAt)
       return invalid('MISSING_SCHEDULED_READY_AT', 'mapping');
 
