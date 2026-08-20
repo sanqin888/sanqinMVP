@@ -149,10 +149,10 @@ export type UberOrderFulfillmentV1 = {
   };
 };
 
-/** Official docs wrap MerchantOrder in `order`; current Test Store returns the same MerchantOrder fields directly. */
-export type UberOrderDetailV1Response =
-  | { order: UberOrderFulfillmentV1 }
-  | UberOrderFulfillmentV1;
+/** Official Get Order response envelope for Order Fulfillment API 1.0.0. */
+export type UberOrderDetailV1Response = {
+  order: UberOrderFulfillmentV1;
+};
 
 export type ParsedUberModifier = {
   externalId: string | null;

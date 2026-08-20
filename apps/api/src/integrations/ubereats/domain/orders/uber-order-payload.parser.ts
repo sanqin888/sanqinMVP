@@ -27,7 +27,7 @@ export type UberOrderPayloadParseResult =
 type ParseContext = { eventType?: string };
 type PriceIndex = Map<string, UberOrderPriceBreakdownV1>;
 
-/** Strict mapper for Uber Order Fulfillment API 1.0.0 MerchantOrder payloads. */
+/** Strict mapper for Uber Order Fulfillment API 1.0.0 Get Order responses. */
 export class UberOrderPayloadParser {
   parse(payload: unknown, context?: ParseContext): ParsedUberOrder | null {
     const result = this.parseResult(payload, context);
@@ -77,7 +77,7 @@ export class UberOrderPayloadParser {
 
     const scheduled =
       normalizeUberEventType(context?.eventType ?? '') ===
-        'orders.scheduled.notification' || dto.status === 'SCHEDULED';
+      'orders.scheduled.notification';
     const externalReadyAt = readDate(
       dto.preparation_time?.ready_for_pickup_time,
     );
@@ -158,8 +158,8 @@ function invalid(
 
 function readMerchantOrder(payload: unknown): UberOrderFulfillmentV1 | null {
   const root = asObject(payload);
-  if (!root) return null;
-  return (asObject(root.order) ?? root) as UberOrderFulfillmentV1;
+  const order = asObject(root?.order);
+  return order ? (order as UberOrderFulfillmentV1) : null;
 }
 
 function buildPriceIndex(values: UberOrderPriceBreakdownV1[]): PriceIndex {

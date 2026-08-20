@@ -341,8 +341,12 @@ describe('Uber gateways wire contract v1', () => {
   });
 
   it.each([
-    ['mapping', 'MISSING_ORDER_ID', { carts: [] }],
-    ['business', 'EMPTY_ITEMS', { id: 'order-1', carts: [] }],
+    ['mapping', 'MISSING_ORDER_ID', { order: { carts: [] } }],
+    [
+      'business',
+      'EMPTY_ITEMS',
+      { order: { id: 'order-1', carts: [] } },
+    ],
   ] as const)(
     'classifies a successful but invalid order detail as %s/%s without auditing its payload',
     async (category, reason, data) => {

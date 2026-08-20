@@ -1,14 +1,40 @@
-import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.parser';
+import type { ParsedUberOrder } from '../../domain/orders/uber-order.types';
 import { UberOrderAdmissionService } from './uber-order-admission.service';
 
-const parsedOrder = () =>
-  new UberOrderPayloadParser().parse({
-    id: 'order-1',
-    store_id: 'uber-store-1',
-    subtotal: 100,
-    total: 100,
-    items: [{ id: 'item-1', quantity: 1, price: 100, total_price: 100 }],
-  })!;
+const parsedOrder = (): ParsedUberOrder => ({
+  externalOrderId: 'order-1',
+  displayId: 'A0001',
+  pickupCode: 'A0001',
+  uberStoreId: 'uber-store-1',
+  subtotalCents: 100,
+  taxCents: 0,
+  totalCents: 100,
+  discountCents: 0,
+  hasPromotion: false,
+  deliveryFeeCents: 0,
+  fulfillmentType: 'pickup',
+  fulfillmentTiming: 'IMMEDIATE',
+  scheduledReadyAt: null,
+  estimatedReadyAt: null,
+  specialInstructions: null,
+  items: [
+    {
+      externalLineId: 'line-1',
+      externalItemId: 'item-1',
+      stableIdHint: null,
+      displayName: 'Fixture item',
+      quantity: 1,
+      baseUnitPriceCents: 100,
+      optionsUnitPriceCents: 0,
+      unitPriceCents: 100,
+      lineTotalCents: 100,
+      specialInstructions: null,
+      modifiers: [],
+    },
+  ],
+  paidAt: new Date('2026-08-20T13:00:00.000Z'),
+  cancellation: null,
+});
 
 const provisionedStore = {
   uberStoreId: 'uber-store-1',

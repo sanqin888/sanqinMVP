@@ -1,56 +1,58 @@
 {
-  "id": "fixture-order-immediate",
-  "display_id": "A1001",
-  "state": "OFFERED",
-  "status": "ACTIVE",
-  "ordering_platform": "UBER_EATS",
-  "fulfillment_type": "DELIVERY_BY_UBER",
-  "created_time": "2026-08-20T13:00:00.000Z",
-  "store": { "id": "fixture-store-001", "name": "Fixture Store" },
-  "customers": [
-    { "id": "fixture-customer-001", "name": { "display_name": "Fixture C" } }
-  ],
-  "carts": [
-    {
-      "id": "fixture-cart-001",
-      "items": [
-        {
-          "id": "sanq:item-1",
-          "cart_item_id": "cart-line-1",
-          "title": "Fixture Item",
-          "external_data": "menu-item-1",
-          "quantity": { "amount": 1, "unit": "PIECE" },
-          "selected_modifier_groups": []
-        }
-      ]
-    }
-  ],
-  "payment": {
-    "payment_detail": {
-      "order_total": {
-        "net": { "amount_e5": 1000000, "currency_code": "CAD" },
-        "tax": { "amount_e5": 130000, "currency_code": "CAD" },
-        "gross": { "amount_e5": 1130000, "currency_code": "CAD" },
-        "is_tax_inclusive": false
-      },
-      "item_charges": {
-        "total": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } },
-        "subtotal_including_promos": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } },
-        "price_breakdown": [
+  "order": {
+    "id": "fixture-order-immediate",
+    "display_id": "A1001",
+    "state": "OFFERED",
+    "status": "ACTIVE",
+    "ordering_platform": "UBER_EATS",
+    "fulfillment_type": "DELIVERY_BY_UBER",
+    "created_time": "2026-08-20T13:00:00.000Z",
+    "store": { "id": "fixture-store-001", "name": "Fixture Store" },
+    "customers": [
+      { "id": "fixture-customer-001", "name": { "display_name": "Fixture C" } }
+    ],
+    "carts": [
+      {
+        "id": "fixture-cart-001",
+        "items": [
           {
+            "id": "sanq:item-1",
             "cart_item_id": "cart-line-1",
-            "price_type": "ITEM",
+            "title": "Fixture Item",
+            "external_data": "menu-item-1",
             "quantity": { "amount": 1, "unit": "PIECE" },
-            "unit": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } },
-            "total": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } }
+            "selected_modifier_groups": []
           }
         ]
-      },
-      "fees": { "total": { "net": { "amount_e5": 0, "currency_code": "CAD" } } }
+      }
+    ],
+    "payment": {
+      "payment_detail": {
+        "order_total": {
+          "net": { "amount_e5": 1000000, "currency_code": "CAD" },
+          "tax": { "amount_e5": 130000, "currency_code": "CAD" },
+          "gross": { "amount_e5": 1130000, "currency_code": "CAD" },
+          "is_tax_inclusive": false
+        },
+        "item_charges": {
+          "total": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } },
+          "subtotal_including_promos": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } },
+          "price_breakdown": [
+            {
+              "cart_item_id": "cart-line-1",
+              "price_type": "ITEM",
+              "quantity": { "amount": 1, "unit": "PIECE" },
+              "unit": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } },
+              "total": { "net": { "amount_e5": 1000000, "currency_code": "CAD" } }
+            }
+          ]
+        },
+        "fees": { "total": { "net": { "amount_e5": 0, "currency_code": "CAD" } } }
+      }
+    },
+    "preparation_time": {
+      "source": "MERCHANT",
+      "ready_for_pickup_time": "2026-08-20T13:10:00.000Z"
     }
-  },
-  "preparation_time": {
-    "source": "MERCHANT",
-    "ready_for_pickup_time": "2026-08-20T13:10:00.000Z"
   }
 }

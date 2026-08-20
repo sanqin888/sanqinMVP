@@ -16,6 +16,9 @@ type ImportedOrderInput = Parameters<
 type EnqueueMock = jest.MockedFunction<
   UberOrderActionRepositoryPort['enqueue']
 >;
+type SaveExistingOrderCancellationMock = jest.MockedFunction<
+  UberOrderImportRepositoryPort['saveExistingOrderCancellation']
+>;
 
 const fixture: unknown = JSON.parse(
   readFileSync(
@@ -126,9 +129,8 @@ describe('Uber order admission flow', () => {
 
   it('processes orders.failure directly against the existing order', async () => {
     const enqueue: EnqueueMock = jest.fn();
-    const saveExistingOrderCancellation = jest
-      .fn()
-      .mockResolvedValue(undefined);
+    const saveExistingOrderCancellation: SaveExistingOrderCancellationMock =
+      jest.fn().mockResolvedValue(undefined);
     const fetchOrderDetail = jest.fn();
     const useCase = new ImportUberOrderUseCase(
       {
@@ -151,12 +153,12 @@ describe('Uber order admission flow', () => {
 
     expect(fetchOrderDetail).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
-    expect(saveExistingOrderCancellation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: 'local-1',
-        externalOrderId: 'fixture-order-immediate',
-        cancellation: expect.objectContaining({ kind: 'CANCELLED' }),
-      }),
-    );
+    expect(saveExistingOrderCancellation).toHaveBeenCalledTimes(1);
+    const savedCancellation = saveExistingOrderCancellation.mock.calls[0]?.[0];
+    expect(savedCancellation).toMatchObject({
+      orderId: 'local-1',
+      externalOrderId: 'fixture-order-immediate',
+      cancellation: { kind: 'CANCELLED' },
+    });
   });
 });
