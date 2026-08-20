@@ -138,6 +138,13 @@ export type UberOrderDetailDto = {
   type?: string;
   estimated_ready_for_pickup_at?: string;
   estimated_delivery_at?: string;
+  /** Order Fulfillment API v1 source of truth for when food is ready for pickup. */
+  preparation_time?: {
+    ready_for_pickup_time_secs?: number;
+    source?: string;
+    ready_for_pickup_time?: string;
+  };
+  /** Legacy compatibility field; v1 uses preparation_time.ready_for_pickup_time. */
   scheduled_ready_for_pickup_at?: string;
   scheduled_order_target_delivery_time_range?: {
     start_time?: string;
