@@ -51,7 +51,6 @@ function densityClasses(density: Density) {
       return {
         card: "px-5 py-4",
         name: "text-2xl",
-        secondary: "mt-1 text-base",
         modifier: "mt-2 text-sm",
         price: "mt-3 text-lg",
       };
@@ -59,7 +58,6 @@ function densityClasses(density: Density) {
       return {
         card: "px-4 py-3",
         name: "text-xl",
-        secondary: "mt-0.5 text-sm",
         modifier: "mt-1.5 text-xs",
         price: "mt-2 text-base",
       };
@@ -67,7 +65,6 @@ function densityClasses(density: Density) {
       return {
         card: "px-4 py-3",
         name: "text-lg",
-        secondary: "mt-0.5 text-xs",
         modifier: "mt-1 text-xs",
         price: "mt-2 text-base",
       };
@@ -75,7 +72,6 @@ function densityClasses(density: Density) {
       return {
         card: "px-3 py-2.5",
         name: "text-base",
-        secondary: "hidden",
         modifier: "mt-1 text-[11px]",
         price: "mt-1.5 text-sm",
       };
@@ -83,27 +79,63 @@ function densityClasses(density: Density) {
       return {
         card: "px-2.5 py-2",
         name: "text-sm",
-        secondary: "hidden",
         modifier: "mt-1 text-[10px]",
         price: "mt-1 text-xs",
       };
   }
 }
 
-function itemPrimaryName(item: PosDisplayItem, locale: Locale): string {
-  return locale === "zh" ? item.nameZh || item.nameEn : item.nameEn || item.nameZh;
+function BilingualText({
+  zh,
+  en,
+  locale,
+}: {
+  zh: string;
+  en: string;
+  locale: Locale;
+}) {
+  const zhText = <span className="text-amber-200">{zh}</span>;
+  const enText = <span className="text-cyan-200">{en}</span>;
+  const separator = <span className="mx-1.5 text-slate-500">/</span>;
+
+  return locale === "zh" ? (
+    <>
+      {zhText}
+      {separator}
+      {enText}
+    </>
+  ) : (
+    <>
+      {enText}
+      {separator}
+      {zhText}
+    </>
+  );
 }
 
-function itemSecondaryName(item: PosDisplayItem, locale: Locale): string {
-  return locale === "zh" ? item.nameEn : item.nameZh;
+function ItemBilingualName({
+  item,
+  locale,
+}: {
+  item: PosDisplayItem;
+  locale: Locale;
+}) {
+  const zh = item.nameZh || item.nameEn;
+  const en = item.nameEn || item.nameZh;
+
+  if (!zh || !en || zh === en) {
+    return <span className="text-slate-50">{zh || en}</span>;
+  }
+
+  return <BilingualText zh={zh} en={en} locale={locale} />;
 }
 
 function optionPrimaryLabel(
   option: NonNullable<PosDisplayItem["optionLines"]>[number],
   locale: Locale,
 ): string {
-  if (locale === "zh") return option.labelZh ?? option.label;
-  return option.labelEn ?? option.label;
+  if (locale === "zh") return option.labelZh || option.labelEn || option.label;
+  return option.labelEn || option.labelZh || option.label;
 }
 
 function optionSecondaryLabel(
@@ -113,6 +145,36 @@ function optionSecondaryLabel(
   const value = locale === "zh" ? option.labelEn : option.labelZh;
   const primary = optionPrimaryLabel(option, locale);
   return value && value !== primary ? value : null;
+}
+
+function OptionBilingualLabel({
+  option,
+  locale,
+}: {
+  option: NonNullable<PosDisplayItem["optionLines"]>[number];
+  locale: Locale;
+}) {
+  const primary = optionPrimaryLabel(option, locale);
+  const secondary = optionSecondaryLabel(option, locale);
+  const primaryIsZh = locale === "zh";
+
+  if (!secondary) {
+    return <span className={primaryIsZh ? "text-amber-200" : "text-cyan-200"}>{primary}</span>;
+  }
+
+  return primaryIsZh ? (
+    <>
+      <span className="text-amber-200">{primary}</span>
+      <span className="mx-1 text-slate-500">/</span>
+      <span className="text-cyan-200">{secondary}</span>
+    </>
+  ) : (
+    <>
+      <span className="text-cyan-200">{primary}</span>
+      <span className="mx-1 text-slate-500">/</span>
+      <span className="text-amber-200">{secondary}</span>
+    </>
+  );
 }
 
 export default function StoreDisplayPage() {
@@ -191,7 +253,6 @@ export default function StoreDisplayPage() {
   const columns = columnsForDensity(density);
   const rows = Math.max(1, Math.ceil(items.length / columns));
   const classes = densityClasses(density);
-  const showBilingualModifiers = density === "relaxed" || density === "two";
 
   const itemsSubtotalCents = useMemo(
     () => items.reduce((sum, item) => sum + (item.lineTotalCents ?? 0), 0),
@@ -213,23 +274,40 @@ export default function StoreDisplayPage() {
           <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
             <div className="flex flex-col leading-tight">
               <div className="text-xl font-semibold tracking-wide">
-                三秦肉夹馍 / SanQ Roujiamo
+                <BilingualText zh="三秦肉夹馍" en="SanQ Roujiamo" locale={locale} />
               </div>
-              <div className="mt-0.5 text-xs text-slate-400">
-                顾客确认屏 / Customer Display
+              <div className="mt-0.5 text-xs font-medium">
+                <BilingualText zh="顾客确认屏" en="Customer Display" locale={locale} />
               </div>
             </div>
-            <div className="text-sm text-slate-400">
-              实时同步 POS / Live from POS
+            <div className="text-sm font-medium">
+              <BilingualText zh="实时同步 POS" en="Live from POS" locale={locale} />
             </div>
           </header>
           <div className="flex flex-1 flex-col items-center justify-center px-12 text-center">
-            <h1 className="text-5xl font-bold">欢迎光临 / Welcome</h1>
-            <div className="mt-4 max-w-4xl text-2xl leading-relaxed text-slate-300">
-              <p>点餐过程中，菜品、选项、数量和金额会实时显示在这里，请您核对。</p>
-              <p className="mt-2 text-xl text-slate-400">
-                Your items, options, quantities, and totals will appear here in real time while we take your order. Please review them carefully.
-              </p>
+            <h1 className="text-5xl font-bold">
+              <BilingualText zh="欢迎光临" en="Welcome" locale={locale} />
+            </h1>
+            <div className="mt-4 max-w-4xl text-2xl font-medium leading-relaxed">
+              {isZh ? (
+                <>
+                  <p className="text-amber-200">
+                    点餐过程中，菜品、选项、数量和金额会实时显示在这里，请您核对。
+                  </p>
+                  <p className="mt-2 text-cyan-200">
+                    Your items, options, quantities, and totals will appear here in real time while we take your order. Please review them carefully.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-cyan-200">
+                    Your items, options, quantities, and totals will appear here in real time while we take your order. Please review them carefully.
+                  </p>
+                  <p className="mt-2 text-amber-200">
+                    点餐过程中，菜品、选项、数量和金额会实时显示在这里，请您核对。
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -241,16 +319,15 @@ export default function StoreDisplayPage() {
     <main className="h-dvh w-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="grid h-full grid-rows-[56px_minmax(0,1fr)]">
         <header className="flex items-center justify-between border-b border-slate-800 px-5">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-xl font-semibold">
-              {isZh ? "请确认您的订单" : "Please review your order"}
-            </h1>
-            <span className="text-sm text-slate-400">
-              {isZh ? "Please review your order" : "请确认您的订单"}
-            </span>
-          </div>
-          <div className="text-xs text-slate-500">
-            {isZh ? "菜品 · 选项 · 数量 · 金额" : "Items · Modifiers · Qty · Total"}
+          <h1 className="text-lg font-semibold">
+            <BilingualText zh="请确认您的订单" en="Please review your order" locale={locale} />
+          </h1>
+          <div className="text-xs font-medium">
+            <BilingualText
+              zh="菜品 · 选项 · 数量 · 金额"
+              en="Items · Options · Qty · Total"
+              locale={locale}
+            />
           </div>
         </header>
 
@@ -264,7 +341,6 @@ export default function StoreDisplayPage() {
               }}
             >
               {items.map((item) => {
-                const secondaryName = itemSecondaryName(item, locale);
                 const optionLines = item.optionLines ?? [];
                 return (
                   <article
@@ -273,34 +349,23 @@ export default function StoreDisplayPage() {
                   >
                     <div className="min-h-0">
                       <div className={`${classes.name} font-semibold leading-tight`}>
-                        {itemPrimaryName(item, locale)}
+                        <ItemBilingualName item={item} locale={locale} />
                       </div>
-                      {secondaryName ? (
-                        <div className={`${classes.secondary} leading-tight text-slate-400`}>
-                          {secondaryName}
-                        </div>
-                      ) : null}
 
                       {optionLines.length > 0 ? (
-                        <div className={`${classes.modifier} flex flex-wrap gap-x-1.5 gap-y-0.5 leading-tight text-amber-200`}>
-                          {optionLines.map((option, index) => {
-                            const secondary = optionSecondaryLabel(option, locale);
-                            return (
-                              <span key={`${item.lineId ?? item.stableId}-option-${index}`}>
-                                {index > 0 ? <span className="mr-1.5 text-slate-600">·</span> : null}
-                                {optionPrimaryLabel(option, locale)}
-                                {showBilingualModifiers && secondary ? (
-                                  <span className="ml-1 text-slate-500">{secondary}</span>
-                                ) : null}
-                                {option.priceCents !== 0 ? (
-                                  <span className="ml-1 text-slate-300">
-                                    {option.priceCents > 0 ? "+" : "-"}
-                                    {formatMoney(Math.abs(option.priceCents))}
-                                  </span>
-                                ) : null}
-                              </span>
-                            );
-                          })}
+                        <div className={`${classes.modifier} flex flex-wrap gap-x-1.5 gap-y-0.5 font-medium leading-tight`}>
+                          {optionLines.map((option, index) => (
+                            <span key={`${item.lineId ?? item.stableId}-option-${index}`}>
+                              {index > 0 ? <span className="mr-1.5 text-slate-600">·</span> : null}
+                              <OptionBilingualLabel option={option} locale={locale} />
+                              {option.priceCents !== 0 ? (
+                                <span className="ml-1 text-slate-300">
+                                  {option.priceCents > 0 ? "+" : "-"}
+                                  {formatMoney(Math.abs(option.priceCents))}
+                                </span>
+                              ) : null}
+                            </span>
+                          ))}
                         </div>
                       ) : null}
                     </div>
@@ -322,36 +387,44 @@ export default function StoreDisplayPage() {
           </section>
 
           <aside className="flex min-h-0 flex-col rounded-2xl border border-slate-800 bg-slate-900 px-5 py-5">
-            <div className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
-              {isZh ? "本单金额" : "Order total"}
+            <div className="text-sm font-semibold uppercase tracking-[0.16em]">
+              <BilingualText zh="本单金额" en="Order total" locale={locale} />
             </div>
 
             <div className="mt-6 space-y-3 text-lg tabular-nums">
               <div className="flex justify-between gap-4">
-                <span className="text-slate-300">{isZh ? "小计 Subtotal" : "Subtotal 小计"}</span>
+                <span className="font-medium">
+                  <BilingualText zh="小计" en="Subtotal" locale={locale} />
+                </span>
                 <span>{formatMoney(itemsSubtotalCents)}</span>
               </div>
               {discountCents > 0 ? (
-                <div className="flex justify-between gap-4 text-emerald-300">
-                  <span>{isZh ? "优惠 Discount" : "Discount 优惠"}</span>
-                  <span>-{formatMoney(discountCents)}</span>
+                <div className="flex justify-between gap-4">
+                  <span className="font-medium">
+                    <BilingualText zh="优惠" en="Discount" locale={locale} />
+                  </span>
+                  <span className="text-emerald-300">-{formatMoney(discountCents)}</span>
                 </div>
               ) : null}
               {otherCreditsCents > 0 ? (
-                <div className="flex justify-between gap-4 text-sky-300">
-                  <span>{isZh ? "其他抵扣 Credits" : "Credits 其他抵扣"}</span>
-                  <span>-{formatMoney(otherCreditsCents)}</span>
+                <div className="flex justify-between gap-4">
+                  <span className="font-medium">
+                    <BilingualText zh="其他抵扣" en="Credits" locale={locale} />
+                  </span>
+                  <span className="text-sky-300">-{formatMoney(otherCreditsCents)}</span>
                 </div>
               ) : null}
               <div className="flex justify-between gap-4">
-                <span className="text-slate-300">{isZh ? "税费 Tax" : "Tax 税费"}</span>
+                <span className="font-medium">
+                  <BilingualText zh="税费" en="Tax" locale={locale} />
+                </span>
                 <span>{formatMoney(taxCents)}</span>
               </div>
             </div>
 
             <div className="mt-6 border-t border-slate-700 pt-5">
-              <div className="text-base font-semibold text-slate-300">
-                {isZh ? "合计 TOTAL" : "TOTAL 合计"}
+              <div className="text-base font-semibold">
+                <BilingualText zh="合计" en="TOTAL" locale={locale} />
               </div>
               <div className="mt-1 text-right text-5xl font-extrabold tracking-tight tabular-nums text-amber-300">
                 {formatMoney(totalCents)}
@@ -359,23 +432,29 @@ export default function StoreDisplayPage() {
             </div>
 
             {loyalty ? (
-              <div className="mt-auto rounded-xl border border-emerald-900/70 bg-emerald-950/30 px-3 py-3 text-sm text-emerald-200">
+              <div className="mt-auto rounded-xl border border-emerald-900/70 bg-emerald-950/30 px-3 py-3 text-sm">
                 {typeof loyalty.pointsRedeemed === "number" && loyalty.pointsRedeemed > 0 ? (
                   <div className="flex justify-between gap-3">
-                    <span>{isZh ? "使用积分" : "Points used"}</span>
-                    <span className="font-semibold tabular-nums">{loyalty.pointsRedeemed.toFixed(2)}</span>
+                    <span className="font-medium">
+                      <BilingualText zh="使用积分" en="Points used" locale={locale} />
+                    </span>
+                    <span className="font-semibold tabular-nums text-emerald-200">{loyalty.pointsRedeemed.toFixed(2)}</span>
                   </div>
                 ) : null}
                 {typeof loyalty.pointsEarned === "number" && loyalty.pointsEarned > 0 ? (
                   <div className="mt-1 flex justify-between gap-3">
-                    <span>{isZh ? "本单新增积分" : "Points earned"}</span>
-                    <span className="font-semibold tabular-nums">+{loyalty.pointsEarned.toFixed(2)}</span>
+                    <span className="font-medium">
+                      <BilingualText zh="本单新增积分" en="Points earned" locale={locale} />
+                    </span>
+                    <span className="font-semibold tabular-nums text-emerald-200">+{loyalty.pointsEarned.toFixed(2)}</span>
                   </div>
                 ) : null}
                 {typeof loyalty.pointsBalanceAfter === "number" ? (
-                  <div className="mt-1 flex justify-between gap-3 text-slate-300">
-                    <span>{isZh ? "结算后积分" : "Balance after"}</span>
-                    <span className="tabular-nums">{loyalty.pointsBalanceAfter.toFixed(2)}</span>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span className="font-medium">
+                      <BilingualText zh="结算后积分" en="Balance after" locale={locale} />
+                    </span>
+                    <span className="tabular-nums text-slate-300">{loyalty.pointsBalanceAfter.toFixed(2)}</span>
                   </div>
                 ) : null}
               </div>
