@@ -211,20 +211,26 @@ export default function StoreDisplayPage() {
       <main className="h-dvh w-screen overflow-hidden bg-slate-950 text-slate-50">
         <div className="flex h-full flex-col">
           <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
-            <div className="text-xl font-semibold tracking-wide">
-              SanQ · {isZh ? "顾客确认屏" : "Customer Display"}
+            <div className="flex flex-col leading-tight">
+              <div className="text-xl font-semibold tracking-wide">
+                三秦肉夹馍 / SanQ Roujiamo
+              </div>
+              <div className="mt-0.5 text-xs text-slate-400">
+                顾客确认屏 / Customer Display
+              </div>
             </div>
             <div className="text-sm text-slate-400">
-              {isZh ? "实时同步 POS" : "Live from POS"}
+              实时同步 POS / Live from POS
             </div>
           </header>
           <div className="flex flex-1 flex-col items-center justify-center px-12 text-center">
-            <h1 className="text-5xl font-bold">{isZh ? "欢迎光临" : "Welcome"}</h1>
-            <p className="mt-4 max-w-4xl text-2xl leading-relaxed text-slate-300">
-              {isZh
-                ? "点餐过程中，菜品、选项、数量和金额会实时显示在这里，请您核对。"
-                : "Your items, modifiers, quantities and totals will appear here while the cashier builds your order."}
-            </p>
+            <h1 className="text-5xl font-bold">欢迎光临 / Welcome</h1>
+            <div className="mt-4 max-w-4xl text-2xl leading-relaxed text-slate-300">
+              <p>点餐过程中，菜品、选项、数量和金额会实时显示在这里，请您核对。</p>
+              <p className="mt-2 text-xl text-slate-400">
+                Your items, options, quantities, and totals will appear here in real time while we take your order. Please review them carefully.
+              </p>
+            </div>
           </div>
         </div>
       </main>
