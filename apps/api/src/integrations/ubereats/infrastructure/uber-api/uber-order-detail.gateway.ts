@@ -81,7 +81,9 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
 }
 
 /** Order Fulfillment API v1 uses eats.order; legacy v2 detail reads use store read scope. */
-export function orderReadScope(path: string): 'eats.order' | 'eats.store.orders.read' {
+export function orderReadScope(
+  path: string,
+): 'eats.order' | 'eats.store.orders.read' {
   return path.startsWith('/v1/delivery/order/')
     ? 'eats.order'
     : 'eats.store.orders.read';
