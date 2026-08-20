@@ -149,7 +149,9 @@ export class PosOrdersController {
     const scheduledIds = new Set(
       upcomingScheduledOrders.map((order) => order.orderStableId),
     );
-    return boardOrders.filter((order) => !scheduledIds.has(order.orderStableId));
+    return boardOrders.filter(
+      (order) => !scheduledIds.has(order.orderStableId),
+    );
   }
 
   @Get(':orderStableId')
