@@ -30,6 +30,7 @@ export class RequestIdInterceptor implements NestInterceptor {
     '/api/v1/membership/coupons',
     '/api/v1/orders/prep-time',
   ];
+  private readonly scheduledOrdersPollingPath = '/api/v1/orders/scheduled';
   private readonly analyticsEventsPath = '/api/v1/analytics/events';
   private readonly cloverOnlineQuotePath = '/api/v1/clover/pay/online/quote';
   private readonly orderPrintStatusPath =
@@ -76,19 +77,32 @@ export class RequestIdInterceptor implements NestInterceptor {
     const shouldSkipInfoLog = this.quietPaths.some((path) =>
       requestPathWithoutQuery.startsWith(path),
     );
+    const isScheduledOrdersPoll =
+      method === 'GET' &&
+      requestPathWithoutQuery === this.scheduledOrdersPollingPath;
 
     // 3) runWithLogContext：把 requestId 写入 AsyncLocalStorage
     return runWithLogContext({ requestId }, () =>
       next.handle().pipe(
         tap({
           next: (responseBody: unknown) => {
-            if (shouldSkipInfoLog) {
-              return;
-            }
-
             const ms = Date.now() - start;
             const status = response?.statusCode;
             const logMessage = `[reqId=${requestId}] ${method} ${safeUrl} - ${status} (${ms}ms)`;
+
+            // POS scheduled-order rail polls this endpoint every 15 seconds.
+            // Keep healthy 200 responses silent while surfacing abnormal statuses.
+            if (isScheduledOrdersPoll) {
+              if (status === 200) {
+                return;
+              }
+              this.logger.warn(logMessage);
+              return;
+            }
+
+            if (shouldSkipInfoLog) {
+              return;
+            }
 
             if (
               method === 'GET' &&

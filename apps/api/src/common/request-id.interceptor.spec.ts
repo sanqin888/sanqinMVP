@@ -74,6 +74,36 @@ describe('RequestIdInterceptor', () => {
     expect(loggerLogSpy).not.toHaveBeenCalled();
   });
 
+  it('suppresses healthy scheduled-order polling logs', () => {
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const loggerWarnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
+
+    expect(loggerLogSpy).not.toHaveBeenCalled();
+    expect(loggerWarnSpy).not.toHaveBeenCalled();
+  });
+
+  it('warns when scheduled-order polling returns an abnormal status', () => {
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const loggerWarnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    runIntercept('GET', '/api/v1/orders/scheduled', 503, { ok: false });
+
+    expect(loggerWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('GET /api/v1/orders/scheduled - 503'),
+    );
+    expect(loggerLogSpy).not.toHaveBeenCalled();
+  });
+
   it('suppresses clover quote logs when request duration is at most 200ms', () => {
     const loggerLogSpy = jest
       .spyOn(Logger.prototype, 'log')
