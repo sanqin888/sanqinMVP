@@ -66,6 +66,7 @@ describe('UberOrderDetailGatewayAdapter diagnostics', () => {
         orderIdShape: 'string',
         cartsShape: 'array(1)',
         customersShape: 'missing',
+        deliveriesShape: 'missing',
         paymentShape: 'object',
         paymentDetailShape: 'missing',
         orderTotalShape: 'missing',
