@@ -41,11 +41,13 @@ function formatClock(value: string, locale: Locale): string {
 
 function formatCountdown(target: string, nowMs: number, locale: Locale): string {
   const targetMs = new Date(target).getTime();
-  if (!Number.isFinite(targetMs)) return locale === "zh" ? "时间待确认" : "Time pending";
+  if (!Number.isFinite(targetMs))
+    return locale === "zh" ? "时间待确认" : "Time pending";
 
   const minutes = Math.ceil((targetMs - nowMs) / 60_000);
   if (minutes <= 0) return locale === "zh" ? "现在制作" : "Start now";
-  if (minutes < 60) return locale === "zh" ? `${minutes} 分钟后` : `in ${minutes} min`;
+  if (minutes < 60)
+    return locale === "zh" ? `${minutes} 分钟后` : `in ${minutes} min`;
 
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -59,13 +61,17 @@ function emptyStateCopy(status: ScheduledOrdersRailStatus, isZh: boolean) {
   if (status === "loading") {
     return {
       title: isZh ? "正在加载预约订单" : "Loading scheduled orders",
-      detail: isZh ? "正在读取当前门店的未来制作队列。" : "Reading this store's upcoming production queue.",
+      detail: isZh
+        ? "正在读取当前门店的未来制作队列。"
+        : "Reading this store's upcoming production queue.",
     };
   }
   if (status === "error") {
     return {
       title: isZh ? "预约队列暂不可用" : "Scheduled queue unavailable",
-      detail: isZh ? "系统会自动重试，请勿将此状态视为暂无预约单。" : "The system will retry automatically; this does not mean the queue is empty.",
+      detail: isZh
+        ? "系统会自动重试，请勿将此状态视为暂无预约单。"
+        : "The system will retry automatically; this does not mean the queue is empty.",
     };
   }
   return {
@@ -132,6 +138,15 @@ export function ScheduledOrdersRail({
                 key={order.orderStableId}
                 className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 shadow-sm"
               >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="rounded-full border border-amber-400/60 bg-amber-400/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
+                    {isZh ? "预约单" : "Scheduled"}
+                  </span>
+                  <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300">
+                    {channelLabel(order.channel)}
+                  </span>
+                </div>
+
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="text-[11px] text-slate-400">
@@ -141,9 +156,6 @@ export function ScheduledOrdersRail({
                       {formatClock(order.productionStartAt, locale)}
                     </div>
                   </div>
-                  <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-300">
-                    {channelLabel(order.channel)}
-                  </span>
                 </div>
 
                 <div className="mt-2 rounded-xl bg-slate-800/80 px-2.5 py-2">

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
+import { apiFetch } from "@/lib/api/client";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import {
   ScheduledOrdersRail,
@@ -13,7 +14,7 @@ import {
   type ScheduledOrdersRailStatus,
 } from "@/components/store/ScheduledOrdersRail";
 
-const SCHEDULED_ORDERS_REFRESH_MS = 15_000;
+const SCHEDULED_ORDERS_REFRESH_MS = 5_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -93,12 +94,7 @@ export function PosDeviceFrame({
 
     async function loadScheduledOrders() {
       try {
-        const response = await fetch("/api/v1/orders/scheduled", {
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (!response.ok) throw new Error("Scheduled orders request failed");
-        const payload = (await response.json()) as unknown;
+        const payload = await apiFetch<unknown>("/orders/scheduled");
         const orders = parseScheduledOrders(payload);
         if (cancelled) return;
         setScheduledOrders(orders);

@@ -1,17 +1,52 @@
 import { PosOrdersController } from './pos-orders.controller';
 
 describe('PosOrdersController Uber orders', () => {
-  const orders = { createFullRefund: jest.fn() };
+  const orders = {
+    board: jest.fn(),
+    createFullRefund: jest.fn(),
+  };
   const posOrders = { cancelUberOrder: jest.fn() };
+  const schedulingQuery = { listUpcomingForDeviceStore: jest.fn() };
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
     {} as never,
     {} as never,
     posOrders as never,
+    schedulingQuery as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
+
+  it('POS 普通看板排除尚未激活的预约单', async () => {
+    orders.board.mockResolvedValue([
+      { orderStableId: 'scheduled_1' },
+      { orderStableId: 'immediate_1' },
+    ]);
+    schedulingQuery.listUpcomingForDeviceStore.mockResolvedValue([
+      { orderStableId: 'scheduled_1' },
+    ]);
+
+    await expect(
+      controller.board(
+        { posDevice: { storeId: 'store-uuid-1' } } as never,
+        'pending,paid,making,ready',
+        undefined,
+        80,
+        180,
+      ),
+    ).resolves.toEqual([{ orderStableId: 'immediate_1' }]);
+
+    expect(schedulingQuery.listUpcomingForDeviceStore).toHaveBeenCalledWith(
+      'store-uuid-1',
+    );
+    expect(orders.board).toHaveBeenCalledWith({
+      statusIn: ['pending', 'paid', 'making', 'ready'],
+      channelIn: undefined,
+      limit: 80,
+      sinceMinutes: 180,
+    });
+  });
 
   it('POS 将店员主动取消提交到 Uber CANCEL 应用边界', async () => {
     posOrders.cancelUberOrder.mockResolvedValue({ actionId: 'action-1' });
