@@ -80,15 +80,52 @@ export class ImportUberOrderUseCase {
       return;
     }
 
-    // Uber may emit a later orders.notification for a scheduled order that SanQ
-    // already imported and ACCEPTed. The first scheduled notification owns the
-    // order admission and durable ACCEPT intent; this follow-up is only webhook
-    // acknowledgement. Re-importing it as an immediate order would erase the
-    // scheduled timing and could start/print the order early.
+    // A scheduled order is first offered through orders.scheduled.notification,
+    // then Uber can emit orders.notification again when the same order reaches
+    // its executable/finalization phase. Preserve the scheduled interpretation
+    // while refreshing the latest Uber detail, then reopen the durable ACCEPT
+    // command with a phase-specific idempotency key. Treating this notification
+    // as a brand-new immediate order would erase scheduled timing; ignoring it
+    // leaves Uber in a provisional, non-finalized state and READY will fail.
     if (
       normalizedEventType === 'orders.notification' &&
-      existing?.fulfillmentTiming === 'SCHEDULED'
+      existing?.fulfillmentTiming === 'SCHEDULED' &&
+      externalOrderId
     ) {
+      const detail = await this.detailGateway.fetchOrderDetail({
+        resourceHref: payload.resourceHref,
+        eventType: 'orders.scheduled.notification',
+        eventId,
+        resourceId: externalOrderId,
+      });
+      if (detail.kind === 'invalid') {
+        await this.persistStandaloneDecision(
+          externalOrderId,
+          this.admission.invalidDetail(detail.reason),
+        );
+        return;
+      }
+
+      const admission = await this.admission.evaluate(detail.order, eventId);
+      if (!admission.canPersistOrder || admission.decision.kind === 'DENY') {
+        await this.persistStandaloneDecision(
+          externalOrderId,
+          admission.decision,
+        );
+        return;
+      }
+
+      await this.repository.saveImportedOrder({
+        order: detail.order,
+        posStoreId: admission.posStoreId,
+        eventType: normalizedEventType,
+        cursor,
+        menuMappings: admission.menuMappings,
+        cancellation: null,
+        actionIntent: null,
+        receivedAt: new Date(),
+      });
+      await this.actions.requestScheduledFinalizeAccept(externalOrderId);
       return;
     }
 
