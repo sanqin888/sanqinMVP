@@ -19,26 +19,41 @@ export function resolveStoreNow(timezone: string): DateTime {
   return now.isValid ? now : DateTime.now().toUTC();
 }
 
+function resolveStoreCalendarDate(value: Date, zoneName: string): DateTime {
+  return DateTime.fromObject(
+    {
+      year: value.getUTCFullYear(),
+      month: value.getUTCMonth() + 1,
+      day: value.getUTCDate(),
+    },
+    { zone: zoneName },
+  );
+}
+
 export function isDailySpecialActiveNow(
   special: DailySpecialLike,
   now: DateTime,
 ): boolean {
   if (special.isEnabled === false) return false;
 
-  // 显式收敛为 string，避免 eslint 把 now.zoneName 判成 error typed 后传参触发 no-unsafe-argument
+  // Explicitly narrow zoneName so eslint never treats the external Luxon type as error-typed.
   const zoneName =
     typeof (now as unknown as { zoneName?: unknown }).zoneName === 'string'
       ? (now as unknown as { zoneName: string }).zoneName
       : 'UTC';
 
+  // startDate/endDate are business calendar dates, not instants. Prisma stores a
+  // date input as a Date, so rebuild the UTC calendar components in the store
+  // timezone to avoid Toronto dates shifting to the previous evening.
   const startDate = special.startDate
-    ? DateTime.fromJSDate(special.startDate).setZone(zoneName)
+    ? resolveStoreCalendarDate(special.startDate, zoneName).startOf('day')
     : null;
   const endDate = special.endDate
-    ? DateTime.fromJSDate(special.endDate).setZone(zoneName)
+    ? resolveStoreCalendarDate(special.endDate, zoneName).endOf('day')
     : null;
   if (startDate && now < startDate) return false;
   if (endDate && now > endDate) return false;
+
   const minutes = now.hour * 60 + now.minute;
   const startMinutes =
     typeof special.startMinutes === 'number' ? special.startMinutes : null;

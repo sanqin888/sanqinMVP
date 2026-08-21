@@ -6,14 +6,24 @@ import {
   ensureProgramItemsExist,
   getExpiresInDays,
   parseProgramItems,
-  validateUseRule,
 } from './coupon-program.utils';
+import {
+  couponRuleDiscountCents,
+  couponRuleDiscountPercent,
+  couponRuleItemStableIds,
+  couponRuleMinSpendCents,
+  parseCouponUseRule,
+} from './coupon-use-rule';
 
 @Injectable()
 export class CouponProgramIssuerService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async issueProgramToUser(program: CouponProgram, user: User) {
+  async issueProgramToUser(
+    program: CouponProgram,
+    user: User,
+    options?: { tx?: Prisma.TransactionClient },
+  ) {
     const items = parseProgramItems(program.items);
     await ensureProgramItemsExist(this.prisma, items);
 
@@ -35,28 +45,10 @@ export class CouponProgramIssuerService {
       if (!template) {
         throw new BadRequestException('Template not found for program item');
       }
-      const useRule = validateUseRule(template.useRule);
-      const rule = useRule as {
-        type: 'FIXED_CENTS' | 'PERCENT';
-        applyTo: 'ORDER' | 'ITEM';
-        amountCents?: number;
-        percentOff?: number;
-        constraints?: { minSubtotalCents?: number };
-        itemStableIds?: string[];
-      };
 
-      if (rule.type === 'PERCENT') {
-        throw new BadRequestException(
-          `Percent coupons are not supported for issuing: ${template.couponStableId}`,
-        );
-      }
-
-      const minSpendCents =
-        typeof rule.constraints?.minSubtotalCents === 'number'
-          ? rule.constraints.minSubtotalCents
-          : null;
-      const unlockedItemStableIds =
-        rule.applyTo === 'ITEM' ? (rule.itemStableIds ?? []) : [];
+      const rule = parseCouponUseRule(template.useRule);
+      const minSpendCents = couponRuleMinSpendCents(rule);
+      const unlockedItemStableIds = couponRuleItemStableIds(rule);
       const expiresInDays = getExpiresInDays(template.issueRule);
       const expiresAt = expiresInDays
         ? new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000)
@@ -75,7 +67,8 @@ export class CouponProgramIssuerService {
           userId: user.id,
           code: template.couponStableId,
           title: templateTitle,
-          discountCents: rule.amountCents ?? 0,
+          discountCents: couponRuleDiscountCents(rule),
+          discountPercent: couponRuleDiscountPercent(rule),
           minSpendCents,
           expiresAt,
           issuedAt: now,
@@ -92,6 +85,7 @@ export class CouponProgramIssuerService {
           userStableId: user.userStableId,
           couponStableId,
           status: 'AVAILABLE',
+          expiresAt,
           createdAt: now,
           updatedAt: now,
         });
@@ -102,14 +96,20 @@ export class CouponProgramIssuerService {
       throw new BadRequestException('No coupons to issue');
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    const persist = async (tx: Prisma.TransactionClient) => {
       await tx.coupon.createMany({ data: couponsToCreate });
       await tx.userCoupon.createMany({ data: userCouponsToCreate });
       await tx.couponProgram.update({
         where: { programStableId: program.programStableId },
         data: { issuedCount: { increment: couponsToCreate.length } },
       });
-    });
+    };
+
+    if (options?.tx) {
+      await persist(options.tx);
+    } else {
+      await this.prisma.$transaction(persist);
+    }
 
     return { issuedCount: couponsToCreate.length };
   }

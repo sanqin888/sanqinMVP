@@ -330,6 +330,7 @@ type CheckoutCoupon = {
   title: string;
   code: string;
   discountCents: number;
+  discountPercent?: number;
   minSpendCents?: number;
   expiresAt?: string;
   unlockedItemStableIds?: string[];
@@ -1169,16 +1170,51 @@ export default function CheckoutPage() {
     return 100; // 1 pt = $1.00
   }, [loyaltyInfo]);
 
+  const resolveCouponApplicableSubtotalCents = useCallback(
+    (coupon: CheckoutCoupon) => {
+      const restrictedStableIds = new Set(
+        (coupon.unlockedItemStableIds ?? [])
+          .map((id) => id.trim())
+          .filter(Boolean),
+      );
+      if (restrictedStableIds.size === 0) {
+        return couponEligibleSubtotalCents;
+      }
+      return cartItemsWithPricing.reduce((total, cartItem) => {
+        if (cartItem.disallowCoupons) return total;
+        return restrictedStableIds.has(cartItem.productStableId)
+          ? total + cartItem.lineTotalCents
+          : total;
+      }, 0);
+    },
+    [cartItemsWithPricing, couponEligibleSubtotalCents],
+  );
+
   const couponDiscountCents = useMemo(() => {
     if (!appliedCoupon) return 0;
+    const applicableSubtotalCents =
+      resolveCouponApplicableSubtotalCents(appliedCoupon);
     if (
       typeof appliedCoupon.minSpendCents === "number" &&
-      couponEligibleSubtotalCents < appliedCoupon.minSpendCents
+      applicableSubtotalCents < appliedCoupon.minSpendCents
     ) {
       return 0;
     }
-    return Math.min(appliedCoupon.discountCents, couponEligibleSubtotalCents);
-  }, [appliedCoupon, couponEligibleSubtotalCents]);
+    if (typeof appliedCoupon.discountPercent === "number") {
+      const percent = Math.max(
+        0,
+        Math.min(100, Math.round(appliedCoupon.discountPercent)),
+      );
+      return Math.min(
+        applicableSubtotalCents,
+        Math.round((applicableSubtotalCents * percent) / 100),
+      );
+    }
+    return Math.max(
+      0,
+      Math.min(appliedCoupon.discountCents, applicableSubtotalCents),
+    );
+  }, [appliedCoupon, resolveCouponApplicableSubtotalCents]);
 
   // 本单最多可抵扣多少金额（分）
   const maxRedeemableCentsForOrder = useMemo(() => {
@@ -2176,27 +2212,14 @@ export default function CheckoutPage() {
 
   const isCouponApplicable = useCallback(
     (coupon: CheckoutCoupon) => {
-      const restrictedStableIds = new Set(
-        (coupon.unlockedItemStableIds ?? [])
-          .map((id) => id.trim())
-          .filter(Boolean),
-      );
       const applicableSubtotalCents =
-        restrictedStableIds.size === 0
-          ? couponEligibleSubtotalCents
-          : cartItemsWithPricing.reduce((total, cartItem) => {
-              if (cartItem.disallowCoupons) return total;
-              return restrictedStableIds.has(cartItem.productStableId)
-                ? total + cartItem.lineTotalCents
-                : total;
-            }, 0);
-
+        resolveCouponApplicableSubtotalCents(coupon);
       return (
         applicableSubtotalCents > 0 &&
         applicableSubtotalCents >= (coupon.minSpendCents ?? 0)
       );
     },
-    [cartItemsWithPricing, couponEligibleSubtotalCents],
+    [resolveCouponApplicableSubtotalCents],
   );
 
   const applicableCoupons = useMemo(
@@ -3852,14 +3875,19 @@ export default function CheckoutPage() {
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
                           <span className="font-semibold text-amber-700">
-                            {locale === "zh" ? "立减 " : "Save "}
-                            {formatMoney(couponDiscountCents)}
+                            {typeof appliedCoupon.discountPercent === "number"
+                              ? `${appliedCoupon.discountPercent}% OFF · `
+                              : locale === "zh"
+                                ? "立减 "
+                                : "Save "}
+                            -{formatMoney(couponDiscountCents)}
                           </span>
                           {appliedCoupon.minSpendCents ? (
                             <span
                               className={
-                                couponEligibleSubtotalCents >=
-                                (appliedCoupon.minSpendCents ?? 0)
+                                resolveCouponApplicableSubtotalCents(
+                                  appliedCoupon,
+                                ) >= (appliedCoupon.minSpendCents ?? 0)
                                   ? "text-emerald-700"
                                   : "text-red-600"
                               }
@@ -3995,8 +4023,10 @@ export default function CheckoutPage() {
                                     </div>
                                     <div className="mt-1 flex items-center justify-between text-[11px] text-slate-600">
                                       <span className="font-semibold text-amber-700">
-                                        {locale === "zh" ? "立减 " : "Save "}
-                                        {formatMoney(coupon.discountCents)}
+                                        {typeof coupon.discountPercent ===
+                                        "number"
+                                          ? `${coupon.discountPercent}% OFF`
+                                          : `${locale === "zh" ? "立减 " : "Save "}${formatMoney(coupon.discountCents)}`}
                                       </span>
                                       {coupon.expiresAt ? (
                                         <span className="text-slate-500">
@@ -4052,8 +4082,10 @@ export default function CheckoutPage() {
                                     </div>
                                     <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
                                       <span className="font-semibold">
-                                        {locale === "zh" ? "立减 " : "Save "}
-                                        {formatMoney(coupon.discountCents)}
+                                        {typeof coupon.discountPercent ===
+                                        "number"
+                                          ? `${coupon.discountPercent}% OFF`
+                                          : `${locale === "zh" ? "立减 " : "Save "}${formatMoney(coupon.discountCents)}`}
                                       </span>
                                       {coupon.expiresAt ? (
                                         <span>{coupon.expiresAt}</span>
