@@ -53,7 +53,7 @@ export type UberOrderCartItemV1 = {
     amount?: number;
     unit?: string;
   };
-  customer_requests?: {
+  customer_request?: {
     special_instructions?: string;
   };
   selected_modifier_groups?: Array<{
