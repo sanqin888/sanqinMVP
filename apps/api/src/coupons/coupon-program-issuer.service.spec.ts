@@ -1,40 +1,59 @@
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
 
+type CreatedCoupon = {
+  discountCents: number;
+  discountPercent: number | null;
+  minSpendCents: number | null;
+};
+
 describe('CouponProgramIssuerService', () => {
   const templateStableId = 'cm123456789012345678901234';
 
   it('materializes percentage coupons without converting them to a fixed amount', async () => {
-    const createCouponMany = jest.fn().mockResolvedValue({ count: 1 });
+    let createdCoupons: CreatedCoupon[] = [];
     const tx = {
-      coupon: { createMany: createCouponMany },
-      userCoupon: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      couponProgram: { update: jest.fn().mockResolvedValue({}) },
+      coupon: {
+        createMany: (input: { data: CreatedCoupon[] }) => {
+          createdCoupons = input.data.map((coupon) => ({
+            discountCents: coupon.discountCents,
+            discountPercent: coupon.discountPercent,
+            minSpendCents: coupon.minSpendCents,
+          }));
+          return Promise.resolve({ count: input.data.length });
+        },
+      },
+      userCoupon: {
+        createMany: () => Promise.resolve({ count: 1 }),
+      },
+      couponProgram: {
+        update: () => Promise.resolve({}),
+      },
     };
     const prisma = {
       couponTemplate: {
-        count: jest.fn().mockResolvedValue(1),
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: 'template-id',
-            couponStableId: templateStableId,
-            tittleCh: '九折券',
-            titleEn: '10% off',
-            stackingPolicy: 'EXCLUSIVE',
-            validFrom: null,
-            validTo: null,
-            issueRule: null,
-            useRule: {
-              type: 'PERCENT',
-              applyTo: 'ORDER',
-              percentOff: 10,
-              constraints: { minSubtotalCents: 2000 },
+        count: () => Promise.resolve(1),
+        findMany: () =>
+          Promise.resolve([
+            {
+              id: 'template-id',
+              couponStableId: templateStableId,
+              tittleCh: '九折券',
+              titleEn: '10% off',
+              stackingPolicy: 'EXCLUSIVE',
+              validFrom: null,
+              validTo: null,
+              issueRule: null,
+              useRule: {
+                type: 'PERCENT',
+                applyTo: 'ORDER',
+                percentOff: 10,
+                constraints: { minSubtotalCents: 2000 },
+              },
             },
-          },
-        ]),
+          ]),
       },
-      $transaction: jest.fn(
-        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
-      ),
+      $transaction: (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
     };
     const service = new CouponProgramIssuerService(prisma as never);
 
@@ -55,14 +74,12 @@ describe('CouponProgramIssuerService', () => {
       ),
     ).resolves.toEqual({ issuedCount: 1 });
 
-    expect(createCouponMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          discountCents: 0,
-          discountPercent: 10,
-          minSpendCents: 2000,
-        }),
-      ],
-    });
+    expect(createdCoupons).toEqual([
+      {
+        discountCents: 0,
+        discountPercent: 10,
+        minSpendCents: 2000,
+      },
+    ]);
   });
 });
