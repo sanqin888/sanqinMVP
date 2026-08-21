@@ -178,10 +178,6 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     return value
       .replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [REDACTED]')
       .replace(
-        /\b(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)\s*[:=]\s*[^\s,;"}]+/gi,
-        'credential=[REDACTED]',
-      )
-      .replace(
         /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
         '[REDACTED_EMAIL]',
       )
