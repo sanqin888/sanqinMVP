@@ -21,6 +21,7 @@ import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import { resolveIssuedCouponDiscountCents } from '../coupons/coupon-use-rule';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { NotificationService } from '../notifications/notification.service';
 import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
@@ -127,6 +128,7 @@ export class MembershipService {
     title: string;
     code: string;
     discountCents: number;
+    discountPercent: number | null;
     minSpendCents: number | null;
     expiresAt: Date | null;
     usedAt: Date | null;
@@ -146,6 +148,7 @@ export class MembershipService {
       title: coupon.title,
       code: coupon.code,
       discountCents: coupon.discountCents,
+      discountPercent: coupon.discountPercent ?? undefined,
       minSpendCents: coupon.minSpendCents ?? undefined,
       expiresAt: coupon.expiresAt?.toISOString(),
       issuedAt: coupon.issuedAt.toISOString(),
@@ -923,6 +926,7 @@ export class MembershipService {
         title: localizedTitle,
         code: coupon.code,
         discountCents: coupon.discountCents,
+        discountPercent: coupon.discountPercent,
         minSpendCents: coupon.minSpendCents,
         expiresAt: coupon.expiresAt,
         usedAt: coupon.usedAt,
@@ -1418,9 +1422,10 @@ export class MembershipService {
       throw new BadRequestException('coupon does not apply to selected items');
     }
 
-    const discountCents = Math.max(
-      0,
-      Math.min(coupon.discountCents, applicableSubtotalCents),
+    const discountCents = resolveIssuedCouponDiscountCents(
+      coupon.discountCents,
+      coupon.discountPercent,
+      applicableSubtotalCents,
     );
 
     return {

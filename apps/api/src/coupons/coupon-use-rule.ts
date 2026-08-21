@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import { validateUseRule } from './coupon-program.utils';
 
 export type CouponUseRule =
@@ -21,27 +20,39 @@ export function parseCouponUseRule(value: unknown): CouponUseRule {
   return validateUseRule(value) as unknown as CouponUseRule;
 }
 
-export function couponUseRuleSnapshot(
-  rule: CouponUseRule,
-): Prisma.InputJsonValue {
-  return rule as unknown as Prisma.InputJsonValue;
-}
-
 export function resolveCouponRuleDiscountCents(
   rule: CouponUseRule,
   applicableSubtotalCents: number,
 ): number {
-  if (applicableSubtotalCents <= 0) return 0;
-  if (rule.type === 'PERCENT') {
-    return Math.max(
-      0,
-      Math.min(
-        applicableSubtotalCents,
-        Math.round((applicableSubtotalCents * rule.percentOff) / 100),
-      ),
-    );
+  return resolveIssuedCouponDiscountCents(
+    rule.type === 'FIXED_CENTS' ? rule.amountCents : 0,
+    rule.type === 'PERCENT' ? rule.percentOff : null,
+    applicableSubtotalCents,
+  );
+}
+
+export function resolveIssuedCouponDiscountCents(
+  discountCents: number,
+  discountPercent: number | null | undefined,
+  applicableSubtotalCents: number,
+): number {
+  const subtotal = Math.max(0, Math.round(applicableSubtotalCents));
+  if (subtotal === 0) return 0;
+
+  if (typeof discountPercent === 'number') {
+    const percent = Math.max(0, Math.min(100, Math.round(discountPercent)));
+    return Math.min(subtotal, Math.round((subtotal * percent) / 100));
   }
-  return Math.max(0, Math.min(rule.amountCents, applicableSubtotalCents));
+
+  return Math.max(0, Math.min(Math.round(discountCents), subtotal));
+}
+
+export function couponRuleDiscountCents(rule: CouponUseRule): number {
+  return rule.type === 'FIXED_CENTS' ? rule.amountCents : 0;
+}
+
+export function couponRuleDiscountPercent(rule: CouponUseRule): number | null {
+  return rule.type === 'PERCENT' ? rule.percentOff : null;
 }
 
 export function couponRuleItemStableIds(rule: CouponUseRule): string[] {
