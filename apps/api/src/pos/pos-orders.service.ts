@@ -221,9 +221,7 @@ export class PosOrdersService {
     return {
       actions: IN_STORE_MANAGEMENT_ACTIONS.map(
         (action): PosOrderActionCapability =>
-          reason
-            ? { action, available, reason }
-            : { action, available },
+          reason ? { action, available, reason } : { action, available },
       ),
     };
   }

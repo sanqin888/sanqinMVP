@@ -358,9 +358,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           productStableId: item.productStableId,
           nameZh: `${zhPrefix} ${baseZh}`,
           nameEn: `${enPrefix} ${baseEn}`,
-          displayName: `${zhPrefix}/${enPrefix} ${
-            item.displayName ?? baseEn
-          }`,
+          displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
           quantity,
           lineTotalCents: unitPriceCents * quantity,
           specialInstructions: null,
