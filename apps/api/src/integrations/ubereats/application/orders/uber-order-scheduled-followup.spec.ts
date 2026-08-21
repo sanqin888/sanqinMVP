@@ -36,11 +36,16 @@ describe('Uber scheduled-order follow-up notifications', () => {
       { findMapping: jest.fn() } as never,
     );
 
-    await useCase.execute('orders.notification', 'followup-event-1', notification, {
-      occurredAt: new Date('2026-08-21T00:08:03.000Z'),
-      resourceVersion: null,
-      sequence: null,
-    });
+    await useCase.execute(
+      'orders.notification',
+      'followup-event-1',
+      notification,
+      {
+        occurredAt: new Date('2026-08-21T00:08:03.000Z'),
+        resourceVersion: null,
+        sequence: null,
+      },
+    );
 
     expect(fetchOrderDetail).not.toHaveBeenCalled();
     expect(repository.saveImportedOrder).not.toHaveBeenCalled();
@@ -50,7 +55,9 @@ describe('Uber scheduled-order follow-up notifications', () => {
 
   it('still imports orders.notification normally when the external order is unknown', async () => {
     const findByExternalOrderId = jest.fn().mockResolvedValue(null);
-    const fetchOrderDetail = jest.fn().mockRejectedValue(new Error('detail-called'));
+    const fetchOrderDetail = jest
+      .fn()
+      .mockRejectedValue(new Error('detail-called'));
     const useCase = new ImportUberOrderUseCase(
       {
         findByExternalOrderId,

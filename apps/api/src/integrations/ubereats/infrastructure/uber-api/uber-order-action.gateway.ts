@@ -154,7 +154,9 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     if (typeof value === 'string') return this.safeString(value);
     if (typeof value === 'number' || typeof value === 'boolean') return value;
     if (Array.isArray(value))
-      return value.slice(0, 30).map((item) => this.safeErrorBody(item, depth + 1));
+      return value
+        .slice(0, 30)
+        .map((item) => this.safeErrorBody(item, depth + 1));
     if (typeof value !== 'object') return String(value).slice(0, 500);
 
     const result: Record<string, UberOrderSafeErrorBody> = {};
@@ -175,7 +177,10 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         /\b(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)\s*[:=]\s*[^\s,;"}]+/gi,
         'credential=[REDACTED]',
       )
-      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[REDACTED_EMAIL]')
+      .replace(
+        /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+        '[REDACTED_EMAIL]',
+      )
       .slice(0, 1_000);
   }
 

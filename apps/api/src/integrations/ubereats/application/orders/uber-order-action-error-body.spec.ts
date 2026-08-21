@@ -33,15 +33,18 @@ describe('Uber order action failure diagnostics', () => {
       complete: jest.fn(),
       markFailed,
     } as unknown as UberOrderActionRepositoryPort;
-    const error = Object.assign(new Error('Uber order command failed with HTTP 400'), {
-      status: 400,
-      code: 'UBER_ORDER_HTTP_400',
-      responseBody: {
-        code: 'bad_request',
-        message: 'order is not eligible to be marked ready',
-        metadata: { should_retry: false },
+    const error = Object.assign(
+      new Error('Uber order command failed with HTTP 400'),
+      {
+        status: 400,
+        code: 'UBER_ORDER_HTTP_400',
+        responseBody: {
+          code: 'bad_request',
+          message: 'order is not eligible to be marked ready',
+          metadata: { should_retry: false },
+        },
       },
-    });
+    );
     const gateway = {
       accept: jest.fn(),
       deny: jest.fn(),

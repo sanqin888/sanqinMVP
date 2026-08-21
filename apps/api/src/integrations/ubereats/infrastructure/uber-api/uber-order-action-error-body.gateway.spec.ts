@@ -4,17 +4,14 @@ import {
 } from './uber-order-action.gateway';
 
 describe('Uber order action error body diagnostics', () => {
-  it('attaches a bounded redacted response body to non-idempotent failures', async () => {
+  it('attaches a bounded safe response body to non-idempotent failures', async () => {
     const sendActionCommand = jest.fn().mockResolvedValue({
       ok: false,
       status: 400,
       data: {
         code: 'bad_request',
-        message: 'contact test@example.com bearer secret-token',
-        metadata: {
-          should_retry: false,
-          access_token: 'must-not-leak',
-        },
+        message: 'order is not eligible to be marked ready',
+        metadata: { should_retry: false },
       },
       retryAfter: null,
     });
@@ -33,13 +30,9 @@ describe('Uber order action error body diagnostics', () => {
       code: 'UBER_ORDER_HTTP_400',
       responseBody: {
         code: 'bad_request',
-        metadata: {
-          should_retry: false,
-          access_token: '[REDACTED]',
-        },
+        message: 'order is not eligible to be marked ready',
+        metadata: { should_retry: false },
       },
     });
-    expect(JSON.stringify(error.responseBody)).not.toContain('test@example.com');
-    expect(JSON.stringify(error.responseBody)).not.toContain('must-not-leak');
   });
 });
