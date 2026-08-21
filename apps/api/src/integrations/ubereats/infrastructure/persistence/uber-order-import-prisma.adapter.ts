@@ -77,7 +77,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   async findByExternalOrderId(externalOrderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { clientRequestId: `ubereats:${externalOrderId}` },
-      select: { id: true, status: true },
+      select: { id: true, status: true, fulfillmentTiming: true },
     });
     if (!order) return null;
     const inbox = await this.prisma.uberWebhookInbox.findFirst({
@@ -88,6 +88,10 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return {
       orderId: order.id,
       status: toUberOrderStatus(order.status),
+      fulfillmentTiming:
+        order.fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED
+          ? ('SCHEDULED' as const)
+          : ('IMMEDIATE' as const),
       cursor: inbox
         ? this.readCursor(inbox.eventId, inbox.createdAt, inbox.payload)
         : null,

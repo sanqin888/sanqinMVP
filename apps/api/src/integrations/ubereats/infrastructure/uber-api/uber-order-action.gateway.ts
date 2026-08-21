@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { AppLogger } from '../../../../common/app-logger';
 import type {
   UberOrderActionGatewayPort,
   UberOrderCommandFailure,
   UberOrderDenial,
+  UberOrderSafeErrorBody,
 } from '../../application/orders/uber-order.ports';
 import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { UberOrderGateway } from './uber-resource.gateways';
@@ -44,6 +46,7 @@ export class UberOrderCommandError
       : `Uber order command failed with HTTP ${status}`,
     readonly code?: string,
     readonly retryAfterMs: number | null = null,
+    readonly responseBody: UberOrderSafeErrorBody | null = null,
   ) {
     super(message);
     this.name = 'UberOrderCommandError';
@@ -53,6 +56,8 @@ export class UberOrderCommandError
 /** Owns Order Fulfillment 1.0.0 endpoints, wire payloads and HTTP semantics. */
 @Injectable()
 export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort {
+  private readonly logger = new AppLogger(UberOrderActionGatewayAdapter.name);
+
   constructor(
     @Inject(UberOrderGateway)
     private readonly gateway: Pick<UberOrderGateway, 'sendActionCommand'>,
@@ -129,12 +134,53 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
       IDEMPOTENT_CONFLICT_STATUSES[action].includes(outcome.status)
     )
       return;
+
+    const responseBody = this.safeErrorBody(outcome.data);
+    this.logger.error(
+      `[uber order action failed] action=${action} externalOrderId=${input.externalOrderId} status=${outcome.status} response=${JSON.stringify(responseBody).slice(0, 4_000)}`,
+    );
     throw new UberOrderCommandError(
       outcome.status,
       undefined,
       `UBER_ORDER_HTTP_${outcome.status}`,
       this.retryAfterMs(outcome.retryAfter),
+      responseBody,
     );
+  }
+
+  private safeErrorBody(value: unknown, depth = 0): UberOrderSafeErrorBody {
+    if (depth >= 6) return '[TRUNCATED]';
+    if (value === null) return null;
+    if (typeof value === 'string') return this.safeString(value);
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    if (Array.isArray(value))
+      return value
+        .slice(0, 30)
+        .map((item) => this.safeErrorBody(item, depth + 1));
+    if (!this.isRecord(value)) return '[UNSUPPORTED]';
+
+    const result: Record<string, UberOrderSafeErrorBody> = {};
+    for (const [key, item] of Object.entries(value).slice(0, 50)) {
+      result[key] =
+        /authorization|token|secret|password|email|phone|address/i.test(key)
+          ? '[REDACTED]'
+          : this.safeErrorBody(item, depth + 1);
+    }
+    return result;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private safeString(value: string): string {
+    return value
+      .replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [REDACTED]')
+      .replace(
+        /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+        '[REDACTED_EMAIL]',
+      )
+      .slice(0, 1_000);
   }
 
   private retryAfterMs(value: string | null): number | null {
