@@ -235,7 +235,7 @@ export function parseUberOrderItemV1(
     unitPriceCents,
     lineTotalCents: unitPriceCents * quantity,
     specialInstructions: readString(
-      item.customer_requests?.special_instructions,
+      item.customer_request?.special_instructions,
     ),
     modifiers: parsedModifiers,
   };
@@ -266,7 +266,7 @@ function parseUberModifierV1(
     quantity: readQuantity(item.quantity),
     priceDeltaCents,
     specialInstructions: readString(
-      item.customer_requests?.special_instructions,
+      item.customer_request?.special_instructions,
     ),
     children: children.filter(
       (child): child is ParsedUberModifier => child !== null,
