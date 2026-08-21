@@ -100,6 +100,8 @@ export class UberOrderActionService {
           upstream.failure?.code ??
           (upstream.status ? `HTTP_${upstream.status}` : 'UPSTREAM_ERROR'),
         message: error instanceof Error ? error.message : String(error),
+        upstreamStatus: upstream.status,
+        responseBody: upstream.failure?.responseBody ?? null,
       });
       return;
     }

@@ -172,6 +172,8 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
           leaseToken: null,
           leaseExpiresAt: null,
           lastError: null,
+          uberHttpStatus: null,
+          response: Prisma.DbNull,
         },
       });
       if (updated.count !== 1) return false;
@@ -239,7 +241,7 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
   async markFailed(
     taskId: string,
     leaseToken: string,
-    input: { retryable: boolean; code: string; message: string },
+    input: Parameters<UberOrderActionRepositoryPort['markFailed']>[2],
   ): Promise<boolean> {
     const result = await this.prisma.uberOrderAction.updateMany({
       where: { id: taskId, status: 'PROCESSING', leaseToken },
@@ -247,6 +249,11 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         status: 'FAILED',
         retryable: input.retryable,
         lastError: `${input.code}: ${input.message}`.slice(0, 2_000),
+        uberHttpStatus: input.upstreamStatus ?? null,
+        response:
+          input.responseBody === null || input.responseBody === undefined
+            ? Prisma.DbNull
+            : (input.responseBody as Prisma.InputJsonValue),
         nextRetryAt: input.retryable ? new Date(Date.now() + 1_000) : null,
         leaseToken: null,
         leaseExpiresAt: null,

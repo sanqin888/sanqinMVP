@@ -53,6 +53,8 @@ export interface UberOrderImportRepositoryPort {
     orderId: string;
     status: UberOrderStatus;
     cursor: UberOrderEventCursor | null;
+    /** Present on the Prisma adapter; optional keeps older test doubles compatible. */
+    fulfillmentTiming?: UberFulfillmentTiming;
   } | null>;
   getPosStoreConnectivity?(posStoreId: string): Promise<{
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
@@ -102,6 +104,14 @@ export type UberOrderActionContext = {
   externalEstimatedReadyAt?: Date | null;
 };
 
+export type UberOrderSafeErrorBody =
+  | string
+  | number
+  | boolean
+  | null
+  | UberOrderSafeErrorBody[]
+  | { [key: string]: UberOrderSafeErrorBody };
+
 export interface UberOrderActionRepositoryPort {
   enqueue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>): Promise<{
     taskId: string;
@@ -127,7 +137,13 @@ export interface UberOrderActionRepositoryPort {
   markFailed(
     taskId: string,
     leaseToken: string,
-    input: { retryable: boolean; code: string; message: string },
+    input: {
+      retryable: boolean;
+      code: string;
+      message: string;
+      upstreamStatus?: number | null;
+      responseBody?: UberOrderSafeErrorBody | null;
+    },
   ): Promise<boolean>;
 }
 
@@ -141,6 +157,7 @@ export interface UberOrderCommandFailure extends Error {
   status: number | null;
   code?: string;
   retryAfterMs?: number | null;
+  responseBody?: UberOrderSafeErrorBody | null;
 }
 
 export interface UberOrderActionGatewayPort {
