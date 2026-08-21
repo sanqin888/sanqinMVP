@@ -93,6 +93,11 @@ export type UberOrderActionTask = {
   reasonDetail: string | null;
 };
 
+type UberOrderActionEnqueueInput = Omit<
+  UberOrderActionTask,
+  'taskId' | 'leaseToken'
+>;
+
 export type UberOrderActionContext = {
   status: UberOrderStatus;
   totalCents: number;
@@ -113,7 +118,15 @@ export type UberOrderSafeErrorBody =
   | { [key: string]: UberOrderSafeErrorBody };
 
 export interface UberOrderActionRepositoryPort {
-  enqueue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>): Promise<{
+  enqueue(input: UberOrderActionEnqueueInput): Promise<{
+    taskId: string;
+    created: boolean;
+  }>;
+  /**
+   * Reopens the existing externalOrderId + action row for a new business phase.
+   * The caller must supply a distinct idempotency key for that phase.
+   */
+  requeue(input: UberOrderActionEnqueueInput): Promise<{
     taskId: string;
     created: boolean;
   }>;
