@@ -81,7 +81,10 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     });
     if (!order) return null;
     const inbox = await this.prisma.uberWebhookInbox.findFirst({
-      where: { externalOrderId, status: 'PROCESSED' },
+      where: {
+        externalOrderId: { in: [externalOrderId, `order:${externalOrderId}`] },
+        status: 'PROCESSED',
+      },
       orderBy: { processedAt: 'desc' },
       select: { eventId: true, createdAt: true, payload: true },
     });
@@ -250,7 +253,12 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
             skipDuplicates: true,
           });
           const action = await tx.uberOrderAction.findUniqueOrThrow({
-            where: { idempotencyKey: input.actionIntent.idempotencyKey },
+            where: {
+              externalOrderId_action: {
+                externalOrderId: input.actionIntent.externalOrderId,
+                action: input.actionIntent.action,
+              },
+            },
             select: { id: true },
           });
           savedAction = { taskId: action.id, created: inserted.count === 1 };
