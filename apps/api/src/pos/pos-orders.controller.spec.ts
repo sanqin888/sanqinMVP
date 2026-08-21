@@ -3,18 +3,24 @@ import { PosOrdersController } from './pos-orders.controller';
 describe('PosOrdersController Uber orders', () => {
   const orders = {
     board: jest.fn(),
-    createFullRefund: jest.fn(),
   };
-  const posOrders = { cancelUberOrder: jest.fn() };
+  const posOrders = {
+    cancelUberOrder: jest.fn(),
+    createFullRefund: jest.fn(),
+    getManagementActions: jest.fn(),
+    listAmendments: jest.fn(),
+    createAmendment: jest.fn(),
+  };
   const schedulingQuery = {
     listUpcomingForDeviceStore: jest.fn(),
     findTimingsByStableIds: jest.fn(),
   };
+  const eventEmitter = { emit: jest.fn() };
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
     {} as never,
-    {} as never,
+    eventEmitter as never,
     posOrders as never,
     schedulingQuery as never,
   );
@@ -95,25 +101,81 @@ describe('PosOrdersController Uber orders', () => {
     );
   });
 
-  it('接单后的 Uber 全额退款仍提交给订单服务处理', async () => {
-    orders.createFullRefund.mockResolvedValue({
-      order: { orderStableId: 'order_1', status: 'completed' },
-      outcome: 'pending_platform',
+  it('POS 全额退款由渠道策略服务校验并要求操作人', async () => {
+    posOrders.createFullRefund.mockResolvedValue({
+      order: { orderStableId: 'order_1', status: 'refunded' },
+      outcome: 'refunded',
     });
 
     await controller.fullRefund('order_1', {
       reason: '顾客取消',
+      operatorName: 'Li',
       refundAmountCents: 2599,
-      originalPaymentMethod: 'UBEREATS' as never,
-      refundMethod: 'UBEREATS' as never,
+      originalPaymentMethod: 'CARD' as never,
+      refundMethod: 'CARD' as never,
     });
 
-    expect(orders.createFullRefund).toHaveBeenCalledWith({
-      orderStableId: 'order_1',
+    expect(posOrders.createFullRefund).toHaveBeenCalledWith('order_1', {
       reason: '顾客取消',
+      operatorName: 'Li',
       refundAmountCents: 2599,
-      originalPaymentMethod: 'UBEREATS',
-      refundMethod: 'UBEREATS',
+      originalPaymentMethod: 'CARD',
+      refundMethod: 'CARD',
     });
+  });
+
+  it('capability 查询委托 POS 渠道策略服务', async () => {
+    posOrders.getManagementActions.mockResolvedValue({
+      actions: [{ action: 'UBER_CANCEL', available: true }],
+    });
+
+    await expect(controller.getActions('order_1')).resolves.toEqual({
+      actions: [{ action: 'UBER_CANCEL', available: true }],
+    });
+    expect(posOrders.getManagementActions).toHaveBeenCalledWith('order_1');
+  });
+
+  it('退菜/换菜成功后只触发差量厨房打印事件', async () => {
+    posOrders.createAmendment.mockResolvedValue({ orderStableId: 'order_1' });
+    const body = {
+      type: 'SWAP_ITEM' as never,
+      reason: '顾客换菜',
+      operatorName: 'Li',
+      paymentMethod: 'CARD' as never,
+      refundGrossCents: 0,
+      additionalChargeCents: 200,
+      locale: 'zh' as const,
+      items: [
+        {
+          action: 'VOID' as never,
+          productStableId: 'old_item',
+          qty: 1,
+        },
+        {
+          action: 'ADD' as never,
+          productStableId: 'new_item',
+          qty: 1,
+        },
+      ],
+    };
+
+    await controller.amend('order_1', body);
+
+    expect(posOrders.createAmendment).toHaveBeenCalledWith(
+      'order_1',
+      expect.objectContaining({
+        reason: '顾客换菜',
+        operatorName: 'Li',
+      }),
+    );
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      'order.amendment.print',
+      expect.objectContaining({
+        orderStableId: 'order_1',
+        reason: '顾客换菜',
+        operatorName: 'Li',
+        locale: 'zh',
+      }),
+    );
   });
 });

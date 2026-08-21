@@ -17,6 +17,11 @@ describe('PosOrdersService', () => {
     const orders = {
       getByStableId: jest.fn().mockResolvedValue(current),
       advance: jest.fn().mockResolvedValue({ ...current, status: 'ready' }),
+      createAmendment: jest.fn().mockResolvedValue(current),
+      createFullRefund: jest.fn().mockResolvedValue({
+        order: { ...current, status: 'refunded' },
+        outcome: 'refunded',
+      }),
     };
     const uberEats = {
       execute: jest.fn().mockResolvedValue({
@@ -28,15 +33,20 @@ describe('PosOrdersService', () => {
       getReadyForPickupAction: jest.fn().mockResolvedValue(null),
       retryReadyForPickup: jest.fn(),
     };
+    const prisma = {
+      order: { findUnique: jest.fn() },
+      orderAmendment: { findMany: jest.fn().mockResolvedValue([]) },
+    };
     return {
       service: new PosOrdersService(
         orders as never,
         uberEats as never,
         uberEats as never,
-        {} as never,
+        prisma as never,
       ),
       orders,
       uberEats,
+      prisma,
     };
   };
 
@@ -248,59 +258,108 @@ describe('PosOrdersService', () => {
     expect(uberEats.cancel).not.toHaveBeenCalled();
   });
 
-  it('接单后人工退款要求凭证并在同一事务写入全额调整', async () => {
-    const current = order({
-      channel: 'ubereats',
-      clientRequestId: 'ubereats:external-123',
-      status: 'completed',
+  it('Web 订单保留管理入口但 capability 全部置灰等待 Clover 同步', async () => {
+    const { service } = setup(order({ channel: 'web' }));
+
+    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+      actions: [
+        {
+          action: 'SWAP_ITEM',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+        {
+          action: 'VOID_ITEM',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+        {
+          action: 'FULL_REFUND',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+        {
+          action: 'CHANGE_PAYMENT',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+      ],
     });
-    const orders = { getByStableId: jest.fn().mockResolvedValue(current) };
-    const tx = {
-      order: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'order-db-id',
-          orderStableId: 'order_1',
-          channel: 'ubereats',
-          status: 'completed',
-          totalCents: 2599,
-        }),
-        update: jest.fn(),
-      },
-      orderAmendment: { upsert: jest.fn() },
-    };
-    const prisma = {
-      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new PosOrdersService(
-      orders as never,
-      {} as never,
-      {} as never,
-      prisma as never,
+  });
+
+  it('Uber 订单只暴露集成 CANCEL，不暴露本地退款/换菜/改支付方式', async () => {
+    const { service } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'making',
+      }),
     );
 
+    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+      actions: [{ action: 'UBER_CANCEL', available: true }],
+    });
+  });
+
+  it('店内人工改单要求操作人并复用现有 amendment 事务', async () => {
+    const { service, orders } = setup(order());
+
     await expect(
-      service.recordManualUberRefund('order_1', {
-        reason: '顾客取消',
-        evidence: 'Uber case UE-42, staff Li, 12:30 UTC',
+      service.createAmendment('order_1', {
+        type: 'RETENDER',
+        reason: '支付方式调整',
+        operatorName: 'Li',
+        paymentMethod: 'CASH',
+        refundGrossCents: 2599,
+        additionalChargeCents: 2599,
+        items: [],
       }),
-    ).resolves.toBe(current);
-    expect(tx.orderAmendment.upsert).toHaveBeenCalledWith(
+    ).resolves.toMatchObject({ orderStableId: 'order_1' });
+
+    expect(orders.createAmendment).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({
-          refundCents: 2599,
-          deltaCents: -2599,
-          summaryJson: expect.objectContaining({
-            status: 'CONFIRMED',
-            evidence: 'Uber case UE-42, staff Li, 12:30 UTC',
-          }) as unknown,
-        }) as unknown,
+        orderStableId: 'order_1',
+        reason: '支付方式调整 · 操作人:Li',
       }),
     );
-    expect(tx.order.update).toHaveBeenCalledWith({
-      where: { id: 'order-db-id' },
-      data: { status: 'refunded' },
-    });
+  });
+
+  it('店内人工改单缺少操作人时拒绝写入', async () => {
+    const { service, orders } = setup(order());
+
+    await expect(
+      service.createAmendment('order_1', {
+        type: 'RETENDER',
+        reason: '支付方式调整',
+        operatorName: ' ',
+        paymentMethod: 'CASH',
+        refundGrossCents: 2599,
+        additionalChargeCents: 2599,
+        items: [],
+      }),
+    ).rejects.toThrow('operatorName is required');
+    expect(orders.createAmendment).not.toHaveBeenCalled();
+  });
+
+  it('Web/Uber 不能绕过 capability 调通用 POS amendment', async () => {
+    const web = setup(order({ channel: 'web' }));
+    await expect(
+      web.service.createAmendment('order_1', {
+        type: 'RETENDER',
+        reason: 'test',
+        operatorName: 'Li',
+      }),
+    ).rejects.toThrow('Web order management is disabled');
+    expect(web.orders.createAmendment).not.toHaveBeenCalled();
+
+    const uber = setup(order({ channel: 'ubereats' }));
+    await expect(
+      uber.service.createAmendment('order_1', {
+        type: 'RETENDER',
+        reason: 'test',
+        operatorName: 'Li',
+      }),
+    ).rejects.toThrow('Uber orders must use the integrated Uber action flow');
+    expect(uber.orders.createAmendment).not.toHaveBeenCalled();
   });
 });
