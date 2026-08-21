@@ -132,9 +132,15 @@ export const UberOrderStateMachine = {
     return statusAfterCancellation(status);
   },
 
-  idempotencyKey(externalOrderId: string, action: UberOrderActionName): string {
-    return `sanqin-uber-${createHash('sha256')
-      .update(`${externalOrderId.trim()}\0${action}`)
-      .digest('hex')}`;
+  idempotencyKey(
+    externalOrderId: string,
+    action: UberOrderActionName,
+    phase?: string,
+  ): string {
+    const normalizedPhase = phase?.trim();
+    const identity = normalizedPhase
+      ? `${externalOrderId.trim()}\0${action}\0${normalizedPhase}`
+      : `${externalOrderId.trim()}\0${action}`;
+    return `sanqin-uber-${createHash('sha256').update(identity).digest('hex')}`;
   },
 } as const;
