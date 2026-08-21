@@ -56,6 +56,67 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
     }
   }
 
+  async requeue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>) {
+    const existing = await this.prisma.uberOrderAction.findUnique({
+      where: {
+        externalOrderId_action: {
+          externalOrderId: input.externalOrderId,
+          action: input.action,
+        },
+      },
+      select: { id: true, idempotencyKey: true, status: true },
+    });
+    if (!existing) return this.enqueue(input);
+    if (existing.idempotencyKey === input.idempotencyKey) {
+      return { taskId: existing.id, created: false };
+    }
+    if (existing.status !== 'SUCCEEDED' && existing.status !== 'FAILED') {
+      throw new Error(
+        `Uber action ${input.action} cannot enter a new phase while ${existing.status}`,
+      );
+    }
+
+    const updated = await this.prisma.uberOrderAction.updateMany({
+      where: {
+        id: existing.id,
+        idempotencyKey: existing.idempotencyKey,
+        status: { in: ['SUCCEEDED', 'FAILED'] },
+      },
+      data: {
+        idempotencyKey: input.idempotencyKey,
+        businessVersion: input.businessVersion,
+        reasonCode: input.reasonCode,
+        reasonDetail: input.reasonDetail,
+        status: 'PENDING',
+        retryable: true,
+        nextRetryAt: new Date(),
+        completedAt: null,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        lastError: null,
+        uberHttpStatus: null,
+        response: Prisma.DbNull,
+      },
+    });
+    if (updated.count === 1) {
+      return { taskId: existing.id, created: true };
+    }
+
+    const current = await this.prisma.uberOrderAction.findUniqueOrThrow({
+      where: {
+        externalOrderId_action: {
+          externalOrderId: input.externalOrderId,
+          action: input.action,
+        },
+      },
+      select: { id: true, idempotencyKey: true },
+    });
+    if (current.idempotencyKey === input.idempotencyKey) {
+      return { taskId: current.id, created: false };
+    }
+    throw new Error(`Uber action ${input.action} phase changed concurrently`);
+  }
+
   private errorCode(error: unknown): string | null {
     if (!error || typeof error !== 'object') return null;
     const code = (error as { code?: unknown }).code;
