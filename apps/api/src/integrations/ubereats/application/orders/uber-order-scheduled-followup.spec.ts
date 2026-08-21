@@ -1,11 +1,15 @@
 import { ImportUberOrderUseCase } from './uber-order.use-cases';
 import type { UberOrderImportRepositoryPort } from './uber-order.ports';
-import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
 
 const notification = {
-  resourceId: 'scheduled-order-1',
+  version: 1,
+  family: 'order',
+  eventType: 'orders.notification',
   resourceHref: 'https://api.uber.com/v1/delivery/order/scheduled-order-1',
-} as UberOrderNotificationEventV1;
+  resourceId: 'scheduled-order-1',
+  userId: 'test-store-1',
+  eventId: null,
+} satisfies Parameters<ImportUberOrderUseCase['execute']>[2];
 
 describe.skip('Uber scheduled-order follow-up notifications', () => {
   it('acknowledges a later orders.notification without re-importing or re-accepting an existing scheduled order', async () => {
