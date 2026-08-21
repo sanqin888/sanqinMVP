@@ -1,9 +1,9 @@
 // apps/web/src/app/[locale]/store/pos/orders/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import type {
   AdminMenuFull,
@@ -17,7 +17,6 @@ import {
   advanceOrder,
   retryUberOrderSync,
   createFullRefund,
-  recordManualUberRefund,
   createOrderAmendment,
   fetchRecentOrders,
   printOrderCloud,
@@ -25,7 +24,6 @@ import {
 import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
-import { getUberCancellationErrorMessage } from "./uber-cancellation";
 
 const COPY = {
   zh: {
@@ -102,7 +100,7 @@ const COPY = {
     actionProcessing: "处理中...",
     actionSuccess: "已提交订单操作。",
     refundPendingPlatform:
-      "退款申请已记录，等待 Uber Eats 平台处理；订单尚未标记为已退款。",
+      "退款申请已记录，等待平台处理；订单尚未标记为已退款。",
     refundPendingManual:
       "退款申请已记录，等待原支付渠道确认；订单尚未标记为已退款。",
     refundSuccess: "退款成功。",
@@ -111,7 +109,7 @@ const COPY = {
     advanceSuccess: "订单状态已推进。",
     advanceFailed: "推进失败，请稍后重试。",
     advanceTerminal: "终态",
-    refundFailed: "退款失败，请稍后重试。",
+    refundFailed: "操作失败，请稍后重试。",
     reasonLabel: "操作原因",
     reasonPlaceholder: "请输入原因（必填）",
     methodLabel: "退款/新支付方式",
@@ -121,7 +119,7 @@ const COPY = {
       CARD: "银行卡",
       WECHAT_ALIPAY: "微信/支付宝",
       STORE_BALANCE: "储值余额",
-      UBEREATS: "Uber Eats 原支付渠道（平台处理）",
+      UBEREATS: "Uber Eats",
     },
     reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
     itemSelectTitle: "选择退/换菜品",
@@ -133,28 +131,30 @@ const COPY = {
     },
     cashGuideTitle: "现金处理逻辑",
     cashGuide: {
-      retender: ["直接退款原现金付款，再用新方式收款。"],
-      void_item: ["可做部分退款，并记录原因。"],
-      swap_item: ["按差额补收或部分退款。"],
-      full_refund: ["整单退款并作废原订单。"],
+      retender: ["退款原现金付款，再用新方式收款；完成后记录操作人。"],
+      void_item: ["按差额退款或补收，完成后记录操作人。"],
+      swap_item: ["按差额补收或退款，完成后记录操作人。"],
+      full_refund: ["整单退款并作废原订单，完成后记录操作人。"],
     },
     cardGuideTitle: "银行卡处理逻辑",
     cardGuide: {
       retender: [
-        "设备不支持部分退款，需对原交易做整单 void/refund。",
-        "使用新方式对刷“新金额”，并用 rebillGroupId 关联。",
+        "先在 Clover 终端对原交易整单退款/void。",
+        "再用新方式收取新金额，完成后在 SanQ 记录操作人。",
       ],
       void_item: [
-        "delta > 0：刷差额销售，系统记录 AdditionalCharge。",
-        "delta = 0：只改明细，厨房打印作废联/更改单 + 加菜联。",
-        "delta < 0：整单退款再对刷“新金额”，rebillGroupId 串联。",
+        "差额需补收：先在实际支付终端完成补收。",
+        "差额需退款：当前按原卡整单退款后重新收取新金额处理。",
+        "完成外部结算后再在 SanQ 确认改单。",
       ],
       swap_item: [
-        "delta > 0：刷差额销售，系统记录 AdditionalCharge。",
-        "delta = 0：只改明细，厨房打印作废联/更改单 + 加菜联。",
-        "delta < 0：整单退款再对刷“新金额”，rebillGroupId 串联。",
+        "差额需补收：先在实际支付终端完成补收。",
+        "差额需退款：当前按原卡整单退款后重新收取新金额处理。",
+        "完成外部结算后再在 SanQ 确认换菜。",
       ],
-      full_refund: ["整单退款并作废原交易。"],
+      full_refund: [
+        "先在 Clover 终端完成整单退款/void，再在 SanQ 确认记录。",
+      ],
     },
     summaryTitle: "订单小结",
     summaryOriginal: "原订单金额",
@@ -245,7 +245,7 @@ const COPY = {
     actionProcessing: "Processing...",
     actionSuccess: "Order action submitted.",
     refundPendingPlatform:
-      "Refund request recorded and pending Uber Eats processing; the order is not marked refunded.",
+      "Refund request recorded and pending platform processing; the order is not marked refunded.",
     refundPendingManual:
       "Refund request recorded and awaiting confirmation from the original payment channel; the order is not marked refunded.",
     refundSuccess: "Refund completed.",
@@ -254,7 +254,7 @@ const COPY = {
     advanceSuccess: "Order status advanced.",
     advanceFailed: "Failed to advance status. Please retry.",
     advanceTerminal: "Terminal",
-    refundFailed: "Refund failed. Please retry.",
+    refundFailed: "Action failed. Please retry.",
     reasonLabel: "Reason",
     reasonPlaceholder: "Enter reason (required)",
     methodLabel: "Refund / New payment method",
@@ -264,7 +264,7 @@ const COPY = {
       CARD: "Card",
       WECHAT_ALIPAY: "WeChat / Alipay",
       STORE_BALANCE: "Store balance",
-      UBEREATS: "Original Uber Eats payment (platform processing)",
+      UBEREATS: "Uber Eats",
     },
     reasonPresets: [
       "Customer cancellation",
@@ -281,28 +281,30 @@ const COPY = {
     },
     cashGuideTitle: "Cash handling",
     cashGuide: {
-      retender: ["Refund the original cash payment, then take new payment."],
-      void_item: ["Allow partial refunds and record the reason."],
-      swap_item: ["Settle the difference with refund or extra charge."],
-      full_refund: ["Refund the entire order and void the receipt."],
+      retender: ["Refund cash, take the new payment, then record the operator."],
+      void_item: ["Settle the difference, then record the operator."],
+      swap_item: ["Settle the difference, then record the operator."],
+      full_refund: ["Refund the full order, then record the operator."],
     },
     cardGuideTitle: "Card handling",
     cardGuide: {
       retender: [
-        "Partial refunds are not supported; void/refund the original sale.",
-        "Charge the new amount and link with a rebillGroupId.",
+        "Void/refund the original transaction on Clover first.",
+        "Take the new payment, then confirm it in SanQ with the operator name.",
       ],
       void_item: [
-        "delta > 0: charge the difference, record as AdditionalCharge.",
-        "delta = 0: update items only, print void/change + add tickets.",
-        "delta < 0: void/refund then rebill the new amount (rebillGroupId).",
+        "For an extra charge, collect the difference on the actual payment terminal first.",
+        "For a refund difference, refund the original card transaction and charge the new total.",
+        "Confirm the amendment in SanQ only after external settlement is complete.",
       ],
       swap_item: [
-        "delta > 0: charge the difference, record as AdditionalCharge.",
-        "delta = 0: update items only, print void/change + add tickets.",
-        "delta < 0: void/refund then rebill the new amount (rebillGroupId).",
+        "For an extra charge, collect the difference on the actual payment terminal first.",
+        "For a refund difference, refund the original card transaction and charge the new total.",
+        "Confirm the swap in SanQ only after external settlement is complete.",
       ],
-      full_refund: ["Void/refund the full transaction."],
+      full_refund: [
+        "Complete the full refund/void on Clover first, then confirm the record in SanQ.",
+      ],
     },
     summaryTitle: "Order summary",
     summaryOriginal: "Original total",
@@ -344,6 +346,35 @@ function calcSwapTotalCents(selection: SwapSelection | null): number {
     Math.round(selection.item.price * 100) +
     calcOptionDeltaCents(selection.item, selection.options);
   return unitPriceCents * selection.quantity;
+}
+
+function buildSwapOptionsSnapshot(selection: SwapSelection) {
+  return (selection.item.optionGroups ?? [])
+    .map((group, groupIndex) => {
+      const selectedIds =
+        selection.options[group.templateGroupStableId] ?? [];
+      const choices = group.options
+        .filter((option) => selectedIds.includes(option.optionStableId))
+        .map((option, optionIndex) => ({
+          stableId: option.optionStableId,
+          templateGroupStableId: group.templateGroupStableId,
+          nameEn: option.nameEn ?? null,
+          nameZh: option.nameZh ?? null,
+          priceDeltaCents: option.priceDeltaCents,
+          sortOrder: optionIndex,
+        }));
+      if (choices.length === 0) return null;
+      return {
+        templateGroupStableId: group.templateGroupStableId,
+        nameEn: group.template.nameEn ?? null,
+        nameZh: group.template.nameZh ?? null,
+        minSelect: group.minSelect ?? 0,
+        maxSelect: group.maxSelect ?? null,
+        sortOrder: groupIndex,
+        choices,
+      };
+    })
+    .filter((group): group is NonNullable<typeof group> => Boolean(group));
 }
 
 type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
@@ -538,6 +569,7 @@ type BackendOrderItem = {
   nameZh?: string | null;
   unitPriceCents?: number | null;
   specialInstructions?: string | null;
+  optionsJson?: unknown;
 };
 
 type OrderRecord = {
@@ -570,6 +602,7 @@ type OrderItemRecord = {
   unitPriceCents: number;
   totalCents: number;
   specialInstructions: string | null;
+  optionsJson?: unknown;
 };
 
 type SwapSelection = {
@@ -648,12 +681,10 @@ function ActionContent({
   onSwapChoose,
   onSwapClear,
 }: ActionContentProps) {
-  const isUberEatsOrder = order.channel === "ubereats";
   const guide =
     order.paymentMethod === "cash"
       ? copy.cashGuide[selectedAction ?? "retender"]
       : copy.cardGuide[selectedAction ?? "retender"];
-
   const showItemSelection =
     selectedAction === "void_item" || selectedAction === "swap_item";
 
@@ -664,8 +695,7 @@ function ActionContent({
           {copy.orderMetaTitle}
         </div>
         <div className="mt-1 text-xs text-slate-200">
-          {copy.orderCard[order.type]} ·{" "}
-          {copy.paymentMethod[order.paymentMethod]} ·{" "}
+          {copy.orderCard[order.type]} · {copy.paymentMethod[order.paymentMethod]} ·{" "}
           {copy.status[order.status]}
         </div>
       </div>
@@ -734,9 +764,7 @@ function ActionContent({
                         className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-900 text-emerald-400"
                       />
                       <div>
-                        <div className="text-xs text-slate-100">
-                          {item.name}
-                        </div>
+                        <div className="text-xs text-slate-100">{item.name}</div>
                         <div className="text-[10px] text-slate-400">
                           x{item.qty} · {formatMoney(item.unitPriceCents)}
                         </div>
@@ -751,9 +779,10 @@ function ActionContent({
                           type="button"
                           onClick={(event) => {
                             event.preventDefault();
-                            const nextQty =
-                              (selectedItemQtyMap[item.lineId] ?? 1) - 1;
-                            onItemQtyChange(item.lineId, nextQty);
+                            onItemQtyChange(
+                              item.lineId,
+                              (selectedItemQtyMap[item.lineId] ?? 1) - 1,
+                            );
                           }}
                           className="h-6 w-6 rounded border border-slate-600 text-xs"
                         >
@@ -766,9 +795,10 @@ function ActionContent({
                           type="button"
                           onClick={(event) => {
                             event.preventDefault();
-                            const nextQty =
-                              (selectedItemQtyMap[item.lineId] ?? 1) + 1;
-                            onItemQtyChange(item.lineId, nextQty);
+                            onItemQtyChange(
+                              item.lineId,
+                              (selectedItemQtyMap[item.lineId] ?? 1) + 1,
+                            );
                           }}
                           className="h-6 w-6 rounded border border-slate-600 text-xs"
                         >
@@ -795,32 +825,28 @@ function ActionContent({
                             <div className="text-sm font-semibold">
                               {swapSelection.item.name}
                             </div>
-                            {swapSelection.item.optionGroups &&
-                            swapSelection.item.optionGroups.length > 0 ? (
+                            {swapSelection.item.optionGroups?.length ? (
                               <div className="mt-1 space-y-1 text-[11px] text-slate-400">
-                                {(swapSelection.item.optionGroups ?? []).map(
-                                  (group) => {
-                                    const selected =
-                                      swapSelection.options[
-                                        group.templateGroupStableId
-                                      ] ?? [];
-                                    if (selected.length === 0) return null;
-                                    const groupName =
-                                      group.template.nameZh ??
-                                      group.template.nameEn;
-                                    const optionLabels = group.options
-                                      .filter((opt) =>
-                                        selected.includes(opt.optionStableId),
-                                      )
-                                      .map((opt) => opt.nameZh ?? opt.nameEn)
-                                      .join(", ");
-                                    return (
-                                      <div key={group.templateGroupStableId}>
-                                        {groupName}: {optionLabels}
-                                      </div>
-                                    );
-                                  },
-                                )}
+                                {swapSelection.item.optionGroups.map((group) => {
+                                  const selected =
+                                    swapSelection.options[
+                                      group.templateGroupStableId
+                                    ] ?? [];
+                                  if (selected.length === 0) return null;
+                                  const groupName =
+                                    group.template.nameZh ?? group.template.nameEn;
+                                  const optionLabels = group.options
+                                    .filter((opt) =>
+                                      selected.includes(opt.optionStableId),
+                                    )
+                                    .map((opt) => opt.nameZh ?? opt.nameEn)
+                                    .join(", ");
+                                  return (
+                                    <div key={group.templateGroupStableId}>
+                                      {groupName}: {optionLabels}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : null}
                           </div>
@@ -852,9 +878,7 @@ function ActionContent({
                       </div>
                     ) : (
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-400">
-                          {copy.swapItemEmpty}
-                        </span>
+                        <span className="text-slate-400">{copy.swapItemEmpty}</span>
                         <button
                           type="button"
                           onClick={onSwapChoose}
@@ -918,11 +942,7 @@ function ActionContent({
                   <option
                     key={option}
                     value={option}
-                    disabled={
-                      isUberEatsOrder
-                        ? option !== "UBEREATS"
-                        : option === "UBEREATS"
-                    }
+                    disabled={option === "UBEREATS"}
                   >
                     {copy.methodOptions[option]}
                   </option>
@@ -1030,8 +1050,10 @@ function ActionContent({
 export default function PosOrdersPage() {
   type BusinessConfigLite = { timezone: string };
   const params = useParams<{ locale?: string }>();
+  const searchParams = useSearchParams();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
   const copy = COPY[locale];
+  const deepLinkHandledRef = useRef(false);
 
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1048,15 +1070,9 @@ export default function PosOrdersPage() {
   >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
-  const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>(
-    [],
-  );
-  const [swapSelection, setSwapSelection] = useState<SwapSelection | null>(
-    null,
-  );
-  const [swapActiveItem, setSwapActiveItem] = useState<SwapSelection | null>(
-    null,
-  );
+  const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>([]);
+  const [swapSelection, setSwapSelection] = useState<SwapSelection | null>(null);
+  const [swapActiveItem, setSwapActiveItem] = useState<SwapSelection | null>(null);
   const [isSwapPickerOpen, setIsSwapPickerOpen] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -1080,9 +1096,7 @@ export default function PosOrdersPage() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => {
-      setToast(null);
-    }, 2000);
+    const timer = window.setTimeout(() => setToast(null), 2000);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -1099,9 +1113,7 @@ export default function PosOrdersPage() {
     return ymdInTimeZone(new Date(), tz);
   }, [storeTimezone]);
 
-  const handleResetOrderFilters = () => {
-    setFilters(createInitialFilters());
-  };
+  const handleResetOrderFilters = () => setFilters(createInitialFilters());
 
   const mapOrder = useCallback(
     (order: BackendOrder, timeZone: string): OrderRecord => {
@@ -1134,6 +1146,7 @@ export default function PosOrdersPage() {
           unitPriceCents,
           totalCents: unitPriceCents * item.qty,
           specialInstructions: item.specialInstructions?.trim() || null,
+          optionsJson: item.optionsJson,
         };
       });
 
@@ -1161,7 +1174,6 @@ export default function PosOrdersPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     const fetchOrders = async () => {
       try {
         setIsLoading(true);
@@ -1172,18 +1184,13 @@ export default function PosOrdersPage() {
           ),
           fetchRecentOrders<BackendOrder[]>(30),
         ]);
-
         if (cancelled) return;
-
         const tz =
           configRes?.timezone?.trim() ||
           Intl.DateTimeFormat().resolvedOptions().timeZone ||
           "UTC";
-
         setStoreTimezone(tz);
-
-        const mapped = data.map((order: BackendOrder) => mapOrder(order, tz));
-        setOrders(mapped);
+        setOrders(data.map((order) => mapOrder(order, tz)));
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to fetch POS orders:", error);
@@ -1194,18 +1201,37 @@ export default function PosOrdersPage() {
           );
         }
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        if (!cancelled) setIsLoading(false);
       }
     };
-
     void fetchOrders();
-
     return () => {
       cancelled = true;
     };
   }, [locale, mapOrder]);
+
+  useEffect(() => {
+    if (deepLinkHandledRef.current || orders.length === 0) return;
+    const requestedOrder = searchParams.get("order");
+    if (!requestedOrder) {
+      deepLinkHandledRef.current = true;
+      return;
+    }
+    const order = orders.find((entry) => entry.stableId === requestedOrder);
+    if (!order) return;
+    const requestedAction = searchParams.get("action");
+    const action = ACTIONS.includes(requestedAction as ActionKey)
+      ? (requestedAction as ActionKey)
+      : "retender";
+    setSelectedId(order.stableId);
+    setSelectedAction(order.channel === "in_store" ? action : null);
+    setReason("");
+    setSelectedItemIds([]);
+    setSelectedItemQtyMap({});
+    setSwapSelection(null);
+    setSwapActiveItem(null);
+    deepLinkHandledRef.current = true;
+  }, [orders, searchParams]);
 
   useEffect(() => {
     if (selectedId && !orders.some((order) => order.stableId === selectedId)) {
@@ -1221,7 +1247,6 @@ export default function PosOrdersPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadMenu() {
       try {
         const [menuResponse, templateGroups] = await Promise.all([
@@ -1229,19 +1254,18 @@ export default function PosOrdersPage() {
           apiFetch<MenuTemplateFull[]>("/admin/menu/option-group-templates"),
         ]);
         if (cancelled) return;
-        const localized = buildLocalizedMenuFromDb(
-          menuResponse.categories ?? [],
-          locale,
-          templateGroups ?? [],
+        setMenuCategories(
+          buildLocalizedMenuFromDb(
+            menuResponse.categories ?? [],
+            locale,
+            templateGroups ?? [],
+          ),
         );
-        setMenuCategories(localized);
       } catch (error) {
         console.error("Failed to load POS menu for swap:", error);
       }
     }
-
     void loadMenu();
-
     return () => {
       cancelled = true;
     };
@@ -1251,7 +1275,6 @@ export default function PosOrdersPage() {
     () => orders.find((order) => order.stableId === selectedId) ?? null,
     [orders, selectedId],
   );
-  const canDenySelectedUberOrder = selectedOrder?.status === "pending";
 
   useEffect(() => {
     setSelectedPaymentMethod(null);
@@ -1261,15 +1284,17 @@ export default function PosOrdersPage() {
     return orders
       .filter((order) => {
         if (filters.time === "today") {
-          const orderDate = parseBackendDate(order.createdAt);
-          const tz = storeTimezone || "UTC";
-          const orderYmd = ymdInTimeZone(orderDate, tz);
+          const orderYmd = ymdInTimeZone(
+            parseBackendDate(order.createdAt),
+            storeTimezone || "UTC",
+          );
           if (orderYmd !== todayYmd) return false;
         }
         if (filters.dateYmd) {
-          const orderDate = parseBackendDate(order.createdAt);
-          const tz = storeTimezone || "UTC";
-          const orderYmd = ymdInTimeZone(orderDate, tz);
+          const orderYmd = ymdInTimeZone(
+            parseBackendDate(order.createdAt),
+            storeTimezone || "UTC",
+          );
           if (orderYmd !== filters.dateYmd) return false;
         }
         if (
@@ -1337,7 +1362,6 @@ export default function PosOrdersPage() {
       nextSubtotal = 0;
     }
     const newSubtotal = Math.max(0, nextSubtotal);
-
     const newDiscount =
       selectedAction === "full_refund"
         ? 0
@@ -1361,7 +1385,6 @@ export default function PosOrdersPage() {
     let refundCents = 0;
     let additionalChargeCents = 0;
     let newChargeCents = 0;
-
     if (selectedAction === "retender") {
       refundCents = baseTotal;
       newChargeCents = newTotal;
@@ -1369,11 +1392,8 @@ export default function PosOrdersPage() {
       refundCents = baseTotal;
     } else {
       const delta = newTotal - baseTotal;
-      if (delta > 0) {
-        additionalChargeCents = delta;
-      } else if (delta < 0) {
-        refundCents = Math.abs(delta);
-      }
+      if (delta > 0) additionalChargeCents = delta;
+      else if (delta < 0) refundCents = Math.abs(delta);
     }
 
     return {
@@ -1415,7 +1435,6 @@ export default function PosOrdersPage() {
       }));
       return;
     }
-
     if (key.type === "amount") {
       setFilters((prev) => ({
         ...prev,
@@ -1424,7 +1443,6 @@ export default function PosOrdersPage() {
       }));
       return;
     }
-
     if (key.type === "status") {
       setFilters((prev) => ({
         ...prev,
@@ -1432,7 +1450,6 @@ export default function PosOrdersPage() {
       }));
       return;
     }
-
     if (key.type === "fulfillment") {
       setFilters((prev) => ({
         ...prev,
@@ -1441,7 +1458,6 @@ export default function PosOrdersPage() {
           key.value as OrderRecord["type"],
         ),
       }));
-      return;
     }
   };
 
@@ -1468,6 +1484,7 @@ export default function PosOrdersPage() {
   };
 
   const handleSelectAction = (action: ActionKey) => {
+    if (isActionDisabled(action)) return;
     setSelectedAction(action);
     if (action !== "void_item" && action !== "swap_item") {
       setSelectedItemIds([]);
@@ -1485,13 +1502,14 @@ export default function PosOrdersPage() {
     selectedAction === "void_item" || selectedAction === "swap_item";
 
   const isActionDisabled = useCallback(
-    (action: ActionKey) => {
-      if (action === "full_refund") {
-        return selectedOrder?.status === "refunded";
-      }
-      return false;
+    (_action: ActionKey) => {
+      if (!selectedOrder) return true;
+      if (selectedOrder.channel !== "in_store") return true;
+      return !["paid", "making", "ready", "completed"].includes(
+        selectedOrder.status,
+      );
     },
-    [selectedOrder?.status],
+    [selectedOrder],
   );
 
   const shouldShowPaymentMethodPicker =
@@ -1502,13 +1520,9 @@ export default function PosOrdersPage() {
 
   useEffect(() => {
     if (!shouldShowPaymentMethodPicker || !selectedOrder) return;
-    if (selectedOrder.channel === "ubereats") {
-      setSelectedPaymentMethod("UBEREATS");
-    } else {
-      setSelectedPaymentMethod((current) =>
-        current === "UBEREATS" ? null : current,
-      );
-    }
+    setSelectedPaymentMethod((current) =>
+      current === "UBEREATS" ? null : current,
+    );
   }, [selectedOrder, shouldShowPaymentMethodPicker]);
 
   const canSubmit =
@@ -1520,11 +1534,7 @@ export default function PosOrdersPage() {
     (selectedAction ? !isActionDisabled(selectedAction) : false);
 
   const openSwapItemDialog = (item: PublicMenuCategory["items"][number]) => {
-    setSwapActiveItem({
-      item,
-      options: {},
-      quantity: 1,
-    });
+    setSwapActiveItem({ item, options: {}, quantity: 1 });
   };
 
   const selectSwapItem = (item: PublicMenuCategory["items"][number]) => {
@@ -1547,25 +1557,17 @@ export default function PosOrdersPage() {
       let next: string[];
       if (current.includes(optionId)) {
         next = current.filter((id) => id !== optionId);
+      } else if (maxSelect === 1) {
+        next = [optionId];
+      } else if (
+        typeof maxSelect === "number" &&
+        current.length >= maxSelect
+      ) {
+        next = [...current.slice(1), optionId];
       } else {
-        if (maxSelect === 1) {
-          next = [optionId];
-        } else if (
-          typeof maxSelect === "number" &&
-          current.length >= maxSelect
-        ) {
-          next = [...current.slice(1), optionId];
-        } else {
-          next = [...current, optionId];
-        }
+        next = [...current, optionId];
       }
-      return {
-        ...prev,
-        options: {
-          ...prev.options,
-          [groupId]: next,
-        },
-      };
+      return { ...prev, options: { ...prev.options, [groupId]: next } };
     });
   };
 
@@ -1586,9 +1588,22 @@ export default function PosOrdersPage() {
     setSwapActiveItem(null);
   };
 
+  const promptOperatorName = (): string | null => {
+    return (
+      window
+        .prompt(
+          locale === "zh"
+            ? "操作人姓名（必填）：请在实际退款/补收完成后输入员工姓名确认"
+            : "Operator name (required): enter the staff name after the external refund/charge is complete",
+        )
+        ?.trim() || null
+    );
+  };
+
   const handleSubmit = () => {
-    if (!selectedOrder || !selectedAction) return;
-    if (!canSubmit) return;
+    if (!selectedOrder || !selectedAction || !canSubmit) return;
+    const operatorName = promptOperatorName();
+    if (!operatorName) return;
 
     const selectedItems = selectedOrder.items
       .filter((item) => selectedItemIds.includes(item.lineId))
@@ -1612,40 +1627,9 @@ export default function PosOrdersPage() {
     };
 
     if (selectedAction === "full_refund") {
-      if (isActionDisabled("full_refund")) return;
-
       void (async () => {
         try {
           setIsSubmitting(true);
-          if (selectedOrder.channel === "ubereats") {
-            const confirmed = window.confirm(
-              locale === "zh"
-                ? "此操作仅记录已在 Uber 后台人工完成的退款，不会调用拒单接口。确认继续？"
-                : "This only records a refund already completed manually in Uber; it will not call the deny API. Continue?",
-            );
-            if (!confirmed) return;
-            const evidence = window
-              .prompt(
-                locale === "zh"
-                  ? "请输入 Uber 人工处理凭证（工单号、操作员及时间等，必填）"
-                  : "Enter required Uber handling evidence (ticket, operator and time)",
-              )
-              ?.trim();
-            if (!evidence) return;
-            const updated = await recordManualUberRefund<BackendOrder>(
-              selectedOrder.stableId,
-              { reason: reason.trim(), evidence },
-            );
-            const mapped = mapOrder(updated, storeTimezone);
-            setOrders((prev) =>
-              prev.map((order) =>
-                order.stableId === mapped.stableId ? mapped : order,
-              ),
-            );
-            setSelectedId(mapped.stableId);
-            showToast(copy.actionSuccess, "success");
-            return;
-          }
           const originalPaymentMethod =
             selectedOrder.paymentMethod === "cash"
               ? "CASH"
@@ -1658,6 +1642,7 @@ export default function PosOrdersPage() {
             selectedOrder.stableId,
             {
               reason: reason.trim(),
+              operatorName,
               refundAmountCents: selectedOrder.amountCents,
               originalPaymentMethod,
               refundMethod: selectedPaymentMethod!,
@@ -1685,18 +1670,13 @@ export default function PosOrdersPage() {
           setIsSubmitting(false);
         }
       })();
-
       return;
     }
 
-    // === 其他动作：create amendment ===
     void (async () => {
       try {
         setIsSubmitting(true);
-
         if (!summary) throw new Error("summary is missing");
-
-        // 1) action -> amendment type（关键：显式标注类型，避免变成 string）
         const amendmentType: CreateOrderAmendmentInput["type"] =
           selectedAction === "retender"
             ? "RETENDER"
@@ -1706,7 +1686,6 @@ export default function PosOrdersPage() {
                 ? "SWAP_ITEM"
                 : "ADDITIONAL_CHARGE";
 
-        // 2) items
         const voidItems =
           selectedAction === "void_item" || selectedAction === "swap_item"
             ? selectedItems.map((it) => ({
@@ -1717,6 +1696,7 @@ export default function PosOrdersPage() {
                 displayName: it.displayName ?? it.name,
                 nameEn: it.nameEn ?? null,
                 nameZh: it.nameZh ?? null,
+                optionsJson: it.optionsJson,
               }))
             : [];
 
@@ -1736,60 +1716,44 @@ export default function PosOrdersPage() {
                   displayName: swapSelection.item.name,
                   nameEn: swapSelection.item.nameEn ?? null,
                   nameZh: swapSelection.item.nameZh ?? null,
-                  optionsJson: swapSelection.options, // dev: raw
+                  optionsJson: buildSwapOptionsSnapshot(swapSelection),
                 },
               ]
             : [];
-
-        // ✅ RETENDER：必须 items 为空（按后端校验）
         const items =
           selectedAction === "retender" ? [] : [...voidItems, ...addItems];
 
-        // 3) 金额口径（对齐后端字段语义）
-        let refundGrossCents = 0;
-        let additionalChargeCents = 0;
-
-        if (selectedAction === "retender") {
-          refundGrossCents = Math.max(0, Math.round(summary.baseTotal));
-          additionalChargeCents = Math.max(
-            0,
-            Math.round(summary.newChargeCents),
-          );
-        } else {
-          refundGrossCents = Math.max(0, Math.round(summary.refundCents));
-          additionalChargeCents = Math.max(
-            0,
-            Math.round(summary.additionalChargeCents),
-          );
-        }
+        const refundGrossCents =
+          selectedAction === "retender"
+            ? Math.max(0, Math.round(summary.baseTotal))
+            : Math.max(0, Math.round(summary.refundCents));
+        const additionalChargeCents =
+          selectedAction === "retender"
+            ? Math.max(0, Math.round(summary.newChargeCents))
+            : Math.max(0, Math.round(summary.additionalChargeCents));
 
         const payload: CreateOrderAmendmentInput = {
           type: amendmentType,
           reason: reason.trim(),
+          operatorName,
           paymentMethod: shouldShowPaymentMethodPicker
             ? selectedPaymentMethod
             : null,
           refundGrossCents,
           additionalChargeCents,
           items,
+          locale,
         };
-
         const updated = await createOrderAmendment<BackendOrder>(
           selectedOrder.stableId,
           payload,
         );
-
         const mapped = mapOrder(updated, storeTimezone);
         setOrders((prev) =>
           prev.map((order) =>
             order.stableId === mapped.stableId ? mapped : order,
           ),
         );
-
-        if (selectedAction === "void_item" || selectedAction === "swap_item") {
-          await printOrderCloud(selectedOrder.stableId, { locale });
-        }
-
         showToast(copy.actionSuccess, "success");
         completeReset();
       } catch (error) {
@@ -1862,7 +1826,6 @@ export default function PosOrdersPage() {
 
   const handlePrintReceipt = useCallback(async () => {
     if (!selectedOrder) return;
-
     try {
       await printOrderCloud(selectedOrder.stableId, { locale });
       showToast(copy.actionSuccess, "success");
@@ -1956,7 +1919,6 @@ export default function PosOrdersPage() {
                   )) ||
                 (filter.type === "amount" &&
                   filters.minTotalCents === Number(filter.value));
-
               return (
                 <button
                   key={filter.key}
@@ -1996,9 +1958,7 @@ export default function PosOrdersPage() {
               </div>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
-              <div className="text-[11px] uppercase text-slate-400">
-                Channels
-              </div>
+              <div className="text-[11px] uppercase text-slate-400">Channels</div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(
                   [
@@ -2089,7 +2049,9 @@ export default function PosOrdersPage() {
                 type="button"
                 onClick={() => {
                   setSelectedId(order.stableId);
-                  setSelectedAction("retender");
+                  setSelectedAction(
+                    order.channel === "in_store" ? "retender" : null,
+                  );
                   setReason("");
                   setSelectedItemIds([]);
                   setSwapSelection(null);
@@ -2200,9 +2162,7 @@ export default function PosOrdersPage() {
                   {formatMoney(selectedOrder.amountCents)}
                 </span>
               </div>
-              {selectedOrder.items.some(
-                (item) => item.specialInstructions,
-              ) ? (
+              {selectedOrder.items.some((item) => item.specialInstructions) ? (
                 <section className="rounded-xl border border-amber-400/50 bg-amber-500/10 p-4">
                   <h3 className="text-sm font-semibold text-amber-100">
                     {locale === "zh" ? "餐品特殊要求" : "Item special requests"}
@@ -2230,13 +2190,26 @@ export default function PosOrdersPage() {
                 <section className="rounded-xl border border-orange-400/40 bg-orange-500/10 p-4">
                   <h3 className="text-sm font-semibold text-orange-100">
                     {locale === "zh"
-                      ? "Uber 订单取消处理"
-                      : "Uber order cancellation"}
+                      ? "Uber 订单由平台动作处理"
+                      : "Uber actions use the platform integration"}
                   </h3>
                   <p className="mt-1 text-xs text-orange-100/80">
                     {locale === "zh"
-                      ? "Uber 新订单由 webhook 落库后自动接单，POS 不提供拒单。接单后的取消或退款请使用下方处理入口；如平台无法直接处理，请联系 Uber 支持。"
-                      : "New Uber orders are accepted automatically after the webhook saves them; POS does not offer rejection. Use the actions below for cancellation or refunds after acceptance, and contact Uber Support when platform handling is unavailable."}
+                      ? "本页不允许用门店改单/退款逻辑修改 Uber 订单。取消订单请从 POS 订单看板的订单详情中直接提交到 Uber。"
+                      : "Store amendment/refund actions are disabled for Uber orders. Submit cancellation directly to Uber from the POS order-board detail modal."}
+                  </p>
+                </section>
+              ) : selectedOrder.channel === "web" ? (
+                <section className="rounded-xl border border-sky-400/40 bg-sky-500/10 p-4">
+                  <h3 className="text-sm font-semibold text-sky-100">
+                    {locale === "zh"
+                      ? "线上订单操作暂未开放"
+                      : "Online order actions are reserved"}
+                  </h3>
+                  <p className="mt-1 text-xs text-sky-100/80">
+                    {locale === "zh"
+                      ? "换菜、退菜、退款和更改支付方式已预留，待 Clover POS / 支付同步接入后启用。"
+                      : "Swap, void, refund, and payment-change actions are reserved until Clover POS/payment synchronization is available."}
                   </p>
                 </section>
               ) : null}
@@ -2292,7 +2265,6 @@ export default function PosOrdersPage() {
                 {copy.close ?? "Close"}
               </button>
             </div>
-
             <div className="mt-4 max-h-[60vh] overflow-auto pr-1 space-y-4">
               {menuCategories.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 p-6 text-center text-sm text-slate-400">
@@ -2318,7 +2290,7 @@ export default function PosOrdersPage() {
                               {formatMoney(Math.round(item.price * 100))}
                             </span>
                           </div>
-                          {item.optionGroups && item.optionGroups.length > 0 ? (
+                          {item.optionGroups?.length ? (
                             <div className="mt-1 text-[11px] text-slate-400">
                               {locale === "zh" ? "含可选项" : "Has options"}
                             </div>
@@ -2365,7 +2337,6 @@ export default function PosOrdersPage() {
                   swapActiveItem.options[group.templateGroupStableId] ?? [];
                 const minSelect = group.minSelect ?? 0;
                 const maxSelect = group.maxSelect ?? null;
-
                 return (
                   <div
                     key={group.templateGroupStableId}
@@ -2373,9 +2344,7 @@ export default function PosOrdersPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-base font-semibold">
-                          {groupName}
-                        </div>
+                        <div className="text-base font-semibold">{groupName}</div>
                         <div className="text-xs text-slate-400">
                           {copy.optionLimit(minSelect, maxSelect)}
                         </div>
@@ -2386,7 +2355,6 @@ export default function PosOrdersPage() {
                         </span>
                       )}
                     </div>
-
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {group.options.map((option) => {
                         const selected = selection.includes(
@@ -2400,7 +2368,9 @@ export default function PosOrdersPage() {
                           option.priceDeltaCents > 0
                             ? `+${formatMoney(option.priceDeltaCents)}`
                             : option.priceDeltaCents < 0
-                              ? `-${formatMoney(Math.abs(option.priceDeltaCents))}`
+                              ? `-${formatMoney(
+                                  Math.abs(option.priceDeltaCents),
+                                )}`
                               : "";
                         return (
                           <button
@@ -2444,9 +2414,7 @@ export default function PosOrdersPage() {
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-300">
-                  {copy.swapItemQty}
-                </span>
+                <span className="text-sm text-slate-300">{copy.swapItemQty}</span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"

@@ -11,19 +11,16 @@ import { apiFetch } from "@/lib/api/client";
 
 const enc = (v: string) => encodeURIComponent(v);
 
-// POS: 最近订单
 export async function fetchRecentOrders<T = unknown>(limit = 10) {
   return apiFetch<T>(
     `/pos/orders/recent?limit=${encodeURIComponent(String(limit))}`,
   );
 }
 
-// POS: 订单详情（按你的迁移口径：这里的 id 应该是订单 stableId）
 export async function fetchOrderById<T = unknown>(id: string) {
   return apiFetch<T>(`/pos/orders/${enc(id)}`);
 }
 
-// POS: 更新订单状态
 export async function updateOrderStatus<T = unknown>(
   id: string,
   status: string,
@@ -35,7 +32,6 @@ export async function updateOrderStatus<T = unknown>(
   });
 }
 
-// POS: 推进状态（如 making -> ready -> completed）
 export async function advanceOrder<T = unknown>(id: string) {
   return apiFetch<T>(`/pos/orders/${enc(id)}/advance`, {
     method: "POST",
@@ -67,10 +63,32 @@ export async function cancelUberOrder<T = unknown>(
   });
 }
 
-// POS: 看板/队列（如果你前端有用到）
+export type PosOrderManagementAction =
+  | "SWAP_ITEM"
+  | "VOID_ITEM"
+  | "FULL_REFUND"
+  | "CHANGE_PAYMENT"
+  | "UBER_CANCEL";
+
+export type PosOrderActionCapability = {
+  action: PosOrderManagementAction;
+  available: boolean;
+  reason?:
+    | "CLOVER_SYNC_PENDING"
+    | "ORDER_REFUNDED"
+    | "ORDER_NOT_SETTLED"
+    | "ORDER_STATUS_NOT_SUPPORTED";
+};
+
+export async function fetchOrderActions(orderStableId: string) {
+  return apiFetch<{ actions: PosOrderActionCapability[] }>(
+    `/pos/orders/${enc(orderStableId)}/actions`,
+  );
+}
+
 export async function fetchOrderBoard<T = unknown>(params: {
-  status?: string; // comma-separated
-  channel?: string; // comma-separated
+  status?: string;
+  channel?: string;
   limit?: number;
   sinceMinutes?: number;
 }) {
@@ -94,12 +112,10 @@ export type CreateOrderAmendmentItemInput = {
   action: OrderAmendmentItemAction;
   productStableId: string;
   qty: number;
-
   unitPriceCents?: number | null;
   displayName?: string | null;
   nameEn?: string | null;
   nameZh?: string | null;
-
   optionsJson?: unknown;
 };
 
@@ -109,7 +125,6 @@ export type CreateOrderAmendmentType =
   | "SWAP_ITEM"
   | "ADDITIONAL_CHARGE";
 
-// ✅ 直接对齐后端枚举（无需映射）
 export type PaymentMethod =
   | "CASH"
   | "CARD"
@@ -119,6 +134,7 @@ export type PaymentMethod =
 
 export type CreateFullRefundInput = {
   reason: string;
+  operatorName: string;
   refundAmountCents: number;
   originalPaymentMethod: PaymentMethod;
   refundMethod: PaymentMethod;
@@ -143,27 +159,15 @@ export async function createFullRefund<T = unknown>(
   );
 }
 
-export async function recordManualUberRefund<T = unknown>(
-  orderStableId: string,
-  payload: { reason: string; evidence: string },
-) {
-  return apiFetch<T>(`/pos/orders/${enc(orderStableId)}/uber-manual-refund`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
 export type CreateOrderAmendmentInput = {
   type: CreateOrderAmendmentType;
   reason: string;
-
+  operatorName: string;
   refundGrossCents?: number;
   additionalChargeCents?: number;
-
   items?: CreateOrderAmendmentItemInput[];
-
   paymentMethod?: PaymentMethod | null;
+  locale?: "zh" | "en";
 };
 
 export async function createOrderAmendment<T = unknown>(
@@ -177,7 +181,34 @@ export async function createOrderAmendment<T = unknown>(
   });
 }
 
-// POS: 云端打印订单
+export type PosOrderAmendmentHistory = {
+  amendmentStableId: string;
+  type: CreateOrderAmendmentType;
+  paymentMethod: PaymentMethod | null;
+  reason: string;
+  operatorName: string | null;
+  deltaCents: number;
+  refundCents: number;
+  additionalChargeCents: number;
+  summaryJson: unknown;
+  items: Array<{
+    action: OrderAmendmentItemAction;
+    productStableId: string;
+    displayName: string | null;
+    nameEn: string | null;
+    nameZh: string | null;
+    qty: number;
+    unitPriceCents: number | null;
+    optionsJson: unknown;
+  }>;
+};
+
+export async function fetchOrderAmendments(orderStableId: string) {
+  return apiFetch<PosOrderAmendmentHistory[]>(
+    `/pos/orders/${enc(orderStableId)}/amendments`,
+  );
+}
+
 export async function printOrderCloud<T = unknown>(
   stableId: string,
   payload?: {
@@ -207,7 +238,6 @@ export async function fetchOrderPrintStatus(stableId: string) {
   );
 }
 
-// POS: 云端打印当日小结
 export async function printSummaryCloud<T = unknown>(
   params: Record<string, string>,
 ) {

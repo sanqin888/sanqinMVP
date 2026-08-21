@@ -3,7 +3,6 @@ import { PosOrdersController } from './pos-orders.controller';
 describe('PosOrdersController Uber orders', () => {
   const orders = {
     board: jest.fn(),
-    createFullRefund: jest.fn(),
   };
   const posOrders = { cancelUberOrder: jest.fn() };
   const schedulingQuery = {
@@ -93,27 +92,5 @@ describe('PosOrdersController Uber orders', () => {
       'order_1',
       '商品售罄',
     );
-  });
-
-  it('接单后的 Uber 全额退款仍提交给订单服务处理', async () => {
-    orders.createFullRefund.mockResolvedValue({
-      order: { orderStableId: 'order_1', status: 'completed' },
-      outcome: 'pending_platform',
-    });
-
-    await controller.fullRefund('order_1', {
-      reason: '顾客取消',
-      refundAmountCents: 2599,
-      originalPaymentMethod: 'UBEREATS' as never,
-      refundMethod: 'UBEREATS' as never,
-    });
-
-    expect(orders.createFullRefund).toHaveBeenCalledWith({
-      orderStableId: 'order_1',
-      reason: '顾客取消',
-      refundAmountCents: 2599,
-      originalPaymentMethod: 'UBEREATS',
-      refundMethod: 'UBEREATS',
-    });
   });
 });

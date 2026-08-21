@@ -1,4 +1,4 @@
-//apps/api/src/pos/pos-orders.controller.ts
+// apps/api/src/pos/pos-orders.controller.ts
 import {
   BadRequestException,
   Body,
@@ -28,9 +28,11 @@ import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
 import type { OrderStatus } from '../orders/order-status';
 import {
+  OrderAmendmentItemAction,
   OrderAmendmentType,
   OrderFulfillmentTiming,
   PaymentMethod,
+  Prisma,
 } from '@prisma/client';
 import type { OrderDto } from '../orders/dto/order.dto';
 import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
@@ -40,7 +42,16 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosGateway } from './pos.gateway';
 import { PosOrdersService } from './pos-orders.service';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 type PosDeviceRequest = Request & {
   posDevice?: { storeId: string };
@@ -54,6 +65,9 @@ class CreateFullRefundDto {
   @IsString()
   reason!: string;
 
+  @IsString()
+  operatorName!: string;
+
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -66,18 +80,80 @@ class CreateFullRefundDto {
   refundMethod!: PaymentMethod;
 }
 
-class RecordManualUberRefundDto {
-  @IsString()
-  reason!: string;
-
-  @IsString()
-  evidence!: string;
-}
-
 class CancelUberOrderDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+class CreateAmendmentItemDto {
+  @IsEnum(OrderAmendmentItemAction)
+  action!: OrderAmendmentItemAction;
+
+  @IsString()
+  productStableId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  qty!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  unitPriceCents?: number | null;
+
+  @IsOptional()
+  @IsString()
+  displayName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  nameEn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  nameZh?: string | null;
+
+  @IsOptional()
+  optionsJson?: Prisma.InputJsonValue;
+}
+
+class CreatePosAmendmentDto {
+  @IsEnum(OrderAmendmentType)
+  type!: OrderAmendmentType;
+
+  @IsString()
+  reason!: string;
+
+  @IsString()
+  operatorName!: string;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  refundGrossCents?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  additionalChargeCents?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateAmendmentItemDto)
+  items?: CreateAmendmentItemDto[];
+
+  @IsOptional()
+  @IsIn(['zh', 'en'])
+  locale?: 'zh' | 'en';
 }
 
 @Controller('pos/orders')
@@ -176,6 +252,16 @@ export class PosOrdersController {
     return this.orders.getByStableId(orderStableId);
   }
 
+  @Get(':orderStableId/actions')
+  getActions(@Param('orderStableId', StableIdPipe) orderStableId: string) {
+    return this.posOrders.getManagementActions(orderStableId);
+  }
+
+  @Get(':orderStableId/amendments')
+  listAmendments(@Param('orderStableId', StableIdPipe) orderStableId: string) {
+    return this.posOrders.listAmendments(orderStableId);
+  }
+
   @Get(':orderStableId/print-payload')
   getPrintPayload(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
@@ -249,46 +335,43 @@ export class PosOrdersController {
 
   @Post(':orderStableId/amendments')
   @HttpCode(201)
-  createAmendment(
+  async createAmendment(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body()
-    body: {
-      type: OrderAmendmentType;
-      reason: string;
-      paymentMethod?: PaymentMethod | null;
-      refundGrossCents?: number;
-      additionalChargeCents?: number;
-      items?: any[];
-    },
+    @Body() body: CreatePosAmendmentDto,
   ): Promise<OrderDto> {
-    // 这里直接复用你现有 service 的 createAmendment
-    return this.orders.createAmendment({
-      orderStableId,
+    const items = body.items ?? [];
+    const updated = await this.posOrders.createAmendment(orderStableId, {
       type: body.type,
       reason: body.reason,
+      operatorName: body.operatorName,
       paymentMethod: body.paymentMethod ?? null,
       refundGrossCents: body.refundGrossCents ?? 0,
       additionalChargeCents: body.additionalChargeCents ?? 0,
-      items: body.items ?? [],
+      items,
     });
+
+    if (
+      body.type === OrderAmendmentType.VOID_ITEM ||
+      body.type === OrderAmendmentType.SWAP_ITEM
+    ) {
+      this.eventEmitter.emit('order.amendment.print', {
+        orderStableId,
+        locale: body.locale ?? 'zh',
+        reason: body.reason,
+        operatorName: body.operatorName,
+        items,
+      });
+    }
+
+    return updated;
   }
 
   @Post(':orderStableId/full-refund')
   @HttpCode(201)
   fullRefund(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body()
-    body: CreateFullRefundDto,
+    @Body() body: CreateFullRefundDto,
   ) {
-    return this.orders.createFullRefund({ orderStableId, ...body });
-  }
-
-  @Post(':orderStableId/uber-manual-refund')
-  @HttpCode(201)
-  recordManualUberRefund(
-    @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body() body: RecordManualUberRefundDto,
-  ): Promise<OrderDto> {
-    return this.posOrders.recordManualUberRefund(orderStableId, body);
+    return this.posOrders.createFullRefund(orderStableId, body);
   }
 }
