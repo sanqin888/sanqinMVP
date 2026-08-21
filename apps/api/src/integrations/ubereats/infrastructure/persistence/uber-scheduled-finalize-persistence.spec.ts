@@ -106,9 +106,7 @@ describe('Uber scheduled finalize persistence', () => {
       } as never,
       { ingest } as never,
     );
-    const input: Parameters<
-      UberOrderImportPrismaAdapter['saveImportedOrder']
-    >[0] = {
+    const input = {
       order: {
         externalOrderId: 'scheduled-order-1',
         displayId: 'S1001',
@@ -120,8 +118,8 @@ describe('Uber scheduled finalize persistence', () => {
         discountCents: 0,
         hasPromotion: false,
         deliveryFeeCents: 0,
-        fulfillmentType: 'delivery',
-        fulfillmentTiming: 'SCHEDULED',
+        fulfillmentType: 'delivery' as const,
+        fulfillmentTiming: 'SCHEDULED' as const,
         scheduledReadyAt: new Date('2026-08-21T14:53:28.000Z'),
         estimatedReadyAt: new Date('2026-08-21T14:53:28.000Z'),
         specialInstructions: null,
@@ -163,7 +161,7 @@ describe('Uber scheduled finalize persistence', () => {
       cancellation: null,
       actionIntent: {
         externalOrderId: 'scheduled-order-1',
-        action: 'ACCEPT',
+        action: 'ACCEPT' as const,
         idempotencyKey: 'initial-accept-key',
         businessVersion: 'v1',
         reasonCode: null,
