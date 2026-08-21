@@ -157,7 +157,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
       return value
         .slice(0, 30)
         .map((item) => this.safeErrorBody(item, depth + 1));
-    if (typeof value !== 'object') return String(value).slice(0, 500);
+    if (!this.isRecord(value)) return '[UNSUPPORTED]';
 
     const result: Record<string, UberOrderSafeErrorBody> = {};
     for (const [key, item] of Object.entries(value).slice(0, 50)) {
@@ -168,6 +168,10 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         : this.safeErrorBody(item, depth + 1);
     }
     return result;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
 
   private safeString(value: string): string {
