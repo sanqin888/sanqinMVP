@@ -1242,7 +1242,8 @@ export class AdminMembersService {
           code: template.couponStableId,
           title:
             template.tittleCh ?? template.titleEn ?? template.couponStableId,
-          discountCents: rule.type === 'FIXED_CENTS' ? (rule.amountCents ?? 0) : 0,
+          discountCents:
+            rule.type === 'FIXED_CENTS' ? (rule.amountCents ?? 0) : 0,
           discountPercent:
             rule.type === 'PERCENT' ? (rule.percentOff ?? null) : null,
           minSpendCents,
