@@ -161,11 +161,10 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
 
     const result: Record<string, UberOrderSafeErrorBody> = {};
     for (const [key, item] of Object.entries(value).slice(0, 50)) {
-      result[key] = /authorization|token|secret|password|email|phone|address/i.test(
-        key,
-      )
-        ? '[REDACTED]'
-        : this.safeErrorBody(item, depth + 1);
+      result[key] =
+        /authorization|token|secret|password|email|phone|address/i.test(key)
+          ? '[REDACTED]'
+          : this.safeErrorBody(item, depth + 1);
     }
     return result;
   }

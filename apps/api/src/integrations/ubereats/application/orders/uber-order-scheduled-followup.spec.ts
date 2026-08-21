@@ -4,12 +4,12 @@ import type { UberOrderNotificationEventV1 } from '../../domain/webhook/uber-web
 
 const notification = {
   resourceId: 'scheduled-order-1',
-  resourceHref:
-    'https://api.uber.com/v1/delivery/order/scheduled-order-1',
+  resourceHref: 'https://api.uber.com/v1/delivery/order/scheduled-order-1',
 } as UberOrderNotificationEventV1;
 
 describe('Uber scheduled-order follow-up notifications', () => {
   it('acknowledges a later orders.notification without re-importing or re-accepting an existing scheduled order', async () => {
+    const saveImportedOrder = jest.fn();
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
         orderId: 'local-1',
@@ -24,7 +24,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
       }),
       findMenuMappings: jest.fn(),
       saveExistingOrderCancellation: jest.fn(),
-      saveImportedOrder: jest.fn(),
+      saveImportedOrder,
     } as unknown as UberOrderImportRepositoryPort;
     const fetchOrderDetail = jest.fn();
     const request = jest.fn();
@@ -48,7 +48,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
     );
 
     expect(fetchOrderDetail).not.toHaveBeenCalled();
-    expect(repository.saveImportedOrder).not.toHaveBeenCalled();
+    expect(saveImportedOrder).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
     expect(buildIntent).not.toHaveBeenCalled();
   });
