@@ -1,14 +1,15 @@
 import {
   BadRequestException,
-  ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   Channel,
+  OrderAmendmentItemAction,
   OrderAmendmentType,
-  OrderStatus as PrismaOrderStatus,
   PaymentMethod,
+  Prisma,
 } from '@prisma/client';
 import { OrdersService } from '../orders/orders.service';
 import {
@@ -23,9 +24,89 @@ import {
   type UberEatsOrderStatusSyncPort,
 } from '../integrations/ubereats/public-api';
 import { PrismaService } from '../prisma/prisma.service';
-import { createHash } from 'crypto';
 
 const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
+const POS_OPERATOR_REASON_MARKER = ' · 操作人:';
+const AMENDABLE_STATUSES = new Set<OrderStatus>([
+  'paid',
+  'making',
+  'ready',
+  'completed',
+]);
+const IN_STORE_MANAGEMENT_ACTIONS: readonly PosOrderManagementAction[] = [
+  'SWAP_ITEM',
+  'VOID_ITEM',
+  'FULL_REFUND',
+  'CHANGE_PAYMENT',
+];
+
+type PosAmendmentItemInput = {
+  action: OrderAmendmentItemAction;
+  productStableId: string;
+  qty: number;
+  unitPriceCents?: number | null;
+  displayName?: string | null;
+  nameEn?: string | null;
+  nameZh?: string | null;
+  optionsJson?: Prisma.InputJsonValue;
+};
+
+export type PosCreateAmendmentInput = {
+  type: OrderAmendmentType;
+  reason: string;
+  operatorName: string;
+  paymentMethod?: PaymentMethod | null;
+  refundGrossCents?: number;
+  additionalChargeCents?: number;
+  items?: PosAmendmentItemInput[];
+};
+
+export type PosCreateFullRefundInput = {
+  reason: string;
+  operatorName: string;
+  refundAmountCents: number;
+  originalPaymentMethod: PaymentMethod;
+  refundMethod: PaymentMethod;
+};
+
+export type PosOrderManagementAction =
+  | 'SWAP_ITEM'
+  | 'VOID_ITEM'
+  | 'FULL_REFUND'
+  | 'CHANGE_PAYMENT'
+  | 'UBER_CANCEL';
+
+export type PosOrderActionCapability = {
+  action: PosOrderManagementAction;
+  available: boolean;
+  reason?:
+    | 'CLOVER_SYNC_PENDING'
+    | 'ORDER_REFUNDED'
+    | 'ORDER_NOT_SETTLED'
+    | 'ORDER_STATUS_NOT_SUPPORTED';
+};
+
+export type PosOrderAmendmentHistory = {
+  amendmentStableId: string;
+  type: OrderAmendmentType;
+  paymentMethod: PaymentMethod | null;
+  reason: string;
+  operatorName: string | null;
+  deltaCents: number;
+  refundCents: number;
+  additionalChargeCents: number;
+  summaryJson: Prisma.JsonValue | null;
+  items: Array<{
+    action: OrderAmendmentItemAction;
+    productStableId: string;
+    displayName: string | null;
+    nameEn: string | null;
+    nameZh: string | null;
+    qty: number;
+    unitPriceCents: number | null;
+    optionsJson: Prisma.JsonValue | null;
+  }>;
+};
 
 @Injectable()
 export class PosOrdersService {
@@ -45,9 +126,6 @@ export class PosOrdersService {
 
     if (order.status === 'pending' && externalOrderId) {
       const result = await this.uberOrderActions.accept(externalOrderId);
-
-      // ACCEPT owns both the durable outbox action and the atomic pending/paid
-      // -> making transition. Never run the generic pending -> paid path.
       const current = result.ok
         ? await this.orders.getByStableId(orderStableId)
         : order;
@@ -59,10 +137,6 @@ export class PosOrdersService {
         externalOrderId,
         'ready' satisfies OrderStatus,
       );
-
-      // syncOrderStatusToUber owns the atomic local transition and durable
-      // Uber action outbox. Read the committed order rather than advancing it
-      // separately, which could otherwise lose the retryable action on failure.
       const current = await this.orders.getByStableId(orderStableId);
       return this.advanceResult(
         current,
@@ -72,10 +146,6 @@ export class PosOrdersService {
       );
     }
 
-    // Uber does not document a merchant "complete" order action. Once the
-    // READY_FOR_PICKUP command has been confirmed, the worker advances the
-    // local order to ready. From that point on, ready -> completed is strictly
-    // a SanQ/POS lifecycle transition and must not depend on Uber state again.
     return this.advanceResult(await this.orders.advance(orderStableId));
   }
 
@@ -106,6 +176,183 @@ export class PosOrdersService {
     return this.advanceResult(order, result);
   }
 
+  async getManagementActions(
+    orderStableId: string,
+  ): Promise<{ actions: PosOrderActionCapability[] }> {
+    const order = await this.orders.getByStableId(orderStableId);
+
+    if (order.channel === Channel.web) {
+      return {
+        actions: IN_STORE_MANAGEMENT_ACTIONS.map(
+          (action): PosOrderActionCapability => ({
+            action,
+            available: false,
+            reason: 'CLOVER_SYNC_PENDING',
+          }),
+        ),
+      };
+    }
+
+    if (order.channel === Channel.ubereats) {
+      const available = ['paid', 'making', 'ready'].includes(order.status);
+      if (available) {
+        return {
+          actions: [{ action: 'UBER_CANCEL', available: true }],
+        };
+      }
+      const reason: PosOrderActionCapability['reason'] =
+        order.status === 'refunded'
+          ? 'ORDER_REFUNDED'
+          : 'ORDER_STATUS_NOT_SUPPORTED';
+      return {
+        actions: [{ action: 'UBER_CANCEL', available: false, reason }],
+      };
+    }
+
+    const available = AMENDABLE_STATUSES.has(order.status);
+    const reason: PosOrderActionCapability['reason'] | undefined = available
+      ? undefined
+      : order.status === 'refunded'
+        ? 'ORDER_REFUNDED'
+        : order.status === 'pending'
+          ? 'ORDER_NOT_SETTLED'
+          : 'ORDER_STATUS_NOT_SUPPORTED';
+
+    return {
+      actions: IN_STORE_MANAGEMENT_ACTIONS.map(
+        (action): PosOrderActionCapability =>
+          reason ? { action, available, reason } : { action, available },
+      ),
+    };
+  }
+
+  async createAmendment(
+    orderStableId: string,
+    input: PosCreateAmendmentInput,
+  ): Promise<OrderDto> {
+    const order = await this.orders.getByStableId(orderStableId);
+    this.assertInStoreManagementOrder(order);
+    const operatorName = this.requireOperatorName(input.operatorName);
+    const reason = this.requireReason(input.reason);
+
+    return this.orders.createAmendment({
+      orderStableId,
+      type: input.type,
+      reason: this.decorateManualReason(reason, operatorName),
+      paymentMethod: input.paymentMethod ?? null,
+      refundGrossCents: input.refundGrossCents ?? 0,
+      additionalChargeCents: input.additionalChargeCents ?? 0,
+      items: input.items ?? [],
+    });
+  }
+
+  async createFullRefund(
+    orderStableId: string,
+    input: PosCreateFullRefundInput,
+  ) {
+    const order = await this.orders.getByStableId(orderStableId);
+    this.assertInStoreManagementOrder(order);
+    const operatorName = this.requireOperatorName(input.operatorName);
+    const reason = this.requireReason(input.reason);
+
+    return this.orders.createFullRefund({
+      orderStableId,
+      reason: this.decorateManualReason(reason, operatorName),
+      refundAmountCents: input.refundAmountCents,
+      originalPaymentMethod: input.originalPaymentMethod,
+      refundMethod: input.refundMethod,
+    });
+  }
+
+  async listAmendments(
+    orderStableId: string,
+  ): Promise<PosOrderAmendmentHistory[]> {
+    const order = await this.prisma.order.findUnique({
+      where: { orderStableId },
+      select: { id: true },
+    });
+    if (!order) throw new NotFoundException('order not found');
+
+    const amendments = await this.prisma.orderAmendment.findMany({
+      where: { orderId: order.id },
+      include: { items: true },
+    });
+
+    return amendments.map((amendment) => {
+      const parsedReason = this.parseManualReason(amendment.reason);
+      return {
+        amendmentStableId: amendment.amendmentStableId,
+        type: amendment.type,
+        paymentMethod: amendment.paymentMethod,
+        reason: parsedReason.reason,
+        operatorName: parsedReason.operatorName,
+        deltaCents: amendment.deltaCents,
+        refundCents: amendment.refundCents,
+        additionalChargeCents: amendment.additionalChargeCents,
+        summaryJson: amendment.summaryJson,
+        items: amendment.items.map((item) => ({
+          action: item.action,
+          productStableId: item.productStableId,
+          displayName: item.displayName,
+          nameEn: item.nameEn,
+          nameZh: item.nameZh,
+          qty: item.qty,
+          unitPriceCents: item.unitPriceCents,
+          optionsJson: item.optionsJson,
+        })),
+      };
+    });
+  }
+
+  private assertInStoreManagementOrder(order: OrderDto): void {
+    if (order.channel === Channel.web) {
+      throw new BadRequestException(
+        'Web order management is disabled until Clover POS/payment sync is available',
+      );
+    }
+    if (order.channel === Channel.ubereats) {
+      throw new BadRequestException(
+        'Uber orders must use the integrated Uber action flow',
+      );
+    }
+    if (!AMENDABLE_STATUSES.has(order.status)) {
+      throw new BadRequestException('当前订单状态不允许改单或退款');
+    }
+  }
+
+  private requireOperatorName(value: string): string {
+    const operatorName = value.trim();
+    if (!operatorName) {
+      throw new BadRequestException('operatorName is required');
+    }
+    return operatorName;
+  }
+
+  private requireReason(value: string): string {
+    const reason = value.trim();
+    if (!reason) throw new BadRequestException('reason is required');
+    return reason;
+  }
+
+  private decorateManualReason(reason: string, operatorName: string): string {
+    return `${reason}${POS_OPERATOR_REASON_MARKER}${operatorName}`;
+  }
+
+  private parseManualReason(value: string): {
+    reason: string;
+    operatorName: string | null;
+  } {
+    const index = value.lastIndexOf(POS_OPERATOR_REASON_MARKER);
+    if (index < 0) return { reason: value, operatorName: null };
+    const operatorName = value
+      .slice(index + POS_OPERATOR_REASON_MARKER.length)
+      .trim();
+    return {
+      reason: value.slice(0, index).trim(),
+      operatorName: operatorName || null,
+    };
+  }
+
   private advanceResult(
     order: OrderDto,
     action?: {
@@ -123,61 +370,6 @@ export class PosOrdersService {
       actionId: action?.actionId ?? null,
       errorSummary: action?.errorSummary ?? null,
     };
-  }
-
-  /** Records the local financial result only after staff handled it in Uber. */
-  async recordManualUberRefund(
-    orderStableId: string,
-    input: { reason: string; evidence: string },
-  ): Promise<OrderDto> {
-    const reason = input.reason?.trim();
-    const evidence = input.evidence?.trim();
-    if (!reason) throw new BadRequestException('reason is required');
-    if (!evidence) throw new BadRequestException('manual evidence is required');
-
-    await this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { orderStableId } });
-      if (!order) throw new BadRequestException('order not found');
-      if (order.channel !== Channel.ubereats) {
-        throw new BadRequestException(
-          'manual Uber refund requires an Uber order',
-        );
-      }
-      if (order.status === PrismaOrderStatus.pending) {
-        throw new BadRequestException(
-          'order must be accepted before cancellation',
-        );
-      }
-      if (order.status === PrismaOrderStatus.refunded) {
-        throw new ConflictException('order is already refunded');
-      }
-      const amendmentStableId = `uber_manual_${createHash('sha256')
-        .update(`${order.id}:${evidence}`)
-        .digest('hex')}`;
-      await tx.orderAmendment.upsert({
-        where: { amendmentStableId },
-        create: {
-          amendmentStableId,
-          orderId: order.id,
-          type: OrderAmendmentType.RETENDER,
-          paymentMethod: PaymentMethod.UBEREATS,
-          reason,
-          deltaCents: -order.totalCents,
-          refundCents: order.totalCents,
-          summaryJson: {
-            kind: 'UBER_MANUAL_REFUND',
-            status: 'CONFIRMED',
-            evidence,
-          },
-        },
-        update: {},
-      });
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: PrismaOrderStatus.refunded },
-      });
-    });
-    return this.orders.getByStableId(orderStableId);
   }
 
   private getUberWebhookExternalOrderId(order: OrderDto): string | null {

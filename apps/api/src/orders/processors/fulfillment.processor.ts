@@ -2,6 +2,7 @@ import {
   Channel,
   DeliveryProvider,
   FulfillmentType,
+  OrderAmendmentItemAction,
   PaymentMethod,
   Prisma,
 } from '@prisma/client';
@@ -280,6 +281,126 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           : {}),
       },
     });
+  }
+
+  @OnEvent('order.amendment.print')
+  async handleOrderAmendmentPrint(payload: {
+    orderStableId: string;
+    locale?: 'zh' | 'en';
+    reason: string;
+    operatorName: string;
+    items: Array<{
+      action: OrderAmendmentItemAction;
+      productStableId: string;
+      qty: number;
+      unitPriceCents?: number | null;
+      displayName?: string | null;
+      nameEn?: string | null;
+      nameZh?: string | null;
+      optionsJson?: Prisma.InputJsonValue;
+    }>;
+  }) {
+    try {
+      const locale = payload.locale === 'en' ? 'en' : 'zh';
+      const basePayload = await this.printPosPayloadService.getByStableId(
+        payload.orderStableId,
+        locale,
+      );
+      const order = await this.prisma.order.findUnique({
+        where: { orderStableId: payload.orderStableId },
+        select: { id: true, storeId: true },
+      });
+      if (!order) {
+        this.logger.error({
+          event: 'amendment_print_order_missing',
+          orderStableId: payload.orderStableId,
+        });
+        return;
+      }
+
+      const storeId = order.storeId ?? resolveConfiguredStoreId();
+      const reason = payload.reason.trim();
+      const operatorName = payload.operatorName.trim();
+      const headerNote =
+        locale === 'zh'
+          ? `原因: ${reason} / 操作人: ${operatorName}`
+          : `Reason: ${reason} / Operator: ${operatorName}`;
+      const headerItem = {
+        productStableId: '__order_amendment__',
+        nameZh: '****** 改单 ******',
+        nameEn: '****** ORDER CHANGE ******',
+        displayName: '****** 改单 / ORDER CHANGE ******',
+        quantity: 1,
+        lineTotalCents: 0,
+        specialInstructions: headerNote,
+        options: null,
+      };
+      const changedItems = payload.items.map((item) => {
+        const isVoid = item.action === OrderAmendmentItemAction.VOID;
+        const zhPrefix = isVoid ? '[取消]' : '[新增]';
+        const enPrefix = isVoid ? '[VOID]' : '[ADD]';
+        const baseZh =
+          item.nameZh ??
+          item.displayName ??
+          item.nameEn ??
+          item.productStableId;
+        const baseEn =
+          item.nameEn ??
+          item.displayName ??
+          item.nameZh ??
+          item.productStableId;
+        const quantity = Math.max(1, Math.round(item.qty));
+        const unitPriceCents = Math.max(
+          0,
+          Math.round(item.unitPriceCents ?? 0),
+        );
+        return {
+          productStableId: item.productStableId,
+          nameZh: `${zhPrefix} ${baseZh}`,
+          nameEn: `${enPrefix} ${baseEn}`,
+          displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
+          quantity,
+          lineTotalCents: unitPriceCents * quantity,
+          specialInstructions: null,
+          options: Array.isArray(item.optionsJson)
+            ? (item.optionsJson as OrderItemOptionsSnapshot)
+            : null,
+        };
+      });
+      const amendmentPayload: PrintPosPayloadDto = {
+        ...basePayload,
+        snapshot: {
+          ...basePayload.snapshot,
+          items: [headerItem, ...changedItems],
+        },
+      };
+
+      const job = await this.posGateway.sendPrintJob({
+        orderId: order.id,
+        orderStableId: payload.orderStableId,
+        storeId,
+        kind: `AMENDMENT:${Date.now()}`,
+        data: {
+          ...amendmentPayload,
+          targets: { customer: false, kitchen: true },
+        },
+      });
+      this.logger.log({
+        event: 'amendment_print_job_created',
+        orderStableId: payload.orderStableId,
+        storeId,
+        jobId: job.jobId,
+        itemCount: payload.items.length,
+      });
+    } catch (error) {
+      // The amendment is already committed. Do not make staff repeat the
+      // financial/item operation merely because its kitchen copy failed.
+      this.logger.error({
+        event: 'amendment_print_job_failed',
+        orderStableId: payload.orderStableId,
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
   }
 
   private extractDropoff(

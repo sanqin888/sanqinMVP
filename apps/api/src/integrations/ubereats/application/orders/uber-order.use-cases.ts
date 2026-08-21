@@ -80,6 +80,18 @@ export class ImportUberOrderUseCase {
       return;
     }
 
+    // Uber may emit a later orders.notification for a scheduled order that SanQ
+    // already imported and ACCEPTed. The first scheduled notification owns the
+    // order admission and durable ACCEPT intent; this follow-up is only webhook
+    // acknowledgement. Re-importing it as an immediate order would erase the
+    // scheduled timing and could start/print the order early.
+    if (
+      normalizedEventType === 'orders.notification' &&
+      existing?.fulfillmentTiming === 'SCHEDULED'
+    ) {
+      return;
+    }
+
     const detail = await this.detailGateway.fetchOrderDetail({
       resourceHref: payload.resourceHref,
       eventType: normalizedEventType,

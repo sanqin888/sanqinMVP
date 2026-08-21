@@ -5,7 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
-import type { PublicMenuResponse as PublicMenuApiResponse, OptionChoiceDto } from "@shared/menu";
+import type {
+  PublicMenuResponse as PublicMenuApiResponse,
+  OptionChoiceDto,
+} from "@shared/menu";
 import {
   buildLocalizedMenuFromDb,
   type PublicMenuCategory,
@@ -61,7 +64,6 @@ type StoreStatus = {
   };
 };
 
-
 type PosStatusSocketClient = {
   on: (event: string, handler: (payload: PosCustomerOrderingStatus) => void) => void;
   off: (event: string, handler: (payload: PosCustomerOrderingStatus) => void) => void;
@@ -85,13 +87,16 @@ const POS_CUSTOMER_ORDERING_STATUS_UPDATED_EVENT =
 async function loadSocketIoFromCdn(): Promise<SocketIoBrowserGlobal["io"] | null> {
   if (typeof window === "undefined") return null;
 
-  const existing = (window as typeof window & { io?: SocketIoBrowserGlobal["io"] }).io;
+  const existing = (window as typeof window & { io?: SocketIoBrowserGlobal["io"] })
+    .io;
   if (typeof existing === "function") {
     return existing;
   }
 
   const scriptId = "pos-socket-io-cdn";
-  const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+  const existingScript = document.getElementById(
+    scriptId,
+  ) as HTMLScriptElement | null;
 
   await new Promise<void>((resolve, reject) => {
     if (existingScript) {
@@ -145,6 +150,7 @@ const STRINGS = {
     tapToAdd: "点击添加",
     chooseOptions: "请选择必选项",
     addToCart: "加入本单",
+    saveChanges: "保存修改",
     priceLabel: "价格",
     optionsRequired: "请先选择所有必选项",
     optionLimit: (min: number, max: number | null) =>
@@ -193,6 +199,7 @@ const STRINGS = {
     tapToAdd: "Tap to add",
     chooseOptions: "Select required options",
     addToCart: "Add to order",
+    saveChanges: "Save changes",
     priceLabel: "Price",
     optionsRequired: "Please complete required options",
     optionLimit: (min: number, max: number | null) =>
@@ -270,14 +277,11 @@ export default function StorePosPage() {
         });
         if (cancelled) return;
 
-        // 1. 获取正常的分类列表（这里面的 items 已经包含了 activeSpecial 信息）
         const localized = buildLocalizedMenuFromDb(
           dbMenu.categories ?? [],
           locale,
         );
-        // 2. 直接设置原分类列表
         setMenuCategories(localized);
-
       } catch (error) {
         console.error("Failed to load POS menu", error);
       }
@@ -433,7 +437,8 @@ export default function StorePosPage() {
         if (byId) return byId;
       }
 
-      const nameKey = locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+      const nameKey =
+        locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
       if (nameKey) {
         const byName = menuItemMapByName.get(nameKey.trim());
         if (byName) return byName;
@@ -450,12 +455,14 @@ export default function StorePosPage() {
         PublicMenuCategory["items"][number]["optionGroups"]
       >[number],
       index: number,
-    ) =>
-      group.bindingStableId ?? `${group.templateGroupStableId}-${index}`,
+    ) => group.bindingStableId ?? `${group.templateGroupStableId}-${index}`,
     [],
   );
 
-  const buildPathKey = useCallback((segments: string[]) => segments.join("__"), []);
+  const buildPathKey = useCallback(
+    (segments: string[]) => segments.join("__"),
+    [],
+  );
 
   const collectSelectedOptionLines = useCallback(
     (
@@ -475,7 +482,9 @@ export default function StorePosPage() {
         if (selectedIds.length === 0) return;
 
         selectedIds.forEach((optionId) => {
-          const option = group.options.find((opt) => opt.optionStableId === optionId);
+          const option = group.options.find(
+            (opt) => opt.optionStableId === optionId,
+          );
           if (!option) return;
           lines.push({
             label: option.nameZh ?? option.nameEn,
@@ -519,16 +528,18 @@ export default function StorePosPage() {
           (sum, line) => sum + line.priceCents,
           0,
         );
-        const unitPriceCents = Math.round(item.price * 100) + optionDeltaCents;
+        const menuUnitPriceCents =
+          Math.round(item.price * 100) + optionDeltaCents;
         const effectiveUnitPriceCents =
           typeof entry.customUnitPriceCents === "number"
             ? entry.customUnitPriceCents
-            : unitPriceCents;
+            : menuUnitPriceCents;
 
         return {
           ...entry,
           item,
           optionLines: selectedOptionLines,
+          menuUnitPriceCents,
           unitPriceCents: effectiveUnitPriceCents,
           lineTotalCents: effectiveUnitPriceCents * entry.quantity,
         };
@@ -558,7 +569,9 @@ export default function StorePosPage() {
 
   useEffect(() => {
     if (activeCategoryId === "all") return;
-    const exists = visibleMenuCategories.some((c) => c.stableId === activeCategoryId);
+    const exists = visibleMenuCategories.some(
+      (c) => c.stableId === activeCategoryId,
+    );
     if (!exists) {
       setActiveCategoryId("all");
     }
@@ -568,10 +581,11 @@ export default function StorePosPage() {
     if (activeCategoryId === "all") {
       return visibleMenuCategories.flatMap((cat) => cat.items);
     }
-    const cat = visibleMenuCategories.find((c) => c.stableId === activeCategoryId);
+    const cat = visibleMenuCategories.find(
+      (c) => c.stableId === activeCategoryId,
+    );
     return cat ? cat.items : [];
   }, [visibleMenuCategories, activeCategoryId]);
-
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -591,7 +605,9 @@ export default function StorePosPage() {
             ? item.customUnitPriceCents
             : typeof item.unitPriceCents === "number"
               ? item.unitPriceCents
-              : Math.round((item.lineTotalCents ?? 0) / Math.max(item.quantity ?? 1, 1)),
+              : Math.round(
+                  (item.lineTotalCents ?? 0) / Math.max(item.quantity ?? 1, 1),
+                ),
         options: item.options,
       }));
       if (restoredItems.length > 0) {
@@ -613,16 +629,42 @@ export default function StorePosPage() {
     quantity: number;
   } | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [editingOptionsLineId, setEditingOptionsLineId] = useState<
+    string | null
+  >(null);
+  const [editingOptionsManualPriceCents, setEditingOptionsManualPriceCents] =
+    useState<number | null>(null);
 
   const closeDialog = () => {
     setActiveItem(null);
+    setEditingOptionsLineId(null);
+    setEditingOptionsManualPriceCents(null);
   };
 
   const openOptionDialog = (item: PublicMenuCategory["items"][number]) => {
+    setEditingOptionsLineId(null);
+    setEditingOptionsManualPriceCents(null);
     setActiveItem({
       item,
       selected: {},
       quantity: 1,
+    });
+  };
+
+  const openCartOptionDialog = (lineId: string) => {
+    const entry = cartWithDetails.find((line) => line.lineId === lineId);
+    if (!entry?.item.optionGroups?.length) return;
+    const hasManualPrice =
+      typeof entry.customUnitPriceCents === "number" &&
+      entry.customUnitPriceCents !== entry.menuUnitPriceCents;
+    setEditingOptionsLineId(entry.lineId);
+    setEditingOptionsManualPriceCents(
+      hasManualPrice ? entry.customUnitPriceCents ?? null : null,
+    );
+    setActiveItem({
+      item: entry.item,
+      selected: entry.options ?? {},
+      quantity: entry.quantity,
     });
   };
 
@@ -650,7 +692,10 @@ export default function StorePosPage() {
           return { ...entry, customUnitPriceCents: 0 };
         }
         if (key === "back") {
-          return { ...entry, customUnitPriceCents: Math.floor(currentCents / 10) };
+          return {
+            ...entry,
+            customUnitPriceCents: Math.floor(currentCents / 10),
+          };
         }
         if (key === "00") {
           return { ...entry, customUnitPriceCents: currentCents * 100 };
@@ -671,12 +716,13 @@ export default function StorePosPage() {
     setEditingLineId(lineId);
     setCart((prev) =>
       prev.map((entry) =>
-        entry.lineId === lineId ? { ...entry, customUnitPriceCents: 0 } : entry,
+        entry.lineId === lineId
+          ? { ...entry, customUnitPriceCents: 0 }
+          : entry,
       ),
     );
   };
 
-  // ✅ 核心修复：更新选项选择逻辑，支持父子级互斥和级联取消
   const updateOptionSelection = (
     groupId: string,
     optionId: string,
@@ -700,14 +746,12 @@ export default function StorePosPage() {
       let nextSelectedIds: string[];
 
       if (isTargetChild) {
-        // 子选项逻辑：简单切换
         if (currentSelectedIds.includes(optionId)) {
           nextSelectedIds = currentSelectedIds.filter((id) => id !== optionId);
         } else {
           nextSelectedIds = [...currentSelectedIds, optionId];
         }
       } else {
-        // 父选项逻辑
         const currentParentIds = currentSelectedIds.filter((id) => {
           const opt = groupOptions.find((o) => o.optionStableId === id);
           return !opt?.parentOptionStableIds?.length;
@@ -716,37 +760,31 @@ export default function StorePosPage() {
         const isAlreadySelected = currentSelectedIds.includes(optionId);
 
         if (isAlreadySelected) {
-          // 取消父项 -> 同时移除该父项的所有子项
           nextSelectedIds = currentSelectedIds.filter((id) => id !== optionId);
           const childrenToRemove = targetOption.childOptionStableIds ?? [];
           nextSelectedIds = nextSelectedIds.filter(
             (id) => !childrenToRemove.includes(id),
           );
-        } else {
-          // 选中新父项
-          if (maxSelect === 1) {
-            // 单选：直接替换
-            nextSelectedIds = [optionId];
-          } else if (
-            typeof maxSelect === "number" &&
-            currentParentIds.length >= maxSelect
-          ) {
-            // 达到最大值：移除最早的一个父项及其子项
-            const parentToRemove = currentParentIds[0];
-            const parentToRemoveOpt = groupOptions.find(
-              (o) => o.optionStableId === parentToRemove,
-            );
-            const childrenToRemove =
-              parentToRemoveOpt?.childOptionStableIds ?? [];
+        } else if (maxSelect === 1) {
+          nextSelectedIds = [optionId];
+        } else if (
+          typeof maxSelect === "number" &&
+          currentParentIds.length >= maxSelect
+        ) {
+          const parentToRemove = currentParentIds[0];
+          const parentToRemoveOpt = groupOptions.find(
+            (o) => o.optionStableId === parentToRemove,
+          );
+          const childrenToRemove =
+            parentToRemoveOpt?.childOptionStableIds ?? [];
 
-            nextSelectedIds = currentSelectedIds.filter(
-              (id) => id !== parentToRemove && !childrenToRemove.includes(id),
-            );
-            nextSelectedIds.push(optionId);
-          } else {
-            // 未达上限：直接添加
-            nextSelectedIds = [...currentSelectedIds, optionId];
-          }
+          nextSelectedIds = currentSelectedIds.filter(
+            (id) =>
+              id !== parentToRemove && !childrenToRemove.includes(id),
+          );
+          nextSelectedIds.push(optionId);
+        } else {
+          nextSelectedIds = [...currentSelectedIds, optionId];
         }
       }
 
@@ -761,11 +799,14 @@ export default function StorePosPage() {
   };
 
   const activeOptionGroups = useMemo(() => {
-    if (!activeItem) return [] as Array<{
-      group: NonNullable<PublicMenuCategory["items"][number]["optionGroups"]>[number];
-      key: string;
-      path: string[];
-    }>;
+    if (!activeItem)
+      return [] as Array<{
+        group: NonNullable<
+          PublicMenuCategory["items"][number]["optionGroups"]
+        >[number];
+        key: string;
+        path: string[];
+      }>;
 
     const collect = (
       item: PublicMenuCategory["items"][number],
@@ -773,7 +814,9 @@ export default function StorePosPage() {
       visited: Set<string>,
     ) => {
       const collected: Array<{
-        group: NonNullable<PublicMenuCategory["items"][number]["optionGroups"]>[number];
+        group: NonNullable<
+          PublicMenuCategory["items"][number]["optionGroups"]
+        >[number];
         key: string;
         path: string[];
       }> = [];
@@ -790,7 +833,9 @@ export default function StorePosPage() {
         if (selectedIds.length === 0) return;
 
         selectedIds.forEach((optionId) => {
-          const option = group.options.find((opt) => opt.optionStableId === optionId);
+          const option = group.options.find(
+            (opt) => opt.optionStableId === optionId,
+          );
           if (!option) return;
           const linkedItem = resolveLinkedItem(option);
           if (!linkedItem?.optionGroups?.length) return;
@@ -807,38 +852,65 @@ export default function StorePosPage() {
       return collected;
     };
 
-    return collect(activeItem.item, ["root", activeItem.item.stableId], new Set<string>());
+    return collect(
+      activeItem.item,
+      ["root", activeItem.item.stableId],
+      new Set<string>(),
+    );
   }, [activeItem, buildGroupSegment, buildPathKey, resolveLinkedItem]);
 
-  const requiredGroupsMissing =
-    activeOptionGroups.filter(({ group, key }) => {
-      if (group.minSelect <= 0) return false;
-      const selectedCount = activeItem?.selected[key]?.length ?? 0;
-      return selectedCount < group.minSelect;
-    });
+  const requiredGroupsMissing = activeOptionGroups.filter(({ group, key }) => {
+    if (group.minSelect <= 0) return false;
+    const selectedCount = activeItem?.selected[key]?.length ?? 0;
+    return selectedCount < group.minSelect;
+  });
   const canAddToCart = Boolean(activeItem) && requiredGroupsMissing.length === 0;
 
   const addActiveItemToCart = () => {
     if (!activeItem || !canAddToCart) return;
-    const lineId = `line-${Date.now()}-${Math.random()}`;
     const optionDeltaCents = activeOptionGroups.reduce((sum, { group, key }) => {
       const selected = activeItem.selected[key] ?? [];
-      return sum + group.options
-        .filter((option) => selected.includes(option.optionStableId))
-        .reduce((groupSum, option) => groupSum + option.priceDeltaCents, 0);
+      return (
+        sum +
+        group.options
+          .filter((option) => selected.includes(option.optionStableId))
+          .reduce(
+            (groupSum, option) => groupSum + option.priceDeltaCents,
+            0,
+          )
+      );
     }, 0);
-    const unitPriceCents = Math.round(activeItem.item.price * 100) + optionDeltaCents;
+    const unitPriceCents =
+      Math.round(activeItem.item.price * 100) + optionDeltaCents;
 
-    setCart((prev) => [
-      ...prev,
-      {
-        lineId,
-        stableId: activeItem.item.stableId,
-        quantity: activeItem.quantity,
-        customUnitPriceCents: unitPriceCents,
-        options: activeItem.selected,
-      },
-    ]);
+    if (editingOptionsLineId) {
+      setCart((prev) =>
+        prev.map((entry) =>
+          entry.lineId === editingOptionsLineId
+            ? {
+                ...entry,
+                stableId: activeItem.item.stableId,
+                quantity: activeItem.quantity,
+                customUnitPriceCents:
+                  editingOptionsManualPriceCents ?? unitPriceCents,
+                options: activeItem.selected,
+              }
+            : entry,
+        ),
+      );
+    } else {
+      const lineId = `line-${Date.now()}-${Math.random()}`;
+      setCart((prev) => [
+        ...prev,
+        {
+          lineId,
+          stableId: activeItem.item.stableId,
+          quantity: activeItem.quantity,
+          customUnitPriceCents: unitPriceCents,
+          options: activeItem.selected,
+        },
+      ]);
+    }
     closeDialog();
   };
 
@@ -883,13 +955,25 @@ export default function StorePosPage() {
     router.push(`/${locale}/store/pos/payment`);
   };
 
-  const pauseOptions: Array<{ label: string; payload: { durationMinutes?: number; untilTomorrow?: boolean } }> = [
-    { label: isZh ? "15分钟" : "15 min", payload: { durationMinutes: 15 } },
-    { label: isZh ? "30分钟" : "30 min", payload: { durationMinutes: 30 } },
+  const pauseOptions: Array<{
+    label: string;
+    payload: { durationMinutes?: number; untilTomorrow?: boolean };
+  }> = [
+    {
+      label: isZh ? "15分钟" : "15 min",
+      payload: { durationMinutes: 15 },
+    },
+    {
+      label: isZh ? "30分钟" : "30 min",
+      payload: { durationMinutes: 30 },
+    },
     { label: isZh ? "1小时" : "1 hour", payload: { durationMinutes: 60 } },
     { label: isZh ? "2小时" : "2 hours", payload: { durationMinutes: 120 } },
     { label: isZh ? "3小时" : "3 hours", payload: { durationMinutes: 180 } },
-    { label: isZh ? "至明天" : "Until tomorrow", payload: { untilTomorrow: true } },
+    {
+      label: isZh ? "至明天" : "Until tomorrow",
+      payload: { untilTomorrow: true },
+    },
   ];
 
   const handlePauseCustomerOrdering = async (payload: {
@@ -1002,12 +1086,16 @@ export default function StorePosPage() {
               </button>
               {!isCustomerPaused && showPauseMenu && (
                 <div className="absolute right-0 z-30 mt-2 w-52 rounded-2xl border border-slate-600 bg-slate-800 p-2 shadow-xl">
-                  <div className="px-2 py-1 text-xs text-slate-300">{t.pauseActionLabel}</div>
+                  <div className="px-2 py-1 text-xs text-slate-300">
+                    {t.pauseActionLabel}
+                  </div>
                   {pauseOptions.map((option) => (
                     <button
                       key={option.label}
                       type="button"
-                      onClick={() => void handlePauseCustomerOrdering(option.payload)}
+                      onClick={() =>
+                        void handlePauseCustomerOrdering(option.payload)
+                      }
                       className="block w-full rounded-xl px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-700"
                     >
                       {option.label}
@@ -1021,7 +1109,6 @@ export default function StorePosPage() {
       </header>
 
       <section className="flex gap-4 p-4 h-[calc(100vh-4rem)]">
-        {/* 左侧：菜单（大按钮） */}
         <div className="relative flex-1 flex flex-col min-w-0">
           <div className="flex gap-2 mb-3">
             <button
@@ -1056,44 +1143,32 @@ export default function StorePosPage() {
               {visibleItems.map((item) => {
                 const unitPriceCents = Math.round(item.price * 100);
                 const isDailySpecial = Boolean(item.activeSpecial);
+                const addItem = () => {
+                  if (!item.optionGroups || item.optionGroups.length === 0) {
+                    const lineId = `line-${Date.now()}-${Math.random()}`;
+                    setCart((prev) => [
+                      ...prev,
+                      {
+                        lineId,
+                        stableId: item.stableId,
+                        quantity: 1,
+                        customUnitPriceCents: Math.round(item.price * 100),
+                      },
+                    ]);
+                    return;
+                  }
+                  openOptionDialog(item);
+                };
                 return (
                   <div
                     key={item.stableId}
                     role="button"
                     tabIndex={0}
-                    onClick={() => {
-                      if (!item.optionGroups || item.optionGroups.length === 0) {
-                        const lineId = `line-${Date.now()}-${Math.random()}`;
-                        setCart((prev) => [
-                          ...prev,
-                          {
-                            lineId,
-                            stableId: item.stableId,
-                            quantity: 1,
-                            customUnitPriceCents: Math.round(item.price * 100),
-                          },
-                        ]);
-                        return;
-                      }
-                      openOptionDialog(item);
-                    }}
+                    onClick={addItem}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        if (!item.optionGroups || item.optionGroups.length === 0) {
-                          const lineId = `line-${Date.now()}-${Math.random()}`;
-                          setCart((prev) => [
-                            ...prev,
-                            {
-                              lineId,
-                              stableId: item.stableId,
-                              quantity: 1,
-                              customUnitPriceCents: Math.round(item.price * 100),
-                            },
-                          ]);
-                          return;
-                        }
-                        openOptionDialog(item);
+                        addItem();
                       }
                     }}
                     className="flex flex-col justify-between rounded-3xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] transition-transform p-3 text-left"
@@ -1125,39 +1200,50 @@ export default function StorePosPage() {
                 );
               })}
             </div>
-          {editingLineId && (
-            <div className="pointer-events-auto absolute bottom-4 left-4 z-20 w-[22rem] rounded-2xl border border-slate-600 bg-slate-900/95 p-3 shadow-2xl">
-              <div className="mb-2 text-xs text-slate-300">
-                {isZh ? "价格快捷输入" : "Quick price keypad"}
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "back"].map((key) => (
+            {editingLineId && (
+              <div className="pointer-events-auto absolute bottom-4 left-4 z-20 w-[22rem] rounded-2xl border border-slate-600 bg-slate-900/95 p-3 shadow-2xl">
+                <div className="mb-2 text-xs text-slate-300">
+                  {isZh ? "价格快捷输入" : "Quick price keypad"}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                    "6",
+                    "7",
+                    "8",
+                    "9",
+                    "00",
+                    "0",
+                    "back",
+                  ].map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => appendKeypadValue(key)}
+                      className="h-16 rounded-xl bg-slate-800 text-xl font-semibold text-slate-100 hover:bg-slate-700"
+                    >
+                      {key === "back" ? "⌫" : key}
+                    </button>
+                  ))}
                   <button
-                    key={key}
                     type="button"
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => appendKeypadValue(key)}
-                    className="h-16 rounded-xl bg-slate-800 text-xl font-semibold text-slate-100 hover:bg-slate-700"
+                    onClick={() => appendKeypadValue("clear")}
+                    className="col-span-3 h-14 rounded-xl bg-rose-500/20 text-base font-semibold text-rose-200 hover:bg-rose-500/30"
                   >
-                    {key === "back" ? "⌫" : key}
+                    {isZh ? "清空价格" : "Clear price"}
                   </button>
-                ))}
-                <button
-                  type="button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => appendKeypadValue("clear")}
-                  className="col-span-3 h-14 rounded-xl bg-rose-500/20 text-base font-semibold text-rose-200 hover:bg-rose-500/30"
-                >
-                  {isZh ? "清空价格" : "Clear price"}
-                </button>
+                </div>
               </div>
-            </div>
-          )}
-
+            )}
           </div>
         </div>
 
-        {/* 右侧：购物车部分 */}
         <div className="w-full max-w-md flex flex-col rounded-3xl bg-slate-800/80 border border-slate-700 p-4">
           <h2 className="text-lg font-semibold mb-2">{t.cartTitle}</h2>
 
@@ -1169,20 +1255,39 @@ export default function StorePosPage() {
             ) : (
               <ul className="space-y-2">
                 {cartWithDetails.map((item) => (
-                  <li key={item.lineId} className="rounded-2xl bg-slate-900/60 px-3 py-2">
+                  <li
+                    key={item.lineId}
+                    onClick={() => openCartOptionDialog(item.lineId)}
+                    className={`rounded-2xl bg-slate-900/60 px-3 py-2 ${
+                      item.item.optionGroups?.length
+                        ? "cursor-pointer hover:bg-slate-900/80"
+                        : ""
+                    }`}
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex-1 text-sm font-medium">
                         <span>{item.item.name}</span>
-                        <span className="mx-2 text-xs text-slate-400">*{item.quantity}</span>
+                        <span className="mx-2 text-xs text-slate-400">
+                          *{item.quantity}
+                        </span>
                         <input
                           type="text"
                           inputMode="decimal"
                           value={(item.unitPriceCents / 100).toFixed(2)}
-                          onFocus={() => handlePriceInputFocus(item.lineId)}
+                          onClick={(event) => event.stopPropagation()}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onFocus={(event) => {
+                            event.stopPropagation();
+                            handlePriceInputFocus(item.lineId);
+                          }}
                           onBlur={() =>
-                            setEditingLineId((prev) => (prev === item.lineId ? null : prev))
+                            setEditingLineId((prev) =>
+                              prev === item.lineId ? null : prev,
+                            )
                           }
-                          onChange={(e) => updateCartLinePrice(item.lineId, e.target.value)}
+                          onChange={(e) =>
+                            updateCartLinePrice(item.lineId, e.target.value)
+                          }
                           className="h-8 w-24 rounded-xl border border-slate-600 bg-slate-800 px-2 text-right text-sm text-slate-100"
                         />
                       </div>
@@ -1195,7 +1300,9 @@ export default function StorePosPage() {
                             key={`${item.lineId}-${optionLine.labelZh}-${optionLine.labelEn}-${idx}`}
                             className="flex items-center justify-between text-xs text-slate-400"
                           >
-                            <span>{isZh ? optionLine.labelZh : optionLine.labelEn}</span>
+                            <span>
+                              {isZh ? optionLine.labelZh : optionLine.labelEn}
+                            </span>
                             <span>
                               {optionLine.priceCents >= 0 ? "+" : "-"}
                               {formatMoney(Math.abs(optionLine.priceCents))}
@@ -1208,12 +1315,16 @@ export default function StorePosPage() {
                     <div className="mt-2 flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={(event) => {
+                          event.stopPropagation();
                           setCart((prev) =>
                             prev
                               .map((entry) =>
                                 entry.lineId === item.lineId
-                                  ? { ...entry, quantity: entry.quantity - 1 }
+                                  ? {
+                                      ...entry,
+                                      quantity: entry.quantity - 1,
+                                    }
                                   : entry,
                               )
                               .filter((entry) => entry.quantity > 0),
@@ -1228,11 +1339,15 @@ export default function StorePosPage() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={(event) => {
+                          event.stopPropagation();
                           setCart((prev) =>
                             prev.map((entry) =>
                               entry.lineId === item.lineId
-                                ? { ...entry, quantity: entry.quantity + 1 }
+                                ? {
+                                    ...entry,
+                                    quantity: entry.quantity + 1,
+                                  }
                                 : entry,
                             ),
                           );
@@ -1247,7 +1362,6 @@ export default function StorePosPage() {
               </ul>
             )}
           </div>
-
 
           <div className="mt-4 border-t border-slate-700 pt-3 space-y-1 text-sm">
             <div className="flex justify-between">
@@ -1334,7 +1448,7 @@ export default function StorePosPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setActiveItem(null)}
+                onClick={closeDialog}
                 className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-slate-400"
               >
                 {t.close}
@@ -1376,10 +1490,8 @@ export default function StorePosPage() {
                       )}
                     </div>
 
-                    {/* ✅ 修复渲染逻辑：先渲染父选项，再渲染子选项 */}
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {group.options
-                        // 1. 过滤：只显示顶层选项 (没有 parentOptionStableIds 的)
                         .filter(
                           (opt) =>
                             !opt.parentOptionStableIds ||
@@ -1403,7 +1515,6 @@ export default function StorePosPage() {
                                   )}`
                                 : "";
 
-                          // 2. 查找该父项的子选项
                           const childOptions = group.options.filter((child) =>
                             parentOption.childOptionStableIds?.includes(
                               child.optionStableId,
@@ -1415,7 +1526,6 @@ export default function StorePosPage() {
                               key={parentOption.optionStableId}
                               className="flex flex-col gap-2"
                             >
-                              {/* 父选项按钮 */}
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1423,7 +1533,7 @@ export default function StorePosPage() {
                                     key,
                                     parentOption.optionStableId,
                                     maxSelect,
-                                    group.options, // 👈 传入完整选项列表
+                                    group.options,
                                   )
                                 }
                                 className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${
@@ -1442,7 +1552,6 @@ export default function StorePosPage() {
                                 </div>
                               </button>
 
-                              {/* 3. 子选项渲染：仅当父项选中且有子项时显示 */}
                               {selected && childOptions.length > 0 && (
                                 <div className="ml-4 flex flex-col gap-2 border-l-2 border-slate-700 pl-3">
                                   {childOptions.map((child) => {
@@ -1455,7 +1564,9 @@ export default function StorePosPage() {
                                         : child.nameEn;
                                     const childPrice =
                                       child.priceDeltaCents > 0
-                                        ? `+${formatMoney(child.priceDeltaCents)}`
+                                        ? `+${formatMoney(
+                                            child.priceDeltaCents,
+                                          )}`
                                         : "";
 
                                     return (
@@ -1548,13 +1659,12 @@ export default function StorePosPage() {
                     : "bg-slate-600 text-slate-300"
                 }`}
               >
-                {t.addToCart}
+                {editingOptionsLineId ? t.saveChanges : t.addToCart}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </main>
   );
 }
