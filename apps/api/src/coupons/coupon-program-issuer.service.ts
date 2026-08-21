@@ -13,7 +13,11 @@ import {
 export class CouponProgramIssuerService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async issueProgramToUser(program: CouponProgram, user: User) {
+  async issueProgramToUser(
+    program: CouponProgram,
+    user: User,
+    options?: { tx?: Prisma.TransactionClient },
+  ) {
     const items = parseProgramItems(program.items);
     await ensureProgramItemsExist(this.prisma, items);
 
@@ -92,6 +96,7 @@ export class CouponProgramIssuerService {
           userStableId: user.userStableId,
           couponStableId,
           status: 'AVAILABLE',
+          expiresAt,
           createdAt: now,
           updatedAt: now,
         });
@@ -102,14 +107,20 @@ export class CouponProgramIssuerService {
       throw new BadRequestException('No coupons to issue');
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    const persist = async (tx: Prisma.TransactionClient) => {
       await tx.coupon.createMany({ data: couponsToCreate });
       await tx.userCoupon.createMany({ data: userCouponsToCreate });
       await tx.couponProgram.update({
         where: { programStableId: program.programStableId },
         data: { issuedCount: { increment: couponsToCreate.length } },
       });
-    });
+    };
+
+    if (options?.tx) {
+      await persist(options.tx);
+    } else {
+      await this.prisma.$transaction(persist);
+    }
 
     return { issuedCount: couponsToCreate.length };
   }

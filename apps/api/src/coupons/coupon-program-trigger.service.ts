@@ -5,8 +5,8 @@ import {
   type User,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CouponProgramEligibilityService } from './coupon-program-eligibility.service';
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
-import { parseProgramItems } from './coupon-program.utils';
 import { NotificationService } from '../notifications/notification.service';
 
 @Injectable()
@@ -16,6 +16,7 @@ export class CouponProgramTriggerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly issuer: CouponProgramIssuerService,
+    private readonly eligibility: CouponProgramEligibilityService,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -28,7 +29,12 @@ export class CouponProgramTriggerService {
 
     let issuedCount = 0;
     for (const program of programs) {
-      if (!(await this.canIssueProgram(program, user))) continue;
+      const eligibility = await this.eligibility.evaluate(
+        program,
+        user.userStableId,
+      );
+      if (!eligibility.canIssue) continue;
+
       const issuedAt = new Date();
       const result = await this.issuer.issueProgramToUser(program, user);
       issuedCount += result.issuedCount;
@@ -55,7 +61,12 @@ export class CouponProgramTriggerService {
     let issuedCount = 0;
     for (const user of users) {
       for (const program of programs) {
-        if (!(await this.canIssueProgram(program, user))) continue;
+        const eligibility = await this.eligibility.evaluate(
+          program,
+          user.userStableId,
+        );
+        if (!eligibility.canIssue) continue;
+
         const issuedAt = new Date();
         const result = await this.issuer.issueProgramToUser(program, user);
         issuedCount += result.issuedCount;
@@ -85,40 +96,6 @@ export class CouponProgramTriggerService {
         ],
       },
     });
-  }
-
-  private async canIssueProgram(program: CouponProgram, user: User) {
-    if (program.totalLimit !== null) {
-      const items = parseProgramItems(program.items);
-      const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
-      if (program.issuedCount + quantity > program.totalLimit) {
-        return false;
-      }
-    }
-
-    const whereInput: {
-      userStableId: string;
-      coupon: { campaign: string; issuedAt?: { gte: Date } };
-    } = {
-      userStableId: user.userStableId,
-      coupon: { campaign: program.programStableId },
-    };
-
-    if (program.triggerType === 'BIRTHDAY_MONTH') {
-      const currentYear = new Date().getFullYear();
-      const startOfYear = new Date(currentYear, 0, 1);
-      whereInput.coupon.issuedAt = { gte: startOfYear };
-    }
-
-    const issuedCount = await this.prisma.userCoupon.count({
-      where: whereInput,
-    });
-
-    if (issuedCount >= program.perUserLimit) {
-      return false;
-    }
-
-    return true;
   }
 
   private async notifyCouponsIssued(
