@@ -3,7 +3,7 @@ import { Prisma, type CouponProgram } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseProgramItems } from './coupon-program.utils';
 
-type CouponProgramClient = PrismaService | Prisma.TransactionClient;
+type CouponProgramClient = Pick<Prisma.TransactionClient, 'userCoupon'>;
 
 export type CouponProgramEligibility = {
   canIssue: boolean;

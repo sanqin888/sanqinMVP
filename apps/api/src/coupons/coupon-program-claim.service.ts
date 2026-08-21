@@ -3,11 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type CouponDistributionType } from '@prisma/client';
+import { Prisma, type CouponProgram } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponProgramEligibilityService } from './coupon-program-eligibility.service';
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
-import { parseProgramItems } from './coupon-program.utils';
+
+type ClaimDistributionType = 'MANUAL_CLAIM' | 'PROMO_CODE';
 
 function normalizePromoCode(value: string): string {
   return value.trim().toUpperCase();
@@ -94,7 +95,7 @@ export class CouponProgramClaimService {
 
   private async claimWithRetry(input: {
     userStableId: string;
-    distributionType: CouponDistributionType;
+    distributionType: ClaimDistributionType;
     where: Prisma.CouponProgramWhereUniqueInput;
   }) {
     let lastError: unknown;
@@ -106,12 +107,14 @@ export class CouponProgramClaimService {
         if (!isRetryableTransactionError(error)) throw error;
       }
     }
-    throw lastError;
+
+    if (lastError instanceof Error) throw lastError;
+    throw new BadRequestException('promotion claim failed');
   }
 
   private async claimInTransaction(input: {
     userStableId: string;
-    distributionType: CouponDistributionType;
+    distributionType: ClaimDistributionType;
     where: Prisma.CouponProgramWhereUniqueInput;
   }) {
     return this.prisma.$transaction(
@@ -123,7 +126,9 @@ export class CouponProgramClaimService {
           throw new NotFoundException('User not found');
         }
 
-        const program = await tx.couponProgram.findUnique({ where: input.where });
+        const program = await tx.couponProgram.findUnique({
+          where: input.where,
+        });
         if (!program || program.distributionType !== input.distributionType) {
           throw new NotFoundException('Promotion not found');
         }
@@ -141,7 +146,9 @@ export class CouponProgramClaimService {
           throw new BadRequestException('promotion is no longer available');
         }
 
-        const result = await this.issuer.issueProgramToUser(program, user, { tx });
+        const result = await this.issuer.issueProgramToUser(program, user, {
+          tx,
+        });
         return {
           programStableId: program.programStableId,
           titleZh: program.tittleCh,
@@ -153,11 +160,9 @@ export class CouponProgramClaimService {
     );
   }
 
-  private assertProgramActive(program: {
-    status: string;
-    validFrom: Date | null;
-    validTo: Date | null;
-  }) {
+  private assertProgramActive(
+    program: Pick<CouponProgram, 'status' | 'validFrom' | 'validTo'>,
+  ) {
     const now = new Date();
     if (program.status !== 'ACTIVE') {
       throw new BadRequestException('promotion is not active');
@@ -179,14 +184,5 @@ export class CouponProgramClaimService {
       throw new NotFoundException('User not found');
     }
     return user;
-  }
-
-  async describeProgramContents(programStableId: string) {
-    const program = await this.prisma.couponProgram.findUnique({
-      where: { programStableId },
-      select: { items: true },
-    });
-    if (!program) throw new NotFoundException('Promotion not found');
-    return parseProgramItems(program.items);
   }
 }
