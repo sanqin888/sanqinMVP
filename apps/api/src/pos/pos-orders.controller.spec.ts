@@ -159,7 +159,7 @@ describe('PosOrdersController Uber orders', () => {
       ],
     };
 
-    await controller.amend('order_1', body);
+    await controller.createAmendment('order_1', body);
 
     expect(posOrders.createAmendment).toHaveBeenCalledWith(
       'order_1',
