@@ -19,7 +19,7 @@
             "title": "Fixture Item With Modifier",
             "external_data": "menu-item-2",
             "quantity": { "amount": 1, "unit": "PIECE" },
-            "customer_requests": { "special_instructions": "Fixture item note" },
+            "customer_request": { "special_instructions": "Fixture item note" },
             "selected_modifier_groups": [
               {
                 "id": "modifier-group-1",
