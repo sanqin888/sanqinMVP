@@ -10,6 +10,8 @@ import {
   type UberOrderDenial,
 } from './uber-order.ports';
 
+const SCHEDULED_FINALIZE_PHASE = 'scheduled-finalize';
+
 export class UberOrderActionService {
   constructor(
     private readonly repository: UberOrderActionRepositoryPort,
@@ -26,10 +28,21 @@ export class UberOrderActionService {
     );
   }
 
+  requestScheduledFinalizeAccept(externalOrderId: string) {
+    return this.repository.requeue(
+      this.buildIntent({
+        externalOrderId,
+        action: 'ACCEPT',
+        phase: SCHEDULED_FINALIZE_PHASE,
+      }),
+    );
+  }
+
   buildIntent<TAction extends UberOrderActionName>(input: {
     externalOrderId: string;
     action: TAction;
     denial?: UberOrderDenial;
+    phase?: string;
   }): UberOrderActionIntent<TAction> {
     const { action, denial } = input;
     const id = input.externalOrderId.trim();
@@ -39,7 +52,11 @@ export class UberOrderActionService {
     return {
       externalOrderId: id,
       action,
-      idempotencyKey: UberOrderStateMachine.idempotencyKey(id, action),
+      idempotencyKey: UberOrderStateMachine.idempotencyKey(
+        id,
+        action,
+        input.phase,
+      ),
       businessVersion: 'v1',
       reasonCode: denial?.reasonCode.trim() ?? null,
       reasonDetail: denial?.reasonDetail?.trim() || null,
