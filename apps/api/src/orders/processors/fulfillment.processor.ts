@@ -350,12 +350,17 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           item.nameZh ??
           item.productStableId;
         const quantity = Math.max(1, Math.round(item.qty));
-        const unitPriceCents = Math.max(0, Math.round(item.unitPriceCents ?? 0));
+        const unitPriceCents = Math.max(
+          0,
+          Math.round(item.unitPriceCents ?? 0),
+        );
         return {
           productStableId: item.productStableId,
           nameZh: `${zhPrefix} ${baseZh}`,
           nameEn: `${enPrefix} ${baseEn}`,
-          displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
+          displayName: `${zhPrefix}/${enPrefix} ${
+            item.displayName ?? baseEn
+          }`,
           quantity,
           lineTotalCents: unitPriceCents * quantity,
           specialInstructions: null,
