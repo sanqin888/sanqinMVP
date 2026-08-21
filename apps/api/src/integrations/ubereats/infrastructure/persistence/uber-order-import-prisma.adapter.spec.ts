@@ -62,6 +62,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
           findUnique: jest.fn().mockResolvedValue({
             id: 'order-db-1',
             status: 'making',
+            fulfillmentTiming: 'IMMEDIATE',
           }),
         },
         uberWebhookInbox: {
@@ -84,6 +85,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     ).resolves.toEqual({
       orderId: 'order-db-1',
       status: 'making',
+      fulfillmentTiming: 'IMMEDIATE',
       cursor: {
         eventId: 'evt-raw',
         occurredAt: new Date('2026-08-18T15:00:00.000Z'),
