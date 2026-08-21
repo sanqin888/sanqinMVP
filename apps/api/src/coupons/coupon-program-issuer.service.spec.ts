@@ -4,8 +4,9 @@ describe('CouponProgramIssuerService', () => {
   const templateStableId = 'cm123456789012345678901234';
 
   it('materializes percentage coupons without converting them to a fixed amount', async () => {
+    const createCouponMany = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
-      coupon: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      coupon: { createMany: createCouponMany },
       userCoupon: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       couponProgram: { update: jest.fn().mockResolvedValue({}) },
     };
@@ -54,19 +55,14 @@ describe('CouponProgramIssuerService', () => {
       ),
     ).resolves.toEqual({ issuedCount: 1 });
 
-    expect(tx.coupon.createMany).toHaveBeenCalledTimes(1);
-    const createCall = tx.coupon.createMany.mock.calls[0]?.[0] as {
-      data: Array<{
-        discountCents: number;
-        discountPercent: number | null;
-        minSpendCents: number | null;
-      }>;
-    };
-    expect(createCall.data).toHaveLength(1);
-    expect(createCall.data[0]).toMatchObject({
-      discountCents: 0,
-      discountPercent: 10,
-      minSpendCents: 2000,
+    expect(createCouponMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          discountCents: 0,
+          discountPercent: 10,
+          minSpendCents: 2000,
+        }),
+      ],
     });
   });
 });
