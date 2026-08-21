@@ -33,6 +33,12 @@ const AMENDABLE_STATUSES = new Set<OrderStatus>([
   'ready',
   'completed',
 ]);
+const IN_STORE_MANAGEMENT_ACTIONS: readonly PosOrderManagementAction[] = [
+  'SWAP_ITEM',
+  'VOID_ITEM',
+  'FULL_REFUND',
+  'CHANGE_PAYMENT',
+];
 
 type PosAmendmentItemInput = {
   action: OrderAmendmentItemAction;
@@ -177,33 +183,29 @@ export class PosOrdersService {
 
     if (order.channel === Channel.web) {
       return {
-        actions: (
-          ['SWAP_ITEM', 'VOID_ITEM', 'FULL_REFUND', 'CHANGE_PAYMENT'] as const
-        ).map((action) => ({
-          action,
-          available: false,
-          reason: 'CLOVER_SYNC_PENDING' as const,
-        })),
+        actions: IN_STORE_MANAGEMENT_ACTIONS.map(
+          (action): PosOrderActionCapability => ({
+            action,
+            available: false,
+            reason: 'CLOVER_SYNC_PENDING',
+          }),
+        ),
       };
     }
 
     if (order.channel === Channel.ubereats) {
       const available = ['paid', 'making', 'ready'].includes(order.status);
+      if (available) {
+        return {
+          actions: [{ action: 'UBER_CANCEL', available: true }],
+        };
+      }
+      const reason: PosOrderActionCapability['reason'] =
+        order.status === 'refunded'
+          ? 'ORDER_REFUNDED'
+          : 'ORDER_STATUS_NOT_SUPPORTED';
       return {
-        actions: [
-          {
-            action: 'UBER_CANCEL',
-            available,
-            ...(!available
-              ? {
-                  reason:
-                    order.status === 'refunded'
-                      ? ('ORDER_REFUNDED' as const)
-                      : ('ORDER_STATUS_NOT_SUPPORTED' as const),
-                }
-              : {}),
-          },
-        ],
+        actions: [{ action: 'UBER_CANCEL', available: false, reason }],
       };
     }
 
@@ -217,13 +219,12 @@ export class PosOrdersService {
           : 'ORDER_STATUS_NOT_SUPPORTED';
 
     return {
-      actions: (
-        ['SWAP_ITEM', 'VOID_ITEM', 'FULL_REFUND', 'CHANGE_PAYMENT'] as const
-      ).map((action) => ({
-        action,
-        available,
-        ...(reason ? { reason } : {}),
-      })),
+      actions: IN_STORE_MANAGEMENT_ACTIONS.map(
+        (action): PosOrderActionCapability =>
+          reason
+            ? { action, available, reason }
+            : { action, available },
+      ),
     };
   }
 
@@ -322,7 +323,7 @@ export class PosOrdersService {
   }
 
   private requireOperatorName(value: string): string {
-    const operatorName = value?.trim();
+    const operatorName = value.trim();
     if (!operatorName) {
       throw new BadRequestException('operatorName is required');
     }
@@ -330,7 +331,7 @@ export class PosOrdersService {
   }
 
   private requireReason(value: string): string {
-    const reason = value?.trim();
+    const reason = value.trim();
     if (!reason) throw new BadRequestException('reason is required');
     return reason;
   }
