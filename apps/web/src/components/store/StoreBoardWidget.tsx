@@ -6,9 +6,16 @@ import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
 import {
   advanceOrder,
+  cancelUberOrder,
+  fetchOrderActions,
+  fetchOrderAmendments,
+  fetchOrderById,
   fetchOrderPrintStatus,
   printOrderCloud,
   type OrderPrintStatus,
+  type PosOrderActionCapability,
+  type PosOrderAmendmentHistory,
+  type PosOrderManagementAction,
 } from "@/lib/api/pos";
 import { parseBackendDateMs } from "@/lib/time/tz";
 
@@ -21,24 +28,56 @@ type BoardOrderItem = {
   nameEn?: string | null;
   nameZh?: string | null;
   unitPriceCents?: number | null;
+  specialInstructions?: string | null;
+  optionsJson?: unknown;
 };
 
 type BoardOrder = {
-  orderStableId: string; // ✅ 非空
-
+  orderStableId: string;
   channel: "web" | "in_store" | "ubereats";
   status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
   fulfillmentTiming: "IMMEDIATE" | "SCHEDULED";
-
   subtotalCents: number;
   taxCents: number;
   deliveryFeeCents?: number | null;
   totalCents: number;
-
   pickupCode?: string | null;
   createdAt: string;
-
   items: BoardOrderItem[];
+};
+
+type DetailOrder = {
+  orderStableId: string;
+  orderNumber?: string | null;
+  clientRequestId?: string | null;
+  channel: "web" | "in_store" | "ubereats";
+  status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
+  paymentMethod?: string | null;
+  fulfillmentType?: "pickup" | "dine_in" | "delivery";
+  pickupCode?: string | null;
+  totalCents: number;
+  items: BoardOrderItem[];
+};
+
+type OptionChoiceSnapshot = {
+  stableId?: string;
+  nameEn?: string | null;
+  nameZh?: string | null;
+  displayName?: string | null;
+};
+
+type OptionGroupSnapshot = {
+  nameEn?: string | null;
+  nameZh?: string | null;
+  displayName?: string | null;
+  choices?: OptionChoiceSnapshot[];
+};
+
+const STORE_ACTION_QUERY: Partial<Record<PosOrderManagementAction, string>> = {
+  SWAP_ITEM: "swap_item",
+  VOID_ITEM: "void_item",
+  FULL_REFUND: "full_refund",
+  CHANGE_PAYMENT: "retender",
 };
 
 function formatMoney(cents: number | null | undefined): string {
@@ -50,8 +89,9 @@ function pickItemName(item: BoardOrderItem, locale: Locale): string {
   const trimmedDisplay = item.displayName?.trim() ?? "";
   const trimmedEn = item.nameEn?.trim() ?? "";
   const trimmedZh = item.nameZh?.trim() ?? "";
-  if (locale === "zh")
+  if (locale === "zh") {
     return trimmedZh || trimmedDisplay || trimmedEn || item.productStableId;
+  }
   return trimmedEn || trimmedDisplay || trimmedZh || item.productStableId;
 }
 
@@ -83,13 +123,12 @@ function formatChannel(channel: BoardOrder["channel"], locale: Locale): string {
     case "in_store":
       return isZh ? "店内" : "In-store";
     case "ubereats":
-      return isZh ? "UberEats" : "UberEats";
+      return "UberEats";
     default:
       return channel;
   }
 }
 
-// 浏览器语音提醒
 function speak(text: string, locale: Locale, onEnd?: () => void) {
   if (typeof window === "undefined") return;
   if (!("speechSynthesis" in window)) return;
@@ -161,11 +200,10 @@ const NEXT_STATUS: Record<BoardOrder["status"], BoardOrder["status"] | null> = {
   refunded: null,
 };
 
-// ✅ 刷新不重复打印：localStorage 持久化（按 stableId）
 const PRINTED_STORAGE_KEY = "sanqin:storeBoard:processedStableIds:v2";
 const AUTO_ACCEPT_STORAGE_KEY = "sanqin:storeBoard:autoAcceptEnabled:v1";
-const PRINTED_TTL_MS = 12 * 60 * 60 * 1000; // 12h
-type ProcessedMap = Record<string, number>; // stableId -> timestamp(ms)
+const PRINTED_TTL_MS = 12 * 60 * 60 * 1000;
+type ProcessedMap = Record<string, number>;
 
 function safeParseCreatedAtMs(createdAt: string): number {
   const ms = parseBackendDateMs(createdAt);
@@ -222,6 +260,471 @@ function writeProcessedMap(map: ProcessedMap) {
   }
 }
 
+function isOptionGroupSnapshot(value: unknown): value is OptionGroupSnapshot {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionLines(value: unknown, locale: Locale): string[] {
+  if (!Array.isArray(value)) return [];
+  const lines: string[] = [];
+  for (const rawGroup of value) {
+    if (!isOptionGroupSnapshot(rawGroup)) continue;
+    const groupName =
+      locale === "zh"
+        ? rawGroup.nameZh || rawGroup.displayName || rawGroup.nameEn
+        : rawGroup.nameEn || rawGroup.displayName || rawGroup.nameZh;
+    const choices = Array.isArray(rawGroup.choices) ? rawGroup.choices : [];
+    const choiceNames = choices
+      .map((choice) => {
+        if (!choice || typeof choice !== "object" || Array.isArray(choice)) {
+          return "";
+        }
+        return locale === "zh"
+          ? choice.nameZh ||
+              choice.displayName ||
+              choice.nameEn ||
+              choice.stableId ||
+              ""
+          : choice.nameEn ||
+              choice.displayName ||
+              choice.nameZh ||
+              choice.stableId ||
+              "";
+      })
+      .filter(Boolean);
+    if (choiceNames.length > 0) {
+      lines.push(
+        `${groupName ? `${groupName}: ` : ""}${choiceNames.join(" / ")}`,
+      );
+    }
+  }
+  return lines;
+}
+
+function historyLabel(
+  type: PosOrderAmendmentHistory["type"],
+  locale: Locale,
+): string {
+  const zh: Record<PosOrderAmendmentHistory["type"], string> = {
+    RETENDER: "支付调整/退款",
+    VOID_ITEM: "退菜",
+    SWAP_ITEM: "换菜",
+    ADDITIONAL_CHARGE: "补收",
+  };
+  const en: Record<PosOrderAmendmentHistory["type"], string> = {
+    RETENDER: "Payment adjustment/refund",
+    VOID_ITEM: "Void item",
+    SWAP_ITEM: "Swap item",
+    ADDITIONAL_CHARGE: "Additional charge",
+  };
+  return locale === "zh" ? zh[type] : en[type];
+}
+
+function capabilityReason(
+  reason: PosOrderActionCapability["reason"],
+  locale: Locale,
+): string | null {
+  if (!reason) return null;
+  const zh = {
+    CLOVER_SYNC_PENDING: "待 Clover POS / 支付同步接入",
+    ORDER_REFUNDED: "订单已退款",
+    ORDER_NOT_SETTLED: "订单尚未完成支付",
+    ORDER_STATUS_NOT_SUPPORTED: "当前订单状态不可操作",
+  } as const;
+  const en = {
+    CLOVER_SYNC_PENDING: "Available after Clover POS/payment sync",
+    ORDER_REFUNDED: "Order already refunded",
+    ORDER_NOT_SETTLED: "Order is not settled yet",
+    ORDER_STATUS_NOT_SUPPORTED: "Unavailable in the current order status",
+  } as const;
+  return locale === "zh" ? zh[reason] : en[reason];
+}
+
+function actionLabel(action: PosOrderManagementAction, locale: Locale): string {
+  const zh: Record<PosOrderManagementAction, string> = {
+    SWAP_ITEM: "换菜",
+    VOID_ITEM: "退菜 / 部分退款",
+    FULL_REFUND: "取消订单 / 全额退款",
+    CHANGE_PAYMENT: "更改支付方式",
+    UBER_CANCEL: "取消 Uber 订单",
+  };
+  const en: Record<PosOrderManagementAction, string> = {
+    SWAP_ITEM: "Swap item",
+    VOID_ITEM: "Void item / partial refund",
+    FULL_REFUND: "Cancel / full refund",
+    CHANGE_PAYMENT: "Change payment method",
+    UBER_CANCEL: "Cancel Uber order",
+  };
+  return locale === "zh" ? zh[action] : en[action];
+}
+
+function historyItemName(
+  item: PosOrderAmendmentHistory["items"][number],
+  locale: Locale,
+): string {
+  const display = item.displayName?.trim() ?? "";
+  const en = item.nameEn?.trim() ?? "";
+  const zh = item.nameZh?.trim() ?? "";
+  return locale === "zh"
+    ? zh || display || en || item.productStableId
+    : en || display || zh || item.productStableId;
+}
+
+function OrderDetailModal(props: {
+  orderStableId: string | null;
+  locale: Locale;
+  onClose: () => void;
+  onChanged?: () => void | Promise<void>;
+}) {
+  const { orderStableId, locale, onClose, onChanged } = props;
+  const isZh = locale === "zh";
+  const [order, setOrder] = useState<DetailOrder | null>(null);
+  const [actions, setActions] = useState<PosOrderActionCapability[]>([]);
+  const [history, setHistory] = useState<PosOrderAmendmentHistory[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!orderStableId) return;
+    setLoading(true);
+    setMessage(null);
+    try {
+      const [detail, capabilities, amendments] = await Promise.all([
+        fetchOrderById<DetailOrder>(orderStableId),
+        fetchOrderActions(orderStableId),
+        fetchOrderAmendments(orderStableId),
+      ]);
+      setOrder(detail);
+      setActions(capabilities.actions);
+      setHistory(amendments);
+    } catch (error) {
+      console.error("Failed to load POS order detail:", error);
+      setMessage(
+        isZh ? "订单详情加载失败。" : "Failed to load order details.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [isZh, orderStableId]);
+
+  useEffect(() => {
+    if (!orderStableId) {
+      setOrder(null);
+      setActions([]);
+      setHistory([]);
+      setHistoryOpen(false);
+      setMessage(null);
+      return;
+    }
+    void load();
+  }, [load, orderStableId]);
+
+  const title = useMemo(() => {
+    if (!order) return "";
+    return order.channel === "ubereats"
+      ? order.pickupCode || order.orderNumber || order.orderStableId
+      : order.orderNumber || order.orderStableId;
+  }, [order]);
+
+  if (!orderStableId) return null;
+
+  const openStoreAction = (action: PosOrderManagementAction) => {
+    const queryAction = STORE_ACTION_QUERY[action];
+    if (!queryAction || !order) return;
+    const params = new URLSearchParams({
+      order: order.orderStableId,
+      action: queryAction,
+    });
+    window.location.assign(`/${locale}/store/pos/orders?${params.toString()}`);
+  };
+
+  const handleAction = async (capability: PosOrderActionCapability) => {
+    if (!capability.available || !order) return;
+    if (capability.action !== "UBER_CANCEL") {
+      openStoreAction(capability.action);
+      return;
+    }
+
+    const reason = window
+      .prompt(
+        isZh
+          ? "请输入取消原因（必填）"
+          : "Enter cancellation reason (required)",
+      )
+      ?.trim();
+    if (!reason) return;
+    const confirmed = window.confirm(
+      isZh
+        ? `确认向 Uber 提交取消订单 ${title}？`
+        : `Submit cancellation for Uber order ${title}?`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setActionBusy(true);
+      setMessage(null);
+      const result = await cancelUberOrder<DetailOrder>(
+        order.orderStableId,
+        reason,
+      );
+      setMessage(
+        result.uberActionStatus === "FAILED"
+          ? isZh
+            ? "Uber 取消提交失败，请查看同步状态后重试。"
+            : "Uber cancellation failed. Check sync status and retry."
+          : isZh
+            ? "Uber 取消已提交。"
+            : "Uber cancellation submitted.",
+      );
+      await load();
+      await onChanged?.();
+    } catch (error) {
+      console.error("Failed to cancel Uber order:", error);
+      setMessage(
+        isZh ? "Uber 取消失败，请稍后重试。" : "Uber cancellation failed.",
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="pointer-events-auto fixed inset-0 z-[80] flex items-center justify-center bg-black/65 p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {isZh ? "订单详情" : "Order details"}
+            </div>
+            <div className="mt-1 text-2xl font-bold text-emerald-200">
+              {title || (isZh ? "加载中…" : "Loading…")}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-600 px-3 py-1 text-sm text-slate-200 hover:border-slate-400"
+          >
+            {isZh ? "关闭" : "Close"}
+          </button>
+        </div>
+
+        <div className="overflow-auto p-5">
+          {loading && !order ? (
+            <div className="py-10 text-center text-slate-400">
+              {isZh ? "加载中…" : "Loading…"}
+            </div>
+          ) : order ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-950/40 p-4 text-sm sm:grid-cols-4">
+                <div>
+                  <div className="text-xs text-slate-500">
+                    {isZh ? "渠道" : "Channel"}
+                  </div>
+                  <div className="mt-1 font-medium">{order.channel}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">
+                    {isZh ? "状态" : "Status"}
+                  </div>
+                  <div className="mt-1 font-medium">{order.status}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">
+                    {isZh ? "支付" : "Payment"}
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {order.paymentMethod ?? "-"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">
+                    {isZh ? "合计" : "Total"}
+                  </div>
+                  <div className="mt-1 font-semibold">
+                    {formatMoney(order.totalCents)}
+                  </div>
+                </div>
+              </div>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-slate-300">
+                  {isZh ? "菜品明细" : "Items"}
+                </h3>
+                <div className="space-y-2">
+                  {order.items.map((item, index) => {
+                    const options = optionLines(item.optionsJson, locale);
+                    return (
+                      <div
+                        key={`${item.productStableId}:${index}`}
+                        className="rounded-2xl border border-slate-800 bg-slate-950/30 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="font-semibold">
+                            x{item.qty} · {pickItemName(item, locale)}
+                          </div>
+                          {typeof item.unitPriceCents === "number" && (
+                            <div className="shrink-0 text-sm text-slate-300">
+                              {formatMoney(item.unitPriceCents * item.qty)}
+                            </div>
+                          )}
+                        </div>
+                        {options.length > 0 && (
+                          <div className="mt-2 space-y-1 text-sm text-slate-300">
+                            {options.map((line, optionIndex) => (
+                              <div key={`${line}:${optionIndex}`}>· {line}</div>
+                            ))}
+                          </div>
+                        )}
+                        {item.specialInstructions?.trim() && (
+                          <div className="mt-2 rounded-xl bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                            {isZh ? "备注：" : "Note: "}
+                            {item.specialInstructions}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-slate-300">
+                  {isZh ? "订单操作" : "Order actions"}
+                </h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {actions.map((capability) => {
+                    const reason = capabilityReason(
+                      capability.reason,
+                      locale,
+                    );
+                    return (
+                      <button
+                        key={capability.action}
+                        type="button"
+                        disabled={!capability.available || actionBusy}
+                        title={reason ?? undefined}
+                        onClick={() => void handleAction(capability)}
+                        className={[
+                          "rounded-2xl border px-4 py-3 text-left transition",
+                          capability.available && !actionBusy
+                            ? capability.action === "UBER_CANCEL"
+                              ? "border-rose-500/60 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20"
+                              : "border-slate-600 bg-slate-800/70 text-slate-100 hover:bg-slate-700"
+                            : "cursor-not-allowed border-slate-800 bg-slate-950/30 text-slate-600",
+                        ].join(" ")}
+                      >
+                        <div className="font-semibold">
+                          {actionLabel(capability.action, locale)}
+                        </div>
+                        {reason && (
+                          <div className="mt-1 text-xs text-slate-500">
+                            {reason}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {history.length > 0 && (
+                <section className="border-t border-slate-800 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryOpen((value) => !value)}
+                    className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-sm text-slate-300 hover:bg-slate-800/50"
+                  >
+                    <span>
+                      {isZh ? "操作记录" : "Operation history"}（
+                      {history.length}）
+                    </span>
+                    <span>{historyOpen ? "⌃" : "⌄"}</span>
+                  </button>
+                  {historyOpen && (
+                    <div className="mt-2 space-y-2">
+                      {history.map((entry) => (
+                        <div
+                          key={entry.amendmentStableId}
+                          className="rounded-2xl border border-slate-800 bg-slate-950/30 p-3 text-sm"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-semibold text-slate-200">
+                              {historyLabel(entry.type, locale)}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {entry.operatorName
+                                ? `${isZh ? "操作人" : "Operator"}: ${entry.operatorName}`
+                                : isZh
+                                  ? "系统/历史记录"
+                                  : "System / legacy record"}
+                            </div>
+                          </div>
+                          <div className="mt-1 text-slate-300">
+                            {entry.reason}
+                          </div>
+                          {entry.items.length > 0 && (
+                            <div className="mt-2 space-y-1 text-xs text-slate-400">
+                              {entry.items.map((item, index) => (
+                                <div
+                                  key={`${entry.amendmentStableId}:${item.productStableId}:${index}`}
+                                >
+                                  {item.action === "VOID"
+                                    ? isZh
+                                      ? "取消"
+                                      : "Void"
+                                    : isZh
+                                      ? "新增"
+                                      : "Add"}
+                                  ：x{item.qty} · {historyItemName(item, locale)}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {(entry.refundCents > 0 ||
+                            entry.additionalChargeCents > 0) && (
+                            <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                              {entry.refundCents > 0 && (
+                                <span className="text-rose-300">
+                                  {isZh ? "退款" : "Refund"}{" "}
+                                  {formatMoney(entry.refundCents)}
+                                </span>
+                              )}
+                              {entry.additionalChargeCents > 0 && (
+                                <span className="text-emerald-300">
+                                  {isZh ? "补收" : "Charge"}{" "}
+                                  {formatMoney(entry.additionalChargeCents)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
+          ) : null}
+
+          {message && (
+            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 px-4 py-3 text-sm text-slate-200">
+              {message}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function StoreBoardWidget(props: { locale: Locale }) {
   const locale = props.locale ?? "zh";
   const t = STRINGS[locale];
@@ -244,8 +747,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const [syncingReadyOrders, setSyncingReadyOrders] = useState<
     Record<string, boolean>
   >({});
-
-  // ✅ 增强1：新 web 订单到达时，高亮闪烁（并自动展开）
+  const [selectedOrderStableId, setSelectedOrderStableId] = useState<
+    string | null
+  >(null);
   const [flash, setFlash] = useState(false);
   const [pop, setPop] = useState(false);
   const [highlightedOrders, setHighlightedOrders] = useState<
@@ -262,7 +766,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const alarmPlayingRef = useRef(false);
 
-  // ✅ 增强2：待接单数（统计线上渠道：web + ubereats，且 paid）
   const pendingAcceptCount = useMemo(
     () => orders.filter((o) => isAutoAcceptCandidate(o)).length,
     [orders],
@@ -359,7 +862,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     }
   }, []);
 
-  // 初始化：读取 localStorage 去重集合（刷新不重复打印）
   useEffect(() => {
     const map = readProcessedMap();
     processedRef.current = map;
@@ -379,27 +881,33 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     }
   }, []);
 
-  const handlePrintFront = useCallback(async (orderStableId: string) => {
-    try {
-      await printOrderCloud(orderStableId, {
-        locale,
-        targets: { customer: true, kitchen: false },
-      });
-    } catch (error) {
-      console.error("Failed to print front receipt via cloud:", error);
-    }
-  }, [locale]);
+  const handlePrintFront = useCallback(
+    async (orderStableId: string) => {
+      try {
+        await printOrderCloud(orderStableId, {
+          locale,
+          targets: { customer: true, kitchen: false },
+        });
+      } catch (error) {
+        console.error("Failed to print front receipt via cloud:", error);
+      }
+    },
+    [locale],
+  );
 
-  const handlePrintKitchen = useCallback(async (orderStableId: string) => {
-    try {
-      await printOrderCloud(orderStableId, {
-        locale,
-        targets: { customer: false, kitchen: true },
-      });
-    } catch (error) {
-      console.error("Failed to print kitchen ticket via cloud:", error);
-    }
-  }, [locale]);
+  const handlePrintKitchen = useCallback(
+    async (orderStableId: string) => {
+      try {
+        await printOrderCloud(orderStableId, {
+          locale,
+          targets: { customer: false, kitchen: true },
+        });
+      } catch (error) {
+        console.error("Failed to print kitchen ticket via cloud:", error);
+      }
+    },
+    [locale],
+  );
 
   const fetchOrdersAndProcess = useCallback(async () => {
     const data = await apiFetch<BoardOrder[]>(query);
@@ -445,9 +953,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     const processedSet = processedSetRef.current;
     const processedMap = processedRef.current;
 
-    // ✅ 首次拉取策略：
-    // - 若本机没有任何持久化记录（第一次用）：baseline，不打印历史堆积
-    // - 若本机已有持久化记录（刷新/重开）：允许补打“未处理过”的新单
     if (!hasBootstrappedRef.current) {
       hasBootstrappedRef.current = true;
 
@@ -455,13 +960,13 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         for (const o of visibleOrders) {
           const sid = o.orderStableId;
           processedSet.add(sid);
-          if (!processedMap[sid])
+          if (!processedMap[sid]) {
             processedMap[sid] = safeParseCreatedAtMs(o.createdAt);
+          }
         }
         writeProcessedMap(processedMap);
         return;
       }
-      // hadPersistedRef = true：继续走下面正常 newOrders 逻辑（补打漏单）
     }
 
     const newOrders = visibleOrders.filter(
@@ -480,7 +985,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
     const newOnlinePaid = newOrders.filter((o) => isAutoAcceptCandidate(o));
     if (newOnlinePaid.length > 0) {
-      // ✅ 增强1：自动弹开 + 闪一下
       setOpen(true);
       setFlash(true);
       setPop(true);
@@ -494,7 +998,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       if (autoAcceptEnabled) {
         for (const order of newOnlinePaid) {
           try {
-            // 仅推进到 making，后端会在 accepted 事件中统一触发打印，避免重复出单。
             await advanceOrder(order.orderStableId);
           } catch (error) {
             console.error(
@@ -549,7 +1052,6 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     [fetchOrdersAndProcess, isZh],
   );
 
-  // 轮询（✅ exhaustive-deps 通过）
   useEffect(() => {
     let cancelled = false;
 
@@ -593,7 +1095,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
 
     const handlePointerDown = (event: PointerEvent) => {
       handleActivity();
-      if (!open) return;
+      if (!open || selectedOrderStableId) return;
       const panel = boardPanelRef.current;
       const target = event.target;
       if (!panel || !(target instanceof Node)) return;
@@ -615,7 +1117,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       window.removeEventListener("keydown", handleActivity);
       window.removeEventListener("touchstart", handleActivity);
     };
-  }, [open, scheduleAutoExpand]);
+  }, [open, scheduleAutoExpand, selectedOrderStableId]);
 
   useEffect(() => {
     return () => {
@@ -809,8 +1311,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
               return (
                 <div
                   key={sid}
+                  onClick={() => setSelectedOrderStableId(sid)}
                   className={[
-                    "rounded-2xl border p-3 bg-slate-950/30",
+                    "cursor-pointer rounded-2xl border p-3 bg-slate-950/30 transition hover:bg-slate-900/60",
                     isHighlightedChannel
                       ? "border-amber-400/70"
                       : "border-slate-800",
@@ -903,7 +1406,10 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <button
                       type="button"
-                      onClick={() => handleAdvance(order)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleAdvance(order);
+                      }}
                       disabled={!next || isSyncingUberReady}
                       aria-busy={isSyncingUberReady}
                       className={[
@@ -919,14 +1425,20 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => handlePrintFront(sid)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handlePrintFront(sid);
+                        }}
                         className="rounded-full bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs text-slate-100 transition"
                       >
                         {t.reprintFront}
                       </button>
                       <button
                         type="button"
-                        onClick={() => handlePrintKitchen(sid)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handlePrintKitchen(sid);
+                        }}
                         className="rounded-full bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs text-slate-100 transition"
                       >
                         {t.printKitchen}
@@ -939,6 +1451,13 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           </div>
         </div>
       )}
+
+      <OrderDetailModal
+        orderStableId={selectedOrderStableId}
+        locale={locale}
+        onClose={() => setSelectedOrderStableId(null)}
+        onChanged={fetchOrdersAndProcess}
+      />
     </div>
   );
 }

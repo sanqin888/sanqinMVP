@@ -301,9 +301,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }>;
   }) {
     try {
+      const locale = payload.locale === 'en' ? 'en' : 'zh';
       const basePayload = await this.printPosPayloadService.getByStableId(
         payload.orderStableId,
-        payload.locale ?? 'zh',
+        locale,
       );
       const order = await this.prisma.order.findUnique({
         where: { orderStableId: payload.orderStableId },
@@ -318,30 +319,56 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       }
 
       const storeId = order.storeId ?? resolveConfiguredStoreId();
+      const reason = payload.reason.trim();
+      const operatorName = payload.operatorName.trim();
+      const headerNote =
+        locale === 'zh'
+          ? `原因: ${reason} / 操作人: ${operatorName}`
+          : `Reason: ${reason} / Operator: ${operatorName}`;
+      const headerItem = {
+        productStableId: '__order_amendment__',
+        nameZh: '****** 改单 ******',
+        nameEn: '****** ORDER CHANGE ******',
+        displayName: '****** 改单 / ORDER CHANGE ******',
+        quantity: 1,
+        lineTotalCents: 0,
+        specialInstructions: headerNote,
+        options: null,
+      };
+      const changedItems = payload.items.map((item) => {
+        const isVoid = item.action === OrderAmendmentItemAction.VOID;
+        const zhPrefix = isVoid ? '[取消]' : '[新增]';
+        const enPrefix = isVoid ? '[VOID]' : '[ADD]';
+        const baseZh =
+          item.nameZh ??
+          item.displayName ??
+          item.nameEn ??
+          item.productStableId;
+        const baseEn =
+          item.nameEn ??
+          item.displayName ??
+          item.nameZh ??
+          item.productStableId;
+        const quantity = Math.max(1, Math.round(item.qty));
+        const unitPriceCents = Math.max(0, Math.round(item.unitPriceCents ?? 0));
+        return {
+          productStableId: item.productStableId,
+          nameZh: `${zhPrefix} ${baseZh}`,
+          nameEn: `${enPrefix} ${baseEn}`,
+          displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
+          quantity,
+          lineTotalCents: unitPriceCents * quantity,
+          specialInstructions: null,
+          options: Array.isArray(item.optionsJson)
+            ? (item.optionsJson as OrderItemOptionsSnapshot)
+            : null,
+        };
+      });
       const amendmentPayload: PrintPosPayloadDto = {
         ...basePayload,
-        amendment: {
-          reason: payload.reason.trim(),
-          operatorName: payload.operatorName.trim(),
-        },
         snapshot: {
           ...basePayload.snapshot,
-          items: payload.items.map((item) => ({
-            productStableId: item.productStableId,
-            nameZh: item.nameZh ?? null,
-            nameEn: item.nameEn ?? null,
-            displayName: item.displayName ?? null,
-            quantity: Math.max(1, Math.round(item.qty)),
-            lineTotalCents:
-              Math.max(0, Math.round(item.unitPriceCents ?? 0)) *
-              Math.max(1, Math.round(item.qty)),
-            specialInstructions: null,
-            options: Array.isArray(item.optionsJson)
-              ? (item.optionsJson as OrderItemOptionsSnapshot)
-              : null,
-            amendmentAction:
-              item.action === OrderAmendmentItemAction.VOID ? 'VOID' : 'ADD',
-          })),
+          items: [headerItem, ...changedItems],
         },
       };
 
@@ -363,8 +390,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         itemCount: payload.items.length,
       });
     } catch (error) {
-      // The financial amendment is already committed. Printing is a secondary
-      // durable delivery path, so do not make staff retry the amendment itself.
+      // The amendment is already committed. Do not make staff repeat the
+      // financial/item operation merely because its kitchen copy failed.
       this.logger.error({
         event: 'amendment_print_job_failed',
         orderStableId: payload.orderStableId,

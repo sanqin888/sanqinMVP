@@ -18,7 +18,6 @@ type PrintPosItemSnapshot = {
   lineTotalCents: number;
   specialInstructions: string | null;
   options: OrderItemOptionsSnapshot | null;
-  amendmentAction?: 'VOID' | 'ADD';
 };
 
 type PrintPosUtensilsSnapshot = {
@@ -50,8 +49,4 @@ export type PrintPosPayloadDto = {
   orderNotes: string | null;
   utensils: PrintPosUtensilsSnapshot | null;
   snapshot: PrintPosOrderSnapshot;
-  amendment?: {
-    reason: string;
-    operatorName: string;
-  };
 };
