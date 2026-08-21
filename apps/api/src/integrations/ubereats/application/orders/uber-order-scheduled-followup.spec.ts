@@ -5,6 +5,10 @@ import type {
 } from './uber-order.ports';
 import type { UberOrderDetailResult } from './uber-order-query.ports';
 
+type ImportedOrderInput = Parameters<
+  UberOrderImportRepositoryPort['saveImportedOrder']
+>[0];
+
 const notification = {
   version: 1,
   family: 'order',
@@ -71,10 +75,14 @@ const storeMapping = {
 
 describe('Uber scheduled-order follow-up notifications', () => {
   it('refreshes scheduled detail and requeues ACCEPT for the finalization phase', async () => {
-    const saveImportedOrder = jest.fn().mockResolvedValue({
-      orderId: 'local-1',
-      created: false,
-      action: null,
+    const saved: { input?: ImportedOrderInput } = {};
+    const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
+      saved.input = input;
+      return Promise.resolve({
+        orderId: 'local-1',
+        created: false,
+        action: null,
+      });
     });
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
@@ -123,13 +131,10 @@ describe('Uber scheduled-order follow-up notifications', () => {
         resourceId: 'scheduled-order-1',
       }),
     );
-    expect(saveImportedOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: 'orders.notification',
-        order: expect.objectContaining({ fulfillmentTiming: 'SCHEDULED' }),
-        actionIntent: null,
-      }),
-    );
+    expect(saveImportedOrder).toHaveBeenCalledTimes(1);
+    expect(saved.input?.eventType).toBe('orders.notification');
+    expect(saved.input?.order.fulfillmentTiming).toBe('SCHEDULED');
+    expect(saved.input?.actionIntent).toBeNull();
     expect(requestScheduledFinalizeAccept).toHaveBeenCalledWith(
       'scheduled-order-1',
     );
