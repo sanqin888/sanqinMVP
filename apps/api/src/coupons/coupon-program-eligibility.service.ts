@@ -3,8 +3,6 @@ import { Prisma, type CouponProgram } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseProgramItems } from './coupon-program.utils';
 
-type CouponProgramClient = Pick<Prisma.TransactionClient, 'userCoupon'>;
-
 export type CouponProgramEligibility = {
   canIssue: boolean;
   issuedToUser: number;
@@ -19,10 +17,13 @@ export class CouponProgramEligibilityService {
   async evaluate(
     program: CouponProgram,
     userStableId: string,
-    client: CouponProgramClient = this.prisma,
+    tx?: Prisma.TransactionClient,
   ): Promise<CouponProgramEligibility> {
     const items = parseProgramItems(program.items);
-    const requiredQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    const requiredQuantity = items.reduce(
+      (sum, item) => sum + item.quantity,
+      0,
+    );
 
     if (
       program.totalLimit !== null &&
@@ -49,7 +50,9 @@ export class CouponProgramEligibilityService {
       };
     }
 
-    const issuedToUser = await client.userCoupon.count({ where: whereInput });
+    const issuedToUser = tx
+      ? await tx.userCoupon.count({ where: whereInput })
+      : await this.prisma.userCoupon.count({ where: whereInput });
     if (issuedToUser >= program.perUserLimit) {
       return {
         canIssue: false,
