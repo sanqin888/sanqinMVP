@@ -61,6 +61,14 @@ type PosBoardOrderDto = OrderDto & {
   fulfillmentTiming: OrderFulfillmentTiming;
 };
 
+type PosDeviceRequest = Request & {
+  posDevice?: { storeId: string };
+};
+
+type PosBoardOrderDto = OrderDto & {
+  fulfillmentTiming: OrderFulfillmentTiming;
+};
+
 class CreateFullRefundDto {
   @IsString()
   reason!: string;
