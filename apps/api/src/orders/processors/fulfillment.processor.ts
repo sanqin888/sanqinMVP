@@ -2,6 +2,7 @@ import {
   Channel,
   DeliveryProvider,
   FulfillmentType,
+  OrderAmendmentItemAction,
   PaymentMethod,
   Prisma,
 } from '@prisma/client';
@@ -280,6 +281,96 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           : {}),
       },
     });
+  }
+
+  @OnEvent('order.amendment.print')
+  async handleOrderAmendmentPrint(payload: {
+    orderStableId: string;
+    locale?: 'zh' | 'en';
+    reason: string;
+    operatorName: string;
+    items: Array<{
+      action: OrderAmendmentItemAction;
+      productStableId: string;
+      qty: number;
+      unitPriceCents?: number | null;
+      displayName?: string | null;
+      nameEn?: string | null;
+      nameZh?: string | null;
+      optionsJson?: Prisma.InputJsonValue;
+    }>;
+  }) {
+    try {
+      const basePayload = await this.printPosPayloadService.getByStableId(
+        payload.orderStableId,
+        payload.locale ?? 'zh',
+      );
+      const order = await this.prisma.order.findUnique({
+        where: { orderStableId: payload.orderStableId },
+        select: { id: true, storeId: true },
+      });
+      if (!order) {
+        this.logger.error({
+          event: 'amendment_print_order_missing',
+          orderStableId: payload.orderStableId,
+        });
+        return;
+      }
+
+      const storeId = order.storeId ?? resolveConfiguredStoreId();
+      const amendmentPayload: PrintPosPayloadDto = {
+        ...basePayload,
+        amendment: {
+          reason: payload.reason.trim(),
+          operatorName: payload.operatorName.trim(),
+        },
+        snapshot: {
+          ...basePayload.snapshot,
+          items: payload.items.map((item) => ({
+            productStableId: item.productStableId,
+            nameZh: item.nameZh ?? null,
+            nameEn: item.nameEn ?? null,
+            displayName: item.displayName ?? null,
+            quantity: Math.max(1, Math.round(item.qty)),
+            lineTotalCents:
+              Math.max(0, Math.round(item.unitPriceCents ?? 0)) *
+              Math.max(1, Math.round(item.qty)),
+            specialInstructions: null,
+            options: Array.isArray(item.optionsJson)
+              ? (item.optionsJson as OrderItemOptionsSnapshot)
+              : null,
+            amendmentAction:
+              item.action === OrderAmendmentItemAction.VOID ? 'VOID' : 'ADD',
+          })),
+        },
+      };
+
+      const job = await this.posGateway.sendPrintJob({
+        orderId: order.id,
+        orderStableId: payload.orderStableId,
+        storeId,
+        kind: `AMENDMENT:${Date.now()}`,
+        data: {
+          ...amendmentPayload,
+          targets: { customer: false, kitchen: true },
+        },
+      });
+      this.logger.log({
+        event: 'amendment_print_job_created',
+        orderStableId: payload.orderStableId,
+        storeId,
+        jobId: job.jobId,
+        itemCount: payload.items.length,
+      });
+    } catch (error) {
+      // The financial amendment is already committed. Printing is a secondary
+      // durable delivery path, so do not make staff retry the amendment itself.
+      this.logger.error({
+        event: 'amendment_print_job_failed',
+        orderStableId: payload.orderStableId,
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
   }
 
   private extractDropoff(
