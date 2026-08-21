@@ -41,3 +41,7 @@ apps/api/prisma/seed/*.snapshot.json
 # sounds
 /apps/web/public/sounds/*.wav
 /apps/web/public/sounds/*.mp3
+
+# local MCP drafts (not part of repository changes)
+/apps/api/src/pos/pos-order-amendment-print.service.ts
+/apps/web/src/components/store/StoreOrderDetailModal.tsx
