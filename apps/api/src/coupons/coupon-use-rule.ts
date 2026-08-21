@@ -41,10 +41,7 @@ export function resolveCouponRuleDiscountCents(
       ),
     );
   }
-  return Math.max(
-    0,
-    Math.min(rule.amountCents, applicableSubtotalCents),
-  );
+  return Math.max(0, Math.min(rule.amountCents, applicableSubtotalCents));
 }
 
 export function couponRuleItemStableIds(rule: CouponUseRule): string[] {

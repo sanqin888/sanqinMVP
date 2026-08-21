@@ -22,10 +22,7 @@ export class CouponProgramEligibilityService {
     client: CouponProgramClient = this.prisma,
   ): Promise<CouponProgramEligibility> {
     const items = parseProgramItems(program.items);
-    const requiredQuantity = items.reduce(
-      (sum, item) => sum + item.quantity,
-      0,
-    );
+    const requiredQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
     if (
       program.totalLimit !== null &&

@@ -23,7 +23,7 @@ describe('CouponProgramClaimService', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
     const issuer = {
@@ -70,7 +70,7 @@ describe('CouponProgramClaimService', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
     const issuer = { issueProgramToUser: jest.fn() };
