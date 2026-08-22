@@ -57,10 +57,7 @@ export class UberOrderAdmissionService {
     return this.policy.invalidDetail(reason);
   }
 
-  async resolveImportContext(
-    order: ParsedUberOrder,
-    eventId: string,
-  ): Promise<UberOrderImportContext> {
+  private async resolveStoreContext(order: ParsedUberOrder, eventId: string) {
     const uberStoreId = order.uberStoreId?.trim();
     if (!uberStoreId)
       throw new UberOrderStoreMappingError(
@@ -99,12 +96,18 @@ export class UberOrderAdmissionService {
         eventId,
         order.externalOrderId,
       );
+    return { uberStoreId, posStoreId };
+  }
 
+  async resolveImportContext(
+    order: ParsedUberOrder,
+    store: { uberStoreId: string; posStoreId: string },
+  ): Promise<UberOrderImportContext> {
     const externalIds = order.items
       .map((item) => item.externalItemId)
       .filter((id): id is string => !!id);
     const menuMappings = await this.repository.findMenuMappings(
-      uberStoreId,
+      store.uberStoreId,
       externalIds,
     );
     const byId = new Map(
@@ -117,14 +120,37 @@ export class UberOrderAdmissionService {
       ? 'MISSING_EXTERNAL_ITEM_ID'
       : (externalIds.find((id) => !byId.has(id)) ?? null);
 
-    return { posStoreId, menuMappings, missingItemReference };
+    return { posStoreId: store.posStoreId, menuMappings, missingItemReference };
   }
 
   async evaluate(
     order: ParsedUberOrder,
     eventId: string,
   ): Promise<UberOrderAdmissionResult> {
-    const context = await this.resolveImportContext(order, eventId);
+    const store = await this.resolveStoreContext(order, eventId);
+    const allergyPolicy = this.repository.getStoreAllergyPolicy
+      ? await this.repository.getStoreAllergyPolicy(store.posStoreId)
+      : { mode: 'RELAY_ALL' as const, unsupportedAllergens: [] };
+    const allergyRequest = order.allergyRequest ?? {
+      hasRequest: false,
+      allergens: [],
+    };
+    const allergyDecision = this.policy.evaluateAllergyRequest({
+      hasRequest: allergyRequest.hasRequest,
+      allergens: allergyRequest.allergens,
+      policy: allergyPolicy,
+    });
+    if (allergyDecision.kind === 'DENY') {
+      return {
+        posStoreId: store.posStoreId,
+        menuMappings: [],
+        missingItemReference: null,
+        canPersistOrder: false,
+        decision: allergyDecision,
+      };
+    }
+
+    const context = await this.resolveImportContext(order, store);
     const byId = new Map(
       context.menuMappings.map((item) => [item.externalItemId, item]),
     );

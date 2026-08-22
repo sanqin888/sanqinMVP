@@ -68,6 +68,8 @@ type BusinessConfigDto = {
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
   enableUberDirect: boolean;
+  allergyHandlingMode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
+  unsupportedAllergens: string[];
   holidays: HolidayApiDto[];
 };
 
@@ -163,6 +165,17 @@ function parseOptionalNumber(value: string): number | null {
   return num;
 }
 
+function parseAllergenCodes(value: string): string[] {
+  return [...
+    new Set(
+      value
+        .split(/[\n,]/)
+        .map((entry) => entry.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 function toHolidayUi(list: HolidayApiDto[]): HolidayUiDto[] {
   return (list ?? []).map((h, idx) => ({
     ...h,
@@ -180,6 +193,7 @@ export default function AdminHoursPage() {
   const [config, setConfig] = useState<BusinessConfigDto | null>(null);
   const [hours, setHours] = useState<BusinessHourDto[]>([]);
   const [holidays, setHolidays] = useState<HolidayUiDto[]>([]);
+  const [unsupportedAllergensText, setUnsupportedAllergensText] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -209,6 +223,9 @@ export default function AdminHoursPage() {
         if (cancelled) return;
 
         setConfig(configRes);
+        setUnsupportedAllergensText(
+          (configRes.unsupportedAllergens ?? []).join(', '),
+        );
 
         const sortedHours = [...hoursRes.hours].sort(
           (a, b) => a.weekday - b.weekday,
@@ -444,6 +461,17 @@ const handleTimeChange = (
     setConfig((prev) => (prev ? { ...prev, enableUberDirect: checked } : prev));
   };
 
+  const handleAllergyModeChange = (value: string) => {
+    if (
+      value !== 'RELAY_ALL' &&
+      value !== 'DENY_LIST' &&
+      value !== 'DENY_ALL'
+    ) {
+      return;
+    }
+    setConfig((prev) => (prev ? { ...prev, allergyHandlingMode: value } : prev));
+  };
+
   /** ===== 节假日相关 handler ===== */
 
   const handleHolidayFieldChange = (
@@ -571,6 +599,19 @@ if (badHolidayIndex >= 0) {
   return;
 }
 
+const allergenCodes = parseAllergenCodes(unsupportedAllergensText);
+const invalidAllergenCode = allergenCodes.find(
+  (code) => code.length > 64 || !/^[A-Z0-9_-]+$/.test(code),
+);
+if (invalidAllergenCode) {
+  setError(
+    isZh
+      ? `过敏原代码“${invalidAllergenCode}”格式不合法，只能包含字母、数字、下划线或连字符。`
+      : `Invalid allergen code “${invalidAllergenCode}”. Use only letters, numbers, underscores, or hyphens.`,
+  );
+  return;
+}
+
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -630,6 +671,8 @@ await apiFetch('/admin/business/hours', {
           tierThresholdGold: config.tierThresholdGold,
           tierThresholdPlatinum: config.tierThresholdPlatinum,
           enableUberDirect: config.enableUberDirect,
+          allergyHandlingMode: config.allergyHandlingMode,
+          unsupportedAllergens: allergenCodes,
         }),
       });
 
@@ -1081,6 +1124,56 @@ setHolidays(
           />
           <span className="text-slate-800">
             {isZh ? '启用 Uber Direct' : 'Enable Uber Direct'}
+          </span>
+        </label>
+      </section>
+
+      {/* 过敏原接单策略 */}
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            {isZh ? '过敏原接单策略' : 'Allergy order policy'}
+          </h2>
+          <p className="mt-1 text-xs text-slate-600">
+            {isZh
+              ? '用于 Uber 结构化 Allergy Requests。自由文本备注仍原样传到 POS/打印，不会通过关键词猜测过敏原。'
+              : 'Applies to structured Uber Allergy Requests. Free-text notes are still relayed to POS/printing and are not classified by keyword guessing.'}
+          </p>
+        </div>
+
+        <label className="block text-xs font-medium text-slate-700">
+          {isZh ? '处理模式' : 'Handling mode'}
+          <select
+            value={config.allergyHandlingMode}
+            onChange={(e) => handleAllergyModeChange(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="RELAY_ALL">
+              {isZh ? '全部接收并转发' : 'Relay all'}
+            </option>
+            <option value="DENY_LIST">
+              {isZh ? '命中禁用列表自动拒单' : 'Deny configured allergens'}
+            </option>
+            <option value="DENY_ALL">
+              {isZh ? '任何过敏请求都自动拒单' : 'Deny all allergy requests'}
+            </option>
+          </select>
+        </label>
+
+        <label className="block text-xs font-medium text-slate-700">
+          {isZh ? '无法安全处理的过敏原代码' : 'Unsupported allergen codes'}
+          <textarea
+            value={unsupportedAllergensText}
+            onChange={(e) => setUnsupportedAllergensText(e.target.value)}
+            disabled={config.allergyHandlingMode !== 'DENY_LIST'}
+            rows={3}
+            placeholder="PEANUTS, TREENUTS, DAIRY, EGGS, FISH, SHELLFISH, GLUTEN, SOY, OTHER"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:bg-slate-100 disabled:text-slate-500 focus:border-emerald-500 focus:outline-none"
+          />
+          <span className="mt-1 block text-[11px] text-slate-500">
+            {isZh
+              ? '可用逗号或换行分隔；保存时自动转为大写并去重。仅在“命中禁用列表自动拒单”模式下参与判定。'
+              : 'Separate codes with commas or new lines. Values are uppercased and deduplicated on save, and are only evaluated in deny-list mode.'}
           </span>
         </label>
       </section>

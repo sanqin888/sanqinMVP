@@ -56,6 +56,50 @@ export class UberOrderAdmissionPolicy {
     };
   }
 
+  evaluateAllergyRequest(facts: {
+    hasRequest: boolean;
+    allergens: string[];
+    policy: {
+      mode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
+      unsupportedAllergens: string[];
+    };
+  }): UberOrderAdmissionDecision {
+    if (!facts.hasRequest || facts.policy.mode === 'RELAY_ALL') {
+      return { kind: 'ACCEPT' };
+    }
+
+    const requested = [
+      ...new Set(
+        facts.allergens
+          .map((value) => value.trim().toUpperCase())
+          .filter(Boolean),
+      ),
+    ];
+    const unsupported = new Set(
+      facts.policy.unsupportedAllergens
+        .map((value) => value.trim().toUpperCase())
+        .filter(Boolean),
+    );
+    const blocked = requested.filter((value) => unsupported.has(value));
+    if (facts.policy.mode === 'DENY_LIST' && blocked.length === 0) {
+      return { kind: 'ACCEPT' };
+    }
+
+    const reasonDetail =
+      facts.policy.mode === 'DENY_ALL'
+        ? requested.length > 0
+          ? `Store cannot safely accommodate allergy request: ${requested.join(', ')}`
+          : 'Store cannot safely accommodate allergy request'
+        : `Store cannot safely accommodate requested allergen(s): ${blocked.join(', ')}`;
+    return {
+      kind: 'DENY',
+      denial: {
+        reasonCode: 'SPECIAL_INSTRUCTIONS',
+        reasonDetail,
+      },
+    };
+  }
+
   evaluate(facts: UberOrderAdmissionFacts): UberOrderAdmissionDecision {
     if (facts.missingItemReference) {
       return {

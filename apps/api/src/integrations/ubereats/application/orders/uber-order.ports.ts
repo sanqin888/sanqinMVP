@@ -13,6 +13,11 @@ export type UberOrderMenuMapping = {
   expectedPriceCents: number;
 };
 
+export type UberStoreAllergyPolicy = {
+  mode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
+  unsupportedAllergens: string[];
+};
+
 export type UberOrderCancellationDecision = {
   kind: 'CANCELLED' | 'REJECTED';
   cancelledBy: string | null;
@@ -62,6 +67,7 @@ export interface UberOrderImportRepositoryPort {
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
     lastHeartbeatAt: Date | null;
   }>;
+  getStoreAllergyPolicy?(posStoreId: string): Promise<UberStoreAllergyPolicy>;
   saveExistingOrderCancellation(input: {
     orderId: string;
     externalOrderId: string;

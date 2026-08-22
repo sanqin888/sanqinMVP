@@ -171,6 +171,21 @@ Uber 专用 modifier 明细表才能看到特殊请求。Order-level `carts[].sp
 `SPECIAL_INSTRUCTIONS` reason。Uber 可能返回空 allergy 占位；空数组/空 instructions 视为没有
 实际 allergy request，不触发拒单。不得静默忽略真实或损坏的特殊请求。
 
+门店食品安全策略必须使用真正的 `StoreConfig`，不得新增到 transitional `BusinessConfig`：
+
+- `allergyHandlingMode=RELAY_ALL`：默认行为；所有结构合法的 allergy request 继续接单并完整转发。
+- `allergyHandlingMode=DENY_LIST`：递归汇总 item 与 modifier/option 的结构化
+  `allergy.allergens[]`，与 `StoreConfig.unsupportedAllergens[]` 做大小写无关匹配；任一命中即在
+  正常 Order 持久化前 standalone DENY，reason=`SPECIAL_INSTRUCTIONS`。
+- `allergyHandlingMode=DENY_ALL`：只要存在真实结构化 allergy request（包括只有 allergy
+  instructions、没有 allergen code 的请求）即在正常 Order 持久化前 standalone DENY。
+- 普通 `special_instructions` / 自由文本不做关键词识别或过敏原推断，只按既有链路原样传至 POS/打印。
+- allergen code 在管理端保存时 trim + uppercase + 去重；SanQ 不根据菜品内容猜测 allergen，也不把
+  Order Fulfillment 1.0.0 的字符串字段硬编码成封闭 enum。若门店希望所有未知/不可判断 allergy 都拒绝，
+  应使用 `DENY_ALL`。
+- allergy policy DENY 不创建正常本地 Order；后续 `orders.failure` 由 standalone DENY action 的
+  `SUCCEEDED` 状态作为合法终态上下文消费，避免 webhook dead-letter。
+
 ### Immediate / Scheduled
 
 `orders.notification`：
