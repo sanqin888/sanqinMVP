@@ -47,7 +47,7 @@ export default function TermsPage({
         </h2>
         <p>
           {isZh
-            ? "本网站用于展示菜单、接受线上订单，并提供会员、积分、储值余额、优惠券及其他相关功能。我们可能调整未来可提供的菜单、价格、营业时间、配送/自取范围和网站功能；但后续调整不会追溯改变已经完成支付并被系统确认的订单价格或结算结果，法律另有要求或双方另行同意的情况除外。"
+            ? "本网站用于展示菜单、接受线上订单，并提供会员、积分、储值余额、优惠券及其他相关功能。我们可能调整未来可提供的菜单、价格、营业时间、配送/自取范围和网站功能；但后续调整不会追溯改变已经完成支付并确认的订单价格或结算结果，法律另有要求或双方另行同意的情况除外。"
             : "This website displays our menu, accepts online orders, and provides membership, points, Store Balance, coupons, and related features. We may change menus, prices, operating hours, delivery/pickup areas, and website features for future use; however, later changes do not retroactively alter the price or settlement of an order that has already been paid for and confirmed, unless required by law or otherwise agreed with you."}
         </p>
       </section>
@@ -82,8 +82,8 @@ export default function TermsPage({
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "下单前请核对菜品、数量、选项、取餐/配送方式、时间、联系方式以及结算页显示的价格、税费、配送费、折扣和总金额。完成支付后，订单按系统确认时的订单内容和金额处理。"
-              : "Before ordering, review the items, quantities, options, fulfillment method, timing, contact information, and the prices, taxes, delivery fees, discounts, and total shown at checkout. After payment, the order is handled according to the order details and amount confirmed by the system."}
+              ? "下单前请核对菜品、数量、选项、取餐/配送方式、时间、联系方式以及结算页显示的价格、税费、配送费、折扣和总金额。完成支付并确认后，订单按确认的订单内容和金额处理。"
+              : "Before ordering, review the items, quantities, options, fulfillment method, timing, contact information, and the prices, taxes, delivery fees, discounts, and total shown at checkout. After payment and confirmation, the order is handled according to the confirmed order details and amount."}
           </li>
           <li>
             {isZh
@@ -105,8 +105,8 @@ export default function TermsPage({
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "在线银行卡支付由 Clover 处理。我们接受系统支付页实际显示为可用的支付方式；目前信用卡支持 Visa、Mastercard 和 Discover，不接受 American Express。"
-              : "Online card payments are processed by Clover. We accept the payment methods shown as available by the payment flow; credit-card acceptance currently includes Visa, Mastercard, and Discover, but not American Express."}
+              ? "在线银行卡支付由 Clover 处理。我们接受支付页面实际显示为可用的支付方式；目前信用卡支持 Visa、Mastercard 和 Discover，不接受 American Express。"
+              : "Online card payments are processed by Clover. We accept the payment methods shown as available on the payment page; credit-card acceptance currently includes Visa, Mastercard, and Discover, but not American Express."}
           </li>
           <li>
             {isZh

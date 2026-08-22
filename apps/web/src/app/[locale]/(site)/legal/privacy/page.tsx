@@ -144,8 +144,8 @@ export default function PrivacyPage({
           </li>
           <li>
             {isZh
-              ? "Uber：当订单需要 Uber 配送或涉及 Uber 平台集成时，为履行相关配送或平台服务提供必要信息。"
-              : "Uber, where an order requires Uber delivery or otherwise involves the Uber platform integration, to provide information necessary for the applicable delivery or platform service."}
+              ? "Uber：当订单由 Uber 提供配送或相关平台服务时，为履行相应服务提供必要信息。"
+              : "Uber, when an order uses Uber for delivery or related platform services, to provide information necessary to fulfill the applicable service."}
           </li>
           <li>
             {isZh
