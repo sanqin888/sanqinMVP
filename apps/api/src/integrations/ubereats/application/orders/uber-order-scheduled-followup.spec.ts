@@ -37,6 +37,7 @@ const scheduledDetail = {
     scheduledReadyAt: new Date('2026-08-21T14:53:28.000Z'),
     estimatedReadyAt: new Date('2026-08-21T14:53:28.000Z'),
     specialInstructions: null,
+    allergyRequest: { hasRequest: false, allergens: [] },
     items: [
       {
         externalLineId: 'line-1',

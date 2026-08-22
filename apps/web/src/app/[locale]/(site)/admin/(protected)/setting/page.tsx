@@ -68,6 +68,8 @@ type BusinessConfigDto = {
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
   enableUberDirect: boolean;
+  allergyHandlingMode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
+  unsupportedAllergens: string[];
   holidays: HolidayApiDto[];
 };
 
@@ -163,6 +165,26 @@ function parseOptionalNumber(value: string): number | null {
   return num;
 }
 
+const ALLERGY_DENY_OPTIONS = [
+  {
+    code: 'GLUTEN',
+    zh: '小麦（及含麸质谷物）',
+    en: 'Wheat (and gluten-containing grains)',
+  },
+  { code: 'PEANUTS', zh: '花生', en: 'Peanuts' },
+  { code: 'TREENUTS', zh: '坚果类', en: 'Tree nuts' },
+  { code: 'SESAME', zh: '芝麻', en: 'Sesame' },
+  { code: 'EGGS', zh: '鸡蛋', en: 'Eggs' },
+  { code: 'DAIRY', zh: '牛奶/乳制品', en: 'Milk/dairy' },
+  { code: 'SOY', zh: '大豆', en: 'Soy' },
+  { code: 'SULPHITES', zh: '亚硫酸盐', en: 'Sulphites' },
+  {
+    code: 'SHELLFISH',
+    zh: '甲壳类（例如虾）',
+    en: 'Crustaceans (such as shrimp)',
+  },
+] as const;
+
 function toHolidayUi(list: HolidayApiDto[]): HolidayUiDto[] {
   return (list ?? []).map((h, idx) => ({
     ...h,
@@ -208,7 +230,12 @@ export default function AdminHoursPage() {
 
         if (cancelled) return;
 
-        setConfig(configRes);
+        setConfig({
+          ...configRes,
+          unsupportedAllergens: (configRes.unsupportedAllergens ?? []).filter(
+            (code) => ALLERGY_DENY_OPTIONS.some((option) => option.code === code),
+          ),
+        });
 
         const sortedHours = [...hoursRes.hours].sort(
           (a, b) => a.weekday - b.weekday,
@@ -444,6 +471,32 @@ const handleTimeChange = (
     setConfig((prev) => (prev ? { ...prev, enableUberDirect: checked } : prev));
   };
 
+  const handleAllergyModeChange = (value: string) => {
+    if (
+      value !== 'RELAY_ALL' &&
+      value !== 'DENY_LIST' &&
+      value !== 'DENY_ALL'
+    ) {
+      return;
+    }
+    setConfig((prev) => (prev ? { ...prev, allergyHandlingMode: value } : prev));
+  };
+
+  const handleUnsupportedAllergenToggle = (code: string, checked: boolean) => {
+    setConfig((prev) => {
+      if (!prev) return prev;
+      const selected = new Set(prev.unsupportedAllergens);
+      if (checked) selected.add(code);
+      else selected.delete(code);
+      return {
+        ...prev,
+        unsupportedAllergens: ALLERGY_DENY_OPTIONS.map((option) => option.code).filter(
+          (optionCode) => selected.has(optionCode),
+        ),
+      };
+    });
+  };
+
   /** ===== 节假日相关 handler ===== */
 
   const handleHolidayFieldChange = (
@@ -630,6 +683,8 @@ await apiFetch('/admin/business/hours', {
           tierThresholdGold: config.tierThresholdGold,
           tierThresholdPlatinum: config.tierThresholdPlatinum,
           enableUberDirect: config.enableUberDirect,
+          allergyHandlingMode: config.allergyHandlingMode,
+          unsupportedAllergens: config.unsupportedAllergens,
         }),
       });
 
@@ -1083,6 +1138,73 @@ setHolidays(
             {isZh ? '启用 Uber Direct' : 'Enable Uber Direct'}
           </span>
         </label>
+      </section>
+
+      {/* 过敏原接单策略 */}
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            {isZh ? '过敏原接单策略' : 'Allergy order policy'}
+          </h2>
+          <p className="mt-1 text-xs text-slate-600">
+            {isZh
+              ? '用于 Uber 结构化 Allergy Requests。自由文本备注仍原样传到 POS/打印，不会通过关键词猜测过敏原。'
+              : 'Applies to structured Uber Allergy Requests. Free-text notes are still relayed to POS/printing and are not classified by keyword guessing.'}
+          </p>
+        </div>
+
+        <label className="block text-xs font-medium text-slate-700">
+          {isZh ? '处理模式' : 'Handling mode'}
+          <select
+            value={config.allergyHandlingMode}
+            onChange={(e) => handleAllergyModeChange(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="RELAY_ALL">
+              {isZh ? '全部接收并转发' : 'Relay all'}
+            </option>
+            <option value="DENY_LIST">
+              {isZh ? '命中禁用列表自动拒单' : 'Deny configured allergens'}
+            </option>
+            <option value="DENY_ALL">
+              {isZh ? '任何过敏请求都自动拒单' : 'Deny all allergy requests'}
+            </option>
+          </select>
+        </label>
+
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-slate-700">
+            {isZh ? '无法安全处理的过敏原' : 'Unsupported allergens'}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {ALLERGY_DENY_OPTIONS.map((option) => (
+              <label
+                key={option.code}
+                className={`inline-flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  config.allergyHandlingMode === 'DENY_LIST'
+                    ? 'border-slate-200 bg-white text-slate-700'
+                    : 'border-slate-100 bg-slate-50 text-slate-400'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={config.unsupportedAllergens.includes(option.code)}
+                  onChange={(event) =>
+                    handleUnsupportedAllergenToggle(option.code, event.target.checked)
+                  }
+                  disabled={config.allergyHandlingMode !== 'DENY_LIST'}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600"
+                />
+                <span>{isZh ? option.zh : option.en}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {isZh
+              ? '仅在“命中禁用列表自动拒单”模式下生效；选项与当前“过敏原说明”页面列出的厨房相关过敏原保持一致。'
+              : 'Only applies in deny-list mode. The options mirror the kitchen allergens listed on the current Allergen Information page.'}
+          </p>
+        </div>
       </section>
 
       {/* 消息与品牌展示设置 */}

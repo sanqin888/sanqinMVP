@@ -129,6 +129,31 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return resolvePosConnectivityStatus(devices, Date.now(), offlineAfterMs);
   }
 
+  async getStoreAllergyPolicy(posStoreId: string) {
+    const store = await this.prisma.store.findUnique({
+      where: { storeStableId: posStoreId },
+      select: {
+        config: {
+          select: {
+            allergyHandlingMode: true,
+            unsupportedAllergens: true,
+          },
+        },
+      },
+    });
+    const config = store?.config;
+    const mode =
+      config?.allergyHandlingMode === 'DENY_LIST'
+        ? ('DENY_LIST' as const)
+        : config?.allergyHandlingMode === 'DENY_ALL'
+          ? ('DENY_ALL' as const)
+          : ('RELAY_ALL' as const);
+    return {
+      mode,
+      unsupportedAllergens: config?.unsupportedAllergens ?? [],
+    };
+  }
+
   async saveExistingOrderCancellation(
     input: Parameters<
       UberOrderImportRepositoryPort['saveExistingOrderCancellation']

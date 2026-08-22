@@ -48,6 +48,10 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
       eventType: 'orders.notification',
     });
     expect(order?.specialInstructions).toBe('Fixture order note');
+    expect(order?.allergyRequest).toEqual({
+      hasRequest: true,
+      allergens: ['PEANUTS', 'SOY'],
+    });
     expect(order?.items[0]).toMatchObject({
       baseUnitPriceCents: 800,
       optionsUnitPriceCents: 200,
@@ -115,9 +119,42 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
     };
 
     const order = parser.parse(payload, { eventType: 'orders.notification' });
+    expect(order?.allergyRequest).toEqual({
+      hasRequest: false,
+      allergens: [],
+    });
     expect(order?.items[0]?.specialInstructions).toBe(
       'Fixture item note\nOPTION REQUEST (Fixture Option):\nCook option separately',
     );
+  });
+
+  it('collects structured allergens recursively from modifier requests', () => {
+    const payload = fixture('detail-modifiers.json') as {
+      order: {
+        carts: Array<{
+          items: Array<{
+            selected_modifier_groups: Array<{
+              selected_items: Array<{
+                customer_request: Record<string, unknown>;
+              }>;
+            }>;
+          }>;
+        }>;
+      };
+    };
+    const modifier =
+      payload.order.carts[0].items[0].selected_modifier_groups[0]
+        .selected_items[0];
+    modifier.customer_request.allergy = {
+      allergens: ['SHELLFISH'],
+      instructions: 'Separate prep area',
+    };
+
+    const order = parser.parse(payload, { eventType: 'orders.notification' });
+    expect(order?.allergyRequest).toEqual({
+      hasRequest: true,
+      allergens: ['PEANUTS', 'SOY', 'SHELLFISH'],
+    });
   });
 
   it('rejects a malformed order-level special instruction instead of dropping it', () => {

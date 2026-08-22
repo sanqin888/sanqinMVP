@@ -17,6 +17,7 @@ const parsedOrder = (): ParsedUberOrder => ({
   scheduledReadyAt: null,
   estimatedReadyAt: null,
   specialInstructions: null,
+  allergyRequest: { hasRequest: false, allergens: [] },
   items: [
     {
       externalLineId: 'line-1',
@@ -74,6 +75,41 @@ describe('UberOrderAdmissionService', () => {
     expect(findMapping).toHaveBeenCalledWith('uber-store-1');
     expect(findMenuMappings).toHaveBeenCalledWith('uber-store-1', ['item-1']);
     expect(getPosStoreConnectivity).toHaveBeenCalledWith('pos-store-1');
+  });
+
+  it('returns a non-persistable DENY when a structured allergen matches StoreConfig', async () => {
+    const order = parsedOrder();
+    order.allergyRequest = { hasRequest: true, allergens: ['PEANUTS'] };
+    const getPosStoreConnectivity = jest.fn();
+    const findMenuMappings = jest.fn();
+    const getStoreAllergyPolicy = jest.fn().mockResolvedValue({
+      mode: 'DENY_LIST',
+      unsupportedAllergens: ['PEANUTS'],
+    });
+    const service = new UberOrderAdmissionService(
+      {
+        findMenuMappings,
+        getPosStoreConnectivity,
+        getStoreAllergyPolicy,
+      } as never,
+      { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
+    );
+
+    await expect(service.evaluate(order, 'event-1')).resolves.toMatchObject({
+      posStoreId: 'pos-store-1',
+      canPersistOrder: false,
+      decision: {
+        kind: 'DENY',
+        denial: {
+          reasonCode: 'SPECIAL_INSTRUCTIONS',
+          reasonDetail:
+            'Store cannot safely accommodate requested allergen(s): PEANUTS',
+        },
+      },
+    });
+    expect(getStoreAllergyPolicy).toHaveBeenCalledWith('pos-store-1');
+    expect(findMenuMappings).not.toHaveBeenCalled();
+    expect(getPosStoreConnectivity).not.toHaveBeenCalled();
   });
 
   it('returns a non-persistable DENY when the published menu mapping is missing', async () => {

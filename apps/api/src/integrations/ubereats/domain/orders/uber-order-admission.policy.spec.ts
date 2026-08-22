@@ -26,6 +26,59 @@ describe('UberOrderAdmissionPolicy', () => {
     });
   });
 
+  it('relays valid allergy requests when the store policy is RELAY_ALL', () => {
+    expect(
+      policy.evaluateAllergyRequest({
+        hasRequest: true,
+        allergens: ['PEANUTS'],
+        policy: { mode: 'RELAY_ALL', unsupportedAllergens: ['PEANUTS'] },
+      }),
+    ).toEqual({ kind: 'ACCEPT' });
+  });
+
+  it('denies a structured allergen that matches the store deny list', () => {
+    expect(
+      policy.evaluateAllergyRequest({
+        hasRequest: true,
+        allergens: ['peanuts', 'SOY'],
+        policy: { mode: 'DENY_LIST', unsupportedAllergens: ['PEANUTS'] },
+      }),
+    ).toEqual({
+      kind: 'DENY',
+      denial: {
+        reasonCode: 'SPECIAL_INSTRUCTIONS',
+        reasonDetail:
+          'Store cannot safely accommodate requested allergen(s): PEANUTS',
+      },
+    });
+  });
+
+  it('accepts a structured allergy request that does not match the store deny list', () => {
+    expect(
+      policy.evaluateAllergyRequest({
+        hasRequest: true,
+        allergens: ['SOY'],
+        policy: { mode: 'DENY_LIST', unsupportedAllergens: ['PEANUTS'] },
+      }),
+    ).toEqual({ kind: 'ACCEPT' });
+  });
+
+  it('denies an instructions-only allergy request when the store policy is DENY_ALL', () => {
+    expect(
+      policy.evaluateAllergyRequest({
+        hasRequest: true,
+        allergens: [],
+        policy: { mode: 'DENY_ALL', unsupportedAllergens: [] },
+      }),
+    ).toEqual({
+      kind: 'DENY',
+      denial: {
+        reasonCode: 'SPECIAL_INSTRUCTIONS',
+        reasonDetail: 'Store cannot safely accommodate allergy request',
+      },
+    });
+  });
+
   it('prioritizes missing menu identity before price and connectivity checks', () => {
     expect(
       policy.evaluate({

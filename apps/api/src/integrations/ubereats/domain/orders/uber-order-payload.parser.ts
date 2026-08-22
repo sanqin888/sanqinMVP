@@ -71,6 +71,7 @@ export class UberOrderPayloadParser {
       return invalid('MALFORMED_PAYLOAD', 'mapping');
     if (wireItems.some((item) => hasUnrelayableCustomerRequest(item)))
       return invalid('UNRELAYABLE_CUSTOMER_REQUEST', 'business');
+    const allergyRequest = collectAllergyRequestFacts(wireItems);
 
     const paymentDetail = dto.payment?.payment_detail;
     const orderTotal = paymentDetail?.order_total;
@@ -195,6 +196,7 @@ export class UberOrderPayloadParser {
         scheduledReadyAt,
         estimatedReadyAt: externalReadyAt,
         specialInstructions: orderNotes.length ? orderNotes.join('\n') : null,
+        allergyRequest,
         cancellation: null,
         items,
       },
@@ -348,6 +350,35 @@ function itemAndModifierCustomerRequestInstructions(
     );
   }
   return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function collectAllergyRequestFacts(items: UberOrderCartItemV1[]): {
+  hasRequest: boolean;
+  allergens: string[];
+} {
+  let hasRequest = false;
+  const allergens = new Set<string>();
+
+  const visit = (item: UberOrderCartItemV1) => {
+    const request = asObject(item.customer_request);
+    const allergy = asObject(request?.allergy);
+    if (allergy) {
+      const values = Array.isArray(allergy.allergens)
+        ? allergy.allergens
+            .map((value) => readString(value))
+            .filter((value): value is string => value !== null)
+        : [];
+      const instructions = readString(allergy.instructions);
+      if (values.length > 0 || instructions) hasRequest = true;
+      for (const value of values) allergens.add(value.toUpperCase());
+    }
+
+    for (const group of item.selected_modifier_groups ?? [])
+      for (const selected of group.selected_items ?? []) visit(selected);
+  };
+
+  for (const item of items) visit(item);
+  return { hasRequest, allergens: [...allergens] };
 }
 
 function hasUnrelayableCustomerRequest(item: UberOrderCartItemV1): boolean {

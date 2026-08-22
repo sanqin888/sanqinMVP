@@ -90,6 +90,55 @@ describe('Uber order admission flow', () => {
     expect(saveImportedOrder).not.toHaveBeenCalled();
   });
 
+  it('queues a standalone DENY and never imports when StoreConfig blocks a structured allergen', async () => {
+    const enqueue: EnqueueMock = jest
+      .fn()
+      .mockResolvedValue({ taskId: 'deny-allergy-1', created: true });
+    const saveImportedOrder = jest.fn();
+    const getPosStoreConnectivity = jest.fn();
+    const detailWithAllergy = {
+      kind: 'parsed' as const,
+      order: {
+        ...parsedDetail.order,
+        allergyRequest: { hasRequest: true, allergens: ['PEANUTS'] },
+      },
+    };
+    const useCase = new ImportUberOrderUseCase(
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
+        getStoreAllergyPolicy: jest.fn().mockResolvedValue({
+          mode: 'DENY_LIST',
+          unsupportedAllergens: ['PEANUTS'],
+        }),
+        getPosStoreConnectivity,
+        saveExistingOrderCancellation: jest.fn(),
+        saveImportedOrder,
+      },
+      { fetchOrderDetail: jest.fn().mockResolvedValue(detailWithAllergy) },
+      createActions(enqueue),
+      { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+    );
+
+    await useCase.execute(
+      'orders.notification',
+      'event-allergy-1',
+      notification,
+    );
+
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalOrderId: 'fixture-order-immediate',
+        action: 'DENY',
+        reasonCode: 'SPECIAL_INSTRUCTIONS',
+        reasonDetail:
+          'Store cannot safely accommodate requested allergen(s): PEANUTS',
+      }),
+    );
+    expect(saveImportedOrder).not.toHaveBeenCalled();
+    expect(getPosStoreConnectivity).not.toHaveBeenCalled();
+  });
+
   it('persists a mapped POS_OFFLINE denial with the order instead of dispatching inline', async () => {
     const enqueue: EnqueueMock = jest.fn();
     const saved: { input?: ImportedOrderInput } = {};
