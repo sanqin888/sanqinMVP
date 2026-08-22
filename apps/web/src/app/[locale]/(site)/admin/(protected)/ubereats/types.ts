@@ -14,6 +14,19 @@ export type OAuthConnectUrlResponse = { authorizeUrl: string; state: string };
 export type OAuthConnectionResponse = { connectionId: string; scope?: string | null; tokenType?: string | null; expiresAt?: string | null; connectedAt?: string | null };
 export type UberStore = { storeId: string; storeName?: string; locationSummary?: string; isMapped?: boolean; mappedConnectionId?: string | null; requiresReconnect?: boolean; isProvisioned?: boolean; provisionedAt?: string | null; posExternalStoreId?: string | null; timezone?: string | null };
 export type OAuthStoresResponse = { connectionId?: string; stores: UberStore[] };
+export type UberStoreStatusResponse = {
+  storeId: string;
+  status: string;
+  offlineReason: string | null;
+  offlineReasonMetadata: string | null;
+  isOfflineUntil: string | null;
+  contractVersion: '2';
+};
+export type UberStorePrepTimeResponse = {
+  storeId: string;
+  defaultPrepTimeSeconds: number;
+  contractVersion: '2';
+};
 export type UberIntegrationConfigResponse = {
   storeId: string;
   integrationEnabled: boolean | null;

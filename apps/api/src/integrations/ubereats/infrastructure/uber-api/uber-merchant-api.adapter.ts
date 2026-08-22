@@ -28,7 +28,9 @@ import { mapUberGatewayFailure } from './uber-error.mapper';
 import {
   mapUberStoreDiscoveryWire,
   mapUberStoreIntegrationConfigWire,
+  mapUberStorePrepTimeWire,
   mapUberStoreProvisionWire,
+  mapUberStoreStatusWire,
 } from './uber-store-wire.mapper';
 
 const SENSITIVE_AUDIT_KEY =
@@ -205,6 +207,66 @@ export class UberMerchantApiAdapter
       sanitizedRawResponse: sanitizeForAudit(raw),
       recordedAt: new Date(),
     });
+  }
+
+  async retrieveStatus(storeId: string) {
+    const operation = 'merchant.retrieve-store-status';
+    const result = await this.transport.inspect<Record<string, unknown>>({
+      path: `/v1/eats/store/${encodeURIComponent(storeId)}/status`,
+      method: 'GET',
+      operation,
+      scope: 'eats.store',
+      partitionKey: storeId,
+    });
+    await this.auditResponse({
+      operation,
+      storeId,
+      outcome: result.response.ok ? 'RECEIVED' : 'FAILED',
+      upstreamStatus: result.response.status,
+      sanitizedRawResponse: sanitizeForAudit(result.data),
+      recordedAt: new Date(),
+    });
+    if (!result.response.ok)
+      throw mapUberGatewayFailure({
+        kind: 'http',
+        operation,
+        status: result.response.status,
+        upstreamCode: null,
+      });
+    return mapUberStoreStatusWire(result.data, storeId);
+  }
+
+  async updatePrepTime(
+    storeId: string,
+    defaultPrepTimeSeconds: number,
+    idempotencyKey: string,
+  ) {
+    const operation = 'merchant.update-store-prep-time';
+    const result = await this.transport.inspect<Record<string, unknown>>({
+      path: `/v1/delivery/store/${encodeURIComponent(storeId)}/update-store-prep-time`,
+      method: 'POST',
+      operation,
+      scope: 'eats.store',
+      partitionKey: storeId,
+      json: { default_prep_time: defaultPrepTimeSeconds },
+      idempotencyKey,
+    });
+    await this.auditResponse({
+      operation,
+      storeId,
+      outcome: result.response.ok ? 'SUCCEEDED' : 'FAILED',
+      upstreamStatus: result.response.status,
+      sanitizedRawResponse: sanitizeForAudit(result.data),
+      recordedAt: new Date(),
+    });
+    if (!result.response.ok)
+      throw mapUberGatewayFailure({
+        kind: 'http',
+        operation,
+        status: result.response.status,
+        upstreamCode: null,
+      });
+    return mapUberStorePrepTimeWire(result.data, storeId);
   }
 
   async writeStatus(

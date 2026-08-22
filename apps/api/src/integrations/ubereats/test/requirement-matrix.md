@@ -60,6 +60,7 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 | Order actions | `POST /v1/delivery/order/{order_id}/{accept\|deny\|ready\|cancel}` | 四种业务 action 使用同一 API Suite |
 | Menu | `PUT/GET /v2/eats/stores/{store_id}/menus` | Menu capability 独立版本；本任务不修改 |
 | Integration Config | `GET/POST/PATCH/DELETE /v1/eats/stores/{store_id}/pos_data` | Activate、Retrieve、Update、Remove 生命周期完整；`webhooks_version=1.0.0` + scheduled webhook enabled |
+| Store Management | `GET /v1/eats/store/{store_id}/status`；现有 `POST /v1/eats/store/{store_id}/status`；`POST /v1/delivery/store/{store_id}/update-store-prep-time` | 新增真实状态读取和默认准备时间更新；现有暂停/恢复行为保持不变 |
 | Webhook 签名 | `X-Uber-Signature` + raw body HMAC-SHA256 | 保持现有 durable receiver |
 
 ## Integration Configuration capability
@@ -75,6 +76,19 @@ SanQ 的 PATCH 配置继续强制 `schedule_order_webhooks.is_enabled=true` 与
 `webhooks_version=1.0.0`，避免管理员更新其他 integration 字段时破坏预约单 webhook
 契约。DELETE 成功后本地 store mapping 保留用于后续重新 Activate，但
 `isProvisioned=false`、`provisionedAt=null`。
+
+## Store Management capability
+
+| Capability | Method / path | Authorization | Production code | Contract evidence |
+| ---------- | ------------- | ------------- | --------------- | ----------------- |
+| Retrieve Store Status | `GET /v1/eats/store/{store_id}/status` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
+| Set Store Status | `POST /v1/eats/store/{store_id}/status` | app token (`eats.store.status.write`) | `uber-merchant-api.adapter.ts` | existing status write contract test |
+| Update Store Prep Time | `POST /v1/delivery/store/{store_id}/update-store-prep-time` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
+
+Retrieve Store Status 与现有 pause/resume 使用同一门店状态能力；本次不改变现有状态写入
+行为。`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。Prep Time 更新通过
+可检查 HTTP response 的 gateway transport 执行，保留 Uber 实际 HTTP status 到审计记录，
+用于部署后的 `200` 验收证据。Store Management 只允许已 mapping 且已 provision 的门店执行。
 
 ## Order Fulfillment API 1.0.0 capability
 

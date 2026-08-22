@@ -7,8 +7,16 @@ import type {
   UberMerchantStoresResponse,
   UberOAuthConnectResponse,
   UberStoreIntegrationConfigResponse,
+  UberStorePrepTimeResponse,
+  UberStoreStatusResponse,
 } from '../contracts/responses/merchant.responses';
-import { booleanOf, dateOf, recordOf, textOf } from './presenter.utils';
+import {
+  booleanOf,
+  dateOf,
+  numberOf,
+  recordOf,
+  textOf,
+} from './presenter.utils';
 
 export const presentOAuthConnect = (
   result: unknown,
@@ -61,6 +69,31 @@ export const presentMerchantConnection = (
     tokenType: textOf(source.tokenType),
     expiresAt: dateOf(source.expiresAt),
     connectedAt: dateOf(source.connectedAt) ?? '',
+    contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
+  };
+};
+
+export const presentStoreStatus = (
+  result: unknown,
+): UberStoreStatusResponse => {
+  const source = recordOf(result);
+  return {
+    storeId: textOf(source.storeId) ?? '',
+    status: textOf(source.status) ?? '',
+    offlineReason: textOf(source.offlineReason),
+    offlineReasonMetadata: textOf(source.offlineReasonMetadata),
+    isOfflineUntil: textOf(source.isOfflineUntil),
+    contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
+  };
+};
+
+export const presentStorePrepTime = (
+  result: unknown,
+): UberStorePrepTimeResponse => {
+  const source = recordOf(result);
+  return {
+    storeId: textOf(source.storeId) ?? '',
+    defaultPrepTimeSeconds: numberOf(source.defaultPrepTimeSeconds),
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };

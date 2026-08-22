@@ -2,7 +2,9 @@ import type {
   UberStoreDiscoveryResult,
   UberStoreIntegrationConfig,
   UberStoreIntegrationJsonObject,
+  UberStorePrepTime,
   UberStoreProvisionResult,
+  UberStoreStatus,
 } from '../../application/merchant/uber-merchant-api.ports';
 import type { UberJsonValue } from '../../application/shared/uber-json-value';
 import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
@@ -59,15 +61,22 @@ const readString = (...values: unknown[]): string | null => {
 const readBoolean = (value: unknown): boolean | null =>
   typeof value === 'boolean' ? value : null;
 
+const readFiniteNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
 const mappingFailure = (
   operation:
     | 'merchant.discover-stores'
     | 'merchant.provision-store'
-    | 'merchant.retrieve-integration-config',
+    | 'merchant.retrieve-integration-config'
+    | 'merchant.retrieve-store-status'
+    | 'merchant.update-store-prep-time',
   code:
     | 'UBER_STORE_DISCOVERY_MAPPING_FAILED'
     | 'UBER_STORE_PROVISION_MAPPING_FAILED'
-    | 'UBER_STORE_INTEGRATION_CONFIG_MAPPING_FAILED',
+    | 'UBER_STORE_INTEGRATION_CONFIG_MAPPING_FAILED'
+    | 'UBER_STORE_STATUS_MAPPING_FAILED'
+    | 'UBER_STORE_PREP_TIME_MAPPING_FAILED',
   reason: string,
 ) =>
   mapUberGatewayFailure({
@@ -219,4 +228,55 @@ export function mapUberStoreIntegrationConfigWire(
     orderManagerClientId: readString(raw.order_manager_client_id),
     isOrderManagerPending: readBoolean(raw.is_order_manager_pending),
   };
+}
+
+/** Store status accepts both the current delivery-suite snake_case and the legacy camelCase reason field. */
+export function mapUberStoreStatusWire(
+  value: unknown,
+  requestedStoreId: string,
+): UberStoreStatus {
+  const raw = asObject(value);
+  const storeId = readString(requestedStoreId);
+  const status = readString(raw?.status);
+  if (!raw || !storeId || !status)
+    throw mappingFailure(
+      'merchant.retrieve-store-status',
+      'UBER_STORE_STATUS_MAPPING_FAILED',
+      'Uber store status 响应缺少 status',
+    );
+  return {
+    storeId,
+    status,
+    offlineReason: readString(raw.offlineReason, raw.offline_reason),
+    offlineReasonMetadata: readString(
+      raw.offlineReasonMetadata,
+      raw.offline_reason_metadata,
+    ),
+    isOfflineUntil: readString(raw.isOfflineUntil, raw.is_offline_until),
+  };
+}
+
+/** Prep-time wire data is normalized to seconds and never exposed as raw Uber payload. */
+export function mapUberStorePrepTimeWire(
+  value: unknown,
+  requestedStoreId: string,
+): UberStorePrepTime {
+  const raw = asObject(value);
+  const prepTimes = asObject(raw?.prep_times);
+  const storeId = readString(requestedStoreId);
+  const defaultPrepTimeSeconds = readFiniteNumber(
+    prepTimes?.default_value ?? raw?.default_prep_time,
+  );
+  if (
+    !raw ||
+    !storeId ||
+    defaultPrepTimeSeconds === null ||
+    !Number.isInteger(defaultPrepTimeSeconds)
+  )
+    throw mappingFailure(
+      'merchant.update-store-prep-time',
+      'UBER_STORE_PREP_TIME_MAPPING_FAILED',
+      'Uber prep time 响应缺少整数 default_value',
+    );
+  return { storeId, defaultPrepTimeSeconds };
 }

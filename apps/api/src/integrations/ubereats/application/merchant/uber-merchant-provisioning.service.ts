@@ -89,6 +89,27 @@ const requireMappedStore = async (
   return { id, connection, mapping };
 };
 
+const requireProvisionedMappedStore = async (
+  storeId: string,
+  connectionId: string | undefined,
+  connections: UberMerchantConnectionRepositoryPort,
+  mappings: UberStoreMappingRepositoryPort,
+) => {
+  const result = await requireMappedStore(
+    storeId,
+    connectionId,
+    connections,
+    mappings,
+  );
+  if (!result.mapping.isProvisioned)
+    throw new UberValidationError({
+      code: 'STORE_NOT_PROVISIONED',
+      operation: 'merchant',
+      message: 'Uber 门店尚未 provision，不能执行 Store Management 操作',
+    });
+  return result;
+};
+
 export class ProvisionUberStoreUseCase {
   private readonly logger = new AppLogger(ProvisionUberStoreUseCase.name);
   constructor(
@@ -274,6 +295,72 @@ export class DeprovisionUberStoreUseCase {
       `[merchant.integration-config] storeId=${id} operation=remove outcome=success`,
     );
     return { ok: true, storeId: id, isProvisioned: false };
+  }
+}
+
+export class RetrieveUberStoreStatusUseCase {
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async retrieve(storeId: string, connectionId?: string) {
+    const { id } = await requireProvisionedMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    return this.api.retrieveStatus(id);
+  }
+}
+
+export class UpdateUberStorePrepTimeUseCase {
+  private readonly logger = new AppLogger(UpdateUberStorePrepTimeUseCase.name);
+
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async update(
+    storeId: string,
+    defaultPrepTimeSeconds: number,
+    connectionId?: string,
+  ) {
+    const { id } = await requireProvisionedMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    if (
+      !Number.isInteger(defaultPrepTimeSeconds) ||
+      defaultPrepTimeSeconds < 1 ||
+      defaultPrepTimeSeconds > 10_800
+    )
+      throw new UberValidationError({
+        code: 'INVALID_PREP_TIME',
+        operation: 'merchant.update-store-prep-time',
+        message: 'defaultPrepTimeSeconds 必须是 1 到 10800 的整数秒数',
+      });
+
+    const result = await this.api.updatePrepTime(
+      id,
+      defaultPrepTimeSeconds,
+      buildUberIdempotencyKey({
+        taskId: `store-prep-time:${id}:${defaultPrepTimeSeconds}`,
+        resourceId: id,
+        action: 'UPDATE_STORE_PREP_TIME',
+        businessVersion: String(defaultPrepTimeSeconds),
+      }),
+    );
+    this.logger.log(
+      `[merchant.store-prep-time] storeId=${id} seconds=${defaultPrepTimeSeconds} outcome=success`,
+    );
+    return result;
   }
 }
 

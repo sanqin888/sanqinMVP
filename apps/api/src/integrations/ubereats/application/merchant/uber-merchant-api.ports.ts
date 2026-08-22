@@ -85,6 +85,19 @@ export type UberStoreIntegrationConfig = {
   isOrderManagerPending: boolean | null;
 };
 
+export type UberStoreStatus = {
+  storeId: string;
+  status: string;
+  offlineReason: string | null;
+  offlineReasonMetadata: string | null;
+  isOfflineUntil: string | null;
+};
+
+export type UberStorePrepTime = {
+  storeId: string;
+  defaultPrepTimeSeconds: number;
+};
+
 /** Store lifecycle/mutation capability; URL/request construction belongs to its adapter. */
 export interface UberStoreApiPort {
   provisionStore(
@@ -106,6 +119,12 @@ export interface UberStoreApiPort {
     storeId: string,
     idempotencyKey: string,
   ): Promise<void>;
+  retrieveStatus(storeId: string): Promise<UberStoreStatus>;
+  updatePrepTime(
+    storeId: string,
+    defaultPrepTimeSeconds: number,
+    idempotencyKey: string,
+  ): Promise<UberStorePrepTime>;
   writeStatus(
     storeId: string,
     payload: Record<string, string>,
