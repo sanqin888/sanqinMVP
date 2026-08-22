@@ -76,7 +76,7 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
         }>;
       };
     };
-    payload.order.carts[0]!.items[0]!.customer_request.allergy = {
+    payload.order.carts[0].items[0].customer_request.allergy = {
       allergens: [],
       instructions: '',
     };
@@ -91,7 +91,7 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
     const payload = fixture('detail-modifiers.json') as {
       order: { carts: Array<{ special_instructions?: unknown }> };
     };
-    payload.order.carts[0]!.special_instructions = 42;
+    payload.order.carts[0].special_instructions = 42;
 
     expect(
       parser.parseResult(payload, { eventType: 'orders.notification' }),
@@ -112,7 +112,7 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
         }>;
       };
     };
-    payload.order.carts[0]!.items[0]!.customer_request.allergy.instructions = 42;
+    payload.order.carts[0].items[0].customer_request.allergy.instructions = 42;
 
     expect(
       parser.parseResult(payload, { eventType: 'orders.notification' }),
@@ -131,7 +131,7 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
         }>;
       };
     };
-    payload.order.carts[0]!.items[0]!.customer_request.future_request =
+    payload.order.carts[0].items[0].customer_request.future_request =
       'must not be silently ignored';
 
     expect(

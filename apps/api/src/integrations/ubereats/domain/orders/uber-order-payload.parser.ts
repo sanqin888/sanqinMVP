@@ -312,9 +312,7 @@ function customerRequestInstructions(
   const lines = [
     specialInstructions,
     allergens.length > 0 ? `ALLERGY: ${allergens.join(', ')}` : null,
-    allergyInstructions
-      ? `ALLERGY INSTRUCTIONS: ${allergyInstructions}`
-      : null,
+    allergyInstructions ? `ALLERGY INSTRUCTIONS: ${allergyInstructions}` : null,
   ].filter((value): value is string => value !== null);
   return lines.length > 0 ? lines.join('\n') : null;
 }
@@ -339,7 +337,10 @@ function hasUnrelayableCustomerRequest(item: UberOrderCartItemV1): boolean {
   const rawRequest = item.customer_request;
   const request = asObject(rawRequest);
   if (rawRequest !== undefined && rawRequest !== null && !request) return true;
-  if (request && Object.keys(request).some((key) => !CUSTOMER_REQUEST_KEYS.has(key)))
+  if (
+    request &&
+    Object.keys(request).some((key) => !CUSTOMER_REQUEST_KEYS.has(key))
+  )
     return true;
 
   const rawSpecialInstructions = request?.special_instructions;
