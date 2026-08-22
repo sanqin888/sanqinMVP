@@ -2111,6 +2111,20 @@ export class OrdersService {
       });
     }
 
+    const promotionEvaluation = evaluateOrderPromotions({
+      lines: promotionLines,
+    });
+    const couponEligibleLineKeys = new Set(
+      promotionEvaluation.couponEligibleLineKeys,
+    );
+    const couponEligibleLineItems = promotionLines
+      .filter((line) => couponEligibleLineKeys.has(line.lineKey))
+      .map((line) => ({
+        lineKey: line.lineKey,
+        productStableId: line.productStableId,
+        lineTotalCents: line.lineTotalCents,
+      }));
+
     return {
       calculatedItems,
       calculatedSubtotal,

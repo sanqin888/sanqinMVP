@@ -21,6 +21,7 @@ import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import { resolveIssuedCouponDiscountCents } from '../coupons/coupon-use-rule';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { NotificationService } from '../notifications/notification.service';
 import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
