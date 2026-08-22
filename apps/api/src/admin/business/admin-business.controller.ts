@@ -74,6 +74,8 @@ export class AdminBusinessController {
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;
       enableUberDirect?: boolean;
+      allergyHandlingMode?: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
+      unsupportedAllergens?: string[];
     },
   ): Promise<BusinessConfigResponse> {
     return this.service.updateConfig(body);
@@ -119,6 +121,8 @@ export class AdminBusinessController {
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;
       enableUberDirect?: boolean;
+      allergyHandlingMode?: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
+      unsupportedAllergens?: string[];
     },
   ): Promise<BusinessConfigResponse> {
     return this.service.updateConfig(body);

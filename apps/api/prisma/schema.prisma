@@ -383,9 +383,17 @@ model Store {
   holidays      Holiday[]
 }
 
+enum AllergyHandlingMode {
+  RELAY_ALL
+  DENY_LIST
+  DENY_ALL
+}
+
 model StoreConfig {
-  storeId                   String   @id @db.Uuid
-  timezone                  String   @default("America/Toronto")
+  storeId                   String              @id @db.Uuid
+  timezone                  String              @default("America/Toronto")
+  allergyHandlingMode       AllergyHandlingMode @default(RELAY_ALL)
+  unsupportedAllergens      String[]            @default([])
   isTemporarilyClosed       Boolean  @default(false)
   temporaryCloseReason      String?
   publicNotice              String?

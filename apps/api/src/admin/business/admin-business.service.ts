@@ -1,9 +1,10 @@
 // apps/api/src/admin/business/admin-business.service.ts
 
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
-import type { BusinessConfig, BusinessHour } from '@prisma/client';
+import type { BusinessConfig, BusinessHour, StoreConfig } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
+import { resolveConfiguredStoreId } from '../../common/store-id';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
@@ -63,6 +64,8 @@ export type BusinessConfigResponse = {
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
   enableUberDirect: boolean;
+  allergyHandlingMode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
+  unsupportedAllergens: string[];
   hours: DayConfigDto[];
   holidays: HolidayDto[];
 };
@@ -85,7 +88,10 @@ export class AdminBusinessService {
    * - 节假日列表
    */
   async getConfig(): Promise<BusinessConfigResponse> {
-    const config = await this.ensureConfig();
+    const [config, storeConfig] = await Promise.all([
+      this.ensureConfig(),
+      this.ensureStoreConfig(),
+    ]);
     const hours = await this.ensureHoursInitialized();
     const holidays = await this.prisma.holiday.findMany({
       orderBy: { date: 'asc' },
@@ -130,6 +136,8 @@ export class AdminBusinessService {
       tierThresholdGold: config.tierThresholdGold,
       tierThresholdPlatinum: config.tierThresholdPlatinum,
       enableUberDirect: config.enableUberDirect,
+      allergyHandlingMode: storeConfig.allergyHandlingMode,
+      unsupportedAllergens: storeConfig.unsupportedAllergens,
       hours: hours.map((h) => ({
         weekday: h.weekday,
         openMinutes: h.openMinutes ?? 0,
@@ -286,6 +294,8 @@ export class AdminBusinessService {
       tierThresholdGold,
       tierThresholdPlatinum,
       enableUberDirect,
+      allergyHandlingMode,
+      unsupportedAllergens,
     } = payload as {
       timezone?: unknown;
       isTemporarilyClosed?: unknown;
@@ -325,6 +335,8 @@ export class AdminBusinessService {
       tierThresholdGold?: unknown;
       tierThresholdPlatinum?: unknown;
       enableUberDirect?: unknown;
+      allergyHandlingMode?: unknown;
+      unsupportedAllergens?: unknown;
     };
 
     if (
@@ -342,6 +354,43 @@ export class AdminBusinessService {
       typeof reason === 'string' ? reason.trim() : undefined;
 
     const updates: Partial<BusinessConfig> = {};
+    const storeConfigUpdates: Partial<
+      Pick<StoreConfig, 'allergyHandlingMode' | 'unsupportedAllergens'>
+    > = {};
+
+    if (allergyHandlingMode !== undefined) {
+      if (
+        allergyHandlingMode !== 'RELAY_ALL' &&
+        allergyHandlingMode !== 'DENY_LIST' &&
+        allergyHandlingMode !== 'DENY_ALL'
+      ) {
+        throw new BadRequestException(
+          'allergyHandlingMode must be RELAY_ALL, DENY_LIST, or DENY_ALL',
+        );
+      }
+      storeConfigUpdates.allergyHandlingMode = allergyHandlingMode;
+    }
+
+    if (unsupportedAllergens !== undefined) {
+      if (!Array.isArray(unsupportedAllergens)) {
+        throw new BadRequestException('unsupportedAllergens must be an array');
+      }
+      const normalized = unsupportedAllergens.map((value, index) => {
+        if (typeof value !== 'string') {
+          throw new BadRequestException(
+            `unsupportedAllergens[${index}] must be a string`,
+          );
+        }
+        const code = value.trim().toUpperCase();
+        if (!code || code.length > 64 || !/^[A-Z0-9_-]+$/.test(code)) {
+          throw new BadRequestException(
+            `unsupportedAllergens[${index}] must be a non-empty allergen code containing only letters, numbers, _ or -`,
+          );
+        }
+        return code;
+      });
+      storeConfigUpdates.unsupportedAllergens = [...new Set(normalized)];
+    }
 
     if (timezone !== undefined) {
       updates.timezone = this.normalizeTimezone('timezone', timezone);
@@ -596,14 +645,38 @@ export class AdminBusinessService {
       updates.enableUberDirect = enableUberDirect;
     }
 
-    if (Object.keys(updates).length === 0) {
+    const hasBusinessConfigUpdates = Object.keys(updates).length > 0;
+    const hasStoreConfigUpdates = Object.keys(storeConfigUpdates).length > 0;
+    if (!hasBusinessConfigUpdates && !hasStoreConfigUpdates) {
       return this.getConfig();
     }
 
-    const updatedConfig = await this.prisma.businessConfig.update({
-      where: { id: config.id },
-      data: updates,
-    });
+    const currentStoreConfig = hasStoreConfigUpdates
+      ? await this.ensureStoreConfig()
+      : null;
+    let updatedConfig: BusinessConfig = config;
+    if (currentStoreConfig && hasBusinessConfigUpdates) {
+      updatedConfig = await this.prisma.$transaction(async (tx) => {
+        await tx.storeConfig.update({
+          where: { storeId: currentStoreConfig.storeId },
+          data: storeConfigUpdates,
+        });
+        return tx.businessConfig.update({
+          where: { id: config.id },
+          data: updates,
+        });
+      });
+    } else if (currentStoreConfig) {
+      await this.prisma.storeConfig.update({
+        where: { storeId: currentStoreConfig.storeId },
+        data: storeConfigUpdates,
+      });
+    } else {
+      updatedConfig = await this.prisma.businessConfig.update({
+        where: { id: config.id },
+        data: updates,
+      });
+    }
 
     if (
       updatedConfig.isTemporarilyClosed !== config.isTemporarilyClosed ||
@@ -749,6 +822,20 @@ export class AdminBusinessService {
     }
 
     return tz;
+  }
+
+  private async ensureStoreConfig(): Promise<StoreConfig> {
+    const store = await this.prisma.store.findUnique({
+      where: { storeStableId: resolveConfiguredStoreId() },
+      select: { id: true, config: true },
+    });
+    if (!store) {
+      throw new BadRequestException(
+        `Configured store ${resolveConfiguredStoreId()} does not exist`,
+      );
+    }
+    if (store.config) return store.config;
+    return this.prisma.storeConfig.create({ data: { storeId: store.id } });
   }
 
   /** 确保 BusinessConfig 存在（id 固定为 1） */

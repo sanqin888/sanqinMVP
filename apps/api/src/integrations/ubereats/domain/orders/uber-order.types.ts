@@ -206,6 +206,11 @@ export type ParsedUberOrder = {
   scheduledReadyAt?: Date | null;
   estimatedReadyAt: Date | null;
   specialInstructions: string | null;
+  /** Parser always populates this; optionality preserves older adapter/test doubles. */
+  allergyRequest?: {
+    hasRequest: boolean;
+    allergens: string[];
+  };
   items: ParsedUberOrderItem[];
   contactName?: string | null;
   contactPhone?: string | null;
