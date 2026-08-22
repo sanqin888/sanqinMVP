@@ -136,7 +136,8 @@ function getTierProgress(input: {
           0,
           Math.min(
             100,
-            ((lifetimePurchasePoints - currentTierThresholdPoints) / span) * 100,
+            ((lifetimePurchasePoints - currentTierThresholdPoints) / span) *
+              100,
           ),
         );
 
@@ -416,22 +417,22 @@ export class LoyaltyService {
 
   async getMembershipProgramRules() {
     const config = await this.getLoyaltyConfig();
-    const tierRules = (
-      ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'] as const
-    ).map((tier) => {
-      const thresholdPoints =
-        tier === 'BRONZE' ? 0 : config.tierPointThresholds[tier];
-      const earnPtPerDollar =
-        config.earnPtPerDollar * config.tierMultipliers[tier];
-      return {
-        tier,
-        thresholdPoints,
-        earnPtPerDollar,
-        earnValueRatePercent:
-          earnPtPerDollar * config.redeemDollarPerPoint * 100,
-        multiplier: config.tierMultipliers[tier],
-      };
-    });
+    const tierRules = (['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'] as const).map(
+      (tier) => {
+        const thresholdPoints =
+          tier === 'BRONZE' ? 0 : config.tierPointThresholds[tier];
+        const earnPtPerDollar =
+          config.earnPtPerDollar * config.tierMultipliers[tier];
+        return {
+          tier,
+          thresholdPoints,
+          earnPtPerDollar,
+          earnValueRatePercent:
+            earnPtPerDollar * config.redeemDollarPerPoint * 100,
+          multiplier: config.tierMultipliers[tier],
+        };
+      },
+    );
 
     return {
       earnPtPerDollar: config.earnPtPerDollar,
