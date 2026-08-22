@@ -239,6 +239,29 @@ describe('PosOrdersService', () => {
     expect('denyUberOrder' in uberEats).toBe(false);
   });
 
+  it('POS 在 Uber 订单 ready 后不再提供 CANCEL，避免上游成功但本地无法进入退款终态', async () => {
+    const ready = order({
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+      status: 'ready',
+    });
+    const { service, uberEats } = setup(ready);
+
+    await expect(service.cancelUberOrder('order_1')).rejects.toThrow(
+      '当前 Uber 订单状态不允许取消',
+    );
+    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+      actions: [
+        {
+          action: 'UBER_CANCEL',
+          available: false,
+          reason: 'ORDER_STATUS_NOT_SUPPORTED',
+        },
+      ],
+    });
+    expect(uberEats.cancel).not.toHaveBeenCalled();
+  });
+
   it('POS 拒绝为非 Uber 订单提交 CANCEL', async () => {
     const { service, uberEats } = setup(order());
 

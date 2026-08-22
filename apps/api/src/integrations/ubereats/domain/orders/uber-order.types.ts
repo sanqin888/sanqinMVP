@@ -144,6 +144,7 @@ export type UberOrderFulfillmentV1 = {
     id?: string;
     items?: UberOrderCartItemV1[];
     special_instructions?: string;
+    include_single_use_items?: boolean;
   }>;
   payment?: {
     payment_detail?: UberOrderPaymentDetailV1;

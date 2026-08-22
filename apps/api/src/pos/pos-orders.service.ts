@@ -169,7 +169,7 @@ export class PosOrdersService {
     if (!externalOrderId) {
       throw new BadRequestException('只有 Uber 订单可以提交取消');
     }
-    if (!['paid', 'making', 'ready'].includes(order.status)) {
+    if (!['paid', 'making'].includes(order.status)) {
       throw new BadRequestException('当前 Uber 订单状态不允许取消');
     }
     const result = await this.uberOrderActions.cancel(externalOrderId, reason);
@@ -194,7 +194,7 @@ export class PosOrdersService {
     }
 
     if (order.channel === Channel.ubereats) {
-      const available = ['paid', 'making', 'ready'].includes(order.status);
+      const available = ['paid', 'making'].includes(order.status);
       if (available) {
         return {
           actions: [{ action: 'UBER_CANCEL', available: true }],

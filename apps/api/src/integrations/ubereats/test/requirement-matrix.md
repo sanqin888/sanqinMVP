@@ -151,10 +151,14 @@ fallback，也不得增加裸 MerchantOrder response fallback。
 ### Customer Request / Allergy relay
 
 Provision / Update Integration Config 固定声明
-`allowed_customer_requests.allow_special_instruction_requests=true`，与 SanQ 已实现的备注传递能力保持一致；
-结构化 Allergy Requests 仍由 Uber 在 integration verification 后启用。
+`allowed_customer_requests.allow_single_use_items_requests=true` 与
+`allowed_customer_requests.allow_special_instruction_requests=true`。SanQ 接受 Uber 的一次性餐具选择，
+并继续完整传递特殊备注；结构化 Allergy Requests 仍由 Uber 在 integration verification 后启用。
 
-Order Fulfillment API 1.0.0 的 `customer_request.special_instructions` 继续进入现有
+Order Fulfillment API 1.0.0 的 `carts[].include_single_use_items` 是 boolean，不提供数量字段。SanQ 将
+`true/false` 规范化为双语订单备注 `餐具 / Utensils: 是 / Yes` / `餐具 / Utensils: 否 / No`，与
+`carts[].special_instructions` 一起进入 `externalOrderNotes`，由 POS 订单详情和收银打印共同展示；不得
+根据菜品数量猜测餐具套数。Order Fulfillment API 1.0.0 的 `customer_request.special_instructions` 继续进入现有
 `externalSpecialInstructions` → POS/打印链路。结构化 allergy 使用
 `customer_request.allergy.allergens[]` 与 `customer_request.allergy.instructions`；SanQ 将其完整合并到
 同一菜品备注中，以 `ALLERGY:` / `ALLERGY INSTRUCTIONS:` 明确标识。递归 modifier/option 自身的
@@ -209,6 +213,10 @@ Fulfillment timing 由 webhook contract 决定，不通过 detail `status` 猜�
 | `orders.notification` | Order Fulfillment 1.0.0 | 拉取 v1 detail，映射并 admission/import | `webhooks/orders.notification.json` |
 | `orders.scheduled.notification` | 1.0.0 + scheduled enabled | 与普通单共用 mapper；增加 deliveries expansion 并解析 scheduled timing | `webhooks/orders.scheduled.notification.json` |
 | `orders.failure` | Order Fulfillment 1.0.0 | 已存在本地订单时直接按 external order id 落 cancellation；不要求 detail 再次可读 | `webhooks/orders.failure.json` |
+
+若 SanQ 在 admission 阶段已成功执行 standalone DENY（订单因此从未落本地 `Order`），后续同一
+external order 的 `orders.failure` 是该拒单的合法终态，按 no-op 成功处理，不能继续重试到 DEAD。
+其余“本地订单尚未导入且没有成功 DENY”的 early failure 仍保持可重试，等待更早的订单事件完成。
 
 非 1.0.0 cancellation webhook 不属于 SanQ 当前 Order contract，不提供兼容 parser。
 

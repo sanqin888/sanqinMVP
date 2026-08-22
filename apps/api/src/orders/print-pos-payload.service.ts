@@ -178,7 +178,7 @@ export class PrintPosPayloadService {
 
     const summary = needed
       ? this.buildUtensilsSummary(type, quantity)
-      : '无需餐具';
+      : '否 / No';
 
     return {
       needed,
@@ -193,13 +193,17 @@ export class PrintPosPayloadService {
     quantity: number | null,
   ): string {
     const typeLabel =
-      type === 'chopsticks' ? '筷子' : type === 'fork' ? '叉子' : '餐具';
+      type === 'chopsticks'
+        ? '筷子 / Chopsticks'
+        : type === 'fork'
+          ? '叉子 / Fork'
+          : '餐具 / Utensils';
 
     if (quantity && quantity > 0) {
-      return `${typeLabel}${quantity}份`;
+      return `是 / Yes · ${typeLabel} · ${quantity}份 / ${quantity} ${quantity === 1 ? 'set' : 'sets'}`;
     }
 
-    return `需要${typeLabel}`;
+    return `是 / Yes · ${typeLabel}`;
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {

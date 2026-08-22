@@ -97,6 +97,7 @@ const orderDetailSelect = {
   fulfillmentType: true,
   paymentMethod: true,
   pickupCode: true,
+  externalOrderNotes: true,
   contactName: true,
   contactEmail: true,
   contactPhone: true,
@@ -713,6 +714,7 @@ export class OrdersService {
       paymentMethod: order.paymentMethod ?? null,
 
       pickupCode: order.pickupCode ?? null,
+      orderNotes: order.externalOrderNotes?.trim() || null,
 
       contactName: order.contactName ?? null,
       contactEmail: order.contactEmail ?? null,

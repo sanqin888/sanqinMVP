@@ -547,6 +547,7 @@ type BackendOrder = {
   clientRequestId?: string | null;
   orderNumber?: string | null;
   pickupCode?: string | null;
+  orderNotes?: string | null;
   channel: "web" | "in_store" | "ubereats";
   fulfillmentType: "pickup" | "dine_in" | "delivery";
   status: "pending" | "paid" | "making" | "ready" | "completed" | "refunded";
@@ -576,6 +577,7 @@ type OrderRecord = {
   stableId: string;
   pickupCode: string | null;
   clientRequestId: string | null;
+  orderNotes: string | null;
   type: keyof (typeof COPY)["zh"]["orderCard"];
   status: OrderStatusKey;
   amountCents: number;
@@ -1154,6 +1156,7 @@ export default function PosOrdersPage() {
         stableId: order.orderStableId,
         pickupCode: order.pickupCode ?? null,
         clientRequestId: displayNumber,
+        orderNotes: order.orderNotes?.trim() || null,
         type: order.fulfillmentType,
         status: order.status,
         amountCents: order.totalCents ?? 0,
@@ -2162,6 +2165,18 @@ export default function PosOrdersPage() {
                   {formatMoney(selectedOrder.amountCents)}
                 </span>
               </div>
+              {selectedOrder.orderNotes ? (
+                <section className="rounded-xl border border-sky-400/40 bg-sky-500/10 p-4">
+                  <h3 className="text-sm font-semibold text-sky-100">
+                    {locale === "zh"
+                      ? "订单备注 / Order Notes"
+                      : "Order Notes / 订单备注"}
+                  </h3>
+                  <div className="mt-2 whitespace-pre-wrap text-sm text-sky-100">
+                    {selectedOrder.orderNotes}
+                  </div>
+                </section>
+              ) : null}
               {selectedOrder.items.some((item) => item.specialInstructions) ? (
                 <section className="rounded-xl border border-amber-400/50 bg-amber-500/10 p-4">
                   <h3 className="text-sm font-semibold text-amber-100">
