@@ -41,6 +41,20 @@ type LoyaltyConfig = {
   tierMultipliers: Record<Tier, number>;
 };
 
+type MembershipRuleDisplay = {
+  tierThresholds: boolean;
+  baseEarningRate: boolean;
+  tierMultipliers: boolean;
+  pointRedemptionValue: boolean;
+};
+
+const DEFAULT_MEMBERSHIP_RULE_DISPLAY: MembershipRuleDisplay = {
+  tierThresholds: true,
+  baseEarningRate: true,
+  tierMultipliers: true,
+  pointRedemptionValue: true,
+};
+
 type OrderForLoyaltySettlement = Pick<
   Prisma.OrderGetPayload<Record<string, never>>,
   | 'id'
@@ -290,8 +304,30 @@ export class LoyaltyService {
     return this.normalizeLoyaltyConfig(config);
   }
 
+  private async getMembershipRuleDisplay(): Promise<MembershipRuleDisplay> {
+    const config = await this.prisma.brandConfig.findUnique({
+      where: { id: 1 },
+      select: {
+        membershipShowTierThresholds: true,
+        membershipShowBaseEarningRate: true,
+        membershipShowTierMultipliers: true,
+        membershipShowPointRedemptionValue: true,
+      },
+    });
+    if (!config) return { ...DEFAULT_MEMBERSHIP_RULE_DISPLAY };
+    return {
+      tierThresholds: config.membershipShowTierThresholds,
+      baseEarningRate: config.membershipShowBaseEarningRate,
+      tierMultipliers: config.membershipShowTierMultipliers,
+      pointRedemptionValue: config.membershipShowPointRedemptionValue,
+    };
+  }
+
   async getMembershipProgramRules() {
-    const config = await this.getLoyaltyConfig();
+    const [config, display] = await Promise.all([
+      this.getLoyaltyConfig(),
+      this.getMembershipRuleDisplay(),
+    ]);
     const tierRules = (['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'] as const).map(
       (tier) => {
         const thresholdCents =
@@ -314,6 +350,7 @@ export class LoyaltyService {
       earnPtPerDollar: config.earnPtPerDollar,
       redeemDollarPerPoint: config.redeemDollarPerPoint,
       referralPtPerDollar: config.referralPtPerDollar,
+      display,
       referralValueRatePercent:
         config.referralPtPerDollar * config.redeemDollarPerPoint * 100,
       tierRules,

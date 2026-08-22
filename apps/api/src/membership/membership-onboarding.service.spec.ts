@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MembershipOnboardingService } from './membership-onboarding.service';
 
 const NEW_USER_CREATED_AT = new Date('2026-08-22T17:00:00.000Z');
@@ -284,5 +285,80 @@ describe('MembershipOnboardingService', () => {
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(updateMany).not.toHaveBeenCalled();
+  });
+});
+
+const membershipRulesBusinessConfig = {
+  id: 1,
+  storeName: '',
+  timezone: 'America/Toronto',
+  isTemporarilyClosed: false,
+  temporaryCloseReason: null,
+  earnPtPerDollar: 0.01,
+  redeemDollarPerPoint: 1,
+  referralPtPerDollar: 0.01,
+  tierMultiplierBronze: 1,
+  tierMultiplierSilver: 2,
+  tierMultiplierGold: 3,
+  tierMultiplierPlatinum: 5,
+  tierThresholdSilver: 100_000,
+  tierThresholdGold: 1_000_000,
+  tierThresholdPlatinum: 3_000_000,
+};
+
+describe('membership public rules display', () => {
+  it('returns the BrandConfig checkbox selection with the current loyalty rules', async () => {
+    const service = new LoyaltyService(
+      {
+        businessConfig: {
+          findUnique: jest.fn().mockResolvedValue(membershipRulesBusinessConfig),
+        },
+        brandConfig: {
+          findUnique: jest.fn().mockResolvedValue({
+            membershipShowTierThresholds: true,
+            membershipShowBaseEarningRate: false,
+            membershipShowTierMultipliers: true,
+            membershipShowPointRedemptionValue: false,
+          }),
+        },
+      } as never,
+      {} as never,
+    );
+
+    await expect(service.getMembershipProgramRules()).resolves.toMatchObject({
+      display: {
+        tierThresholds: true,
+        baseEarningRate: false,
+        tierMultipliers: true,
+        pointRedemptionValue: false,
+      },
+      tierRules: [
+        { tier: 'BRONZE', thresholdCents: 0, multiplier: 1 },
+        { tier: 'SILVER', thresholdCents: 100_000, multiplier: 2 },
+        { tier: 'GOLD', thresholdCents: 1_000_000, multiplier: 3 },
+        { tier: 'PLATINUM', thresholdCents: 3_000_000, multiplier: 5 },
+      ],
+    });
+  });
+
+  it('defaults all membership rule display checkboxes on when BrandConfig is absent', async () => {
+    const service = new LoyaltyService(
+      {
+        businessConfig: {
+          findUnique: jest.fn().mockResolvedValue(membershipRulesBusinessConfig),
+        },
+        brandConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      } as never,
+      {} as never,
+    );
+
+    await expect(service.getMembershipProgramRules()).resolves.toMatchObject({
+      display: {
+        tierThresholds: true,
+        baseEarningRate: true,
+        tierMultipliers: true,
+        pointRedemptionValue: true,
+      },
+    });
   });
 });

@@ -1,7 +1,7 @@
 // apps/api/src/admin/business/admin-business.service.ts
 
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
-import type { BusinessConfig, BusinessHour } from '@prisma/client';
+import type { BrandConfig, BusinessConfig, BusinessHour } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
 import {
@@ -22,6 +22,13 @@ export type HolidayDto = {
   isClosed: boolean;
   openMinutes?: number | null;
   closeMinutes?: number | null;
+};
+
+export type MembershipRuleDisplayDto = {
+  tierThresholds: boolean;
+  baseEarningRate: boolean;
+  tierMultipliers: boolean;
+  pointRedemptionValue: boolean;
 };
 
 export type BusinessConfigResponse = {
@@ -62,6 +69,7 @@ export type BusinessConfigResponse = {
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
+  membershipRuleDisplay: MembershipRuleDisplayDto;
   enableUberDirect: boolean;
   hours: DayConfigDto[];
   holidays: HolidayDto[];
@@ -85,7 +93,10 @@ export class AdminBusinessService {
    * - 节假日列表
    */
   async getConfig(): Promise<BusinessConfigResponse> {
-    const config = await this.ensureConfig();
+    const [config, brandConfig] = await Promise.all([
+      this.ensureConfig(),
+      this.prisma.brandConfig.findUnique({ where: { id: 1 } }),
+    ]);
     const hours = await this.ensureHoursInitialized();
     const holidays = await this.prisma.holiday.findMany({
       orderBy: { date: 'asc' },
@@ -129,6 +140,13 @@ export class AdminBusinessService {
       tierThresholdSilver: config.tierThresholdSilver,
       tierThresholdGold: config.tierThresholdGold,
       tierThresholdPlatinum: config.tierThresholdPlatinum,
+      membershipRuleDisplay: {
+        tierThresholds: brandConfig?.membershipShowTierThresholds ?? true,
+        baseEarningRate: brandConfig?.membershipShowBaseEarningRate ?? true,
+        tierMultipliers: brandConfig?.membershipShowTierMultipliers ?? true,
+        pointRedemptionValue:
+          brandConfig?.membershipShowPointRedemptionValue ?? true,
+      },
       enableUberDirect: config.enableUberDirect,
       hours: hours.map((h) => ({
         weekday: h.weekday,
@@ -285,6 +303,7 @@ export class AdminBusinessService {
       tierThresholdSilver,
       tierThresholdGold,
       tierThresholdPlatinum,
+      membershipRuleDisplay,
       enableUberDirect,
     } = payload as {
       timezone?: unknown;
@@ -324,6 +343,7 @@ export class AdminBusinessService {
       tierThresholdSilver?: unknown;
       tierThresholdGold?: unknown;
       tierThresholdPlatinum?: unknown;
+      membershipRuleDisplay?: unknown;
       enableUberDirect?: unknown;
     };
 
@@ -342,6 +362,39 @@ export class AdminBusinessService {
       typeof reason === 'string' ? reason.trim() : undefined;
 
     const updates: Partial<BusinessConfig> = {};
+    const brandUpdates: Partial<
+      Pick<
+        BrandConfig,
+        | 'membershipShowTierThresholds'
+        | 'membershipShowBaseEarningRate'
+        | 'membershipShowTierMultipliers'
+        | 'membershipShowPointRedemptionValue'
+      >
+    > = {};
+
+    if (membershipRuleDisplay !== undefined) {
+      if (!membershipRuleDisplay || typeof membershipRuleDisplay !== 'object') {
+        throw new BadRequestException('membershipRuleDisplay must be an object');
+      }
+      const display = membershipRuleDisplay as Partial<MembershipRuleDisplayDto>;
+      for (const field of [
+        'tierThresholds',
+        'baseEarningRate',
+        'tierMultipliers',
+        'pointRedemptionValue',
+      ] as const) {
+        if (typeof display[field] !== 'boolean') {
+          throw new BadRequestException(
+            `membershipRuleDisplay.${field} must be a boolean`,
+          );
+        }
+      }
+      brandUpdates.membershipShowTierThresholds = display.tierThresholds;
+      brandUpdates.membershipShowBaseEarningRate = display.baseEarningRate;
+      brandUpdates.membershipShowTierMultipliers = display.tierMultipliers;
+      brandUpdates.membershipShowPointRedemptionValue =
+        display.pointRedemptionValue;
+    }
 
     if (timezone !== undefined) {
       updates.timezone = this.normalizeTimezone('timezone', timezone);
@@ -596,14 +649,37 @@ export class AdminBusinessService {
       updates.enableUberDirect = enableUberDirect;
     }
 
-    if (Object.keys(updates).length === 0) {
+    const hasBusinessUpdates = Object.keys(updates).length > 0;
+    const hasBrandUpdates = Object.keys(brandUpdates).length > 0;
+    if (!hasBusinessUpdates && !hasBrandUpdates) {
       return this.getConfig();
     }
 
-    const updatedConfig = await this.prisma.businessConfig.update({
-      where: { id: config.id },
-      data: updates,
-    });
+    let updatedConfig = config;
+    if (hasBusinessUpdates && hasBrandUpdates) {
+      const brandConfig = await this.ensureBrandConfig();
+      updatedConfig = await this.prisma.$transaction(async (tx) => {
+        await tx.brandConfig.update({
+          where: { id: brandConfig.id },
+          data: brandUpdates,
+        });
+        return tx.businessConfig.update({
+          where: { id: config.id },
+          data: updates,
+        });
+      });
+    } else if (hasBrandUpdates) {
+      const brandConfig = await this.ensureBrandConfig();
+      await this.prisma.brandConfig.update({
+        where: { id: brandConfig.id },
+        data: brandUpdates,
+      });
+    } else {
+      updatedConfig = await this.prisma.businessConfig.update({
+        where: { id: config.id },
+        data: updates,
+      });
+    }
 
     if (
       updatedConfig.isTemporarilyClosed !== config.isTemporarilyClosed ||
@@ -749,6 +825,16 @@ export class AdminBusinessService {
     }
 
     return tz;
+  }
+
+  /** 品牌级会员展示配置；新品牌级配置不得再写入 transitional BusinessConfig。 */
+  private async ensureBrandConfig(): Promise<BrandConfig> {
+    const existing = await this.prisma.brandConfig.findUnique({
+      where: { id: 1 },
+    });
+    if (existing) return existing;
+    this.logger.log('BrandConfig not found, creating default row (id=1)');
+    return this.prisma.brandConfig.create({ data: { id: 1 } });
   }
 
   /** 确保 BusinessConfig 存在（id 固定为 1） */

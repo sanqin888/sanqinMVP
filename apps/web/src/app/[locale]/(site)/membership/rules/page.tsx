@@ -21,6 +21,12 @@ type MembershipProgramRules = {
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
   referralValueRatePercent: number;
+  display?: {
+    tierThresholds: boolean;
+    baseEarningRate: boolean;
+    tierMultipliers: boolean;
+    pointRedemptionValue: boolean;
+  };
   tierRules: TierRule[];
 };
 
@@ -116,6 +122,17 @@ export default async function MembershipRulesPage({
   if (!isLocale(locale)) notFound();
   const isZh = locale === "zh";
   const programRules = await fetchMembershipProgramRules();
+  const ruleDisplay = programRules?.display ?? {
+    tierThresholds: true,
+    baseEarningRate: true,
+    tierMultipliers: true,
+    pointRedemptionValue: true,
+  };
+  const showPointsColumn = ruleDisplay.tierMultipliers;
+  const showEquivalentRewardRate =
+    ruleDisplay.pointRedemptionValue &&
+    ruleDisplay.baseEarningRate &&
+    ruleDisplay.tierMultipliers;
 
   return (
     <div className="space-y-6 text-sm text-slate-800">
@@ -261,6 +278,13 @@ export default async function MembershipRulesPage({
         </p>
         {programRules ? (
           <div className="space-y-2">
+            {ruleDisplay.baseEarningRate ? (
+              <p className="text-xs text-slate-500">
+                {isZh
+                  ? `当前基础积分率：${formatPoints(programRules.earnPtPerDollar, locale)} pt / CAD $1。`
+                  : `Current base earning rate: ${formatPoints(programRules.earnPtPerDollar, locale)} pt per CAD $1.`}
+              </p>
+            ) : null}
             <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
               <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600">
@@ -268,15 +292,27 @@ export default async function MembershipRulesPage({
                     <th className="px-3 py-2 font-medium">
                       {isZh ? "会员等级" : "Tier"}
                     </th>
-                    <th className="px-3 py-2 font-medium">
-                      {isZh ? "累计消费门槛" : "Lifetime spend threshold"}
-                    </th>
-                    <th className="px-3 py-2 font-medium">
-                      {isZh ? "积分获取" : "Points earning"}
-                    </th>
-                    <th className="px-3 py-2 font-medium">
-                      {isZh ? "等值奖励率" : "Equivalent reward rate"}
-                    </th>
+                    {ruleDisplay.tierThresholds ? (
+                      <th className="px-3 py-2 font-medium">
+                        {isZh ? "累计消费门槛" : "Lifetime spend threshold"}
+                      </th>
+                    ) : null}
+                    {showPointsColumn ? (
+                      <th className="px-3 py-2 font-medium">
+                        {ruleDisplay.baseEarningRate
+                          ? isZh
+                            ? "积分获取"
+                            : "Points earning"
+                          : isZh
+                            ? "等级倍率"
+                            : "Tier multiplier"}
+                      </th>
+                    ) : null}
+                    {showEquivalentRewardRate ? (
+                      <th className="px-3 py-2 font-medium">
+                        {isZh ? "等值奖励率" : "Equivalent reward rate"}
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -285,32 +321,39 @@ export default async function MembershipRulesPage({
                       <td className="px-3 py-2 font-medium text-slate-900">
                         {tierLabel[rule.tier][isZh ? "zh" : "en"]}
                       </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {rule.tier === "BRONZE"
-                          ? isZh
-                            ? "注册会员"
-                            : "Upon joining"
-                          : formatCurrencyFromCents(rule.thresholdCents, locale)}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {formatPoints(rule.earnPtPerDollar, locale)} pt / CAD $1
-                        {rule.multiplier !== 1
-                          ? ` (${formatPoints(rule.multiplier, locale)}×)`
-                          : ""}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {formatPercent(rule.earnValueRatePercent, locale)}
-                      </td>
+                      {ruleDisplay.tierThresholds ? (
+                        <td className="px-3 py-2 text-slate-700">
+                          {rule.tier === "BRONZE"
+                            ? isZh
+                              ? "注册会员"
+                              : "Upon joining"
+                            : formatCurrencyFromCents(rule.thresholdCents, locale)}
+                        </td>
+                      ) : null}
+                      {showPointsColumn ? (
+                        <td className="px-3 py-2 text-slate-700">
+                          {ruleDisplay.baseEarningRate
+                            ? `${formatPoints(rule.earnPtPerDollar, locale)} pt / CAD $1 (${formatPoints(rule.multiplier, locale)}×)`
+                            : `${formatPoints(rule.multiplier, locale)}×`}
+                        </td>
+                      ) : null}
+                      {showEquivalentRewardRate ? (
+                        <td className="px-3 py-2 text-slate-700">
+                          {formatPercent(rule.earnValueRatePercent, locale)}
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-slate-500">
-              {isZh
-                ? `当前积分兑换价值：1 pt = ${formatCurrencyFromCents(programRules.redeemDollarPerPoint * 100, locale)}。表中“等值奖励率”按当前积分兑换价值折算。`
-                : `Current point redemption value: 1 pt = ${formatCurrencyFromCents(programRules.redeemDollarPerPoint * 100, locale)}. The equivalent reward rate above is calculated using the current redemption value.`}
-            </p>
+            {ruleDisplay.pointRedemptionValue ? (
+              <p className="text-xs text-slate-500">
+                {isZh
+                  ? `当前积分兑换价值：1 pt = ${formatCurrencyFromCents(programRules.redeemDollarPerPoint * 100, locale)}${showEquivalentRewardRate ? "。表中“等值奖励率”按当前积分兑换价值折算。" : "。"}`
+                  : `Current point redemption value: 1 pt = ${formatCurrencyFromCents(programRules.redeemDollarPerPoint * 100, locale)}${showEquivalentRewardRate ? ". The equivalent reward rate above is calculated using the current redemption value." : "."}`}
+              </p>
+            ) : null}
           </div>
         ) : (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">

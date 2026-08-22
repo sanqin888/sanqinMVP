@@ -87,7 +87,18 @@ type LoyaltyConfigDto = {
   tierThresholdSilver: number;
   tierThresholdGold: number;
   tierThresholdPlatinum: number;
+  membershipRuleDisplay: {
+    tierThresholds: boolean;
+    baseEarningRate: boolean;
+    tierMultipliers: boolean;
+    pointRedemptionValue: boolean;
+  };
 };
+
+type LoyaltyNumberField = Exclude<
+  keyof LoyaltyConfigDto,
+  "membershipRuleDisplay"
+>;
 
 const tierLabels: Record<Locale, Record<TierKey, string>> = {
   zh: {
@@ -364,7 +375,7 @@ export default function AdminMembersPage() {
   const balanceTotal = useMemo(() => members.reduce((sum, member) => sum + member.balance, 0), [members]);
   const activeLedger = ledgerTab === "POINTS" ? memberPointsLedger : memberBalanceLedger;
 
-  const handleLoyaltyConfigChange = (field: keyof LoyaltyConfigDto, value: string) => {
+  const handleLoyaltyConfigChange = (field: LoyaltyNumberField, value: string) => {
     if (!loyaltyConfig) return;
     if (
       field === "tierThresholdSilver" ||
@@ -380,6 +391,23 @@ export default function AdminMembersPage() {
     const num = parseOptionalNumber(value);
     if (num == null) return;
     setLoyaltyConfig({ ...loyaltyConfig, [field]: num });
+  };
+
+  const handleMembershipRuleDisplayChange = (
+    field: keyof LoyaltyConfigDto["membershipRuleDisplay"],
+    checked: boolean,
+  ) => {
+    setLoyaltyConfig((current) =>
+      current
+        ? {
+            ...current,
+            membershipRuleDisplay: {
+              ...current.membershipRuleDisplay,
+              [field]: checked,
+            },
+          }
+        : current,
+    );
   };
 
   const handleSaveLoyaltyConfig = async () => {
@@ -402,6 +430,7 @@ export default function AdminMembersPage() {
           tierThresholdSilver: loyaltyConfig.tierThresholdSilver,
           tierThresholdGold: loyaltyConfig.tierThresholdGold,
           tierThresholdPlatinum: loyaltyConfig.tierThresholdPlatinum,
+          membershipRuleDisplay: loyaltyConfig.membershipRuleDisplay,
         }),
       });
       setLoyaltyConfig(updated);
@@ -490,6 +519,63 @@ export default function AdminMembersPage() {
 
         {loyaltyConfig && (
           <div className="mt-4 space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold text-slate-800">
+                {isZh ? "会员规则页展示内容" : "Membership rules page display"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {isZh
+                  ? "勾选要在顾客会员规则页公开显示的参数。这里仅控制展示，不改变积分、等级或兑换计算。"
+                  : "Select which parameters are shown on the customer-facing membership rules page. These checkboxes affect display only, not loyalty calculations."}
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={loyaltyConfig.membershipRuleDisplay.tierThresholds}
+                    onChange={(event) =>
+                      handleMembershipRuleDisplayChange("tierThresholds", event.target.checked)
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>{isZh ? "累计消费门槛" : "Lifetime spend thresholds"}</span>
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={loyaltyConfig.membershipRuleDisplay.baseEarningRate}
+                    onChange={(event) =>
+                      handleMembershipRuleDisplayChange("baseEarningRate", event.target.checked)
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>{isZh ? "基础积分率" : "Base earning rate"}</span>
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={loyaltyConfig.membershipRuleDisplay.tierMultipliers}
+                    onChange={(event) =>
+                      handleMembershipRuleDisplayChange("tierMultipliers", event.target.checked)
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>{isZh ? "等级倍率" : "Tier multipliers"}</span>
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={loyaltyConfig.membershipRuleDisplay.pointRedemptionValue}
+                    onChange={(event) =>
+                      handleMembershipRuleDisplayChange("pointRedemptionValue", event.target.checked)
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>{isZh ? "积分兑换价值" : "Point redemption value"}</span>
+                </label>
+              </div>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-3">
               <label className="flex flex-col text-xs font-medium text-slate-700">
                 <span className="whitespace-nowrap">

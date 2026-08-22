@@ -73,6 +73,12 @@ export class AdminBusinessController {
       tierThresholdSilver?: number;
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;
+      membershipRuleDisplay?: {
+        tierThresholds: boolean;
+        baseEarningRate: boolean;
+        tierMultipliers: boolean;
+        pointRedemptionValue: boolean;
+      };
       enableUberDirect?: boolean;
     },
   ): Promise<BusinessConfigResponse> {
@@ -118,6 +124,12 @@ export class AdminBusinessController {
       tierThresholdSilver?: number;
       tierThresholdGold?: number;
       tierThresholdPlatinum?: number;
+      membershipRuleDisplay?: {
+        tierThresholds: boolean;
+        baseEarningRate: boolean;
+        tierMultipliers: boolean;
+        pointRedemptionValue: boolean;
+      };
       enableUberDirect?: boolean;
     },
   ): Promise<BusinessConfigResponse> {
