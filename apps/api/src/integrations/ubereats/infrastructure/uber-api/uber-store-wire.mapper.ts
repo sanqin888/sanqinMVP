@@ -1,8 +1,10 @@
 import type {
   UberStoreDiscoveryResult,
   UberStoreIntegrationConfig,
+  UberStoreIntegrationJsonObject,
   UberStoreProvisionResult,
 } from '../../application/merchant/uber-merchant-api.ports';
+import type { UberJsonValue } from '../../application/shared/uber-json-value';
 import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
 import { mapUberGatewayFailure } from './uber-error.mapper';
 
@@ -12,6 +14,40 @@ const asObject = (value: unknown): WireObject | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as WireObject)
     : null;
+
+const asJsonValue = (value: unknown): UberJsonValue | undefined => {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  )
+    return value;
+  if (Array.isArray(value)) {
+    const mapped = value.map(asJsonValue);
+    return mapped.some((entry) => entry === undefined)
+      ? undefined
+      : (mapped as UberJsonValue[]);
+  }
+  const object = asObject(value);
+  if (!object) return undefined;
+  const mapped: UberStoreIntegrationJsonObject = {};
+  for (const [key, entry] of Object.entries(object)) {
+    const json = asJsonValue(entry);
+    if (json === undefined) return undefined;
+    mapped[key] = json;
+  }
+  return mapped;
+};
+
+const asJsonObject = (
+  value: unknown,
+): UberStoreIntegrationJsonObject | null => {
+  const json = asJsonValue(value);
+  return json !== null && typeof json === 'object' && !Array.isArray(json)
+    ? json
+    : null;
+};
 
 const readString = (...values: unknown[]): string | null => {
   for (const value of values) {
@@ -175,11 +211,11 @@ export function mapUberStoreIntegrationConfigWire(
     merchantStoreId: readString(raw.merchant_store_id, raw.partner_store_id),
     requireManualAcceptance: readBoolean(raw.require_manual_acceptance),
     storeConfigurationData: readString(raw.store_configuration_data),
-    webhooksConfig: asObject(raw.webhooks_config),
+    webhooksConfig: asJsonObject(raw.webhooks_config),
     onlineStatus: readString(raw.online_status),
     orderReleaseEnabled: readBoolean(raw.order_release_enabled),
     autoAcceptEnabled: readBoolean(raw.auto_accept_enabled),
-    posMetadata: asObject(raw.pos_metadata),
+    posMetadata: asJsonObject(raw.pos_metadata),
     orderManagerClientId: readString(raw.order_manager_client_id),
     isOrderManagerPending: readBoolean(raw.is_order_manager_pending),
   };

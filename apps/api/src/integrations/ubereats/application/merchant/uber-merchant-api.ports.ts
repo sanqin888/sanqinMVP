@@ -1,4 +1,5 @@
 import type { UberMerchantStore } from '../../domain/merchant/uber-merchant.types';
+import type { UberJsonValue } from '../shared/uber-json-value';
 
 export const UBER_MERCHANT_API = Symbol('UBER_MERCHANT_API');
 export const UBER_STORE_API = Symbol('UBER_STORE_API');
@@ -58,6 +59,10 @@ export type UberStoreWriteResult =
       error: string;
     };
 
+export type UberStoreIntegrationJsonObject = {
+  [key: string]: UberJsonValue;
+};
+
 export type UberStoreIntegrationConfig = {
   storeId: string;
   integrationEnabled: boolean | null;
@@ -71,11 +76,11 @@ export type UberStoreIntegrationConfig = {
   merchantStoreId: string | null;
   requireManualAcceptance: boolean | null;
   storeConfigurationData: string | null;
-  webhooksConfig: Record<string, unknown> | null;
+  webhooksConfig: UberStoreIntegrationJsonObject | null;
   onlineStatus: string | null;
   orderReleaseEnabled: boolean | null;
   autoAcceptEnabled: boolean | null;
-  posMetadata: Record<string, unknown> | null;
+  posMetadata: UberStoreIntegrationJsonObject | null;
   orderManagerClientId: string | null;
   isOrderManagerPending: boolean | null;
 };
