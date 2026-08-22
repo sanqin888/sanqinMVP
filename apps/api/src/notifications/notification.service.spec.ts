@@ -44,7 +44,13 @@ describe('NotificationService.notifyCouponIssued', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    templateRenderer.renderEmail.mockResolvedValue({
+      subject: 'Gift',
+      html: '<p>Gift</p>',
+      text: 'Gift',
+    });
     templateRenderer.renderSms.mockResolvedValue('rendered sms');
+    emailService.sendEmail.mockResolvedValue({ ok: true, sendId: 'eid' });
     smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'sid' });
   });
 
@@ -57,7 +63,7 @@ describe('NotificationService.notifyCouponIssued', () => {
       id: 'u_1',
       language: 'EN',
       phone: '+15551234567',
-      email: null,
+      email: 'john@example.com',
       firstName: 'John',
       lastName: 'Doe',
     } as unknown as User;
@@ -73,14 +79,15 @@ describe('NotificationService.notifyCouponIssued', () => {
       },
     });
 
-    expect(templateRenderer.renderSms).toHaveBeenCalledWith(
-      expect.objectContaining({
-        locale: 'en',
-      }),
-    );
-
-    const [payload] = templateRenderer.renderSms.mock.calls[0];
+    expect(templateRenderer.renderEmail).toHaveBeenCalledTimes(1);
+    const [payload] = templateRenderer.renderEmail.mock.calls[0] as [
+      { locale: string; vars: { giftName: string } },
+    ];
+    expect(payload.locale).toBe('en');
     expect(payload.vars.giftName).toBe('Welcome Gift');
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(templateRenderer.renderSms).not.toHaveBeenCalled();
+    expect(smsService.sendSms).not.toHaveBeenCalled();
   });
 
   it('order ready 有邮箱和电话时只发送邮件', async () => {

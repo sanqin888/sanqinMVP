@@ -41,19 +41,25 @@ export default async function ContactPage({
         </h1>
         <p className="text-xs text-slate-500">
           {isZh
-            ? "如有订单、会员或网站相关问题，欢迎通过以下方式联系我们。"
-            : "For questions about orders, membership, or the website, reach out to us via the details below."}
+            ? "SanQ Roujiamo（三秦肉夹馍）由 SANQIN RESTAURANT 运营。如有订单、会员、网站或隐私相关问题，欢迎通过以下方式联系我们。"
+            : "SanQ Roujiamo is operated by SANQIN RESTAURANT. For questions about orders, membership, the website, or privacy, please contact us using the details below."}
         </p>
       </header>
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold">
-          {isZh ? "联系方式" : "Contact details"}
+          {isZh ? "运营主体与联系方式" : "Operator & contact details"}
         </h2>
         <ul className="space-y-2">
           <li>
+            <span className="font-semibold">
+              {isZh ? "运营主体：" : "Operator: "}
+            </span>
+            SANQIN RESTAURANT
+          </li>
+          <li>
             <span className="font-semibold">{isZh ? "联系电话：" : "Phone: "}</span>
-            +1(437) 808 - 6888
+            +1 (437) 808-6888
           </li>
           <li>
             <span className="font-semibold">
@@ -65,9 +71,20 @@ export default async function ContactPage({
           </li>
           <li>
             <span className="font-semibold">{isZh ? "地址：" : "Address: "}</span>
-            Unit 138, 4750 Yonge St, North York, On, M2N 5M6
+            Unit 138, 4750 Yonge St, North York, ON M2N 5M6, Canada
           </li>
         </ul>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">
+          {isZh ? "隐私联系" : "Privacy contact"}
+        </h2>
+        <p>
+          {isZh
+            ? "如需提出隐私问题、访问或更正个人信息，或对我们的隐私处理提出投诉，请联系 SANQIN RESTAURANT Privacy Officer，并发送邮件至 support@sanq.ca，注明“Privacy / 隐私”。"
+            : "For privacy questions, requests to access or correct personal information, or complaints about our privacy practices, contact the SANQIN RESTAURANT Privacy Officer at support@sanq.ca and include “Privacy” in the subject or message."}
+        </p>
       </section>
 
       <section className="space-y-3">

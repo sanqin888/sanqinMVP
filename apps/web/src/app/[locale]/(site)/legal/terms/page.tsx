@@ -36,8 +36,8 @@ export default function TermsPage({
         </h1>
         <p className="text-xs text-slate-500">
           {isZh
-            ? "使用本网站下单或注册会员，即表示你同意以下条款。如不同意任何条款，请不要继续使用本网站。"
-            : "By using this website to place orders or register as a member, you agree to these terms. If you do not agree, please do not use this website."}
+            ? "生效及最后更新日期：2026-08-22。本网站及通过本网站提供的在线点餐和会员服务由 SANQIN RESTAURANT 运营，品牌为 SanQ Roujiamo（三秦肉夹馍）。使用本网站即表示你同意本条款及适用于相关服务的其他已公布规则。"
+            : "Effective and last updated: 2026-08-22. This website and the online ordering and membership services offered through it are operated by SANQIN RESTAURANT under the SanQ Roujiamo brand. By using this website, you agree to these terms and other published rules that apply to the relevant service."}
         </p>
       </header>
 
@@ -47,25 +47,25 @@ export default function TermsPage({
         </h2>
         <p>
           {isZh
-            ? "本网站用于展示菜单、接受线上订单及提供会员积分等相关服务。我们保留随时更改菜单、价格、营业时间、配送/自取范围及其他服务内容的权利。"
-            : "This website is provided to display our menu, accept online orders, and offer membership and points services. We reserve the right to change the menu, prices, operating hours, delivery/pickup options, and other services at any time."}
+            ? "本网站用于展示菜单、接受线上订单，并提供会员、积分、储值余额、优惠券及其他相关功能。我们可能调整未来可提供的菜单、价格、营业时间、配送/自取范围和网站功能；但后续调整不会追溯改变已经完成支付并被系统确认的订单价格或结算结果，法律另有要求或双方另行同意的情况除外。"
+            : "This website displays our menu, accepts online orders, and provides membership, points, Store Balance, coupons, and related features. We may change menus, prices, operating hours, delivery/pickup areas, and website features for future use; however, later changes do not retroactively alter the price or settlement of an order that has already been paid for and confirmed, unless required by law or otherwise agreed with you."}
         </p>
       </section>
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold">
-          {isZh ? "2. 账户与安全" : "2. Accounts & security"}
+          {isZh ? "2. 账户与会员" : "2. Accounts & membership"}
         </h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "你需确保注册信息真实、准确，并及时更新。"
-              : "You must ensure that the information you provide when registering is accurate and kept up to date."}
+              ? "你应提供真实、准确的账户资料并及时更新，同时妥善保管登录凭据。会员账户仅限本人使用。"
+              : "You should provide accurate account information, keep it reasonably up to date, and protect your sign-in credentials. Membership accounts are for personal use."}
           </li>
           <li>
             {isZh
-              ? "你有责任保管好登录凭据，不得将账户转让或与他人共享。"
-              : "You are responsible for keeping your login credentials secure and must not transfer or share your account."}
+              ? "SanQ 会员服务不面向 13 岁以下儿童。会员资格、积分、储值余额、推荐关系和其他会员权益受另行公布的会员规则约束。"
+              : "The SanQ membership service is not available to children under 13. Membership eligibility, points, Store Balance, referrals, and other member benefits are governed by the separately published Membership Rules."}
           </li>
           <li>
             {isZh
@@ -77,57 +77,120 @@ export default function TermsPage({
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold">
-          {isZh ? "3. 订单与价格" : "3. Orders & pricing"}
+          {isZh ? "3. 订单、价格与预约" : "3. Orders, pricing & scheduling"}
         </h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "所有价格以结算页显示为准，可能因促销、税费或配送费而发生变化。"
-              : "All prices are as shown on the checkout page and may change due to promotions, taxes, or delivery fees."}
+              ? "下单前请核对菜品、数量、选项、取餐/配送方式、时间、联系方式以及结算页显示的价格、税费、配送费、折扣和总金额。完成支付后，订单按系统确认时的订单内容和金额处理。"
+              : "Before ordering, review the items, quantities, options, fulfillment method, timing, contact information, and the prices, taxes, delivery fees, discounts, and total shown at checkout. After payment, the order is handled according to the order details and amount confirmed by the system."}
           </li>
           <li>
             {isZh
-              ? "下单成功并完成支付后，视为你已确认订单内容及金额。"
-              : "Once you place an order and complete payment, you are deemed to have confirmed the order details and amount."}
+              ? "如网站提供预约下单，可选择的预约时间不得晚于下单时间后 24 小时，且仍受门店营业时间、产能和实际可用时段限制。"
+              : "Where scheduled ordering is offered, the selected fulfillment time must be no later than 24 hours after the order is placed and remains subject to store hours, capacity, and available time slots."}
           </li>
           <li>
             {isZh
-              ? "如因库存不足或其他原因无法完成订单，我们会尽量联系你协商替换或退款。"
-              : "If we are unable to fulfill an order due to stock or other issues, we will make reasonable efforts to contact you to arrange an alternative or a refund."}
+              ? "如因售罄、设备故障、门店无法履约或其他合理原因无法完成订单，我们会根据情况联系你，并可安排替换、取消或退款。"
+              : "If we cannot fulfill an order because of an out-of-stock item, equipment issue, store-operational issue, or another reasonable cause, we may contact you and arrange a substitution, cancellation, or refund as appropriate."}
           </li>
         </ul>
       </section>
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold">
-          {isZh ? "4. 免责声明" : "4. Disclaimers"}
+          {isZh ? "4. 支付与信用卡附加费" : "4. Payment & credit-card surcharge"}
+        </h2>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            {isZh
+              ? "在线银行卡支付由 Clover 处理。我们接受系统支付页实际显示为可用的支付方式；目前信用卡支持 Visa、Mastercard 和 Discover，不接受 American Express。"
+              : "Online card payments are processed by Clover. We accept the payment methods shown as available by the payment flow; credit-card acceptance currently includes Visa, Mastercard, and Discover, but not American Express."}
+          </li>
+          <li>
+            {isZh
+              ? "对符合附加费条件的信用卡交易，我们收取交易金额 2.40% 的信用卡附加费，该费率不高于我们的信用卡受理成本。借记卡及其他不符合附加费条件的银行卡不收取该费用。实际附加费金额会在支付流程和收据/订单记录中显示。"
+              : "A 2.40% surcharge applies to eligible credit-card transactions and does not exceed our cost of acceptance. Debit cards and other cards not eligible for surcharging are not subject to this fee. The actual surcharge amount is shown in the payment flow and on the receipt/order record."}
+          </li>
+          <li>
+            {isZh
+              ? "如发生退款，信用卡附加费会按照适用的支付网络规则和实际退款金额一并处理。"
+              : "Where a refund is issued, the credit-card surcharge is handled together with the refund in accordance with applicable payment-network rules and the amount actually refunded."}
+          </li>
+        </ul>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">
+          {isZh ? "5. 配送与第三方平台" : "5. Delivery & third-party platforms"}
+        </h2>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            {isZh
+              ? "直接在 sanq.ca 下单并向 SANQIN RESTAURANT 付款的订单属于 SanQ 网站订单。即使我们使用 Uber 或其他第三方配送服务商完成配送，该订单仍适用 SanQ 的订单和退款政策。"
+              : "An order placed directly on sanq.ca and paid to SANQIN RESTAURANT is a SanQ website order. Even if we use Uber or another third-party delivery provider to complete delivery, the SanQ order and refund policies continue to apply."}
+          </li>
+          <li>
+            {isZh
+              ? "通过 Uber Eats 或其他第三方交易平台直接下单并在该平台完成交易的订单，适用该平台自身的交易、客服和退款流程；SanQ 会在合理范围内配合平台核实。"
+              : "Orders placed and transacted directly through Uber Eats or another third-party marketplace are subject to that platform’s own transaction, support, and refund processes. SanQ will reasonably cooperate with the platform when verification is needed."}
+          </li>
+        </ul>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">
+          {isZh ? "6. 退款、取消与食品问题" : "6. Refunds, cancellations & food issues"}
         </h2>
         <p>
           {isZh
-            ? "在适用法律允许的最大范围内，本网站按“现状”提供。尽管我们会尽力保持网站运行稳定并确保信息准确，但无法保证网站不存在中断、延迟或错误。因网络故障、第三方系统或不可抗力导致的订单异常、延误或取消，我们将尽量协助处理，但不对由此产生的间接损失承担责任。"
-            : "To the fullest extent permitted by law, this website is provided on an “as is” basis. While we strive to keep the website available and information accurate, we cannot guarantee that it will be free from interruptions, delays, or errors. We will assist with issues arising from network failures, third-party systems, or force majeure events, but are not liable for indirect losses caused by such events."}
+            ? "订单修改、取消、食品质量、错餐、漏餐、配送问题、积分/优惠券恢复和退款方式等，按本网站公布的《退款与取消政策》处理。该政策不会限制你依据适用法律享有的强制性权利。"
+            : "Order changes, cancellations, food-quality issues, wrong or missing items, delivery issues, restoration of points/coupons, and refund methods are handled under the published Refund & Cancellation Policy. That policy does not limit any mandatory rights you have under applicable law."}
         </p>
       </section>
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold">
-          {isZh ? "5. 禁止行为" : "5. Prohibited activities"}
+          {isZh ? "7. 过敏原与特殊要求" : "7. Allergens & special requests"}
         </h2>
         <p>
           {isZh
-            ? "你同意不会以任何非法方式或可能影响网站正常运行的方式使用本网站，包括但不限于：恶意下单、刷单、尝试入侵系统、批量抓取数据等。一经发现，我们有权限制或终止你的访问及会员资格，并视情况依法追究责任。"
-            : "You agree not to use this website for any unlawful purpose or in any way that could disrupt its normal operation, including but not limited to fraudulent orders, bulk abuse, attempts to hack or scrape data at scale. We may restrict or terminate access and membership in such cases and may take further action as permitted by law."}
+            ? "菜品可能含有过敏原或存在共用厨房、设备和工作区域造成的交叉接触风险。订单备注或特殊要求不构成无过敏原保证。请在下单前查看《过敏原与食材说明》，严重食物过敏者应在下单前直接联系我们评估是否适合订购。"
+            : "Food may contain allergens or be exposed to cross-contact through shared kitchen areas, equipment, and work surfaces. Order notes or special requests do not constitute an allergen-free guarantee. Review our Allergen & Ingredient Information before ordering, and contact us before placing an order if you have a severe food allergy."}
         </p>
       </section>
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold">
-          {isZh ? "6. 条款更新与适用法律" : "6. Changes & governing law"}
+          {isZh ? "8. 禁止行为" : "8. Prohibited activities"}
         </h2>
         <p>
           {isZh
-            ? "我们可能会不时更新本网站条款。更新后的条款一经在网站发布，立即生效。你继续使用本网站即视为接受更新后的条款。本条款的解释及适用，以门店所在司法辖区的相关法律为准。"
-            : "We may update these terms from time to time. Updated terms take effect once posted on this website. Your continued use of the website means you accept the updated terms. These terms are governed by the laws of the jurisdiction where our restaurant is located."}
+            ? "不得以违法、欺诈、恶意刷单、滥用优惠、利用系统漏洞、未经授权访问系统、干扰网站运行或大规模抓取数据等方式使用本网站。我们可在合理必要范围内限制访问、暂停相关权益或采取其他适用措施，并保留依法追究责任的权利。"
+            : "You must not use this website for unlawful or fraudulent activity, abusive ordering, promotion abuse, exploitation of system defects, unauthorized system access, interference with site operation, or large-scale scraping. We may reasonably restrict access, suspend affected benefits, or take other appropriate measures and may pursue available legal remedies."}
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">
+          {isZh ? "9. 网站可用性与责任限制" : "9. Site availability & limitation of liability"}
+        </h2>
+        <p>
+          {isZh
+            ? "在适用法律允许的最大范围内，本网站按现状提供。我们会合理努力维持服务并保持信息准确，但无法保证网络、第三方服务或设备始终不中断。因第三方系统、网络故障或不可抗力造成问题时，我们会合理协助处理；本条款不排除或限制法律不允许排除或限制的责任。"
+            : "To the fullest extent permitted by law, this website is provided on an as-is basis. We make reasonable efforts to maintain the service and keep information accurate but cannot guarantee uninterrupted availability of networks, third-party services, or equipment. We will reasonably assist with issues caused by third-party systems, network failures, or force majeure, and nothing in these terms excludes or limits liability that cannot lawfully be excluded or limited."}
+        </p>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold">
+          {isZh ? "10. 条款更新与适用法律" : "10. Changes & governing law"}
+        </h2>
+        <p>
+          {isZh
+            ? "我们可能不时更新本条款，并在页面注明新的生效日期。更新后的条款适用于生效日期后的后续网站使用和交易，不会仅因网站后来更新而追溯改变已完成订单的结算结果。本条款受加拿大及安大略省适用法律管辖。"
+            : "We may update these terms from time to time and will state the new effective date on this page. Updated terms apply to website use and transactions after the effective date and do not retroactively change completed-order settlements merely because the website terms were later updated. These terms are governed by applicable laws of Canada and Ontario."}
         </p>
       </section>
     </div>

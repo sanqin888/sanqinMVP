@@ -2,9 +2,25 @@ export type AnalyticsConsentStatus = "accepted" | "rejected" | "unset";
 
 const ANALYTICS_CONSENT_KEY = "sanqin_analytics_consent_v1";
 const ANALYTICS_CONSENT_BY_USER_KEY = "sanqin_analytics_consent_by_user_v1";
+const ANALYTICS_CONSENT_COOKIE = "sanqin_analytics_consent_v1";
 const CONSENT_EVENT_NAME = "sanqin:analytics-consent-changed";
 
 type ConsentByUser = Record<string, Exclude<AnalyticsConsentStatus, "unset">>;
+
+function syncConsentCookie(status: AnalyticsConsentStatus) {
+  if (typeof document === "undefined") return;
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
+
+  if (status === "unset") {
+    document.cookie = `${ANALYTICS_CONSENT_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0${secure}`;
+    return;
+  }
+
+  document.cookie = `${ANALYTICS_CONSENT_COOKIE}=${status}; Path=/; SameSite=Lax; Max-Age=31536000${secure}`;
+}
 
 function readRawConsent(): string | null {
   if (typeof window === "undefined") return null;
@@ -42,11 +58,18 @@ export function getAnalyticsConsentStatus(subjectKey?: string): AnalyticsConsent
   if (normalizedSubjectKey) {
     const byUser = readConsentByUser();
     const value = byUser[normalizedSubjectKey];
-    if (value === "accepted" || value === "rejected") return value;
+    if (value === "accepted" || value === "rejected") {
+      syncConsentCookie(value);
+      return value;
+    }
   }
 
   const value = readRawConsent();
-  if (value === "accepted" || value === "rejected") return value;
+  if (value === "accepted" || value === "rejected") {
+    syncConsentCookie(value);
+    return value;
+  }
+  syncConsentCookie("unset");
   return "unset";
 }
 
@@ -58,6 +81,7 @@ export function setAnalyticsConsent(status: Exclude<AnalyticsConsentStatus, "uns
   if (typeof window === "undefined") return;
 
   window.localStorage.setItem(ANALYTICS_CONSENT_KEY, status);
+  syncConsentCookie(status);
 
   const normalizedSubjectKey = normalizeSubjectKey(subjectKey);
   if (normalizedSubjectKey) {
@@ -79,6 +103,7 @@ export function onAnalyticsConsentChange(callback: (status: AnalyticsConsentStat
   const handleCustomEvent = (event: Event) => {
     const detail = event instanceof CustomEvent ? event.detail : undefined;
     if (detail === "accepted" || detail === "rejected") {
+      syncConsentCookie(detail);
       callback(detail);
       return;
     }

@@ -178,7 +178,6 @@ export class NotificationService {
   }
 
   async notifyRegisterWelcome(params: { user: User }) {
-    // 准备基础变量
     const locale = params.user.language === 'ZH' ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
@@ -409,18 +408,15 @@ export class NotificationService {
   }
 
   async notifySubscriptionWelcome(params: { user: User }) {
-    // 1. 基础检查
     if (!params.user.email || !params.user.marketingEmailOptIn) {
       return { ok: false, error: 'marketing opt-in missing' };
     }
 
-    // 2. 准备语言环境和基础变量 (Store Name 等)
     const locale = params.user.language === 'ZH' ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const manageUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
 
-    // 3. 渲染模版 (Subscription.email.html.hbs)
     const { subject, html, text } = await this.templateRenderer.renderEmail({
       template: 'Subscription',
       locale,
@@ -429,18 +425,16 @@ export class NotificationService {
         userName:
           this.formatUserName(params.user) ||
           (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
-        // 这里生成管理订阅的链接，假设您的前端地址配置在环境变量中
         manageUrl,
       },
     });
 
-    // 4. 发送邮件
     return this.emailService.sendEmail({
       to: params.user.email,
       subject,
       html,
       text,
-      tags: { type: 'welcome' }, //以此标记这是欢迎信
+      tags: { type: 'welcome' },
       locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
       templateType: MessagingTemplateType.SUBSCRIPTION_CONFIRM,
       userId: params.user.id,
@@ -461,6 +455,9 @@ export class NotificationService {
     const { user, program } = params;
     if (!program.triggerType || !GIFT_CONTENT_MAP[program.triggerType]) {
       return { ok: false, error: 'unsupported_trigger_type' };
+    }
+    if (!user.email) {
+      return { ok: false, error: 'reward email unavailable' };
     }
 
     const locale = user.language === 'ZH' ? 'zh' : 'en';
@@ -484,48 +481,22 @@ export class NotificationService {
       giftTitle: content.title,
       giftMessage: content.message,
     };
-    const template = 'giftGeneral';
+    const { subject, html, text } = await this.templateRenderer.renderEmail({
+      template: 'giftGeneral',
+      locale,
+      vars,
+    });
 
-    return this.sendEmailFirst({
-      email: user.email,
-      phone: user.phone,
-      context: `gift_issued:${program.programStableId}:${user.id}`,
-      sendEmail: async () => {
-        const { subject, html, text } = await this.templateRenderer.renderEmail(
-          { template, locale, vars },
-        );
-        return this.emailService.sendEmail({
-          to: user.email!,
-          subject,
-          html,
-          text,
-          tags: { type: 'gift_issued' },
-          locale: user.language === 'ZH' ? 'zh-CN' : 'en',
-          templateType: MessagingTemplateType.SIGNUP_WELCOME,
-          userId: user.id,
-          metadata: { triggerType: program.triggerType ?? null },
-        });
-      },
-      sendSms: async (fallbackReason) => {
-        const body = await this.templateRenderer.renderSms({
-          template,
-          locale,
-          vars,
-        });
-        return this.smsService.sendSms({
-          phone: user.phone!,
-          body,
-          templateType: MessagingTemplateType.SIGNUP_WELCOME,
-          locale,
-          userId: user.id,
-          metadata: {
-            triggerType: program.triggerType ?? null,
-            ...(fallbackReason
-              ? { fallbackFrom: 'email', fallbackReason }
-              : {}),
-          },
-        });
-      },
+    return this.emailService.sendEmail({
+      to: user.email,
+      subject,
+      html,
+      text,
+      tags: { type: 'gift_issued' },
+      locale: user.language === 'ZH' ? 'zh-CN' : 'en',
+      templateType: MessagingTemplateType.SIGNUP_WELCOME,
+      userId: user.id,
+      metadata: { triggerType: program.triggerType },
     });
   }
 
