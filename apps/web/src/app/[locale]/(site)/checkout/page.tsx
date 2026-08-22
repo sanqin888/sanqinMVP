@@ -166,14 +166,13 @@ const CHECKOUT_INTENT_STORAGE_KEY = "cloverCheckoutIntentId";
 const GOOGLE_PAY_INTENT_STORAGE_KEY = "sanq_google_pay_intent_v1";
 type DeliveryOptionDefinition = {
   provider: "UBER";
-  fee: number; // 仅用于显示说明，不参与实际计费
+  fee: number;
   eta: [number, number];
   labels: Record<Locale, { title: string; description: string }>;
 };
 
 type DeliveryOptionDisplay = {
   type: "UBER";
-  /** 展示给用户看的配送费（单位：分） */
   fee: number;
   eta: [number, number];
   provider: DeliveryOptionDefinition["provider"];
@@ -345,7 +344,6 @@ type CheckoutCoupon = {
   minSpendCents?: number;
   expiresAt?: string;
   unlockedItemStableIds?: string[];
-  // 为了过滤 “active” / “expired”等状态，加个可选字段，避免 TS 报错
   status?: "active" | "used" | "expired" | string;
 };
 
@@ -361,7 +359,6 @@ type PrepTimeResponse = {
   minutes: number;
 };
 
-// CustomerInfo.phone = 本单的联系电话（可能等于账号手机号，但不会自动反写到 User.phone）
 type CustomerInfo = {
   firstName: string;
   lastName: string;
@@ -474,7 +471,6 @@ export default function CheckoutPage() {
   const { items, updateNotes, updateQuantity, removeItemsByStableId } =
     usePersistentCart();
   const { data: session, status: authStatus } = useSession();
-  // ====== 菜单（用于把购物车 itemId 映射成 DB 里的菜品信息） ======
   const [publicMenuLookup, setPublicMenuLookup] = useState<Map<
     string,
     LocalizedMenuItem
@@ -487,16 +483,12 @@ export default function CheckoutPage() {
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [entitlements, setEntitlements] =
     useState<MenuEntitlementsResponse | null>(null);
-  const [entitlementsError, setEntitlementsError] = useState<string | null>(
-    null,
-  );
+  const [entitlementsError, setEntitlementsError] = useState<string | null>(null);
 
   const membershipHref =
     authStatus === "authenticated"
       ? `/${locale}/membership`
-      : `/${locale}/membership/login?redirect=${encodeURIComponent(
-          checkoutHref,
-        )}`;
+      : `/${locale}/membership/login?redirect=${encodeURIComponent(checkoutHref)}`;
   const memberCenterName = session?.user?.email ?? null;
   const membershipLabel =
     authStatus === "authenticated"
@@ -517,7 +509,6 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     const fetchPrepTime = async () => {
       try {
         const response = await apiFetch<PrepTimeResponse>("/orders/prep-time");
@@ -525,14 +516,10 @@ export default function CheckoutPage() {
           setPrepTimeMinutes(clampDisplayedPrepTimeMinutes(response.minutes));
         }
       } catch {
-        if (!cancelled) {
-          setPrepTimeMinutes(null);
-        }
+        if (!cancelled) setPrepTimeMinutes(null);
       }
     };
-
     fetchPrepTime();
-
     return () => {
       cancelled = true;
     };
@@ -575,16 +562,12 @@ export default function CheckoutPage() {
   }, []);
 
   const entitlementItems = useMemo(
-    () =>
-      buildLocalizedEntitlementItems(entitlements?.unlockedItems ?? [], locale),
+    () => buildLocalizedEntitlementItems(entitlements?.unlockedItems ?? [], locale),
     [entitlements, locale],
   );
 
   const entitlementItemCouponMap = useMemo(() => {
-    const map = new Map<
-      string,
-      { userCouponId: string; couponStableId: string }
-    >();
+    const map = new Map<string, { userCouponId: string; couponStableId: string }>();
     for (const item of entitlements?.unlockedItems ?? []) {
       if (!map.has(item.stableId)) {
         map.set(item.stableId, {
@@ -598,38 +581,27 @@ export default function CheckoutPage() {
 
   const menuLookup = useMemo(() => {
     const merged = new Map<string, LocalizedMenuItem>();
-
-    if (publicMenuLookup) {
-      publicMenuLookup.forEach((value, key) => merged.set(key, value));
-    }
-
+    if (publicMenuLookup) publicMenuLookup.forEach((value, key) => merged.set(key, value));
     entitlementItems.forEach((ent) => {
       const existing = merged.get(ent.stableId);
-
       if (!existing) {
         merged.set(ent.stableId, ent);
         return;
       }
-
       merged.set(ent.stableId, {
         ...existing,
         ...ent,
-
-        // ✅ entitlement 没有 optionGroups 时，保留菜单版本的 optionGroups
         optionGroups:
           ent.optionGroups && ent.optionGroups.length > 0
             ? ent.optionGroups
             : existing.optionGroups,
       });
     });
-
     return merged.size ? merged : null;
   }, [entitlementItems, publicMenuLookup]);
 
   useEffect(() => {
-    if (!menuLookup || !publicMenuLookup || menuLoading || items.length === 0) {
-      return;
-    }
+    if (!menuLookup || !publicMenuLookup || menuLoading || items.length === 0) return;
     const allowed = new Set(menuLookup.keys());
     const invalid = items.filter((item) => !allowed.has(item.productStableId));
     if (invalid.length === 0) return;
@@ -639,14 +611,7 @@ export default function CheckoutPage() {
         ? "部分需持券餐品已从购物车移除。"
         : "Some coupon-only items were removed from your cart.",
     );
-  }, [
-    items,
-    locale,
-    menuLoading,
-    menuLookup,
-    publicMenuLookup,
-    removeItemsByStableId,
-  ]);
+  }, [items, locale, menuLoading, menuLookup, publicMenuLookup, removeItemsByStableId]);
 
   const localizedCartItems = useMemo<LocalizedCartItem[]>(() => {
     if (!menuLookup) return [];
@@ -664,19 +629,15 @@ export default function CheckoutPage() {
       const selectedOptions: SelectedOptionDisplay[] = [];
       let optionDeltaCents = 0;
       const optionGroups = cartItem.item.optionGroups ?? [];
-      const selectedOptionSnapshots = Object.values(
-        cartItem.options ?? {},
-      ).flat();
+      const selectedOptionSnapshots = Object.values(cartItem.options ?? {}).flat();
       const optionLookup = new Map<string, SelectedOptionDisplay>();
-      const missingOptionGroupLabel =
-        locale === "zh" ? "已选项" : "Selected option";
+      const missingOptionGroupLabel = locale === "zh" ? "已选项" : "Selected option";
 
       optionGroups.forEach((group) => {
         const groupName =
           locale === "zh" && group.template.nameZh
             ? group.template.nameZh
             : group.template.nameEn;
-
         group.options.forEach((option) => {
           if (optionLookup.has(option.optionStableId)) return;
           const optionName =
@@ -691,8 +652,7 @@ export default function CheckoutPage() {
 
       selectedOptionSnapshots.forEach((snapshot) => {
         const optionDisplay = optionLookup.get(snapshot.id);
-        const optionName =
-          snapshot.name?.trim() || optionDisplay?.optionName || "";
+        const optionName = snapshot.name?.trim() || optionDisplay?.optionName || "";
         if (!optionName) return;
         const groupName = optionDisplay?.groupName ?? missingOptionGroupLabel;
         const priceDeltaCents =
@@ -700,11 +660,7 @@ export default function CheckoutPage() {
             ? snapshot.priceDeltaCents
             : (optionDisplay?.priceDeltaCents ?? 0);
         optionDeltaCents += priceDeltaCents;
-        selectedOptions.push({
-          groupName,
-          optionName,
-          priceDeltaCents,
-        });
+        selectedOptions.push({ groupName, optionName, priceDeltaCents });
       });
 
       const selectedSpecial = cartItem.dailySpecialStableId
@@ -738,17 +694,11 @@ export default function CheckoutPage() {
   }, [dailySpecialLookup, localizedCartItems, locale]);
 
   const requiredEntitlementItemStableIds = useMemo(() => {
-    if (!publicMenuLookup) {
-      return new Set<string>();
-    }
-
+    if (!publicMenuLookup) return new Set<string>();
     const required = new Set<string>();
     for (const cartItem of cartItemsWithPricing) {
       const isPublicMenuItem = publicMenuLookup.has(cartItem.productStableId);
-      if (
-        !isPublicMenuItem &&
-        entitlementItemCouponMap.has(cartItem.productStableId)
-      ) {
+      if (!isPublicMenuItem && entitlementItemCouponMap.has(cartItem.productStableId)) {
         required.add(cartItem.productStableId);
       }
     }
@@ -756,24 +706,17 @@ export default function CheckoutPage() {
   }, [cartItemsWithPricing, entitlementItemCouponMap, publicMenuLookup]);
 
   const selectedEntitlement = useMemo(() => {
-    if (!entitlements || requiredEntitlementItemStableIds.size === 0) {
-      return null;
-    }
+    if (!entitlements || requiredEntitlementItemStableIds.size === 0) return null;
     const requiredIds = Array.from(requiredEntitlementItemStableIds);
     return (
       entitlements.entitlements.find((entitlement) =>
-        requiredIds.every((id) =>
-          entitlement.unlockedItemStableIds.includes(id),
-        ),
+        requiredIds.every((id) => entitlement.unlockedItemStableIds.includes(id)),
       ) ?? null
     );
   }, [entitlements, requiredEntitlementItemStableIds]);
 
   const selectedUserCouponId = selectedEntitlement?.userCouponId ?? null;
-
-  const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
-    "pickup",
-  );
+  const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
   const [deliveryType] = useState<DeliveryTypeOption>("PRIORITY");
   const [schedule] = useState<ScheduleSlot>("asap");
   const [customer, setCustomer] = useState<CustomerInfo>({
@@ -789,30 +732,23 @@ export default function CheckoutPage() {
     notes: "",
   });
 
-  // 会员手机号（从 membership 接口加载，用于预填）
   const [memberPhone, setMemberPhone] = useState<string | null>(null);
   const [memberPhoneVerified, setMemberPhoneVerified] = useState(false);
   const [memberEmailVerified, setMemberEmailVerified] = useState(false);
-  const [phonePrefilled, setPhonePrefilled] = useState(false); // 只预填一次
+  const [phonePrefilled, setPhonePrefilled] = useState(false);
   const [memberFirstName, setMemberFirstName] = useState<string | null>(null);
   const [memberLastName, setMemberLastName] = useState<string | null>(null);
   const [memberEmail, setMemberEmail] = useState<string | null>(null);
-  const [memberUserStableId, setMemberUserStableId] = useState<string | null>(
-    null,
-  );
+  const [memberUserStableId, setMemberUserStableId] = useState<string | null>(null);
   const [firstNamePrefilled, setFirstNamePrefilled] = useState(false);
   const [lastNamePrefilled, setLastNamePrefilled] = useState(false);
   const [emailPrefilled, setEmailPrefilled] = useState(false);
   const [addressPrefilled, setAddressPrefilled] = useState(false);
   const [memberAddresses, setMemberAddresses] = useState<MemberAddress[]>([]);
-  const [selectedAddressStableId, setSelectedAddressStableId] = useState<
-    string | null
-  >(null);
-  const [selectedCoordinates, setSelectedCoordinates] =
-    useState<Coordinates | null>(null);
+  const [selectedAddressStableId, setSelectedAddressStableId] = useState<string | null>(null);
+  const [selectedCoordinates, setSelectedCoordinates] = useState<Coordinates | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
-  // 联系方式验证流程状态：邮箱优先，手机号兜底
   const [contactVerificationMethod, setContactVerificationMethod] = useState<
     "email" | "phone" | null
   >(null);
@@ -820,17 +756,10 @@ export default function CheckoutPage() {
     "idle" | "codeSent" | "verified"
   >("idle");
   const [phoneVerificationCode, setPhoneVerificationCode] = useState("");
-  const [phoneVerificationLoading, setPhoneVerificationLoading] =
-    useState(false);
-  const [phoneVerificationError, setPhoneVerificationError] = useState<
-    string | null
-  >(null);
-  const [verifiedEmailValue, setVerifiedEmailValue] = useState<string | null>(
-    null,
-  );
-  const [verifiedPhoneValue, setVerifiedPhoneValue] = useState<string | null>(
-    null,
-  );
+  const [phoneVerificationLoading, setPhoneVerificationLoading] = useState(false);
+  const [phoneVerificationError, setPhoneVerificationError] = useState<string | null>(null);
+  const [verifiedEmailValue, setVerifiedEmailValue] = useState<string | null>(null);
+  const [verifiedPhoneValue, setVerifiedPhoneValue] = useState<string | null>(null);
   const customerRef = useRef(customer);
   const verifiedEmailRef = useRef(verifiedEmailValue);
   const verifiedPhoneRef = useRef(verifiedPhoneValue);
@@ -840,12 +769,9 @@ export default function CheckoutPage() {
   verifiedEmailRef.current = verifiedEmailValue;
   verifiedPhoneRef.current = verifiedPhoneValue;
 
-  const [confirmation, setConfirmation] = useState<ConfirmationState | null>(
-    null,
-  );
+  const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isRedirectingToGooglePay, setIsRedirectingToGooglePay] =
-    useState(false);
+  const [isRedirectingToGooglePay, setIsRedirectingToGooglePay] = useState(false);
   const [isRedirectingToApplePay, setIsRedirectingToApplePay] = useState(false);
   const [isRedirectingToCardPay, setIsRedirectingToCardPay] = useState(false);
   const [payFlowState, setPayFlowState] = useState<PayFlowState>("IDLE");
@@ -854,23 +780,15 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     setIsPwaStandalone(isStandaloneWebApp());
-
     const mediaQuery = window.matchMedia?.("(display-mode: standalone)");
     if (!mediaQuery) return;
-
-    const handleDisplayModeChange = () => {
-      setIsPwaStandalone(isStandaloneWebApp());
-    };
-
+    const handleDisplayModeChange = () => setIsPwaStandalone(isStandaloneWebApp());
     mediaQuery.addEventListener("change", handleDisplayModeChange);
-    return () => {
-      mediaQuery.removeEventListener("change", handleDisplayModeChange);
-    };
+    return () => mediaQuery.removeEventListener("change", handleDisplayModeChange);
   }, []);
+
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
-  const [challengeIntentId, setChallengeIntentId] = useState<string | null>(
-    null,
-  );
+  const [challengeIntentId, setChallengeIntentId] = useState<string | null>(null);
   const [checkoutStatusPollTick, setCheckoutStatusPollTick] = useState(0);
   const checkoutIntentIdRef = useRef<string | null>(null);
   const [addressValidation, setAddressValidation] = useState<{
@@ -881,12 +799,8 @@ export default function CheckoutPage() {
 
   const [redeemPointsInput, setRedeemPointsInput] = useState<string>("");
   const [loyaltyInfo, setLoyaltyInfo] = useState<LoyaltyInfo | null>(null);
-  const [availableCoupons, setAvailableCoupons] = useState<CheckoutCoupon[]>(
-    [],
-  );
-  const [appliedCoupon, setAppliedCoupon] = useState<CheckoutCoupon | null>(
-    null,
-  );
+  const [availableCoupons, setAvailableCoupons] = useState<CheckoutCoupon[]>([]);
+  const [appliedCoupon, setAppliedCoupon] = useState<CheckoutCoupon | null>(null);
   const [couponModalOpen, setCouponModalOpen] = useState(false);
   const entitlementBlockingMessage = useMemo(() => {
     if (requiredEntitlementItemStableIds.size === 0) return null;
@@ -901,56 +815,31 @@ export default function CheckoutPage() {
         : "Coupon-only items cannot be combined with other discounts. Please remove the discount coupon.";
     }
     return null;
-  }, [
-    appliedCoupon,
-    locale,
-    requiredEntitlementItemStableIds,
-    selectedEntitlement,
-  ]);
+  }, [appliedCoupon, locale, requiredEntitlementItemStableIds, selectedEntitlement]);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
-  const [pricingPreview, setPricingPreview] = useState<OrderPricingPreview | null>(
-    null,
-  );
+  const [pricingPreview, setPricingPreview] = useState<OrderPricingPreview | null>(null);
   const [pricingPreviewError, setPricingPreviewError] = useState(false);
-  const [utensilsPreference, setUtensilsPreference] = useState<"yes" | "no">(
-    "no",
-  );
-  const [utensilsType, setUtensilsType] = useState<"chopsticks" | "fork">(
-    "chopsticks",
-  );
-  const [utensilsQuantity, setUtensilsQuantity] = useState<"1" | "2" | "other">(
-    "1",
-  );
+  const [utensilsPreference, setUtensilsPreference] = useState<"yes" | "no">("no");
+  const [utensilsType, setUtensilsType] = useState<"chopsticks" | "fork">("chopsticks");
+  const [utensilsQuantity, setUtensilsQuantity] = useState<"1" | "2" | "other">("1");
   const [utensilsCustomQuantity, setUtensilsCustomQuantity] = useState("");
-
-  // 门店营业状态（web / POS 共用）
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(false);
   const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
 
-  // ====== 加载菜单（Checkout 也用 DB 菜单，保证价格/名称同步） ======
   useEffect(() => {
     let cancelled = false;
-
     async function loadMenuForCheckout() {
       setMenuLoading(true);
       setMenuError(null);
       try {
-        const dbMenu = await apiFetch<PublicMenuApiResponse>("/menu/public", {
-          cache: "no-store",
-        });
+        const dbMenu = await apiFetch<PublicMenuApiResponse>("/menu/public", { cache: "no-store" });
         if (cancelled) return;
-
-        const categories = buildLocalizedMenuFromDb(
-          dbMenu.categories ?? [],
-          locale,
-        );
+        const categories = buildLocalizedMenuFromDb(dbMenu.categories ?? [], locale);
         const map = new Map<string, LocalizedMenuItem>();
         for (const category of categories) {
-          for (const item of category.items) {
-            map.set(item.stableId, item);
-          }
+          for (const item of category.items) map.set(item.stableId, item);
         }
         const specialsMap = new Map<string, DailySpecialLookupEntry>();
         for (const special of dbMenu.dailySpecials ?? []) {
@@ -965,12 +854,8 @@ export default function CheckoutPage() {
         setPublicMenuLookup(map);
         setDailySpecialLookup(specialsMap);
       } catch (error) {
-        console.error(
-          "Failed to load menu for checkout",
-          toSafeErrorLog(error),
-        );
+        console.error("Failed to load menu for checkout", toSafeErrorLog(error));
         if (cancelled) return;
-
         setPublicMenuLookup(new Map());
         setDailySpecialLookup(new Map());
         setMenuError(
@@ -979,14 +864,10 @@ export default function CheckoutPage() {
             : "Failed to load live menu. If you continue, please double-check prices and items with the store.",
         );
       } finally {
-        if (!cancelled) {
-          setMenuLoading(false);
-        }
+        if (!cancelled) setMenuLoading(false);
       }
     }
-
     void loadMenuForCheckout();
-
     return () => {
       cancelled = true;
     };
@@ -996,7 +877,6 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadEntitlements() {
       if (!isMemberLoggedIn) {
         setEntitlements(null);
@@ -1004,10 +884,7 @@ export default function CheckoutPage() {
         return;
       }
       try {
-        const data = await apiFetch<MenuEntitlementsResponse>(
-          "/promotions/entitlements",
-          { cache: "no-store" },
-        );
+        const data = await apiFetch<MenuEntitlementsResponse>("/promotions/entitlements", { cache: "no-store" });
         if (cancelled) return;
         setEntitlements(data);
         setEntitlementsError(null);
@@ -1022,23 +899,18 @@ export default function CheckoutPage() {
         );
       }
     }
-
     void loadEntitlements();
-
     return () => {
       cancelled = true;
     };
   }, [isMemberLoggedIn, locale]);
 
-  // 加载门店营业状态
   useEffect(() => {
     let cancelled = false;
-
     async function loadStoreStatus() {
       try {
         setStoreStatusLoading(true);
         setStoreStatusError(null);
-
         const data = await apiFetch<StoreStatus>("/public/store-status");
         if (cancelled) return;
         setStoreStatus(data);
@@ -1051,30 +923,19 @@ export default function CheckoutPage() {
             : "Unable to confirm store status. If you continue, please make sure the store is actually open.",
         );
       } finally {
-        if (!cancelled) {
-          setStoreStatusLoading(false);
-        }
+        if (!cancelled) setStoreStatusLoading(false);
       }
     }
-
     void loadStoreStatus();
-
-    // 简单轮询：每 60 秒刷新一次
     const intervalId = window.setInterval(loadStoreStatus, 60_000);
-
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
   }, [locale]);
 
-  // ✅ 小计：按“分”计算，先把单价（CAD）×100 再四舍五入
   const subtotalCents = useMemo(
-    () =>
-      cartItemsWithPricing.reduce(
-        (total, cartItem) => total + cartItem.lineTotalCents,
-        0,
-      ),
+    () => cartItemsWithPricing.reduce((total, cartItem) => total + cartItem.lineTotalCents, 0),
     [cartItemsWithPricing],
   );
   const couponEligibleSubtotalCents = useMemo(
@@ -1086,16 +947,9 @@ export default function CheckoutPage() {
       ),
     [cartItemsWithPricing],
   );
-  const hasCouponExcludedItems = cartItemsWithPricing.some(
-    (cartItem) => cartItem.disallowCoupons,
-  );
-
-  // ✅ 服务费（目前 0 分）
-  const serviceFeeCents: number = 0;
-
+  const hasCouponExcludedItems = cartItemsWithPricing.some((cartItem) => cartItem.disallowCoupons);
+  const serviceFeeCents = 0;
   const isDeliveryFulfillment = fulfillment === "delivery";
-
-  // 用于计费的“公里数”：不足 1km 按 1km，向上取整
   const billedDistanceKm =
     isDeliveryFulfillment && addressValidation.distanceKm !== null
       ? Math.max(1, Math.ceil(addressValidation.distanceKm))
@@ -1103,7 +957,6 @@ export default function CheckoutPage() {
         ? 1
         : 0;
 
-  // 仅保留 Uber 配送（$6 + $1/km）
   const deliveryOptions: DeliveryOptionDisplay[] = [
     {
       ...UBER_DELIVERY_OPTION,
@@ -1120,12 +973,7 @@ export default function CheckoutPage() {
   ];
 
   const resetAddressValidation = useCallback(
-    () =>
-      setAddressValidation({
-        distanceKm: null,
-        isChecking: false,
-        error: null,
-      }),
+    () => setAddressValidation({ distanceKm: null, isChecking: false, error: null }),
     [],
   );
 
@@ -1150,51 +998,35 @@ export default function CheckoutPage() {
     [locale],
   );
 
-  // 统一从“分”格式化成 $xx.xx
   const formatMoney = (cents: number) =>
     currencyFormatter.format(cents / 100).replace(/^CA\$\s?/, "$");
 
   const formatDistanceValue = useCallback((km: number) => {
     const rounded = Math.round(km * 10) / 10;
     if (!Number.isFinite(rounded)) return `${km} km`;
-    return `${
-      Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)
-    } km`;
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)} km`;
   }, []);
 
   const applyDistanceTemplate = useCallback(
     (template: string, distanceLabel?: string) =>
-      template
-        .replace("{distance}", distanceLabel ?? "")
-        .replace("{radius}", radiusLabel),
+      template.replace("{distance}", distanceLabel ?? "").replace("{radius}", radiusLabel),
     [radiusLabel],
   );
 
-  // 这里和上面的 deliveryOptions 保持同一套规则（单位：分）
   const deliveryFeeCents =
-    !isDeliveryFulfillment || subtotalCents <= 0
-      ? 0
-      : 600 + 100 * billedDistanceKm;
+    !isDeliveryFulfillment || subtotalCents <= 0 ? 0 : 600 + 100 * billedDistanceKm;
 
-  // === 积分抵扣相关计算 ===
-
-  // 每“点”可以抵扣多少分（1 CAD = 100 分）
   const loyaltyCentsPerPoint = useMemo(() => {
-    if (!loyaltyInfo) return 0;
-    if (loyaltyInfo.points <= 0) return 0;
-    return 100; // 1 pt = $1.00
+    if (!loyaltyInfo || loyaltyInfo.points <= 0) return 0;
+    return 100;
   }, [loyaltyInfo]);
 
   const resolveCouponApplicableSubtotalCents = useCallback(
     (coupon: CheckoutCoupon) => {
       const restrictedStableIds = new Set(
-        (coupon.unlockedItemStableIds ?? [])
-          .map((id) => id.trim())
-          .filter(Boolean),
+        (coupon.unlockedItemStableIds ?? []).map((id) => id.trim()).filter(Boolean),
       );
-      if (restrictedStableIds.size === 0) {
-        return couponEligibleSubtotalCents;
-      }
+      if (restrictedStableIds.size === 0) return couponEligibleSubtotalCents;
       return cartItemsWithPricing.reduce((total, cartItem) => {
         if (cartItem.disallowCoupons) return total;
         return restrictedStableIds.has(cartItem.productStableId)
@@ -1207,8 +1039,7 @@ export default function CheckoutPage() {
 
   const couponDiscountCents = useMemo(() => {
     if (!appliedCoupon) return 0;
-    const applicableSubtotalCents =
-      resolveCouponApplicableSubtotalCents(appliedCoupon);
+    const applicableSubtotalCents = resolveCouponApplicableSubtotalCents(appliedCoupon);
     if (
       typeof appliedCoupon.minSpendCents === "number" &&
       applicableSubtotalCents < appliedCoupon.minSpendCents
@@ -1216,62 +1047,34 @@ export default function CheckoutPage() {
       return 0;
     }
     if (typeof appliedCoupon.discountPercent === "number") {
-      const percent = Math.max(
-        0,
-        Math.min(100, Math.round(appliedCoupon.discountPercent)),
-      );
+      const percent = Math.max(0, Math.min(100, Math.round(appliedCoupon.discountPercent)));
       return Math.min(
         applicableSubtotalCents,
         Math.round((applicableSubtotalCents * percent) / 100),
       );
     }
-    return Math.max(
-      0,
-      Math.min(appliedCoupon.discountCents, applicableSubtotalCents),
-    );
+    return Math.max(0, Math.min(appliedCoupon.discountCents, applicableSubtotalCents));
   }, [appliedCoupon, resolveCouponApplicableSubtotalCents]);
 
-  // 本单最多可抵扣多少金额（分）
   const maxRedeemableCentsForOrder = useMemo(() => {
-    if (!loyaltyInfo) return 0;
-    if (subtotalCents <= 0) return 0;
-
-    const subtotalAfterCoupon = Math.max(
-      0,
-      subtotalCents - couponDiscountCents,
-    );
+    if (!loyaltyInfo || subtotalCents <= 0) return 0;
+    const subtotalAfterCoupon = Math.max(0, subtotalCents - couponDiscountCents);
     return Math.min(loyaltyInfo.availableDiscountCents, subtotalAfterCoupon);
   }, [loyaltyInfo, subtotalCents, couponDiscountCents]);
 
-  // 本单最多可使用多少积分（允许小数）
   const maxRedeemablePointsForOrder = useMemo(() => {
-    if (!loyaltyInfo) return 0;
-    if (loyaltyCentsPerPoint <= 0) return 0;
-
+    if (!loyaltyInfo || loyaltyCentsPerPoint <= 0) return 0;
     const raw = maxRedeemableCentsForOrder / loyaltyCentsPerPoint;
     return Math.round(raw * 100) / 100;
   }, [loyaltyInfo, loyaltyCentsPerPoint, maxRedeemableCentsForOrder]);
 
-  // 用户输入“本单使用多少积分” → 折算成抵扣金额（分）
   const loyaltyRedeemCents = useMemo(() => {
-    if (!loyaltyInfo) return 0;
-    if (!redeemPointsInput) return 0;
-    if (loyaltyCentsPerPoint <= 0) return 0;
-
+    if (!loyaltyInfo || !redeemPointsInput || loyaltyCentsPerPoint <= 0) return 0;
     const normalized = redeemPointsInput.replace(/[^\d.]/g, "");
     const requestedPoints = Number(normalized);
-    if (!Number.isFinite(requestedPoints) || requestedPoints <= 0) {
-      return 0;
-    }
-
-    const clampedPoints = Math.min(
-      requestedPoints,
-      maxRedeemablePointsForOrder,
-    );
-
-    const centsFloat = clampedPoints * loyaltyCentsPerPoint;
-    const cents = Math.round(centsFloat + 1e-6);
-
+    if (!Number.isFinite(requestedPoints) || requestedPoints <= 0) return 0;
+    const clampedPoints = Math.min(requestedPoints, maxRedeemablePointsForOrder);
+    const cents = Math.round(clampedPoints * loyaltyCentsPerPoint + 1e-6);
     return Math.min(cents, maxRedeemableCentsForOrder);
   }, [
     loyaltyInfo,
@@ -1287,7 +1090,6 @@ export default function CheckoutPage() {
       setPricingPreviewError(false);
       return;
     }
-
     let cancelled = false;
     setPricingPreview(null);
     setPricingPreviewError(false);
@@ -1299,18 +1101,10 @@ export default function CheckoutPage() {
           channel: "web",
           fulfillmentType: fulfillment,
           ...(fulfillment === "delivery" ? { deliveryType } : {}),
-          ...(loyaltyInfo?.userStableId
-            ? { userStableId: loyaltyInfo.userStableId }
-            : {}),
-          ...(appliedCoupon?.couponStableId
-            ? { couponStableId: appliedCoupon.couponStableId }
-            : {}),
-          ...(selectedUserCouponId
-            ? { selectedUserCouponId }
-            : {}),
-          ...(loyaltyRedeemCents > 0
-            ? { redeemValueCents: loyaltyRedeemCents }
-            : {}),
+          ...(loyaltyInfo?.userStableId ? { userStableId: loyaltyInfo.userStableId } : {}),
+          ...(appliedCoupon?.couponStableId ? { couponStableId: appliedCoupon.couponStableId } : {}),
+          ...(selectedUserCouponId ? { selectedUserCouponId } : {}),
+          ...(loyaltyRedeemCents > 0 ? { redeemValueCents: loyaltyRedeemCents } : {}),
           items: cartItemsWithPricing.map((cartItem) => ({
             productStableId: cartItem.productStableId,
             qty: cartItem.quantity,
@@ -1326,7 +1120,6 @@ export default function CheckoutPage() {
           if (!cancelled) setPricingPreviewError(true);
         });
     }, 250);
-
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -1342,14 +1135,9 @@ export default function CheckoutPage() {
     selectedUserCouponId,
   ]);
 
-  const previewCouponDiscountCents =
-    pricingPreview?.couponDiscountCents ?? couponDiscountCents;
-  const automaticPromotionDiscountCents =
-    pricingPreview?.automaticPromotionDiscountCents ?? 0;
-  const previewLoyaltyRedeemCents =
-    pricingPreview?.loyaltyRedeemCents ?? loyaltyRedeemCents;
-
-  // 抵扣后的商品小计：用于税和合计的计算。自动优惠和 Coupon 以服务器预览为准。
+  const previewCouponDiscountCents = pricingPreview?.couponDiscountCents ?? couponDiscountCents;
+  const automaticPromotionDiscountCents = pricingPreview?.automaticPromotionDiscountCents ?? 0;
+  const previewLoyaltyRedeemCents = pricingPreview?.loyaltyRedeemCents ?? loyaltyRedeemCents;
   const effectiveSubtotalCents = useMemo(
     () =>
       Math.max(
@@ -1359,21 +1147,10 @@ export default function CheckoutPage() {
           automaticPromotionDiscountCents -
           previewLoyaltyRedeemCents,
       ),
-    [
-      automaticPromotionDiscountCents,
-      previewCouponDiscountCents,
-      previewLoyaltyRedeemCents,
-      subtotalCents,
-    ],
+    [automaticPromotionDiscountCents, previewCouponDiscountCents, previewLoyaltyRedeemCents, subtotalCents],
   );
-
-  // 税基 = 抵扣后小计 +（如配置了的话）配送费
-  const taxableBaseCents =
-    effectiveSubtotalCents + (TAX_ON_DELIVERY ? deliveryFeeCents : 0);
-
+  const taxableBaseCents = effectiveSubtotalCents + (TAX_ON_DELIVERY ? deliveryFeeCents : 0);
   const taxCents = Math.round(taxableBaseCents * TAX_RATE);
-
-  // ✅ 最终总价：抵扣后小计 + 配送费 + 税
   const totalCents = effectiveSubtotalCents + deliveryFeeCents + taxCents;
   const totalCentsRef = useRef(totalCents);
 
@@ -1381,76 +1158,48 @@ export default function CheckoutPage() {
     totalCentsRef.current = totalCents;
   }, [totalCents]);
 
-  const deliveryAddressText = useMemo(
-    () => formatDeliveryAddress(customer),
-    [customer],
-  );
-
+  const deliveryAddressText = useMemo(() => formatDeliveryAddress(customer), [customer]);
   const addressWithinRadius =
     addressValidation.distanceKm !== null &&
     addressValidation.distanceKm <= DELIVERY_RADIUS_KM &&
     !addressValidation.error;
-
   const postalCodeIsValid = isPostalCodeValid(customer.postalCode);
-  const hasDeliveryAddressInputs =
-    customer.addressLine1.trim().length > 0 && postalCodeIsValid;
-  const showPostalCodeError =
-    customer.postalCode.trim().length > 0 && !postalCodeIsValid;
+  const hasDeliveryAddressInputs = customer.addressLine1.trim().length > 0 && postalCodeIsValid;
+  const showPostalCodeError = customer.postalCode.trim().length > 0 && !postalCodeIsValid;
   const deliveryAddressReady =
     isDeliveryFulfillment &&
     customer.addressLine1.trim().length > 0 &&
     customer.city.trim().length > 0 &&
     customer.province.trim().length > 0 &&
     postalCodeIsValid;
-
-  // 门店是否允许下单（管理后台 / POS 共用）
   const isStoreOpen = storeStatus?.isOpen ?? true;
 
-  // 关门时给顾客看的详细提示
   let storeStatusDetail: string | null = null;
   if (storeStatus && !isStoreOpen) {
-    if (
-      storeStatus.ruleSource === "TEMPORARY_CLOSE" &&
-      storeStatus.isTemporarilyClosed
-    ) {
-      if (storeStatus.temporaryCloseReason?.trim()) {
-        storeStatusDetail =
-          locale === "zh"
-            ? `当前门店暂停接单：${storeStatus.temporaryCloseReason}`
-            : `The store is temporarily not accepting orders: ${storeStatus.temporaryCloseReason}`;
-      } else {
-        storeStatusDetail =
-          locale === "zh"
-            ? "当前门店暂停接单。"
-            : "The store is temporarily not accepting new orders.";
-      }
+    if (storeStatus.ruleSource === "TEMPORARY_CLOSE" && storeStatus.isTemporarilyClosed) {
+      storeStatusDetail = storeStatus.temporaryCloseReason?.trim()
+        ? locale === "zh"
+          ? `当前门店暂停接单：${storeStatus.temporaryCloseReason}`
+          : `The store is temporarily not accepting orders: ${storeStatus.temporaryCloseReason}`
+        : locale === "zh"
+          ? "当前门店暂停接单。"
+          : "The store is temporarily not accepting new orders.";
     } else if (storeStatus.ruleSource === "HOLIDAY") {
       const holidayName =
-        storeStatus.today?.holidayName ||
-        (locale === "zh" ? "节假日" : "holiday");
+        storeStatus.today?.holidayName || (locale === "zh" ? "节假日" : "holiday");
       storeStatusDetail =
-        locale === "zh"
-          ? `${holidayName}休息，今日不接新订单。`
-          : `Closed today for ${holidayName}.`;
+        locale === "zh" ? `${holidayName}休息，今日不接新订单。` : `Closed today for ${holidayName}.`;
     } else {
       storeStatusDetail =
         locale === "zh"
           ? "当前不在营业时间内，暂时不支持新建订单。"
           : "The store is currently closed and cannot accept new orders.";
     }
-
     if (storeStatus.nextOpenAt) {
-      const formatted = formatStoreTime(
-        storeStatus.nextOpenAt,
-        storeStatus.timezone,
-        locale,
-      );
-
+      const formatted = formatStoreTime(storeStatus.nextOpenAt, storeStatus.timezone, locale);
       storeStatusDetail +=
         (storeStatusDetail ? " " : "") +
-        (locale === "zh"
-          ? `预计下次营业时间：${formatted}`
-          : `Next opening time: ${formatted}`);
+        (locale === "zh" ? `预计下次营业时间：${formatted}` : `Next opening time: ${formatted}`);
     }
   }
 
@@ -1461,10 +1210,7 @@ export default function CheckoutPage() {
   const verifiedContactMethod = selectVerifiedCheckoutContact(
     isEmailValid ? normalizedEmail : "",
     isPhoneValid ? normalizedPhone : "",
-    {
-      verifiedEmail: verifiedEmailValue,
-      verifiedPhone: verifiedPhoneValue,
-    },
+    { verifiedEmail: verifiedEmailValue, verifiedPhone: verifiedPhoneValue },
   );
   const hasVerifiedEmail = verifiedContactMethod === "email";
   const hasVerifiedPhone =
@@ -1477,8 +1223,7 @@ export default function CheckoutPage() {
     memberPhoneVerified,
   });
   const hasSubmittedDeliveryPhone = deliveryPhoneState.hasSubmittedPhone;
-  const hasVerifiedMemberDeliveryPhone =
-    deliveryPhoneState.usesVerifiedMemberFallback;
+  const hasVerifiedMemberDeliveryPhone = deliveryPhoneState.usesVerifiedMemberFallback;
   const hasDeliveryPhone = deliveryPhoneState.hasDeliveryPhone;
   const deliveryPhoneLookupPending =
     fulfillment === "delivery" &&
@@ -1487,18 +1232,12 @@ export default function CheckoutPage() {
     Boolean(session?.user?.mfaVerifiedAt) &&
     loyaltyLoading;
   const hasRequiredContact =
-    fulfillment === "delivery"
-      ? hasDeliveryPhone && hasVerifiedContact
-      : hasVerifiedContact;
+    fulfillment === "delivery" ? hasDeliveryPhone && hasVerifiedContact : hasVerifiedContact;
   const hasValidContactMethod = isEmailValid || isPhoneValid;
   const missingContactFields = useMemo(() => {
     const missing: string[] = [];
-    if (!customer.firstName.trim()) {
-      missing.push(strings.contactFields.firstName);
-    }
-    if (!customer.lastName.trim()) {
-      missing.push(strings.contactFields.lastName);
-    }
+    if (!customer.firstName.trim()) missing.push(strings.contactFields.firstName);
+    if (!customer.lastName.trim()) missing.push(strings.contactFields.lastName);
     if (deliveryPhoneLookupPending) {
       missing.push(
         locale === "zh"
@@ -1541,7 +1280,6 @@ export default function CheckoutPage() {
         : `Please complete: ${missingContactFields.join(", ")}`
       : null;
 
-  // ⭐ 下单前置条件：有菜 + 姓名 + 有效邮箱/手机号二选一 + 对应联系方式已验证 + （外送时地址完整）+ 门店当前允许下单
   const canPlaceOrder =
     localizedCartItems.length > 0 &&
     customer.firstName.trim().length > 0 &&
@@ -1550,12 +1288,10 @@ export default function CheckoutPage() {
     (fulfillment === "pickup" || deliveryAddressReady) &&
     isStoreOpen &&
     !entitlementBlockingMessage;
-
   const requiresPayment = totalCents > 0;
 
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
-
     if (!canPlaceOrder) {
       if (deliveryPhoneLookupPending) {
         return locale === "zh"
@@ -1578,9 +1314,7 @@ export default function CheckoutPage() {
       }
       if (missingContactMessage) return missingContactMessage;
       if (fulfillment === "delivery" && !deliveryAddressReady) {
-        return locale === "zh"
-          ? "请先补全外送地址信息。"
-          : "Please complete the delivery address details.";
+        return locale === "zh" ? "请先补全外送地址信息。" : "Please complete the delivery address details.";
       }
       if (!isStoreOpen) {
         return (
@@ -1592,7 +1326,6 @@ export default function CheckoutPage() {
       }
       if (entitlementBlockingMessage) return entitlementBlockingMessage;
     }
-
     return null;
   }, [
     canPlaceOrder,
@@ -1610,7 +1343,6 @@ export default function CheckoutPage() {
   ]);
 
   const buildCheckoutMetadata = useCallback((): Record<string, unknown> => {
-    // 提交前基于当前输入重新比对 verified value，避免验证请求与输入更新竞态。
     const latestCustomer = customerRef.current;
     const latestEmail = normalizeCheckoutEmail(latestCustomer.email);
     const latestPhone = formatCanadianPhoneForApi(latestCustomer.phone);
@@ -1644,8 +1376,6 @@ export default function CheckoutPage() {
       customer: {
         firstName: customer.firstName,
         lastName: customer.lastName,
-        // 两者都有效时一并提交；验证值只决定能否结算及首选联系方式，
-        // 最终通知渠道仍由后端决定。
         ...checkoutContact,
         notes: customer.notes || undefined,
         ...(fulfillment === "delivery"
@@ -1751,11 +1481,7 @@ export default function CheckoutPage() {
   const createPaymentSession = useCallback(
     async (paymentMethod: PaymentMethodSessionContext["paymentMethod"]) => {
       if (!customer.firstName.trim() || !customer.lastName.trim()) {
-        throw new Error(
-          locale === "zh"
-            ? "姓和名均为必填项。"
-            : "First name and last name are required.",
-        );
+        throw new Error(locale === "zh" ? "姓和名均为必填项。" : "First name and last name are required.");
       }
       if (fulfillment === "delivery" && !hasDeliveryPhone) {
         throw new Error(
@@ -1777,10 +1503,8 @@ export default function CheckoutPage() {
       const checkoutIntentId =
         checkoutIntentIdRef.current ??
         (typeof window !== "undefined"
-          ? (window.crypto?.randomUUID?.() ??
-            `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`)
+          ? (window.crypto?.randomUUID?.() ?? `chk_${Date.now()}_${Math.random().toString(16).slice(2)}`)
           : undefined);
-
       if (!checkoutIntentId) {
         throw new Error(
           locale === "zh"
@@ -1788,18 +1512,13 @@ export default function CheckoutPage() {
             : "Unable to create payment session. Please retry.",
         );
       }
-
       if (typeof window !== "undefined") {
         try {
-          window.sessionStorage.setItem(
-            GOOGLE_PAY_INTENT_STORAGE_KEY,
-            checkoutIntentId,
-          );
+          window.sessionStorage.setItem(GOOGLE_PAY_INTENT_STORAGE_KEY, checkoutIntentId);
         } catch {
           // ignore storage failures
         }
       }
-
       const quoteResponse = await withTimeout(
         apiFetch<PaymentSessionResponse>("/clover/pay/online/session", {
           method: "POST",
@@ -1809,7 +1528,6 @@ export default function CheckoutPage() {
         15000,
         "apiFetch /clover/pay/online/quote",
       );
-
       return {
         sessionId: quoteResponse.sessionId,
         checkoutIntentId: quoteResponse.checkoutIntentId,
@@ -1841,7 +1559,6 @@ export default function CheckoutPage() {
         startFailedMessageZh,
         startFailedMessageEn,
       } = params;
-
       if (
         !canPlaceOrder ||
         !requiresPayment ||
@@ -1852,20 +1569,13 @@ export default function CheckoutPage() {
       ) {
         return;
       }
-
       try {
         setErrorMessage(null);
         setRedirecting(true);
-
-        const session = await createPaymentSession(paymentMethod);
-        router.push(
-          `/${locale}${path}?sessionId=${encodeURIComponent(session.sessionId)}`,
-        );
+        const paymentSession = await createPaymentSession(paymentMethod);
+        router.push(`/${locale}${path}?sessionId=${encodeURIComponent(paymentSession.sessionId)}`);
       } catch (error) {
-        console.error(
-          "[checkout] payment redirect failed",
-          toSafeErrorLog(error),
-        );
+        console.error("[checkout] payment redirect failed", toSafeErrorLog(error));
         const errorText = error instanceof Error ? error.message : "";
         const deliveryPhoneError =
           errorText.includes("DELIVERY_PHONE_REQUIRED") ||
@@ -1927,6 +1637,7 @@ export default function CheckoutPage() {
       startFailedMessageEn: "Failed to start card payment. Please try again.",
     });
   }, [redirectToPayment]);
+
   useEffect(() => {
     if (requiresPayment) return;
     clearCheckoutIntentId();
@@ -1937,7 +1648,6 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!challengeIntentId) return;
     let cancelled = false;
-
     const pollStatus = async () => {
       const startedAt = Date.now();
       while (!cancelled && Date.now() - startedAt < 90_000) {
@@ -1946,14 +1656,8 @@ export default function CheckoutPage() {
             status: string;
             result?: string | null;
             orderStableId?: string | null;
-          }>(
-            `/clover/pay/online/status?checkoutIntentId=${encodeURIComponent(
-              challengeIntentId,
-            )}`,
-          );
-
+          }>(`/clover/pay/online/status?checkoutIntentId=${encodeURIComponent(challengeIntentId)}`);
           if (cancelled) return;
-
           if (response.status === "completed" && response.orderStableId) {
             clearCheckoutIntentId();
             setChallengeUrl(null);
@@ -1961,7 +1665,6 @@ export default function CheckoutPage() {
             router.push(`/${locale}/thank-you/${response.orderStableId}`);
             return;
           }
-
           if (
             response.status === "failed" ||
             response.status === "expired" ||
@@ -1977,36 +1680,19 @@ export default function CheckoutPage() {
             );
             return;
           }
-
-          if (response.status === "awaiting_authentication") {
-            setPayFlowState("CHALLENGE");
-          } else {
-            setPayFlowState("PROCESSING");
-          }
+          setPayFlowState(response.status === "awaiting_authentication" ? "CHALLENGE" : "PROCESSING");
         } catch {
           // ignore transient polling errors
         }
-
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-
-      if (!cancelled) {
-        setPayFlowState("PROCESSING");
-      }
+      if (!cancelled) setPayFlowState("PROCESSING");
     };
-
     void pollStatus();
-
     return () => {
       cancelled = true;
     };
-  }, [
-    challengeIntentId,
-    checkoutStatusPollTick,
-    clearCheckoutIntentId,
-    locale,
-    router,
-  ]);
+  }, [challengeIntentId, checkoutStatusPollTick, clearCheckoutIntentId, locale, router]);
 
   const startCheckoutStatusPolling = useCallback((intentId: string | null) => {
     if (!intentId) return;
@@ -2015,45 +1701,28 @@ export default function CheckoutPage() {
   }, []);
 
   const scheduleLabel =
-    strings.scheduleOptions.find((option) => option.id === schedule)?.label ??
-    "";
+    strings.scheduleOptions.find((option) => option.id === schedule)?.label ?? "";
 
   const handleCustomerChange = (field: keyof CustomerInfo, value: string) => {
-    const nextValue =
-      field === "phone" ? normalizeCanadianPhoneInput(value) : value;
+    const nextValue = field === "phone" ? normalizeCanadianPhoneInput(value) : value;
     customerRef.current = { ...customerRef.current, [field]: nextValue };
     setCustomer((prev) => ({ ...prev, [field]: nextValue }));
-    if (
-      field === "addressLine1" ||
-      field === "city" ||
-      field === "province" ||
-      field === "postalCode"
-    ) {
+    if (["addressLine1", "city", "province", "postalCode"].includes(field)) {
       setSelectedCoordinates(null);
       setSelectedPlaceId(null);
     }
     if (
-      (field === "addressLine1" ||
-        field === "addressLine2" ||
-        field === "city" ||
-        field === "province" ||
-        field === "postalCode") &&
+      ["addressLine1", "addressLine2", "city", "province", "postalCode"].includes(field) &&
       selectedAddressStableId
     ) {
       setSelectedAddressStableId(null);
     }
-
-    // 🔐 邮箱变更时，重置邮箱验证状态
     if (field === "email") {
       verifiedEmailTokenRef.current = null;
       setPhoneVerificationError(null);
       setPhoneVerificationCode("");
       const trimmed = normalizeCheckoutEmail(nextValue);
-      if (
-        memberEmail &&
-        memberEmailVerified &&
-        trimmed === memberEmail.toLowerCase()
-      ) {
+      if (memberEmail && memberEmailVerified && trimmed === memberEmail.toLowerCase()) {
         verifiedEmailRef.current = trimmed;
         setVerifiedEmailValue(trimmed);
         setContactVerificationMethod("email");
@@ -2061,46 +1730,32 @@ export default function CheckoutPage() {
         return;
       }
       verifiedEmailRef.current = null;
-      verifiedEmailTokenRef.current = null;
       setVerifiedEmailValue(null);
       if (verifiedPhoneValue !== normalizedPhone) {
         setContactVerificationMethod(null);
         setPhoneVerificationStep("idle");
       }
     }
-
-    // 🔐 手机号变更时，重置验证状态
     if (field === "phone") {
       verifiedPhoneTokenRef.current = null;
       setPhoneVerificationError(null);
       setPhoneVerificationCode("");
-
       const trimmed = nextValue.trim();
       if (!trimmed) {
-        // 清空手机号 → 一定是未验证
         verifiedPhoneRef.current = null;
-        verifiedPhoneTokenRef.current = null;
         setVerifiedPhoneValue(null);
         setPhoneVerificationStep("idle");
         return;
       }
-
-      // 有会员手机号且该手机号在会员系统中已验证时，
-      // 如果用户输入的手机号 == 会员手机号，则直接视为已验证。
-      if (memberPhone && memberPhoneVerified) {
-        if (trimmed === memberPhone) {
-          const verifiedPhone = formatCanadianPhoneForApi(trimmed);
-          verifiedPhoneRef.current = verifiedPhone;
-          setVerifiedPhoneValue(verifiedPhone);
-          setContactVerificationMethod("phone");
-          setPhoneVerificationStep("verified");
-          return;
-        }
+      if (memberPhone && memberPhoneVerified && trimmed === memberPhone) {
+        const verifiedPhone = formatCanadianPhoneForApi(trimmed);
+        verifiedPhoneRef.current = verifiedPhone;
+        setVerifiedPhoneValue(verifiedPhone);
+        setContactVerificationMethod("phone");
+        setPhoneVerificationStep("verified");
+        return;
       }
-
-      // 其他情况：统一认为还未验证，需要走短信验证码
       verifiedPhoneRef.current = null;
-      verifiedPhoneTokenRef.current = null;
       setVerifiedPhoneValue(null);
       if (verifiedEmailValue !== normalizedEmail) {
         setContactVerificationMethod(null);
@@ -2114,15 +1769,11 @@ export default function CheckoutPage() {
       setSelectedAddressStableId(stableId);
       setCustomer((prev) => ({
         ...prev,
-        firstName: selected.receiver
-          ? (selected.receiver.split(/\s+/)[0] ?? "")
-          : prev.firstName,
+        firstName: selected.receiver ? (selected.receiver.split(/\s+/)[0] ?? "") : prev.firstName,
         lastName: selected.receiver
           ? selected.receiver.split(/\s+/).slice(1).join(" ")
           : prev.lastName,
-        phone: selected.phone
-          ? stripCanadianCountryCode(selected.phone)
-          : prev.phone,
+        phone: selected.phone ? stripCanadianCountryCode(selected.phone) : prev.phone,
         addressLine1: selected.addressLine1,
         addressLine2: selected.addressLine2 ?? "",
         city: selected.city,
@@ -2130,15 +1781,8 @@ export default function CheckoutPage() {
         postalCode: selected.postalCode,
         notes: selected.remark?.trim() ? selected.remark : prev.notes,
       }));
-
-      if (
-        typeof selected.latitude === "number" &&
-        typeof selected.longitude === "number"
-      ) {
-        setSelectedCoordinates({
-          latitude: selected.latitude,
-          longitude: selected.longitude,
-        });
+      if (typeof selected.latitude === "number" && typeof selected.longitude === "number") {
+        setSelectedCoordinates({ latitude: selected.latitude, longitude: selected.longitude });
       } else {
         setSelectedCoordinates(null);
       }
@@ -2149,18 +1793,13 @@ export default function CheckoutPage() {
   );
 
   const handleSelectAddress = (stableId: string) => {
-    const selected = memberAddresses.find(
-      (address) => getAddressStableId(address) === stableId,
-    );
-    if (!selected) return;
-    applySelectedAddress(selected, stableId);
+    const selected = memberAddresses.find((address) => getAddressStableId(address) === stableId);
+    if (selected) applySelectedAddress(selected, stableId);
   };
 
-  // 发送联系方式验证码：邮箱有效时优先邮箱，否则走手机号短信
   const handleSendContactCode = async () => {
     const useEmail = isEmailValid;
     const usePhone = !useEmail && isPhoneValid;
-
     if (!useEmail && !usePhone) {
       setPhoneVerificationError(
         locale === "zh"
@@ -2169,43 +1808,30 @@ export default function CheckoutPage() {
       );
       return;
     }
-
     setPhoneVerificationLoading(true);
     setPhoneVerificationError(null);
     setPhoneVerificationCode("");
-
     try {
-      const res = await fetch(
-        useEmail ? EMAIL_OTP_REQUEST_URL : PHONE_OTP_REQUEST_URL,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            useEmail
-              ? {
-                  email: customer.email.trim(),
-                  purpose: "checkout",
-                  locale,
-                }
-              : {
-                  phone: formatCanadianPhoneForApi(customer.phone),
-                  purpose: "checkout",
-                  locale,
-                },
-          ),
-        },
-      );
-
+      const res = await fetch(useEmail ? EMAIL_OTP_REQUEST_URL : PHONE_OTP_REQUEST_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          useEmail
+            ? { email: customer.email.trim(), purpose: "checkout", locale }
+            : {
+                phone: formatCanadianPhoneForApi(customer.phone),
+                purpose: "checkout",
+                locale,
+              },
+        ),
+      });
       await assertOperationResult(res);
-
       setContactVerificationMethod(useEmail ? "email" : "phone");
       setPhoneVerificationStep("codeSent");
     } catch (err) {
       console.error("Unexpected checkout error", toSafeErrorLog(err));
       const errMessage = err instanceof Error ? err.message.toLowerCase() : "";
-      const isDailyLimitReached = errMessage.includes(
-        "too many requests in a day",
-      );
+      const isDailyLimitReached = errMessage.includes("too many requests in a day");
       setPhoneVerificationError(
         isDailyLimitReached
           ? locale === "zh"
@@ -2220,34 +1846,20 @@ export default function CheckoutPage() {
     }
   };
 
-  // 校验联系方式验证码
   const handleVerifyContactCode = async () => {
     if (!phoneVerificationCode.trim()) {
-      setPhoneVerificationError(
-        locale === "zh"
-          ? "请输入验证码。"
-          : "Please enter the verification code.",
-      );
+      setPhoneVerificationError(locale === "zh" ? "请输入验证码。" : "Please enter the verification code.");
       return;
     }
-
     if (!contactVerificationMethod) {
-      setPhoneVerificationError(
-        locale === "zh"
-          ? "请先获取验证码。"
-          : "Please request a verification code first.",
-      );
+      setPhoneVerificationError(locale === "zh" ? "请先获取验证码。" : "Please request a verification code first.");
       return;
     }
-
     setPhoneVerificationLoading(true);
     setPhoneVerificationError(null);
-
     try {
       const res = await fetch(
-        contactVerificationMethod === "email"
-          ? EMAIL_OTP_VERIFY_URL
-          : PHONE_OTP_VERIFY_URL,
+        contactVerificationMethod === "email" ? EMAIL_OTP_VERIFY_URL : PHONE_OTP_VERIFY_URL,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2266,12 +1878,8 @@ export default function CheckoutPage() {
           ),
         },
       );
-
       const verification = await assertOperationResult(res);
-      if (!verification.verificationToken) {
-        throw new Error("verification proof missing");
-      }
-
+      if (!verification.verificationToken) throw new Error("verification proof missing");
       if (contactVerificationMethod === "email") {
         const verifiedEmail = normalizeCheckoutEmail(customer.email);
         verifiedEmailRef.current = verifiedEmail;
@@ -2307,21 +1915,15 @@ export default function CheckoutPage() {
 
   const isCouponApplicable = useCallback(
     (coupon: CheckoutCoupon) => {
-      const applicableSubtotalCents =
-        resolveCouponApplicableSubtotalCents(coupon);
-      return (
-        applicableSubtotalCents > 0 &&
-        applicableSubtotalCents >= (coupon.minSpendCents ?? 0)
-      );
+      const applicableSubtotalCents = resolveCouponApplicableSubtotalCents(coupon);
+      return applicableSubtotalCents > 0 && applicableSubtotalCents >= (coupon.minSpendCents ?? 0);
     },
     [resolveCouponApplicableSubtotalCents],
   );
-
   const applicableCoupons = useMemo(
     () => availableCoupons.filter((coupon) => isCouponApplicable(coupon)),
     [availableCoupons, isCouponApplicable],
   );
-
   const inapplicableCoupons = useMemo(
     () => availableCoupons.filter((coupon) => !isCouponApplicable(coupon)),
     [availableCoupons, isCouponApplicable],
@@ -2329,7 +1931,6 @@ export default function CheckoutPage() {
 
   const handleApplyCoupon = (coupon: CheckoutCoupon) => {
     if (!isCouponApplicable(coupon)) return;
-
     setAppliedCoupon(coupon);
     setAvailableCoupons((prev) =>
       prev.filter((item) => item.couponStableId !== coupon.couponStableId),
@@ -2345,9 +1946,7 @@ export default function CheckoutPage() {
   };
 
   useEffect(() => {
-    if (!isDeliveryFulfillment) {
-      resetAddressValidation();
-    }
+    if (!isDeliveryFulfillment) resetAddressValidation();
   }, [isDeliveryFulfillment, resetAddressValidation]);
 
   useEffect(() => {
@@ -2363,7 +1962,6 @@ export default function CheckoutPage() {
     resetAddressValidation,
   ]);
 
-  // 加载会员积分 + 会员手机号
   useEffect(() => {
     if (authStatus !== "authenticated") {
       setLoyaltyInfo(null);
@@ -2384,7 +1982,6 @@ export default function CheckoutPage() {
       setSelectedAddressStableId(null);
       return;
     }
-
     if (!session?.user?.mfaVerifiedAt) {
       setLoyaltyInfo(null);
       setAvailableCoupons([]);
@@ -2397,27 +1994,15 @@ export default function CheckoutPage() {
       setMemberEmail(null);
       return;
     }
-
     const controller = new AbortController();
-
     async function loadLoyalty() {
       try {
         setLoyaltyLoading(true);
         setLoyaltyError(null);
-        const res = await fetch("/api/v1/membership/summary", {
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
+        const res = await fetch("/api/v1/membership/summary", { signal: controller.signal });
+        if (!res.ok) throw new Error(`Failed with status ${res.status}`);
         const raw = (await res.json()) as MembershipSummaryEnvelope;
-        const data =
-          "details" in raw && raw.details
-            ? raw.details
-            : (raw as MembershipSummaryResponse);
-
+        const data = "details" in raw && raw.details ? raw.details : (raw as MembershipSummaryResponse);
         const stableId = data.userStableId ?? "";
         if (stableId) {
           setLoyaltyInfo({
@@ -2429,29 +2014,19 @@ export default function CheckoutPage() {
         } else {
           setLoyaltyInfo(null);
         }
-
         setMemberUserStableId(stableId || null);
-        setMemberPhone(
-          data.phone ? stripCanadianCountryCode(data.phone) : null,
-        );
+        setMemberPhone(data.phone ? stripCanadianCountryCode(data.phone) : null);
         setMemberPhoneVerified(!!data.phoneVerified);
         setMemberEmailVerified(!!data.emailVerified || !!data.emailVerifiedAt);
         const fallbackName = data.displayName ?? "";
-        const fallbackParts = fallbackName.trim()
-          ? fallbackName.trim().split(/\s+/)
-          : [];
+        const fallbackParts = fallbackName.trim() ? fallbackName.trim().split(/\s+/) : [];
         setMemberFirstName(data.firstName ?? fallbackParts[0] ?? null);
         setMemberLastName(
-          data.lastName ??
-            (fallbackParts.length > 1
-              ? fallbackParts.slice(1).join(" ")
-              : null),
+          data.lastName ?? (fallbackParts.length > 1 ? fallbackParts.slice(1).join(" ") : null),
         );
         setMemberEmail(data.email ?? null);
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
+        if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Unexpected checkout error", toSafeErrorLog(err));
         setLoyaltyError(
           locale === "zh"
@@ -2467,9 +2042,7 @@ export default function CheckoutPage() {
         setLoyaltyLoading(false);
       }
     }
-
     void loadLoyalty();
-
     return () => controller.abort();
   }, [authStatus, session, locale]);
 
@@ -2477,103 +2050,64 @@ export default function CheckoutPage() {
     if (authStatus !== "authenticated") return;
     const userStableId = memberUserStableId ?? session?.user?.userStableId;
     if (!userStableId) return;
-
     const controller = new AbortController();
-
     const loadAddresses = async () => {
       try {
         const params = new URLSearchParams({ userStableId });
-        const res = await fetch(
-          `/api/v1/membership/addresses?${params.toString()}`,
-          { signal: controller.signal },
-        );
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
+        const res = await fetch(`/api/v1/membership/addresses?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`Failed with status ${res.status}`);
         const payload = (await res.json()) as MemberAddressPayload;
         let list: MemberAddress[] = [];
-
-        if (Array.isArray(payload)) {
-          list = payload;
-        } else if (payload && typeof payload === "object") {
-          if (Array.isArray(payload.details)) {
-            list = payload.details;
-          } else if (Array.isArray(payload.data)) {
-            list = payload.data;
-          }
+        if (Array.isArray(payload)) list = payload;
+        else if (payload && typeof payload === "object") {
+          if (Array.isArray(payload.details)) list = payload.details;
+          else if (Array.isArray(payload.data)) list = payload.data;
         }
         setMemberAddresses(list);
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
+        if (error instanceof DOMException && error.name === "AbortError") return;
         console.error("Failed to load member addresses", toSafeErrorLog(error));
         setMemberAddresses([]);
         setSelectedAddressStableId(null);
       }
     };
-
     void loadAddresses();
-
     return () => controller.abort();
   }, [authStatus, memberUserStableId, session]);
 
-  // 加载优惠券列表
   useEffect(() => {
     if (authStatus !== "authenticated" || !session?.user) {
       setAvailableCoupons([]);
       return;
     }
-
     const userStableId = session?.user?.userStableId;
     if (typeof userStableId !== "string" || !userStableId) {
       setAvailableCoupons([]);
       return;
     }
-
     const ensuredUserStableId: string = userStableId;
     const controller = new AbortController();
-
     async function loadCoupons() {
       try {
         setCouponLoading(true);
         setCouponError(null);
-
         const params = new URLSearchParams([
           ["userStableId", ensuredUserStableId],
           ["locale", locale === "zh" ? "zh" : "en"],
         ]);
-        const res = await fetch(
-          `/api/v1/membership/coupons?${params.toString()}`,
-          { signal: controller.signal },
-        );
-
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
+        const res = await fetch(`/api/v1/membership/coupons?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`Failed with status ${res.status}`);
         const raw = (await res.json()) as CouponsApiEnvelope;
-
         let list: CheckoutCoupon[] = [];
-        if (Array.isArray(raw)) {
-          list = raw;
-        } else if (
-          raw &&
-          typeof raw === "object" &&
-          Array.isArray(raw.details)
-        ) {
-          list = raw.details;
-        }
-
-        const normalized = list.filter(
-          (item) => !item.status || item.status === "active",
-        );
-
-        setAvailableCoupons(normalized);
+        if (Array.isArray(raw)) list = raw;
+        else if (raw && typeof raw === "object" && Array.isArray(raw.details)) list = raw.details;
+        setAvailableCoupons(list.filter((item) => !item.status || item.status === "active"));
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
+        if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Unexpected checkout error", toSafeErrorLog(err));
         setCouponError(
           locale === "zh"
@@ -2585,66 +2119,43 @@ export default function CheckoutPage() {
         setCouponLoading(false);
       }
     }
-
     void loadCoupons();
-
     return () => controller.abort();
   }, [authStatus, session, locale]);
 
-  // 用会员手机号预填结算电话：只填一次，且用户没自己输入时才填
   useEffect(() => {
-    if (phonePrefilled) return;
-    if (!memberPhone || memberEmail) return;
-
+    if (phonePrefilled || !memberPhone || memberEmail) return;
     setCustomer((prev) => {
-      if (prev.phone && prev.phone.trim().length > 0) {
-        return prev; // 用户已经输入了，就不覆盖
-      }
+      if (prev.phone && prev.phone.trim().length > 0) return prev;
       return { ...prev, phone: memberPhone };
     });
-
     setPhonePrefilled(true);
   }, [memberEmail, memberPhone, phonePrefilled]);
 
   useEffect(() => {
-    if (firstNamePrefilled) return;
-    if (!memberFirstName) return;
-
+    if (firstNamePrefilled || !memberFirstName) return;
     setCustomer((prev) => {
-      if (prev.firstName && prev.firstName.trim().length > 0) {
-        return prev;
-      }
+      if (prev.firstName && prev.firstName.trim().length > 0) return prev;
       return { ...prev, firstName: memberFirstName };
     });
-
     setFirstNamePrefilled(true);
   }, [firstNamePrefilled, memberFirstName]);
 
   useEffect(() => {
-    if (lastNamePrefilled) return;
-    if (!memberLastName) return;
-
+    if (lastNamePrefilled || !memberLastName) return;
     setCustomer((prev) => {
-      if (prev.lastName && prev.lastName.trim().length > 0) {
-        return prev;
-      }
+      if (prev.lastName && prev.lastName.trim().length > 0) return prev;
       return { ...prev, lastName: memberLastName };
     });
-
     setLastNamePrefilled(true);
   }, [lastNamePrefilled, memberLastName]);
 
   useEffect(() => {
-    if (emailPrefilled) return;
-    if (!memberEmail) return;
-
+    if (emailPrefilled || !memberEmail) return;
     setCustomer((prev) => {
-      if (prev.email && prev.email.trim().length > 0) {
-        return prev;
-      }
+      if (prev.email && prev.email.trim().length > 0) return prev;
       return { ...prev, email: memberEmail };
     });
-
     if (memberEmailVerified) {
       const verifiedEmail = normalizeCheckoutEmail(memberEmail);
       verifiedEmailRef.current = verifiedEmail;
@@ -2653,38 +2164,23 @@ export default function CheckoutPage() {
       setPhoneVerificationStep("verified");
       setPhoneVerificationError(null);
     }
-
     setEmailPrefilled(true);
   }, [emailPrefilled, memberEmail, memberEmailVerified]);
 
   useEffect(() => {
-    if (addressPrefilled) return;
-    if (!isDeliveryFulfillment) return;
-    if (customer.addressLine1.trim()) return;
+    if (addressPrefilled || !isDeliveryFulfillment || customer.addressLine1.trim()) return;
     if (memberAddresses.length === 0) return;
-
-    const defaultAddress =
-      memberAddresses.find((address) => address.isDefault) ??
-      memberAddresses[0];
+    const defaultAddress = memberAddresses.find((address) => address.isDefault) ?? memberAddresses[0];
     if (!defaultAddress) return;
-
     const stableId = getAddressStableId(defaultAddress);
     if (!stableId) {
       setAddressPrefilled(true);
       return;
     }
-
     applySelectedAddress(defaultAddress, stableId);
     setAddressPrefilled(true);
-  }, [
-    addressPrefilled,
-    applySelectedAddress,
-    customer.addressLine1,
-    isDeliveryFulfillment,
-    memberAddresses,
-  ]);
+  }, [addressPrefilled, applySelectedAddress, customer.addressLine1, isDeliveryFulfillment, memberAddresses]);
 
-  // ✅ 优先用会员已验证邮箱自动绕过；否则再用会员已验证手机号绕过
   useEffect(() => {
     if (
       memberEmail &&
@@ -2699,7 +2195,6 @@ export default function CheckoutPage() {
       setPhoneVerificationError(null);
       return;
     }
-
     if (memberPhone && memberPhoneVerified && customer.phone === memberPhone) {
       const verifiedPhone = formatCanadianPhoneForApi(customer.phone);
       verifiedPhoneRef.current = verifiedPhone;
@@ -2708,19 +2203,10 @@ export default function CheckoutPage() {
       setPhoneVerificationStep("verified");
       setPhoneVerificationError(null);
     }
-  }, [
-    memberEmail,
-    memberEmailVerified,
-    memberPhone,
-    memberPhoneVerified,
-    customer.email,
-    customer.phone,
-  ]);
+  }, [memberEmail, memberEmailVerified, memberPhone, memberPhoneVerified, customer.email, customer.phone]);
 
-  // 带可选 override 类型的距离校验
   const validateDeliveryDistance = useCallback(async () => {
     setAddressValidation({ distanceKm: null, isChecking: true, error: null });
-
     try {
       let coordinates = selectedCoordinates;
       if (!coordinates) {
@@ -2732,7 +2218,6 @@ export default function CheckoutPage() {
           setSelectedPlaceId(null);
         }
       }
-
       if (!coordinates) {
         setAddressValidation({
           distanceKm: null,
@@ -2741,31 +2226,17 @@ export default function CheckoutPage() {
         });
         return { success: false } as const;
       }
-
       const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
-
-      // Uber 配送：最大 DELIVERY_RADIUS_KM
       if (distanceKm > PRIORITY_MAX_RADIUS_KM) {
         const distanceLabel = formatDistanceValue(distanceKm);
         const message =
           locale === "zh"
             ? `当前地址距离门店约 ${distanceLabel}，超出 Uber 配送最大范围（${PRIORITY_MAX_RADIUS_KM} km）。`
             : `This address is about ${distanceLabel} away from the store, which exceeds the maximum ${PRIORITY_MAX_RADIUS_KM} km range for Uber delivery.`;
-
-        setAddressValidation({
-          distanceKm,
-          isChecking: false,
-          error: message,
-        });
+        setAddressValidation({ distanceKm, isChecking: false, error: message });
         return { success: false } as const;
       }
-
-      // 在可配送范围内：记录距离用于计费
-      setAddressValidation({
-        distanceKm,
-        isChecking: false,
-        error: null,
-      });
+      setAddressValidation({ distanceKm, isChecking: false, error: null });
       return { success: true, distanceKm } as const;
     } catch {
       setAddressValidation({
@@ -2789,16 +2260,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!isDeliveryFulfillment) return;
     const timer = window.setTimeout(() => {
-      if (
-        customer.addressLine1 &&
-        customer.city &&
-        customer.province &&
-        postalCodeIsValid
-      ) {
+      if (customer.addressLine1 && customer.city && customer.province && postalCodeIsValid) {
         void validateDeliveryDistance();
       }
     }, 800);
-
     return () => window.clearTimeout(timer);
   }, [
     customer.addressLine1,
@@ -2811,38 +2276,34 @@ export default function CheckoutPage() {
   ]);
 
   const saveNewAddressToBook = async () => {
-    if (!isMemberLoggedIn) return;
-    if (selectedAddressStableId) return;
+    if (!isMemberLoggedIn || selectedAddressStableId) return;
     const userStableId = memberUserStableId ?? session?.user?.userStableId;
-    if (!userStableId) return;
-    if (!customer.addressLine1.trim()) return;
-
+    if (!userStableId || !customer.addressLine1.trim()) return;
     try {
       const formattedPhone = formatCanadianPhoneForApi(customer.phone);
-      const addressBookPhone = formattedPhone ||
+      const addressBookPhone =
+        formattedPhone ||
         (hasVerifiedMemberDeliveryPhone && memberPhone
           ? formatCanadianPhoneForApi(memberPhone)
           : "");
-      const payload = {
-        userStableId,
-        label: customer.addressLine1,
-        receiver: formatCustomerFullName(customer),
-        phone: addressBookPhone,
-        addressLine1: customer.addressLine1,
-        addressLine2: customer.addressLine2 ?? "",
-        city: customer.city,
-        province: customer.province,
-        postalCode: customer.postalCode,
-        placeId: selectedPlaceId,
-        latitude: selectedCoordinates?.latitude ?? null,
-        longitude: selectedCoordinates?.longitude ?? null,
-        isDefault: memberAddresses.length === 0,
-      };
-
       await fetch("/api/v1/membership/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          userStableId,
+          label: customer.addressLine1,
+          receiver: formatCustomerFullName(customer),
+          phone: addressBookPhone,
+          addressLine1: customer.addressLine1,
+          addressLine2: customer.addressLine2 ?? "",
+          city: customer.city,
+          province: customer.province,
+          postalCode: customer.postalCode,
+          placeId: selectedPlaceId,
+          latitude: selectedCoordinates?.latitude ?? null,
+          longitude: selectedCoordinates?.longitude ?? null,
+          isDefault: memberAddresses.length === 0,
+        }),
       });
     } catch (error) {
       console.error("Failed to auto-save address", toSafeErrorLog(error));
@@ -2851,7 +2312,6 @@ export default function CheckoutPage() {
 
   const handlePlaceOrder = async (options?: { fromApplePay?: boolean }) => {
     const strictApplePay = options?.fromApplePay === true;
-
     if (!canPlaceOrder || isSubmitting) {
       if (strictApplePay) {
         throw new Error(
@@ -2868,21 +2328,15 @@ export default function CheckoutPage() {
           ? "请先选择支付方式并进入支付页完成支付。"
           : "Please choose a payment method and complete payment on the payment page.";
       setErrorMessage(message);
-      if (strictApplePay) {
-        throw new Error(message);
-      }
+      if (strictApplePay) throw new Error(message);
       return;
     }
-
     setErrorMessage(null);
     setChallengeUrl(null);
     setConfirmation(null);
     setPayFlowState("SUBMITTING");
-    let totalCentsForOrder = 0;
     setIsSubmitting(true);
     let deliveryDistanceKm: number | null = null;
-
-    // 先做距离校验
     if (isDeliveryFulfillment) {
       const validationResult = await validateDeliveryDistance();
       if (!validationResult.success) {
@@ -2903,35 +2357,26 @@ export default function CheckoutPage() {
       resetAddressValidation();
     }
 
-    // ==== 重新算一遍本单的费用（全部用“分”） ====
     let deliveryFeeCentsForOrder = 0;
     if (isDeliveryFulfillment && subtotalCents > 0) {
       const billedKm =
-        deliveryDistanceKm !== null
-          ? Math.max(1, Math.ceil(deliveryDistanceKm))
-          : 1;
+        deliveryDistanceKm !== null ? Math.max(1, Math.ceil(deliveryDistanceKm)) : 1;
       deliveryFeeCentsForOrder = 600 + 100 * billedKm;
     }
-
     const loyaltyRedeemCentsForOrder = loyaltyRedeemCents;
     const couponDiscountCentsForOrder = couponDiscountCents;
     const discountedSubtotalForOrder = Math.max(
       0,
       subtotalCents - couponDiscountCentsForOrder - loyaltyRedeemCentsForOrder,
     );
-
     const taxableBaseCentsForOrder =
-      discountedSubtotalForOrder +
-      (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
+      discountedSubtotalForOrder + (TAX_ON_DELIVERY ? deliveryFeeCentsForOrder : 0);
     const taxCentsForOrder = Math.round(taxableBaseCentsForOrder * TAX_RATE);
-
-    totalCentsForOrder =
+    const totalCentsForOrder =
       discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
-
     const formattedCustomerPhone = isValidCanadianPhone(customer.phone)
       ? formatCanadianPhoneForApi(customer.phone)
       : undefined;
-
     const loyaltyOrderPayload = {
       fulfillmentType: fulfillment,
       deliveryType: isDeliveryFulfillment ? deliveryType : undefined,
@@ -2959,44 +2404,30 @@ export default function CheckoutPage() {
     };
 
     try {
-      // 1️⃣ 纯积分订单：抵扣后总价为 0 -> 不走 Clover
       if (totalCentsForOrder <= 0) {
-        const response = await apiFetch<LoyaltyOrderResponse>(
-          "/orders/loyalty-only",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(loyaltyOrderPayload),
-          },
-        );
-
+        const response = await apiFetch<LoyaltyOrderResponse>("/orders/loyalty-only", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(loyaltyOrderPayload),
+        });
         router.push(`/${locale}/thank-you/${response.orderStableId}`);
         return;
       }
-
-      // 2️⃣ 总价 > 0：改为跳转独立支付页
       throw new Error(
         locale === "zh"
           ? "请先选择支付方式并进入对应支付页完成支付。"
           : "Please choose a payment method and complete payment on the dedicated page.",
       );
     } catch (error) {
-      const fallback =
-        error instanceof Error ? error.message : strings.errors.checkoutFailed;
+      const fallback = error instanceof Error ? error.message : strings.errors.checkoutFailed;
       if (error instanceof ApiError && error.payload) {
         const payload =
           typeof error.payload === "object" && error.payload !== null
             ? (error.payload as Record<string, unknown>)
             : {};
-        const code =
-          typeof payload.code === "string" ? payload.code.toLowerCase() : "";
-        const message =
-          typeof payload.message === "string" ? payload.message : fallback;
-        const userMessage = buildPaymentErrorMessage({
-          code,
-          message,
-          locale,
-        });
+        const code = typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+        const message = typeof payload.message === "string" ? payload.message : fallback;
+        const userMessage = buildPaymentErrorMessage({ code, message, locale });
         if (code === "checkout_in_progress") {
           const inProgressIntentId =
             typeof payload.checkoutIntentId === "string"
@@ -3013,17 +2444,12 @@ export default function CheckoutPage() {
         }
         setPayFlowState("IDLE");
         setErrorMessage(userMessage);
-        if (code && shouldResetCheckoutIntent(code)) {
-          clearCheckoutIntentId();
-        }
+        if (code && shouldResetCheckoutIntent(code)) clearCheckoutIntentId();
       } else {
         setPayFlowState("IDLE");
         setErrorMessage(fallback);
       }
-
-      if (strictApplePay) {
-        throw error instanceof Error ? error : new Error(fallback);
-      }
+      if (strictApplePay) throw error instanceof Error ? error : new Error(fallback);
     } finally {
       setIsSubmitting(false);
     }
@@ -3042,33 +2468,22 @@ export default function CheckoutPage() {
         tone: "muted",
       };
     } else if (addressValidation.isChecking) {
-      addressDistanceMessage = {
-        text: strings.deliveryDistance.checking,
-        tone: "info",
-      };
+      addressDistanceMessage = { text: strings.deliveryDistance.checking, tone: "info" };
     } else if (addressValidation.error) {
-      addressDistanceMessage = {
-        text: addressValidation.error,
-        tone: "error",
-      };
+      addressDistanceMessage = { text: addressValidation.error, tone: "error" };
     } else if (addressValidation.distanceKm !== null) {
       const distanceLabel = formatDistanceValue(addressValidation.distanceKm);
-
       if (!addressWithinRadius) {
         addressDistanceMessage = {
-          text: applyDistanceTemplate(
-            strings.deliveryDistance.outsideRange,
-            distanceLabel,
-          ),
+          text: applyDistanceTemplate(strings.deliveryDistance.outsideRange, distanceLabel),
           tone: "error",
         };
       } else {
-        const text =
-          locale === "zh"
-            ? `当前地址距离门店约 ${distanceLabel}，Uber 配送费会按该距离自动计算。`
-            : `This address is about ${distanceLabel} away from the store. Uber delivery fee will be calculated based on this distance.`;
         addressDistanceMessage = {
-          text,
+          text:
+            locale === "zh"
+              ? `当前地址距离门店约 ${distanceLabel}，Uber 配送费会按该距离自动计算。`
+              : `This address is about ${distanceLabel} away from the store. Uber delivery fee will be calculated based on this distance.`,
           tone: "info",
         };
       }
@@ -3080,15 +2495,10 @@ export default function CheckoutPage() {
       <section className="rounded-3xl bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              {strings.cartTitle}
-            </h1>
-            <p className="mt-2 max-w-xl text-sm text-slate-600">
-              {strings.paymentHint}
-            </p>
+            <h1 className="text-2xl font-semibold text-slate-900">{strings.cartTitle}</h1>
+            <p className="mt-2 max-w-xl text-sm text-slate-600">{strings.paymentHint}</p>
           </div>
           <div className="flex flex-col items-start gap-3 md:items-end">
-            {/* 会员入口 + 返回菜单 */}
             <div className="flex flex-wrap gap-2">
               <Link
                 href={membershipHref}
@@ -3112,25 +2522,17 @@ export default function CheckoutPage() {
           <div className="mb-4 space-y-2">
             {storeStatusLoading && (
               <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                {locale === "zh"
-                  ? "正在获取门店营业状态…"
-                  : "Checking store opening status…"}
+                {locale === "zh" ? "正在获取门店营业状态…" : "Checking store opening status…"}
               </div>
             )}
-
             {!storeStatusLoading && storeStatus && !isStoreOpen && (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
                 <p className="font-semibold">
-                  {locale === "zh"
-                    ? "当前暂不支持在线下单"
-                    : "Online ordering is currently unavailable"}
+                  {locale === "zh" ? "当前暂不支持在线下单" : "Online ordering is currently unavailable"}
                 </p>
-                {storeStatusDetail && (
-                  <p className="mt-1">{storeStatusDetail}</p>
-                )}
+                {storeStatusDetail && <p className="mt-1">{storeStatusDetail}</p>}
               </div>
             )}
-
             {storeStatusError && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
                 {storeStatusError}
@@ -3138,10 +2540,7 @@ export default function CheckoutPage() {
             )}
           </div>
         )}
-        {(menuError ||
-          entitlementsError ||
-          cartNotice ||
-          entitlementBlockingMessage) && (
+        {(menuError || entitlementsError || cartNotice || entitlementBlockingMessage) && (
           <div className="mb-4 space-y-2">
             {menuError && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
@@ -3166,7 +2565,6 @@ export default function CheckoutPage() {
           </div>
         )}
         {items.length === 0 ? (
-          // 1️⃣ 真正的「购物车为空」：localStorage 里都没有任何记录
           <div className="space-y-4 text-center text-sm text-slate-500">
             <p>{strings.cartEmpty}</p>
             <div>
@@ -3179,16 +2577,10 @@ export default function CheckoutPage() {
             </div>
           </div>
         ) : !menuLookup || menuLoading ? (
-          // 2️⃣ 有条目，但菜单还没加载好：显示“加载中…”，避免让用户以为购物车真是空的
           <div className="space-y-4 text-center text-sm text-slate-500">
-            <p>
-              {locale === "zh"
-                ? "正在加载购物车中的菜品详情…"
-                : "Loading cart items…"}
-            </p>
+            <p>{locale === "zh" ? "正在加载购物车中的菜品详情…" : "Loading cart items…"}</p>
           </div>
         ) : cartItemsWithPricing.length === 0 ? (
-          // 3️⃣ 有条目，但在当前菜单里已经找不到（可能是菜品下架/改了 stableId）
           <div className="space-y-4 text-center text-sm text-slate-500">
             <p>
               {locale === "zh"
@@ -3205,7 +2597,6 @@ export default function CheckoutPage() {
             </div>
           </div>
         ) : (
-          // 4️⃣ 正常情况：菜单和购物车都匹配，展示完整 Checkout
           <div className="space-y-6">
             {menuError && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] text-amber-700">
@@ -3214,10 +2605,7 @@ export default function CheckoutPage() {
             )}
             <ul className="space-y-4">
               {cartItemsWithPricing.map((cartItem) => (
-                <li
-                  key={cartItem.cartLineId}
-                  className="rounded-2xl border border-slate-200 p-4"
-                >
+                <li key={cartItem.cartLineId} className="rounded-2xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -3226,40 +2614,25 @@ export default function CheckoutPage() {
                             {locale === "zh" ? "特价" : "Daily special"}
                           </span>
                         ) : null}
-                        <p className="text-sm font-semibold text-slate-900">
-                          {cartItem.item.name}
-                        </p>
+                        <p className="text-sm font-semibold text-slate-900">{cartItem.item.name}</p>
                       </div>
                       <p className="mt-1 text-xs text-slate-500">
-                        {currencyFormatter.format(
-                          cartItem.unitPriceCents / 100,
-                        )}{" "}
-                        × {cartItem.quantity}
+                        {currencyFormatter.format(cartItem.unitPriceCents / 100)} × {cartItem.quantity}
                       </p>
                       <div className="mt-1 space-y-1 text-[11px] text-slate-500">
                         <div className="flex items-center gap-2">
                           <span>
-                            {locale === "zh" ? "主菜" : "Main dish"}:{" "}
-                            {currencyFormatter.format(
-                              cartItem.baseUnitPriceCents / 100,
-                            )}
+                            {locale === "zh" ? "主菜" : "Main dish"}: {currencyFormatter.format(cartItem.baseUnitPriceCents / 100)}
                           </span>
-                          {cartItem.isDailySpecial &&
-                          cartItem.item.basePriceCents >
-                            cartItem.baseUnitPriceCents ? (
+                          {cartItem.isDailySpecial && cartItem.item.basePriceCents > cartItem.baseUnitPriceCents ? (
                             <span className="text-slate-400 line-through">
-                              {currencyFormatter.format(
-                                cartItem.item.basePriceCents / 100,
-                              )}
+                              {currencyFormatter.format(cartItem.item.basePriceCents / 100)}
                             </span>
                           ) : null}
                         </div>
                         {cartItem.optionsUnitPriceCents > 0 ? (
                           <div>
-                            {locale === "zh" ? "选项加价" : "Options"}: +{" "}
-                            {currencyFormatter.format(
-                              cartItem.optionsUnitPriceCents / 100,
-                            )}
+                            {locale === "zh" ? "选项加价" : "Options"}: + {currencyFormatter.format(cartItem.optionsUnitPriceCents / 100)}
                           </div>
                         ) : null}
                       </div>
@@ -3270,15 +2643,11 @@ export default function CheckoutPage() {
                               key={`${option.groupName}-${option.optionName}-${index}`}
                               className="flex items-center justify-between"
                             >
-                              <span>
-                                {option.groupName} · {option.optionName}
-                              </span>
+                              <span>{option.groupName} · {option.optionName}</span>
                               {option.priceDeltaCents !== 0 ? (
                                 <span>
                                   {option.priceDeltaCents > 0 ? "+" : "-"}
-                                  {currencyFormatter.format(
-                                    Math.abs(option.priceDeltaCents) / 100,
-                                  )}
+                                  {currencyFormatter.format(Math.abs(option.priceDeltaCents) / 100)}
                                 </span>
                               ) : null}
                             </li>
@@ -3295,9 +2664,7 @@ export default function CheckoutPage() {
                       >
                         −
                       </button>
-                      <span className="min-w-[1.5rem] text-center text-sm font-medium">
-                        {cartItem.quantity}
-                      </span>
+                      <span className="min-w-[1.5rem] text-center text-sm font-medium">{cartItem.quantity}</span>
                       <button
                         type="button"
                         onClick={() => updateQuantity(cartItem.cartLineId, 1)}
@@ -3312,9 +2679,7 @@ export default function CheckoutPage() {
                     {strings.cartNotesLabel}
                     <textarea
                       value={cartItem.notes}
-                      onChange={(event) =>
-                        updateNotes(cartItem.cartLineId, event.target.value)
-                      }
+                      onChange={(event) => updateNotes(cartItem.cartLineId, event.target.value)}
                       placeholder={strings.cartNotesPlaceholder}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       rows={2}
@@ -3325,13 +2690,8 @@ export default function CheckoutPage() {
             </ul>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                {strings.utensils.title}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {strings.utensils.description}
-              </p>
-
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">{strings.utensils.title}</p>
+              <p className="mt-1 text-[11px] text-slate-500">{strings.utensils.description}</p>
               <div className="mt-3 flex gap-2">
                 <button
                   type="button"
@@ -3367,9 +2727,7 @@ export default function CheckoutPage() {
               {utensilsPreference === "yes" ? (
                 <div className="mt-3 space-y-2 text-xs text-slate-600">
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-slate-700">
-                      {strings.utensils.typeLabel}
-                    </p>
+                    <p className="text-xs font-medium text-slate-700">{strings.utensils.typeLabel}</p>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -3401,21 +2759,14 @@ export default function CheckoutPage() {
                     {strings.utensils.quantityLabel}
                     <select
                       value={utensilsQuantity}
-                      onChange={(event) =>
-                        setUtensilsQuantity(
-                          event.target.value as typeof utensilsQuantity,
-                        )
-                      }
+                      onChange={(event) => setUtensilsQuantity(event.target.value as typeof utensilsQuantity)}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                     >
                       <option value="1">{strings.utensils.optionOne}</option>
                       <option value="2">{strings.utensils.optionTwo}</option>
-                      <option value="other">
-                        {strings.utensils.optionOther}
-                      </option>
+                      <option value="other">{strings.utensils.optionOther}</option>
                     </select>
                   </label>
-
                   {utensilsQuantity === "other" ? (
                     <label className="block font-medium text-slate-700">
                       {strings.utensils.otherLabel}
@@ -3424,9 +2775,7 @@ export default function CheckoutPage() {
                         min={1}
                         inputMode="numeric"
                         value={utensilsCustomQuantity}
-                        onChange={(event) =>
-                          setUtensilsCustomQuantity(event.target.value)
-                        }
+                        onChange={(event) => setUtensilsCustomQuantity(event.target.value)}
                         placeholder={strings.utensils.otherPlaceholder}
                         className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       />
@@ -3439,9 +2788,7 @@ export default function CheckoutPage() {
             {prepTimeMinutes ? (
               <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700">
                 <p className="font-semibold">
-                  {locale === "zh"
-                    ? "近一小时平均制作时间"
-                    : "Avg prep time (last hour)"}
+                  {locale === "zh" ? "近一小时平均制作时间" : "Avg prep time (last hour)"}
                 </p>
                 <p className="mt-1">
                   {locale === "zh"
@@ -3453,9 +2800,7 @@ export default function CheckoutPage() {
 
             <div className="space-y-4">
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                  {strings.fulfillmentLabel}
-                </h3>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">{strings.fulfillmentLabel}</h3>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm font-medium">
                   <button
                     type="button"
@@ -3483,57 +2828,38 @@ export default function CheckoutPage() {
               </div>
 
               {isDeliveryFulfillment ? (
-                <>
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                      {strings.deliveryOptionsLabel}
-                    </h3>
-                    <div className="grid gap-3 md:grid-cols-1">
-                      {deliveryOptions.map((option) => (
-                        <div
-                          key={option.type}
-                          className="text-left rounded-2xl border border-emerald-500 bg-emerald-50 p-4 shadow-sm"
-                        >
-                          <p className="text-sm font-semibold text-slate-900">
-                            {option.title}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            {option.description}
-                          </p>
-                          <div className="mt-3 flex items-baseline justify-between text-sm">
-                            <span className="font-semibold text-slate-900">
-                              {formatMoney(option.fee)}
-                            </span>
-                            <span className="text-xs uppercase tracking-wide text-slate-500">
-                              {locale === "zh"
-                                ? "起步价$6 + 每公里$1距离计费"
-                                : "Base fee $6 + $1 per km"}
-                            </span>
-                          </div>
+                <div className="space-y-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">{strings.deliveryOptionsLabel}</h3>
+                  <div className="grid gap-3 md:grid-cols-1">
+                    {deliveryOptions.map((option) => (
+                      <div
+                        key={option.type}
+                        className="text-left rounded-2xl border border-emerald-500 bg-emerald-50 p-4 shadow-sm"
+                      >
+                        <p className="text-sm font-semibold text-slate-900">{option.title}</p>
+                        <p className="mt-1 text-xs text-slate-600">{option.description}</p>
+                        <div className="mt-3 flex items-baseline justify-between text-sm">
+                          <span className="font-semibold text-slate-900">{formatMoney(option.fee)}</span>
+                          <span className="text-xs uppercase tracking-wide text-slate-500">
+                            {locale === "zh" ? "起步价$6 + 每公里$1距离计费" : "Base fee $6 + $1 per km"}
+                          </span>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                </>
+                </div>
               ) : (
-                <p className="rounded-2xl bg-slate-100 p-3 text-xs text-slate-600">
-                  {strings.fulfillment.pickupNote}
-                </p>
+                <p className="rounded-2xl bg-slate-100 p-3 text-xs text-slate-600">{strings.fulfillment.pickupNote}</p>
               )}
 
-              {/* 联系方式 + 手机号验证 */}
               <div className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                  {strings.contactInfoLabel}
-                </h3>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">{strings.contactInfoLabel}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block text-xs font-medium text-slate-600">
                     {strings.contactFields.firstName}
                     <input
                       value={customer.firstName}
-                      onChange={(event) =>
-                        handleCustomerChange("firstName", event.target.value)
-                      }
+                      onChange={(event) => handleCustomerChange("firstName", event.target.value)}
                       placeholder={strings.contactFields.firstNamePlaceholder}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                     />
@@ -3542,36 +2868,22 @@ export default function CheckoutPage() {
                     {strings.contactFields.lastName}
                     <input
                       value={customer.lastName}
-                      onChange={(event) =>
-                        handleCustomerChange("lastName", event.target.value)
-                      }
+                      onChange={(event) => handleCustomerChange("lastName", event.target.value)}
                       placeholder={strings.contactFields.lastNamePlaceholder}
                       className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                     />
                   </label>
                 </div>
-
-                {missingContactMessage ? (
-                  <p className="text-[11px] text-rose-600">
-                    {missingContactMessage}
-                  </p>
-                ) : null}
-
+                {missingContactMessage ? <p className="text-[11px] text-rose-600">{missingContactMessage}</p> : null}
                 <label className="block text-xs font-medium text-slate-600">
-                  {locale === "zh"
-                    ? "邮箱或手机号验证"
-                    : "Email or phone verification"}
+                  {locale === "zh" ? "邮箱或手机号验证" : "Email or phone verification"}
                   <p className="mt-1 text-[11px] font-normal text-slate-500">
-                    {locale === "zh"
-                      ? "可使用邮箱或手机号码进行验证。"
-                      : "You can verify with your email or mobile phone number."}
+                    {locale === "zh" ? "可使用邮箱或手机号码进行验证。" : "You can verify with your email or mobile phone number."}
                   </p>
                   <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
                     <input
                       value={customer.email}
-                      onChange={(event) =>
-                        handleCustomerChange("email", event.target.value)
-                      }
+                      onChange={(event) => handleCustomerChange("email", event.target.value)}
                       placeholder={strings.contactFields.emailPlaceholder}
                       className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                     />
@@ -3580,9 +2892,7 @@ export default function CheckoutPage() {
                       <input
                         value={customer.phone}
                         inputMode="numeric"
-                        onChange={(event) =>
-                          handleCustomerChange("phone", event.target.value)
-                        }
+                        onChange={(event) => handleCustomerChange("phone", event.target.value)}
                         placeholder={strings.contactFields.phonePlaceholder}
                         className="w-full border-0 p-0 text-sm text-slate-700 focus:outline-none"
                       />
@@ -3602,9 +2912,7 @@ export default function CheckoutPage() {
                         <button
                           type="button"
                           onClick={handleSendContactCode}
-                          disabled={
-                            phoneVerificationLoading || !hasValidContactMethod
-                          }
+                          disabled={phoneVerificationLoading || !hasValidContactMethod}
                           className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {phoneVerificationLoading
@@ -3617,80 +2925,62 @@ export default function CheckoutPage() {
                         </button>
                       )}
                     </div>
-                    </div>
-                    {fulfillment === "delivery" &&
-                    !hasSubmittedDeliveryPhone &&
-                    hasVerifiedMemberDeliveryPhone ? (
-                      <p className="mt-1 text-[11px] text-emerald-700">
-                        {locale === "zh"
-                          ? `未填写新号码时，将使用会员资料中尾号 ${memberPhone?.replace(/\D/g, "").slice(-4)} 的已验证手机号供骑手联系。`
-                          : `If you leave this blank, the courier will use your verified member phone ending in ${memberPhone?.replace(/\D/g, "").slice(-4)}.`}
-                      </p>
-                    ) : fulfillment === "delivery" &&
-                      deliveryPhoneLookupPending ? (
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {locale === "zh"
-                          ? "正在查询会员资料中的已验证手机号…"
-                          : "Checking your verified member phone…"}
-                      </p>
-                    ) : null}
-
-                  {!hasVerifiedEmail &&
-                    !hasVerifiedPhone &&
-                    phoneVerificationStep === "codeSent" && (
-                      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
-                          value={phoneVerificationCode}
-                          onChange={(e) =>
-                            setPhoneVerificationCode(e.target.value)
-                          }
-                          placeholder={
-                            contactVerificationMethod === "email"
-                              ? locale === "zh"
-                                ? "请输入邮箱验证码"
-                                : "Enter email code"
-                              : locale === "zh"
-                                ? "请输入短信验证码"
-                                : "Enter SMS code"
-                          }
-                          className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleVerifyContactCode}
-                          disabled={phoneVerificationLoading}
-                          className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {phoneVerificationLoading
+                  </div>
+                  {fulfillment === "delivery" && !hasSubmittedDeliveryPhone && hasVerifiedMemberDeliveryPhone ? (
+                    <p className="mt-1 text-[11px] text-emerald-700">
+                      {locale === "zh"
+                        ? `未填写新号码时，将使用会员资料中尾号 ${memberPhone?.replace(/\D/g, "").slice(-4)} 的已验证手机号供骑手联系。`
+                        : `If you leave this blank, the courier will use your verified member phone ending in ${memberPhone?.replace(/\D/g, "").slice(-4)}.`}
+                    </p>
+                  ) : fulfillment === "delivery" && deliveryPhoneLookupPending ? (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {locale === "zh" ? "正在查询会员资料中的已验证手机号…" : "Checking your verified member phone…"}
+                    </p>
+                  ) : null}
+                  {!hasVerifiedEmail && !hasVerifiedPhone && phoneVerificationStep === "codeSent" && (
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        value={phoneVerificationCode}
+                        onChange={(e) => setPhoneVerificationCode(e.target.value)}
+                        placeholder={
+                          contactVerificationMethod === "email"
                             ? locale === "zh"
-                              ? "验证中…"
-                              : "Verifying…"
+                              ? "请输入邮箱验证码"
+                              : "Enter email code"
                             : locale === "zh"
-                              ? contactVerificationMethod === "email"
-                                ? "验证邮箱"
-                                : "验证手机号"
-                              : contactVerificationMethod === "email"
-                                ? "Verify email"
-                                : "Verify phone"}
-                        </button>
-                      </div>
-                    )}
-
-                  {phoneVerificationError && (
-                    <p className="mt-1 text-[11px] text-rose-600">
-                      {phoneVerificationError}
+                              ? "请输入短信验证码"
+                              : "Enter SMS code"
+                        }
+                        className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyContactCode}
+                        disabled={phoneVerificationLoading}
+                        className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {phoneVerificationLoading
+                          ? locale === "zh"
+                            ? "验证中…"
+                            : "Verifying…"
+                          : locale === "zh"
+                            ? contactVerificationMethod === "email"
+                              ? "验证邮箱"
+                              : "验证手机号"
+                            : contactVerificationMethod === "email"
+                              ? "Verify email"
+                              : "Verify phone"}
+                      </button>
+                    </div>
+                  )}
+                  {phoneVerificationError && <p className="mt-1 text-[11px] text-rose-600">{phoneVerificationError}</p>}
+                  {!hasVerifiedEmail && !hasVerifiedPhone && !phoneVerificationError && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {locale === "zh"
+                        ? "为保障订单通知及外送沟通，请先完成邮箱或手机号验证后再提交订单。"
+                        : "Please verify your email or phone number before placing the order so we can contact you if needed."}
                     </p>
                   )}
-
-                  {!hasVerifiedEmail &&
-                    !hasVerifiedPhone &&
-                    !phoneVerificationError && (
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {locale === "zh"
-                          ? "为保障订单通知及外送沟通，请先完成邮箱或手机号验证后再提交订单。"
-                          : "Please verify your email or phone number before placing the order so we can contact you if needed."}
-                      </p>
-                    )}
                 </label>
 
                 {fulfillment === "delivery" ? (
@@ -3699,9 +2989,7 @@ export default function CheckoutPage() {
                       <div className="mb-4">
                         <div className="mb-1 flex items-center justify-between">
                           <label className="text-xs font-medium text-slate-600">
-                            {locale === "zh"
-                              ? "选择收货地址"
-                              : "Select Address"}
+                            {locale === "zh" ? "选择收货地址" : "Select Address"}
                           </label>
                           <span
                             role="button"
@@ -3722,34 +3010,23 @@ export default function CheckoutPage() {
                               : ""}
                           </span>
                         </div>
-
                         <select
                           className="w-full rounded-xl border border-slate-200 bg-white p-2 text-sm outline-none focus:border-blue-500"
                           value={selectedAddressStableId ?? ""}
                           onChange={(event) => {
                             const value = event.target.value;
-                            if (value) {
-                              handleSelectAddress(value);
-                              return;
-                            }
-                            handleUseNewAddress();
+                            if (value) handleSelectAddress(value);
+                            else handleUseNewAddress();
                           }}
                         >
-                          <option value="">
-                            {locale === "zh"
-                              ? "-- 输入新地址 --"
-                              : "-- Enter new address --"}
-                          </option>
+                          <option value="">{locale === "zh" ? "-- 输入新地址 --" : "-- Enter new address --"}</option>
                           {memberAddresses.map((address) => {
                             const stableId = getAddressStableId(address);
                             if (!stableId) return null;
                             return (
                               <option key={stableId} value={stableId}>
                                 {address.addressLine1}
-                                {address.addressLine2
-                                  ? ` (${address.addressLine2})`
-                                  : ""}{" "}
-                                - {address.receiver ?? ""}
+                                {address.addressLine2 ? ` (${address.addressLine2})` : ""} - {address.receiver ?? ""}
                               </option>
                             );
                           })}
@@ -3765,8 +3042,7 @@ export default function CheckoutPage() {
                           setSelectedAddressStableId(null);
                         }}
                         onSelect={(selection) => {
-                          const { addressLine1, city, province, postalCode } =
-                            extractAddressParts(selection);
+                          const { addressLine1, city, province, postalCode } = extractAddressParts(selection);
                           if (selection.location) {
                             setSelectedCoordinates({
                               latitude: selection.location.lat,
@@ -3779,23 +3055,14 @@ export default function CheckoutPage() {
                           setSelectedAddressStableId(null);
                           setCustomer((prev) => ({
                             ...prev,
-                            addressLine1:
-                              addressLine1 ||
-                              selection.description ||
-                              prev.addressLine1,
-                            addressLine2: selection.detectedUnit
-                              ? selection.detectedUnit
-                              : prev.addressLine2,
+                            addressLine1: addressLine1 || selection.description || prev.addressLine1,
+                            addressLine2: selection.detectedUnit ? selection.detectedUnit : prev.addressLine2,
                             city: city || prev.city,
                             province: province || prev.province,
-                            postalCode: postalCode
-                              ? formatPostalCodeInput(postalCode)
-                              : prev.postalCode,
+                            postalCode: postalCode ? formatPostalCodeInput(postalCode) : prev.postalCode,
                           }));
                         }}
-                        placeholder={
-                          strings.contactFields.addressLine1Placeholder
-                        }
+                        placeholder={strings.contactFields.addressLine1Placeholder}
                         containerClassName="relative"
                         inputClassName="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         suggestionListClassName="absolute z-50 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
@@ -3814,15 +3081,8 @@ export default function CheckoutPage() {
                       {strings.contactFields.addressLine2}
                       <input
                         value={customer.addressLine2}
-                        onChange={(event) =>
-                          handleCustomerChange(
-                            "addressLine2",
-                            event.target.value,
-                          )
-                        }
-                        placeholder={
-                          strings.contactFields.addressLine2Placeholder
-                        }
+                        onChange={(event) => handleCustomerChange("addressLine2", event.target.value)}
+                        placeholder={strings.contactFields.addressLine2Placeholder}
                         className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       />
                     </label>
@@ -3831,9 +3091,7 @@ export default function CheckoutPage() {
                         {strings.contactFields.city}
                         <input
                           value={customer.city}
-                          onChange={(event) =>
-                            handleCustomerChange("city", event.target.value)
-                          }
+                          onChange={(event) => handleCustomerChange("city", event.target.value)}
                           placeholder={strings.contactFields.cityPlaceholder}
                           className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         />
@@ -3842,15 +3100,8 @@ export default function CheckoutPage() {
                         {strings.contactFields.province}
                         <input
                           value={customer.province}
-                          onChange={(event) =>
-                            handleCustomerChange(
-                              "province",
-                              event.target.value.toUpperCase(),
-                            )
-                          }
-                          placeholder={
-                            strings.contactFields.provincePlaceholder
-                          }
+                          onChange={(event) => handleCustomerChange("province", event.target.value.toUpperCase())}
+                          placeholder={strings.contactFields.provincePlaceholder}
                           className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                         />
                       </label>
@@ -3861,14 +3112,9 @@ export default function CheckoutPage() {
                         <input
                           value={customer.postalCode}
                           onChange={(event) =>
-                            handleCustomerChange(
-                              "postalCode",
-                              formatPostalCodeInput(event.target.value),
-                            )
+                            handleCustomerChange("postalCode", formatPostalCodeInput(event.target.value))
                           }
-                          placeholder={
-                            strings.contactFields.postalCodePlaceholder
-                          }
+                          placeholder={strings.contactFields.postalCodePlaceholder}
                           className={`mt-1 w-full rounded-2xl border bg-white p-2 text-sm text-slate-700 focus:outline-none ${
                             showPostalCodeError
                               ? "border-red-400 focus:border-red-500"
@@ -3885,11 +3131,7 @@ export default function CheckoutPage() {
                         />
                       </label>
                     </div>
-                    <p
-                      className={`text-xs ${
-                        showPostalCodeError ? "text-red-600" : "text-slate-500"
-                      }`}
-                    >
+                    <p className={`text-xs ${showPostalCodeError ? "text-red-600" : "text-slate-500"}`}>
                       {showPostalCodeError
                         ? strings.contactFields.postalCodeError
                         : strings.contactFields.postalCodeHint}{" "}
@@ -3916,9 +3158,7 @@ export default function CheckoutPage() {
                   {strings.contactFields.notes}
                   <textarea
                     value={customer.notes}
-                    onChange={(event) =>
-                      handleCustomerChange("notes", event.target.value)
-                    }
+                    onChange={(event) => handleCustomerChange("notes", event.target.value)}
                     placeholder={strings.contactFields.notesPlaceholder}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                     rows={2}
@@ -3930,20 +3170,13 @@ export default function CheckoutPage() {
                 <p className="text-xs text-slate-500">{strings.paymentHint}</p>
               </div>
 
-              {(availableCoupons.length > 0 ||
-                appliedCoupon ||
-                couponLoading ||
-                couponError) && (
+              {(availableCoupons.length > 0 || appliedCoupon || couponLoading || couponError) && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
                   <div className="space-y-2">
                     <div>
-                      <p className="font-semibold">
-                        {locale === "zh" ? "优惠券" : "Coupons"}
-                      </p>
+                      <p className="font-semibold">{locale === "zh" ? "优惠券" : "Coupons"}</p>
                       <p className="mt-1 text-[11px] text-slate-600">
-                        {locale === "zh"
-                          ? "请选择本单可用的优惠券。"
-                          : "Pick a coupon to apply to this order."}
+                        {locale === "zh" ? "请选择本单可用的优惠券。" : "Pick a coupon to apply to this order."}
                       </p>
                       {hasCouponExcludedItems ? (
                         <p className="mt-1 text-[11px] text-amber-700">
@@ -3962,11 +3195,8 @@ export default function CheckoutPage() {
                   {appliedCoupon ? (
                     <div className="mt-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {appliedCoupon.title}
-                        </p>
+                        <p className="text-sm font-semibold text-slate-900">{appliedCoupon.title}</p>
                       </div>
-
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
                           <span className="font-semibold text-amber-700">
@@ -3980,20 +3210,15 @@ export default function CheckoutPage() {
                           {appliedCoupon.minSpendCents ? (
                             <span
                               className={
-                                resolveCouponApplicableSubtotalCents(
-                                  appliedCoupon,
-                                ) >= (appliedCoupon.minSpendCents ?? 0)
+                                resolveCouponApplicableSubtotalCents(appliedCoupon) >=
+                                (appliedCoupon.minSpendCents ?? 0)
                                   ? "text-emerald-700"
                                   : "text-red-600"
                               }
                             >
                               {locale === "zh"
-                                ? `满 ${formatMoney(
-                                    appliedCoupon.minSpendCents,
-                                  )} 可用`
-                                : `Min spend ${formatMoney(
-                                    appliedCoupon.minSpendCents,
-                                  )}.`}
+                                ? `满 ${formatMoney(appliedCoupon.minSpendCents)} 可用`
+                                : `Min spend ${formatMoney(appliedCoupon.minSpendCents)}.`}
                             </span>
                           ) : null}
                         </div>
@@ -4017,12 +3242,9 @@ export default function CheckoutPage() {
                             ? "暂无可用优惠券。"
                             : "No coupons available."}
                       </p>
-
                       <div className="flex shrink-0 items-center gap-2">
                         {couponLoading && (
-                          <span className="text-[11px] text-slate-500">
-                            {locale === "zh" ? "加载中…" : "Loading…"}
-                          </span>
+                          <span className="text-[11px] text-slate-500">{locale === "zh" ? "加载中…" : "Loading…"}</span>
                         )}
                         <button
                           type="button"
@@ -4045,9 +3267,7 @@ export default function CheckoutPage() {
                       <div className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
                         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                           <div>
-                            <p className="text-sm font-semibold text-slate-900">
-                              {locale === "zh" ? "选择优惠券" : "Choose coupon"}
-                            </p>
+                            <p className="text-sm font-semibold text-slate-900">{locale === "zh" ? "选择优惠券" : "Choose coupon"}</p>
                             <p className="mt-1 text-[11px] text-slate-500">
                               {locale === "zh"
                                 ? "可使用券已高亮，不可用券已置灰。"
@@ -4062,45 +3282,25 @@ export default function CheckoutPage() {
                             {locale === "zh" ? "关闭" : "Close"}
                           </button>
                         </div>
-
                         <div className="max-h-[60vh] space-y-3 overflow-y-auto px-4 py-3">
                           {availableCoupons.length === 0 && !couponLoading ? (
-                            <p className="text-[11px] text-slate-600">
-                              {locale === "zh"
-                                ? "暂无可用优惠券。"
-                                : "No coupons available."}
-                            </p>
+                            <p className="text-[11px] text-slate-600">{locale === "zh" ? "暂无可用优惠券。" : "No coupons available."}</p>
                           ) : null}
-
                           {applicableCoupons.length > 0 ? (
                             <div className="space-y-2">
-                              <p className="text-[11px] font-semibold text-emerald-700">
-                                {locale === "zh" ? "可使用" : "Eligible"}
-                              </p>
+                              <p className="text-[11px] font-semibold text-emerald-700">{locale === "zh" ? "可使用" : "Eligible"}</p>
                               {applicableCoupons.map((coupon, index) => {
-                                const couponKey =
-                                  coupon.couponStableId ||
-                                  coupon.code ||
-                                  `${coupon.title}-${index}`;
+                                const couponKey = coupon.couponStableId || coupon.code || `${coupon.title}-${index}`;
                                 return (
-                                  <div
-                                    key={`${couponKey}-${index}`}
-                                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2"
-                                  >
+                                  <div key={`${couponKey}-${index}`} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
                                     <div className="flex items-center justify-between gap-2">
                                       <div>
-                                        <p className="text-sm font-semibold text-slate-900">
-                                          {coupon.title}
-                                        </p>
+                                        <p className="text-sm font-semibold text-slate-900">{coupon.title}</p>
                                         <p className="text-[11px] text-slate-500">
                                           {coupon.minSpendCents
                                             ? locale === "zh"
-                                              ? `满 ${formatMoney(
-                                                  coupon.minSpendCents,
-                                                )} 可用`
-                                              : `Min spend ${formatMoney(
-                                                  coupon.minSpendCents,
-                                                )}`
+                                              ? `满 ${formatMoney(coupon.minSpendCents)} 可用`
+                                              : `Min spend ${formatMoney(coupon.minSpendCents)}`
                                             : locale === "zh"
                                               ? "无门槛"
                                               : "No minimum spend"}
@@ -4108,9 +3308,7 @@ export default function CheckoutPage() {
                                       </div>
                                       <button
                                         type="button"
-                                        onClick={() =>
-                                          handleApplyCoupon(coupon)
-                                        }
+                                        onClick={() => handleApplyCoupon(coupon)}
                                         className="shrink-0 rounded-full border border-emerald-300 bg-white px-3 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
                                       >
                                         {locale === "zh" ? "使用" : "Apply"}
@@ -4118,33 +3316,22 @@ export default function CheckoutPage() {
                                     </div>
                                     <div className="mt-1 flex items-center justify-between text-[11px] text-slate-600">
                                       <span className="font-semibold text-amber-700">
-                                        {typeof coupon.discountPercent ===
-                                        "number"
+                                        {typeof coupon.discountPercent === "number"
                                           ? `${coupon.discountPercent}% OFF`
                                           : `${locale === "zh" ? "立减 " : "Save "}${formatMoney(coupon.discountCents)}`}
                                       </span>
-                                      {coupon.expiresAt ? (
-                                        <span className="text-slate-500">
-                                          {coupon.expiresAt}
-                                        </span>
-                                      ) : null}
+                                      {coupon.expiresAt ? <span className="text-slate-500">{coupon.expiresAt}</span> : null}
                                     </div>
                                   </div>
                                 );
                               })}
                             </div>
                           ) : null}
-
                           {inapplicableCoupons.length > 0 ? (
                             <div className="space-y-2">
-                              <p className="text-[11px] font-semibold text-slate-500">
-                                {locale === "zh" ? "不可使用" : "Unavailable"}
-                              </p>
+                              <p className="text-[11px] font-semibold text-slate-500">{locale === "zh" ? "不可使用" : "Unavailable"}</p>
                               {inapplicableCoupons.map((coupon, index) => {
-                                const couponKey =
-                                  coupon.couponStableId ||
-                                  coupon.code ||
-                                  `${coupon.title}-${index}`;
+                                const couponKey = coupon.couponStableId || coupon.code || `${coupon.title}-${index}`;
                                 return (
                                   <div
                                     key={`${couponKey}-inapplicable-${index}`}
@@ -4152,39 +3339,28 @@ export default function CheckoutPage() {
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <div>
-                                        <p className="text-sm font-semibold text-slate-500">
-                                          {coupon.title}
-                                        </p>
+                                        <p className="text-sm font-semibold text-slate-500">{coupon.title}</p>
                                         <p className="text-[11px] text-slate-500">
                                           {coupon.minSpendCents
                                             ? locale === "zh"
-                                              ? `满 ${formatMoney(
-                                                  coupon.minSpendCents,
-                                                )} 可用`
-                                              : `Min spend ${formatMoney(
-                                                  coupon.minSpendCents,
-                                                )}`
+                                              ? `满 ${formatMoney(coupon.minSpendCents)} 可用`
+                                              : `Min spend ${formatMoney(coupon.minSpendCents)}`
                                             : locale === "zh"
                                               ? "无门槛"
                                               : "No minimum spend"}
                                         </p>
                                       </div>
                                       <span className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-400">
-                                        {locale === "zh"
-                                          ? "未满足条件"
-                                          : "Not eligible"}
+                                        {locale === "zh" ? "未满足条件" : "Not eligible"}
                                       </span>
                                     </div>
                                     <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
                                       <span className="font-semibold">
-                                        {typeof coupon.discountPercent ===
-                                        "number"
+                                        {typeof coupon.discountPercent === "number"
                                           ? `${coupon.discountPercent}% OFF`
                                           : `${locale === "zh" ? "立减 " : "Save "}${formatMoney(coupon.discountCents)}`}
                                       </span>
-                                      {coupon.expiresAt ? (
-                                        <span>{coupon.expiresAt}</span>
-                                      ) : null}
+                                      {coupon.expiresAt ? <span>{coupon.expiresAt}</span> : null}
                                     </div>
                                   </div>
                                 );
@@ -4195,12 +3371,7 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                   ) : null}
-
-                  {couponError && (
-                    <p className="mt-2 text-[11px] text-red-600">
-                      {couponError}
-                    </p>
-                  )}
+                  {couponError && <p className="mt-2 text-[11px] text-red-600">{couponError}</p>}
                 </div>
               )}
 
@@ -4208,37 +3379,18 @@ export default function CheckoutPage() {
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="font-semibold">
-                        {locale === "zh" ? "积分抵扣" : "Redeem points"}
-                      </p>
+                      <p className="font-semibold">{locale === "zh" ? "积分抵扣" : "Redeem points"}</p>
                       <p className="mt-1 text-[11px] text-slate-600">
                         {locale === "zh"
-                          ? `当前积分：${loyaltyInfo.points.toFixed(
-                              2,
-                            )}，本单最多可抵扣 ${formatMoney(
-                              maxRedeemableCentsForOrder,
-                            )}。`
-                          : `You have ${loyaltyInfo.points.toFixed(
-                              2,
-                            )} pts. You can redeem up to ${formatMoney(
-                              maxRedeemableCentsForOrder,
-                            )} this order.`}
+                          ? `当前积分：${loyaltyInfo.points.toFixed(2)}，本单最多可抵扣 ${formatMoney(maxRedeemableCentsForOrder)}。`
+                          : `You have ${loyaltyInfo.points.toFixed(2)} pts. You can redeem up to ${formatMoney(maxRedeemableCentsForOrder)} this order.`}
                       </p>
                     </div>
-                    {loyaltyLoading && (
-                      <span className="text-[11px] text-slate-500">
-                        {locale === "zh" ? "加载中…" : "Loading…"}
-                      </span>
-                    )}
+                    {loyaltyLoading && <span className="text-[11px] text-slate-500">{locale === "zh" ? "加载中…" : "Loading…"}</span>}
                   </div>
-
                   <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-end">
                     <label className="flex-1">
-                      <span className="text-[11px] text-slate-600">
-                        {locale === "zh"
-                          ? "本单使用积分数量"
-                          : "Points to use this order"}
-                      </span>
+                      <span className="text-[11px] text-slate-600">{locale === "zh" ? "本单使用积分数量" : "Points to use this order"}</span>
                       <input
                         type="number"
                         min={0}
@@ -4251,12 +3403,7 @@ export default function CheckoutPage() {
                             setRedeemPointsInput("");
                             return;
                           }
-
-                          const clamped = Math.min(
-                            n,
-                            maxRedeemablePointsForOrder,
-                          );
-                          setRedeemPointsInput(String(clamped));
+                          setRedeemPointsInput(String(Math.min(n, maxRedeemablePointsForOrder)));
                         }}
                         className="mt-1 w-full rounded-2xl border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
                       />
@@ -4264,32 +3411,18 @@ export default function CheckoutPage() {
                     <button
                       type="button"
                       className="shrink-0 rounded-2xl border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                      onClick={() =>
-                        setRedeemPointsInput(
-                          maxRedeemablePointsForOrder.toFixed(2),
-                        )
-                      }
+                      onClick={() => setRedeemPointsInput(maxRedeemablePointsForOrder.toFixed(2))}
                     >
                       {locale === "zh" ? "全部使用" : "Use max"}
                     </button>
-
                     <div className="text-[11px] text-slate-600 md:w-40">
-                      <p className="font-medium">
-                        {locale === "zh" ? "折算抵扣金额" : "Discount value"}
-                      </p>
+                      <p className="font-medium">{locale === "zh" ? "折算抵扣金额" : "Discount value"}</p>
                       <p className="mt-1 text-sm font-semibold text-emerald-700">
-                        {loyaltyRedeemCents > 0
-                          ? `- ${formatMoney(loyaltyRedeemCents)}`
-                          : formatMoney(0)}
+                        {loyaltyRedeemCents > 0 ? `- ${formatMoney(loyaltyRedeemCents)}` : formatMoney(0)}
                       </p>
                     </div>
                   </div>
-
-                  {loyaltyError && (
-                    <p className="mt-2 text-[11px] text-red-600">
-                      {loyaltyError}
-                    </p>
-                  )}
+                  {loyaltyError && <p className="mt-2 text-[11px] text-red-600">{loyaltyError}</p>}
                 </div>
               )}
 
@@ -4300,28 +3433,25 @@ export default function CheckoutPage() {
                       ? "请选择支付方式并在下一页完成支付。"
                       : "Choose a payment method to complete payment on the next page."}
                   </p>
-                  {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
                   <p className="text-center text-[11px] leading-snug text-slate-500">
                     {locale === "zh"
-                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）。"
-                      : "Accepted cards: Visa / Mastercard / Discover / Debit."}
+                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）；暂不接受 American Express。"
+                      : "Accepted cards: Visa / Mastercard / Discover / Debit. American Express is not accepted."}
                   </p>
                   <p className="text-center text-[11px] leading-snug text-slate-500">
                     {locale === "zh"
                       ? "如要使用苹果支付，请使用苹果设备和 Safari 浏览器。"
                       : "To use Apple Pay, please use an Apple device and the Safari browser."}
                   </p>
-                  <p className="text-center text-[11px] leading-snug text-slate-500">
+                  <p className="text-center text-xs leading-snug text-slate-700">
                     {locale === "zh"
-                      ? "使用信用卡支付时，支付网络可能会额外收取不高于订单金额 2.4% 的信用卡手续费（由支付处理方/发卡行收取，我们不从中获利）。具体金额以 Clover 支付页/小票或银行账单为准。"
-                      : "When paying by credit card, the payment networks may apply a surcharge of up to 2.4% of the order total (charged by the payment processor/card issuer; we do not profit from this). Please refer to the Clover checkout/receipt or your card statement for the exact amount."}
+                      ? "使用符合附加费条件的信用卡支付时，将收取交易金额 2.40% 的信用卡附加费；借记卡及其他不符合附加费条件的银行卡不会收取此费用。实际附加费金额会在 Clover 支付流程和收据中显示。"
+                      : "A 2.40% surcharge applies to eligible credit card transactions. Debit cards and other cards not eligible for surcharging are not subject to this fee. The actual surcharge amount will be shown in the Clover payment flow and on your receipt."}
                   </p>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      void handleApplePayCheckout();
-                    }}
+                    onClick={() => void handleApplePayCheckout()}
                     disabled={
                       !canPlaceOrder ||
                       !requiresPayment ||
@@ -4340,12 +3470,9 @@ export default function CheckoutPage() {
                         ? "使用 Apple Pay"
                         : "Use Apple Pay"}
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => {
-                      void handleGooglePayCheckout();
-                    }}
+                    onClick={() => void handleGooglePayCheckout()}
                     disabled={
                       !canPlaceOrder ||
                       !requiresPayment ||
@@ -4364,12 +3491,9 @@ export default function CheckoutPage() {
                         ? "使用 Google Pay"
                         : "Use Google Pay"}
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => {
-                      void handleCardPayCheckout();
-                    }}
+                    onClick={() => void handleCardPayCheckout()}
                     disabled={
                       !canPlaceOrder ||
                       !requiresPayment ||
@@ -4391,36 +3515,29 @@ export default function CheckoutPage() {
                 </div>
               ) : null}
 
-              {/* 订单金额小结 */}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <div className="flex items-center justify-between text-xs">
                   <span>{strings.summary.subtotal}</span>
                   <span>{formatMoney(subtotalCents)}</span>
                 </div>
-
                 {automaticPromotionDiscountCents > 0 && (
                   <div className="mt-1 flex items-center justify-between text-xs text-emerald-700">
                     <span>{locale === "zh" ? "自动优惠" : "Automatic promotion"}</span>
                     <span>-{formatMoney(automaticPromotionDiscountCents)}</span>
                   </div>
                 )}
-
                 {previewCouponDiscountCents > 0 && (
                   <div className="mt-1 flex items-center justify-between text-xs text-amber-700">
                     <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
                     <span>-{formatMoney(previewCouponDiscountCents)}</span>
                   </div>
                 )}
-
                 {previewLoyaltyRedeemCents > 0 && (
                   <div className="mt-1 flex items-center justify-between text-xs">
-                    <span>
-                      {locale === "zh" ? "积分抵扣" : "Points discount"}
-                    </span>
+                    <span>{locale === "zh" ? "积分抵扣" : "Points discount"}</span>
                     <span>-{formatMoney(previewLoyaltyRedeemCents)}</span>
                   </div>
                 )}
-
                 {pricingPreviewError ? (
                   <p className="mt-2 text-xs text-amber-700">
                     {locale === "zh"
@@ -4428,26 +3545,22 @@ export default function CheckoutPage() {
                       : "Live promotion preview is temporarily unavailable. The server will confirm the final amount before payment."}
                   </p>
                 ) : null}
-
                 {serviceFeeCents > 0 ? (
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <span>{strings.summary.serviceFee}</span>
                     <span>{formatMoney(serviceFeeCents)}</span>
                   </div>
                 ) : null}
-
                 {fulfillment === "delivery" ? (
                   <div className="mt-2 flex items-center justify-between text-xs">
                     <span>{strings.summary.deliveryFee}</span>
                     <span>{formatMoney(deliveryFeeCents)}</span>
                   </div>
                 ) : null}
-
                 <div className="mt-2 flex items-center justify-between text-xs">
                   <span>{strings.summary.tax}</span>
                   <span>{formatMoney(taxCents)}</span>
                 </div>
-
                 <div className="mt-3 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
                   <div className="flex items-center justify-between">
                     <span>{strings.summary.total}</span>
@@ -4458,9 +3571,7 @@ export default function CheckoutPage() {
               {!requiresPayment ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    void handlePlaceOrder();
-                  }}
+                  onClick={() => void handlePlaceOrder()}
                   disabled={
                     !canPlaceOrder ||
                     isSubmitting ||
@@ -4474,9 +3585,7 @@ export default function CheckoutPage() {
                 </button>
               ) : null}
               {payButtonDisabledReason ? (
-                <p className="mt-2 text-center text-[11px] text-rose-600">
-                  {payButtonDisabledReason}
-                </p>
+                <p className="mt-2 text-center text-[11px] text-rose-600">{payButtonDisabledReason}</p>
               ) : null}
               {paymentError ? (
                 <div
@@ -4492,14 +3601,11 @@ export default function CheckoutPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (typeof window === "undefined") return;
-                          window.location.reload();
+                          if (typeof window !== "undefined") window.location.reload();
                         }}
                         className="rounded-full border border-current px-3 py-1 text-[11px] font-semibold"
                       >
-                        {locale === "zh"
-                          ? "刷新页面重试支付模块"
-                          : "Refresh to retry payment module"}
+                        {locale === "zh" ? "刷新页面重试支付模块" : "Refresh to retry payment module"}
                       </button>
                     </div>
                   ) : null}
@@ -4535,14 +3641,13 @@ export default function CheckoutPage() {
           </div>
         )}
       </section>
+
       {challengeUrl ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
               <p className="text-sm font-semibold text-slate-700">
-                {locale === "zh"
-                  ? "完成 3D Secure 验证"
-                  : "Complete 3D Secure verification"}
+                {locale === "zh" ? "完成 3D Secure 验证" : "Complete 3D Secure verification"}
               </p>
               <button
                 type="button"
@@ -4567,17 +3672,15 @@ export default function CheckoutPage() {
           </div>
         </div>
       ) : null}
+
       {isPwaStandalone ? (
         <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2">
           <button
             type="button"
             onClick={() => {
               if (typeof window === "undefined") return;
-              if (window.history.length > 1) {
-                router.back();
-                return;
-              }
-              router.replace(`/${locale}`);
+              if (window.history.length > 1) router.back();
+              else router.replace(`/${locale}`);
             }}
             className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
           >
@@ -4586,8 +3689,7 @@ export default function CheckoutPage() {
           <button
             type="button"
             onClick={() => {
-              if (typeof window === "undefined") return;
-              window.location.reload();
+              if (typeof window !== "undefined") window.location.reload();
             }}
             className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
           >
