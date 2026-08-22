@@ -180,22 +180,27 @@ describe('Uber API gateway contract', () => {
     expect(second.accessToken).toBe('fresh');
   });
 
-  it('fails before auth/network when a write has no idempotency key', async () => {
-    const http = createUberHttpFake();
-    const auth = createUberAuthFake();
-    const gateway = new UberApiGatewayTransport(http, auth, {
-      apiBaseUrl: 'https://api.uber.com',
-    });
-    const invalidWrite = {
-      path: '/v1/eats/stores/store-1/status',
-      method: 'POST',
-      operation: 'uber.store.status',
-      scope: 'eats.store.status.write',
-    } as UberGatewayRequest;
-    await expect(gateway.request(invalidWrite)).rejects.toThrow('缺少幂等键');
-    expect(auth.getAccessToken).not.toHaveBeenCalled();
-    expect(http.request).not.toHaveBeenCalled();
-  });
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'] as const)(
+    'fails before auth/network when a %s write has no idempotency key',
+    async (method) => {
+      const http = createUberHttpFake();
+      const auth = createUberAuthFake();
+      const gateway = new UberApiGatewayTransport(http, auth, {
+        apiBaseUrl: 'https://api.uber.com',
+      });
+      const invalidWrite = {
+        path: '/v1/eats/stores/store-1/pos_data',
+        method,
+        operation: 'uber.store.integration-config',
+        scope: 'eats.store',
+      } as UberGatewayRequest;
+      await expect(gateway.request(invalidWrite)).rejects.toThrow(
+        '缺少幂等键',
+      );
+      expect(auth.getAccessToken).not.toHaveBeenCalled();
+      expect(http.request).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ['http://api.uber.com', '/v1/eats/stores'],

@@ -58,6 +58,37 @@ const withScheduledOrderWebhook = (
   };
 };
 
+const requireMappedStore = async (
+  storeId: string,
+  connectionId: string | undefined,
+  connections: UberMerchantConnectionRepositoryPort,
+  mappings: UberStoreMappingRepositoryPort,
+) => {
+  const id = storeId.trim();
+  const merchantId = connectionId?.trim();
+  if (!id || !merchantId)
+    throw new UberValidationError({
+      code: 'INVALID_REQUEST',
+      operation: 'merchant',
+      message: 'storeId 和 connectionId 不能为空',
+    });
+  const connection = await connections.findConnection(merchantId);
+  if (!connection)
+    throw new UberValidationError({
+      code: 'INVALID_REQUEST',
+      operation: 'merchant',
+      message: '未找到 Uber 商户授权',
+    });
+  const mapping = await mappings.findMapping(id);
+  if (!mapping || mapping.connectionId !== connection.connectionId)
+    throw new UberValidationError({
+      code: 'STORE_NOT_MAPPED',
+      operation: 'merchant',
+      message: '当前 Uber 商户授权未绑定该门店',
+    });
+  return { id, connection, mapping };
+};
+
 export class ProvisionUberStoreUseCase {
   private readonly logger = new AppLogger(ProvisionUberStoreUseCase.name);
   constructor(
@@ -138,13 +169,111 @@ export class ProvisionUberStoreUseCase {
     };
   }
 }
+export class RetrieveUberStoreIntegrationConfigUseCase {
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async retrieve(storeId: string, connectionId?: string) {
+    const { id } = await requireMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    return this.api.retrieveIntegrationConfig(id);
+  }
+}
+
+export class UpdateUberStoreIntegrationConfigUseCase {
+  private readonly logger = new AppLogger(
+    UpdateUberStoreIntegrationConfigUseCase.name,
+  );
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async update(
+    storeId: string,
+    payload: Record<string, unknown>,
+    connectionId?: string,
+  ) {
+    const { id } = await requireMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    if (credentials(payload))
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'integration config payload 不得包含 credential',
+      });
+    const configuredPayload = withScheduledOrderWebhook(payload);
+    const businessVersion = createHash('sha256')
+      .update(JSON.stringify(configuredPayload))
+      .digest('hex');
+    await this.api.updateIntegrationConfig(
+      id,
+      configuredPayload,
+      buildUberIdempotencyKey({
+        taskId: `store-integration-update:${id}`,
+        resourceId: id,
+        action: 'UPDATE_INTEGRATION_CONFIG',
+        businessVersion,
+      }),
+    );
+    this.logger.log(
+      `[merchant.integration-config] storeId=${id} operation=update outcome=success`,
+    );
+    return { ok: true, storeId: id };
+  }
+}
+
 export class DeprovisionUberStoreUseCase {
-  revokeOrDeprovisionStore() {
-    throw new UberValidationError({
-      code: 'NOT_IMPLEMENTED',
-      operation: 'merchant',
-      message: 'deprovision MVP 暂未实现',
+  private readonly logger = new AppLogger(DeprovisionUberStoreUseCase.name);
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async revokeOrDeprovisionStore(storeId: string, connectionId?: string) {
+    const { id, connection, mapping } = await requireMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    const businessVersion = createHash('sha256')
+      .update(
+        `${connection.connectionId}:${mapping.provisionedAt?.toISOString() ?? 'not-provisioned'}`,
+      )
+      .digest('hex');
+    await this.api.removeIntegration(
+      { connectionId: connection.connectionId },
+      id,
+      buildUberIdempotencyKey({
+        taskId: `store-integration-remove:${connection.connectionId}:${id}`,
+        resourceId: id,
+        action: 'REMOVE_INTEGRATION',
+        businessVersion,
+      }),
+    );
+    await this.mappings.upsertMapping({
+      ...mapping,
+      isProvisioned: false,
+      provisionedAt: null,
     });
+    this.logger.log(
+      `[merchant.integration-config] storeId=${id} operation=remove outcome=success`,
+    );
+    return { ok: true, storeId: id, isProvisioned: false };
   }
 }
 

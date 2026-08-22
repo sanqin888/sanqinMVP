@@ -2,13 +2,52 @@
 import { useState } from 'react';
 import { uberApiFetch } from '../api/uberAdminApi';
 import type { RunAction } from '../hooks/useUberMutationState';
-import type { OAuthConnectionResponse, OAuthConnectUrlResponse, UberStore } from '../types';
+import type { OAuthConnectionResponse, OAuthConnectUrlResponse, UberIntegrationConfigResponse, UberStore } from '../types';
 
 function safeTime(input?: string | null) { return input ? new Date(input).toLocaleString() : '-'; }
 export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading, setActionError, runAction }: { connectUrl: OAuthConnectUrlResponse | null; connection: OAuthConnectionResponse | null; stores: UberStore[]; retry: () => Promise<void>; actionLoading: Record<string, boolean>; setActionError: (message: string | null) => void; runAction: RunAction }) {
   const [integratorStoreId, setIntegratorStoreId] = useState('');
   const [posStoreIdDrafts, setPosStoreIdDrafts] = useState<Record<string, string>>({});
   const [provisionPayload, setProvisionPayload] = useState('{\n  "is_order_manager": true\n}');
+  const [integrationConfigs, setIntegrationConfigs] = useState<Record<string, UberIntegrationConfigResponse>>({});
+  const connectionId = connection?.connectionId ?? '';
+  const integrationPath = (storeId: string) => `/integrations/ubereats/oauth/stores/${encodeURIComponent(storeId)}/integration-config`;
+  const integrationPayload = () => {
+    try {
+      const parsed = JSON.parse(provisionPayload) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      return { ...(parsed as Record<string, unknown>), ...(integratorStoreId.trim() ? { integrator_store_id: integratorStoreId.trim() } : {}) };
+    } catch {
+      setActionError('Integration payload 不是合法 JSON object');
+      return null;
+    }
+  };
+  const readIntegration = (store: UberStore) => {
+    if (!connectionId) return setActionError('缺少 Uber connectionId');
+    void runAction(`integration-get-${store.storeId}`, () => uberApiFetch<UberIntegrationConfigResponse>(`${integrationPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`).then((config) => {
+      setIntegrationConfigs((current) => ({ ...current, [store.storeId]: config }));
+      return config;
+    }), `已读取 ${store.storeName ?? store.storeId} 的 Integration Config`, false);
+  };
+  const updateIntegration = (store: UberStore) => {
+    if (!connectionId) return setActionError('缺少 Uber connectionId');
+    const payload = integrationPayload();
+    if (!payload) return;
+    void runAction(`integration-update-${store.storeId}`, () => uberApiFetch(integrationPath(store.storeId), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId, payload }),
+    }).then(() => uberApiFetch<UberIntegrationConfigResponse>(`${integrationPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`)).then((config) => {
+      setIntegrationConfigs((current) => ({ ...current, [store.storeId]: config }));
+      return config;
+    }), `已更新并核验 ${store.storeName ?? store.storeId} 的 Integration Config`);
+  };
+  const removeIntegration = (store: UberStore) => {
+    if (!connectionId) return setActionError('缺少 Uber connectionId');
+    if (!window.confirm(`确定从 Uber 永久移除「${store.storeName ?? store.storeId}」的 Integration 吗？完成后需要重新 Activate 才能恢复。`)) return;
+    void runAction(`integration-remove-${store.storeId}`, () => uberApiFetch(`${integrationPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE' }).then((result) => {
+      setIntegrationConfigs((current) => { const next = { ...current }; delete next[store.storeId]; return next; });
+      return result;
+    }), `已移除 ${store.storeName ?? store.storeId} 的 Uber Integration`);
+  };
   return <section aria-label="oauth-connection" className="space-y-4">
             <div className="rounded-xl border bg-white p-4">
               <h3 className="text-lg font-semibold">A. 环境配置</h3>
@@ -31,12 +70,13 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
             </div>
 
             <div className="rounded-xl border bg-white p-4">
-              <h3 className="text-lg font-semibold">C. 商户门店发现 + D. Provision</h3>
-              <p className="mt-1 text-xs text-slate-500">本地打印房间 Store ID 只用于将 Uber 订单路由到打印机，不会修改 Uber 门店的 External Store ID 或 Provision 配置。</p>
+              <h3 className="text-lg font-semibold">C. 商户门店发现 + D. Integration Config 生命周期</h3>
+              <p className="mt-1 text-xs text-slate-500">本地打印房间 Store ID 只用于将 Uber 订单路由到打印机，不会修改 Uber 门店的 External Store ID 或 Integration Config。</p>
               <div className="mt-2 grid gap-2 md:grid-cols-2">
                 <input className="rounded border px-3 py-2" placeholder="SANQ Store ID（integrator_store_id）" value={integratorStoreId} onChange={(e) => setIntegratorStoreId(e.target.value)} />
                 <textarea rows={5} className="rounded border px-3 py-2 font-mono text-xs" value={provisionPayload} onChange={(e) => setProvisionPayload(e.target.value)} />
               </div>
+              <p className="mt-1 text-xs text-slate-500">上方 JSON 同时用于 Activate 与 PATCH；后端固定保留 scheduled order webhook 和 webhooks_version=1.0.0。</p>
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead><tr className="border-b text-left text-slate-500"><th className="px-2 py-2">Uber Store ID</th><th className="px-2 py-2">Store Name</th><th className="px-2 py-2">Location</th><th className="px-2 py-2">Provision</th><th className="px-2 py-2">本地打印房间 Store ID</th><th className="px-2 py-2">操作</th></tr></thead>
@@ -67,33 +107,34 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                             </button>
                           </div>
                         </td>
-                        <td className="px-2 py-2">
-                          {!s.isMapped && <button
-                            type="button"
-                            className="mr-2 rounded border px-2 py-1 text-xs"
-                            onClick={() => void runAction(`select-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/stores/select', {
-                              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId: connection?.connectionId, storeId: s.storeId, storeName: s.storeName, locationSummary: s.locationSummary, reconnectFromConnectionId: s.requiresReconnect ? s.mappedConnectionId : undefined }),
-                            }).then(() => retry()), `已选择 ${s.storeName ?? s.storeId}`)}
-                          >{s.requiresReconnect ? '确认重新连接' : '选择此门店'}</button>}
-                          <button
-                            type="button"
-                            className="rounded border px-2 py-1 text-xs disabled:opacity-40"
-                            disabled={!s.isMapped || actionLoading[`provision-${s.storeId}`]}
-                            onClick={() => {
-                              let payload: Record<string, unknown>;
-                              try {
-                                payload = JSON.parse(provisionPayload) as Record<string, unknown>;
-                              } catch {
-                                setActionError('Provision payload 不是合法 JSON');
-                                return;
-                              }
-                              void runAction(`provision-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/provision', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId: connection?.connectionId, storeId: s.storeId, payload: { ...payload, integrator_store_id: integratorStoreId || undefined } }),
-                              }).then(() => {}), `已提交 ${s.storeId} 的 Provision`);
-                            }}
-                          >
-                            {actionLoading[`provision-${s.storeId}`] ? '提交中...' : '立即 Provision'}
-                          </button>
+                        <td className="min-w-80 px-2 py-2">
+                          <div className="flex flex-wrap gap-2">
+                            {!s.isMapped && <button
+                              type="button"
+                              className="rounded border px-2 py-1 text-xs"
+                              onClick={() => void runAction(`select-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/stores/select', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId: connection?.connectionId, storeId: s.storeId, storeName: s.storeName, locationSummary: s.locationSummary, reconnectFromConnectionId: s.requiresReconnect ? s.mappedConnectionId : undefined }),
+                              }).then(() => retry()), `已选择 ${s.storeName ?? s.storeId}`)}
+                            >{s.requiresReconnect ? '确认重新连接' : '选择此门店'}</button>}
+                            <button
+                              type="button"
+                              className="rounded border px-2 py-1 text-xs disabled:opacity-40"
+                              disabled={!s.isMapped || actionLoading[`provision-${s.storeId}`]}
+                              onClick={() => {
+                                const payload = integrationPayload();
+                                if (!payload || !connectionId) return;
+                                void runAction(`provision-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/provision', {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId, storeId: s.storeId, payload }),
+                                }), `已提交 ${s.storeId} 的 Activate`);
+                              }}
+                            >
+                              {actionLoading[`provision-${s.storeId}`] ? '提交中...' : 'Activate'}
+                            </button>
+                            <button type="button" className="rounded border px-2 py-1 text-xs disabled:opacity-40" disabled={!s.isProvisioned || actionLoading[`integration-get-${s.storeId}`]} onClick={() => readIntegration(s)}>{actionLoading[`integration-get-${s.storeId}`] ? '读取中...' : '读取 Config'}</button>
+                            <button type="button" className="rounded border px-2 py-1 text-xs disabled:opacity-40" disabled={!s.isProvisioned || actionLoading[`integration-update-${s.storeId}`]} onClick={() => updateIntegration(s)}>{actionLoading[`integration-update-${s.storeId}`] ? '更新中...' : 'PATCH 更新'}</button>
+                            <button type="button" className="rounded border px-2 py-1 text-xs disabled:opacity-40" disabled={!s.isProvisioned || actionLoading[`integration-remove-${s.storeId}`]} onClick={() => removeIntegration(s)}>{actionLoading[`integration-remove-${s.storeId}`] ? '移除中...' : 'Remove'}</button>
+                          </div>
+                          {integrationConfigs[s.storeId] && <pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-50 p-2 text-[11px] leading-4">{JSON.stringify(integrationConfigs[s.storeId], null, 2)}</pre>}
                         </td>
                       </tr>
                     ))}

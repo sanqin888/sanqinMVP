@@ -59,8 +59,22 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 | Order detail | `GET /v1/delivery/order/{order_id}?expand=carts,payment`；scheduled 追加 `deliveries` | Order Fulfillment API 1.0.0 唯一 detail 路径 |
 | Order actions | `POST /v1/delivery/order/{order_id}/{accept\|deny\|ready\|cancel}` | 四种业务 action 使用同一 API Suite |
 | Menu | `PUT/GET /v2/eats/stores/{store_id}/menus` | Menu capability 独立版本；本任务不修改 |
-| Provisioning | `PATCH/POST /v1/eats/stores/{store_id}/pos_data`（按现有 adapter） | `webhooks_version=1.0.0` + scheduled webhook enabled |
+| Integration Config | `GET/POST/PATCH/DELETE /v1/eats/stores/{store_id}/pos_data` | Activate、Retrieve、Update、Remove 生命周期完整；`webhooks_version=1.0.0` + scheduled webhook enabled |
 | Webhook 签名 | `X-Uber-Signature` + raw body HMAC-SHA256 | 保持现有 durable receiver |
+
+## Integration Configuration capability
+
+| Capability | Method / path | Authorization | Production code | Contract evidence |
+| ---------- | ------------- | ------------- | --------------- | ----------------- |
+| Activate Integration | `POST /v1/eats/stores/{store_id}/pos_data` | merchant OAuth (`eats.pos_provisioning`) | `uber-merchant-api.adapter.ts` | `v1/stores/provision-request.json` |
+| Retrieve Integration Config | `GET /v1/eats/stores/{store_id}/pos_data` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
+| Update Integration | `PATCH /v1/eats/stores/{store_id}/pos_data` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
+| Remove Integration | `DELETE /v1/eats/stores/{store_id}/pos_data` | merchant OAuth (`eats.pos_provisioning`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
+
+SanQ 的 PATCH 配置继续强制 `schedule_order_webhooks.is_enabled=true` 与
+`webhooks_version=1.0.0`，避免管理员更新其他 integration 字段时破坏预约单 webhook
+契约。DELETE 成功后本地 store mapping 保留用于后续重新 Activate，但
+`isProvisioned=false`、`provisionedAt=null`。
 
 ## Order Fulfillment API 1.0.0 capability
 

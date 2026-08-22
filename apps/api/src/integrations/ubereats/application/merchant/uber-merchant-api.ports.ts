@@ -58,7 +58,29 @@ export type UberStoreWriteResult =
       error: string;
     };
 
-/** Store mutation capability; URL/request construction belongs to its adapter. */
+export type UberStoreIntegrationConfig = {
+  storeId: string;
+  integrationEnabled: boolean | null;
+  allowedCustomerRequests: {
+    allowSingleUseItemsRequests: boolean | null;
+    allowSpecialInstructionRequests: boolean | null;
+  } | null;
+  integratorBrandId: string | null;
+  integratorStoreId: string | null;
+  isOrderManager: boolean | null;
+  merchantStoreId: string | null;
+  requireManualAcceptance: boolean | null;
+  storeConfigurationData: string | null;
+  webhooksConfig: Record<string, unknown> | null;
+  onlineStatus: string | null;
+  orderReleaseEnabled: boolean | null;
+  autoAcceptEnabled: boolean | null;
+  posMetadata: Record<string, unknown> | null;
+  orderManagerClientId: string | null;
+  isOrderManagerPending: boolean | null;
+};
+
+/** Store lifecycle/mutation capability; URL/request construction belongs to its adapter. */
 export interface UberStoreApiPort {
   provisionStore(
     identity: UberMerchantIdentity,
@@ -66,6 +88,17 @@ export interface UberStoreApiPort {
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ): Promise<UberStoreProvisionResult>;
+  retrieveIntegrationConfig(storeId: string): Promise<UberStoreIntegrationConfig>;
+  updateIntegrationConfig(
+    storeId: string,
+    payload: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<void>;
+  removeIntegration(
+    identity: UberMerchantIdentity,
+    storeId: string,
+    idempotencyKey: string,
+  ): Promise<void>;
   writeStatus(
     storeId: string,
     payload: Record<string, string>,

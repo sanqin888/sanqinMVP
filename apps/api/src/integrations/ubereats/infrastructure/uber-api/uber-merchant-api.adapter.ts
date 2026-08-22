@@ -27,6 +27,7 @@ import {
 import { mapUberGatewayFailure } from './uber-error.mapper';
 import {
   mapUberStoreDiscoveryWire,
+  mapUberStoreIntegrationConfigWire,
   mapUberStoreProvisionWire,
 } from './uber-store-wire.mapper';
 
@@ -132,6 +133,78 @@ export class UberMerchantApiAdapter
       recordedAt: new Date(),
     });
     return mapUberStoreProvisionWire(raw, storeId);
+  }
+
+  async retrieveIntegrationConfig(storeId: string) {
+    const path = `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`;
+    const raw = await this.transport.request<Record<string, unknown>>({
+      path,
+      method: 'GET',
+      operation: 'merchant.retrieve-integration-config',
+      scope: 'eats.store',
+      partitionKey: storeId,
+    });
+    await this.auditResponse({
+      operation: 'merchant.retrieve-integration-config',
+      storeId,
+      outcome: 'RECEIVED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
+    return mapUberStoreIntegrationConfigWire(raw, storeId);
+  }
+
+  async updateIntegrationConfig(
+    storeId: string,
+    payload: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const path = `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`;
+    const raw = await this.transport.request<Record<string, unknown>>({
+      path,
+      method: 'PATCH',
+      operation: 'merchant.update-integration-config',
+      scope: 'eats.store',
+      partitionKey: storeId,
+      json: payload,
+      idempotencyKey,
+    });
+    await this.auditResponse({
+      operation: 'merchant.update-integration-config',
+      storeId,
+      outcome: 'SUCCEEDED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
+  }
+
+  async removeIntegration(
+    identity: UberMerchantIdentity,
+    storeId: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const accessToken = await this.accessTokenFor(identity);
+    const path = `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`;
+    const raw = await this.transport.request<Record<string, unknown>>({
+      path,
+      method: 'DELETE',
+      operation: 'merchant.remove-integration',
+      scope: 'eats.pos_provisioning',
+      partitionKey: storeId,
+      accessToken,
+      idempotencyKey,
+    });
+    await this.auditResponse({
+      operation: 'merchant.remove-integration',
+      connectionId: identity.connectionId,
+      storeId,
+      outcome: 'SUCCEEDED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
   }
 
   async writeStatus(

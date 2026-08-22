@@ -48,6 +48,25 @@ export class ProvisionUberStoreDto {
   payload?: Record<string, unknown>;
 }
 
+export class StoreIntegrationQuery {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  connectionId!: string;
+}
+
+export class UpdateUberStoreIntegrationDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  connectionId!: string;
+
+  @IsObject()
+  payload!: Record<string, unknown>;
+}
+
 export class SelectUberStoreDto {
   @IsString()
   @MinLength(1)

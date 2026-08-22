@@ -114,11 +114,30 @@ describe('Uber gateways wire contract v1', () => {
     });
   });
 
-  it('discovery and provisioning own their Uber wire paths, scope and body', async () => {
+  it('merchant integration lifecycle owns its Uber wire paths, scopes and bodies', async () => {
+    const integrationConfig = {
+      store_id: 'store-1',
+      integration_enabled: true,
+      integrator_store_id: 'sanq-store-1',
+      webhooks_config: {
+        schedule_order_webhooks: { is_enabled: true },
+        webhooks_version: '1.0.0',
+      },
+    };
+    const integrationUpdate = {
+      integrator_store_id: 'sanq-store-1-updated',
+      webhooks_config: {
+        schedule_order_webhooks: { is_enabled: true },
+        webhooks_version: '1.0.0',
+      },
+    };
     const transport = createUberTransportFake();
     transport.request
       .mockResolvedValueOnce(fixture('stores/discovery.json'))
-      .mockResolvedValueOnce(fixture('stores/provision-response.json'));
+      .mockResolvedValueOnce(fixture('stores/provision-response.json'))
+      .mockResolvedValueOnce(integrationConfig)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({});
     const credentials = {
       loadCredential: jest.fn().mockResolvedValue({
         connectionId: 'merchant-1',
@@ -145,6 +164,27 @@ describe('Uber gateways wire contract v1', () => {
       fixture('stores/provision-request.json'),
       'provision:store-1:v1',
     );
+    await expect(
+      adapter.retrieveIntegrationConfig('store-1'),
+    ).resolves.toMatchObject({
+      storeId: 'store-1',
+      integrationEnabled: true,
+      integratorStoreId: 'sanq-store-1',
+      webhooksConfig: {
+        schedule_order_webhooks: { is_enabled: true },
+        webhooks_version: '1.0.0',
+      },
+    });
+    await adapter.updateIntegrationConfig(
+      'store / 1',
+      integrationUpdate,
+      'integration-update:store-1:v1',
+    );
+    await adapter.removeIntegration(
+      { connectionId: 'merchant-1' },
+      'store / 1',
+      'integration-remove:store-1:v1',
+    );
 
     expect(transport.request.mock.calls.map(([request]) => request)).toEqual([
       {
@@ -163,6 +203,31 @@ describe('Uber gateways wire contract v1', () => {
         accessToken: 'fixture-merchant-token',
         json: fixture('stores/provision-request.json'),
         idempotencyKey: 'provision:store-1:v1',
+      },
+      {
+        path: '/v1/eats/stores/store-1/pos_data',
+        method: 'GET',
+        operation: 'merchant.retrieve-integration-config',
+        scope: 'eats.store',
+        partitionKey: 'store-1',
+      },
+      {
+        path: '/v1/eats/stores/store%20%2F%201/pos_data',
+        method: 'PATCH',
+        operation: 'merchant.update-integration-config',
+        scope: 'eats.store',
+        partitionKey: 'store / 1',
+        json: integrationUpdate,
+        idempotencyKey: 'integration-update:store-1:v1',
+      },
+      {
+        path: '/v1/eats/stores/store%20%2F%201/pos_data',
+        method: 'DELETE',
+        operation: 'merchant.remove-integration',
+        scope: 'eats.pos_provisioning',
+        partitionKey: 'store / 1',
+        accessToken: 'fixture-merchant-token',
+        idempotencyKey: 'integration-remove:store-1:v1',
       },
     ]);
   });
