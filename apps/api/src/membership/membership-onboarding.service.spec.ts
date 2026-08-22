@@ -8,6 +8,16 @@ import { MembershipOnboardingService } from './membership-onboarding.service';
 const NEW_USER_CREATED_AT = new Date('2026-08-22T17:00:00.000Z');
 const LEGACY_USER_CREATED_AT = new Date('2026-08-22T16:00:00.000Z');
 
+function createService(prisma: unknown, issueProgramsForUser = jest.fn()) {
+  return {
+    service: new MembershipOnboardingService(
+      prisma as never,
+      { issueProgramsForUser } as never,
+    ),
+    issueProgramsForUser,
+  };
+}
+
 describe('MembershipOnboardingService', () => {
   it('finalizes a new member with an email-only referrer relationship', async () => {
     const findUnique = jest
@@ -15,14 +25,15 @@ describe('MembershipOnboardingService', () => {
       .mockResolvedValueOnce({
         id: 'new-user-id',
         createdAt: NEW_USER_CREATED_AT,
+        phoneVerifiedAt: null,
         referralFinalizedAt: null,
         referredByUserId: null,
       })
       .mockResolvedValueOnce({ id: 'referrer-id' });
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
-    const service = new MembershipOnboardingService({
+    const { service } = createService({
       user: { findUnique, updateMany },
-    } as never);
+    });
 
     const now = new Date();
     const birthdayYear = now.getUTCFullYear() - 20;
@@ -62,19 +73,61 @@ describe('MembershipOnboardingService', () => {
     });
   });
 
+  it('issues referral-qualified programs after a verified user binds a referrer', async () => {
+    const referrer = {
+      id: 'referrer-id',
+      userStableId: 'referrer-stable',
+    };
+    const findUnique = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'new-user-id',
+        createdAt: NEW_USER_CREATED_AT,
+        phoneVerifiedAt: new Date('2026-08-22T16:59:00.000Z'),
+        referralFinalizedAt: null,
+        referredByUserId: null,
+      })
+      .mockResolvedValueOnce({ id: referrer.id })
+      .mockResolvedValueOnce(referrer);
+    const issueProgramsForUser = jest.fn().mockResolvedValue({ issuedCount: 1 });
+    const { service } = createService(
+      {
+        user: {
+          findUnique,
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      },
+      issueProgramsForUser,
+    );
+
+    await service.finalize({
+      userStableId: 'new-user-stable',
+      birthdayYear: new Date().getUTCFullYear() - 20,
+      birthdayMonth: 1,
+      referrerEmail: 'referrer@example.com',
+    });
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(issueProgramsForUser).toHaveBeenCalledWith(
+      'REFERRAL_QUALIFIED',
+      referrer,
+    );
+  });
+
   it('finalizes onboarding when the referrer is intentionally skipped', async () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
-    const service = new MembershipOnboardingService({
+    const { service } = createService({
       user: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'new-user-id',
           createdAt: NEW_USER_CREATED_AT,
+          phoneVerifiedAt: null,
           referralFinalizedAt: null,
           referredByUserId: null,
         }),
         updateMany,
       },
-    } as never);
+    });
     const birthdayYear = new Date().getUTCFullYear() - 25;
 
     await expect(
@@ -98,17 +151,18 @@ describe('MembershipOnboardingService', () => {
 
   it('rejects phone numbers as referrer input', async () => {
     const updateMany = jest.fn();
-    const service = new MembershipOnboardingService({
+    const { service } = createService({
       user: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'new-user-id',
           createdAt: NEW_USER_CREATED_AT,
+          phoneVerifiedAt: null,
           referralFinalizedAt: null,
           referredByUserId: null,
         }),
         updateMany,
       },
-    } as never);
+    });
 
     await expect(
       service.finalize({
@@ -121,11 +175,23 @@ describe('MembershipOnboardingService', () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
+  it('rejects fractional birth values instead of truncating them', async () => {
+    const findUnique = jest.fn();
+    const { service } = createService({ user: { findUnique } });
+
+    await expect(
+      service.finalize({
+        userStableId: 'invalid-birthday',
+        birthdayYear: new Date().getUTCFullYear() - 20 + 0.5,
+        birthdayMonth: 1,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
   it('rejects members who are not safely confirmed to be at least 13', async () => {
     const findUnique = jest.fn();
-    const service = new MembershipOnboardingService({
-      user: { findUnique },
-    } as never);
+    const { service } = createService({ user: { findUnique } });
     const now = new Date();
 
     await expect(
@@ -139,7 +205,7 @@ describe('MembershipOnboardingService', () => {
   });
 
   it('treats pre-rollout accounts as already finalized', async () => {
-    const service = new MembershipOnboardingService({
+    const { service } = createService({
       user: {
         findUnique: jest.fn().mockResolvedValue({
           createdAt: LEGACY_USER_CREATED_AT,
@@ -149,7 +215,7 @@ describe('MembershipOnboardingService', () => {
           referredByUserId: null,
         }),
       },
-    } as never);
+    });
 
     await expect(service.getStatus('legacy-user')).resolves.toEqual({
       finalized: true,
@@ -160,17 +226,18 @@ describe('MembershipOnboardingService', () => {
   });
 
   it('rejects a second finalization attempt atomically', async () => {
-    const service = new MembershipOnboardingService({
+    const { service } = createService({
       user: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'new-user-id',
           createdAt: NEW_USER_CREATED_AT,
+          phoneVerifiedAt: null,
           referralFinalizedAt: null,
           referredByUserId: null,
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
-    } as never);
+    });
 
     await expect(
       service.finalize({
@@ -183,20 +250,21 @@ describe('MembershipOnboardingService', () => {
 
   it('rejects an unknown referrer email without finalizing', async () => {
     const updateMany = jest.fn();
-    const service = new MembershipOnboardingService({
+    const { service } = createService({
       user: {
         findUnique: jest
           .fn()
           .mockResolvedValueOnce({
             id: 'new-user-id',
             createdAt: NEW_USER_CREATED_AT,
+            phoneVerifiedAt: null,
             referralFinalizedAt: null,
             referredByUserId: null,
           })
           .mockResolvedValueOnce(null),
         updateMany,
       },
-    } as never);
+    });
 
     await expect(
       service.finalize({
