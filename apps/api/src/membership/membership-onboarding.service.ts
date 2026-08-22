@@ -72,7 +72,8 @@ export class MembershipOnboardingService {
     let referrerId: string | undefined;
     if (
       params.referrerEmail?.trim() &&
-      (!normalizedReferrerEmail || !SIMPLE_EMAIL_PATTERN.test(normalizedReferrerEmail))
+      (!normalizedReferrerEmail ||
+        !SIMPLE_EMAIL_PATTERN.test(normalizedReferrerEmail))
     ) {
       throw new BadRequestException('valid referrerEmail is required');
     }
