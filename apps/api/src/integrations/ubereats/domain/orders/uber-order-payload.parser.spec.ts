@@ -47,17 +47,99 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
     const order = parser.parse(fixture('detail-modifiers.json'), {
       eventType: 'orders.notification',
     });
+    expect(order?.specialInstructions).toBe('Fixture order note');
     expect(order?.items[0]).toMatchObject({
       baseUnitPriceCents: 800,
       optionsUnitPriceCents: 200,
       unitPriceCents: 1000,
       lineTotalCents: 1000,
-      specialInstructions: 'Fixture item note',
+      specialInstructions:
+        'Fixture item note\nALLERGY: PEANUTS, SOY\nALLERGY INSTRUCTIONS: Use a clean surface\nOPTION REQUEST (Fixture Option):\nCook option separately',
     });
     expect(order?.items[0]?.modifiers[0]).toMatchObject({
       externalId: 'sanq:option-1',
       parentExternalId: 'modifier-group-1',
       priceDeltaCents: 200,
+      specialInstructions: 'Cook option separately',
+    });
+  });
+
+  it('treats an empty Uber allergy placeholder as no allergy request', () => {
+    const payload = fixture('detail-modifiers.json') as {
+      order: {
+        carts: Array<{
+          items: Array<{
+            customer_request: {
+              allergy: { allergens?: unknown; instructions?: unknown };
+            };
+          }>;
+        }>;
+      };
+    };
+    payload.order.carts[0]!.items[0]!.customer_request.allergy = {
+      allergens: [],
+      instructions: '',
+    };
+
+    const order = parser.parse(payload, { eventType: 'orders.notification' });
+    expect(order?.items[0]?.specialInstructions).toBe(
+      'Fixture item note\nOPTION REQUEST (Fixture Option):\nCook option separately',
+    );
+  });
+
+  it('rejects a malformed order-level special instruction instead of dropping it', () => {
+    const payload = fixture('detail-modifiers.json') as {
+      order: { carts: Array<{ special_instructions?: unknown }> };
+    };
+    payload.order.carts[0]!.special_instructions = 42;
+
+    expect(
+      parser.parseResult(payload, { eventType: 'orders.notification' }),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'UNRELAYABLE_CUSTOMER_REQUEST',
+      category: 'business',
+    });
+  });
+
+  it('rejects an allergy request that cannot be fully relayed', () => {
+    const payload = fixture('detail-modifiers.json') as {
+      order: {
+        carts: Array<{
+          items: Array<{
+            customer_request: { allergy: Record<string, unknown> };
+          }>;
+        }>;
+      };
+    };
+    payload.order.carts[0]!.items[0]!.customer_request.allergy.instructions = 42;
+
+    expect(
+      parser.parseResult(payload, { eventType: 'orders.notification' }),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'UNRELAYABLE_CUSTOMER_REQUEST',
+      category: 'business',
+    });
+  });
+
+  it('rejects an unknown customer-request field instead of guessing its semantics', () => {
+    const payload = fixture('detail-modifiers.json') as {
+      order: {
+        carts: Array<{
+          items: Array<{ customer_request: Record<string, unknown> }>;
+        }>;
+      };
+    };
+    payload.order.carts[0]!.items[0]!.customer_request.future_request =
+      'must not be silently ignored';
+
+    expect(
+      parser.parseResult(payload, { eventType: 'orders.notification' }),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'UNRELAYABLE_CUSTOMER_REQUEST',
+      category: 'business',
     });
   });
 

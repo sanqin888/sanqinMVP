@@ -16,6 +16,16 @@ describe('UberOrderAdmissionPolicy', () => {
     });
   });
 
+  it('denies an unrelayable allergy request with Uber special-instructions reason', () => {
+    expect(policy.invalidDetail('UNRELAYABLE_CUSTOMER_REQUEST')).toEqual({
+      kind: 'DENY',
+      denial: {
+        reasonCode: 'SPECIAL_INSTRUCTIONS',
+        reasonDetail: 'Uber customer request cannot be fully relayed to POS',
+      },
+    });
+  });
+
   it('prioritizes missing menu identity before price and connectivity checks', () => {
     expect(
       policy.evaluate({

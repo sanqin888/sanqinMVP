@@ -39,14 +39,19 @@ const recordOf = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
-/** SanQ owns scheduled fulfillment, so every provision must subscribe to its webhook. */
-const withScheduledOrderWebhook = (
+/** SanQ owns scheduled fulfillment and relays customer instructions to POS. */
+const withRequiredIntegrationConfig = (
   payload: Record<string, unknown>,
 ): Record<string, unknown> => {
   const webhooks = recordOf(payload.webhooks_config) ?? {};
   const scheduled = recordOf(webhooks.schedule_order_webhooks) ?? {};
+  const customerRequests = recordOf(payload.allowed_customer_requests) ?? {};
   return {
     ...payload,
+    allowed_customer_requests: {
+      ...customerRequests,
+      allow_special_instruction_requests: true,
+    },
     webhooks_config: {
       ...webhooks,
       schedule_order_webhooks: {
@@ -155,7 +160,7 @@ export class ProvisionUberStoreUseCase {
         operation: 'merchant',
         message: '请先确认并保存 Uber 门店映射，再执行 provisioning',
       });
-    const configuredPayload = withScheduledOrderWebhook(payload);
+    const configuredPayload = withRequiredIntegrationConfig(payload);
     const response = await this.api.provisionStore(
       { connectionId: connection.connectionId },
       id,
@@ -235,7 +240,7 @@ export class UpdateUberStoreIntegrationConfigUseCase {
         operation: 'merchant',
         message: 'integration config payload 不得包含 credential',
       });
-    const configuredPayload = withScheduledOrderWebhook(payload);
+    const configuredPayload = withRequiredIntegrationConfig(payload);
     const businessVersion = createHash('sha256')
       .update(JSON.stringify(configuredPayload))
       .digest('hex');

@@ -23,5 +23,6 @@ export type UberOrderDetailResult =
         | 'MISSING_ORDER_ID'
         | 'MISSING_TOTAL'
         | 'EMPTY_ITEMS'
-        | 'MISSING_SCHEDULED_READY_AT';
+        | 'MISSING_SCHEDULED_READY_AT'
+        | 'UNRELAYABLE_CUSTOMER_REQUEST';
     };

@@ -189,6 +189,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
         ' uber-store-1 ',
         {
           enabled: true,
+          allowed_customer_requests: {
+            allow_single_use_items_requests: true,
+            allow_special_instruction_requests: false,
+          },
           webhooks_config: {
             delivery_status_webhooks: { is_enabled: true },
           },
@@ -205,6 +209,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
       'uber-store-1',
       {
         enabled: true,
+        allowed_customer_requests: {
+          allow_single_use_items_requests: true,
+          allow_special_instruction_requests: true,
+        },
         webhooks_config: {
           delivery_status_webhooks: { is_enabled: true },
           schedule_order_webhooks: { is_enabled: true },
@@ -271,7 +279,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     expect(api.retrieveIntegrationConfig).toHaveBeenCalledWith('uber-store-1');
   });
 
-  it('updates integration config while preserving the scheduled webhook contract', async () => {
+  it('updates integration config while preserving required webhook and customer-request contracts', async () => {
     const api = {
       updateIntegrationConfig: jest.fn().mockResolvedValue(undefined),
     };
@@ -292,6 +300,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
         'uber-store-1',
         {
           integrator_store_id: 'sanq-store-1',
+          allowed_customer_requests: {
+            allow_single_use_items_requests: false,
+            allow_special_instruction_requests: false,
+          },
           webhooks_config: {
             schedule_order_webhooks: { is_enabled: false },
           },
@@ -303,6 +315,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
       'uber-store-1',
       {
         integrator_store_id: 'sanq-store-1',
+        allowed_customer_requests: {
+          allow_single_use_items_requests: false,
+          allow_special_instruction_requests: true,
+        },
         webhooks_config: {
           schedule_order_webhooks: { is_enabled: true },
           webhooks_version: '1.0.0',

@@ -20,7 +20,8 @@ export type UberOrderPayloadParseResult =
         | 'MISSING_ORDER_ID'
         | 'MISSING_TOTAL'
         | 'EMPTY_ITEMS'
-        | 'MISSING_SCHEDULED_READY_AT';
+        | 'MISSING_SCHEDULED_READY_AT'
+        | 'UNRELAYABLE_CUSTOMER_REQUEST';
       category: 'mapping' | 'business';
     };
 
@@ -28,6 +29,8 @@ type ParseContext = { eventType?: string };
 type PriceIndex = Map<string, UberOrderPriceBreakdownV1>;
 
 const SCHEDULED_DELIVERY_FALLBACK_LEAD_MS = 30 * 60 * 1_000;
+const CUSTOMER_REQUEST_KEYS = new Set(['allergy', 'special_instructions']);
+const ALLERGY_REQUEST_KEYS = new Set(['allergens', 'instructions']);
 
 /** Strict mapper for Uber Order Fulfillment API 1.0.0 Get Order responses. */
 export class UberOrderPayloadParser {
@@ -49,11 +52,22 @@ export class UberOrderPayloadParser {
       return invalid('MALFORMED_PAYLOAD', 'mapping');
     if (dto.carts.some((cart) => !asObject(cart) || !Array.isArray(cart.items)))
       return invalid('MALFORMED_PAYLOAD', 'mapping');
+    if (
+      dto.carts.some(
+        (cart) =>
+          cart.special_instructions !== undefined &&
+          cart.special_instructions !== null &&
+          typeof cart.special_instructions !== 'string',
+      )
+    )
+      return invalid('UNRELAYABLE_CUSTOMER_REQUEST', 'business');
 
     const wireItems = dto.carts.flatMap((cart) => cart.items ?? []);
     if (wireItems.length === 0) return invalid('EMPTY_ITEMS', 'business');
     if (wireItems.some((item) => !isCartItem(item)))
       return invalid('MALFORMED_PAYLOAD', 'mapping');
+    if (wireItems.some((item) => hasUnrelayableCustomerRequest(item)))
+      return invalid('UNRELAYABLE_CUSTOMER_REQUEST', 'business');
 
     const paymentDetail = dto.payment?.payment_detail;
     const orderTotal = paymentDetail?.order_total;
@@ -234,8 +248,9 @@ export function parseUberOrderItemV1(
     optionsUnitPriceCents,
     unitPriceCents,
     lineTotalCents: unitPriceCents * quantity,
-    specialInstructions: readString(
-      item.customer_request?.special_instructions,
+    specialInstructions: itemAndModifierCustomerRequestInstructions(
+      item.customer_request,
+      parsedModifiers,
     ),
     modifiers: parsedModifiers,
   };
@@ -265,9 +280,7 @@ function parseUberModifierV1(
     displayName: readString(item.title) ?? 'Unknown modifier',
     quantity: readQuantity(item.quantity),
     priceDeltaCents,
-    specialInstructions: readString(
-      item.customer_request?.special_instructions,
-    ),
+    specialInstructions: customerRequestInstructions(item.customer_request),
     children: children.filter(
       (child): child is ParsedUberModifier => child !== null,
     ),
@@ -282,6 +295,93 @@ function breakdownUnitCents(value: UberOrderPriceBreakdownV1): number | null {
   const total = summaryNetOrGrossCents(value.total);
   if (total === null) return null;
   return Math.round(total / readQuantity(value.quantity));
+}
+
+function customerRequestInstructions(
+  request: UberOrderCartItemV1['customer_request'],
+): string | null {
+  const requestRecord = asObject(request);
+  const specialInstructions = readString(requestRecord?.special_instructions);
+  const allergy = asObject(requestRecord?.allergy);
+  const allergens = Array.isArray(allergy?.allergens)
+    ? allergy.allergens
+        .map((value) => readString(value))
+        .filter((value): value is string => value !== null)
+    : [];
+  const allergyInstructions = readString(allergy?.instructions);
+  const lines = [
+    specialInstructions,
+    allergens.length > 0 ? `ALLERGY: ${allergens.join(', ')}` : null,
+    allergyInstructions
+      ? `ALLERGY INSTRUCTIONS: ${allergyInstructions}`
+      : null,
+  ].filter((value): value is string => value !== null);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function itemAndModifierCustomerRequestInstructions(
+  request: UberOrderCartItemV1['customer_request'],
+  modifiers: ParsedUberModifier[],
+): string | null {
+  const lines: string[] = [];
+  const itemInstructions = customerRequestInstructions(request);
+  if (itemInstructions) lines.push(itemInstructions);
+  for (const modifier of flattenModifiers(modifiers)) {
+    if (!modifier.specialInstructions) continue;
+    lines.push(
+      `OPTION REQUEST (${modifier.displayName}):\n${modifier.specialInstructions}`,
+    );
+  }
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function hasUnrelayableCustomerRequest(item: UberOrderCartItemV1): boolean {
+  const rawRequest = item.customer_request;
+  const request = asObject(rawRequest);
+  if (rawRequest !== undefined && rawRequest !== null && !request) return true;
+  if (request && Object.keys(request).some((key) => !CUSTOMER_REQUEST_KEYS.has(key)))
+    return true;
+
+  const rawSpecialInstructions = request?.special_instructions;
+  if (
+    rawSpecialInstructions !== undefined &&
+    rawSpecialInstructions !== null &&
+    typeof rawSpecialInstructions !== 'string'
+  )
+    return true;
+
+  const rawAllergy = request?.allergy;
+  if (rawAllergy !== undefined && rawAllergy !== null) {
+    const allergy = asObject(rawAllergy);
+    if (!allergy) return true;
+    if (Object.keys(allergy).some((key) => !ALLERGY_REQUEST_KEYS.has(key)))
+      return true;
+
+    const rawAllergens = allergy.allergens;
+    if (
+      rawAllergens !== undefined &&
+      rawAllergens !== null &&
+      (!Array.isArray(rawAllergens) ||
+        rawAllergens.some(
+          (value) => typeof value !== 'string' || value.trim().length === 0,
+        ))
+    )
+      return true;
+
+    const rawInstructions = allergy.instructions;
+    if (
+      rawInstructions !== undefined &&
+      rawInstructions !== null &&
+      typeof rawInstructions !== 'string'
+    )
+      return true;
+  }
+
+  return (item.selected_modifier_groups ?? []).some((group) =>
+    (group.selected_items ?? []).some((selected) =>
+      hasUnrelayableCustomerRequest(selected),
+    ),
+  );
 }
 
 function isCartItem(value: unknown): value is UberOrderCartItemV1 {

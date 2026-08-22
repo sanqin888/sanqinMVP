@@ -100,8 +100,9 @@ Retrieve Store Status 与现有 pause/resume 使用同一门店状态能力；�
 
 SanQ 的全量 Menu payload 显式发送
 `display_options.disable_item_instructions=false`，因为当前订单解析/打印链路支持 Uber
-item-level `customer_request.special_instructions`。Uber 文档将 order-level special instructions
-定义为 Uber 侧配置能力，而不是 Menu API 字段，所以 SanQ 不添加猜测的 order-level flag。
+item-level `customer_request.special_instructions`。Uber 文档将 order-level / customer-request capability
+定义在 Integration Configuration，而不是 Menu API；因此 Menu payload 不添加猜测字段，第四步改为在
+Provision / Update Integration Config 中显式维护正式的 `allow_special_instruction_requests` 能力开关。
 
 Retrieve Menu 只在 infrastructure 层解析 Uber wire schema；application 获得 semantic read model，
 并与 `UberMenuPublishVersion` 中最后一次成功全量 Publish payload 对账。核验范围包括 item ID/数量、
@@ -146,6 +147,25 @@ SanQ 只接受 Order Fulfillment 1.0.0 **Get Order response** shape：顶层必�
 
 不得恢复 `item.price`、`payment.charges`、顶层 `items/total/total_cents` 等旧 Order schema
 fallback，也不得增加裸 MerchantOrder response fallback。
+
+### Customer Request / Allergy relay
+
+Provision / Update Integration Config 固定声明
+`allowed_customer_requests.allow_special_instruction_requests=true`，与 SanQ 已实现的备注传递能力保持一致；
+结构化 Allergy Requests 仍由 Uber 在 integration verification 后启用。
+
+Order Fulfillment API 1.0.0 的 `customer_request.special_instructions` 继续进入现有
+`externalSpecialInstructions` → POS/打印链路。结构化 allergy 使用
+`customer_request.allergy.allergens[]` 与 `customer_request.allergy.instructions`；SanQ 将其完整合并到
+同一菜品备注中，以 `ALLERGY:` / `ALLERGY INSTRUCTIONS:` 明确标识。递归 modifier/option 自身的
+customer request 也汇总到父菜品备注，并带 `OPTION REQUEST (...)` 标识，确保 POS/打印不依赖
+Uber 专用 modifier 明细表才能看到特殊请求。Order-level `carts[].special_instructions` 继续进入
+`externalOrderNotes` 并打印。
+
+若 `customer_request` / allergy 字段结构损坏、出现 1.0.0 契约外未知请求字段，或值类型无法可靠解析，
+解析结果为 `UNRELAYABLE_CUSTOMER_REQUEST`，订单在持久化/接单前自动 DENY，并使用 Uber 支持的
+`SPECIAL_INSTRUCTIONS` reason。Uber 可能返回空 allergy 占位；空数组/空 instructions 视为没有
+实际 allergy request，不触发拒单。不得静默忽略真实或损坏的特殊请求。
 
 ### Immediate / Scheduled
 

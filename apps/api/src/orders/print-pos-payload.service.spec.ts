@@ -179,6 +179,7 @@ describe('PrintPosPayloadService', () => {
         findUnique: jest.fn().mockResolvedValue({
           orderStableId: 'ord_uber_notes',
           clientRequestId: 'ubereats:external-1',
+          externalOrderNotes: 'Uber order note',
           items: [
             {
               productStableId: 'item-1',
@@ -187,7 +188,8 @@ describe('PrintPosPayloadService', () => {
               nameZh: '羊肉泡馍',
               qty: 1,
               unitPriceCents: 1599,
-              externalSpecialInstructions: '  不要香菜，多放辣椒  ',
+              externalSpecialInstructions:
+                '  不要香菜，多放辣椒\nALLERGY: PEANUTS, SOY\nALLERGY INSTRUCTIONS: Use a clean surface\nOPTION REQUEST (加辣):\n不要和花生接触  ',
               optionsJson: [],
             },
           ],
@@ -208,8 +210,9 @@ describe('PrintPosPayloadService', () => {
       prisma as never,
     ).getByStableId('ord_uber_notes');
 
+    expect(payload.orderNotes).toBe('Uber order note');
     expect(payload.snapshot.items[0].specialInstructions).toBe(
-      '不要香菜，多放辣椒',
+      '不要香菜，多放辣椒\nALLERGY: PEANUTS, SOY\nALLERGY INSTRUCTIONS: Use a clean surface\nOPTION REQUEST (加辣):\n不要和花生接触',
     );
   });
 
