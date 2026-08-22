@@ -169,7 +169,7 @@ describe('PrintPosPayloadService', () => {
       needed: true,
       type: 'chopsticks',
       quantity: 1,
-      summary: '筷子1份',
+      summary: '是 / Yes · 筷子 / Chopsticks · 1份 / 1 set',
     });
   });
 
@@ -179,7 +179,7 @@ describe('PrintPosPayloadService', () => {
         findUnique: jest.fn().mockResolvedValue({
           orderStableId: 'ord_uber_notes',
           clientRequestId: 'ubereats:external-1',
-          externalOrderNotes: 'Uber order note',
+          externalOrderNotes: 'Uber order note\n餐具 / Utensils: 是 / Yes',
           items: [
             {
               productStableId: 'item-1',
@@ -210,7 +210,9 @@ describe('PrintPosPayloadService', () => {
       prisma as never,
     ).getByStableId('ord_uber_notes');
 
-    expect(payload.orderNotes).toBe('Uber order note');
+    expect(payload.orderNotes).toBe(
+      'Uber order note\n餐具 / Utensils: 是 / Yes',
+    );
     expect(payload.snapshot.items[0].specialInstructions).toBe(
       '不要香菜，多放辣椒\nALLERGY: PEANUTS, SOY\nALLERGY INSTRUCTIONS: Use a clean surface\nOPTION REQUEST (加辣):\n不要和花生接触',
     );

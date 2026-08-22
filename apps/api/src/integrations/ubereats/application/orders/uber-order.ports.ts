@@ -56,6 +56,8 @@ export interface UberOrderImportRepositoryPort {
     /** Present on the Prisma adapter; optional keeps older test doubles compatible. */
     fulfillmentTiming?: UberFulfillmentTiming;
   } | null>;
+  /** Standalone admission DENY creates no local Order; failure webhook may arrive afterward. */
+  hasSucceededDenial?(externalOrderId: string): Promise<boolean>;
   getPosStoreConnectivity?(posStoreId: string): Promise<{
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
     lastHeartbeatAt: Date | null;

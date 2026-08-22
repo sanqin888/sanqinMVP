@@ -4300,23 +4300,22 @@ export default function CheckoutPage() {
                       ? "请选择支付方式并在下一页完成支付。"
                       : "Choose a payment method to complete payment on the next page."}
                   </p>
-                  {/* 信用卡手续费提示（仅提示，不参与金额计算） */}
+                  {/* 信用卡附加费提示（仅提示，不参与页面金额计算） */}
                   <p className="text-center text-[11px] leading-snug text-slate-500">
                     {locale === "zh"
-                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）。"
-                      : "Accepted cards: Visa / Mastercard / Discover / Debit."}
+                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）；暂不接受 American Express。"
+                      : "Accepted cards: Visa / Mastercard / Discover / Debit. American Express is not accepted."}
                   </p>
                   <p className="text-center text-[11px] leading-snug text-slate-500">
                     {locale === "zh"
                       ? "如要使用苹果支付，请使用苹果设备和 Safari 浏览器。"
                       : "To use Apple Pay, please use an Apple device and the Safari browser."}
                   </p>
-                  <p className="text-center text-[11px] leading-snug text-slate-500">
+                  <p className="text-center text-xs leading-snug text-slate-700">
                     {locale === "zh"
-                      ? "使用信用卡支付时，支付网络可能会额外收取不高于订单金额 2.4% 的信用卡手续费（由支付处理方/发卡行收取，我们不从中获利）。具体金额以 Clover 支付页/小票或银行账单为准。"
-                      : "When paying by credit card, the payment networks may apply a surcharge of up to 2.4% of the order total (charged by the payment processor/card issuer; we do not profit from this). Please refer to the Clover checkout/receipt or your card statement for the exact amount."}
+                      ? "使用符合附加费条件的信用卡支付时，将收取交易金额 2.40% 的信用卡附加费；借记卡及其他不符合附加费条件的银行卡不会收取此费用。实际附加费金额会在 Clover 支付流程和收据中显示。"
+                      : "A 2.40% surcharge applies to eligible credit card transactions. Debit cards and other cards not eligible for surcharging are not subject to this fee. The actual surcharge amount will be shown in the Clover payment flow and on your receipt."}
                   </p>
-
                   <button
                     type="button"
                     onClick={() => {

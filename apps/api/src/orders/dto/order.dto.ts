@@ -38,6 +38,9 @@ export type OrderDto = {
 
   pickupCode: string | null;
 
+  /** External-channel order note relayed for POS display (for example Uber requests). */
+  orderNotes?: string | null;
+
   contactName: string | null;
   contactEmail: string | null;
   contactPhone: string | null;

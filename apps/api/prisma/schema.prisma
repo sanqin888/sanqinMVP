@@ -297,7 +297,9 @@ model User {
   marketingEmailOptInAt DateTime?
   birthdayDay           Int?
   birthdayMonth         Int?
+  birthdayYear          Int?
   referredByUserId      String?
+  referralFinalizedAt   DateTime?
   googleSub             String?         @unique
   addresses             UserAddress[]
   invitesSent           UserInvite[]    @relation("InvitesSent")
@@ -600,7 +602,7 @@ model Coupon {
   minSpendCents         Int?
   expiresAt             DateTime?
   issuedAt              DateTime             @default(now())
-  usedAt                 DateTime?
+  usedAt                DateTime?
   orderId               String?              @db.Uuid
   source                String?
   campaign              String?
@@ -666,7 +668,7 @@ model PromotionRule {
   excludesItemPromotions Boolean              @default(false)
   channels               Channel[]            @default([web, in_store])
   validFrom              DateTime?
-  validTo               DateTime?
+  validTo                DateTime?
   weekdays              Int[]                @default([])
   startMinutes          Int?
   endMinutes            Int?
@@ -1190,7 +1192,7 @@ model MenuOptionGroupTemplate {
   tempUnavailableUntil DateTime?
   sortOrder            Int                        @default(0)
   stableId             String                     @unique @default(cuid())
-  deletedAt            DateTime?
+  deletedAt             DateTime?
   itemLinks            MenuItemOptionGroup[]
   options              MenuOptionTemplateChoice[]
 
@@ -1268,9 +1270,9 @@ model AccountingAccount {
   name            String
   type            AccountingAccountType
   currency        String                  @default("CAD")
-  isActive        Boolean                 @default(true)
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  isActive         Boolean                @default(true)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
   outgoingTx      AccountingTransaction[] @relation("AccountingTxAccount")
   incomingTx      AccountingTransaction[] @relation("AccountingTxToAccount")
 

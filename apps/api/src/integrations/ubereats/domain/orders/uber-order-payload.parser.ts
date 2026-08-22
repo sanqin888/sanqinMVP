@@ -55,9 +55,12 @@ export class UberOrderPayloadParser {
     if (
       dto.carts.some(
         (cart) =>
-          cart.special_instructions !== undefined &&
-          cart.special_instructions !== null &&
-          typeof cart.special_instructions !== 'string',
+          (cart.special_instructions !== undefined &&
+            cart.special_instructions !== null &&
+            typeof cart.special_instructions !== 'string') ||
+          (cart.include_single_use_items !== undefined &&
+            cart.include_single_use_items !== null &&
+            typeof cart.include_single_use_items !== 'boolean'),
       )
     )
       return invalid('UNRELAYABLE_CUSTOMER_REQUEST', 'business');
@@ -151,6 +154,20 @@ export class UberOrderPayloadParser {
     const cartNotes = dto.carts
       .map((cart) => readString(cart.special_instructions))
       .filter((value): value is string => value !== null);
+    const singleUseItemSelections = dto.carts
+      .map((cart) => cart.include_single_use_items)
+      .filter((value): value is boolean => typeof value === 'boolean');
+    const singleUseItemsRequested = singleUseItemSelections.includes(true)
+      ? true
+      : singleUseItemSelections.length > 0
+        ? false
+        : null;
+    const orderNotes = [
+      ...cartNotes,
+      singleUseItemsRequested === null
+        ? null
+        : `餐具 / Utensils: ${singleUseItemsRequested ? '是 / Yes' : '否 / No'}`,
+    ].filter((value): value is string => value !== null);
 
     return {
       kind: 'parsed',
@@ -177,7 +194,7 @@ export class UberOrderPayloadParser {
         fulfillmentTiming: scheduled ? 'SCHEDULED' : 'IMMEDIATE',
         scheduledReadyAt,
         estimatedReadyAt: externalReadyAt,
-        specialInstructions: cartNotes.length ? cartNotes.join('\n') : null,
+        specialInstructions: orderNotes.length ? orderNotes.join('\n') : null,
         cancellation: null,
         items,
       },

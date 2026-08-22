@@ -41,36 +41,34 @@ export default function MembershipRulesPage({
         </h1>
         <p className="text-xs text-slate-500">
           {isZh
-            ? "本页面为三秦线上会员制度的简要说明，仅适用于通过本网站注册/登录的会员账户。具体执行以网站显示和店内告示为准。"
-            : "This page summarizes how the San Qin online membership system works for accounts created through this website. In case of discrepancy, the information shown on this site and in-store notices will prevail."}
+            ? "生效及最后更新日期：2026-08-22。本规则适用于由 SANQIN RESTAURANT 运营的 SanQ Roujiamo（三秦肉夹馍）网站会员服务。具体活动如另有明确规则，以该活动规则为准；适用法律另有规定的，从其规定。"
+            : "Effective and last updated: 2026-08-22. These rules apply to the SanQ Roujiamo membership service operated by SANQIN RESTAURANT. If a specific promotion has clearly stated terms, those terms apply to that promotion; applicable law prevails where required."}
         </p>
       </header>
 
-      {/* 如何成为会员 */}
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-slate-900">
-          {isZh ? "1. 如何成为会员" : "1. How to become a member"}
+          {isZh ? "1. 会员资格与账户" : "1. Eligibility & accounts"}
         </h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "使用手机号验证，通过 Google 登录本网站，即可自动创建三秦会员账户。"
-              : "Verify your phone number and sign in with Google on this website to create a San Qin member account automatically."}
+              ? "会员服务不面向 13 岁以下儿童。新会员注册时，我们会收集出生年份和月份，用于确认最低年龄资格及提供生日月份相关会员权益。"
+              : "The membership service is not available to children under 13. During new-member registration, we collect birth year and month to confirm minimum-age eligibility and provide birthday-month membership benefits."}
           </li>
           <li>
             {isZh
-              ? "每个会员账户对应一个唯一的手机号和 Google 账号，请妥善保管登录信息。"
-              : "Each member account is associated with one phone number and one Google account. Please keep your login details secure."}
+              ? "完成本网站要求的登录及联系方式验证后，可创建会员账户。每个会员账户应由本人使用，并应保持账户信息真实、准确。"
+              : "A member account may be created after completing the sign-in and contact-verification steps required by this website. Each account is for the member’s own use, and account information should be kept accurate."}
           </li>
           <li>
             {isZh
-              ? "会员账户仅限本人使用，暂不支持合并、转让或多人共享。"
-              : "Membership accounts are for personal use only and cannot currently be merged, transferred, or shared between multiple people."}
+              ? "会员账户暂不支持合并、转让或多人共享。请妥善保管登录信息；如发现未经授权使用，请尽快联系我们。"
+              : "Membership accounts cannot currently be merged, transferred, or shared. Keep your sign-in details secure and contact us promptly if you suspect unauthorized use."}
           </li>
         </ul>
       </section>
 
-      {/* 积分获取 */}
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-slate-900">
           {isZh ? "2. 积分如何获取" : "2. How points are earned"}
@@ -78,93 +76,84 @@ export default function MembershipRulesPage({
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "在本网站下单并完成支付后，系统会根据“可计积分金额”（一般为餐品小计，不含税费、配送费及部分活动优惠）自动累计积分。"
-              : "When you place and pay for an order on this website, points are earned automatically based on the eligible amount (typically the food subtotal, excluding tax, delivery fees, and certain promotions)."}
+              ? "在本网站完成符合条件的订单后，系统会根据可计积分金额自动累计积分。可计积分金额通常以符合条件的餐品金额为基础，不包含税费、配送费，并可能排除部分优惠、活动或其他不参与积分的金额。"
+              : "After an eligible order is completed on this website, points are earned automatically based on the eligible amount. The eligible amount is generally based on qualifying food purchases, excluding taxes and delivery fees, and may exclude certain promotions or other non-qualifying amounts."}
           </li>
           <li>
             {isZh
-              ? "实际积分计算规则（如每消费多少金额可获得多少积分），以结算页和会员中心中展示的信息为准，可能会不定期优化调整。"
-              : "The exact earning rate (e.g., how many points per dollar) is shown at checkout and in your Member Center and may be updated from time to time."}
+              ? "实际积分倍率、等级加成和当单可获得积分，以结算页、会员中心及适用活动规则中当时明确展示的信息为准。"
+              : "The earning rate, tier multiplier, and points available for a particular order are determined by the information clearly shown at checkout, in the Member Center, and in any applicable promotion terms at that time."}
           </li>
           <li>
             {isZh
-              ? "使用优惠券、积分抵扣后的订单，仅剩余的“实际支付金额”参与积分计算。"
-              : "If you use coupons or redeem points on an order, only the remaining amount you pay is typically eligible for earning points."}
+              ? "使用优惠券、积分或其他折扣后，积分通常按符合条件的剩余实际消费金额计算。"
+              : "After coupons, points, or other discounts are applied, points are generally calculated on the remaining eligible purchase amount."}
           </li>
           <li>
             {isZh
-              ? "如遇系统故障等特殊情况导致积分未发放，我们会在核实后进行补记。"
-              : "If points are not granted due to system issues, we will add them after verification."}
+              ? "如因系统故障等原因造成应得积分未正确记录，我们会在核实订单后进行更正。"
+              : "If eligible points are recorded incorrectly because of a system issue, we will correct the record after verifying the order."}
           </li>
         </ul>
       </section>
 
-      {/* 积分使用与限制 */}
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-slate-900">
-          {isZh ? "3. 积分使用与限制" : "3. Using your points"}
+          {isZh ? "3. 积分与储值余额" : "3. Points & store balance"}
         </h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "在结算页可选择使用积分抵扣部分餐品金额，系统会显示本单最多可抵扣的金额。"
-              : "At checkout, you may choose to apply points to reduce the food subtotal. The system will show the maximum discount available for that order."}
+              ? "积分属于会员奖励，不是现金。积分仅可按结算页显示的方式用于符合条件的消费，不可提现或兑换现金。"
+              : "Points are loyalty rewards, not cash. They may be used only for eligible purchases as shown at checkout and cannot be withdrawn or exchanged for cash."}
           </li>
           <li>
             {isZh
-              ? "积分抵扣不找零，不可兑换为现金，仅可用于下单时抵扣餐费。"
-              : "Points are non-cash and non-refundable and can only be used to discount eligible food items at checkout."}
+              ? "储值余额（Store Balance）与积分为两个独立账户。储值余额表示顾客实际充值形成的可消费金额，不会与奖励积分合并计算。"
+              : "Store Balance and points are separate accounts. Store Balance represents spendable value funded by the customer and is not combined with loyalty points."}
           </li>
           <li>
             {isZh
-              ? "部分活动、特价产品或套餐可能不支持积分抵扣，以页面提示为准。"
-              : "Some promotions, discounted items, or bundles may not be eligible for point redemption, as indicated on the order page."}
-          </li>
-          <li>
-            {isZh
-              ? "每笔订单的使用上限、每日/每月使用频率等限制，以结算页实际展示为准。"
-              : "Per-order limits and any daily or monthly caps on point usage will be shown at checkout and may change from time to time."}
+              ? "部分特价、套餐或活动可能不支持积分抵扣；每笔订单实际可抵扣金额和适用限制会在结算时显示。"
+              : "Some specials, bundles, or promotions may not be eligible for point redemption. The amount actually redeemable and any applicable limits will be shown at checkout."}
           </li>
         </ul>
       </section>
 
-      {/* 退单与积分调整 */}
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-slate-900">
-          {isZh ? "4. 退款、取消订单与积分调整" : "4. Refunds, cancellations & point adjustments"}
+          {isZh ? "4. 退款、取消与积分调整" : "4. Refunds, cancellations & point adjustments"}
         </h2>
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "如订单发生全额退款，我们会扣回本单获得的积分，并退回本单使用的积分（如有）。"
-              : "If an order is fully refunded, points earned from that order may be reversed and any points redeemed on that order may be returned."}
+              ? "订单全额退款时，本单获得的积分会被扣回，本单实际使用的积分会相应退回。"
+              : "When an order is fully refunded, points earned from that order will be reversed and points actually redeemed on that order will be restored accordingly."}
           </li>
           <li>
             {isZh
-              ? "如为部分退款，积分处理将根据实际退款金额按比例调整。"
-              : "For partial refunds, point adjustments will generally be made in proportion to the refunded amount."}
+              ? "部分退款时，积分会根据实际退款内容、符合条件的消费金额及适用活动规则进行相应调整。"
+              : "For a partial refund, points will be adjusted based on the refunded items or amount, the remaining eligible spend, and any applicable promotion rules."}
           </li>
           <li>
             {isZh
-              ? "如发现异常使用（例如恶意频繁下单后取消、利用漏洞刷积分等），我们有权冻结或清零相关积分，并视情况冻结账号。"
-              : "If we detect abuse (such as repeated orders and cancellations, or exploiting system loopholes for points), we may freeze or remove points and, in serious cases, suspend the account."}
+              ? "如有合理依据认为账户存在欺诈、利用系统漏洞、恶意刷取奖励或其他严重滥用，我们可在必要范围内暂停相关权益或账户并进行核查；如你认为处理有误，可联系我们复核。"
+              : "Where we have reasonable grounds to believe an account is involved in fraud, exploitation of a system defect, abusive reward activity, or other serious misuse, we may suspend affected benefits or the account as reasonably necessary while we investigate. You may contact us if you believe the action was taken in error."}
           </li>
         </ul>
       </section>
 
-      {/* 会员等级（如果你后面想细化，可以把阈值填进去） */}
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-slate-900">
           {isZh ? "5. 会员等级与权益" : "5. Membership tiers & benefits"}
         </h2>
         <p>
           {isZh
-            ? "目前会员等级包括青铜、白银、黄金和铂金等等级，系统会根据一定周期内的消费累计自动评估等级。不同等级可能享受不同的积分倍率、专属优惠券或活动优先权等，以会员中心页面展示及实际活动说明为准。"
-            : "We currently use several tiers (such as Bronze, Silver, Gold, and Platinum). Your tier is determined by your spending over a recent period. Higher tiers may offer enhanced benefits such as different earning rates, exclusive coupons, or priority access to certain promotions, as shown in the Member Center and individual campaign descriptions."}
+            ? "会员等级目前包括青铜、白银、黄金和铂金等等级。等级根据系统当时公布的评估周期、符合条件的消费及相关规则计算。不同等级可享有不同积分倍率、专属优惠券或其他权益，具体以会员中心和相关活动说明为准。"
+            : "Current membership tiers include Bronze, Silver, Gold, and Platinum. Tiers are calculated using the evaluation period, eligible spending, and rules published by the system at the relevant time. Benefits may include different point multipliers, exclusive coupons, or other member benefits as shown in the Member Center and applicable promotion terms."}
         </p>
       </section>
 
-      {/* 推荐人奖励 */}
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-slate-900">
           {isZh ? "6. 推荐人与奖励" : "6. Referrals & rewards"}
@@ -172,31 +161,41 @@ export default function MembershipRulesPage({
         <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "在首次注册时填写的推荐人邮箱，将作为推荐关系的唯一凭据，提交后不可新增或更改。"
-              : "The referrer email you provide at first registration is used as the only proof of the referral relationship and cannot be added or changed later."}
+              ? "推荐人只能在新会员首次注册流程中填写。被推荐人输入推荐人的会员邮箱后，系统会将推荐关系绑定至对应会员账户；提交或选择跳过后，不能再新增或更改推荐关系。"
+              : "A referrer may be entered only during the new member’s initial registration flow. After the new member enters the referrer’s member email, the system binds the referral to that member account. Once submitted or skipped, a referral cannot later be added or changed."}
           </li>
           <li>
             {isZh
-              ? "如有推荐奖励，将发放至该推荐人的会员账户或邮箱，具体规则以活动说明为准。"
-              : "If referral rewards are offered, they will be sent to the referrer’s member account or email according to the promotion details."}
+              ? "邮箱仅用于注册时识别推荐人；推荐关系实际绑定至推荐人的会员账户，因此推荐人之后更新邮箱不会改变既有推荐关系。"
+              : "The email is used only to identify the referrer during registration. The referral is actually bound to the referrer’s member account, so a later email change does not alter an existing referral relationship."}
+          </li>
+          <li>
+            {isZh
+              ? "如有推荐奖励，其发放条件、奖励内容、有效期及其他限制以当时的推荐活动规则为准。"
+              : "Where referral rewards are offered, qualification, reward value, validity, and other restrictions are governed by the referral promotion terms in effect at that time."}
           </li>
         </ul>
       </section>
 
-      {/* 规则调整与解释权 */}
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-slate-900">
-          {isZh ? "7. 规则变更与解释" : "7. Changes to these rules"}
+          {isZh ? "7. 规则变更" : "7. Changes to these rules"}
         </h2>
         <p>
           {isZh
-            ? "我们可能会根据运营情况和相关法律法规，不定期更新会员规则与积分政策。重要变更会尽量通过网站公告、店内告示或邮件通知。更新后，您继续使用会员账户即视为同意新的规则。"
-            : "We may update these membership rules and point policies from time to time in light of business needs and applicable laws. For significant changes, we will make reasonable efforts to notify you via this website, in-store notices, or email. By continuing to use your member account after changes take effect, you agree to the updated rules."}
+            ? "我们可能因运营、产品或法律要求更新会员规则。更新后的规则自注明的生效日期起适用于后续使用和交易，原则上不会追溯改变已完成订单的结算结果。涉及既有积分、优惠券或其他重要会员权益的重大调整，我们会通过网站、会员中心、电子邮件或其他合理方式说明生效时间和处理方式。"
+            : "We may update these membership rules for operational, product, or legal reasons. Updated rules apply to future use and transactions from the stated effective date and generally do not retroactively change completed-order settlements. For material changes affecting existing points, coupons, or other significant member benefits, we will explain the effective date and treatment through the website, Member Center, email, or another reasonable method."}
         </p>
-        <p className="text-xs text-slate-500">
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-base font-semibold text-slate-900">
+          {isZh ? "8. 联系我们" : "8. Contact us"}
+        </h2>
+        <p>
           {isZh
-            ? "本页面内容仅为一般性说明，不构成法律或财务建议。如有疑问，欢迎随时联系我们。"
-            : "This page is for general information only and does not constitute legal or financial advice. If you have questions, please contact us."}
+            ? "如对会员账户、积分、推荐关系或会员权益有疑问，请通过网站“联系我们”页面与 SANQIN RESTAURANT 联系。"
+            : "For questions about your member account, points, referrals, or membership benefits, please contact SANQIN RESTAURANT through the website’s Contact page."}
         </p>
       </section>
     </div>

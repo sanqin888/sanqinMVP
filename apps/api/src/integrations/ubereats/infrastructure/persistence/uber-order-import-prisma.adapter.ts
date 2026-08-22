@@ -101,6 +101,19 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     };
   }
 
+  async hasSucceededDenial(externalOrderId: string): Promise<boolean> {
+    const denial = await this.prisma.uberOrderAction.findUnique({
+      where: {
+        externalOrderId_action: {
+          externalOrderId,
+          action: 'DENY',
+        },
+      },
+      select: { status: true },
+    });
+    return denial?.status === 'SUCCEEDED';
+  }
+
   async getPosStoreConnectivity(posStoreId: string) {
     if (posStoreId !== resolveConfiguredStoreId()) {
       return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };

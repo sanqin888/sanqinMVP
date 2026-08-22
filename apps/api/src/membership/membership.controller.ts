@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { MembershipService } from './membership.service';
+import { MembershipOnboardingService } from './membership-onboarding.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { MfaGuard } from '../auth/mfa.guard';
 import { AuthService } from '../auth/auth.service';
@@ -25,51 +26,76 @@ type AuthedRequest = Request & {
   session?: { sessionId?: string };
 };
 
+function maskEmail(value?: string | null): string | null {
+  if (!value) return null;
+  const at = value.indexOf('@');
+  if (at <= 0) return null;
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${'*'.repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+}
+
 @UseGuards(SessionAuthGuard, MfaGuard)
 @Controller('membership')
 export class MembershipController {
   constructor(
     private readonly membership: MembershipService,
+    private readonly onboarding: MembershipOnboardingService,
     private readonly auth: AuthService,
   ) {}
 
   @Get('summary')
-  async summary(
-    @Req() req: AuthedRequest,
-    @Query('firstName') firstName?: string,
-    @Query('lastName') lastName?: string,
-    @Query('email') email?: string,
-    @Query('referrerEmail') referrerEmail?: string,
-    @Query('birthdayMonth') birthdayMonthRaw?: string,
-    @Query('birthdayDay') birthdayDayRaw?: string,
-  ) {
+  async summary(@Req() req: AuthedRequest) {
     const userStableId = req.user?.userStableId;
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
     }
 
-    // 把 query 里的生日转成 number，非法就当 undefined
-    let birthdayMonth: number | undefined;
-    let birthdayDay: number | undefined;
+    const summary = await this.membership.getMemberSummary({ userStableId });
+    return {
+      ...summary,
+      referrerEmail: maskEmail(summary.referrerEmail),
+    };
+  }
 
-    if (birthdayMonthRaw && birthdayMonthRaw.trim() !== '') {
-      const m = Number.parseInt(birthdayMonthRaw, 10);
-      if (Number.isFinite(m)) birthdayMonth = m;
+  @Get('onboarding')
+  async onboardingStatus(@Req() req: AuthedRequest) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
+    return this.onboarding.getStatus(userStableId);
+  }
+
+  @Post('onboarding')
+  async finalizeOnboarding(
+    @Req() req: AuthedRequest,
+    @Body()
+    body: {
+      birthdayYear?: number;
+      birthdayMonth?: number;
+      referrerEmail?: string | null;
+    },
+  ) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
+    if (
+      typeof body.birthdayYear !== 'number' ||
+      typeof body.birthdayMonth !== 'number'
+    ) {
+      throw new BadRequestException(
+        'birthdayYear and birthdayMonth are required',
+      );
     }
 
-    if (birthdayDayRaw && birthdayDayRaw.trim() !== '') {
-      const d = Number.parseInt(birthdayDayRaw, 10);
-      if (Number.isFinite(d)) birthdayDay = d;
-    }
-
-    return this.membership.getMemberSummary({
+    return this.onboarding.finalize({
       userStableId,
-      firstName: firstName ?? null,
-      lastName: lastName ?? null,
-      email: email ?? null,
-      referrerEmail,
-      birthdayMonth,
-      birthdayDay,
+      birthdayYear: body.birthdayYear,
+      birthdayMonth: body.birthdayMonth,
+      referrerEmail: body.referrerEmail ?? null,
     });
   }
 
@@ -251,7 +277,7 @@ export class MembershipController {
     return { success: true, ...result };
   }
 
-  // ✅ 更新姓名 / 生日
+  // ✅ 更新姓名 / 生日（birthdayDay 保留为 legacy profile 字段）
   @Post('profile')
   async updateProfile(
     @Req() req: AuthedRequest,
@@ -300,24 +326,10 @@ export class MembershipController {
   }
 
   @Post('referrer')
-  async bindReferrer(
-    @Req() req: AuthedRequest,
-    @Body() body: { referrerEmail?: string; referrerInput?: string },
-  ) {
-    const userStableId = req.user?.userStableId;
-    if (!userStableId) {
-      throw new BadRequestException('userStableId is required');
-    }
-    const referrerInput = body.referrerInput ?? body.referrerEmail ?? '';
-    const result = await this.membership.bindReferrerEmail({
-      userStableId,
-      referrerInput,
-    });
-
-    return {
-      success: true,
-      ...result,
-    };
+  bindReferrer() {
+    throw new BadRequestException(
+      'referrer can only be set during initial membership onboarding',
+    );
   }
 
   // ✅ 优惠券列表

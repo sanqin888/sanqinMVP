@@ -13,6 +13,8 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
+const ANALYTICS_CONSENT_COOKIE = 'sanqin_analytics_consent_v1';
+
 type AnalyticsIngestEventDto = {
   event: string;
   payload?: Record<string, unknown>;
@@ -25,6 +27,14 @@ type AnalyticsIngestBodyDto = {
   path?: string;
 };
 
+function hasAcceptedAnalyticsConsent(cookieHeader?: string): boolean {
+  if (!cookieHeader) return false;
+  return cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .some((part) => part === `${ANALYTICS_CONSENT_COOKIE}=accepted`);
+}
+
 @Controller('analytics')
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
@@ -32,9 +42,14 @@ export class AnalyticsController {
   @Post('events')
   async ingestEvents(
     @Body() body: AnalyticsIngestBodyDto | null | undefined,
+    @Headers('cookie') cookieHeader?: string,
     @Headers('user-agent') userAgent?: string,
     @Ip() ipAddress?: string,
   ): Promise<{ accepted: number }> {
+    if (!hasAcceptedAnalyticsConsent(cookieHeader)) {
+      return { accepted: 0 };
+    }
+
     const accepted = await this.analyticsService.ingestBatch(
       body?.events ?? [],
       {
