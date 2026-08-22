@@ -405,7 +405,7 @@ export default function AdminDashboard() {
         title={isZh ? "每日特价" : "Daily specials"}
         actions={
           <Link
-            href={`/${locale}/admin/daily-specials`}
+            href={`/${locale}/admin/promotions/specials`}
             className="text-xs font-medium text-amber-700 hover:text-amber-600"
           >
             {isZh ? "进入每日特价设置" : "Manage daily specials"}
