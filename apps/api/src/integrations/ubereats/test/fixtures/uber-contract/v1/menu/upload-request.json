@@ -1,1 +1,7 @@
-{ "menus": [], "categories": [], "items": [], "modifier_groups": [] }
+{
+  "display_options": { "disable_item_instructions": false },
+  "menus": [],
+  "categories": [],
+  "items": [],
+  "modifier_groups": []
+}

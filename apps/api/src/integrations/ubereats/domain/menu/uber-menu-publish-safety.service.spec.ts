@@ -12,6 +12,7 @@ const OPTION_STABLE_ID = 'extra-cheese';
 const UBER_OPTION_ID = buildUberNodeId('item', STORE_ID, OPTION_STABLE_ID);
 
 const payload = (price = 1099): UberMenuUploadPayload => ({
+  display_options: { disable_item_instructions: false },
   menus: [
     {
       id: 'menu',

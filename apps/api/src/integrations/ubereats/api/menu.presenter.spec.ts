@@ -1,4 +1,8 @@
-import { presentMenuDiff, presentMenuDraft } from './menu.presenter';
+import {
+  presentMenuDiff,
+  presentMenuDraft,
+  presentMenuReconciliation,
+} from './menu.presenter';
 
 const categoryTree = {
   id: 'category-stable-1',
@@ -176,6 +180,60 @@ describe('menu public presenters', () => {
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
+  });
+
+  it('presents the semantic upstream reconciliation without leaking raw Uber data', () => {
+    const response = presentMenuReconciliation({
+      storeId: 'pos-store-1',
+      uberStoreId: 'uber-store-1',
+      retrieved: {
+        menuCount: 1,
+        categoryCount: 2,
+        itemCount: 10,
+        modifierGroupCount: 3,
+      },
+      baseline: {
+        itemCount: 10,
+        modifierGroupCount: 3,
+        expectedDisableItemInstructions: false,
+      },
+      reconciliation: {
+        matchesLastSuccessfulPublish: false,
+        missingItemIds: ['item-1'],
+        extraItemIds: [],
+        missingModifierGroupIds: [],
+        extraModifierGroupIds: [],
+        mismatches: [
+          {
+            resourceType: 'ITEM',
+            resourceId: 'item-2',
+            field: 'priceCents',
+            expected: '749',
+            actual: '799',
+            rawUberPayload: 'must-not-leak',
+          },
+        ],
+      },
+      specialInstructions: {
+        expectedDisableItemInstructions: false,
+        remoteDisableItemInstructions: false,
+        verified: true,
+      },
+      accessToken: 'must-not-leak',
+    });
+
+    expect(response).toMatchObject({
+      storeId: 'pos-store-1',
+      uberStoreId: 'uber-store-1',
+      retrieved: { itemCount: 10 },
+      reconciliation: {
+        matchesLastSuccessfulPublish: false,
+        missingItemIds: ['item-1'],
+      },
+      specialInstructions: { verified: true },
+      contractVersion: '2',
+    });
+    expect(JSON.stringify(response)).not.toContain('must-not-leak');
   });
 
   it('presents every field consumed by the web diff view', () => {

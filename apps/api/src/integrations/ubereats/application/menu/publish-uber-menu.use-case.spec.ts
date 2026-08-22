@@ -1,6 +1,10 @@
 import { UberValidationError } from '../shared/uber-application.error';
+import type { UberMenuUploadPayload } from '../../domain/menu/uber-menu.types';
 import type { UberMenuPublicationRepositoryPort } from './uber-menu-publication.ports';
-import { PublishUberMenuUseCase } from './publish-uber-menu.use-case';
+import {
+  PublishUberMenuUseCase,
+  RetrieveAndReconcileUberMenuUseCase,
+} from './publish-uber-menu.use-case';
 
 describe('PublishUberMenuUseCase', () => {
   const snapshot = {
@@ -351,5 +355,169 @@ describe('PublishUberMenuUseCase', () => {
         url: 'https://menu.example/images/noodles.jpg',
       },
     ]);
+  });
+});
+
+describe('RetrieveAndReconcileUberMenuUseCase', () => {
+  const baseline: UberMenuUploadPayload = {
+    display_options: { disable_item_instructions: false },
+    menus: [
+      {
+        id: 'menu-1',
+        title: { translations: { en_us: 'Main Menu' } },
+        category_ids: ['cat-1'],
+        service_availability: [],
+      },
+    ],
+    categories: [
+      {
+        id: 'cat-1',
+        title: { translations: { en_us: 'Main' } },
+        entities: [{ id: 'item-1', type: 'ITEM' }],
+      },
+    ],
+    items: [
+      {
+        id: 'item-1',
+        title: { translations: { en_us: 'Roujiamo' } },
+        price_info: { price: 749, overrides: [] },
+        tax_info: { tax_rate: 13, vat_rate_percentage: null },
+        modifier_group_ids: { ids: ['group-1'], overrides: [] },
+        suspension_info: null,
+      },
+      {
+        id: 'option-1',
+        title: { translations: { en_us: 'Extra' } },
+        price_info: { price: 100, overrides: [] },
+        tax_info: { tax_rate: 13, vat_rate_percentage: null },
+        modifier_group_ids: { ids: null, overrides: [] },
+        suspension_info: null,
+      },
+    ],
+    modifier_groups: [
+      {
+        id: 'group-1',
+        title: { translations: { en_us: 'Extras' } },
+        quantity_info: { quantity: { min_permitted: 0, max_permitted: 1 } },
+        modifier_options: [{ id: 'option-1', type: 'ITEM' }],
+      },
+    ],
+  };
+  const remote = {
+    storeId: 'uber-store-1',
+    menuIds: ['menu-1'],
+    categoryIds: ['cat-1'],
+    items: [
+      {
+        id: 'item-1',
+        priceCents: 749,
+        isAvailable: true,
+        modifierGroupIds: ['group-1'],
+        taxRatePercentage: 13,
+        taxLabels: [],
+      },
+      {
+        id: 'option-1',
+        priceCents: 100,
+        isAvailable: true,
+        modifierGroupIds: [],
+        taxRatePercentage: 13,
+        taxLabels: [],
+      },
+    ],
+    modifierGroups: [{ id: 'group-1', optionItemIds: ['option-1'] }],
+    disableItemInstructions: null,
+  };
+  const setupReconciliation = (
+    retrieved = remote,
+    published: UberMenuUploadPayload | null = baseline,
+  ) => {
+    const provisionedStores = {
+      resolveProvisionedUberStoreId: jest.fn().mockResolvedValue({
+        posExternalStoreId: 'pos-store-1',
+        uberStoreId: 'uber-store-1',
+      }),
+    };
+    const publications = {
+      findLastSucceededPayload: jest.fn().mockResolvedValue(published),
+    };
+    const gateway = { retrieveMenu: jest.fn().mockResolvedValue(retrieved) };
+    return {
+      provisionedStores,
+      publications,
+      gateway,
+      useCase: new RetrieveAndReconcileUberMenuUseCase(
+        provisionedStores as never,
+        publications as never,
+        gateway as never,
+      ),
+    };
+  };
+
+  it('读取真实 Uber 菜单并与最后一次成功全量发布对账', async () => {
+    const x = setupReconciliation();
+    await expect(x.useCase.execute('pos-store-1')).resolves.toMatchObject({
+      storeId: 'pos-store-1',
+      uberStoreId: 'uber-store-1',
+      retrieved: { itemCount: 2, modifierGroupCount: 1 },
+      baseline: { itemCount: 2, modifierGroupCount: 1 },
+      reconciliation: {
+        matchesLastSuccessfulPublish: true,
+        missingItemIds: [],
+        extraItemIds: [],
+        mismatches: [],
+      },
+      specialInstructions: {
+        expectedDisableItemInstructions: false,
+        remoteDisableItemInstructions: null,
+        verified: false,
+      },
+    });
+    expect(x.gateway.retrieveMenu).toHaveBeenCalledWith('uber-store-1');
+  });
+
+  it('报告价格、availability 和 modifier 差异但不修改任何一侧', async () => {
+    const x = setupReconciliation({
+      ...remote,
+      items: remote.items.map((item) =>
+        item.id === 'item-1'
+          ? {
+              ...item,
+              priceCents: 799,
+              isAvailable: false,
+              modifierGroupIds: [],
+            }
+          : item,
+      ),
+    });
+    const result = await x.useCase.execute('pos-store-1');
+    expect(result.reconciliation.matchesLastSuccessfulPublish).toBe(false);
+    expect(result.reconciliation.mismatches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ resourceId: 'item-1', field: 'priceCents' }),
+        expect.objectContaining({ resourceId: 'item-1', field: 'isAvailable' }),
+        expect.objectContaining({
+          resourceId: 'item-1',
+          field: 'modifierGroupIds',
+        }),
+      ]),
+    );
+  });
+
+  it('没有成功发布基准时只返回真实数量，不宣称对账成功', async () => {
+    const x = setupReconciliation(remote, null);
+    await expect(x.useCase.execute('pos-store-1')).resolves.toMatchObject({
+      baseline: null,
+      reconciliation: { matchesLastSuccessfulPublish: null },
+    });
+  });
+
+  it('未 provision 门店不会调用 Uber Menu GET', async () => {
+    const x = setupReconciliation();
+    x.provisionedStores.resolveProvisionedUberStoreId.mockResolvedValue(null);
+    await expect(x.useCase.execute('missing')).rejects.toMatchObject({
+      code: 'UBER_STORE_NOT_PROVISIONED',
+    });
+    expect(x.gateway.retrieveMenu).not.toHaveBeenCalled();
   });
 });

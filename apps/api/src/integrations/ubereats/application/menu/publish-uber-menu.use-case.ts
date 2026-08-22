@@ -1,6 +1,9 @@
 import { createHash } from 'crypto';
 import { UberValidationError } from '../shared/uber-application.error';
-import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
+import type {
+  PublishMenuInput,
+  UberMenuUploadPayload,
+} from '../../domain/menu/uber-menu.types';
 import {
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
@@ -11,6 +14,7 @@ import {
   type UberMenuImageProbePort,
   type UberMenuPublicationRepositoryPort,
   type UberMenuPublishSnapshot,
+  type UberRetrievedMenu,
   type UberMenuSnapshotRepositoryPort,
   type UberPublicBaseUrlPort,
 } from './uber-menu-publication.ports';
@@ -354,5 +358,233 @@ export class PublishUberMenuUseCase {
     return (
       status === undefined || status === 408 || status === 429 || status >= 500
     );
+  }
+}
+
+export type UberMenuReconciliationMismatch = {
+  resourceType: 'ITEM' | 'MODIFIER_GROUP';
+  resourceId: string;
+  field:
+    | 'priceCents'
+    | 'isAvailable'
+    | 'modifierGroupIds'
+    | 'taxRatePercentage'
+    | 'optionItemIds';
+  expected: string;
+  actual: string;
+};
+
+const sortedIds = (values: readonly string[]) => [...values].sort();
+const equalIds = (left: readonly string[], right: readonly string[]) =>
+  JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right));
+const renderReconciliationValue = (value: unknown): string =>
+  typeof value === 'string'
+    ? value
+    : (JSON.stringify(value) ?? String(value));
+
+const expectedPublishedAvailability = (
+  item: UberMenuUploadPayload['items'][number],
+  nowEpochSeconds: number,
+) => {
+  const suspendUntil = item.suspension_info?.suspension?.suspend_until;
+  return !(
+    typeof suspendUntil === 'number' &&
+    Number.isFinite(suspendUntil) &&
+    suspendUntil > nowEpochSeconds
+  );
+};
+
+/** Reads the live Uber Menu V2 representation and compares it with the last successful full publish. */
+export class RetrieveAndReconcileUberMenuUseCase {
+  constructor(
+    private readonly provisionedStores: ProvisionedUberStoreQueryPort,
+    private readonly publications: UberMenuPublicationRepositoryPort,
+    private readonly gateway: UberMenuGatewayPort,
+  ) {}
+
+  async execute(storeId?: string) {
+    const requestedStoreId = storeId?.trim() || 'default';
+    const mapping =
+      await this.provisionedStores.resolveProvisionedUberStoreId(
+        requestedStoreId,
+      );
+    if (!mapping)
+      throw new UberValidationError({
+        code: 'UBER_STORE_NOT_PROVISIONED',
+        operation: 'uber.menu.retrieve',
+        message: `门店 ${requestedStoreId} 未配置 POS 映射或尚未 provision。`,
+      });
+
+    const [retrieved, baseline] = await Promise.all([
+      this.gateway.retrieveMenu(mapping.uberStoreId),
+      this.publications.findLastSucceededPayload(mapping.posExternalStoreId),
+    ]);
+    return this.reconcile(
+      mapping.posExternalStoreId,
+      mapping.uberStoreId,
+      retrieved,
+      baseline,
+    );
+  }
+
+  private reconcile(
+    storeId: string,
+    uberStoreId: string,
+    retrieved: UberRetrievedMenu,
+    baseline: UberMenuUploadPayload | null,
+  ) {
+    const baselineDisableItemInstructions = baseline
+      ? (baseline.display_options?.disable_item_instructions ?? null)
+      : null;
+    const expectedDisableItemInstructions = false;
+    const specialInstructionFlagVerified =
+      retrieved.disableItemInstructions !== null &&
+      retrieved.disableItemInstructions === expectedDisableItemInstructions;
+    const remoteSummary = {
+      menuCount: retrieved.menuIds.length,
+      categoryCount: retrieved.categoryIds.length,
+      itemCount: retrieved.items.length,
+      modifierGroupCount: retrieved.modifierGroups.length,
+      taxLabelItemCount: retrieved.items.filter((item) => item.taxLabels.length > 0)
+        .length,
+    };
+
+    if (!baseline)
+      return {
+        storeId,
+        uberStoreId,
+        retrieved: remoteSummary,
+        baseline: null,
+        reconciliation: {
+          matchesLastSuccessfulPublish: null,
+          missingItemIds: [] as string[],
+          extraItemIds: [] as string[],
+          missingModifierGroupIds: [] as string[],
+          extraModifierGroupIds: [] as string[],
+          mismatches: [] as UberMenuReconciliationMismatch[],
+        },
+        specialInstructions: {
+          expectedDisableItemInstructions,
+          remoteDisableItemInstructions: retrieved.disableItemInstructions,
+          verified: specialInstructionFlagVerified,
+        },
+      };
+
+    const nowEpochSeconds = Math.floor(Date.now() / 1_000);
+    const expectedItems = new Map(baseline.items.map((item) => [item.id, item]));
+    const remoteItems = new Map(retrieved.items.map((item) => [item.id, item]));
+    const expectedGroups = new Map(
+      baseline.modifier_groups.map((group) => [group.id, group]),
+    );
+    const remoteGroups = new Map(
+      retrieved.modifierGroups.map((group) => [group.id, group]),
+    );
+    const missingItemIds = [...expectedItems.keys()].filter(
+      (id) => !remoteItems.has(id),
+    );
+    const extraItemIds = [...remoteItems.keys()].filter(
+      (id) => !expectedItems.has(id),
+    );
+    const missingModifierGroupIds = [...expectedGroups.keys()].filter(
+      (id) => !remoteGroups.has(id),
+    );
+    const extraModifierGroupIds = [...remoteGroups.keys()].filter(
+      (id) => !expectedGroups.has(id),
+    );
+    const mismatches: UberMenuReconciliationMismatch[] = [];
+
+    for (const [id, expected] of expectedItems) {
+      const actual = remoteItems.get(id);
+      if (!actual) continue;
+      const expectedModifierGroupIds = expected.modifier_group_ids.ids ?? [];
+      const expectedIsAvailable = expectedPublishedAvailability(
+        expected,
+        nowEpochSeconds,
+      );
+      if (expected.price_info.price !== actual.priceCents)
+        mismatches.push({
+          resourceType: 'ITEM',
+          resourceId: id,
+          field: 'priceCents',
+          expected: renderReconciliationValue(expected.price_info.price),
+          actual: renderReconciliationValue(actual.priceCents),
+        });
+      if (expectedIsAvailable !== actual.isAvailable)
+        mismatches.push({
+          resourceType: 'ITEM',
+          resourceId: id,
+          field: 'isAvailable',
+          expected: renderReconciliationValue(expectedIsAvailable),
+          actual: renderReconciliationValue(actual.isAvailable),
+        });
+      if (!equalIds(expectedModifierGroupIds, actual.modifierGroupIds))
+        mismatches.push({
+          resourceType: 'ITEM',
+          resourceId: id,
+          field: 'modifierGroupIds',
+          expected: renderReconciliationValue(sortedIds(expectedModifierGroupIds)),
+          actual: renderReconciliationValue(sortedIds(actual.modifierGroupIds)),
+        });
+      if (
+        actual.taxRatePercentage !== null &&
+        expected.tax_info.tax_rate !== actual.taxRatePercentage
+      )
+        mismatches.push({
+          resourceType: 'ITEM',
+          resourceId: id,
+          field: 'taxRatePercentage',
+          expected: renderReconciliationValue(expected.tax_info.tax_rate),
+          actual: renderReconciliationValue(actual.taxRatePercentage),
+        });
+    }
+
+    for (const [id, expected] of expectedGroups) {
+      const actual = remoteGroups.get(id);
+      if (!actual) continue;
+      const expectedOptionIds = expected.modifier_options.map((option) => option.id);
+      if (!equalIds(expectedOptionIds, actual.optionItemIds))
+        mismatches.push({
+          resourceType: 'MODIFIER_GROUP',
+          resourceId: id,
+          field: 'optionItemIds',
+          expected: renderReconciliationValue(sortedIds(expectedOptionIds)),
+          actual: renderReconciliationValue(sortedIds(actual.optionItemIds)),
+        });
+    }
+
+    const explicitInstructionMismatch =
+      retrieved.disableItemInstructions !== null &&
+      retrieved.disableItemInstructions !== expectedDisableItemInstructions;
+    const matchesLastSuccessfulPublish =
+      missingItemIds.length === 0 &&
+      extraItemIds.length === 0 &&
+      missingModifierGroupIds.length === 0 &&
+      extraModifierGroupIds.length === 0 &&
+      mismatches.length === 0 &&
+      !explicitInstructionMismatch;
+
+    return {
+      storeId,
+      uberStoreId,
+      retrieved: remoteSummary,
+      baseline: {
+        itemCount: baseline.items.length,
+        modifierGroupCount: baseline.modifier_groups.length,
+        expectedDisableItemInstructions: baselineDisableItemInstructions,
+      },
+      reconciliation: {
+        matchesLastSuccessfulPublish,
+        missingItemIds: sortedIds(missingItemIds),
+        extraItemIds: sortedIds(extraItemIds),
+        missingModifierGroupIds: sortedIds(missingModifierGroupIds),
+        extraModifierGroupIds: sortedIds(extraModifierGroupIds),
+        mismatches,
+      },
+      specialInstructions: {
+        expectedDisableItemInstructions,
+        remoteDisableItemInstructions: retrieved.disableItemInstructions,
+        verified: specialInstructionFlagVerified,
+      },
+    };
   }
 }

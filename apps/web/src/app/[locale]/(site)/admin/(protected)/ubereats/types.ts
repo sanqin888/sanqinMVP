@@ -67,6 +67,22 @@ export type UberDraftItemNode = { id: string; displayName: string; displayDescri
 export type UberDraftCategoryNode = { id: string; name: string; items: UberDraftItemNode[] };
 export type UberValidationIssue = { code: string; severity: 'ERROR' | 'WARNING'; path: string; stableId: string | null; message: string };
 export type UberMenuDraftResponse = { storeId: string | null; sourceMenu: { categories: number; items: number; optionItems: number; groups: number; tree: { categories: UberDraftCategoryNode[] } }; uberDraft: { edges: Array<{ from: string; to: string; type: string }>; tree: { categories: UberDraftCategoryNode[] }; treeNodes: DraftNode[]; optionMappings: Array<{ stableId: string; sourcePath: string[] }> }; mappingWarnings: UberValidationIssue[]; validation: { warnings: UberValidationIssue[]; errors: UberValidationIssue[] }; mappingErrors: Array<{ code: string; stableId: string; message: string }>; publishSummary: { totalItems: number; changedItems: number; totalCategories: number; totalModifierGroups: number }; dirty: boolean; serviceAvailability: Array<{ day_of_week: string; time_periods: Array<{ start_time: string; end_time: string }> }>; serviceAvailabilityTimezone: string; lastPublishedVersion: { versionStableId: string; status: string; createdAt: string | null; totalItems: number; changedItems: number; errorMessage: string | null; errorDetails: Array<{ code: string; path?: string | null; message: string }> | null; finishedAt: string | null } | null; contractVersion: '2' };
+export type UberMenuReconciliationResponse = {
+  storeId: string;
+  uberStoreId: string;
+  retrieved: { menuCount: number; categoryCount: number; itemCount: number; modifierGroupCount: number; taxLabelItemCount: number };
+  baseline: { itemCount: number; modifierGroupCount: number; expectedDisableItemInstructions: boolean | null } | null;
+  reconciliation: {
+    matchesLastSuccessfulPublish: boolean | null;
+    missingItemIds: string[];
+    extraItemIds: string[];
+    missingModifierGroupIds: string[];
+    extraModifierGroupIds: string[];
+    mismatches: Array<{ resourceType: 'ITEM' | 'MODIFIER_GROUP'; resourceId: string; field: string; expected: string; actual: string }>;
+  };
+  specialInstructions: { expectedDisableItemInstructions: boolean | null; remoteDisableItemInstructions: boolean | null; verified: boolean };
+  contractVersion: '2';
+};
 export type UberPublishRisk = { severity: 'INFO' | 'WARNING' | 'CRITICAL'; code: string; entityType: string; entityId: string; field: string; previousValue: unknown; currentValue: unknown; sourceValue?: unknown; intentional?: boolean };
 export type UberDryRunResponse = Pick<UberMenuDraftResponse, 'serviceAvailability' | 'serviceAvailabilityTimezone'> & { taxRate: { percentage: number; source: string; requiresAdminConfirmation: boolean; confirmed: boolean }; safety?: { semanticallyChanged: boolean; criticalCount: number; risks: UberPublishRisk[]; fingerprint: string } };
 export type UberMenuConfigImportPreview = { fingerprint: string; sourceStoreId: string; targetStoreId: string; mode: 'SKIP_EXISTING' | 'OVERWRITE'; counts: Record<'items' | 'options' | 'groups' | 'categories', { create: number; update: number; unchanged: number; conflicts: number }>; conflicts: Array<{ kind: string; stableId: string; source: Record<string, unknown>; target: Record<string, unknown> }>; warnings: string[] };
