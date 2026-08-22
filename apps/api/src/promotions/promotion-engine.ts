@@ -1,6 +1,9 @@
 export type PromotionSource = 'DAILY_SPECIAL' | 'COUPON';
 
-export type PromotionStackingGroup = 'ITEM_PRICE' | 'COUPON';
+export type PromotionStackingGroup =
+  | 'ITEM_PRICE'
+  | 'COUPON'
+  | 'COUPON_ENTITLEMENT';
 export type PromotionStackingMode = 'EXCLUSIVE' | 'STACKABLE';
 
 export type PromotionEligibilityCode =

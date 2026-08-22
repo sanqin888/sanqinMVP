@@ -188,6 +188,147 @@ describe('order promotion evaluator', () => {
     });
   });
 
+  it('routes exclusive entitlement coupon stacking through the resolver', () => {
+    const result = evaluateOrderPromotions({
+      lines: [
+        {
+          lineKey: 'hidden-line',
+          productStableId: 'hidden-item',
+          quantity: 1,
+          baseUnitPriceCents: 1000,
+          lineTotalCents: 1000,
+        },
+      ],
+      entitlementCoupon: {
+        couponStableId: 'entitlement-exclusive',
+        code: 'UNLOCK',
+        title: 'Unlock item',
+        stackingPolicy: 'EXCLUSIVE',
+      },
+      coupon: tenPercentCoupon,
+    });
+
+    expect(result.adjustments).toEqual([
+      expect.objectContaining({
+        promotionStableId: 'entitlement-exclusive',
+        stackingGroup: 'COUPON_ENTITLEMENT',
+        discountCents: 0,
+      }),
+    ]);
+    expect(result.rejected).toContainEqual(
+      expect.objectContaining({
+        promotionStableId: 'coupon-10',
+        code: 'STACKING_CONFLICT',
+      }),
+    );
+  });
+
+  it('lets an exclusive ordinary coupon block a stackable entitlement coupon', () => {
+    const result = evaluateOrderPromotions({
+      lines: [
+        {
+          lineKey: 'hidden-line',
+          productStableId: 'hidden-item',
+          quantity: 1,
+          baseUnitPriceCents: 1000,
+          lineTotalCents: 1000,
+        },
+      ],
+      entitlementCoupon: {
+        couponStableId: 'entitlement-stackable',
+        code: 'UNLOCK',
+        title: 'Unlock item',
+        stackingPolicy: 'STACKABLE',
+      },
+      coupon: {
+        ...tenPercentCoupon,
+        couponStableId: 'coupon-exclusive',
+        stackingPolicy: 'EXCLUSIVE',
+      },
+    });
+
+    expect(result.adjustments).toEqual([
+      expect.objectContaining({
+        promotionStableId: 'entitlement-stackable',
+        stackingGroup: 'COUPON_ENTITLEMENT',
+      }),
+    ]);
+    expect(result.rejected).toContainEqual(
+      expect.objectContaining({
+        promotionStableId: 'coupon-exclusive',
+        code: 'STACKING_CONFLICT',
+      }),
+    );
+  });
+
+  it('keeps stackable entitlement coupons separate from financial coupon adjustments', () => {
+    const result = evaluateOrderPromotions({
+      lines: [
+        {
+          lineKey: 'hidden-line',
+          productStableId: 'hidden-item',
+          quantity: 1,
+          baseUnitPriceCents: 1000,
+          lineTotalCents: 1000,
+        },
+      ],
+      entitlementCoupon: {
+        couponStableId: 'entitlement-stackable',
+        code: 'UNLOCK',
+        title: 'Unlock item',
+        stackingPolicy: 'STACKABLE',
+      },
+      coupon: tenPercentCoupon,
+    });
+
+    expect(result.rejected).toEqual([]);
+    expect(result.adjustments).toEqual([
+      expect.objectContaining({
+        promotionStableId: 'entitlement-stackable',
+        stackingGroup: 'COUPON_ENTITLEMENT',
+        discountCents: 0,
+      }),
+      expect.objectContaining({
+        promotionStableId: 'coupon-10',
+        stackingGroup: 'COUPON',
+        discountCents: 100,
+      }),
+    ]);
+  });
+
+  it('does not let DailySpecial coupon blocking reject an entitlement coupon', () => {
+    const result = evaluateOrderPromotions({
+      lines: [
+        {
+          lineKey: 'hidden-special-line',
+          productStableId: 'hidden-item',
+          quantity: 1,
+          baseUnitPriceCents: 949,
+          lineTotalCents: 799,
+          dailySpecial: blockedDailySpecial,
+        },
+      ],
+      entitlementCoupon: {
+        couponStableId: 'entitlement-exclusive',
+        code: 'UNLOCK',
+        title: 'Unlock item',
+        stackingPolicy: 'EXCLUSIVE',
+      },
+    });
+
+    expect(result.rejected).toEqual([]);
+    expect(result.adjustments).toEqual([
+      expect.objectContaining({
+        source: 'DAILY_SPECIAL',
+        lineKey: 'hidden-special-line',
+      }),
+      expect.objectContaining({
+        promotionStableId: 'entitlement-exclusive',
+        stackingGroup: 'COUPON_ENTITLEMENT',
+      }),
+    ]);
+  });
+
   it('returns the same adjustments in its versioned order snapshot', () => {
     const result = evaluateOrderPromotions({
       lines: [

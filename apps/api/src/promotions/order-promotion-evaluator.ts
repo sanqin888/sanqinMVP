@@ -1,5 +1,7 @@
 import {
   evaluateCouponPromotion,
+  toCouponEntitlementPromotionCandidate,
+  type CouponEntitlementPromotionLike,
   type CouponPromotionLike,
 } from './coupon-promotion.adapter';
 import {
@@ -37,6 +39,7 @@ function normalizeCents(value: number): number {
 export function evaluateOrderPromotions(params: {
   lines: readonly PromotionOrderLine[];
   coupon?: CouponPromotionLike | null;
+  entitlementCoupon?: CouponEntitlementPromotionLike | null;
 }): PromotionOrderEvaluation {
   const dailySpecialCandidates = params.lines.flatMap((line) => {
     if (!line.dailySpecial) return [];
@@ -81,6 +84,9 @@ export function evaluateOrderPromotions(params: {
     0,
   );
 
+  const entitlementCouponCandidate = params.entitlementCoupon
+    ? toCouponEntitlementPromotionCandidate(params.entitlementCoupon)
+    : null;
   const couponCandidate = params.coupon
     ? evaluateCouponPromotion({
         coupon: params.coupon,
@@ -94,6 +100,7 @@ export function evaluateOrderPromotions(params: {
     : null;
   const resolution = resolvePromotionCandidates([
     ...dailySpecialCandidates,
+    ...(entitlementCouponCandidate ? [entitlementCouponCandidate] : []),
     ...(couponCandidate ? [couponCandidate] : []),
   ]);
 

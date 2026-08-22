@@ -21,7 +21,6 @@ import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
-import { resolveIssuedCouponDiscountCents } from '../coupons/coupon-use-rule';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { NotificationService } from '../notifications/notification.service';
 import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
@@ -156,40 +155,6 @@ export class MembershipService {
       source: coupon.source ?? undefined,
       unlockedItemStableIds: coupon.unlockedItemStableIds,
     };
-  }
-
-  private resolveCouponApplicableSubtotalCents(params: {
-    subtotalCents: number;
-    couponUnlockedItemStableIds: string[];
-    couponEligibleLineItems?: {
-      productStableId: string;
-      lineTotalCents: number;
-    }[];
-  }) {
-    const {
-      subtotalCents,
-      couponUnlockedItemStableIds,
-      couponEligibleLineItems,
-    } = params;
-
-    const restrictedStableIds = new Set(
-      (couponUnlockedItemStableIds ?? [])
-        .map((id) => id.trim())
-        .filter(Boolean),
-    );
-    if (restrictedStableIds.size === 0) {
-      return subtotalCents;
-    }
-
-    const matchingSubtotal = (couponEligibleLineItems ?? []).reduce(
-      (sum, line) =>
-        restrictedStableIds.has(line.productStableId)
-          ? sum + line.lineTotalCents
-          : sum,
-      0,
-    );
-
-    return matchingSubtotal;
   }
 
   private parseOrderItemOptionsSnapshot(
@@ -1324,22 +1289,14 @@ export class MembershipService {
     params: {
       userId?: string;
       couponStableId?: string;
-      subtotalCents: number;
-      couponEligibleLineItems?: {
-        productStableId: string;
-        lineTotalCents: number;
-      }[];
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponStableId, subtotalCents, couponEligibleLineItems } =
-      params;
+    const { userId, couponStableId } = params;
     if (!couponStableId) return null;
     return this.validateCouponForOrderWithWhere(
       {
         userId,
-        subtotalCents,
-        couponEligibleLineItems,
         where: { couponStableId },
       },
       options,
@@ -1350,21 +1307,14 @@ export class MembershipService {
     params: {
       userId?: string;
       couponId?: string;
-      subtotalCents: number;
-      couponEligibleLineItems?: {
-        productStableId: string;
-        lineTotalCents: number;
-      }[];
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, couponId, subtotalCents, couponEligibleLineItems } = params;
+    const { userId, couponId } = params;
     if (!couponId) return null;
     return this.validateCouponForOrderWithWhere(
       {
         userId,
-        subtotalCents,
-        couponEligibleLineItems,
         where: { id: couponId },
       },
       options,
@@ -1374,16 +1324,11 @@ export class MembershipService {
   private async validateCouponForOrderWithWhere(
     params: {
       userId?: string;
-      subtotalCents: number;
-      couponEligibleLineItems?: {
-        productStableId: string;
-        lineTotalCents: number;
-      }[];
       where: Prisma.CouponWhereUniqueInput;
     },
     options?: { tx?: Prisma.TransactionClient },
   ) {
-    const { userId, subtotalCents, where, couponEligibleLineItems } = params;
+    const { userId, where } = params;
     const prisma = options?.tx ?? this.prisma;
     if (!userId) {
       throw new BadRequestException('userId is required when applying coupon');
@@ -1403,60 +1348,20 @@ export class MembershipService {
       throw new BadRequestException('coupon is not available');
     }
 
-    const applicableSubtotalCents = this.resolveCouponApplicableSubtotalCents({
-      subtotalCents,
-      couponUnlockedItemStableIds: coupon.unlockedItemStableIds ?? [],
-      couponEligibleLineItems,
-    });
-
-    if (
-      typeof coupon.minSpendCents === 'number' &&
-      applicableSubtotalCents < coupon.minSpendCents
-    ) {
-      throw new BadRequestException(
-        'order subtotal does not meet coupon rules',
-      );
-    }
-
-    if (applicableSubtotalCents <= 0) {
-      throw new BadRequestException('coupon does not apply to selected items');
-    }
-
-    const discountCents = resolveIssuedCouponDiscountCents(
-      coupon.discountCents,
-      coupon.discountPercent,
-      applicableSubtotalCents,
-    );
-
-    return {
-      discountCents,
-      coupon,
-    };
+    return { coupon };
   }
 
   async reserveCouponForOrder(params: {
     tx: Prisma.TransactionClient;
     userId?: string;
     couponId?: string | null;
-    subtotalCents: number;
-    couponEligibleLineItems?: {
-      productStableId: string;
-      lineTotalCents: number;
-    }[];
     orderId: string;
   }) {
-    const {
-      tx,
-      userId,
-      couponId,
-      subtotalCents,
-      couponEligibleLineItems,
-      orderId,
-    } = params;
+    const { tx, userId, couponId, orderId } = params;
     if (!couponId) return null;
 
     const couponInfo = await this.validateCouponForOrderById(
-      { userId, couponId, subtotalCents, couponEligibleLineItems },
+      { userId, couponId },
       { tx },
     );
 
