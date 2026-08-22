@@ -30,15 +30,12 @@ describe('AnalyticsController consent gate', () => {
       ),
     ).resolves.toEqual({ accepted: 1 });
 
-    expect(ingestBatch).toHaveBeenCalledWith(
-      [{ event: 'checkout_clicked' }],
-      {
-        locale: 'en',
-        path: '/en',
-        userAgent: 'test-agent',
-        ipAddress: '127.0.0.1',
-      },
-    );
+    expect(ingestBatch).toHaveBeenCalledWith([{ event: 'checkout_clicked' }], {
+      locale: 'en',
+      path: '/en',
+      userAgent: 'test-agent',
+      ipAddress: '127.0.0.1',
+    });
   });
 
   it('does not accept a rejected consent cookie', async () => {
