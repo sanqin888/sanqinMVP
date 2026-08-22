@@ -3686,7 +3686,11 @@ export class OrdersService {
 
       const baseNetSubtotalCents = Math.max(
         0,
-        (order.subtotalCents ?? 0) - (order.loyaltyRedeemCents ?? 0),
+        typeof order.subtotalAfterDiscountCents === 'number'
+          ? order.subtotalAfterDiscountCents
+          : (order.subtotalCents ?? 0) -
+              (order.couponDiscountCents ?? 0) -
+              (order.loyaltyRedeemCents ?? 0),
       );
 
       const newNetSubtotalCents = Math.max(

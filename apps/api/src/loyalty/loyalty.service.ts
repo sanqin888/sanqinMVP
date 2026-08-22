@@ -61,6 +61,45 @@ function computeTierFromLifetime(
   return 'BRONZE';
 }
 
+function normalizeLoyaltyCents(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value));
+}
+
+export function computeEligibleSpendCents(params: {
+  subtotalCents: number;
+  redeemValueCents: number;
+  balanceUsedCents: number;
+}): {
+  earnCents: number;
+  tierCents: number;
+  referralCents: number;
+} {
+  const subtotalCents = normalizeLoyaltyCents(params.subtotalCents);
+  const redeemValueCents = normalizeLoyaltyCents(params.redeemValueCents);
+  const balanceUsedCents = normalizeLoyaltyCents(params.balanceUsedCents);
+
+  const earnCents = Math.max(0, subtotalCents - redeemValueCents);
+  const tierCents = Math.max(0, earnCents - balanceUsedCents);
+
+  return {
+    earnCents,
+    tierCents,
+    referralCents: tierCents,
+  };
+}
+
+export function computeTierEligibleSpendFromNetCents(
+  netSubtotalCents: number,
+  balanceUsedCents: number,
+): number {
+  return Math.max(
+    0,
+    normalizeLoyaltyCents(netSubtotalCents) -
+      normalizeLoyaltyCents(balanceUsedCents),
+  );
+}
+
 const TIER_RANK: Record<Tier, number> = {
   BRONZE: 0,
   SILVER: 1,
@@ -249,6 +288,36 @@ export class LoyaltyService {
   ): Promise<LoyaltyConfig> {
     const config = await this.ensureBusinessConfigWithTx(tx);
     return this.normalizeLoyaltyConfig(config);
+  }
+
+  async getMembershipProgramRules() {
+    const config = await this.getLoyaltyConfig();
+    const tierRules = (['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'] as const).map(
+      (tier) => {
+        const thresholdCents =
+          tier === 'BRONZE' ? 0 : config.tierThresholdCents[tier];
+        const earnPtPerDollar =
+          config.earnPtPerDollar * config.tierMultipliers[tier];
+
+        return {
+          tier,
+          thresholdCents,
+          multiplier: config.tierMultipliers[tier],
+          earnPtPerDollar,
+          earnValueRatePercent:
+            earnPtPerDollar * config.redeemDollarPerPoint * 100,
+        };
+      },
+    );
+
+    return {
+      earnPtPerDollar: config.earnPtPerDollar,
+      redeemDollarPerPoint: config.redeemDollarPerPoint,
+      referralPtPerDollar: config.referralPtPerDollar,
+      referralValueRatePercent:
+        config.referralPtPerDollar * config.redeemDollarPerPoint * 100,
+      tierRules,
+    };
   }
 
   // ✅ 新增：stableId -> 内部 UUID userId
@@ -499,24 +568,22 @@ export class LoyaltyService {
         select: { deltaMicro: true },
       });
 
-      // deltaMicro 是负数，取反转正。如果没有记录则为0。
-      // 简单转换，注意精度处理
+      // deltaMicro 是负数，取反转正。如果没有记录则为 0。
       const balanceUsedMicro = balanceLedger ? -balanceLedger.deltaMicro : 0n;
       const balanceUsedCents = Number(balanceUsedMicro) / 10000;
 
-      // 1. 用户实际消费额（用于用户自己升级和赚积分）
-      // 逻辑：余额支付也算有效消费，只扣除“积分抵扣”部分
-      const netSubtotalForUserEarn = Math.max(
-        0,
-        subtotalCents - redeemValueCents,
-      );
-
-      // 2. 资金净流入额（用于推荐人奖励）
-      // 逻辑：扣除“积分抵扣” AND “余额支付”，避免充值+消费双重奖励
-      const netSubtotalForReferral = Math.max(
-        0,
-        netSubtotalForUserEarn - balanceUsedCents,
-      );
+      // 储值余额在充值时已经计入 lifetimeSpendCents：
+      // - 会员本人赚取消费积分：储值余额与现金/银行卡一样，只扣积分抵扣。
+      // - 等级累计消费：还要扣除本单使用的储值余额，避免充值 + 消费重复累计。
+      // - 推荐奖励：同样扣储值余额，避免推荐人在充值和后续消费时重复获奖。
+      const spendBases = computeEligibleSpendCents({
+        subtotalCents,
+        redeemValueCents,
+        balanceUsedCents,
+      });
+      const netSubtotalForUserEarn = spendBases.earnCents;
+      const netSubtotalForTier = spendBases.tierCents;
+      const netSubtotalForReferral = spendBases.referralCents;
 
       // 3) 赚取积分
       const accountTier: Tier = tier ?? (accRaw.tier as Tier);
@@ -567,8 +634,8 @@ export class LoyaltyService {
         }
       }
 
-      // 4) 累加累计实际消费
-      lifetimeSpendCents += netSubtotalForUserEarn;
+      // 4) 累加累计实际消费（储值本金已在充值时累计，这里只加非储值部分）
+      lifetimeSpendCents += netSubtotalForTier;
 
       // 5) 更新等级
       const newTier = computeTierFromLifetime(
@@ -735,6 +802,7 @@ export class LoyaltyService {
       select: {
         userId: true,
         subtotalCents: true,
+        subtotalAfterDiscountCents: true,
         couponDiscountCents: true,
         loyaltyRedeemCents: true,
       },
@@ -744,9 +812,11 @@ export class LoyaltyService {
 
     const netSubtotalCents = Math.max(
       0,
-      (order.subtotalCents ?? 0) -
-        (order.couponDiscountCents ?? 0) -
-        (order.loyaltyRedeemCents ?? 0),
+      typeof order.subtotalAfterDiscountCents === 'number'
+        ? order.subtotalAfterDiscountCents
+        : (order.subtotalCents ?? 0) -
+            (order.couponDiscountCents ?? 0) -
+            (order.loyaltyRedeemCents ?? 0),
     );
 
     await this.prisma.$transaction(async (tx) => {
@@ -853,6 +923,10 @@ export class LoyaltyService {
           target: 'BALANCE', // ✅ 明确查找余额扣除记录
         },
       });
+      const balanceUsedCents =
+        redeemBalanceRecord && redeemBalanceRecord.deltaMicro < 0n
+          ? Number(-redeemBalanceRecord.deltaMicro) / 10000
+          : 0;
 
       if (redeemBalanceRecord && redeemBalanceRecord.deltaMicro < 0n) {
         const existedBalanceRefund = await tx.loyaltyLedger.findFirst({
@@ -883,9 +957,17 @@ export class LoyaltyService {
         }
       }
 
-      // 3) 回退累计消费 & 等级
-      if (shouldAdjustLifetime && netSubtotalCents > 0) {
-        lifetimeSpendCents = Math.max(0, lifetimeSpendCents - netSubtotalCents);
+      // 3) 回退累计消费 & 等级。储值本金已在充值时累计，所以这里只回退
+      // 原订单真正新增到 lifetimeSpendCents 的非储值部分。
+      const lifetimeRollbackCents = computeTierEligibleSpendFromNetCents(
+        netSubtotalCents,
+        balanceUsedCents,
+      );
+      if (shouldAdjustLifetime && lifetimeRollbackCents > 0) {
+        lifetimeSpendCents = Math.max(
+          0,
+          lifetimeSpendCents - lifetimeRollbackCents,
+        );
       }
       const newTier = computeTierFromLifetime(
         lifetimeSpendCents,
@@ -1472,6 +1554,28 @@ export class LoyaltyService {
     let balance = acc.pointsMicro;
     let lifetimeSpendCents = acc.lifetimeSpendCents ?? 0;
 
+    const originalBalanceLedger = await tx.loyaltyLedger.findFirst({
+      where: {
+        orderId,
+        type: LoyaltyEntryType.REDEEM_ON_ORDER,
+        sourceKey: LEDGER_SOURCE_ORDER,
+        target: 'BALANCE',
+      },
+      select: { deltaMicro: true },
+    });
+    const balanceUsedCents =
+      originalBalanceLedger && originalBalanceLedger.deltaMicro < 0n
+        ? Number(-originalBalanceLedger.deltaMicro) / 10000
+        : 0;
+    const baseTierSpendCents = computeTierEligibleSpendFromNetCents(
+      baseNetSubtotalCents,
+      balanceUsedCents,
+    );
+    const newTierSpendCents = computeTierEligibleSpendFromNetCents(
+      newNetSubtotalCents,
+      balanceUsedCents,
+    );
+
     // 2) 补回 redeem（只会为正）
     let redeemReturnMicro = 0n;
     if (redeemReturnCents > 0) {
@@ -1563,10 +1667,11 @@ export class LoyaltyService {
       });
     }
 
-    // 4) lifetimeSpend 调整：settleOnPaid 已加过 baseNet，这里改成 newNet
-    const deltaNet = newNetSubtotalCents - baseNetSubtotalCents;
-    if (deltaNet !== 0) {
-      lifetimeSpendCents = Math.max(0, lifetimeSpendCents + deltaNet);
+    // 4) lifetimeSpend 调整：储值本金在充值时已经累计，所以改单只调整
+    // 原订单非储值部分对应的等级消费金额。
+    const deltaTierSpend = newTierSpendCents - baseTierSpendCents;
+    if (deltaTierSpend !== 0) {
+      lifetimeSpendCents = Math.max(0, lifetimeSpendCents + deltaTierSpend);
     }
     const newTier = computeTierFromLifetime(
       lifetimeSpendCents,
@@ -1596,11 +1701,11 @@ export class LoyaltyService {
       select: { accountId: true, deltaMicro: true },
     });
 
-    if (ref0 && ref0.deltaMicro > 0n && baseNetSubtotalCents > 0) {
+    if (ref0 && ref0.deltaMicro > 0n && baseTierSpendCents > 0) {
       const expectedRefNew = this.roundMulDiv(
         ref0.deltaMicro,
-        newNetSubtotalCents,
-        baseNetSubtotalCents,
+        newTierSpendCents,
+        baseTierSpendCents,
       );
 
       referralAdjustMicro = expectedRefNew - ref0.deltaMicro;
