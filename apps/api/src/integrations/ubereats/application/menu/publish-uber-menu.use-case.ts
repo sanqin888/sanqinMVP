@@ -378,9 +378,7 @@ const sortedIds = (values: readonly string[]) => [...values].sort();
 const equalIds = (left: readonly string[], right: readonly string[]) =>
   JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right));
 const renderReconciliationValue = (value: unknown): string =>
-  typeof value === 'string'
-    ? value
-    : (JSON.stringify(value) ?? String(value));
+  typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
 
 const expectedPublishedAvailability = (
   item: UberMenuUploadPayload['items'][number],
@@ -445,8 +443,9 @@ export class RetrieveAndReconcileUberMenuUseCase {
       categoryCount: retrieved.categoryIds.length,
       itemCount: retrieved.items.length,
       modifierGroupCount: retrieved.modifierGroups.length,
-      taxLabelItemCount: retrieved.items.filter((item) => item.taxLabels.length > 0)
-        .length,
+      taxLabelItemCount: retrieved.items.filter(
+        (item) => item.taxLabels.length > 0,
+      ).length,
     };
 
     if (!baseline)
@@ -471,7 +470,9 @@ export class RetrieveAndReconcileUberMenuUseCase {
       };
 
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
-    const expectedItems = new Map(baseline.items.map((item) => [item.id, item]));
+    const expectedItems = new Map(
+      baseline.items.map((item) => [item.id, item]),
+    );
     const remoteItems = new Map(retrieved.items.map((item) => [item.id, item]));
     const expectedGroups = new Map(
       baseline.modifier_groups.map((group) => [group.id, group]),
@@ -522,7 +523,9 @@ export class RetrieveAndReconcileUberMenuUseCase {
           resourceType: 'ITEM',
           resourceId: id,
           field: 'modifierGroupIds',
-          expected: renderReconciliationValue(sortedIds(expectedModifierGroupIds)),
+          expected: renderReconciliationValue(
+            sortedIds(expectedModifierGroupIds),
+          ),
           actual: renderReconciliationValue(sortedIds(actual.modifierGroupIds)),
         });
       if (
@@ -541,7 +544,9 @@ export class RetrieveAndReconcileUberMenuUseCase {
     for (const [id, expected] of expectedGroups) {
       const actual = remoteGroups.get(id);
       if (!actual) continue;
-      const expectedOptionIds = expected.modifier_options.map((option) => option.id);
+      const expectedOptionIds = expected.modifier_options.map(
+        (option) => option.id,
+      );
       if (!equalIds(expectedOptionIds, actual.optionItemIds))
         mismatches.push({
           resourceType: 'MODIFIER_GROUP',
