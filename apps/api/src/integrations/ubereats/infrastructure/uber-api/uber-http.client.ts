@@ -65,7 +65,7 @@ export type UberHttpRequest = {
   url?: string;
   path?: string;
   baseUrl?: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'HEAD';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
   accessToken?: string;
   headers?: Record<string, string>;
   json?: unknown;

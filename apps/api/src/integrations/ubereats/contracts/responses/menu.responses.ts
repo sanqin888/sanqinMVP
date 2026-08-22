@@ -72,6 +72,43 @@ export class UberMenuDraftResponse {
   contractVersion!: '2';
 }
 
+export class UberMenuReconciliationResponse {
+  storeId!: string;
+  uberStoreId!: string;
+  retrieved!: {
+    menuCount: number;
+    categoryCount: number;
+    itemCount: number;
+    modifierGroupCount: number;
+    taxLabelItemCount: number;
+  };
+  baseline!: {
+    itemCount: number;
+    modifierGroupCount: number;
+    expectedDisableItemInstructions: boolean | null;
+  } | null;
+  reconciliation!: {
+    matchesLastSuccessfulPublish: boolean | null;
+    missingItemIds: string[];
+    extraItemIds: string[];
+    missingModifierGroupIds: string[];
+    extraModifierGroupIds: string[];
+    mismatches: Array<{
+      resourceType: 'ITEM' | 'MODIFIER_GROUP';
+      resourceId: string;
+      field: string;
+      expected: string;
+      actual: string;
+    }>;
+  };
+  specialInstructions!: {
+    expectedDisableItemInstructions: boolean | null;
+    remoteDisableItemInstructions: boolean | null;
+    verified: boolean;
+  };
+  contractVersion!: '2';
+}
+
 export class UberMenuDiffResponse {
   storeId!: string | null;
   lastPublishedAt!: string | null;

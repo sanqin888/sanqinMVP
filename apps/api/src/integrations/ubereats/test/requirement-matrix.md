@@ -58,9 +58,65 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 | Order scope | `eats.order` | Order detail/actions 不再切 `eats.store.orders.read` |
 | Order detail | `GET /v1/delivery/order/{order_id}?expand=carts,payment`；scheduled 追加 `deliveries` | Order Fulfillment API 1.0.0 唯一 detail 路径 |
 | Order actions | `POST /v1/delivery/order/{order_id}/{accept\|deny\|ready\|cancel}` | 四种业务 action 使用同一 API Suite |
-| Menu | `PUT/GET /v2/eats/stores/{store_id}/menus` | Menu capability 独立版本；本任务不修改 |
-| Provisioning | `PATCH/POST /v1/eats/stores/{store_id}/pos_data`（按现有 adapter） | `webhooks_version=1.0.0` + scheduled webhook enabled |
+| Menu | `GET/PUT /v2/eats/stores/{store_id}/menus`；`POST /v2/eats/stores/{store_id}/menus/items/{item_id}` | Menu V2 支持全量读取/发布、稀疏 item 更新和发布后对账 |
+| Integration Config | `GET/POST/PATCH/DELETE /v1/eats/stores/{store_id}/pos_data` | Activate、Retrieve、Update、Remove 生命周期完整；`webhooks_version=1.0.0` + scheduled webhook enabled |
+| Store Management | `GET /v1/eats/store/{store_id}/status`；现有 `POST /v1/eats/store/{store_id}/status`；`POST /v1/delivery/store/{store_id}/update-store-prep-time` | 新增真实状态读取和默认准备时间更新；现有暂停/恢复行为保持不变 |
 | Webhook 签名 | `X-Uber-Signature` + raw body HMAC-SHA256 | 保持现有 durable receiver |
+
+## Integration Configuration capability
+
+| Capability | Method / path | Authorization | Production code | Contract evidence |
+| ---------- | ------------- | ------------- | --------------- | ----------------- |
+| Activate Integration | `POST /v1/eats/stores/{store_id}/pos_data` | merchant OAuth (`eats.pos_provisioning`) | `uber-merchant-api.adapter.ts` | `v1/stores/provision-request.json` |
+| Retrieve Integration Config | `GET /v1/eats/stores/{store_id}/pos_data` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
+| Update Integration | `PATCH /v1/eats/stores/{store_id}/pos_data` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
+| Remove Integration | `DELETE /v1/eats/stores/{store_id}/pos_data` | merchant OAuth (`eats.pos_provisioning`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
+
+SanQ 的 PATCH 配置继续强制 `schedule_order_webhooks.is_enabled=true` 与
+`webhooks_version=1.0.0`，避免管理员更新其他 integration 字段时破坏预约单 webhook
+契约。DELETE 成功后本地 store mapping 保留用于后续重新 Activate，但
+`isProvisioned=false`、`provisionedAt=null`。
+
+## Store Management capability
+
+| Capability | Method / path | Authorization | Production code | Contract evidence |
+| ---------- | ------------- | ------------- | --------------- | ----------------- |
+| Retrieve Store Status | `GET /v1/eats/store/{store_id}/status` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
+| Set Store Status | `POST /v1/eats/store/{store_id}/status` | app token (`eats.store.status.write`) | `uber-merchant-api.adapter.ts` | existing status write contract test |
+| Update Store Prep Time | `POST /v1/delivery/store/{store_id}/update-store-prep-time` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
+
+Retrieve Store Status 与现有 pause/resume 使用同一门店状态能力；本次不改变现有状态写入
+行为。`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。Prep Time 更新通过
+可检查 HTTP response 的 gateway transport 执行，保留 Uber 实际 HTTP status 到审计记录，
+用于部署后的 `200` 验收证据。Store Management 只允许已 mapping 且已 provision 的门店执行。
+
+## Menu V2 capability / read-back reconciliation
+
+| Capability | Method / path | Authorization | Production code | Contract evidence |
+| ---------- | ------------- | ------------- | --------------- | ----------------- |
+| Retrieve Menu | `GET /v2/eats/stores/{store_id}/menus` | app token (`eats.store`) | `uber-menu-publication.adapter.ts` | Menu retrieve wire contract test |
+| Upload Menu | `PUT /v2/eats/stores/{store_id}/menus` | app token (`eats.store`) | `uber-menu-publication.adapter.ts` | `v1/menu/upload-request.json` |
+| Update Item | `POST /v2/eats/stores/{store_id}/menus/items/{item_id}` | app token (`eats.store`) | `uber-menu-publication.adapter.ts` | existing sparse availability wire contract test |
+
+SanQ 的全量 Menu payload 显式发送
+`display_options.disable_item_instructions=false`，因为当前订单解析/打印链路支持 Uber
+item-level `customer_request.special_instructions`。Uber 文档将 order-level / customer-request capability
+定义在 Integration Configuration，而不是 Menu API；因此 Menu payload 不添加猜测字段，第四步改为在
+Provision / Update Integration Config 中显式维护正式的 `allow_special_instruction_requests` 能力开关。
+
+Retrieve Menu 只在 infrastructure 层解析 Uber wire schema；application 获得 semantic read model，
+并与 `UberMenuPublishVersion` 中最后一次成功全量 Publish payload 对账。核验范围包括 item ID/数量、
+价格、availability、modifier group/option 关系，以及 Uber 有返回时的税率和
+`disable_item_instructions`。如果全量 Publish 后又单独执行过 Update Item，availability 差异可能是
+后续的预期状态变化，因此管理端明确标注对账基准。
+
+税务契约继续使用现有 `tax_info.tax_rate`（tax-exclusive percentage）。Uber 公共 Menu V2 schema
+把 `tax_label_info` 定义为可选字段，Quality 标准也只要求 Tax Categories “where applicable”；Uber
+Required Metadata Regulations 的 Canada FOOD/BEVERAGE 条目列出 `preparation_type`（有酒精菜单时还
+涉及 `can_serve_alone`），没有把 `tax_label_info` 列为加拿大强制字段，因此本次不猜测 tax label。
+Quality 标准中的 Store-level Tax Area ID 明确以 ZIP+4 描述；SanQ 当前加拿大门店不使用美国 ZIP+4，
+本次也不构造公共 Menu Upload schema 中未定义的 tax-area 字段。Production verification 时如 Uber
+Tech Support 给出加拿大账户专属要求，再按正式契约补充，而不是预先猜值。
 
 ## Order Fulfillment API 1.0.0 capability
 
@@ -91,6 +147,25 @@ SanQ 只接受 Order Fulfillment 1.0.0 **Get Order response** shape：顶层必�
 
 不得恢复 `item.price`、`payment.charges`、顶层 `items/total/total_cents` 等旧 Order schema
 fallback，也不得增加裸 MerchantOrder response fallback。
+
+### Customer Request / Allergy relay
+
+Provision / Update Integration Config 固定声明
+`allowed_customer_requests.allow_special_instruction_requests=true`，与 SanQ 已实现的备注传递能力保持一致；
+结构化 Allergy Requests 仍由 Uber 在 integration verification 后启用。
+
+Order Fulfillment API 1.0.0 的 `customer_request.special_instructions` 继续进入现有
+`externalSpecialInstructions` → POS/打印链路。结构化 allergy 使用
+`customer_request.allergy.allergens[]` 与 `customer_request.allergy.instructions`；SanQ 将其完整合并到
+同一菜品备注中，以 `ALLERGY:` / `ALLERGY INSTRUCTIONS:` 明确标识。递归 modifier/option 自身的
+customer request 也汇总到父菜品备注，并带 `OPTION REQUEST (...)` 标识，确保 POS/打印不依赖
+Uber 专用 modifier 明细表才能看到特殊请求。Order-level `carts[].special_instructions` 继续进入
+`externalOrderNotes` 并打印。
+
+若 `customer_request` / allergy 字段结构损坏、出现 1.0.0 契约外未知请求字段，或值类型无法可靠解析，
+解析结果为 `UNRELAYABLE_CUSTOMER_REQUEST`，订单在持久化/接单前自动 DENY，并使用 Uber 支持的
+`SPECIAL_INSTRUCTIONS` reason。Uber 可能返回空 allergy 占位；空数组/空 instructions 视为没有
+实际 allergy request，不触发拒单。不得静默忽略真实或损坏的特殊请求。
 
 ### Immediate / Scheduled
 

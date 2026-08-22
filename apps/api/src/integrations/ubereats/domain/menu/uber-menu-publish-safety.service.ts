@@ -20,6 +20,10 @@ const byId = <T extends { id: string }>(values: T[]) =>
 /** Canonical form used for semantic comparisons; all reference arrays are sets. */
 export function canonicalizeUberMenuPayload(payload: UberMenuUploadPayload) {
   return {
+    display_options: {
+      disable_item_instructions:
+        payload.display_options?.disable_item_instructions ?? null,
+    },
     menus: byId(payload.menus).map((menu) => ({
       ...menu,
       category_ids: [...menu.category_ids].sort(),

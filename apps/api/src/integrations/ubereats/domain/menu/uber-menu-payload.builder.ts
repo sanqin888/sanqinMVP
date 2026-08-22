@@ -55,6 +55,7 @@ export function buildUberUploadMenuPayload(
   urlContext: UberImageUrlResolutionContext,
 ): UberMenuUploadPayload {
   return {
+    display_options: { disable_item_instructions: false },
     menus: [
       {
         id: graph.menuId,
@@ -140,6 +141,14 @@ export function validateUberMenuPayload(
     sourceStableId: string | null,
     message: string,
   ) => issues.push({ code, severity, path, sourceStableId, message });
+  if (payload.display_options?.disable_item_instructions !== false)
+    add(
+      'UBER_ITEM_INSTRUCTIONS_SUPPORT_FLAG_INVALID',
+      'ERROR',
+      '$.display_options.disable_item_instructions',
+      null,
+      'SanQ 支持 Uber item-level special instructions，因此 disable_item_instructions 必须为 false。',
+    );
   const ids = new Map<string, string>();
   type TitledUberNode = {
     id: string;

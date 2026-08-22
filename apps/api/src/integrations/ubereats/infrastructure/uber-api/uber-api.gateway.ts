@@ -45,7 +45,7 @@ export type UberGatewayRequest =
       idempotencyKey?: never;
     })
   | (UberGatewayRequestBase & {
-      method: 'POST' | 'PUT';
+      method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
       idempotencyKey: string;
     });
 

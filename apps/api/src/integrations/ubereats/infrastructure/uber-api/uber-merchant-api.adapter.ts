@@ -27,7 +27,10 @@ import {
 import { mapUberGatewayFailure } from './uber-error.mapper';
 import {
   mapUberStoreDiscoveryWire,
+  mapUberStoreIntegrationConfigWire,
+  mapUberStorePrepTimeWire,
   mapUberStoreProvisionWire,
+  mapUberStoreStatusWire,
 } from './uber-store-wire.mapper';
 
 const SENSITIVE_AUDIT_KEY =
@@ -132,6 +135,138 @@ export class UberMerchantApiAdapter
       recordedAt: new Date(),
     });
     return mapUberStoreProvisionWire(raw, storeId);
+  }
+
+  async retrieveIntegrationConfig(storeId: string) {
+    const path = `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`;
+    const raw = await this.transport.request<Record<string, unknown>>({
+      path,
+      method: 'GET',
+      operation: 'merchant.retrieve-integration-config',
+      scope: 'eats.store',
+      partitionKey: storeId,
+    });
+    await this.auditResponse({
+      operation: 'merchant.retrieve-integration-config',
+      storeId,
+      outcome: 'RECEIVED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
+    return mapUberStoreIntegrationConfigWire(raw, storeId);
+  }
+
+  async updateIntegrationConfig(
+    storeId: string,
+    payload: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const path = `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`;
+    const raw = await this.transport.request<Record<string, unknown>>({
+      path,
+      method: 'PATCH',
+      operation: 'merchant.update-integration-config',
+      scope: 'eats.store',
+      partitionKey: storeId,
+      json: payload,
+      idempotencyKey,
+    });
+    await this.auditResponse({
+      operation: 'merchant.update-integration-config',
+      storeId,
+      outcome: 'SUCCEEDED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
+  }
+
+  async removeIntegration(
+    identity: UberMerchantIdentity,
+    storeId: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const accessToken = await this.accessTokenFor(identity);
+    const path = `/v1/eats/stores/${encodeURIComponent(storeId)}/pos_data`;
+    const raw = await this.transport.request<Record<string, unknown>>({
+      path,
+      method: 'DELETE',
+      operation: 'merchant.remove-integration',
+      scope: 'eats.pos_provisioning',
+      partitionKey: storeId,
+      accessToken,
+      idempotencyKey,
+    });
+    await this.auditResponse({
+      operation: 'merchant.remove-integration',
+      connectionId: identity.connectionId,
+      storeId,
+      outcome: 'SUCCEEDED',
+      upstreamStatus: null,
+      sanitizedRawResponse: sanitizeForAudit(raw),
+      recordedAt: new Date(),
+    });
+  }
+
+  async retrieveStatus(storeId: string) {
+    const operation = 'merchant.retrieve-store-status';
+    const result = await this.transport.inspect<Record<string, unknown>>({
+      path: `/v1/eats/store/${encodeURIComponent(storeId)}/status`,
+      method: 'GET',
+      operation,
+      scope: 'eats.store',
+      partitionKey: storeId,
+    });
+    await this.auditResponse({
+      operation,
+      storeId,
+      outcome: result.response.ok ? 'RECEIVED' : 'FAILED',
+      upstreamStatus: result.response.status,
+      sanitizedRawResponse: sanitizeForAudit(result.data),
+      recordedAt: new Date(),
+    });
+    if (!result.response.ok)
+      throw mapUberGatewayFailure({
+        kind: 'http',
+        operation,
+        status: result.response.status,
+        upstreamCode: null,
+      });
+    return mapUberStoreStatusWire(result.data, storeId);
+  }
+
+  async updatePrepTime(
+    storeId: string,
+    defaultPrepTimeSeconds: number,
+    idempotencyKey: string,
+  ) {
+    const operation = 'merchant.update-store-prep-time';
+    const result = await this.transport.inspect<Record<string, unknown>>({
+      path: `/v1/delivery/store/${encodeURIComponent(storeId)}/update-store-prep-time`,
+      method: 'POST',
+      operation,
+      scope: 'eats.store',
+      partitionKey: storeId,
+      json: { default_prep_time: defaultPrepTimeSeconds },
+      idempotencyKey,
+    });
+    await this.auditResponse({
+      operation,
+      storeId,
+      outcome: result.response.ok ? 'SUCCEEDED' : 'FAILED',
+      upstreamStatus: result.response.status,
+      sanitizedRawResponse: sanitizeForAudit(result.data),
+      recordedAt: new Date(),
+    });
+    if (!result.response.ok)
+      throw mapUberGatewayFailure({
+        kind: 'http',
+        operation,
+        status: result.response.status,
+        upstreamCode: null,
+      });
+    return mapUberStorePrepTimeWire(result.data, storeId);
   }
 
   async writeStatus(

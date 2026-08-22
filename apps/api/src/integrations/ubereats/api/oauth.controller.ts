@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Patch,
@@ -26,7 +27,10 @@ import {
   OAuthCallbackQuery,
   ProvisionUberStoreDto,
   SelectUberStoreDto,
+  StoreIntegrationQuery,
   UpdatePosExternalStoreIdDto,
+  UpdateUberStoreIntegrationDto,
+  UpdateUberStorePrepTimeDto,
 } from '../contracts/requests/oauth.requests';
 import {
   CompleteUberOAuthUseCase,
@@ -37,8 +41,13 @@ import {
   MapUberStoreUseCase,
 } from '../application/merchant/uber-merchant-store-mapping.service';
 import {
+  DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
+  RetrieveUberStoreIntegrationConfigUseCase,
+  RetrieveUberStoreStatusUseCase,
   SyncUberStoreStatusUseCase,
+  UpdateUberStoreIntegrationConfigUseCase,
+  UpdateUberStorePrepTimeUseCase,
 } from '../application/merchant/uber-merchant-provisioning.service';
 import { presentOAuthCallback, presentOAuthStart } from './oauth.presenter';
 import { AppLogger } from '../../../common/app-logger';
@@ -47,6 +56,9 @@ import {
   presentMerchantMutation,
   presentMerchantStores,
   presentOAuthConnect,
+  presentStoreIntegrationConfig,
+  presentStorePrepTime,
+  presentStoreStatus,
 } from './merchant.presenter';
 
 type OAuthRequestContext = {
@@ -64,6 +76,11 @@ export class UberEatsOAuthController {
     private readonly storeDiscovery: DiscoverUberStoresUseCase,
     private readonly storeMapping: MapUberStoreUseCase,
     private readonly storeProvisioning: ProvisionUberStoreUseCase,
+    private readonly storeIntegrationConfig: RetrieveUberStoreIntegrationConfigUseCase,
+    private readonly storeIntegrationUpdate: UpdateUberStoreIntegrationConfigUseCase,
+    private readonly storeDeprovisioning: DeprovisionUberStoreUseCase,
+    private readonly storeStatusRead: RetrieveUberStoreStatusUseCase,
+    private readonly storePrepTimeUpdate: UpdateUberStorePrepTimeUseCase,
     private readonly storeStatusSync: SyncUberStoreStatusUseCase,
   ) {}
   @Get('oauth/connect-url')
@@ -176,6 +193,70 @@ export class UberEatsOAuthController {
       dto.connectionId,
     );
     return presentMerchantMutation();
+  }
+
+  @Get('oauth/stores/:storeId/integration-config')
+  @UberReadOnlyAdmin()
+  async retrieveIntegrationConfig(
+    @Param('storeId', ResourceIdPipe) storeId: string,
+    @Query() query: StoreIntegrationQuery,
+  ) {
+    return presentStoreIntegrationConfig(
+      await this.storeIntegrationConfig.retrieve(storeId, query.connectionId),
+    );
+  }
+
+  @Patch('oauth/stores/:storeId/integration-config')
+  @UberMfaAdminWrite()
+  async updateIntegrationConfig(
+    @Param('storeId', ResourceIdPipe) storeId: string,
+    @Body() dto: UpdateUberStoreIntegrationDto,
+  ) {
+    await this.storeIntegrationUpdate.update(
+      storeId,
+      dto.payload,
+      dto.connectionId,
+    );
+    return presentMerchantMutation();
+  }
+
+  @Delete('oauth/stores/:storeId/integration-config')
+  @UberMfaAdminWrite()
+  async removeIntegrationConfig(
+    @Param('storeId', ResourceIdPipe) storeId: string,
+    @Query() query: StoreIntegrationQuery,
+  ) {
+    await this.storeDeprovisioning.revokeOrDeprovisionStore(
+      storeId,
+      query.connectionId,
+    );
+    return presentMerchantMutation();
+  }
+
+  @Get('oauth/stores/:storeId/status')
+  @UberReadOnlyAdmin()
+  async retrieveStoreStatus(
+    @Param('storeId', ResourceIdPipe) storeId: string,
+    @Query() query: StoreIntegrationQuery,
+  ) {
+    return presentStoreStatus(
+      await this.storeStatusRead.retrieve(storeId, query.connectionId),
+    );
+  }
+
+  @Patch('oauth/stores/:storeId/prep-time')
+  @UberMfaAdminWrite()
+  async updateStorePrepTime(
+    @Param('storeId', ResourceIdPipe) storeId: string,
+    @Body() dto: UpdateUberStorePrepTimeDto,
+  ) {
+    return presentStorePrepTime(
+      await this.storePrepTimeUpdate.update(
+        storeId,
+        dto.defaultPrepTimeSeconds,
+        dto.connectionId,
+      ),
+    );
   }
 
   @Post('store/status/sync')

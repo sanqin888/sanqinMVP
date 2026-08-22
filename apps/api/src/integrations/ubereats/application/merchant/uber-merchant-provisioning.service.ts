@@ -39,14 +39,19 @@ const recordOf = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
-/** SanQ owns scheduled fulfillment, so every provision must subscribe to its webhook. */
-const withScheduledOrderWebhook = (
+/** SanQ owns scheduled fulfillment and relays customer instructions to POS. */
+const withRequiredIntegrationConfig = (
   payload: Record<string, unknown>,
 ): Record<string, unknown> => {
   const webhooks = recordOf(payload.webhooks_config) ?? {};
   const scheduled = recordOf(webhooks.schedule_order_webhooks) ?? {};
+  const customerRequests = recordOf(payload.allowed_customer_requests) ?? {};
   return {
     ...payload,
+    allowed_customer_requests: {
+      ...customerRequests,
+      allow_special_instruction_requests: true,
+    },
     webhooks_config: {
       ...webhooks,
       schedule_order_webhooks: {
@@ -56,6 +61,58 @@ const withScheduledOrderWebhook = (
       webhooks_version: '1.0.0',
     },
   };
+};
+
+const requireMappedStore = async (
+  storeId: string,
+  connectionId: string | undefined,
+  connections: UberMerchantConnectionRepositoryPort,
+  mappings: UberStoreMappingRepositoryPort,
+) => {
+  const id = storeId.trim();
+  const merchantId = connectionId?.trim();
+  if (!id || !merchantId)
+    throw new UberValidationError({
+      code: 'INVALID_REQUEST',
+      operation: 'merchant',
+      message: 'storeId 和 connectionId 不能为空',
+    });
+  const connection = await connections.findConnection(merchantId);
+  if (!connection)
+    throw new UberValidationError({
+      code: 'INVALID_REQUEST',
+      operation: 'merchant',
+      message: '未找到 Uber 商户授权',
+    });
+  const mapping = await mappings.findMapping(id);
+  if (!mapping || mapping.connectionId !== connection.connectionId)
+    throw new UberValidationError({
+      code: 'STORE_NOT_MAPPED',
+      operation: 'merchant',
+      message: '当前 Uber 商户授权未绑定该门店',
+    });
+  return { id, connection, mapping };
+};
+
+const requireProvisionedMappedStore = async (
+  storeId: string,
+  connectionId: string | undefined,
+  connections: UberMerchantConnectionRepositoryPort,
+  mappings: UberStoreMappingRepositoryPort,
+) => {
+  const result = await requireMappedStore(
+    storeId,
+    connectionId,
+    connections,
+    mappings,
+  );
+  if (!result.mapping.isProvisioned)
+    throw new UberValidationError({
+      code: 'STORE_NOT_PROVISIONED',
+      operation: 'merchant',
+      message: 'Uber 门店尚未 provision，不能执行 Store Management 操作',
+    });
+  return result;
 };
 
 export class ProvisionUberStoreUseCase {
@@ -103,7 +160,7 @@ export class ProvisionUberStoreUseCase {
         operation: 'merchant',
         message: '请先确认并保存 Uber 门店映射，再执行 provisioning',
       });
-    const configuredPayload = withScheduledOrderWebhook(payload);
+    const configuredPayload = withRequiredIntegrationConfig(payload);
     const response = await this.api.provisionStore(
       { connectionId: connection.connectionId },
       id,
@@ -138,13 +195,177 @@ export class ProvisionUberStoreUseCase {
     };
   }
 }
+export class RetrieveUberStoreIntegrationConfigUseCase {
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async retrieve(storeId: string, connectionId?: string) {
+    const { id } = await requireMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    return this.api.retrieveIntegrationConfig(id);
+  }
+}
+
+export class UpdateUberStoreIntegrationConfigUseCase {
+  private readonly logger = new AppLogger(
+    UpdateUberStoreIntegrationConfigUseCase.name,
+  );
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async update(
+    storeId: string,
+    payload: Record<string, unknown>,
+    connectionId?: string,
+  ) {
+    const { id } = await requireMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    if (credentials(payload))
+      throw new UberValidationError({
+        code: 'INVALID_REQUEST',
+        operation: 'merchant',
+        message: 'integration config payload 不得包含 credential',
+      });
+    const configuredPayload = withRequiredIntegrationConfig(payload);
+    const businessVersion = createHash('sha256')
+      .update(JSON.stringify(configuredPayload))
+      .digest('hex');
+    await this.api.updateIntegrationConfig(
+      id,
+      configuredPayload,
+      buildUberIdempotencyKey({
+        taskId: `store-integration-update:${id}`,
+        resourceId: id,
+        action: 'UPDATE_INTEGRATION_CONFIG',
+        businessVersion,
+      }),
+    );
+    this.logger.log(
+      `[merchant.integration-config] storeId=${id} operation=update outcome=success`,
+    );
+    return { ok: true, storeId: id };
+  }
+}
+
 export class DeprovisionUberStoreUseCase {
-  revokeOrDeprovisionStore() {
-    throw new UberValidationError({
-      code: 'NOT_IMPLEMENTED',
-      operation: 'merchant',
-      message: 'deprovision MVP 暂未实现',
+  private readonly logger = new AppLogger(DeprovisionUberStoreUseCase.name);
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async revokeOrDeprovisionStore(storeId: string, connectionId?: string) {
+    const { id, connection, mapping } = await requireMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    const businessVersion = createHash('sha256')
+      .update(
+        `${connection.connectionId}:${mapping.provisionedAt?.toISOString() ?? 'not-provisioned'}`,
+      )
+      .digest('hex');
+    await this.api.removeIntegration(
+      { connectionId: connection.connectionId },
+      id,
+      buildUberIdempotencyKey({
+        taskId: `store-integration-remove:${connection.connectionId}:${id}`,
+        resourceId: id,
+        action: 'REMOVE_INTEGRATION',
+        businessVersion,
+      }),
+    );
+    await this.mappings.upsertMapping({
+      ...mapping,
+      isProvisioned: false,
+      provisionedAt: null,
     });
+    this.logger.log(
+      `[merchant.integration-config] storeId=${id} operation=remove outcome=success`,
+    );
+    return { ok: true, storeId: id, isProvisioned: false };
+  }
+}
+
+export class RetrieveUberStoreStatusUseCase {
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async retrieve(storeId: string, connectionId?: string) {
+    const { id } = await requireProvisionedMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    return this.api.retrieveStatus(id);
+  }
+}
+
+export class UpdateUberStorePrepTimeUseCase {
+  private readonly logger = new AppLogger(UpdateUberStorePrepTimeUseCase.name);
+
+  constructor(
+    private readonly api: UberStoreApiPort,
+    private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly mappings: UberStoreMappingRepositoryPort,
+  ) {}
+
+  async update(
+    storeId: string,
+    defaultPrepTimeSeconds: number,
+    connectionId?: string,
+  ) {
+    const { id } = await requireProvisionedMappedStore(
+      storeId,
+      connectionId,
+      this.connections,
+      this.mappings,
+    );
+    if (
+      !Number.isInteger(defaultPrepTimeSeconds) ||
+      defaultPrepTimeSeconds < 1 ||
+      defaultPrepTimeSeconds > 10_800
+    )
+      throw new UberValidationError({
+        code: 'INVALID_PREP_TIME',
+        operation: 'merchant.update-store-prep-time',
+        message: 'defaultPrepTimeSeconds 必须是 1 到 10800 的整数秒数',
+      });
+
+    const result = await this.api.updatePrepTime(
+      id,
+      defaultPrepTimeSeconds,
+      buildUberIdempotencyKey({
+        taskId: `store-prep-time:${id}:${defaultPrepTimeSeconds}`,
+        resourceId: id,
+        action: 'UPDATE_STORE_PREP_TIME',
+        businessVersion: String(defaultPrepTimeSeconds),
+      }),
+    );
+    this.logger.log(
+      `[merchant.store-prep-time] storeId=${id} seconds=${defaultPrepTimeSeconds} outcome=success`,
+    );
+    return result;
   }
 }
 
