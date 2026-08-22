@@ -311,7 +311,9 @@ describe('membership public rules display', () => {
     const service = new LoyaltyService(
       {
         businessConfig: {
-          findUnique: jest.fn().mockResolvedValue(membershipRulesBusinessConfig),
+          findUnique: jest
+            .fn()
+            .mockResolvedValue(membershipRulesBusinessConfig),
         },
         brandConfig: {
           findUnique: jest.fn().mockResolvedValue({
@@ -345,7 +347,9 @@ describe('membership public rules display', () => {
     const service = new LoyaltyService(
       {
         businessConfig: {
-          findUnique: jest.fn().mockResolvedValue(membershipRulesBusinessConfig),
+          findUnique: jest
+            .fn()
+            .mockResolvedValue(membershipRulesBusinessConfig),
         },
         brandConfig: { findUnique: jest.fn().mockResolvedValue(null) },
       } as never,

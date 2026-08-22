@@ -374,9 +374,12 @@ export class AdminBusinessService {
 
     if (membershipRuleDisplay !== undefined) {
       if (!membershipRuleDisplay || typeof membershipRuleDisplay !== 'object') {
-        throw new BadRequestException('membershipRuleDisplay must be an object');
+        throw new BadRequestException(
+          'membershipRuleDisplay must be an object',
+        );
       }
-      const display = membershipRuleDisplay as Partial<MembershipRuleDisplayDto>;
+      const display =
+        membershipRuleDisplay as Partial<MembershipRuleDisplayDto>;
       for (const field of [
         'tierThresholds',
         'baseEarningRate',
