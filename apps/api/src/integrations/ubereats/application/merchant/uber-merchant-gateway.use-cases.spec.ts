@@ -190,7 +190,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
         {
           enabled: true,
           allowed_customer_requests: {
-            allow_single_use_items_requests: true,
+            allow_single_use_items_requests: false,
             allow_special_instruction_requests: false,
           },
           webhooks_config: {
@@ -316,7 +316,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       {
         integrator_store_id: 'sanq-store-1',
         allowed_customer_requests: {
-          allow_single_use_items_requests: false,
+          allow_single_use_items_requests: true,
           allow_special_instruction_requests: true,
         },
         webhooks_config: {

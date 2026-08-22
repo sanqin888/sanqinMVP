@@ -182,10 +182,10 @@ function buildCustomerServiceNoteBlockLines(params) {
 
   const lines = [];
   if (utensilsSummary) {
-    lines.push(...wrapReceiptText("餐具: ", utensilsSummary));
+    lines.push(...wrapReceiptText("餐具 / Utensils: ", utensilsSummary));
   }
   if (orderNotes) {
-    lines.push(...wrapReceiptText("订单备注: ", orderNotes));
+    lines.push(...wrapReceiptText("订单备注 / Order Notes: ", orderNotes));
   }
 
   return lines;

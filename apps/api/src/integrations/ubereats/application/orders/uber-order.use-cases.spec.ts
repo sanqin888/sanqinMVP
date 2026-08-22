@@ -244,6 +244,31 @@ describe('Uber order use-case boundaries', () => {
     });
   });
 
+  it('treats orders.failure after a successful standalone DENY as a terminal no-op', async () => {
+    const fetchOrderDetail = jest.fn();
+    const saveExistingOrderCancellation = jest.fn();
+    const hasSucceededDenial = jest.fn().mockResolvedValue(true);
+    const useCase = new ImportUberOrderUseCase(
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        hasSucceededDenial,
+        findMenuMappings: jest.fn(),
+        saveExistingOrderCancellation,
+        saveImportedOrder: jest.fn(),
+      },
+      { fetchOrderDetail },
+      { request: jest.fn() } as unknown as UberOrderActionService,
+      { findMapping: jest.fn() } as never,
+    );
+
+    await expect(
+      useCase.execute('orders.failure', 'failure-after-deny', notification),
+    ).resolves.toBeUndefined();
+    expect(hasSucceededDenial).toHaveBeenCalledWith('fixture-order-immediate');
+    expect(fetchOrderDetail).not.toHaveBeenCalled();
+    expect(saveExistingOrderCancellation).not.toHaveBeenCalled();
+  });
+
   it('retries an early orders.failure instead of depending on detail availability', async () => {
     const fetchOrderDetail = jest.fn();
     const useCase = new ImportUberOrderUseCase(

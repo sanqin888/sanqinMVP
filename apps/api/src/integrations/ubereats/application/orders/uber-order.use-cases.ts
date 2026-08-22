@@ -57,14 +57,24 @@ export class ImportUberOrderUseCase {
     // the order, the signed webhook resource id is sufficient to persist the
     // cancellation without coupling local lifecycle to another detail request.
     if (normalizedEventType === 'orders.failure') {
-      if (!externalOrderId || !existing)
+      if (!externalOrderId)
         throw new UberApplicationError(
           'business-conflict',
           'UBER_ORDER_FAILURE_BEFORE_IMPORT',
-          `Uber failure arrived before local order import: event=${eventId}; externalOrder=${externalOrderId ?? 'unknown'}`,
+          `Uber failure arrived before local order import: event=${eventId}; externalOrder=unknown`,
           'order.failure.persist',
           true,
         );
+      if (!existing) {
+        if (await this.repository.hasSucceededDenial?.(externalOrderId)) return;
+        throw new UberApplicationError(
+          'business-conflict',
+          'UBER_ORDER_FAILURE_BEFORE_IMPORT',
+          `Uber failure arrived before local order import: event=${eventId}; externalOrder=${externalOrderId}`,
+          'order.failure.persist',
+          true,
+        );
+      }
       await this.repository.saveExistingOrderCancellation({
         orderId: existing.orderId,
         externalOrderId,

@@ -55,6 +55,7 @@ type DetailOrder = {
   paymentMethod?: string | null;
   fulfillmentType?: "pickup" | "dine_in" | "delivery";
   pickupCode?: string | null;
+  orderNotes?: string | null;
   totalCents: number;
   items: BoardOrderItem[];
 };
@@ -553,6 +554,19 @@ function OrderDetailModal(props: {
                   </div>
                 </div>
               </div>
+
+              {order.orderNotes?.trim() && (
+                <section className="rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4">
+                  <h3 className="text-sm font-semibold text-sky-100">
+                    {isZh
+                      ? "订单备注 / Order Notes"
+                      : "Order Notes / 订单备注"}
+                  </h3>
+                  <div className="mt-2 whitespace-pre-wrap text-sm text-sky-100">
+                    {order.orderNotes}
+                  </div>
+                </section>
+              )}
 
               <section>
                 <h3 className="mb-2 text-sm font-semibold text-slate-300">

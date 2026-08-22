@@ -64,6 +64,39 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
     });
   });
 
+  it.each([
+    [true, 'Fixture order note\n餐具 / Utensils: 是 / Yes'],
+    [false, 'Fixture order note\n餐具 / Utensils: 否 / No'],
+  ])(
+    'relays Uber single-use-items choice into bilingual order notes',
+    (requested, expected) => {
+      const payload = fixture('detail-modifiers.json') as {
+        order: { carts: Array<{ include_single_use_items?: boolean }> };
+      };
+      payload.order.carts[0].include_single_use_items = requested;
+
+      const order = parser.parse(payload, {
+        eventType: 'orders.notification',
+      });
+      expect(order?.specialInstructions).toBe(expected);
+    },
+  );
+
+  it('rejects a malformed single-use-items request instead of silently dropping it', () => {
+    const payload = fixture('detail-modifiers.json') as {
+      order: { carts: Array<{ include_single_use_items?: unknown }> };
+    };
+    payload.order.carts[0].include_single_use_items = 2;
+
+    expect(
+      parser.parseResult(payload, { eventType: 'orders.notification' }),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'UNRELAYABLE_CUSTOMER_REQUEST',
+      category: 'business',
+    });
+  });
+
   it('treats an empty Uber allergy placeholder as no allergy request', () => {
     const payload = fixture('detail-modifiers.json') as {
       order: {

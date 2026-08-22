@@ -95,6 +95,27 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     });
   });
 
+  it('recognizes a successful standalone DENY for an order that was never imported', async () => {
+    const findUnique = jest.fn().mockResolvedValue({ status: 'SUCCEEDED' });
+    const adapter = new UberOrderImportPrismaAdapter(
+      { uberOrderAction: { findUnique } } as never,
+      {} as never,
+    );
+
+    await expect(adapter.hasSucceededDenial('uber-order-denied')).resolves.toBe(
+      true,
+    );
+    expect(findUnique).toHaveBeenCalledWith({
+      where: {
+        externalOrderId_action: {
+          externalOrderId: 'uber-order-denied',
+          action: 'DENY',
+        },
+      },
+      select: { status: true },
+    });
+  });
+
   it('persists orders.failure against the existing order without requiring detail data', async () => {
     const log = jest
       .spyOn(Logger.prototype, 'log')

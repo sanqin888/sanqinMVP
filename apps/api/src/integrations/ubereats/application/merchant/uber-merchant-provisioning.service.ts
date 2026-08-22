@@ -50,6 +50,7 @@ const withRequiredIntegrationConfig = (
     ...payload,
     allowed_customer_requests: {
       ...customerRequests,
+      allow_single_use_items_requests: true,
       allow_special_instruction_requests: true,
     },
     webhooks_config: {
