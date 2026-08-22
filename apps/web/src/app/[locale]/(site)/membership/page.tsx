@@ -78,6 +78,7 @@ type Coupon = {
   title: string;
   code: string;
   discountCents: number;
+  discountPercent?: number;
   minSpendCents?: number;
   expiresAt?: string;
   status: CouponStatus;
@@ -2879,7 +2880,9 @@ function CouponsSection({
                 <div>
                   <p className="text-lg font-bold text-amber-700">
                     {isZh ? "立减 " : "Save "}
-                    {formatCurrency(coupon.discountCents)}
+                    {typeof coupon.discountPercent === "number"
+                      ? `${coupon.discountPercent}%`
+                      : formatCurrency(coupon.discountCents)}
                   </p>
                   {coupon.minSpendCents && (
                     <p className="text-[11px] text-slate-500">
