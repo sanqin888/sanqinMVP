@@ -11,6 +11,7 @@ import {
 import { createHash } from 'crypto';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engine';
 
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 
@@ -42,7 +43,11 @@ type LoyaltyConfig = {
 
 type OrderForLoyaltySettlement = Pick<
   Prisma.OrderGetPayload<Record<string, never>>,
-  'id' | 'userId' | 'subtotalCents' | 'loyaltyRedeemCents'
+  | 'id'
+  | 'userId'
+  | 'subtotalCents'
+  | 'loyaltyRedeemCents'
+  | 'promotionSnapshot'
 >;
 
 function computeTierFromLifetime(
@@ -366,6 +371,9 @@ export class LoyaltyService {
       userId: order.userId ?? undefined,
       subtotalCents: order.subtotalCents ?? 0,
       redeemValueCents: order.loyaltyRedeemCents ?? 0,
+      earnMultiplier: resolvePromotionLoyaltyMultiplier(
+        order.promotionSnapshot,
+      ),
     });
 
     const earnedLedger = await this.prisma.loyaltyLedger.findUnique({
@@ -404,11 +412,19 @@ export class LoyaltyService {
   async settleOnPaid(params: {
     orderId: string;
     userId?: string;
-    subtotalCents: number; // 原小计（税前、未扣积分）
+    subtotalCents: number; // 折后商品小计（税前、未扣积分）
     redeemValueCents: number; // 本单抵扣掉的“现金价值”（分）
     tier?: Tier; // 可选：外部传入，自定义当前等级
+    earnMultiplier?: number;
   }) {
-    const { orderId, userId, subtotalCents, redeemValueCents, tier } = params;
+    const {
+      orderId,
+      userId,
+      subtotalCents,
+      redeemValueCents,
+      tier,
+      earnMultiplier = 1,
+    } = params;
     if (!userId) return; // 匿名单不处理
     const loyaltyConfig = await this.getLoyaltyConfig();
 
@@ -498,10 +514,15 @@ export class LoyaltyService {
       // 3) 赚取积分
       const accountTier: Tier = tier ?? (accRaw.tier as Tier);
 
+      const promotionEarnMultiplier =
+        Number.isFinite(earnMultiplier) && earnMultiplier >= 1
+          ? Math.min(10, earnMultiplier)
+          : 1;
       const earnedPts =
         (netSubtotalForUserEarn / 100) *
         loyaltyConfig.earnPtPerDollar *
-        loyaltyConfig.tierMultipliers[accountTier];
+        loyaltyConfig.tierMultipliers[accountTier] *
+        promotionEarnMultiplier;
 
       const earnedMicro = toMicroPoints(earnedPts);
 

@@ -258,6 +258,21 @@ enum CouponDistributionType {
   ADMIN_PUSH
 }
 
+enum PromotionRuleStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum PromotionRuleType {
+  PERCENTAGE_OFF
+  FIXED_AMOUNT_OFF
+  BUY_X_GET_Y
+  FREE_ITEM
+  LOYALTY_MULTIPLIER
+}
+
 // === Models ===
 
 model User {
@@ -635,6 +650,33 @@ model CouponProgram {
   items            Json
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
+}
+
+model PromotionRule {
+  id                    String               @id @default(uuid()) @db.Uuid
+  stableId              String               @unique @default(cuid())
+  titleZh               String
+  titleEn               String?
+  description           String?
+  type                  PromotionRuleType
+  status                PromotionRuleStatus  @default(DRAFT)
+  priority              Int                  @default(175)
+  stackingPolicy        CouponStackingPolicy @default(EXCLUSIVE)
+  excludesCoupons        Boolean              @default(false)
+  excludesItemPromotions Boolean              @default(false)
+  channels               Channel[]            @default([web, in_store])
+  validFrom              DateTime?
+  validTo               DateTime?
+  weekdays              Int[]                @default([])
+  startMinutes          Int?
+  endMinutes            Int?
+  config                Json
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  deletedAt             DateTime?
+
+  @@index([status, deletedAt])
+  @@index([type, status])
 }
 
 model UserCoupon {

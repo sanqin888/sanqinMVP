@@ -12,6 +12,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { AdminStaffController } from './staff/admin-staff.controller';
 import { AuthModule } from '../auth/auth.module';
 import { AdminCouponsModule } from './coupons/admin-coupons.module';
+import { AdminPromotionsModule } from './promotions/admin-promotions.module';
 import { BusinessHoursModule } from './business-hours/business-hours.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { AdminMembersModule } from './members/admin-members.module';
@@ -26,6 +27,7 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
     AdminMenuModule,
     AdminImageUploadModule,
     AdminCouponsModule,
+    AdminPromotionsModule,
     PromotionsModule,
     AdminMembersModule,
     AdminPosDevicesModule,

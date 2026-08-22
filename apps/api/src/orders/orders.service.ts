@@ -72,6 +72,8 @@ import {
   type PromotionOrderEvaluation,
   type PromotionOrderLine,
 } from '../promotions/order-promotion-evaluator';
+import type { PromotionSource } from '../promotions/promotion-engine';
+import { PromotionsService } from '../promotions/promotions.service';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -234,14 +236,19 @@ function assertCouponPromotionAccepted(
   }
 }
 
+function resolvePromotionDiscountCentsBySource(
+  evaluation: PromotionOrderEvaluation,
+  source: PromotionSource,
+): number {
+  return evaluation.adjustments
+    .filter((adjustment) => adjustment.source === source)
+    .reduce((sum, adjustment) => sum + adjustment.discountCents, 0);
+}
+
 function resolveCouponPromotionDiscountCents(
   evaluation: PromotionOrderEvaluation,
 ): number {
-  return (
-    evaluation.adjustments.find(
-      (adjustment) => adjustment.stackingGroup === 'COUPON',
-    )?.discountCents ?? 0
-  );
+  return resolvePromotionDiscountCentsBySource(evaluation, 'COUPON');
 }
 
 function availabilityFromDb(
@@ -312,6 +319,8 @@ type OrderReadyNotificationResult = {
 export type OrderPricingQuote = {
   subtotalCents: number;
   couponDiscountCents: number;
+  automaticPromotionDiscountCents: number;
+  posManualDiscountCents: number;
   loyaltyRedeemCents: number;
   taxCents: number;
   deliveryFeeCents: number;
@@ -328,6 +337,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly membership: MembershipService,
+    private readonly promotions: PromotionsService,
     private readonly uberDirect: UberDirectService,
     private readonly locationService: LocationService,
     private readonly notificationService: NotificationService,
@@ -559,27 +569,41 @@ export class OrdersService {
       userId,
       couponStableId: normalizedCouponStableId ?? undefined,
     });
+    const promotionContext = await this.promotions.getOrderPromotionContext(
+      dto.channel,
+    );
     const promotionEvaluation = evaluateOrderPromotions({
       lines: promotionLines,
       entitlementCoupon: entitlementCouponForPromotion,
       coupon: couponInfo?.coupon
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
+      promotionContext,
+      posDiscountCents:
+        dto.channel === Channel.in_store ? dto.discountCents : undefined,
     });
     assertCouponPromotionAccepted(
       promotionEvaluation,
       couponInfo?.coupon?.couponStableId,
     );
 
-    const posDiscountCents = Math.min(
-      subtotalCents,
-      Math.max(0, Math.round(dto.discountCents ?? 0)),
+    const posDiscountCents = resolvePromotionDiscountCentsBySource(
+      promotionEvaluation,
+      'POS_MANUAL_DISCOUNT',
     );
     const couponDiscountCents =
       resolveCouponPromotionDiscountCents(promotionEvaluation);
+    const automaticPromotionDiscountCents =
+      resolvePromotionDiscountCentsBySource(
+        promotionEvaluation,
+        'AUTOMATIC_PROMOTION',
+      );
     const subtotalAfterCoupon = Math.max(
       0,
-      subtotalCents - posDiscountCents - couponDiscountCents,
+      subtotalCents -
+        posDiscountCents -
+        couponDiscountCents -
+        automaticPromotionDiscountCents,
     );
 
     let loyaltyRedeemCents = 0;
@@ -615,6 +639,8 @@ export class OrdersService {
     return {
       subtotalCents,
       couponDiscountCents,
+      automaticPromotionDiscountCents,
+      posManualDiscountCents: posDiscountCents,
       loyaltyRedeemCents,
       taxCents,
       deliveryFeeCents: deliveryFeeCustomerCents,
@@ -1165,10 +1191,12 @@ export class OrdersService {
   }
 
   private async handleOrderPaidSideEffects(order: OrderWithItems) {
-    // 1. 计算用于积分奖励的有效金额（小计 - 优惠券折扣）
+    // 1. 积分按折后商品消费额计算；积分抵扣本身在 Loyalty 结算时再扣除。
     const netSubtotalForRewards = Math.max(
       0,
-      (order.subtotalCents ?? 0) - (order.couponDiscountCents ?? 0),
+      typeof order.subtotalAfterDiscountCents === 'number'
+        ? order.subtotalAfterDiscountCents + (order.loyaltyRedeemCents ?? 0)
+        : (order.subtotalCents ?? 0) - (order.couponDiscountCents ?? 0),
     );
 
     // 2. 标记优惠券为已使用 (如果使用了优惠券)
@@ -2516,6 +2544,9 @@ export class OrdersService {
         : '';
     const selectedUserCouponId =
       rawSelectedUserCouponId.length > 0 ? rawSelectedUserCouponId : null;
+    const promotionContext = await this.promotions.getOrderPromotionContext(
+      dto.channel,
+    );
 
     // ✅ clientRequestId 由服务端生成：SQ + YYMMDD + 4位随机；并用 unique 冲突重试兜底
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -2634,21 +2665,32 @@ export class OrdersService {
               coupon: couponInfo?.coupon
                 ? toCouponPromotionLike(couponInfo.coupon)
                 : null,
+              promotionContext,
+              posDiscountCents:
+                dto.channel === Channel.in_store ? dto.discountCents : undefined,
             });
             assertCouponPromotionAccepted(
               promotionEvaluation,
               couponInfo?.coupon?.couponStableId,
             );
 
-            const posDiscountCents = Math.min(
-              subtotalCents,
-              Math.max(0, Math.round(dto.discountCents ?? 0)),
+            const posDiscountCents = resolvePromotionDiscountCentsBySource(
+              promotionEvaluation,
+              'POS_MANUAL_DISCOUNT',
             );
             const couponDiscountCents =
               resolveCouponPromotionDiscountCents(promotionEvaluation);
+            const automaticPromotionDiscountCents =
+              resolvePromotionDiscountCentsBySource(
+                promotionEvaluation,
+                'AUTOMATIC_PROMOTION',
+              );
             const subtotalAfterCoupon = Math.max(
               0,
-              subtotalCents - posDiscountCents - couponDiscountCents,
+              subtotalCents -
+                posDiscountCents -
+                couponDiscountCents -
+                automaticPromotionDiscountCents,
             );
 
             const redeemValueCents = await this.loyalty.reserveRedeemForOrder({
@@ -2711,6 +2753,7 @@ export class OrdersService {
               subtotalCents -
                 posDiscountCents -
                 couponDiscountCents -
+                automaticPromotionDiscountCents -
                 loyaltyRedeemCents,
             );
 

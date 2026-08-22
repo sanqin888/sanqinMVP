@@ -7,6 +7,7 @@ import {
 import { LoyaltyService } from './loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderEventsBus } from '../messaging/order-events.bus';
+import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engine';
 
 @Injectable()
 export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
@@ -43,8 +44,10 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
         id: true,
         userId: true,
         subtotalCents: true,
+        subtotalAfterDiscountCents: true,
         couponDiscountCents: true,
         loyaltyRedeemCents: true,
+        promotionSnapshot: true,
       },
     });
 
@@ -65,7 +68,9 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
       0,
       typeof amountCents === 'number'
         ? Math.round(amountCents)
-        : (order.subtotalCents ?? 0) - (order.couponDiscountCents ?? 0),
+        : typeof order.subtotalAfterDiscountCents === 'number'
+          ? order.subtotalAfterDiscountCents + (order.loyaltyRedeemCents ?? 0)
+          : (order.subtotalCents ?? 0) - (order.couponDiscountCents ?? 0),
     );
 
     const resolvedRedeemValueCents =
@@ -79,6 +84,9 @@ export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {
         userId: resolvedUserId,
         subtotalCents: subtotalForRewards,
         redeemValueCents: resolvedRedeemValueCents,
+        earnMultiplier: resolvePromotionLoyaltyMultiplier(
+          order.promotionSnapshot,
+        ),
       });
 
       this.logger.log(

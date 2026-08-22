@@ -271,6 +271,17 @@ type PaymentSessionResponse = {
   pricingTokenExpiresAt: string;
 };
 
+type OrderPricingPreview = {
+  subtotalCents: number;
+  couponDiscountCents: number;
+  automaticPromotionDiscountCents: number;
+  posManualDiscountCents: number;
+  loyaltyRedeemCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+};
+
 type StoreStatusRuleSource =
   | "REGULAR_HOURS"
   | "HOLIDAY"
@@ -898,6 +909,10 @@ export default function CheckoutPage() {
   ]);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [pricingPreview, setPricingPreview] = useState<OrderPricingPreview | null>(
+    null,
+  );
+  const [pricingPreviewError, setPricingPreviewError] = useState(false);
   const [utensilsPreference, setUtensilsPreference] = useState<"yes" | "no">(
     "no",
   );
@@ -1266,10 +1281,90 @@ export default function CheckoutPage() {
     maxRedeemableCentsForOrder,
   ]);
 
-  // 抵扣后的商品小计：用于税和合计的计算
+  useEffect(() => {
+    if (menuLoading || cartItemsWithPricing.length === 0) {
+      setPricingPreview(null);
+      setPricingPreviewError(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPricingPreview(null);
+    setPricingPreviewError(false);
+    const timer = window.setTimeout(() => {
+      void apiFetch<OrderPricingPreview>("/orders/pricing/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel: "web",
+          fulfillmentType: fulfillment,
+          ...(fulfillment === "delivery" ? { deliveryType } : {}),
+          ...(loyaltyInfo?.userStableId
+            ? { userStableId: loyaltyInfo.userStableId }
+            : {}),
+          ...(appliedCoupon?.couponStableId
+            ? { couponStableId: appliedCoupon.couponStableId }
+            : {}),
+          ...(selectedUserCouponId
+            ? { selectedUserCouponId }
+            : {}),
+          ...(loyaltyRedeemCents > 0
+            ? { redeemValueCents: loyaltyRedeemCents }
+            : {}),
+          items: cartItemsWithPricing.map((cartItem) => ({
+            productStableId: cartItem.productStableId,
+            qty: cartItem.quantity,
+            options: stripOptionSnapshots(cartItem.options),
+          })),
+        }),
+      })
+        .then((quote) => {
+          if (!cancelled) setPricingPreview(quote);
+        })
+        .catch((error: unknown) => {
+          console.error("pricing preview failed", error);
+          if (!cancelled) setPricingPreviewError(true);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    appliedCoupon?.couponStableId,
+    cartItemsWithPricing,
+    deliveryType,
+    fulfillment,
+    loyaltyInfo?.userStableId,
+    loyaltyRedeemCents,
+    menuLoading,
+    selectedUserCouponId,
+  ]);
+
+  const previewCouponDiscountCents =
+    pricingPreview?.couponDiscountCents ?? couponDiscountCents;
+  const automaticPromotionDiscountCents =
+    pricingPreview?.automaticPromotionDiscountCents ?? 0;
+  const previewLoyaltyRedeemCents =
+    pricingPreview?.loyaltyRedeemCents ?? loyaltyRedeemCents;
+
+  // 抵扣后的商品小计：用于税和合计的计算。自动优惠和 Coupon 以服务器预览为准。
   const effectiveSubtotalCents = useMemo(
-    () => Math.max(0, subtotalCents - couponDiscountCents - loyaltyRedeemCents),
-    [subtotalCents, couponDiscountCents, loyaltyRedeemCents],
+    () =>
+      Math.max(
+        0,
+        subtotalCents -
+          previewCouponDiscountCents -
+          automaticPromotionDiscountCents -
+          previewLoyaltyRedeemCents,
+      ),
+    [
+      automaticPromotionDiscountCents,
+      previewCouponDiscountCents,
+      previewLoyaltyRedeemCents,
+      subtotalCents,
+    ],
   );
 
   // 税基 = 抵扣后小计 +（如配置了的话）配送费
@@ -4303,21 +4398,36 @@ export default function CheckoutPage() {
                   <span>{formatMoney(subtotalCents)}</span>
                 </div>
 
-                {couponDiscountCents > 0 && (
-                  <div className="mt-1 flex items-center justify-between text-xs text-amber-700">
-                    <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
-                    <span>-{formatMoney(couponDiscountCents)}</span>
+                {automaticPromotionDiscountCents > 0 && (
+                  <div className="mt-1 flex items-center justify-between text-xs text-emerald-700">
+                    <span>{locale === "zh" ? "自动优惠" : "Automatic promotion"}</span>
+                    <span>-{formatMoney(automaticPromotionDiscountCents)}</span>
                   </div>
                 )}
 
-                {loyaltyRedeemCents > 0 && (
+                {previewCouponDiscountCents > 0 && (
+                  <div className="mt-1 flex items-center justify-between text-xs text-amber-700">
+                    <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
+                    <span>-{formatMoney(previewCouponDiscountCents)}</span>
+                  </div>
+                )}
+
+                {previewLoyaltyRedeemCents > 0 && (
                   <div className="mt-1 flex items-center justify-between text-xs">
                     <span>
                       {locale === "zh" ? "积分抵扣" : "Points discount"}
                     </span>
-                    <span>-{formatMoney(loyaltyRedeemCents)}</span>
+                    <span>-{formatMoney(previewLoyaltyRedeemCents)}</span>
                   </div>
                 )}
+
+                {pricingPreviewError ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {locale === "zh"
+                      ? "实时优惠预览暂不可用，支付前会再次由服务器确认最终金额。"
+                      : "Live promotion preview is temporarily unavailable. The server will confirm the final amount before payment."}
+                  </p>
+                ) : null}
 
                 {serviceFeeCents > 0 ? (
                   <div className="mt-2 flex items-center justify-between text-xs">
