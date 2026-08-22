@@ -266,9 +266,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     await expect(
       useCase.retrieve(' uber-store-1 ', 'merchant-1'),
     ).resolves.toBe(config);
-    expect(api.retrieveIntegrationConfig).toHaveBeenCalledWith(
-      'uber-store-1',
-    );
+    expect(api.retrieveIntegrationConfig).toHaveBeenCalledWith('uber-store-1');
   });
 
   it('updates integration config while preserving the scheduled webhook contract', async () => {

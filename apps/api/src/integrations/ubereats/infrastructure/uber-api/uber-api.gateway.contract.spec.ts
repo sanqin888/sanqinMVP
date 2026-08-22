@@ -194,9 +194,7 @@ describe('Uber API gateway contract', () => {
         operation: 'uber.store.integration-config',
         scope: 'eats.store',
       } as UberGatewayRequest;
-      await expect(gateway.request(invalidWrite)).rejects.toThrow(
-        '缺少幂等键',
-      );
+      await expect(gateway.request(invalidWrite)).rejects.toThrow('缺少幂等键');
       expect(auth.getAccessToken).not.toHaveBeenCalled();
       expect(http.request).not.toHaveBeenCalled();
     },

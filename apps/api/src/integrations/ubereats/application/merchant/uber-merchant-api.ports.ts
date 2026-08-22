@@ -88,7 +88,9 @@ export interface UberStoreApiPort {
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ): Promise<UberStoreProvisionResult>;
-  retrieveIntegrationConfig(storeId: string): Promise<UberStoreIntegrationConfig>;
+  retrieveIntegrationConfig(
+    storeId: string,
+  ): Promise<UberStoreIntegrationConfig>;
   updateIntegrationConfig(
     storeId: string,
     payload: Record<string, unknown>,

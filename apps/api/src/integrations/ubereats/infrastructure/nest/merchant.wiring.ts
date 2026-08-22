@@ -162,7 +162,12 @@ export function createMerchantWiring(): Provider[] {
         api: UberStoreApiPort,
         connections: UberMerchantConnectionRepositoryPort,
         mappings: UberStoreMappingRepositoryPort,
-      ) => new RetrieveUberStoreIntegrationConfigUseCase(api, connections, mappings),
+      ) =>
+        new RetrieveUberStoreIntegrationConfigUseCase(
+          api,
+          connections,
+          mappings,
+        ),
     },
     {
       provide: UpdateUberStoreIntegrationConfigUseCase,
@@ -175,7 +180,8 @@ export function createMerchantWiring(): Provider[] {
         api: UberStoreApiPort,
         connections: UberMerchantConnectionRepositoryPort,
         mappings: UberStoreMappingRepositoryPort,
-      ) => new UpdateUberStoreIntegrationConfigUseCase(api, connections, mappings),
+      ) =>
+        new UpdateUberStoreIntegrationConfigUseCase(api, connections, mappings),
     },
     {
       provide: DeprovisionUberStoreUseCase,
