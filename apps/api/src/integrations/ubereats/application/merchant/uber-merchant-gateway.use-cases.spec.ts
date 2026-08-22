@@ -6,8 +6,10 @@ import {
   DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
   RetrieveUberStoreIntegrationConfigUseCase,
+  RetrieveUberStoreStatusUseCase,
   SyncUberStoreStatusUseCase,
   UpdateUberStoreIntegrationConfigUseCase,
+  UpdateUberStorePrepTimeUseCase,
 } from './uber-merchant-provisioning.service';
 
 const connection = { connectionId: 'merchant-1' };
@@ -375,6 +377,103 @@ describe('Uber merchant gateway use-case boundaries', () => {
       useCase.revokeOrDeprovisionStore('uber-store-1', 'merchant-1'),
     ).rejects.toBe(failure);
     expect(mappings.upsertMapping).not.toHaveBeenCalled();
+  });
+
+  it('retrieves store status only for the provisioned mapped merchant connection', async () => {
+    const status = {
+      storeId: 'uber-store-1',
+      status: 'OFFLINE',
+      offlineReason: 'PAUSED_BY_RESTAURANT',
+      offlineReasonMetadata: null,
+      isOfflineUntil: null,
+    };
+    const api = { retrieveStatus: jest.fn().mockResolvedValue(status) };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'merchant-1',
+        uberStoreId: 'uber-store-1',
+        isProvisioned: true,
+      }),
+    };
+    const useCase = new RetrieveUberStoreStatusUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(
+      useCase.retrieve(' uber-store-1 ', 'merchant-1'),
+    ).resolves.toBe(status);
+    expect(api.retrieveStatus).toHaveBeenCalledWith('uber-store-1');
+  });
+
+  it('rejects Store Management calls for a mapped store that is not provisioned', async () => {
+    const api = { retrieveStatus: jest.fn() };
+    const useCase = new RetrieveUberStoreStatusUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      {
+        findMapping: jest.fn().mockResolvedValue({
+          connectionId: 'merchant-1',
+          uberStoreId: 'uber-store-1',
+          isProvisioned: false,
+        }),
+      } as never,
+    );
+
+    await expect(
+      useCase.retrieve('uber-store-1', 'merchant-1'),
+    ).rejects.toMatchObject({ code: 'STORE_NOT_PROVISIONED' });
+    expect(api.retrieveStatus).not.toHaveBeenCalled();
+  });
+
+  it('updates default store prep time with a stable semantic request', async () => {
+    const prepTime = {
+      storeId: 'uber-store-1',
+      defaultPrepTimeSeconds: 900,
+    };
+    const api = { updatePrepTime: jest.fn().mockResolvedValue(prepTime) };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'merchant-1',
+        uberStoreId: 'uber-store-1',
+        isProvisioned: true,
+      }),
+    };
+    const useCase = new UpdateUberStorePrepTimeUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(
+      useCase.update('uber-store-1', 900, 'merchant-1'),
+    ).resolves.toBe(prepTime);
+    expect(api.updatePrepTime).toHaveBeenCalledWith(
+      'uber-store-1',
+      900,
+      expect.stringMatching(/^sanqin-uber-/),
+    );
+  });
+
+  it.each([0, 10_801, 1.5])('rejects invalid prep time %s', async (seconds) => {
+    const api = { updatePrepTime: jest.fn() };
+    const useCase = new UpdateUberStorePrepTimeUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      {
+        findMapping: jest.fn().mockResolvedValue({
+          connectionId: 'merchant-1',
+          uberStoreId: 'uber-store-1',
+          isProvisioned: true,
+        }),
+      } as never,
+    );
+
+    await expect(
+      useCase.update('uber-store-1', seconds, 'merchant-1'),
+    ).rejects.toMatchObject({ code: 'INVALID_PREP_TIME' });
+    expect(api.updatePrepTime).not.toHaveBeenCalled();
   });
 
   it('records a rejected semantic status result without interpreting HTTP', async () => {

@@ -1,9 +1,12 @@
 import {
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { UBER_RESOURCE_ID_PATTERN } from '../uber-resource-id';
@@ -65,6 +68,19 @@ export class UpdateUberStoreIntegrationDto {
 
   @IsObject()
   payload!: Record<string, unknown>;
+}
+
+export class UpdateUberStorePrepTimeDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  @Matches(UBER_RESOURCE_ID_PATTERN)
+  connectionId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(10_800)
+  defaultPrepTimeSeconds!: number;
 }
 
 export class SelectUberStoreDto {

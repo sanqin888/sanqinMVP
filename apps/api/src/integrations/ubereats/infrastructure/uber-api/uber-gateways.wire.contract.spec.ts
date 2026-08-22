@@ -232,6 +232,59 @@ describe('Uber gateways wire contract v1', () => {
     ]);
   });
 
+  it('store management retrieves status and updates default prep time with dedicated wire contracts', async () => {
+    const transport = createUberTransportFake();
+    transport.inspect
+      .mockResolvedValueOnce(
+        uberHttpResult(200, {
+          status: 'OFFLINE',
+          offlineReason: 'PAUSED_BY_RESTAURANT',
+        }),
+      )
+      .mockResolvedValueOnce(
+        uberHttpResult(200, { prep_times: { default_value: 900 } }),
+      );
+    const adapter = new UberMerchantApiAdapter(
+      transport,
+      undefined as never,
+      undefined as never,
+      audit,
+    );
+
+    await expect(adapter.retrieveStatus('store/1')).resolves.toEqual({
+      storeId: 'store/1',
+      status: 'OFFLINE',
+      offlineReason: 'PAUSED_BY_RESTAURANT',
+      offlineReasonMetadata: null,
+      isOfflineUntil: null,
+    });
+    await expect(
+      adapter.updatePrepTime('store/1', 900, 'prep:key:v1'),
+    ).resolves.toEqual({
+      storeId: 'store/1',
+      defaultPrepTimeSeconds: 900,
+    });
+
+    expect(transport.inspect.mock.calls.map(([request]) => request)).toEqual([
+      {
+        path: '/v1/eats/store/store%2F1/status',
+        method: 'GET',
+        operation: 'merchant.retrieve-store-status',
+        scope: 'eats.store',
+        partitionKey: 'store/1',
+      },
+      {
+        path: '/v1/delivery/store/store%2F1/update-store-prep-time',
+        method: 'POST',
+        operation: 'merchant.update-store-prep-time',
+        scope: 'eats.store',
+        partitionKey: 'store/1',
+        json: { default_prep_time: 900 },
+        idempotencyKey: 'prep:key:v1',
+      },
+    ]);
+  });
+
   it('store status has a write scope and stable idempotency key', async () => {
     const transport = createUberTransportFake();
     transport.inspect.mockResolvedValue(uberHttpResult(204));

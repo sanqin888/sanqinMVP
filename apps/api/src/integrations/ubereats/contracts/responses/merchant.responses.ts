@@ -34,6 +34,21 @@ export class UberMerchantConnectionResponse {
   contractVersion!: '2';
 }
 
+export class UberStoreStatusResponse {
+  storeId!: string;
+  status!: string;
+  offlineReason!: string | null;
+  offlineReasonMetadata!: string | null;
+  isOfflineUntil!: string | null;
+  contractVersion!: '2';
+}
+
+export class UberStorePrepTimeResponse {
+  storeId!: string;
+  defaultPrepTimeSeconds!: number;
+  contractVersion!: '2';
+}
+
 export class UberStoreIntegrationConfigResponse {
   storeId!: string;
   integrationEnabled!: boolean | null;
