@@ -231,6 +231,7 @@ export class UberMerchantApiAdapter
         kind: 'http',
         operation,
         status: result.response.status,
+        upstreamCode: null,
       });
     return mapUberStoreStatusWire(result.data, storeId);
   }
@@ -263,6 +264,7 @@ export class UberMerchantApiAdapter
         kind: 'http',
         operation,
         status: result.response.status,
+        upstreamCode: null,
       });
     return mapUberStorePrepTimeWire(result.data, storeId);
   }
