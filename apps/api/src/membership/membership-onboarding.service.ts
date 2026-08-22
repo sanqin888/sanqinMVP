@@ -9,6 +9,7 @@ import { normalizeEmail } from '../common/utils/email';
 
 const MINIMUM_MEMBERSHIP_AGE = 13;
 const LEGACY_REFERRAL_CUTOFF = new Date('2026-08-22T16:45:00.000Z');
+const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
 export class MembershipOnboardingService {
@@ -61,7 +62,10 @@ export class MembershipOnboardingService {
 
     const normalizedReferrerEmail = normalizeEmail(params.referrerEmail);
     let referrerId: string | undefined;
-    if (params.referrerEmail?.trim() && !normalizedReferrerEmail) {
+    if (
+      params.referrerEmail?.trim() &&
+      (!normalizedReferrerEmail || !SIMPLE_EMAIL_PATTERN.test(normalizedReferrerEmail))
+    ) {
       throw new BadRequestException('valid referrerEmail is required');
     }
 
@@ -77,8 +81,13 @@ export class MembershipOnboardingService {
     }
 
     const finalizedAt = new Date();
-    await this.prisma.user.update({
-      where: { id: user.id },
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        id: user.id,
+        createdAt: { gte: LEGACY_REFERRAL_CUTOFF },
+        referralFinalizedAt: null,
+        referredByUserId: null,
+      },
       data: {
         birthdayYear,
         birthdayMonth,
@@ -87,6 +96,10 @@ export class MembershipOnboardingService {
         referralFinalizedAt: finalizedAt,
       },
     });
+
+    if (updated.count !== 1) {
+      throw new ConflictException('membership onboarding is already finalized');
+    }
 
     return {
       finalized: true,
