@@ -45,6 +45,7 @@ type MemberDetail = {
     tier: TierKey;
     points: number;
     balance: number;
+    lifetimePurchasePoints: number;
     lifetimeSpendCents: number;
   };
 };
@@ -862,6 +863,17 @@ export default function AdminMembersPage() {
                   <p className="text-xs text-slate-400">{isZh ? "储值余额" : "Store balance"}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-800">
                     {formatMoney(Math.round(memberDetail.account.balance * 100), locale)}
+                  </p>
+                </div>
+                <div className="rounded-md bg-slate-50 p-3">
+                  <p className="text-xs text-slate-400">
+                    {isZh ? "历史累计消费积分" : "Lifetime purchase points"}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">
+                    {memberDetail.account.lifetimePurchasePoints.toLocaleString(
+                      locale === "zh" ? "zh-CN" : "en-CA",
+                      { maximumFractionDigits: 6 },
+                    )}
                   </p>
                 </div>
                 <div className="rounded-md bg-slate-50 p-3">

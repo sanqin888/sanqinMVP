@@ -22,6 +22,14 @@ import {
 
 type MemberTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 
+type TierProgressDto = {
+  currentTierThresholdPoints: number;
+  nextTier: MemberTier | null;
+  nextTierThresholdPoints: number | null;
+  pointsToNextTier: number;
+  progressPercent: number;
+};
+
 type OrderStatus =
   | "pending"
   | "paid"
@@ -126,6 +134,8 @@ type MemberProfile = {
   points: number;
   balance: number;
   availableDiscountCents: number;
+  lifetimePurchasePoints: number;
+  tierProgress: TierProgressDto;
   lifetimeSpendCents?: number;
 };
 
@@ -157,6 +167,8 @@ type MembershipSummaryResponse = {
   tier: MemberTier;
   points: number;
   balance: number;
+  lifetimePurchasePoints: number;
+  tierProgress: TierProgressDto;
   lifetimeSpendCents: number;
   availableDiscountCents: number;
   marketingEmailOptIn?: boolean;
@@ -180,10 +192,15 @@ type MembershipSummaryApiEnvelope =
 type LoyaltyEntryType =
   | "EARN_ON_PURCHASE"
   | "REDEEM_ON_ORDER"
+  | "REFERRAL_BONUS"
   | "REFUND_REVERSE_EARN"
   | "REFUND_RETURN_REDEEM"
+  | "REFUND_REVERSE_REFERRAL"
   | "TOPUP_PURCHASED"
-  | "ADJUSTMENT_MANUAL";
+  | "ADJUSTMENT_MANUAL"
+  | "AMEND_RETURN_REDEEM"
+  | "AMEND_EARN_ADJUST"
+  | "AMEND_REFERRAL_ADJUST";
 
 type LoyaltyTarget = "POINTS" | "BALANCE";
 
@@ -500,6 +517,8 @@ export default function MembershipHomePage() {
           points: data.points,
           balance: data.balance,
           availableDiscountCents: data.availableDiscountCents,
+          lifetimePurchasePoints: data.lifetimePurchasePoints,
+          tierProgress: data.tierProgress,
           lifetimeSpendCents: data.lifetimeSpendCents ?? 0,
         });
 
@@ -1577,40 +1596,17 @@ export default function MembershipHomePage() {
     [isZh, loadDevices],
   );
 
-  const tierDisplay =
-    member &&
-    {
-      BRONZE: isZh ? "青铜会员" : "Bronze",
-      SILVER: isZh ? "白银会员" : "Silver",
-      GOLD: isZh ? "黄金会员" : "Gold",
-      PLATINUM: isZh ? "铂金会员" : "Platinum",
-    }[member.tier];
-
-  const THRESHOLD = {
-    BRONZE: 0,
-    SILVER: 1000 * 100,
-    GOLD: 10000 * 100,
-    PLATINUM: 30000 * 100,
-  } as const;
-
-  function nextTier(t: MemberTier): MemberTier | null {
-    if (t === "BRONZE") return "SILVER";
-    if (t === "SILVER") return "GOLD";
-    if (t === "GOLD") return "PLATINUM";
-    return null;
-  }
-
-  const tierProgress = (() => {
-    if (!member) return 0;
-    const cur = member.lifetimeSpendCents ?? 0;
-    const t = member.tier;
-    const nt = nextTier(t);
-    if (!nt) return 100; // PLATINUM 顶级
-    const base = THRESHOLD[t];
-    const next = THRESHOLD[nt];
-    if (next <= base) return 100;
-    return Math.max(0, Math.min(((cur - base) / (next - base)) * 100, 100));
-  })();
+  const tierLabels: Record<MemberTier, string> = {
+    BRONZE: isZh ? "青铜会员" : "Bronze",
+    SILVER: isZh ? "白银会员" : "Silver",
+    GOLD: isZh ? "黄金会员" : "Gold",
+    PLATINUM: isZh ? "铂金会员" : "Platinum",
+  };
+  const tierDisplay = member ? tierLabels[member.tier] : null;
+  const nextTierDisplay = member?.tierProgress.nextTier
+    ? tierLabels[member.tierProgress.nextTier]
+    : null;
+  const tierProgress = member?.tierProgress.progressPercent ?? 0;
 
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: "overview", label: isZh ? "总览" : "Overview" },
@@ -1724,6 +1720,16 @@ export default function MembershipHomePage() {
                     ? "登录邮箱未识别"
                     : "Email not available"}
               </p>
+              <p className="mt-3 text-[11px] uppercase tracking-wide text-slate-300">
+                {isZh ? "历史累计消费积分" : "Lifetime purchase points"}
+              </p>
+              <p className="mt-1 text-base font-semibold text-amber-200">
+                {member.lifetimePurchasePoints.toLocaleString(
+                  isZh ? "zh-CN" : "en-CA",
+                  { maximumFractionDigits: 6 },
+                )}{" "}
+                pt
+              </p>
             </div>
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-slate-300">
@@ -1759,6 +1765,15 @@ export default function MembershipHomePage() {
                 style={{ width: `${tierProgress}%` }}
               />
             </div>
+            <p className="mt-2 text-[11px] text-slate-300">
+              {nextTierDisplay
+                ? isZh
+                  ? `距离 ${nextTierDisplay} 还需 ${member.tierProgress.pointsToNextTier.toLocaleString("zh-CN", { maximumFractionDigits: 6 })} pt 消费积分`
+                  : `${member.tierProgress.pointsToNextTier.toLocaleString("en-CA", { maximumFractionDigits: 6 })} purchase points to ${nextTierDisplay}`
+                : isZh
+                  ? "已达到当前最高会员等级"
+                  : "You have reached the highest membership tier"}
+            </p>
           </div>
         </section>
 
@@ -2179,10 +2194,15 @@ function PointsSection({
   const typeLabel: Record<LoyaltyEntryType, string> = {
     EARN_ON_PURCHASE: isZh ? "消费赚取" : "Earn on purchase",
     REDEEM_ON_ORDER: isZh ? "下单抵扣" : "Redeem on order",
+    REFERRAL_BONUS: isZh ? "推荐奖励" : "Referral reward",
     REFUND_REVERSE_EARN: isZh ? "退款扣回" : "Reverse earn on refund",
     REFUND_RETURN_REDEEM: isZh ? "退款退回抵扣" : "Return redeemed on refund",
+    REFUND_REVERSE_REFERRAL: isZh ? "退款扣回推荐奖励" : "Reverse referral reward",
     TOPUP_PURCHASED: isZh ? "储值充值" : "Top-up purchased",
-    ADJUSTMENT_MANUAL: isZh ? "人工调整" : "Manual adjustment",
+    ADJUSTMENT_MANUAL: isZh ? "人工/活动调整" : "Manual or bonus adjustment",
+    AMEND_RETURN_REDEEM: isZh ? "改单退回抵扣" : "Return redeemed on amendment",
+    AMEND_EARN_ADJUST: isZh ? "改单消费积分调整" : "Purchase-point amendment",
+    AMEND_REFERRAL_ADJUST: isZh ? "改单推荐奖励调整" : "Referral-reward amendment",
   };
 
   const pointsEntries = entries.filter(
@@ -2286,10 +2306,15 @@ function BalanceSection({
   const typeLabel: Record<LoyaltyEntryType, string> = {
     EARN_ON_PURCHASE: isZh ? "消费赚取" : "Earn on purchase",
     REDEEM_ON_ORDER: isZh ? "下单抵扣" : "Redeem on order",
+    REFERRAL_BONUS: isZh ? "推荐奖励" : "Referral reward",
     REFUND_REVERSE_EARN: isZh ? "退款扣回" : "Reverse earn on refund",
     REFUND_RETURN_REDEEM: isZh ? "退款退回抵扣" : "Return redeemed on refund",
+    REFUND_REVERSE_REFERRAL: isZh ? "退款扣回推荐奖励" : "Reverse referral reward",
     TOPUP_PURCHASED: isZh ? "储值充值" : "Top-up purchased",
-    ADJUSTMENT_MANUAL: isZh ? "人工调整" : "Manual adjustment",
+    ADJUSTMENT_MANUAL: isZh ? "人工/活动调整" : "Manual or bonus adjustment",
+    AMEND_RETURN_REDEEM: isZh ? "改单退回抵扣" : "Return redeemed on amendment",
+    AMEND_EARN_ADJUST: isZh ? "改单消费积分调整" : "Purchase-point amendment",
+    AMEND_REFERRAL_ADJUST: isZh ? "改单推荐奖励调整" : "Referral-reward amendment",
   };
 
   const balanceEntries = entries.filter(

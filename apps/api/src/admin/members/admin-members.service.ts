@@ -23,9 +23,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../../email/email.service';
 
 const MICRO_PER_POINT = 1_000_000;
-const DEFAULT_TIER_THRESHOLD_SILVER = 1000 * 100;
-const DEFAULT_TIER_THRESHOLD_GOLD = 10000 * 100;
-const DEFAULT_TIER_THRESHOLD_PLATINUM = 30000 * 100;
 const POS_RECHARGE_PURPOSE = 'pos-recharge';
 
 const UseRuleSchema = z
@@ -290,63 +287,6 @@ export class AdminMembersService {
     return user;
   }
 
-  private async getTierThresholds() {
-    const config = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    return {
-      SILVER:
-        typeof config?.tierThresholdSilver === 'number'
-          ? config.tierThresholdSilver
-          : DEFAULT_TIER_THRESHOLD_SILVER,
-      GOLD:
-        typeof config?.tierThresholdGold === 'number'
-          ? config.tierThresholdGold
-          : DEFAULT_TIER_THRESHOLD_GOLD,
-      PLATINUM:
-        typeof config?.tierThresholdPlatinum === 'number'
-          ? config.tierThresholdPlatinum
-          : DEFAULT_TIER_THRESHOLD_PLATINUM,
-    };
-  }
-
-  private computeTierProgress(
-    tier: Tier,
-    lifetimeSpendCents: number,
-    thresholds: {
-      SILVER: number;
-      GOLD: number;
-      PLATINUM: number;
-    },
-  ) {
-    if (tier === 'PLATINUM') {
-      return { nextTier: null, spendToNextTierCents: 0 };
-    }
-
-    if (tier === 'GOLD') {
-      return {
-        nextTier: 'PLATINUM',
-        spendToNextTierCents: Math.max(
-          0,
-          thresholds.PLATINUM - lifetimeSpendCents,
-        ),
-      };
-    }
-
-    if (tier === 'SILVER') {
-      return {
-        nextTier: 'GOLD',
-        spendToNextTierCents: Math.max(0, thresholds.GOLD - lifetimeSpendCents),
-      };
-    }
-
-    return {
-      nextTier: 'SILVER',
-      spendToNextTierCents: Math.max(0, thresholds.SILVER - lifetimeSpendCents),
-    };
-  }
-
   private couponStatus(coupon: {
     expiresAt: Date | null;
     usedAt: Date | null;
@@ -496,7 +436,7 @@ export class AdminMembersService {
 
   async getMemberDetail(userStableId: string) {
     const user = await this.getUserByStableId(userStableId);
-    const [referrer, account, thresholds] = await Promise.all([
+    const [referrer, account] = await Promise.all([
       user.referredByUserId
         ? this.prisma.user.findUnique({
             where: { id: user.referredByUserId },
@@ -509,17 +449,13 @@ export class AdminMembersService {
           })
         : null,
       this.loyalty.ensureAccount(user.id),
-      this.getTierThresholds(),
     ]);
-    const availableDiscountCents =
-      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
+    const [availableDiscountCents, tierSnapshot] = await Promise.all([
+      this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro),
+      this.loyalty.getTierSnapshot(account.id),
+    ]);
 
     const lifetimeSpendCents = account.lifetimeSpendCents ?? 0;
-    const tierProgress = this.computeTierProgress(
-      account.tier,
-      lifetimeSpendCents,
-      thresholds,
-    );
 
     return {
       userStableId: user.userStableId,
@@ -541,12 +477,15 @@ export class AdminMembersService {
         : null,
       availableDiscountCents,
       account: {
-        tier: account.tier,
+        tier: tierSnapshot.tier,
         balance: Number(account.balanceMicro) / MICRO_PER_POINT,
         points: Number(account.pointsMicro) / MICRO_PER_POINT,
+        lifetimePurchasePoints: tierSnapshot.lifetimePurchasePoints,
         lifetimeSpendCents,
-        nextTier: tierProgress.nextTier,
-        spendToNextTierCents: tierProgress.spendToNextTierCents,
+        nextTier: tierSnapshot.nextTier,
+        nextTierThresholdPoints: tierSnapshot.nextTierThresholdPoints,
+        pointsToNextTier: tierSnapshot.pointsToNextTier,
+        tierProgressPercent: tierSnapshot.progressPercent,
       },
     };
   }

@@ -12,7 +12,6 @@ import { createHash } from 'crypto';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engine';
-
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 
 const LEDGER_SOURCE_ORDER = 'ORDER';
@@ -31,15 +30,127 @@ const DEFAULT_TIER_MULTIPLIER_BRONZE = 1;
 const DEFAULT_TIER_MULTIPLIER_SILVER = 2;
 const DEFAULT_TIER_MULTIPLIER_GOLD = 3;
 const DEFAULT_TIER_MULTIPLIER_PLATINUM = 5;
+const LIFETIME_PURCHASE_POINT_ENTRY_TYPES: LoyaltyEntryType[] = [
+  LoyaltyEntryType.EARN_ON_PURCHASE,
+  LoyaltyEntryType.REFUND_REVERSE_EARN,
+  LoyaltyEntryType.AMEND_EARN_ADJUST,
+];
 
 type Tier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+type TierSpendThresholdsCents = Record<Exclude<Tier, 'BRONZE'>, number>;
+type TierPointThresholds = Record<Exclude<Tier, 'BRONZE'>, number>;
+type TierMultipliers = Record<Tier, number>;
+
 type LoyaltyConfig = {
   earnPtPerDollar: number;
   redeemDollarPerPoint: number;
   referralPtPerDollar: number;
-  tierThresholdCents: Record<Exclude<Tier, 'BRONZE'>, number>;
-  tierMultipliers: Record<Tier, number>;
+  tierPointThresholds: TierPointThresholds;
+  tierMultipliers: TierMultipliers;
 };
+
+const TIER_ORDER: Tier[] = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'];
+
+function roundPoints(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+/**
+ * BusinessConfig historically stores tier anchors as qualifying-spend cents.
+ * Membership tier is now based on lifetime purchase-earned points, so convert
+ * those existing configured anchors into cumulative point thresholds while
+ * preserving the configured business milestones.
+ */
+function computeTierPointThresholds(input: {
+  earnPtPerDollar: number;
+  spendThresholdsCents: TierSpendThresholdsCents;
+  tierMultipliers: TierMultipliers;
+}): TierPointThresholds {
+  const { earnPtPerDollar, spendThresholdsCents, tierMultipliers } = input;
+  const silverSpend = Math.max(0, spendThresholdsCents.SILVER);
+  const goldSpend = Math.max(silverSpend, spendThresholdsCents.GOLD);
+  const platinumSpend = Math.max(goldSpend, spendThresholdsCents.PLATINUM);
+
+  const silverPoints =
+    (silverSpend / 100) * earnPtPerDollar * tierMultipliers.BRONZE;
+  const goldPoints =
+    silverPoints +
+    ((goldSpend - silverSpend) / 100) *
+      earnPtPerDollar *
+      tierMultipliers.SILVER;
+  const platinumPoints =
+    goldPoints +
+    ((platinumSpend - goldSpend) / 100) *
+      earnPtPerDollar *
+      tierMultipliers.GOLD;
+
+  return {
+    SILVER: roundPoints(silverPoints),
+    GOLD: roundPoints(goldPoints),
+    PLATINUM: roundPoints(platinumPoints),
+  };
+}
+
+function computeTierFromLifetimePurchasePoints(
+  lifetimePurchasePoints: number,
+  thresholds: TierPointThresholds,
+): Tier {
+  if (lifetimePurchasePoints >= thresholds.PLATINUM) return 'PLATINUM';
+  if (lifetimePurchasePoints >= thresholds.GOLD) return 'GOLD';
+  if (lifetimePurchasePoints >= thresholds.SILVER) return 'SILVER';
+  return 'BRONZE';
+}
+
+function getTierProgress(input: {
+  lifetimePurchasePoints: number;
+  thresholds: TierPointThresholds;
+}) {
+  const { lifetimePurchasePoints, thresholds } = input;
+  const tier = computeTierFromLifetimePurchasePoints(
+    lifetimePurchasePoints,
+    thresholds,
+  );
+  const index = TIER_ORDER.indexOf(tier);
+  const nextTier = index >= 0 ? (TIER_ORDER[index + 1] ?? null) : null;
+  const thresholdFor = (value: Tier): number =>
+    value === 'BRONZE' ? 0 : thresholds[value];
+  const currentTierThresholdPoints = thresholdFor(tier);
+
+  if (!nextTier) {
+    return {
+      tier,
+      currentTierThresholdPoints,
+      nextTier: null,
+      nextTierThresholdPoints: null,
+      pointsToNextTier: 0,
+      progressPercent: 100,
+    };
+  }
+
+  const nextTierThresholdPoints = thresholdFor(nextTier);
+  const span = nextTierThresholdPoints - currentTierThresholdPoints;
+  const progressPercent =
+    span <= 0
+      ? 100
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            ((lifetimePurchasePoints - currentTierThresholdPoints) / span) * 100,
+          ),
+        );
+
+  return {
+    tier,
+    currentTierThresholdPoints,
+    nextTier,
+    nextTierThresholdPoints,
+    pointsToNextTier: roundPoints(
+      Math.max(0, nextTierThresholdPoints - lifetimePurchasePoints),
+    ),
+    progressPercent,
+  };
+}
 
 type OrderForLoyaltySettlement = Pick<
   Prisma.OrderGetPayload<Record<string, never>>,
@@ -50,16 +161,6 @@ type OrderForLoyaltySettlement = Pick<
   | 'loyaltyRedeemCents'
   | 'promotionSnapshot'
 >;
-
-function computeTierFromLifetime(
-  lifetimeSpendCents: number,
-  thresholds: LoyaltyConfig['tierThresholdCents'],
-): Tier {
-  if (lifetimeSpendCents >= thresholds.PLATINUM) return 'PLATINUM';
-  if (lifetimeSpendCents >= thresholds.GOLD) return 'GOLD';
-  if (lifetimeSpendCents >= thresholds.SILVER) return 'SILVER';
-  return 'BRONZE';
-}
 
 const TIER_RANK: Record<Tier, number> = {
   BRONZE: 0,
@@ -221,21 +322,28 @@ export class LoyaltyService {
         ? config.tierMultiplierPlatinum
         : DEFAULT_TIER_MULTIPLIER_PLATINUM;
 
+    const tierSpendThresholdsCents: TierSpendThresholdsCents = {
+      SILVER: tierThresholdSilver,
+      GOLD: tierThresholdGold,
+      PLATINUM: tierThresholdPlatinum,
+    };
+    const tierMultipliers: TierMultipliers = {
+      BRONZE: tierMultiplierBronze,
+      SILVER: tierMultiplierSilver,
+      GOLD: tierMultiplierGold,
+      PLATINUM: tierMultiplierPlatinum,
+    };
+
     return {
       earnPtPerDollar,
       redeemDollarPerPoint,
       referralPtPerDollar,
-      tierThresholdCents: {
-        SILVER: tierThresholdSilver,
-        GOLD: tierThresholdGold,
-        PLATINUM: tierThresholdPlatinum,
-      },
-      tierMultipliers: {
-        BRONZE: tierMultiplierBronze,
-        SILVER: tierMultiplierSilver,
-        GOLD: tierMultiplierGold,
-        PLATINUM: tierMultiplierPlatinum,
-      },
+      tierPointThresholds: computeTierPointThresholds({
+        earnPtPerDollar,
+        spendThresholdsCents: tierSpendThresholdsCents,
+        tierMultipliers,
+      }),
+      tierMultipliers,
     };
   }
 
@@ -249,6 +357,90 @@ export class LoyaltyService {
   ): Promise<LoyaltyConfig> {
     const config = await this.ensureBusinessConfigWithTx(tx);
     return this.normalizeLoyaltyConfig(config);
+  }
+
+  private async getLifetimePurchasePointsMicro(
+    accountId: string,
+  ): Promise<bigint> {
+    const aggregate = await this.prisma.loyaltyLedger.aggregate({
+      where: {
+        accountId,
+        target: 'POINTS',
+        type: { in: LIFETIME_PURCHASE_POINT_ENTRY_TYPES },
+      },
+      _sum: { deltaMicro: true },
+    });
+    const total = aggregate._sum.deltaMicro ?? 0n;
+    return total > 0n ? total : 0n;
+  }
+
+  private async getLifetimePurchasePointsMicroWithTx(
+    tx: Prisma.TransactionClient,
+    accountId: string,
+  ): Promise<bigint> {
+    const aggregate = await tx.loyaltyLedger.aggregate({
+      where: {
+        accountId,
+        target: 'POINTS',
+        type: { in: LIFETIME_PURCHASE_POINT_ENTRY_TYPES },
+      },
+      _sum: { deltaMicro: true },
+    });
+    const total = aggregate._sum.deltaMicro ?? 0n;
+    return total > 0n ? total : 0n;
+  }
+
+  private pointsFromMicro(value: bigint): number {
+    return Number(value) / Number(MICRO_PER_POINT);
+  }
+
+  async getTierSnapshot(accountId: string) {
+    const [config, lifetimePurchasePointsMicro] = await Promise.all([
+      this.getLoyaltyConfig(),
+      this.getLifetimePurchasePointsMicro(accountId),
+    ]);
+    const lifetimePurchasePoints = this.pointsFromMicro(
+      lifetimePurchasePointsMicro,
+    );
+    const progress = getTierProgress({
+      lifetimePurchasePoints,
+      thresholds: config.tierPointThresholds,
+    });
+
+    return {
+      lifetimePurchasePoints,
+      tierThresholdPoints: config.tierPointThresholds,
+      ...progress,
+    };
+  }
+
+  async getMembershipProgramRules() {
+    const config = await this.getLoyaltyConfig();
+    const tierRules = (
+      ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'] as const
+    ).map((tier) => {
+      const thresholdPoints =
+        tier === 'BRONZE' ? 0 : config.tierPointThresholds[tier];
+      const earnPtPerDollar =
+        config.earnPtPerDollar * config.tierMultipliers[tier];
+      return {
+        tier,
+        thresholdPoints,
+        earnPtPerDollar,
+        earnValueRatePercent:
+          earnPtPerDollar * config.redeemDollarPerPoint * 100,
+        multiplier: config.tierMultipliers[tier],
+      };
+    });
+
+    return {
+      earnPtPerDollar: config.earnPtPerDollar,
+      redeemDollarPerPoint: config.redeemDollarPerPoint,
+      referralPtPerDollar: config.referralPtPerDollar,
+      referralValueRatePercent:
+        config.referralPtPerDollar * config.redeemDollarPerPoint * 100,
+      tierRules,
+    };
   }
 
   // ✅ 新增：stableId -> 内部 UUID userId
@@ -421,7 +613,6 @@ export class LoyaltyService {
     userId?: string;
     subtotalCents: number; // 折后商品小计（税前、未扣积分）
     redeemValueCents: number; // 本单抵扣掉的“现金价值”（分）
-    tier?: Tier; // 可选：外部传入，自定义当前等级
     earnMultiplier?: number;
   }) {
     const {
@@ -429,7 +620,6 @@ export class LoyaltyService {
       userId,
       subtotalCents,
       redeemValueCents,
-      tier,
       earnMultiplier = 1,
     } = params;
     if (!userId) return; // 匿名单不处理
@@ -447,6 +637,13 @@ export class LoyaltyService {
 
       let balance = accRaw.pointsMicro;
       let lifetimeSpendCents = accRaw.lifetimeSpendCents ?? 0;
+      const lifetimePurchasePointsBefore = this.pointsFromMicro(
+        await this.getLifetimePurchasePointsMicroWithTx(tx, accRaw.id),
+      );
+      const tierBefore = computeTierFromLifetimePurchasePoints(
+        lifetimePurchasePointsBefore,
+        loyaltyConfig.tierPointThresholds,
+      );
 
       // 实际消费额（不含积分抵扣）
       const netSubtotalCents = Math.max(0, subtotalCents - redeemValueCents);
@@ -518,8 +715,8 @@ export class LoyaltyService {
         netSubtotalForUserEarn - balanceUsedCents,
       );
 
-      // 3) 赚取积分
-      const accountTier: Tier = tier ?? (accRaw.tier as Tier);
+      // 3) 赚取积分：当前等级以历史累计消费积分为准
+      const accountTier: Tier = tierBefore;
 
       const promotionEarnMultiplier =
         Number.isFinite(earnMultiplier) && earnMultiplier >= 1
@@ -567,13 +764,16 @@ export class LoyaltyService {
         }
       }
 
-      // 4) 累加累计实际消费
+      // 4) 保留累计实际消费统计；会员等级不再以该金额为依据
       lifetimeSpendCents += netSubtotalForUserEarn;
 
-      // 5) 更新等级
-      const newTier = computeTierFromLifetime(
-        lifetimeSpendCents,
-        loyaltyConfig.tierThresholdCents,
+      // 5) 等级只按历史累计消费积分计算。推荐、充值赠送、人工调账不计入。
+      const lifetimePurchasePointsAfter = this.pointsFromMicro(
+        await this.getLifetimePurchasePointsMicroWithTx(tx, accRaw.id),
+      );
+      const newTier = computeTierFromLifetimePurchasePoints(
+        lifetimePurchasePointsAfter,
+        loyaltyConfig.tierPointThresholds,
       );
 
       // 6) 回写账户
@@ -651,7 +851,7 @@ export class LoyaltyService {
       }
 
       return {
-        tierBefore: accRaw.tier as Tier,
+        tierBefore,
         tierAfter: newTier,
       };
     });
@@ -883,13 +1083,16 @@ export class LoyaltyService {
         }
       }
 
-      // 3) 回退累计消费 & 等级
+      // 3) 回退累计消费统计；等级按退款后的历史累计消费积分重算
       if (shouldAdjustLifetime && netSubtotalCents > 0) {
         lifetimeSpendCents = Math.max(0, lifetimeSpendCents - netSubtotalCents);
       }
-      const newTier = computeTierFromLifetime(
-        lifetimeSpendCents,
-        loyaltyConfig.tierThresholdCents,
+      const lifetimePurchasePointsAfter = this.pointsFromMicro(
+        await this.getLifetimePurchasePointsMicroWithTx(tx, acc.id),
+      );
+      const newTier = computeTierFromLifetimePurchasePoints(
+        lifetimePurchasePointsAfter,
+        loyaltyConfig.tierPointThresholds,
       );
 
       // 4) 冲回推荐人奖励
@@ -1174,7 +1377,13 @@ export class LoyaltyService {
         if (existedTopup.accountId !== acc.id) {
           throw new BadRequestException('idempotencyKey already used');
         }
-        // ... (保留这里的返回逻辑，可以使用当前 acc 的状态返回)
+        const lifetimePurchasePoints = this.pointsFromMicro(
+          await this.getLifetimePurchasePointsMicroWithTx(tx, acc.id),
+        );
+        const currentTier = computeTierFromLifetimePurchasePoints(
+          lifetimePurchasePoints,
+          loyaltyConfig.tierPointThresholds,
+        );
         return {
           userId,
           amountCents: cents,
@@ -1183,8 +1392,8 @@ export class LoyaltyService {
           referralPointsCredited: 0,
           storeBalance: Number(acc.balanceMicro) / 1_000_000,
           pointsBalance: Number(acc.pointsMicro) / 1_000_000,
-          tierBefore: acc.tier as Tier,
-          tierAfter: acc.tier as Tier,
+          tierBefore: currentTier,
+          tierAfter: currentTier,
           lifetimeSpendCentsBefore: acc.lifetimeSpendCents,
           lifetimeSpendCentsAfter: acc.lifetimeSpendCents,
           receiptId: ik,
@@ -1199,7 +1408,13 @@ export class LoyaltyService {
         FOR UPDATE
       `;
 
-      const tierBefore = acc.tier as Tier;
+      const lifetimePurchasePoints = this.pointsFromMicro(
+        await this.getLifetimePurchasePointsMicroWithTx(tx, acc.id),
+      );
+      const tierBefore = computeTierFromLifetimePurchasePoints(
+        lifetimePurchasePoints,
+        loyaltyConfig.tierPointThresholds,
+      );
       const lifetimeSpendCentsBefore = acc.lifetimeSpendCents ?? 0;
 
       const topupOrder = await tx.order.create({
@@ -1277,11 +1492,11 @@ export class LoyaltyService {
         bonusLedgerId = bonusLedger.id;
       }
 
-      // 4) lifetime + tier
+      // 4) 充值不属于消费积分，不推动会员等级；保留旧累计消费统计仅作兼容数据
       const lifetimeSpendCentsAfter = lifetimeSpendCentsBefore + cents;
-      const tierAfter = computeTierFromLifetime(
-        lifetimeSpendCentsAfter,
-        loyaltyConfig.tierThresholdCents,
+      const tierAfter = computeTierFromLifetimePurchasePoints(
+        lifetimePurchasePoints,
+        loyaltyConfig.tierPointThresholds,
       );
 
       // ✅ 5) 更新账户 (同时更新 newPoints 和 newBalance)
@@ -1563,14 +1778,17 @@ export class LoyaltyService {
       });
     }
 
-    // 4) lifetimeSpend 调整：settleOnPaid 已加过 baseNet，这里改成 newNet
+    // 4) lifetimeSpend 仍保留统计；等级按改单后的历史累计消费积分重算
     const deltaNet = newNetSubtotalCents - baseNetSubtotalCents;
     if (deltaNet !== 0) {
       lifetimeSpendCents = Math.max(0, lifetimeSpendCents + deltaNet);
     }
-    const newTier = computeTierFromLifetime(
-      lifetimeSpendCents,
-      loyaltyConfig.tierThresholdCents,
+    const lifetimePurchasePointsAfter = this.pointsFromMicro(
+      await this.getLifetimePurchasePointsMicroWithTx(tx, acc.id),
+    );
+    const newTier = computeTierFromLifetimePurchasePoints(
+      lifetimePurchasePointsAfter,
+      loyaltyConfig.tierPointThresholds,
     );
 
     await tx.loyaltyAccount.update({

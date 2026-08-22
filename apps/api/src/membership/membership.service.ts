@@ -551,8 +551,10 @@ export class MembershipService {
     }
 
     const account = await this.loyalty.ensureAccount(user.id);
-    const availableDiscountCents =
-      await this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro);
+    const [availableDiscountCents, tierSnapshot] = await Promise.all([
+      this.loyalty.maxRedeemableCentsFromBalance(account.pointsMicro),
+      this.loyalty.getTierSnapshot(account.id),
+    ]);
 
     const orders = await this.prisma.order.findMany({
       where: { userId: user.id },
@@ -588,9 +590,17 @@ export class MembershipService {
       displayName:
         [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
       email: user.email,
-      tier: account.tier,
+      tier: tierSnapshot.tier,
       balance: Number(account.balanceMicro) / MICRO_PER_POINT,
       points: Number(account.pointsMicro) / MICRO_PER_POINT,
+      lifetimePurchasePoints: tierSnapshot.lifetimePurchasePoints,
+      tierProgress: {
+        currentTierThresholdPoints: tierSnapshot.currentTierThresholdPoints,
+        nextTier: tierSnapshot.nextTier,
+        nextTierThresholdPoints: tierSnapshot.nextTierThresholdPoints,
+        pointsToNextTier: tierSnapshot.pointsToNextTier,
+        progressPercent: tierSnapshot.progressPercent,
+      },
       lifetimeSpendCents: account.lifetimeSpendCents ?? 0,
       availableDiscountCents,
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
