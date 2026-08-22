@@ -5,6 +5,7 @@ import {
   resolvePromotionCandidates,
   resolvePromotionDiscountCents,
   resolvePromotionLinePriceCents,
+  resolvePromotionLoyaltyMultiplier,
 } from './promotion-engine';
 
 describe('Promotion Engine', () => {
@@ -254,6 +255,32 @@ describe('Promotion Engine', () => {
         code: 'STACKING_CONFLICT',
       }),
     );
+  });
+
+  it('resolves loyalty multiplier adjustments from persisted snapshots', () => {
+    const snapshot = createPromotionSnapshot(
+      resolvePromotionCandidates([
+        {
+          promotionStableId: 'loyalty-2x',
+          source: 'LOYALTY_PROMOTION',
+          priority: 175,
+          eligibility: { eligible: true, code: 'ELIGIBLE' },
+          stacking: { group: 'LOYALTY_BONUS', mode: 'STACKABLE' },
+          benefit: { type: 'LOYALTY_MULTIPLIER', multiplier: 2 },
+        },
+        {
+          promotionStableId: 'loyalty-3x',
+          source: 'LOYALTY_PROMOTION',
+          priority: 176,
+          eligibility: { eligible: true, code: 'ELIGIBLE' },
+          stacking: { group: 'LOYALTY_BONUS', mode: 'STACKABLE' },
+          benefit: { type: 'LOYALTY_MULTIPLIER', multiplier: 3 },
+        },
+      ]).adjustments,
+    );
+
+    expect(resolvePromotionLoyaltyMultiplier(snapshot)).toBe(6);
+    expect(resolvePromotionLoyaltyMultiplier(null)).toBe(1);
   });
 
   it('creates a versioned immutable-order snapshot shape', () => {

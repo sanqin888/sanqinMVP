@@ -1,9 +1,11 @@
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { DateTime } from 'luxon';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
+import { PromotionsService } from '../promotions/promotions.service';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
@@ -41,6 +43,9 @@ describe('OrdersService', () => {
       findMany: jest.Mock;
       findUnique: jest.Mock;
     };
+    userCoupon: {
+      findFirst: jest.Mock;
+    };
     checkoutIntent: {
       findFirst: jest.Mock;
       updateMany: jest.Mock;
@@ -60,6 +65,7 @@ describe('OrdersService', () => {
     releaseCouponForOrder: jest.Mock;
     markCouponUsedForOrder: jest.Mock;
   };
+  let promotions: { getOrderPromotionContext: jest.Mock };
   let uberDirect: { createDelivery: jest.Mock };
   let locationService: { geocode: jest.Mock };
   let notificationService: {
@@ -158,6 +164,9 @@ describe('OrdersService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
       },
+      userCoupon: {
+        findFirst: jest.fn(),
+      },
       checkoutIntent: {
         findFirst: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -178,6 +187,13 @@ describe('OrdersService', () => {
       reserveCouponForOrder: jest.fn(),
       releaseCouponForOrder: jest.fn(),
       markCouponUsedForOrder: jest.fn(),
+    };
+
+    promotions = {
+      getOrderPromotionContext: jest.fn().mockResolvedValue({
+        rules: [],
+        now: null,
+      }),
     };
 
     uberDirect = {
@@ -219,6 +235,7 @@ describe('OrdersService', () => {
       prisma as unknown as PrismaService,
       loyalty as unknown as LoyaltyService,
       membership as unknown as MembershipService,
+      promotions as unknown as PromotionsService,
       uberDirect as unknown as UberDirectService,
       locationService as unknown as LocationService,
       notificationService as unknown as NotificationService,
@@ -230,6 +247,200 @@ describe('OrdersService', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('uses Promotion Engine as the coupon min-spend eligibility source', async () => {
+    const userStableId = 'c2234567890abcdefghijklmn';
+    const couponStableId = 'c3234567890abcdefghijklmn';
+    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
+    membership.validateCouponForOrder.mockResolvedValue({
+      coupon: {
+        id: '11111111-1111-1111-1111-111111111111',
+        couponStableId,
+        code: 'SAVE10',
+        title: 'Save 10%',
+        discountCents: 0,
+        discountPercent: 10,
+        minSpendCents: 2000,
+        unlockedItemStableIds: [],
+        stackingPolicy: 'STACKABLE',
+      },
+    });
+
+    await expect(
+      service.quoteOrderPricing({
+        channel: 'web',
+        fulfillmentType: 'pickup',
+        userStableId,
+        couponStableId,
+        items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
+      }),
+    ).rejects.toThrow('order subtotal does not meet coupon rules');
+
+    expect(membership.validateCouponForOrder).toHaveBeenCalledWith({
+      userId: 'user-1',
+      couponStableId,
+    });
+  });
+
+  it('routes hidden-item entitlement coupon conflicts through Promotion Engine', async () => {
+    const productStableId = 'c1234567890abcdefghijklmn';
+    const userStableId = 'c2234567890abcdefghijklmn';
+    const couponStableId = 'c3234567890abcdefghijklmn';
+    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
+    prisma.menuItem.findMany
+      .mockResolvedValueOnce([
+        {
+          id: productStableId,
+          stableId: productStableId,
+          basePriceCents: 1000,
+          nameEn: 'Hidden Product',
+          nameZh: null,
+          isAvailable: true,
+          visibility: 'HIDDEN',
+          tempUnavailableUntil: null,
+          optionGroups: [],
+        },
+      ])
+      .mockResolvedValueOnce([{ stableId: productStableId }]);
+    prisma.userCoupon.findFirst.mockResolvedValue({
+      id: '22222222-2222-2222-2222-222222222222',
+      couponStableId: 'c4234567890abcdefghijklmn',
+      coupon: {
+        couponStableId: 'c4234567890abcdefghijklmn',
+        code: 'UNLOCK',
+        title: 'Unlock hidden item',
+        stackingPolicy: 'EXCLUSIVE',
+        unlockedItemStableIds: [productStableId],
+      },
+    });
+    membership.validateCouponForOrder.mockResolvedValue({
+      coupon: {
+        id: '11111111-1111-1111-1111-111111111111',
+        couponStableId,
+        code: 'SAVE10',
+        title: 'Save 10%',
+        discountCents: 0,
+        discountPercent: 10,
+        minSpendCents: null,
+        unlockedItemStableIds: [],
+        stackingPolicy: 'STACKABLE',
+      },
+    });
+
+    await expect(
+      service.quoteOrderPricing({
+        channel: 'web',
+        fulfillmentType: 'pickup',
+        userStableId,
+        couponStableId,
+        selectedUserCouponId: '22222222-2222-2222-2222-222222222222',
+        items: [{ productStableId, qty: 1 }],
+      }),
+    ).rejects.toThrow('coupon cannot be stacked with other coupons');
+
+    expect(membership.validateCouponForOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the ordinary coupon discount when entitlement and coupon are both stackable', async () => {
+    const productStableId = 'c1234567890abcdefghijklmn';
+    const userStableId = 'c2234567890abcdefghijklmn';
+    const couponStableId = 'c3234567890abcdefghijklmn';
+    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
+    prisma.menuItem.findMany
+      .mockResolvedValueOnce([
+        {
+          id: productStableId,
+          stableId: productStableId,
+          basePriceCents: 1000,
+          nameEn: 'Hidden Product',
+          nameZh: null,
+          isAvailable: true,
+          visibility: 'HIDDEN',
+          tempUnavailableUntil: null,
+          optionGroups: [],
+        },
+      ])
+      .mockResolvedValueOnce([{ stableId: productStableId }]);
+    prisma.userCoupon.findFirst.mockResolvedValue({
+      id: '22222222-2222-2222-2222-222222222222',
+      couponStableId: 'c4234567890abcdefghijklmn',
+      coupon: {
+        couponStableId: 'c4234567890abcdefghijklmn',
+        code: 'UNLOCK',
+        title: 'Unlock hidden item',
+        stackingPolicy: 'STACKABLE',
+        unlockedItemStableIds: [productStableId],
+      },
+    });
+    membership.validateCouponForOrder.mockResolvedValue({
+      coupon: {
+        id: '11111111-1111-1111-1111-111111111111',
+        couponStableId,
+        code: 'SAVE10',
+        title: 'Save 10%',
+        discountCents: 0,
+        discountPercent: 10,
+        minSpendCents: null,
+        unlockedItemStableIds: [],
+        stackingPolicy: 'STACKABLE',
+      },
+    });
+
+    const quote = await service.quoteOrderPricing({
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      userStableId,
+      couponStableId,
+      selectedUserCouponId: '22222222-2222-2222-2222-222222222222',
+      items: [{ productStableId, qty: 1 }],
+    });
+
+    expect(quote.couponDiscountCents).toBe(100);
+  });
+
+  it('applies automatic promotions and keeps POS manual discount in server pricing', async () => {
+    promotions.getOrderPromotionContext.mockResolvedValue({
+      now: DateTime.fromISO('2026-08-21T12:00:00', {
+        zone: 'America/Toronto',
+      }),
+      rules: [
+        {
+          stableId: 'auto-10',
+          titleZh: '自动九折',
+          titleEn: 'Automatic 10% off',
+          type: 'PERCENTAGE_OFF',
+          status: 'ACTIVE',
+          priority: 175,
+          stackingPolicy: 'STACKABLE',
+          excludesCoupons: false,
+          excludesItemPromotions: false,
+          channels: ['in_store'],
+          validFrom: null,
+          validTo: null,
+          weekdays: [],
+          startMinutes: null,
+          endMinutes: null,
+          config: { discountPercent: 10 },
+        },
+      ],
+    });
+
+    const quote = await service.quoteOrderPricing({
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      discountCents: 50,
+      items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
+    });
+
+    expect(quote.subtotalCents).toBe(1000);
+    expect(quote.automaticPromotionDiscountCents).toBe(100);
+    expect(quote.posManualDiscountCents).toBe(50);
+    expect(quote.couponDiscountCents).toBe(0);
+    expect(quote.totalCents).toBe(961);
+    expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith(
+      'in_store',
+    );
   });
 
   it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {

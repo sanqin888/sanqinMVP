@@ -25,6 +25,10 @@ export default async function PromotionsLayout({
       href: `${baseHref}/coupons`,
       label: isZh ? '优惠券与礼包' : 'Coupons & bundles',
     },
+    {
+      href: `${baseHref}/automatic`,
+      label: isZh ? '自动优惠与积分' : 'Automatic & loyalty',
+    },
   ];
 
   return (

@@ -1,6 +1,17 @@
-export type PromotionSource = 'DAILY_SPECIAL' | 'COUPON';
+export type PromotionSource =
+  | 'DAILY_SPECIAL'
+  | 'COUPON'
+  | 'AUTOMATIC_PROMOTION'
+  | 'POS_MANUAL_DISCOUNT'
+  | 'LOYALTY_PROMOTION';
 
-export type PromotionStackingGroup = 'ITEM_PRICE' | 'COUPON';
+export type PromotionStackingGroup =
+  | 'ITEM_PRICE'
+  | 'COUPON'
+  | 'COUPON_ENTITLEMENT'
+  | 'AUTOMATIC_DISCOUNT'
+  | 'POS_MANUAL_DISCOUNT'
+  | 'LOYALTY_BONUS';
 export type PromotionStackingMode = 'EXCLUSIVE' | 'STACKABLE';
 
 export type PromotionEligibilityCode =
@@ -40,9 +51,15 @@ export type PromotionOrderDiscountBenefit = {
   targetLineKeys?: string[];
 };
 
+export type PromotionLoyaltyMultiplierBenefit = {
+  type: 'LOYALTY_MULTIPLIER';
+  multiplier: number;
+};
+
 export type PromotionBenefit =
   | PromotionLinePriceBenefit
-  | PromotionOrderDiscountBenefit;
+  | PromotionOrderDiscountBenefit
+  | PromotionLoyaltyMultiplierBenefit;
 
 export type PromotionCandidate = {
   promotionStableId: string;
@@ -57,7 +74,7 @@ export type PromotionCandidate = {
 export type PromotionAdjustment = {
   promotionStableId: string;
   source: PromotionSource;
-  scope: 'LINE_ITEM' | 'ORDER';
+  scope: 'LINE_ITEM' | 'ORDER' | 'LOYALTY';
   discountCents: number;
   stackingGroup: PromotionStackingGroup;
   stackingMode: PromotionStackingMode;
@@ -69,6 +86,7 @@ export type PromotionAdjustment = {
   effectiveUnitPriceCents?: number;
   applicableSubtotalCents?: number;
   targetLineKeys?: string[];
+  loyaltyMultiplier?: number;
   snapshot?: Record<string, string | number | boolean | null>;
 };
 
@@ -156,7 +174,10 @@ function candidateTargetLineKeys(
   if (candidate.benefit.type === 'LINE_PRICE') {
     return [candidate.benefit.lineKey];
   }
-  return candidate.benefit.targetLineKeys ?? null;
+  if (candidate.benefit.type === 'ORDER_DISCOUNT') {
+    return candidate.benefit.targetLineKeys ?? null;
+  }
+  return null;
 }
 
 function lineTargetsOverlap(
@@ -223,6 +244,20 @@ function toAdjustment(candidate: PromotionCandidate): PromotionAdjustment {
       quantity: benefit.quantity,
       baseUnitPriceCents: benefit.baseUnitPriceCents,
       effectiveUnitPriceCents: benefit.effectiveUnitPriceCents,
+      snapshot: candidate.snapshot,
+    };
+  }
+
+  if (candidate.benefit.type === 'LOYALTY_MULTIPLIER') {
+    return {
+      promotionStableId: candidate.promotionStableId,
+      source: candidate.source,
+      scope: 'LOYALTY',
+      discountCents: 0,
+      stackingGroup: candidate.stacking.group,
+      stackingMode: candidate.stacking.mode,
+      excludedStackingGroups: copyExcludedGroups(candidate),
+      loyaltyMultiplier: Math.max(1, candidate.benefit.multiplier),
       snapshot: candidate.snapshot,
     };
   }
@@ -329,6 +364,9 @@ function snapshotAdjustment(
     ...(adjustment.targetLineKeys
       ? { targetLineKeys: [...adjustment.targetLineKeys] }
       : {}),
+    ...(typeof adjustment.loyaltyMultiplier === 'number'
+      ? { loyaltyMultiplier: adjustment.loyaltyMultiplier }
+      : {}),
     ...(adjustment.snapshot ? { snapshot: { ...adjustment.snapshot } } : {}),
   };
 }
@@ -340,4 +378,30 @@ export function createPromotionSnapshot(
     version: 1,
     adjustments: adjustments.map(snapshotAdjustment),
   };
+}
+
+function isSnapshotObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function resolvePromotionLoyaltyMultiplier(snapshot: unknown): number {
+  if (!isSnapshotObject(snapshot) || snapshot.version !== 1) return 1;
+  if (!Array.isArray(snapshot.adjustments)) return 1;
+
+  const adjustments: unknown[] = snapshot.adjustments;
+  const multiplier = adjustments.reduce<number>((value, adjustment) => {
+    if (!isSnapshotObject(adjustment)) return value;
+    if (
+      adjustment.source !== 'LOYALTY_PROMOTION' ||
+      adjustment.scope !== 'LOYALTY' ||
+      typeof adjustment.loyaltyMultiplier !== 'number' ||
+      !Number.isFinite(adjustment.loyaltyMultiplier) ||
+      adjustment.loyaltyMultiplier < 1
+    ) {
+      return value;
+    }
+    return value * adjustment.loyaltyMultiplier;
+  }, 1);
+
+  return Math.max(1, Math.min(10, multiplier));
 }

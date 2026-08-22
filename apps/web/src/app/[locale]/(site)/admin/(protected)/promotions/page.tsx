@@ -27,6 +27,14 @@ export default async function PromotionsPage({ params }: PromotionsPageProps) {
         : 'Manage coupon templates, bundles, automatic triggers, and admin-issued rewards.',
       action: isZh ? '进入优惠券与礼包' : 'Manage coupons & bundles',
     },
+    {
+      href: `${baseHref}/automatic`,
+      title: isZh ? '自动优惠与积分活动' : 'Automatic & loyalty promotions',
+      description: isZh
+        ? '管理百分比优惠、固定金额优惠、买赠、赠品和积分倍数活动，并设置叠加、渠道与时段规则。'
+        : 'Manage percentage, fixed-amount, buy/get, free-item, and loyalty-multiplier promotions with stacking, channel, and schedule rules.',
+      action: isZh ? '进入自动优惠与积分' : 'Manage automatic promotions',
+    },
   ];
 
   return (
@@ -40,8 +48,8 @@ export default async function PromotionsPage({ params }: PromotionsPageProps) {
         </h1>
         <p className="max-w-3xl text-sm text-slate-600">
           {isZh
-            ? '统一管理商品特价与优惠券活动。当前阶段只整合后台入口，现有后端模块和订单计算逻辑保持不变。'
-            : 'A unified admin entry for item specials and coupon campaigns. This phase only consolidates the admin experience; existing backend modules and order calculations remain unchanged.'}
+            ? '统一管理商品特价、优惠券、自动优惠和积分活动。订单定价由统一 Promotion Engine 负责 eligibility、stacking、adjustment 与快照。'
+            : 'Manage item specials, coupons, automatic discounts, and loyalty promotions in one place. Order pricing is resolved by the shared Promotion Engine with unified eligibility, stacking, adjustments, and snapshots.'}
         </p>
       </header>
 
@@ -71,14 +79,14 @@ export default async function PromotionsPage({ params }: PromotionsPageProps) {
         ))}
       </section>
 
-      <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
-        <h2 className="text-base font-semibold text-slate-900">
-          {isZh ? '后续阶段' : 'Next phases'}
+      <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+        <h2 className="text-base font-semibold text-emerald-950">
+          {isZh ? '统一规则已启用' : 'Unified rules enabled'}
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-emerald-900">
           {isZh
-            ? '自动优惠、积分活动，以及统一 eligibility / stacking / adjustment 规则将在后续阶段接入这里。'
-            : 'Automatic discounts, points promotions, and unified eligibility / stacking / adjustment rules will be added here in later phases.'}
+            ? 'Daily Special、Coupon、自动促销、POS 手工折扣和积分倍数活动现在共享同一套 eligibility / stacking / adjustment / snapshot 语义；各业务模块仍保留自己的生命周期与存储职责。'
+            : 'Daily specials, coupons, automatic promotions, POS manual discounts, and loyalty multipliers now share the same eligibility / stacking / adjustment / snapshot semantics while each domain keeps its own lifecycle and storage responsibilities.'}
         </p>
       </section>
     </main>

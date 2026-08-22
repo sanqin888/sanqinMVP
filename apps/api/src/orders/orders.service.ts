@@ -63,12 +63,17 @@ import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import { resolveConfiguredStoreId } from '../common/store-id';
-import type { CouponPromotionLike } from '../promotions/coupon-promotion.adapter';
+import type {
+  CouponEntitlementPromotionLike,
+  CouponPromotionLike,
+} from '../promotions/coupon-promotion.adapter';
 import {
   evaluateOrderPromotions,
   type PromotionOrderEvaluation,
   type PromotionOrderLine,
 } from '../promotions/order-promotion-evaluator';
+import type { PromotionSource } from '../promotions/promotion-engine';
+import { PromotionsService } from '../promotions/promotions.service';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -179,13 +184,71 @@ function toCouponPromotionLike(
   };
 }
 
+function toCouponEntitlementPromotionLike(
+  coupon: Pick<
+    CouponForPromotion,
+    'couponStableId' | 'code' | 'title' | 'stackingPolicy'
+  >,
+): CouponEntitlementPromotionLike {
+  return {
+    couponStableId: coupon.couponStableId,
+    code: coupon.code,
+    title: coupon.title,
+    stackingPolicy: coupon.stackingPolicy,
+  };
+}
+
+function assertCouponPromotionAccepted(
+  evaluation: PromotionOrderEvaluation,
+  couponStableId: string | null | undefined,
+): void {
+  if (!couponStableId) return;
+  const rejected = evaluation.rejected.find(
+    (candidate) =>
+      candidate.source === 'COUPON' &&
+      candidate.promotionStableId === couponStableId,
+  );
+  if (!rejected) return;
+
+  if (
+    evaluation.couponEligibleLineKeys.length === 0 &&
+    (rejected.code === 'MIN_SPEND_NOT_MET' ||
+      rejected.code === 'NO_APPLICABLE_SUBTOTAL')
+  ) {
+    throw new BadRequestException(
+      'coupon is not available for daily special items',
+    );
+  }
+
+  switch (rejected.code) {
+    case 'MIN_SPEND_NOT_MET':
+      throw new BadRequestException(
+        'order subtotal does not meet coupon rules',
+      );
+    case 'NO_APPLICABLE_SUBTOTAL':
+      throw new BadRequestException('coupon does not apply to selected items');
+    case 'STACKING_CONFLICT':
+      throw new BadRequestException(
+        'coupon cannot be stacked with other coupons',
+      );
+    case 'INACTIVE':
+      throw new BadRequestException('coupon is not available');
+  }
+}
+
+function resolvePromotionDiscountCentsBySource(
+  evaluation: PromotionOrderEvaluation,
+  source: PromotionSource,
+): number {
+  return evaluation.adjustments
+    .filter((adjustment) => adjustment.source === source)
+    .reduce((sum, adjustment) => sum + adjustment.discountCents, 0);
+}
+
 function resolveCouponPromotionDiscountCents(
   evaluation: PromotionOrderEvaluation,
 ): number {
-  return (
-    evaluation.adjustments.find((adjustment) => adjustment.source === 'COUPON')
-      ?.discountCents ?? 0
-  );
+  return resolvePromotionDiscountCentsBySource(evaluation, 'COUPON');
 }
 
 function availabilityFromDb(
@@ -256,6 +319,8 @@ type OrderReadyNotificationResult = {
 export type OrderPricingQuote = {
   subtotalCents: number;
   couponDiscountCents: number;
+  automaticPromotionDiscountCents: number;
+  posManualDiscountCents: number;
   loyaltyRedeemCents: number;
   taxCents: number;
   deliveryFeeCents: number;
@@ -272,6 +337,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
     private readonly membership: MembershipService,
+    private readonly promotions: PromotionsService,
     private readonly uberDirect: UberDirectService,
     private readonly locationService: LocationService,
     private readonly notificationService: NotificationService,
@@ -336,22 +402,12 @@ export class OrdersService {
     }
 
     const items = dto.items ?? [];
-    const {
-      calculatedItems,
-      calculatedSubtotal,
-      couponEligibleSubtotalCents,
-      couponEligibleLineItems,
-      promotionLines,
-    } = await this.calculateLineItems(items);
+    const { calculatedItems, calculatedSubtotal, promotionLines } =
+      await this.calculateLineItems(items);
 
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
     );
-    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
-      throw new BadRequestException(
-        'coupon is not available for daily special items',
-      );
-    }
 
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
@@ -444,6 +500,8 @@ export class OrdersService {
       select: { stableId: true },
     });
     const hiddenItemStableIds = hiddenItems.map((item) => item.stableId);
+    let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
+      null;
 
     if (hiddenItemStableIds.length > 0) {
       if (!normalizedUserStableId) {
@@ -502,38 +560,50 @@ export class OrdersService {
         );
       }
 
-      if (
-        userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
-        normalizedCouponStableId
-      ) {
-        throw new BadRequestException(
-          'coupon cannot be stacked with other coupons',
-        );
-      }
+      entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
+        userCoupon.coupon,
+      );
     }
 
     const couponInfo = await this.membership.validateCouponForOrder({
       userId,
       couponStableId: normalizedCouponStableId ?? undefined,
-      subtotalCents: couponEligibleSubtotalCents,
-      couponEligibleLineItems,
     });
+    const promotionContext = await this.promotions.getOrderPromotionContext(
+      dto.channel,
+    );
     const promotionEvaluation = evaluateOrderPromotions({
       lines: promotionLines,
+      entitlementCoupon: entitlementCouponForPromotion,
       coupon: couponInfo?.coupon
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
+      promotionContext,
+      posDiscountCents:
+        dto.channel === Channel.in_store ? dto.discountCents : undefined,
     });
+    assertCouponPromotionAccepted(
+      promotionEvaluation,
+      couponInfo?.coupon?.couponStableId,
+    );
 
-    const posDiscountCents = Math.min(
-      subtotalCents,
-      Math.max(0, Math.round(dto.discountCents ?? 0)),
+    const posDiscountCents = resolvePromotionDiscountCentsBySource(
+      promotionEvaluation,
+      'POS_MANUAL_DISCOUNT',
     );
     const couponDiscountCents =
       resolveCouponPromotionDiscountCents(promotionEvaluation);
+    const automaticPromotionDiscountCents =
+      resolvePromotionDiscountCentsBySource(
+        promotionEvaluation,
+        'AUTOMATIC_PROMOTION',
+      );
     const subtotalAfterCoupon = Math.max(
       0,
-      subtotalCents - posDiscountCents - couponDiscountCents,
+      subtotalCents -
+        posDiscountCents -
+        couponDiscountCents -
+        automaticPromotionDiscountCents,
     );
 
     let loyaltyRedeemCents = 0;
@@ -569,6 +639,8 @@ export class OrdersService {
     return {
       subtotalCents,
       couponDiscountCents,
+      automaticPromotionDiscountCents,
+      posManualDiscountCents: posDiscountCents,
       loyaltyRedeemCents,
       taxCents,
       deliveryFeeCents: deliveryFeeCustomerCents,
@@ -1119,10 +1191,12 @@ export class OrdersService {
   }
 
   private async handleOrderPaidSideEffects(order: OrderWithItems) {
-    // 1. 计算用于积分奖励的有效金额（小计 - 优惠券折扣）
+    // 1. 积分按折后商品消费额计算；积分抵扣本身在 Loyalty 结算时再扣除。
     const netSubtotalForRewards = Math.max(
       0,
-      (order.subtotalCents ?? 0) - (order.couponDiscountCents ?? 0),
+      typeof order.subtotalAfterDiscountCents === 'number'
+        ? order.subtotalAfterDiscountCents + (order.loyaltyRedeemCents ?? 0)
+        : (order.subtotalCents ?? 0) - (order.couponDiscountCents ?? 0),
     );
 
     // 2. 标记优惠券为已使用 (如果使用了优惠券)
@@ -1618,12 +1692,6 @@ export class OrdersService {
   ): Promise<{
     calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[];
     calculatedSubtotal: number;
-    couponEligibleSubtotalCents: number;
-    couponEligibleLineItems: {
-      lineKey: string;
-      productStableId: string;
-      lineTotalCents: number;
-    }[];
     promotionLines: PromotionOrderLine[];
   }> {
     const normalizedItems = itemsDto.map((item) => {
@@ -2043,26 +2111,9 @@ export class OrdersService {
       });
     }
 
-    const promotionEvaluation = evaluateOrderPromotions({
-      lines: promotionLines,
-    });
-    const couponEligibleLineKeys = new Set(
-      promotionEvaluation.couponEligibleLineKeys,
-    );
-    const couponEligibleLineItems = promotionLines
-      .filter((line) => couponEligibleLineKeys.has(line.lineKey))
-      .map((line) => ({
-        lineKey: line.lineKey,
-        productStableId: line.productStableId,
-        lineTotalCents: line.lineTotalCents,
-      }));
-
     return {
       calculatedItems,
       calculatedSubtotal,
-      couponEligibleSubtotalCents:
-        promotionEvaluation.couponEligibleSubtotalCents,
-      couponEligibleLineItems,
       promotionLines,
     };
   }
@@ -2349,24 +2400,14 @@ export class OrdersService {
 
     // —— Step 1: 服务端重算商品小计 (Security)
     const items = dto.items ?? [];
-    const {
-      calculatedItems,
-      calculatedSubtotal,
-      couponEligibleSubtotalCents,
-      couponEligibleLineItems,
-      promotionLines,
-    } = await this.calculateLineItems(items, {
-      allowCustomUnitPrice:
-        dto.channel === Channel.in_store || dto.channel === Channel.ubereats,
-    });
+    const { calculatedItems, calculatedSubtotal, promotionLines } =
+      await this.calculateLineItems(items, {
+        allowCustomUnitPrice:
+          dto.channel === Channel.in_store || dto.channel === Channel.ubereats,
+      });
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
     );
-    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
-      throw new BadRequestException(
-        'coupon is not available for daily special items',
-      );
-    }
 
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
@@ -2503,6 +2544,9 @@ export class OrdersService {
         : '';
     const selectedUserCouponId =
       rawSelectedUserCouponId.length > 0 ? rawSelectedUserCouponId : null;
+    const promotionContext = await this.promotions.getOrderPromotionContext(
+      dto.channel,
+    );
 
     // ✅ clientRequestId 由服务端生成：SQ + YYMMDD + 4位随机；并用 unique 冲突重试兜底
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -2535,6 +2579,8 @@ export class OrdersService {
               stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
               unlockedItemStableIds: string[];
             } | null = null;
+            let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
+              null;
 
             if (hiddenItemStableIds.length > 0) {
               if (!normalizedUserStableId) {
@@ -2594,15 +2640,9 @@ export class OrdersService {
                 );
               }
 
-              if (
-                userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
-                normalizedCouponStableId
-              ) {
-                throw new BadRequestException(
-                  'coupon cannot be stacked with other coupons',
-                );
-              }
-
+              entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
+                userCoupon.coupon,
+              );
               userCouponToRedeem = {
                 id: userCoupon.id,
                 couponStableId: userCoupon.couponStableId,
@@ -2616,27 +2656,43 @@ export class OrdersService {
               {
                 userId,
                 couponStableId: normalizedCouponStableId ?? undefined,
-                subtotalCents: couponEligibleSubtotalCents,
-                couponEligibleLineItems,
               },
               { tx },
             );
             const promotionEvaluation = evaluateOrderPromotions({
               lines: promotionLines,
+              entitlementCoupon: entitlementCouponForPromotion,
               coupon: couponInfo?.coupon
                 ? toCouponPromotionLike(couponInfo.coupon)
                 : null,
+              promotionContext,
+              posDiscountCents:
+                dto.channel === Channel.in_store
+                  ? dto.discountCents
+                  : undefined,
             });
+            assertCouponPromotionAccepted(
+              promotionEvaluation,
+              couponInfo?.coupon?.couponStableId,
+            );
 
-            const posDiscountCents = Math.min(
-              subtotalCents,
-              Math.max(0, Math.round(dto.discountCents ?? 0)),
+            const posDiscountCents = resolvePromotionDiscountCentsBySource(
+              promotionEvaluation,
+              'POS_MANUAL_DISCOUNT',
             );
             const couponDiscountCents =
               resolveCouponPromotionDiscountCents(promotionEvaluation);
+            const automaticPromotionDiscountCents =
+              resolvePromotionDiscountCentsBySource(
+                promotionEvaluation,
+                'AUTOMATIC_PROMOTION',
+              );
             const subtotalAfterCoupon = Math.max(
               0,
-              subtotalCents - posDiscountCents - couponDiscountCents,
+              subtotalCents -
+                posDiscountCents -
+                couponDiscountCents -
+                automaticPromotionDiscountCents,
             );
 
             const redeemValueCents = await this.loyalty.reserveRedeemForOrder({
@@ -2699,6 +2755,7 @@ export class OrdersService {
               subtotalCents -
                 posDiscountCents -
                 couponDiscountCents -
+                automaticPromotionDiscountCents -
                 loyaltyRedeemCents,
             );
 
@@ -2806,8 +2863,6 @@ export class OrdersService {
                 tx,
                 userId,
                 couponId: couponInfo.coupon.id,
-                subtotalCents: couponEligibleSubtotalCents,
-                couponEligibleLineItems,
                 orderId,
               });
             }

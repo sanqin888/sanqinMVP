@@ -7,6 +7,7 @@ import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
+import { PromotionsModule } from '../promotions/promotions.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
 import { LocationModule } from '../location/location.module';
 import { NotificationModule } from '../notifications/notification.module';
@@ -28,6 +29,7 @@ import { OrderSchedulingQueryService } from './order-scheduling-query.service';
     LoyaltyModule,
     DeliveriesModule,
     MembershipModule,
+    PromotionsModule,
     LocationModule,
     NotificationModule,
     EmailModule,
