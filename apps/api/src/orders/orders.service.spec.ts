@@ -262,9 +262,7 @@ describe('OrdersService', () => {
         fulfillmentType: 'pickup',
         userStableId,
         couponStableId,
-        items: [
-          { productStableId: 'c1234567890abcdefghijklmn', qty: 1 },
-        ],
+        items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
       }),
     ).rejects.toThrow('order subtotal does not meet coupon rules');
 

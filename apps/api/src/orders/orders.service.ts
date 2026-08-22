@@ -220,11 +220,15 @@ function assertCouponPromotionAccepted(
 
   switch (rejected.code) {
     case 'MIN_SPEND_NOT_MET':
-      throw new BadRequestException('order subtotal does not meet coupon rules');
+      throw new BadRequestException(
+        'order subtotal does not meet coupon rules',
+      );
     case 'NO_APPLICABLE_SUBTOTAL':
       throw new BadRequestException('coupon does not apply to selected items');
     case 'STACKING_CONFLICT':
-      throw new BadRequestException('coupon cannot be stacked with other coupons');
+      throw new BadRequestException(
+        'coupon cannot be stacked with other coupons',
+      );
     case 'INACTIVE':
       throw new BadRequestException('coupon is not available');
   }
