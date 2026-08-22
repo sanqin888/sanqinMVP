@@ -61,6 +61,7 @@ export type PromotionAdjustment = {
   discountCents: number;
   stackingGroup: PromotionStackingGroup;
   stackingMode: PromotionStackingMode;
+  excludedStackingGroups?: PromotionStackingGroup[];
   lineKey?: string;
   productStableId?: string;
   quantity?: number;
@@ -194,6 +195,14 @@ function candidatesConflict(
   );
 }
 
+function copyExcludedGroups(
+  candidate: PromotionCandidate,
+): PromotionStackingGroup[] | undefined {
+  return candidate.stacking.excludesGroups
+    ? [...candidate.stacking.excludesGroups]
+    : undefined;
+}
+
 function toAdjustment(candidate: PromotionCandidate): PromotionAdjustment {
   if (candidate.benefit.type === 'LINE_PRICE') {
     const benefit = candidate.benefit;
@@ -208,6 +217,7 @@ function toAdjustment(candidate: PromotionCandidate): PromotionAdjustment {
       discountCents: perUnitDiscount * Math.max(0, benefit.quantity),
       stackingGroup: candidate.stacking.group,
       stackingMode: candidate.stacking.mode,
+      excludedStackingGroups: copyExcludedGroups(candidate),
       lineKey: benefit.lineKey,
       productStableId: benefit.productStableId,
       quantity: benefit.quantity,
@@ -224,6 +234,7 @@ function toAdjustment(candidate: PromotionCandidate): PromotionAdjustment {
     discountCents: normalizeCents(candidate.benefit.discountCents),
     stackingGroup: candidate.stacking.group,
     stackingMode: candidate.stacking.mode,
+    excludedStackingGroups: copyExcludedGroups(candidate),
     applicableSubtotalCents: normalizeCents(
       candidate.benefit.applicableSubtotalCents,
     ),
@@ -293,6 +304,9 @@ export function createPromotionSnapshot(
     version: 1,
     adjustments: adjustments.map((adjustment) => ({
       ...adjustment,
+      excludedStackingGroups: adjustment.excludedStackingGroups
+        ? [...adjustment.excludedStackingGroups]
+        : undefined,
       targetLineKeys: adjustment.targetLineKeys
         ? [...adjustment.targetLineKeys]
         : undefined,
