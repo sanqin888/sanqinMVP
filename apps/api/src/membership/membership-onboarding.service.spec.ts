@@ -68,7 +68,7 @@ describe('MembershipOnboardingService', () => {
         birthdayMonth: 1,
         birthdayDay: null,
         referredByUserId: 'referrer-id',
-        referralFinalizedAt: expect.any(Date),
+        referralFinalizedAt: expect.any(Date) as unknown as Date,
       },
     });
   });
@@ -89,7 +89,9 @@ describe('MembershipOnboardingService', () => {
       })
       .mockResolvedValueOnce({ id: referrer.id })
       .mockResolvedValueOnce(referrer);
-    const issueProgramsForUser = jest.fn().mockResolvedValue({ issuedCount: 1 });
+    const issueProgramsForUser = jest
+      .fn()
+      .mockResolvedValue({ issuedCount: 1 });
     const { service } = createService(
       {
         user: {
@@ -139,14 +141,21 @@ describe('MembershipOnboardingService', () => {
       }),
     ).resolves.toMatchObject({ finalized: true, hasReferrer: false });
 
-    expect(updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          referredByUserId: undefined,
-          referralFinalizedAt: expect.any(Date),
-        }),
-      }),
-    );
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'new-user-id',
+        createdAt: { gte: new Date('2026-08-22T16:45:00.000Z') },
+        referralFinalizedAt: null,
+        referredByUserId: null,
+      },
+      data: {
+        birthdayYear,
+        birthdayMonth: 6,
+        birthdayDay: null,
+        referredByUserId: undefined,
+        referralFinalizedAt: expect.any(Date) as unknown as Date,
+      },
+    });
   });
 
   it('rejects phone numbers as referrer input', async () => {
