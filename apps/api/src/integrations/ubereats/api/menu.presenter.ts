@@ -228,23 +228,29 @@ export const presentMenuReconciliation = (
       : [];
   const nullableBoolean = (value: unknown): boolean | null =>
     typeof value === 'boolean' ? value : null;
-  const mismatches = Array.isArray(reconciliation.mismatches)
-    ? reconciliation.mismatches.flatMap((candidate) => {
-        const mismatch = recordOf(candidate);
-        const resourceType = textOf(mismatch.resourceType);
-        const resourceId = textOf(mismatch.resourceId);
-        const field = textOf(mismatch.field);
-        const expected = textOf(mismatch.expected);
-        const actual = textOf(mismatch.actual);
-        return (resourceType === 'ITEM' || resourceType === 'MODIFIER_GROUP') &&
-          resourceId &&
-          field &&
-          expected !== null &&
-          actual !== null
-          ? [{ resourceType, resourceId, field, expected, actual }]
-          : [];
-      })
-    : [];
+  const mismatches: UberMenuReconciliationResponse['reconciliation']['mismatches'] =
+    Array.isArray(reconciliation.mismatches)
+      ? reconciliation.mismatches.flatMap(
+          (
+            candidate,
+          ): UberMenuReconciliationResponse['reconciliation']['mismatches'] => {
+            const mismatch = recordOf(candidate);
+            const resourceType = textOf(mismatch.resourceType);
+            const resourceId = textOf(mismatch.resourceId);
+            const field = textOf(mismatch.field);
+            const expected = textOf(mismatch.expected);
+            const actual = textOf(mismatch.actual);
+            return (resourceType === 'ITEM' ||
+              resourceType === 'MODIFIER_GROUP') &&
+              resourceId &&
+              field &&
+              expected !== null &&
+              actual !== null
+              ? [{ resourceType, resourceId, field, expected, actual }]
+              : [];
+          },
+        )
+      : [];
   return {
     storeId: textOf(source.storeId) ?? '',
     uberStoreId: textOf(source.uberStoreId) ?? '',
