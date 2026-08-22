@@ -9,6 +9,7 @@ import type {
   UberMenuItemResponse,
   UberMenuListResponse,
   UberMenuPublicJson,
+  UberMenuReconciliationResponse,
 } from '../contracts/responses/menu.responses';
 import {
   booleanOf,
@@ -211,6 +212,87 @@ export const presentMenuDraft = (result: unknown): UberMenuDraftResponse => {
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };
+export const presentMenuReconciliation = (
+  result: unknown,
+): UberMenuReconciliationResponse => {
+  const source = recordOf(result);
+  const retrieved = recordOf(source.retrieved);
+  const baseline = source.baseline ? recordOf(source.baseline) : null;
+  const reconciliation = recordOf(source.reconciliation);
+  const specialInstructions = recordOf(source.specialInstructions);
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.flatMap((candidate) =>
+          typeof candidate === 'string' ? [candidate] : [],
+        )
+      : [];
+  const nullableBoolean = (value: unknown): boolean | null =>
+    typeof value === 'boolean' ? value : null;
+  const mismatches: UberMenuReconciliationResponse['reconciliation']['mismatches'] =
+    Array.isArray(reconciliation.mismatches)
+      ? reconciliation.mismatches.flatMap(
+          (
+            candidate,
+          ): UberMenuReconciliationResponse['reconciliation']['mismatches'] => {
+            const mismatch = recordOf(candidate);
+            const resourceType = textOf(mismatch.resourceType);
+            const resourceId = textOf(mismatch.resourceId);
+            const field = textOf(mismatch.field);
+            const expected = textOf(mismatch.expected);
+            const actual = textOf(mismatch.actual);
+            return (resourceType === 'ITEM' ||
+              resourceType === 'MODIFIER_GROUP') &&
+              resourceId &&
+              field &&
+              expected !== null &&
+              actual !== null
+              ? [{ resourceType, resourceId, field, expected, actual }]
+              : [];
+          },
+        )
+      : [];
+  return {
+    storeId: textOf(source.storeId) ?? '',
+    uberStoreId: textOf(source.uberStoreId) ?? '',
+    retrieved: {
+      menuCount: numberOf(retrieved.menuCount),
+      categoryCount: numberOf(retrieved.categoryCount),
+      itemCount: numberOf(retrieved.itemCount),
+      modifierGroupCount: numberOf(retrieved.modifierGroupCount),
+      taxLabelItemCount: numberOf(retrieved.taxLabelItemCount),
+    },
+    baseline: baseline
+      ? {
+          itemCount: numberOf(baseline.itemCount),
+          modifierGroupCount: numberOf(baseline.modifierGroupCount),
+          expectedDisableItemInstructions: nullableBoolean(
+            baseline.expectedDisableItemInstructions,
+          ),
+        }
+      : null,
+    reconciliation: {
+      matchesLastSuccessfulPublish: nullableBoolean(
+        reconciliation.matchesLastSuccessfulPublish,
+      ),
+      missingItemIds: strings(reconciliation.missingItemIds),
+      extraItemIds: strings(reconciliation.extraItemIds),
+      missingModifierGroupIds: strings(reconciliation.missingModifierGroupIds),
+      extraModifierGroupIds: strings(reconciliation.extraModifierGroupIds),
+      mismatches,
+    },
+    specialInstructions: {
+      expectedDisableItemInstructions: nullableBoolean(
+        specialInstructions.expectedDisableItemInstructions,
+      ),
+      remoteDisableItemInstructions: nullableBoolean(
+        specialInstructions.remoteDisableItemInstructions,
+      ),
+      verified: booleanOf(specialInstructions.verified),
+    },
+    contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
+  };
+};
+
 export const presentMenuDiff = (result: unknown): UberMenuDiffResponse => {
   const source = recordOf(result);
   const list = (key: string): unknown[] =>

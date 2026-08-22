@@ -9,7 +9,10 @@ import { UpdateUberDraftGroupUseCase } from '../../application/menu/update-uber-
 import { UpdateUberDraftOptionUseCase } from '../../application/menu/update-uber-draft-option.use-case';
 import { QueryUberMenuDraftDiffUseCase } from '../../application/menu/query-uber-menu-draft-diff.use-case';
 import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
-import { PublishUberMenuUseCase } from '../../application/menu/publish-uber-menu.use-case';
+import {
+  PublishUberMenuUseCase,
+  RetrieveAndReconcileUberMenuUseCase,
+} from '../../application/menu/publish-uber-menu.use-case';
 import { ConfirmUberMenuPublicationUseCase } from '../../application/menu/confirm-uber-menu-publication.use-case';
 import { RecoverTimedOutMenuPublicationsUseCase } from '../../application/menu/recover-timed-out-menu-publications.use-case';
 import {
@@ -312,6 +315,24 @@ export function createMenuWiring(): Provider[] {
           gateway,
           images,
           urls,
+        ),
+    },
+    {
+      provide: RetrieveAndReconcileUberMenuUseCase,
+      inject: [
+        PROVISIONED_UBER_STORE_QUERY_PORT,
+        UBER_MENU_PUBLICATION_REPOSITORY,
+        UBER_MENU_GATEWAY,
+      ],
+      useFactory: (
+        provisionedStores: ProvisionedUberStoreQueryPort,
+        publications: UberMenuPublicationRepositoryPort,
+        gateway: UberMenuGatewayPort,
+      ) =>
+        new RetrieveAndReconcileUberMenuUseCase(
+          provisionedStores,
+          publications,
+          gateway,
         ),
     },
     { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },

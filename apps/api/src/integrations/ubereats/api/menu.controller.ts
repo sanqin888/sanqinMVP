@@ -39,7 +39,10 @@ import { UpdateUberDraftItemUseCase } from '../application/menu/update-uber-draf
 import { UpdateUberDraftGroupUseCase } from '../application/menu/update-uber-draft-group.use-case';
 import { UpdateUberDraftOptionUseCase } from '../application/menu/update-uber-draft-option.use-case';
 import { QueryUberMenuDraftDiffUseCase } from '../application/menu/query-uber-menu-draft-diff.use-case';
-import { PublishUberMenuUseCase } from '../application/menu/publish-uber-menu.use-case';
+import {
+  PublishUberMenuUseCase,
+  RetrieveAndReconcileUberMenuUseCase,
+} from '../application/menu/publish-uber-menu.use-case';
 import { UberMenuAvailabilityUseCase } from '../application/menu/uber-menu-availability.use-case';
 import { UberMenuConfigImportUseCase } from '../application/menu/uber-menu-config-import.use-case';
 import {
@@ -48,6 +51,7 @@ import {
   presentMenuList,
   presentMenuMutation,
   presentMenuOperation,
+  presentMenuReconciliation,
 } from './menu.presenter';
 
 @Controller('integrations/ubereats')
@@ -64,6 +68,7 @@ export class UberEatsMenuController {
     private readonly draftOptionUpdates: UpdateUberDraftOptionUseCase,
     private readonly draftDiffs: QueryUberMenuDraftDiffUseCase,
     private readonly publications: PublishUberMenuUseCase,
+    private readonly upstreamMenus: RetrieveAndReconcileUberMenuUseCase,
     private readonly availability: UberMenuAvailabilityUseCase,
     private readonly configImports: UberMenuConfigImportUseCase,
   ) {}
@@ -175,6 +180,13 @@ export class UberEatsMenuController {
     @Query('storeId', OptionalResourceIdPipe) storeId?: string,
   ) {
     return presentMenuDiff(await this.draftDiffs.execute(storeId));
+  }
+
+  @Get('menu/upstream')
+  async retrieveAndReconcileMenu(
+    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+  ) {
+    return presentMenuReconciliation(await this.upstreamMenus.execute(storeId));
   }
 
   @Post('menu/publish')

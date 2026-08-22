@@ -162,7 +162,31 @@ export interface UberMenuPublicationRepositoryPort {
   ): Promise<boolean>;
 }
 
+export type UberRetrievedMenuItem = {
+  id: string;
+  priceCents: number;
+  isAvailable: boolean;
+  modifierGroupIds: string[];
+  taxRatePercentage: number | null;
+  taxLabels: string[];
+};
+
+export type UberRetrievedMenuModifierGroup = {
+  id: string;
+  optionItemIds: string[];
+};
+
+export type UberRetrievedMenu = {
+  storeId: string;
+  menuIds: string[];
+  categoryIds: string[];
+  items: UberRetrievedMenuItem[];
+  modifierGroups: UberRetrievedMenuModifierGroup[];
+  disableItemInstructions: boolean | null;
+};
+
 export interface UberMenuGatewayPort {
+  retrieveMenu(storeId: string): Promise<UberRetrievedMenu>;
   uploadMenu(input: {
     storeId: string;
     payload: UberMenuUploadPayload;

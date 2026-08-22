@@ -13,6 +13,7 @@ import type {
   UberDraftGroupNode,
   UberDryRunResponse,
   UberMenuConfigImportPreview,
+  UberMenuReconciliationResponse,
   UberStore,
 } from '../types';
 import type { RunAction } from '../hooks/useUberMutationState';
@@ -60,6 +61,8 @@ export function MenuWorkspace({
   const [taxRateConfirmed, setTaxRateConfirmed] = useState(false);
   const [dryRunSchedule, setDryRunSchedule] =
     useState<UberDryRunResponse | null>(null);
+  const [menuReconciliation, setMenuReconciliation] =
+    useState<UberMenuReconciliationResponse | null>(null);
   const [criticalRisksAcknowledged, setCriticalRisksAcknowledged] =
     useState(false);
   const [importPreview, setImportPreview] =
@@ -96,6 +99,7 @@ export function MenuWorkspace({
     setTimezoneConfirmed(false);
     setTaxRateConfirmed(false);
     setDryRunSchedule(null);
+    setMenuReconciliation(null);
     setCriticalRisksAcknowledged(false);
     setImportPreview(null);
     setImportSourceStoreId('');
@@ -561,6 +565,18 @@ export function MenuWorkspace({
     }
   }, [inspectorDraft, selectedNode, selectedStoreId]);
 
+  const retrieveAndReconcileUberMenu = useCallback(
+    () => {
+      if (!selectedStoreId) return Promise.resolve();
+      return uberApiFetch<UberMenuReconciliationResponse>(
+        `/integrations/ubereats/menu/upstream?storeId=${encodeURIComponent(selectedStoreId)}`,
+      ).then((result) => {
+        setMenuReconciliation(result);
+      });
+    },
+    [selectedStoreId],
+  );
+
   const runDryPublish = useCallback(
     () =>
       publishMenu<UberDryRunResponse>('/integrations/ubereats/menu/publish', {
@@ -594,7 +610,9 @@ export function MenuWorkspace({
             : undefined,
           ...publishFilterPayload,
         }),
-      }).then(() => undefined),
+      }).then(() => {
+        setMenuReconciliation(null);
+      }),
     [
       criticalRisksAcknowledged,
       dryRunSchedule?.safety?.fingerprint,
@@ -635,6 +653,21 @@ export function MenuWorkspace({
             }
           >
             刷新草稿
+          </button>
+          <button
+            type="button"
+            disabled={!selectedStoreId || !selectedStore?.isProvisioned}
+            className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() =>
+              void runAction(
+                'retrieve-upstream-menu',
+                retrieveAndReconcileUberMenu,
+                '已读取并对账 Uber Menu',
+                false,
+              )
+            }
+          >
+            读取并对账 Uber Menu
           </button>
           <button
             type="button"
@@ -1493,6 +1526,86 @@ export function MenuWorkspace({
                   正式 Publish
                 </button>
               </div>
+            </div>
+            <div className="rounded-xl border bg-white p-4">
+              <h4 className="font-semibold">Uber 实际菜单对账</h4>
+              {menuReconciliation ? (
+                <div className="mt-3 space-y-2 text-sm">
+                  <p>
+                    Uber：menu {menuReconciliation.retrieved.menuCount} / category{' '}
+                    {menuReconciliation.retrieved.categoryCount} / item{' '}
+                    {menuReconciliation.retrieved.itemCount} / modifier group{' '}
+                    {menuReconciliation.retrieved.modifierGroupCount}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Uber 返回 tax label 的 item：{menuReconciliation.retrieved.taxLabelItemCount}
+                  </p>
+                  <p>
+                    最近成功全量 Publish：
+                    {menuReconciliation.baseline
+                      ? `item ${menuReconciliation.baseline.itemCount} / modifier group ${menuReconciliation.baseline.modifierGroupCount}`
+                      : '无可用基准'}
+                  </p>
+                  <p className={menuReconciliation.reconciliation.matchesLastSuccessfulPublish === false ? 'text-rose-700' : 'text-emerald-700'}>
+                    对账结果：
+                    {menuReconciliation.reconciliation.matchesLastSuccessfulPublish === null
+                      ? '无基准，未判定'
+                      : menuReconciliation.reconciliation.matchesLastSuccessfulPublish
+                        ? '✓ 与最后一次成功全量 Publish 一致'
+                        : '⚠ 存在差异'}
+                  </p>
+                  <p>
+                    SanQ Upload flag：disable_item_instructions=false（item-level instructions enabled）
+                  </p>
+                  <p>
+                    Uber GET 回显：
+                    {menuReconciliation.specialInstructions.remoteDisableItemInstructions === null
+                      ? '未返回该 flag'
+                      : menuReconciliation.specialInstructions.verified
+                        ? '✓ 与 SanQ 能力声明一致'
+                        : '⚠ 与 SanQ 能力声明不一致'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Order-level special instructions 由 Uber 配置，不属于 Menu API payload。
+                  </p>
+                  {menuReconciliation.reconciliation.missingItemIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 缺少 item：{menuReconciliation.reconciliation.missingItemIds.join(', ')}
+                    </p>
+                  ) : null}
+                  {menuReconciliation.reconciliation.extraItemIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 多余 item：{menuReconciliation.reconciliation.extraItemIds.join(', ')}
+                    </p>
+                  ) : null}
+                  {menuReconciliation.reconciliation.missingModifierGroupIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 缺少 modifier group：{menuReconciliation.reconciliation.missingModifierGroupIds.join(', ')}
+                    </p>
+                  ) : null}
+                  {menuReconciliation.reconciliation.extraModifierGroupIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 多余 modifier group：{menuReconciliation.reconciliation.extraModifierGroupIds.join(', ')}
+                    </p>
+                  ) : null}
+                  {menuReconciliation.reconciliation.mismatches.length > 0 ? (
+                    <div className="max-h-48 space-y-1 overflow-y-auto text-xs">
+                      {menuReconciliation.reconciliation.mismatches.map((mismatch) => (
+                        <p key={`${mismatch.resourceType}:${mismatch.resourceId}:${mismatch.field}`} className="rounded border border-rose-200 bg-rose-50 p-2 text-rose-800">
+                          {mismatch.resourceType} {mismatch.resourceId} · {mismatch.field}：{mismatch.expected} → {mismatch.actual}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">
+                  点击“读取并对账 Uber Menu”后显示 Uber Menu V2 的真实返回与发布基准。
+                </p>
+              )}
+              <p className="mt-3 text-xs text-slate-500">
+                对账基准是最后一次成功的全量 Publish；之后若单独执行 Update Item availability，availability 差异可能是预期变化。
+              </p>
             </div>
             <div className="rounded-xl border bg-white p-4">
               <h4 className="font-semibold">最近发布版本</h4>

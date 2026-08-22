@@ -306,6 +306,77 @@ describe('Uber gateways wire contract v1', () => {
     });
   });
 
+  it('menu retrieve uses Menu V2 GET and maps the live wire representation', async () => {
+    const transport = createUberTransportFake();
+    transport.request.mockResolvedValue({
+      menus: [{ id: 'menu-1' }],
+      categories: [{ id: 'cat-1' }],
+      items: [
+        {
+          id: 'item-1',
+          price_info: { price: 749 },
+          tax_info: { tax_rate: 13 },
+          tax_label_info: {
+            default_value: {
+              labels: ['CAT_PREPARED_FOOD'],
+              source: 'MANUAL',
+            },
+          },
+          modifier_group_ids: { ids: ['group-1'] },
+          suspension_info: null,
+        },
+        {
+          id: 'option-1',
+          price_info: { price: 100 },
+          tax_info: { tax_rate: 13 },
+          modifier_group_ids: { ids: null },
+          suspension_info: {
+            suspension: { suspend_until: 4070908800, reason: 'Out of stock' },
+          },
+        },
+      ],
+      modifier_groups: [
+        {
+          id: 'group-1',
+          modifier_options: [{ id: 'option-1', type: 'ITEM' }],
+        },
+      ],
+    });
+    const adapter = new UberMenuGatewayAdapter(transport);
+
+    await expect(adapter.retrieveMenu('store/1')).resolves.toMatchObject({
+      storeId: 'store/1',
+      menuIds: ['menu-1'],
+      categoryIds: ['cat-1'],
+      items: [
+        expect.objectContaining({
+          id: 'item-1',
+          priceCents: 749,
+          isAvailable: true,
+          modifierGroupIds: ['group-1'],
+          taxRatePercentage: 13,
+          taxLabels: ['CAT_PREPARED_FOOD'],
+        }),
+        expect.objectContaining({
+          id: 'option-1',
+          priceCents: 100,
+          isAvailable: false,
+          modifierGroupIds: [],
+        }),
+      ],
+      modifierGroups: [{ id: 'group-1', optionItemIds: ['option-1'] }],
+      disableItemInstructions: null,
+    });
+    expect(transport.request).toHaveBeenCalledWith({
+      path: '/v2/eats/stores/store%2F1/menus',
+      scope: 'eats.store',
+      operation: 'uber.menu.retrieve',
+      partitionKey: 'store/1',
+      method: 'GET',
+      headers: { 'Accept-Encoding': 'gzip' },
+    });
+  });
+
   it('menu upload and sparse item availability use their dedicated wire contracts', async () => {
     const transport = createUberTransportFake();
     transport.request.mockResolvedValue({});

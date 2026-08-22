@@ -100,6 +100,10 @@ type UberModifierOptionRef = {
 };
 
 export type UberMenuUploadPayload = {
+  display_options: {
+    /** Uber wire flag; SanQ validation requires false because item instructions are supported. */
+    disable_item_instructions: boolean;
+  };
   menus: Array<{
     id: string;
     title: { translations: { en_us: string } };

@@ -55,6 +55,9 @@ describe('uber-menu-payload.builder', () => {
   });
   it('builds the wire payload from a resolved menu graph', () => {
     const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
+    expect(payload.display_options).toEqual({
+      disable_item_instructions: false,
+    });
     expect(payload.menus[0]).toMatchObject({
       id: 'menu-1',
       category_ids: ['cat-1'],
@@ -63,6 +66,20 @@ describe('uber-menu-payload.builder', () => {
       id: 'item-1',
       price_info: { price: 1299, overrides: [] },
     });
+  });
+
+  it('blocks a payload that falsely claims item-level instructions are unsupported', () => {
+    const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
+    payload.display_options.disable_item_instructions = true;
+    expect(validateUberMenuPayload(payload)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UBER_ITEM_INSTRUCTIONS_SUPPORT_FLAG_INVALID',
+          severity: 'ERROR',
+          path: '$.display_options.disable_item_instructions',
+        }),
+      ]),
+    );
   });
 
   it('flattens nested modifier choices as a cartesian product', () => {
