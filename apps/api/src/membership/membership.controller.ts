@@ -86,7 +86,9 @@ export class MembershipController {
       typeof body.birthdayYear !== 'number' ||
       typeof body.birthdayMonth !== 'number'
     ) {
-      throw new BadRequestException('birthdayYear and birthdayMonth are required');
+      throw new BadRequestException(
+        'birthdayYear and birthdayMonth are required',
+      );
     }
 
     return this.onboarding.finalize({
