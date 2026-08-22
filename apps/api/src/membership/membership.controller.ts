@@ -138,6 +138,9 @@ export class MembershipController {
     if (!userId) {
       throw new BadRequestException('userId is required');
     }
+    if (!deviceId) {
+      throw new BadRequestException('deviceId is required');
+    }
 
     await this.membership.revokeTrustedDevice({ userId, deviceId });
     return { success: true };
