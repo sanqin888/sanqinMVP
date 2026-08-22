@@ -11,5 +11,6 @@ import { PromotionsService } from './promotions.service';
   imports: [AuthModule, CouponsModule],
   controllers: [PromotionsController],
   providers: [PromotionsService, PrismaService, SessionAuthGuard],
+  exports: [PromotionsService],
 })
 export class PromotionsModule {}

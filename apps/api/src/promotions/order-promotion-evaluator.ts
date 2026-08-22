@@ -1,3 +1,4 @@
+import type { DateTime } from 'luxon';
 import {
   evaluateCouponPromotion,
   toCouponEntitlementPromotionCandidate,
@@ -14,6 +15,11 @@ import {
   type PromotionResolution,
   type PromotionSnapshotV1,
 } from './promotion-engine';
+import {
+  toPromotionRuleCandidate,
+  type PromotionRuleLike,
+} from './promotion-rule.adapter';
+import { toPosManualDiscountPromotionCandidate } from './pos-manual-discount.adapter';
 
 export type PromotionOrderLine = {
   lineKey: string;
@@ -40,6 +46,11 @@ export function evaluateOrderPromotions(params: {
   lines: readonly PromotionOrderLine[];
   coupon?: CouponPromotionLike | null;
   entitlementCoupon?: CouponEntitlementPromotionLike | null;
+  promotionContext?: {
+    rules: readonly PromotionRuleLike[];
+    now: DateTime;
+  };
+  posDiscountCents?: number;
 }): PromotionOrderEvaluation {
   const dailySpecialCandidates = params.lines.flatMap((line) => {
     if (!line.dailySpecial) return [];
@@ -65,16 +76,28 @@ export function evaluateOrderPromotions(params: {
     return [candidate];
   });
 
-  const dailySpecialResolution = resolvePromotionCandidates(
-    dailySpecialCandidates,
-  );
+  const promotionContext = params.promotionContext;
+  const ruleCandidates = promotionContext
+    ? promotionContext.rules.map((rule) =>
+        toPromotionRuleCandidate({
+          rule,
+          lines: params.lines,
+          now: promotionContext.now,
+        }),
+      )
+    : [];
+  const preCouponResolution = resolvePromotionCandidates([
+    ...dailySpecialCandidates,
+    ...ruleCandidates,
+  ]);
+  const allLineKeys = params.lines.map((line) => line.lineKey);
   const couponBlockedLineKeys = new Set(
-    dailySpecialResolution.adjustments.flatMap((adjustment) =>
-      adjustment.lineKey &&
-      adjustment.excludedStackingGroups?.includes('COUPON')
-        ? [adjustment.lineKey]
-        : [],
-    ),
+    preCouponResolution.adjustments.flatMap((adjustment) => {
+      if (!adjustment.excludedStackingGroups?.includes('COUPON')) return [];
+      if (adjustment.lineKey) return [adjustment.lineKey];
+      if (adjustment.targetLineKeys?.length) return adjustment.targetLineKeys;
+      return allLineKeys;
+    }),
   );
   const couponEligibleLines = params.lines.filter(
     (line) => !couponBlockedLineKeys.has(line.lineKey),
@@ -98,10 +121,20 @@ export function evaluateOrderPromotions(params: {
         })),
       }).candidate
     : null;
+  const subtotalCents = params.lines.reduce(
+    (sum, line) => sum + normalizeCents(line.lineTotalCents),
+    0,
+  );
+  const posDiscountCandidate = toPosManualDiscountPromotionCandidate({
+    discountCents: params.posDiscountCents ?? 0,
+    subtotalCents,
+  });
   const resolution = resolvePromotionCandidates([
     ...dailySpecialCandidates,
+    ...ruleCandidates,
     ...(entitlementCouponCandidate ? [entitlementCouponCandidate] : []),
     ...(couponCandidate ? [couponCandidate] : []),
+    ...(posDiscountCandidate ? [posDiscountCandidate] : []),
   ]);
 
   return {

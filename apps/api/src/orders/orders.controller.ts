@@ -311,6 +311,25 @@ export class OrdersController {
   }
 
   /**
+   * Web checkout pricing preview. Read-only and server-authoritative.
+   * POST /api/v1/orders/pricing/quote
+   */
+  @Post('pricing/quote')
+  @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(CreateOrderSchema))
+  quotePricing(@Body() dto: CreateOrderInput) {
+    if (dto.channel !== 'web') {
+      throw new BadRequestException(
+        'Public pricing quote only allows channel=web',
+      );
+    }
+    return this.ordersService.quoteOrderPricing({
+      ...dto,
+      discountCents: undefined,
+    });
+  }
+
+  /**
    * 最近订单
    * GET /api/v1/orders/recent?limit=10
    */
