@@ -149,7 +149,9 @@ export function resolvePromotionLinePriceCents(params: {
   return Math.max(0, Math.min(basePriceCents, Math.round(effective)));
 }
 
-function candidateTargetLineKeys(candidate: PromotionCandidate): string[] | null {
+function candidateTargetLineKeys(
+  candidate: PromotionCandidate,
+): string[] | null {
   if (candidate.benefit.type === 'LINE_PRICE') {
     return [candidate.benefit.lineKey];
   }
@@ -174,8 +176,7 @@ function candidatesConflict(
 ): boolean {
   if (left.stacking.group === right.stacking.group) {
     const hasExclusiveCandidate =
-      left.stacking.mode === 'EXCLUSIVE' ||
-      right.stacking.mode === 'EXCLUSIVE';
+      left.stacking.mode === 'EXCLUSIVE' || right.stacking.mode === 'EXCLUSIVE';
     if (!hasExclusiveCandidate) return false;
 
     // Coupons are order-level selections, so EXCLUSIVE remains global within
