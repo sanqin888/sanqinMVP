@@ -116,7 +116,9 @@ function requireStringArray(
 
 function optionalTargetItems(record: JsonObject): string[] {
   if (record.targetItemStableIds === undefined) return [];
-  return requireStringArray(record, 'targetItemStableIds', { allowEmpty: true });
+  return requireStringArray(record, 'targetItemStableIds', {
+    allowEmpty: true,
+  });
 }
 
 function addOptionalMinSpend(
@@ -167,7 +169,9 @@ function normalizeConfig(
       const getItemStableIds = requireStringArray(value, 'getItemStableIds');
       const buySet = new Set(buyItemStableIds);
       const getSet = new Set(getItemStableIds);
-      const overlapCount = [...buySet].filter((item) => getSet.has(item)).length;
+      const overlapCount = [...buySet].filter((item) =>
+        getSet.has(item),
+      ).length;
       const sameTargets =
         buySet.size === getSet.size && overlapCount === buySet.size;
       if (overlapCount > 0 && !sameTargets) {
@@ -253,7 +257,11 @@ function normalizeMinutes(
 
 function normalizeWeekdays(value: number[] | undefined): number[] {
   if (!value) return [];
-  if (value.some((weekday) => !Number.isInteger(weekday) || weekday < 1 || weekday > 7)) {
+  if (
+    value.some(
+      (weekday) => !Number.isInteger(weekday) || weekday < 1 || weekday > 7,
+    )
+  ) {
     throw new BadRequestException('weekdays must contain values from 1 to 7');
   }
   return Array.from(new Set(value)).sort((left, right) => left - right);
@@ -261,8 +269,13 @@ function normalizeWeekdays(value: number[] | undefined): number[] {
 
 function normalizeChannels(value: Channel[] | undefined): Channel[] {
   const channels = value ?? [Channel.web, Channel.in_store];
-  if (channels.length === 0 || channels.some((channel) => !CHANNELS.has(channel))) {
-    throw new BadRequestException('channels must contain a supported order channel');
+  if (
+    channels.length === 0 ||
+    channels.some((channel) => !CHANNELS.has(channel))
+  ) {
+    throw new BadRequestException(
+      'channels must contain a supported order channel',
+    );
   }
   return Array.from(new Set(channels));
 }
@@ -290,7 +303,9 @@ export class AdminPromotionsService {
     const data = this.normalizePayload(payload);
     return this.prisma.promotionRule.create({
       data: {
-        ...(payload.stableId?.trim() ? { stableId: payload.stableId.trim() } : {}),
+        ...(payload.stableId?.trim()
+          ? { stableId: payload.stableId.trim() }
+          : {}),
         ...data,
       },
     });
@@ -351,7 +366,9 @@ export class AdminPromotionsService {
       endMinutes !== null &&
       endMinutes < startMinutes
     ) {
-      throw new BadRequestException('endMinutes must be on or after startMinutes');
+      throw new BadRequestException(
+        'endMinutes must be on or after startMinutes',
+      );
     }
 
     return {

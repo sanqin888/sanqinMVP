@@ -2667,7 +2667,9 @@ export class OrdersService {
                 : null,
               promotionContext,
               posDiscountCents:
-                dto.channel === Channel.in_store ? dto.discountCents : undefined,
+                dto.channel === Channel.in_store
+                  ? dto.discountCents
+                  : undefined,
             });
             assertCouponPromotionAccepted(
               promotionEvaluation,

@@ -154,7 +154,11 @@ function eligibilityForSpend(params: {
   minSpendCents: number | null;
 }): PromotionEligibility {
   if (!params.active) {
-    return { eligible: false, code: 'INACTIVE', reason: 'promotion is inactive' };
+    return {
+      eligible: false,
+      code: 'INACTIVE',
+      reason: 'promotion is inactive',
+    };
   }
   if (params.applicableSubtotalCents <= 0) {
     return {
@@ -254,7 +258,9 @@ function resolveRewardDiscount(params: {
   );
   return {
     discountCents: normalizeCents(discountCents),
-    targetLineKeys: Array.from(new Set(selected.map((reward) => reward.lineKey))),
+    targetLineKeys: Array.from(
+      new Set(selected.map((reward) => reward.lineKey)),
+    ),
   };
 }
 
@@ -402,7 +408,8 @@ function buildBuyXGetYCandidate(params: {
   const buySet = new Set(buyItemStableIds);
   const getSet = new Set(getItemStableIds);
   const sameTargets =
-    buySet.size === getSet.size && [...buySet].every((item) => getSet.has(item));
+    buySet.size === getSet.size &&
+    [...buySet].every((item) => getSet.has(item));
   const buyUnits = buyLines.reduce(
     (sum, line) => sum + normalizeQuantity(line.quantity),
     0,

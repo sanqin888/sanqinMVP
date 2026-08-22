@@ -319,7 +319,9 @@ export class OrdersController {
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
   quotePricing(@Body() dto: CreateOrderInput) {
     if (dto.channel !== 'web') {
-      throw new BadRequestException('Public pricing quote only allows channel=web');
+      throw new BadRequestException(
+        'Public pricing quote only allows channel=web',
+      );
     }
     return this.ordersService.quoteOrderPricing({
       ...dto,

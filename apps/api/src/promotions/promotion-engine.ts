@@ -388,7 +388,8 @@ export function resolvePromotionLoyaltyMultiplier(snapshot: unknown): number {
   if (!isSnapshotObject(snapshot) || snapshot.version !== 1) return 1;
   if (!Array.isArray(snapshot.adjustments)) return 1;
 
-  const multiplier = snapshot.adjustments.reduce((value, adjustment) => {
+  const adjustments: unknown[] = snapshot.adjustments;
+  const multiplier = adjustments.reduce<number>((value, adjustment) => {
     if (!isSnapshotObject(adjustment)) return value;
     if (
       adjustment.source !== 'LOYALTY_PROMOTION' ||

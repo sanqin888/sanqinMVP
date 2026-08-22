@@ -438,7 +438,9 @@ describe('OrdersService', () => {
     expect(quote.posManualDiscountCents).toBe(50);
     expect(quote.couponDiscountCents).toBe(0);
     expect(quote.totalCents).toBe(961);
-    expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith('in_store');
+    expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith(
+      'in_store',
+    );
   });
 
   it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {
