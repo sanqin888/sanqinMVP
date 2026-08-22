@@ -2,10 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeEmail } from '../common/utils/email';
+import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 
 const MINIMUM_MEMBERSHIP_AGE = 13;
 const LEGACY_REFERRAL_CUTOFF = new Date('2026-08-22T16:45:00.000Z');
@@ -13,7 +15,12 @@ const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
 export class MembershipOnboardingService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(MembershipOnboardingService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly couponTriggerService: CouponProgramTriggerService,
+  ) {}
 
   async getStatus(userStableId: string) {
     const user = await this.prisma.user.findUnique({
@@ -42,8 +49,8 @@ export class MembershipOnboardingService {
     birthdayMonth: number;
     referrerEmail?: string | null;
   }) {
-    const birthdayYear = Math.trunc(params.birthdayYear);
-    const birthdayMonth = Math.trunc(params.birthdayMonth);
+    const birthdayYear = params.birthdayYear;
+    const birthdayMonth = params.birthdayMonth;
     this.assertEligibleBirthday({ birthdayYear, birthdayMonth });
 
     const user = await this.prisma.user.findUnique({
@@ -51,6 +58,7 @@ export class MembershipOnboardingService {
       select: {
         id: true,
         createdAt: true,
+        phoneVerifiedAt: true,
         referralFinalizedAt: true,
         referredByUserId: true,
       },
@@ -101,12 +109,35 @@ export class MembershipOnboardingService {
       throw new ConflictException('membership onboarding is already finalized');
     }
 
+    if (referrerId && user.phoneVerifiedAt) {
+      void this.issueQualifiedReferralReward(referrerId);
+    }
+
     return {
       finalized: true,
       hasReferrer: Boolean(referrerId),
       birthdayYear,
       birthdayMonth,
     };
+  }
+
+  private async issueQualifiedReferralReward(referrerId: string) {
+    try {
+      const referrer = await this.prisma.user.findUnique({
+        where: { id: referrerId },
+      });
+      if (!referrer) return;
+
+      await this.couponTriggerService.issueProgramsForUser(
+        'REFERRAL_QUALIFIED',
+        referrer,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to issue referral qualification programs referrerId=${referrerId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 
   private isFinalized(user: {
