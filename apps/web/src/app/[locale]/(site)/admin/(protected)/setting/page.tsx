@@ -165,16 +165,25 @@ function parseOptionalNumber(value: string): number | null {
   return num;
 }
 
-function parseAllergenCodes(value: string): string[] {
-  return [...
-    new Set(
-      value
-        .split(/[\n,]/)
-        .map((entry) => entry.trim().toUpperCase())
-        .filter(Boolean),
-    ),
-  ];
-}
+const ALLERGY_DENY_OPTIONS = [
+  {
+    code: 'GLUTEN',
+    zh: '小麦（及含麸质谷物）',
+    en: 'Wheat (and gluten-containing grains)',
+  },
+  { code: 'PEANUTS', zh: '花生', en: 'Peanuts' },
+  { code: 'TREENUTS', zh: '坚果类', en: 'Tree nuts' },
+  { code: 'SESAME', zh: '芝麻', en: 'Sesame' },
+  { code: 'EGGS', zh: '鸡蛋', en: 'Eggs' },
+  { code: 'DAIRY', zh: '牛奶/乳制品', en: 'Milk/dairy' },
+  { code: 'SOY', zh: '大豆', en: 'Soy' },
+  { code: 'SULPHITES', zh: '亚硫酸盐', en: 'Sulphites' },
+  {
+    code: 'SHELLFISH',
+    zh: '甲壳类（例如虾）',
+    en: 'Crustaceans (such as shrimp)',
+  },
+] as const;
 
 function toHolidayUi(list: HolidayApiDto[]): HolidayUiDto[] {
   return (list ?? []).map((h, idx) => ({
@@ -193,7 +202,6 @@ export default function AdminHoursPage() {
   const [config, setConfig] = useState<BusinessConfigDto | null>(null);
   const [hours, setHours] = useState<BusinessHourDto[]>([]);
   const [holidays, setHolidays] = useState<HolidayUiDto[]>([]);
-  const [unsupportedAllergensText, setUnsupportedAllergensText] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -222,10 +230,12 @@ export default function AdminHoursPage() {
 
         if (cancelled) return;
 
-        setConfig(configRes);
-        setUnsupportedAllergensText(
-          (configRes.unsupportedAllergens ?? []).join(', '),
-        );
+        setConfig({
+          ...configRes,
+          unsupportedAllergens: (configRes.unsupportedAllergens ?? []).filter(
+            (code) => ALLERGY_DENY_OPTIONS.some((option) => option.code === code),
+          ),
+        });
 
         const sortedHours = [...hoursRes.hours].sort(
           (a, b) => a.weekday - b.weekday,
@@ -472,6 +482,21 @@ const handleTimeChange = (
     setConfig((prev) => (prev ? { ...prev, allergyHandlingMode: value } : prev));
   };
 
+  const handleUnsupportedAllergenToggle = (code: string, checked: boolean) => {
+    setConfig((prev) => {
+      if (!prev) return prev;
+      const selected = new Set(prev.unsupportedAllergens);
+      if (checked) selected.add(code);
+      else selected.delete(code);
+      return {
+        ...prev,
+        unsupportedAllergens: ALLERGY_DENY_OPTIONS.map((option) => option.code).filter(
+          (optionCode) => selected.has(optionCode),
+        ),
+      };
+    });
+  };
+
   /** ===== 节假日相关 handler ===== */
 
   const handleHolidayFieldChange = (
@@ -599,19 +624,6 @@ if (badHolidayIndex >= 0) {
   return;
 }
 
-const allergenCodes = parseAllergenCodes(unsupportedAllergensText);
-const invalidAllergenCode = allergenCodes.find(
-  (code) => code.length > 64 || !/^[A-Z0-9_-]+$/.test(code),
-);
-if (invalidAllergenCode) {
-  setError(
-    isZh
-      ? `过敏原代码“${invalidAllergenCode}”格式不合法，只能包含字母、数字、下划线或连字符。`
-      : `Invalid allergen code “${invalidAllergenCode}”. Use only letters, numbers, underscores, or hyphens.`,
-  );
-  return;
-}
-
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -672,7 +684,7 @@ await apiFetch('/admin/business/hours', {
           tierThresholdPlatinum: config.tierThresholdPlatinum,
           enableUberDirect: config.enableUberDirect,
           allergyHandlingMode: config.allergyHandlingMode,
-          unsupportedAllergens: allergenCodes,
+          unsupportedAllergens: config.unsupportedAllergens,
         }),
       });
 
@@ -1160,22 +1172,39 @@ setHolidays(
           </select>
         </label>
 
-        <label className="block text-xs font-medium text-slate-700">
-          {isZh ? '无法安全处理的过敏原代码' : 'Unsupported allergen codes'}
-          <textarea
-            value={unsupportedAllergensText}
-            onChange={(e) => setUnsupportedAllergensText(e.target.value)}
-            disabled={config.allergyHandlingMode !== 'DENY_LIST'}
-            rows={3}
-            placeholder="PEANUTS, TREENUTS, DAIRY, EGGS, FISH, SHELLFISH, GLUTEN, SOY, OTHER"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:bg-slate-100 disabled:text-slate-500 focus:border-emerald-500 focus:outline-none"
-          />
-          <span className="mt-1 block text-[11px] text-slate-500">
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-slate-700">
+            {isZh ? '无法安全处理的过敏原' : 'Unsupported allergens'}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {ALLERGY_DENY_OPTIONS.map((option) => (
+              <label
+                key={option.code}
+                className={`inline-flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  config.allergyHandlingMode === 'DENY_LIST'
+                    ? 'border-slate-200 bg-white text-slate-700'
+                    : 'border-slate-100 bg-slate-50 text-slate-400'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={config.unsupportedAllergens.includes(option.code)}
+                  onChange={(event) =>
+                    handleUnsupportedAllergenToggle(option.code, event.target.checked)
+                  }
+                  disabled={config.allergyHandlingMode !== 'DENY_LIST'}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600"
+                />
+                <span>{isZh ? option.zh : option.en}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-500">
             {isZh
-              ? '可用逗号或换行分隔；保存时自动转为大写并去重。仅在“命中禁用列表自动拒单”模式下参与判定。'
-              : 'Separate codes with commas or new lines. Values are uppercased and deduplicated on save, and are only evaluated in deny-list mode.'}
-          </span>
-        </label>
+              ? '仅在“命中禁用列表自动拒单”模式下生效；选项与当前“过敏原说明”页面列出的厨房相关过敏原保持一致。'
+              : 'Only applies in deny-list mode. The options mirror the kitchen allergens listed on the current Allergen Information page.'}
+          </p>
+        </div>
       </section>
 
       {/* 消息与品牌展示设置 */}
