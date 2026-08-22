@@ -46,6 +46,7 @@ type OrderForLoyaltySettlement = Pick<
   | 'id'
   | 'userId'
   | 'subtotalCents'
+  | 'subtotalAfterDiscountCents'
   | 'loyaltyRedeemCents'
   | 'promotionSnapshot'
 >;
@@ -366,11 +367,17 @@ export class LoyaltyService {
       };
     }
 
+    const redeemValueCents = order.loyaltyRedeemCents ?? 0;
+    const subtotalForRewards =
+      typeof order.subtotalAfterDiscountCents === 'number'
+        ? order.subtotalAfterDiscountCents + redeemValueCents
+        : (order.subtotalCents ?? 0);
+
     await this.settleOnPaid({
       orderId: order.id,
       userId: order.userId ?? undefined,
-      subtotalCents: order.subtotalCents ?? 0,
-      redeemValueCents: order.loyaltyRedeemCents ?? 0,
+      subtotalCents: subtotalForRewards,
+      redeemValueCents,
       earnMultiplier: resolvePromotionLoyaltyMultiplier(
         order.promotionSnapshot,
       ),
