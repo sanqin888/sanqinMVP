@@ -143,7 +143,8 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
       };
     };
     const modifier =
-      payload.order.carts[0].items[0].selected_modifier_groups[0].selected_items[0];
+      payload.order.carts[0].items[0].selected_modifier_groups[0]
+        .selected_items[0];
     modifier.customer_request.allergy = {
       allergens: ['SHELLFISH'],
       instructions: 'Separate prep area',

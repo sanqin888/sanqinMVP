@@ -120,7 +120,11 @@ describe('Uber order admission flow', () => {
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
     );
 
-    await useCase.execute('orders.notification', 'event-allergy-1', notification);
+    await useCase.execute(
+      'orders.notification',
+      'event-allergy-1',
+      notification,
+    );
 
     expect(enqueue).toHaveBeenCalledWith(
       expect.objectContaining({

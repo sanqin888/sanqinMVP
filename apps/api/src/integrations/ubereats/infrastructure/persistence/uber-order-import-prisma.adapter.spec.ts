@@ -133,7 +133,9 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       {} as never,
     );
 
-    await expect(adapter.getStoreAllergyPolicy('unknown-store')).resolves.toEqual({
+    await expect(
+      adapter.getStoreAllergyPolicy('unknown-store'),
+    ).resolves.toEqual({
       mode: 'RELAY_ALL',
       unsupportedAllergens: [],
     });
