@@ -1,6 +1,11 @@
 import { UberValidationError } from '../shared/uber-application.error';
-import type { UberMenuUploadPayload } from '../../domain/menu/uber-menu.types';
 import type { UberMenuPublicationRepositoryPort } from './uber-menu-publication.ports';
+
+type PublishedMenuPayload = NonNullable<
+  Awaited<
+    ReturnType<UberMenuPublicationRepositoryPort['findLastSucceededPayload']>
+  >
+>;
 import {
   PublishUberMenuUseCase,
   RetrieveAndReconcileUberMenuUseCase,
@@ -359,7 +364,7 @@ describe('PublishUberMenuUseCase', () => {
 });
 
 describe('RetrieveAndReconcileUberMenuUseCase', () => {
-  const baseline: UberMenuUploadPayload = {
+  const baseline: PublishedMenuPayload = {
     display_options: { disable_item_instructions: false },
     menus: [
       {
@@ -430,7 +435,7 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
   };
   const setupReconciliation = (
     retrieved = remote,
-    published: UberMenuUploadPayload | null = baseline,
+    published: PublishedMenuPayload | null = baseline,
   ) => {
     const provisionedStores = {
       resolveProvisionedUberStoreId: jest.fn().mockResolvedValue({
