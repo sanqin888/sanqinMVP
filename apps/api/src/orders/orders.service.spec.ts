@@ -2,7 +2,11 @@ import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoyaltyService } from '../loyalty/loyalty.service';
+import {
+  computeEligibleSpendCents,
+  computeTierEligibleSpendFromNetCents,
+  LoyaltyService,
+} from '../loyalty/loyalty.service';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -1267,5 +1271,49 @@ describe('OrdersService', () => {
       requireDeliveryPhone: false,
       allowUnverifiedExternalContact: true,
     });
+  });
+});
+
+describe('loyalty spend bases', () => {
+  it('keeps Store Balance eligible for member points but excludes it from tier and referral spend', () => {
+    expect(
+      computeEligibleSpendCents({
+        subtotalCents: 5000,
+        redeemValueCents: 0,
+        balanceUsedCents: 2000,
+      }),
+    ).toEqual({
+      earnCents: 5000,
+      tierCents: 3000,
+      referralCents: 3000,
+    });
+  });
+
+  it('excludes both redeemed points and Store Balance from tier spend', () => {
+    expect(
+      computeEligibleSpendCents({
+        subtotalCents: 5000,
+        redeemValueCents: 500,
+        balanceUsedCents: 2000,
+      }),
+    ).toEqual({
+      earnCents: 4500,
+      tierCents: 2500,
+      referralCents: 2500,
+    });
+  });
+
+  it('never makes tier spend negative when Store Balance covers the eligible order amount', () => {
+    expect(computeTierEligibleSpendFromNetCents(1500, 2000)).toBe(0);
+  });
+
+  it('supports amendment deltas without double-counting original Store Balance funding', () => {
+    const originalTierSpend = computeTierEligibleSpendFromNetCents(5000, 2000);
+    const reducedTierSpend = computeTierEligibleSpendFromNetCents(4000, 2000);
+    const increasedTierSpend = computeTierEligibleSpendFromNetCents(6000, 2000);
+
+    expect(originalTierSpend).toBe(3000);
+    expect(reducedTierSpend - originalTierSpend).toBe(-1000);
+    expect(increasedTierSpend - originalTierSpend).toBe(1000);
   });
 });
