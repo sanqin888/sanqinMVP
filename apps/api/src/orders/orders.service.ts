@@ -63,6 +63,12 @@ import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import { resolveConfiguredStoreId } from '../common/store-id';
+import type { CouponPromotionLike } from '../promotions/coupon-promotion.adapter';
+import {
+  evaluateOrderPromotions,
+  type PromotionOrderEvaluation,
+  type PromotionOrderLine,
+} from '../promotions/order-promotion-evaluator';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -147,6 +153,38 @@ type OptionChoiceContext = {
   group: MenuOptionGroupTemplate;
   link: MenuItemOptionGroup;
 };
+type CouponForPromotion = {
+  couponStableId: string;
+  code: string;
+  title: string;
+  discountCents: number;
+  discountPercent: number | null;
+  minSpendCents: number | null;
+  unlockedItemStableIds: string[];
+  stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
+};
+
+function toCouponPromotionLike(coupon: CouponForPromotion): CouponPromotionLike {
+  return {
+    couponStableId: coupon.couponStableId,
+    code: coupon.code,
+    title: coupon.title,
+    discountCents: coupon.discountCents,
+    discountPercent: coupon.discountPercent,
+    minSpendCents: coupon.minSpendCents,
+    unlockedItemStableIds: coupon.unlockedItemStableIds,
+    stackingPolicy: coupon.stackingPolicy,
+  };
+}
+
+function resolveCouponPromotionDiscountCents(
+  evaluation: PromotionOrderEvaluation,
+): number {
+  return (
+    evaluation.adjustments.find((adjustment) => adjustment.source === 'COUPON')
+      ?.discountCents ?? 0
+  );
+}
 
 function availabilityFromDb(
   isAvailable: boolean,
@@ -301,6 +339,7 @@ export class OrdersService {
       calculatedSubtotal,
       couponEligibleSubtotalCents,
       couponEligibleLineItems,
+      promotionLines,
     } = await this.calculateLineItems(items);
 
     const productStableIds = Array.from(
@@ -477,12 +516,19 @@ export class OrdersService {
       subtotalCents: couponEligibleSubtotalCents,
       couponEligibleLineItems,
     });
+    const promotionEvaluation = evaluateOrderPromotions({
+      lines: promotionLines,
+      coupon: couponInfo?.coupon
+        ? toCouponPromotionLike(couponInfo.coupon)
+        : null,
+    });
 
     const posDiscountCents = Math.min(
       subtotalCents,
       Math.max(0, Math.round(dto.discountCents ?? 0)),
     );
-    const couponDiscountCents = couponInfo?.discountCents ?? 0;
+    const couponDiscountCents =
+      resolveCouponPromotionDiscountCents(promotionEvaluation);
     const subtotalAfterCoupon = Math.max(
       0,
       subtotalCents - posDiscountCents - couponDiscountCents,
@@ -1572,9 +1618,11 @@ export class OrdersService {
     calculatedSubtotal: number;
     couponEligibleSubtotalCents: number;
     couponEligibleLineItems: {
+      lineKey: string;
       productStableId: string;
       lineTotalCents: number;
     }[];
+    promotionLines: PromotionOrderLine[];
   }> {
     const normalizedItems = itemsDto.map((item) => {
       const normalizedId = normalizeStableId(
@@ -1768,12 +1816,8 @@ export class OrdersService {
     });
 
     let calculatedSubtotal = 0;
-    let couponEligibleSubtotalCents = 0;
     const calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
-    const couponEligibleLineItems: {
-      productStableId: string;
-      lineTotalCents: number;
-    }[] = [];
+    const promotionLines: PromotionOrderLine[] = [];
 
     for (const itemDto of normalizedItems) {
       const product = productMap.get(itemDto.normalizedProductId);
@@ -1964,19 +2008,23 @@ export class OrdersService {
           ? baseUnitPriceCents
           : Math.max(0, unitPriceCents - optionsUnitPriceCents);
       const lineTotal = unitPriceCents * itemDto.qty;
+      const lineKey = crypto.randomUUID();
       calculatedSubtotal += lineTotal;
-      if (!activeSpecial?.disallowCoupons) {
-        couponEligibleSubtotalCents += lineTotal;
-        couponEligibleLineItems.push({
-          productStableId: product.stableId,
-          lineTotalCents: lineTotal,
-        });
-      }
+      promotionLines.push({
+        lineKey,
+        productStableId: product.stableId,
+        quantity: itemDto.qty,
+        baseUnitPriceCents: product.basePriceCents,
+        lineTotalCents: lineTotal,
+        dailySpecial: activeSpecial,
+        dailySpecialPriceApplied: submittedCustomUnitPriceCents === null,
+      });
 
       const displayName =
         product.nameEn || product.nameZh || itemDto.displayName || 'Unknown';
 
       calculatedItems.push({
+        id: lineKey,
         productStableId: itemDto.normalizedProductId,
         qty: itemDto.qty,
         displayName,
@@ -1993,11 +2041,27 @@ export class OrdersService {
       });
     }
 
+    const promotionEvaluation = evaluateOrderPromotions({
+      lines: promotionLines,
+    });
+    const couponEligibleLineKeys = new Set(
+      promotionEvaluation.couponEligibleLineKeys,
+    );
+    const couponEligibleLineItems = promotionLines
+      .filter((line) => couponEligibleLineKeys.has(line.lineKey))
+      .map((line) => ({
+        lineKey: line.lineKey,
+        productStableId: line.productStableId,
+        lineTotalCents: line.lineTotalCents,
+      }));
+
     return {
       calculatedItems,
       calculatedSubtotal,
-      couponEligibleSubtotalCents,
+      couponEligibleSubtotalCents:
+        promotionEvaluation.couponEligibleSubtotalCents,
       couponEligibleLineItems,
+      promotionLines,
     };
   }
 
@@ -2288,6 +2352,7 @@ export class OrdersService {
       calculatedSubtotal,
       couponEligibleSubtotalCents,
       couponEligibleLineItems,
+      promotionLines,
     } = await this.calculateLineItems(items, {
       allowCustomUnitPrice:
         dto.channel === Channel.in_store || dto.channel === Channel.ubereats,
@@ -2554,12 +2619,19 @@ export class OrdersService {
               },
               { tx },
             );
+            const promotionEvaluation = evaluateOrderPromotions({
+              lines: promotionLines,
+              coupon: couponInfo?.coupon
+                ? toCouponPromotionLike(couponInfo.coupon)
+                : null,
+            });
 
             const posDiscountCents = Math.min(
               subtotalCents,
               Math.max(0, Math.round(dto.discountCents ?? 0)),
             );
-            const couponDiscountCents = couponInfo?.discountCents ?? 0;
+            const couponDiscountCents =
+              resolveCouponPromotionDiscountCents(promotionEvaluation);
             const subtotalAfterCoupon = Math.max(
               0,
               subtotalCents - posDiscountCents - couponDiscountCents,
@@ -2688,6 +2760,7 @@ export class OrdersService {
                 couponTitleSnapshot: couponInfo?.coupon?.title,
                 couponMinSpendCents: couponInfo?.coupon?.minSpendCents,
                 couponExpiresAt: couponInfo?.coupon?.expiresAt,
+                promotionSnapshot: promotionEvaluation.snapshot as unknown as Prisma.InputJsonValue,
                 loyaltyRedeemCents,
                 subtotalAfterDiscountCents,
                 ...(deliveryMeta

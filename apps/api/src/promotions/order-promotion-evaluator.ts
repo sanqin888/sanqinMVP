@@ -20,6 +20,7 @@ export type PromotionOrderLine = {
   baseUnitPriceCents: number;
   lineTotalCents: number;
   dailySpecial?: DailySpecialPromotionLike | null;
+  dailySpecialPriceApplied?: boolean;
 };
 
 export type PromotionOrderEvaluation = PromotionResolution & {
@@ -39,15 +40,26 @@ export function evaluateOrderPromotions(params: {
 }): PromotionOrderEvaluation {
   const dailySpecialCandidates = params.lines.flatMap((line) => {
     if (!line.dailySpecial) return [];
-    return [
-      toDailySpecialPromotionCandidate({
-        special: line.dailySpecial,
-        lineKey: line.lineKey,
-        productStableId: line.productStableId,
-        quantity: line.quantity,
-        baseUnitPriceCents: line.baseUnitPriceCents,
-      }),
-    ];
+
+    const candidate = toDailySpecialPromotionCandidate({
+      special: line.dailySpecial,
+      lineKey: line.lineKey,
+      productStableId: line.productStableId,
+      quantity: line.quantity,
+      baseUnitPriceCents: line.baseUnitPriceCents,
+    });
+    const priceApplied = line.dailySpecialPriceApplied !== false;
+    candidate.snapshot = {
+      ...(candidate.snapshot ?? {}),
+      priceApplied,
+    };
+    if (!priceApplied && candidate.benefit.type === 'LINE_PRICE') {
+      candidate.benefit = {
+        ...candidate.benefit,
+        effectiveUnitPriceCents: candidate.benefit.baseUnitPriceCents,
+      };
+    }
+    return [candidate];
   });
 
   const dailySpecialResolution = resolvePromotionCandidates(

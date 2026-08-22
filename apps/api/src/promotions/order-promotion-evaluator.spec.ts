@@ -141,6 +141,46 @@ describe('order promotion evaluator', () => {
     );
   });
 
+  it('keeps custom-priced DailySpecial lines coupon-blocked without inventing a price discount', () => {
+    const result = evaluateOrderPromotions({
+      lines: [
+        {
+          lineKey: 'custom-special-line',
+          productStableId: 'special-item',
+          quantity: 1,
+          baseUnitPriceCents: 949,
+          lineTotalCents: 1200,
+          dailySpecial: blockedDailySpecial,
+          dailySpecialPriceApplied: false,
+        },
+        {
+          lineKey: 'regular-line',
+          productStableId: 'regular-item',
+          quantity: 1,
+          baseUnitPriceCents: 1000,
+          lineTotalCents: 1000,
+        },
+      ],
+      coupon: tenPercentCoupon,
+    });
+
+    expect(result.couponEligibleSubtotalCents).toBe(1000);
+    expect(result.couponEligibleLineKeys).toEqual(['regular-line']);
+    expect(result.adjustments).toEqual([
+      expect.objectContaining({
+        source: 'DAILY_SPECIAL',
+        lineKey: 'custom-special-line',
+        discountCents: 0,
+        snapshot: expect.objectContaining({ priceApplied: false }),
+      }),
+      expect.objectContaining({
+        source: 'COUPON',
+        discountCents: 100,
+        applicableSubtotalCents: 1000,
+      }),
+    ]);
+  });
+
   it('returns the same adjustments in its versioned order snapshot', () => {
     const result = evaluateOrderPromotions({
       lines: [
