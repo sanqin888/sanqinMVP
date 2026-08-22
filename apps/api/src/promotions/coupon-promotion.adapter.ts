@@ -16,6 +16,13 @@ export type CouponPromotionLike = {
   stackingPolicy?: PromotionStackingMode;
 };
 
+export type CouponEntitlementPromotionLike = {
+  couponStableId: string;
+  code: string;
+  title: string;
+  stackingPolicy?: PromotionStackingMode;
+};
+
 export type CouponEligibleLineItem = {
   productStableId: string;
   lineTotalCents: number;
@@ -49,6 +56,34 @@ function resolveTargetLineKeys(
   if (applicableLines.length === 0) return undefined;
   if (applicableLines.some((line) => !line.lineKey)) return undefined;
   return applicableLines.map((line) => line.lineKey as string);
+}
+
+export function toCouponEntitlementPromotionCandidate(
+  coupon: CouponEntitlementPromotionLike,
+): PromotionCandidate {
+  const stackingPolicy = coupon.stackingPolicy ?? 'EXCLUSIVE';
+  return {
+    promotionStableId: coupon.couponStableId,
+    source: 'COUPON',
+    priority: 150,
+    eligibility: { eligible: true, code: 'ELIGIBLE' },
+    stacking: {
+      group: 'COUPON_ENTITLEMENT',
+      mode: stackingPolicy,
+      excludesGroups: stackingPolicy === 'EXCLUSIVE' ? ['COUPON'] : [],
+    },
+    benefit: {
+      type: 'ORDER_DISCOUNT',
+      applicableSubtotalCents: 0,
+      discountCents: 0,
+    },
+    snapshot: {
+      code: coupon.code,
+      title: coupon.title,
+      stackingPolicy,
+      entitlement: true,
+    },
+  };
 }
 
 export function evaluateCouponPromotion(params: {
@@ -100,6 +135,7 @@ export function evaluateCouponPromotion(params: {
         applicableSubtotalCents,
       })
     : 0;
+  const stackingPolicy = params.coupon.stackingPolicy ?? 'EXCLUSIVE';
 
   return {
     applicableSubtotalCents,
@@ -110,7 +146,9 @@ export function evaluateCouponPromotion(params: {
       eligibility,
       stacking: {
         group: 'COUPON',
-        mode: params.coupon.stackingPolicy ?? 'EXCLUSIVE',
+        mode: stackingPolicy,
+        excludesGroups:
+          stackingPolicy === 'EXCLUSIVE' ? ['COUPON_ENTITLEMENT'] : [],
       },
       benefit: {
         type: 'ORDER_DISCOUNT',

@@ -63,7 +63,10 @@ import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import { resolveConfiguredStoreId } from '../common/store-id';
-import type { CouponPromotionLike } from '../promotions/coupon-promotion.adapter';
+import type {
+  CouponEntitlementPromotionLike,
+  CouponPromotionLike,
+} from '../promotions/coupon-promotion.adapter';
 import {
   evaluateOrderPromotions,
   type PromotionOrderEvaluation,
@@ -179,12 +182,65 @@ function toCouponPromotionLike(
   };
 }
 
+function toCouponEntitlementPromotionLike(
+  coupon: Pick<
+    CouponForPromotion,
+    'couponStableId' | 'code' | 'title' | 'stackingPolicy'
+  >,
+): CouponEntitlementPromotionLike {
+  return {
+    couponStableId: coupon.couponStableId,
+    code: coupon.code,
+    title: coupon.title,
+    stackingPolicy: coupon.stackingPolicy,
+  };
+}
+
+function assertCouponPromotionAccepted(
+  evaluation: PromotionOrderEvaluation,
+  couponStableId: string | null | undefined,
+): void {
+  if (!couponStableId) return;
+  const rejected = evaluation.rejected.find(
+    (candidate) =>
+      candidate.source === 'COUPON' &&
+      candidate.promotionStableId === couponStableId,
+  );
+  if (!rejected) return;
+
+  if (
+    evaluation.couponEligibleLineKeys.length === 0 &&
+    (rejected.code === 'MIN_SPEND_NOT_MET' ||
+      rejected.code === 'NO_APPLICABLE_SUBTOTAL')
+  ) {
+    throw new BadRequestException(
+      'coupon is not available for daily special items',
+    );
+  }
+
+  switch (rejected.code) {
+    case 'MIN_SPEND_NOT_MET':
+      throw new BadRequestException(
+        'order subtotal does not meet coupon rules',
+      );
+    case 'NO_APPLICABLE_SUBTOTAL':
+      throw new BadRequestException('coupon does not apply to selected items');
+    case 'STACKING_CONFLICT':
+      throw new BadRequestException(
+        'coupon cannot be stacked with other coupons',
+      );
+    case 'INACTIVE':
+      throw new BadRequestException('coupon is not available');
+  }
+}
+
 function resolveCouponPromotionDiscountCents(
   evaluation: PromotionOrderEvaluation,
 ): number {
   return (
-    evaluation.adjustments.find((adjustment) => adjustment.source === 'COUPON')
-      ?.discountCents ?? 0
+    evaluation.adjustments.find(
+      (adjustment) => adjustment.stackingGroup === 'COUPON',
+    )?.discountCents ?? 0
   );
 }
 
@@ -336,22 +392,12 @@ export class OrdersService {
     }
 
     const items = dto.items ?? [];
-    const {
-      calculatedItems,
-      calculatedSubtotal,
-      couponEligibleSubtotalCents,
-      couponEligibleLineItems,
-      promotionLines,
-    } = await this.calculateLineItems(items);
+    const { calculatedItems, calculatedSubtotal, promotionLines } =
+      await this.calculateLineItems(items);
 
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
     );
-    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
-      throw new BadRequestException(
-        'coupon is not available for daily special items',
-      );
-    }
 
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
@@ -444,6 +490,8 @@ export class OrdersService {
       select: { stableId: true },
     });
     const hiddenItemStableIds = hiddenItems.map((item) => item.stableId);
+    let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
+      null;
 
     if (hiddenItemStableIds.length > 0) {
       if (!normalizedUserStableId) {
@@ -502,28 +550,26 @@ export class OrdersService {
         );
       }
 
-      if (
-        userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
-        normalizedCouponStableId
-      ) {
-        throw new BadRequestException(
-          'coupon cannot be stacked with other coupons',
-        );
-      }
+      entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
+        userCoupon.coupon,
+      );
     }
 
     const couponInfo = await this.membership.validateCouponForOrder({
       userId,
       couponStableId: normalizedCouponStableId ?? undefined,
-      subtotalCents: couponEligibleSubtotalCents,
-      couponEligibleLineItems,
     });
     const promotionEvaluation = evaluateOrderPromotions({
       lines: promotionLines,
+      entitlementCoupon: entitlementCouponForPromotion,
       coupon: couponInfo?.coupon
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
     });
+    assertCouponPromotionAccepted(
+      promotionEvaluation,
+      couponInfo?.coupon?.couponStableId,
+    );
 
     const posDiscountCents = Math.min(
       subtotalCents,
@@ -1618,12 +1664,6 @@ export class OrdersService {
   ): Promise<{
     calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[];
     calculatedSubtotal: number;
-    couponEligibleSubtotalCents: number;
-    couponEligibleLineItems: {
-      lineKey: string;
-      productStableId: string;
-      lineTotalCents: number;
-    }[];
     promotionLines: PromotionOrderLine[];
   }> {
     const normalizedItems = itemsDto.map((item) => {
@@ -2043,26 +2083,9 @@ export class OrdersService {
       });
     }
 
-    const promotionEvaluation = evaluateOrderPromotions({
-      lines: promotionLines,
-    });
-    const couponEligibleLineKeys = new Set(
-      promotionEvaluation.couponEligibleLineKeys,
-    );
-    const couponEligibleLineItems = promotionLines
-      .filter((line) => couponEligibleLineKeys.has(line.lineKey))
-      .map((line) => ({
-        lineKey: line.lineKey,
-        productStableId: line.productStableId,
-        lineTotalCents: line.lineTotalCents,
-      }));
-
     return {
       calculatedItems,
       calculatedSubtotal,
-      couponEligibleSubtotalCents:
-        promotionEvaluation.couponEligibleSubtotalCents,
-      couponEligibleLineItems,
       promotionLines,
     };
   }
@@ -2349,24 +2372,14 @@ export class OrdersService {
 
     // —— Step 1: 服务端重算商品小计 (Security)
     const items = dto.items ?? [];
-    const {
-      calculatedItems,
-      calculatedSubtotal,
-      couponEligibleSubtotalCents,
-      couponEligibleLineItems,
-      promotionLines,
-    } = await this.calculateLineItems(items, {
-      allowCustomUnitPrice:
-        dto.channel === Channel.in_store || dto.channel === Channel.ubereats,
-    });
+    const { calculatedItems, calculatedSubtotal, promotionLines } =
+      await this.calculateLineItems(items, {
+        allowCustomUnitPrice:
+          dto.channel === Channel.in_store || dto.channel === Channel.ubereats,
+      });
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
     );
-    if (normalizedCouponStableId && couponEligibleSubtotalCents <= 0) {
-      throw new BadRequestException(
-        'coupon is not available for daily special items',
-      );
-    }
 
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
@@ -2535,6 +2548,8 @@ export class OrdersService {
               stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
               unlockedItemStableIds: string[];
             } | null = null;
+            let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
+              null;
 
             if (hiddenItemStableIds.length > 0) {
               if (!normalizedUserStableId) {
@@ -2594,15 +2609,9 @@ export class OrdersService {
                 );
               }
 
-              if (
-                userCoupon.coupon.stackingPolicy === 'EXCLUSIVE' &&
-                normalizedCouponStableId
-              ) {
-                throw new BadRequestException(
-                  'coupon cannot be stacked with other coupons',
-                );
-              }
-
+              entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
+                userCoupon.coupon,
+              );
               userCouponToRedeem = {
                 id: userCoupon.id,
                 couponStableId: userCoupon.couponStableId,
@@ -2616,17 +2625,20 @@ export class OrdersService {
               {
                 userId,
                 couponStableId: normalizedCouponStableId ?? undefined,
-                subtotalCents: couponEligibleSubtotalCents,
-                couponEligibleLineItems,
               },
               { tx },
             );
             const promotionEvaluation = evaluateOrderPromotions({
               lines: promotionLines,
+              entitlementCoupon: entitlementCouponForPromotion,
               coupon: couponInfo?.coupon
                 ? toCouponPromotionLike(couponInfo.coupon)
                 : null,
             });
+            assertCouponPromotionAccepted(
+              promotionEvaluation,
+              couponInfo?.coupon?.couponStableId,
+            );
 
             const posDiscountCents = Math.min(
               subtotalCents,
@@ -2806,8 +2818,6 @@ export class OrdersService {
                 tx,
                 userId,
                 couponId: couponInfo.coupon.id,
-                subtotalCents: couponEligibleSubtotalCents,
-                couponEligibleLineItems,
                 orderId,
               });
             }
