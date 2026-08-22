@@ -11,7 +11,9 @@ import {
 import {
   DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
+  RetrieveUberStoreIntegrationConfigUseCase,
   SyncUberStoreStatusUseCase,
+  UpdateUberStoreIntegrationConfigUseCase,
 } from '../../application/merchant/uber-merchant-provisioning.service';
 import {
   DiscoverUberStoresUseCase,
@@ -150,8 +152,49 @@ export function createMerchantWiring(): Provider[] {
       ) => new ProvisionUberStoreUseCase(api, connections, mappings),
     },
     {
+      provide: RetrieveUberStoreIntegrationConfigUseCase,
+      inject: [
+        UBER_STORE_API,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberStoreApiPort,
+        connections: UberMerchantConnectionRepositoryPort,
+        mappings: UberStoreMappingRepositoryPort,
+      ) =>
+        new RetrieveUberStoreIntegrationConfigUseCase(
+          api,
+          connections,
+          mappings,
+        ),
+    },
+    {
+      provide: UpdateUberStoreIntegrationConfigUseCase,
+      inject: [
+        UBER_STORE_API,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberStoreApiPort,
+        connections: UberMerchantConnectionRepositoryPort,
+        mappings: UberStoreMappingRepositoryPort,
+      ) =>
+        new UpdateUberStoreIntegrationConfigUseCase(api, connections, mappings),
+    },
+    {
       provide: DeprovisionUberStoreUseCase,
-      useFactory: () => new DeprovisionUberStoreUseCase(),
+      inject: [
+        UBER_STORE_API,
+        UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
+      useFactory: (
+        api: UberStoreApiPort,
+        connections: UberMerchantConnectionRepositoryPort,
+        mappings: UberStoreMappingRepositoryPort,
+      ) => new DeprovisionUberStoreUseCase(api, connections, mappings),
     },
     {
       provide: SyncUberStoreStatusUseCase,

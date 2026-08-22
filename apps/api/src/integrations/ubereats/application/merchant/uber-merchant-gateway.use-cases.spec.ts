@@ -3,8 +3,11 @@ import {
   MapUberStoreUseCase,
 } from './uber-merchant-store-mapping.service';
 import {
+  DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
+  RetrieveUberStoreIntegrationConfigUseCase,
   SyncUberStoreStatusUseCase,
+  UpdateUberStoreIntegrationConfigUseCase,
 } from './uber-merchant-provisioning.service';
 
 const connection = { connectionId: 'merchant-1' };
@@ -236,6 +239,140 @@ describe('Uber merchant gateway use-case boundaries', () => {
 
     await expect(
       useCase.provisionStore('uber-store-1', {}, 'merchant-1'),
+    ).rejects.toBe(failure);
+    expect(mappings.upsertMapping).not.toHaveBeenCalled();
+  });
+
+  it('retrieves integration config only for the mapped merchant connection', async () => {
+    const config = {
+      storeId: 'uber-store-1',
+      integrationEnabled: true,
+    };
+    const api = {
+      retrieveIntegrationConfig: jest.fn().mockResolvedValue(config),
+    };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'merchant-1',
+        uberStoreId: 'uber-store-1',
+      }),
+    };
+    const useCase = new RetrieveUberStoreIntegrationConfigUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(
+      useCase.retrieve(' uber-store-1 ', 'merchant-1'),
+    ).resolves.toBe(config);
+    expect(api.retrieveIntegrationConfig).toHaveBeenCalledWith('uber-store-1');
+  });
+
+  it('updates integration config while preserving the scheduled webhook contract', async () => {
+    const api = {
+      updateIntegrationConfig: jest.fn().mockResolvedValue(undefined),
+    };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'merchant-1',
+        uberStoreId: 'uber-store-1',
+      }),
+    };
+    const useCase = new UpdateUberStoreIntegrationConfigUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(
+      useCase.update(
+        'uber-store-1',
+        {
+          integrator_store_id: 'sanq-store-1',
+          webhooks_config: {
+            schedule_order_webhooks: { is_enabled: false },
+          },
+        },
+        'merchant-1',
+      ),
+    ).resolves.toMatchObject({ ok: true, storeId: 'uber-store-1' });
+    expect(api.updateIntegrationConfig).toHaveBeenCalledWith(
+      'uber-store-1',
+      {
+        integrator_store_id: 'sanq-store-1',
+        webhooks_config: {
+          schedule_order_webhooks: { is_enabled: true },
+          webhooks_version: '1.0.0',
+        },
+      },
+      expect.stringMatching(/^sanqin-uber-/),
+    );
+  });
+
+  it('removes the upstream integration and marks the local mapping deprovisioned', async () => {
+    const mapping = {
+      connectionId: 'merchant-1',
+      uberStoreId: 'uber-store-1',
+      storeName: 'SanQ',
+      locationSummary: 'Toronto',
+      isProvisioned: true,
+      provisionedAt: new Date('2026-08-22T00:00:00.000Z'),
+      posExternalStoreId: 'sanq-pos',
+    };
+    const api = {
+      removeIntegration: jest.fn().mockResolvedValue(undefined),
+    };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue(mapping),
+      upsertMapping: jest
+        .fn()
+        .mockImplementation((value) => Promise.resolve(value)),
+    };
+    const useCase = new DeprovisionUberStoreUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(
+      useCase.revokeOrDeprovisionStore('uber-store-1', 'merchant-1'),
+    ).resolves.toMatchObject({ isProvisioned: false });
+    expect(api.removeIntegration).toHaveBeenCalledWith(
+      connection,
+      'uber-store-1',
+      expect.stringMatching(/^sanqin-uber-/),
+    );
+    expect(mappings.upsertMapping).toHaveBeenCalledWith({
+      ...mapping,
+      isProvisioned: false,
+      provisionedAt: null,
+    });
+  });
+
+  it('does not mark the local mapping deprovisioned when Uber removal fails', async () => {
+    const failure = new Error('remove failed');
+    const mapping = {
+      connectionId: 'merchant-1',
+      uberStoreId: 'uber-store-1',
+      storeName: 'SanQ',
+      locationSummary: 'Toronto',
+      isProvisioned: true,
+      provisionedAt: new Date('2026-08-22T00:00:00.000Z'),
+      posExternalStoreId: 'sanq-pos',
+    };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue(mapping),
+      upsertMapping: jest.fn(),
+    };
+    const useCase = new DeprovisionUberStoreUseCase(
+      { removeIntegration: jest.fn().mockRejectedValue(failure) } as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(
+      useCase.revokeOrDeprovisionStore('uber-store-1', 'merchant-1'),
     ).rejects.toBe(failure);
     expect(mappings.upsertMapping).not.toHaveBeenCalled();
   });

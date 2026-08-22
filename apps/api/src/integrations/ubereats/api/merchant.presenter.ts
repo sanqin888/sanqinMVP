@@ -6,6 +6,7 @@ import type {
   UberMerchantConnectionResponse,
   UberMerchantStoresResponse,
   UberOAuthConnectResponse,
+  UberStoreIntegrationConfigResponse,
 } from '../contracts/responses/merchant.responses';
 import { booleanOf, dateOf, recordOf, textOf } from './presenter.utils';
 
@@ -60,6 +61,48 @@ export const presentMerchantConnection = (
     tokenType: textOf(source.tokenType),
     expiresAt: dateOf(source.expiresAt),
     connectedAt: dateOf(source.connectedAt) ?? '',
+    contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
+  };
+};
+
+const nullableBooleanOf = (value: unknown): boolean | null =>
+  typeof value === 'boolean' ? value : null;
+const nullableRecordOf = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+export const presentStoreIntegrationConfig = (
+  result: unknown,
+): UberStoreIntegrationConfigResponse => {
+  const source = recordOf(result);
+  const requests = nullableRecordOf(source.allowedCustomerRequests);
+  return {
+    storeId: textOf(source.storeId) ?? '',
+    integrationEnabled: nullableBooleanOf(source.integrationEnabled),
+    allowedCustomerRequests: requests
+      ? {
+          allowSingleUseItemsRequests: nullableBooleanOf(
+            requests.allowSingleUseItemsRequests,
+          ),
+          allowSpecialInstructionRequests: nullableBooleanOf(
+            requests.allowSpecialInstructionRequests,
+          ),
+        }
+      : null,
+    integratorBrandId: textOf(source.integratorBrandId),
+    integratorStoreId: textOf(source.integratorStoreId),
+    isOrderManager: nullableBooleanOf(source.isOrderManager),
+    merchantStoreId: textOf(source.merchantStoreId),
+    requireManualAcceptance: nullableBooleanOf(source.requireManualAcceptance),
+    storeConfigurationData: textOf(source.storeConfigurationData),
+    webhooksConfig: nullableRecordOf(source.webhooksConfig),
+    onlineStatus: textOf(source.onlineStatus),
+    orderReleaseEnabled: nullableBooleanOf(source.orderReleaseEnabled),
+    autoAcceptEnabled: nullableBooleanOf(source.autoAcceptEnabled),
+    posMetadata: nullableRecordOf(source.posMetadata),
+    orderManagerClientId: textOf(source.orderManagerClientId),
+    isOrderManagerPending: nullableBooleanOf(source.isOrderManagerPending),
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };
