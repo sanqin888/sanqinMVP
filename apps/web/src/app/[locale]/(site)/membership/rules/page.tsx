@@ -1,9 +1,95 @@
 // apps/web/src/app/[locale]/membership/rules/page.tsx
 
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { isLocale } from "@/lib/i18n/locales";
 import type { Locale } from "@/lib/i18n/locales";
 import { notFound } from "next/navigation";
+
+type TierKey = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+
+type TierRule = {
+  tier: TierKey;
+  thresholdCents: number;
+  multiplier: number;
+  earnPtPerDollar: number;
+  earnValueRatePercent: number;
+};
+
+type MembershipProgramRules = {
+  earnPtPerDollar: number;
+  redeemDollarPerPoint: number;
+  referralPtPerDollar: number;
+  referralValueRatePercent: number;
+  tierRules: TierRule[];
+};
+
+type ApiEnvelope<T> = {
+  code: string;
+  details?: T;
+};
+
+const tierLabel: Record<TierKey, { zh: string; en: string }> = {
+  BRONZE: { zh: "青铜", en: "Bronze" },
+  SILVER: { zh: "白银", en: "Silver" },
+  GOLD: { zh: "黄金", en: "Gold" },
+  PLATINUM: { zh: "铂金", en: "Platinum" },
+};
+
+async function getBaseUrl(): Promise<string | null> {
+  const headerStore = await headers();
+  const host =
+    headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+  if (!host) return null;
+  const proto = headerStore.get("x-forwarded-proto") ?? "http";
+  return `${proto}://${host}`;
+}
+
+function unwrapEnvelope<T>(payload: unknown): T | null {
+  if (!payload || typeof payload !== "object") return null;
+  if ("code" in payload) {
+    const envelope = payload as ApiEnvelope<T>;
+    return (envelope.details ?? null) as T | null;
+  }
+  return payload as T;
+}
+
+async function fetchMembershipProgramRules(): Promise<MembershipProgramRules | null> {
+  const baseUrl = await getBaseUrl();
+  if (!baseUrl) return null;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/public/membership/rules`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json().catch(() => null)) as unknown;
+    return unwrapEnvelope<MembershipProgramRules>(payload);
+  } catch {
+    return null;
+  }
+}
+
+function formatPoints(value: number, locale: Locale): string {
+  return value.toLocaleString(locale === "zh" ? "zh-CN" : "en-CA", {
+    maximumFractionDigits: 6,
+  });
+}
+
+function formatPercent(value: number, locale: Locale): string {
+  return `${value.toLocaleString(locale === "zh" ? "zh-CN" : "en-CA", {
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function formatCurrencyFromCents(value: number, locale: Locale): string {
+  return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-CA", {
+    style: "currency",
+    currency: "CAD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value / 100);
+}
 
 export async function generateMetadata({
   params,
@@ -21,7 +107,7 @@ export async function generateMetadata({
   };
 }
 
-export default function MembershipRulesPage({
+export default async function MembershipRulesPage({
   params,
 }: {
   params: { locale: Locale };
@@ -29,6 +115,7 @@ export default function MembershipRulesPage({
   const { locale } = params;
   if (!isLocale(locale)) notFound();
   const isZh = locale === "zh";
+  const programRules = await fetchMembershipProgramRules();
 
   return (
     <div className="space-y-6 text-sm text-slate-800">
@@ -109,8 +196,28 @@ export default function MembershipRulesPage({
           </li>
           <li>
             {isZh
-              ? "储值余额（Store Balance）与积分为两个独立账户。储值余额表示顾客实际充值形成的可消费金额，不会与奖励积分合并计算。"
-              : "Store Balance and points are separate accounts. Store Balance represents spendable value funded by the customer and is not combined with loyalty points."}
+              ? "储值余额（Store Balance）与积分为两个独立账户。储值余额表示会员实际充值形成的预付消费金额；充值本金进入储值余额，活动赠送如以积分形式发放，则进入积分账户，不与储值本金混合。"
+              : "Store Balance and points are separate accounts. Store Balance is prepaid spending value funded by the member. Top-up principal is credited to Store Balance; any promotional bonus awarded as points is credited to the points account and is not mixed with the prepaid principal."}
+          </li>
+          <li>
+            {isZh
+              ? "储值充值完成后，充值本金会计入会员累计消费金额，并可能据此推动会员等级晋升。充值本金本身不再按餐品消费的会员等级倍率重复产生普通消费积分；如当时有明确的充值赠送活动，则按该活动规则另行发放奖励。"
+              : "Once a top-up is completed, the top-up principal is added to the member’s lifetime spend and may contribute to a tier upgrade. The top-up principal itself does not also earn ordinary food-purchase points at the member tier rate; any top-up bonus is awarded separately under the applicable promotion terms."}
+          </li>
+          <li>
+            {isZh
+              ? "会员之后使用储值余额支付订单时，符合条件的餐品金额仍按正常会员订单规则获得消费积分；但由于这部分储值本金在充值时已经计入累计消费，使用储值余额支付的金额不会再次计入会员等级累计消费，避免同一笔本金被重复计算。"
+              : "When Store Balance is later used to pay for an order, the eligible food-purchase amount still earns ordinary purchase points under the normal membership rules. However, because that prepaid principal was already added to lifetime spend when topped up, the amount paid with Store Balance is not added to tier-qualifying lifetime spend again."}
+          </li>
+          <li>
+            {isZh
+              ? "储值充值本金原则上不可提现，也不退回现金或原支付方式；法律另有要求，或经我们核实属于重复扣款、支付错误或系统错误等情况除外。会员账户目前也不支持将储值余额转移给其他会员。"
+              : "Top-up principal is generally not cash-withdrawable and is not returned to cash or the original payment method, except where required by law or where we verify a duplicate charge, payment error, system error, or similar issue. Store Balance also cannot currently be transferred to another member account."}
+          </li>
+          <li>
+            {isZh
+              ? "如果一笔使用储值余额支付的订单符合退款条件，已用于该订单的应退储值金额原则上退回原会员账户的 Store Balance，而不是改为现金退款；具体退款处理仍以退款政策和实际退款原因适用。"
+              : "If an order paid with Store Balance qualifies for a refund, the refundable Store Balance amount used on that order is generally restored to the same member’s Store Balance rather than converted to a cash refund. The Refund Policy and the actual reason for the refund continue to govern the final treatment."}
           </li>
           <li>
             {isZh
@@ -132,8 +239,8 @@ export default function MembershipRulesPage({
           </li>
           <li>
             {isZh
-              ? "部分退款时，积分会根据实际退款内容、符合条件的消费金额及适用活动规则进行相应调整。"
-              : "For a partial refund, points will be adjusted based on the refunded items or amount, the remaining eligible spend, and any applicable promotion rules."}
+              ? "部分退款时，积分会根据实际退款内容、符合条件的消费金额及适用活动规则进行相应调整。用于支付该订单的储值余额如应退，会退回 Store Balance；由于这部分本金在充值时已经计入累计消费，订单退款时不会再把同一笔储值支付金额从会员等级累计消费中重复扣减，等级只按该订单实际计入过的非储值消费部分调整。"
+              : "For a partial refund, points are adjusted based on the refunded items or amount, the remaining eligible spend, and applicable promotion rules. Any refundable Store Balance used on the order is restored to Store Balance; because that prepaid principal was already counted at top-up, the same balance-funded amount is not deducted from tier-qualifying lifetime spend a second time. Tier spend is adjusted only for the non-balance portion that was actually added by the order."}
           </li>
           <li>
             {isZh
@@ -149,9 +256,86 @@ export default function MembershipRulesPage({
         </h2>
         <p>
           {isZh
-            ? "会员等级目前包括青铜、白银、黄金和铂金等等级。等级根据系统当时公布的评估周期、符合条件的消费及相关规则计算。不同等级可享有不同积分倍率、专属优惠券或其他权益，具体以会员中心和相关活动说明为准。"
-            : "Current membership tiers include Bronze, Silver, Gold, and Platinum. Tiers are calculated using the evaluation period, eligible spending, and rules published by the system at the relevant time. Benefits may include different point multipliers, exclusive coupons, or other member benefits as shown in the Member Center and applicable promotion terms."}
+            ? "会员等级目前包括青铜、白银、黄金和铂金。等级以会员账户的累计消费金额为标准；普通订单按优惠后、税前的符合条件餐品金额计算，其中积分抵扣部分不计入等级累计，使用储值余额支付的部分也不再次计入等级累计，因为对应储值本金在充值完成时已经计入过累计消费。"
+            : "Current membership tiers are Bronze, Silver, Gold, and Platinum. Tier status is based on the member account’s lifetime spend. For ordinary orders, tier-qualifying spend is generally the eligible food amount after discounts and before tax, excluding redeemed-point value and the portion paid with Store Balance because that prepaid principal was already counted when the top-up was completed."}
         </p>
+        {programRules ? (
+          <div className="space-y-2">
+            <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">
+                      {isZh ? "会员等级" : "Tier"}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
+                      {isZh ? "累计消费门槛" : "Lifetime spend threshold"}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
+                      {isZh ? "积分获取" : "Points earning"}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
+                      {isZh ? "等值奖励率" : "Equivalent reward rate"}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {programRules.tierRules.map((rule) => (
+                    <tr key={rule.tier}>
+                      <td className="px-3 py-2 font-medium text-slate-900">
+                        {tierLabel[rule.tier][isZh ? "zh" : "en"]}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {rule.tier === "BRONZE"
+                          ? isZh
+                            ? "注册会员"
+                            : "Upon joining"
+                          : formatCurrencyFromCents(rule.thresholdCents, locale)}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {formatPoints(rule.earnPtPerDollar, locale)} pt / CAD $1
+                        {rule.multiplier !== 1
+                          ? ` (${formatPoints(rule.multiplier, locale)}×)`
+                          : ""}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {formatPercent(rule.earnValueRatePercent, locale)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-slate-500">
+              {isZh
+                ? `当前积分兑换价值：1 pt = ${formatCurrencyFromCents(programRules.redeemDollarPerPoint * 100, locale)}。表中“等值奖励率”按当前积分兑换价值折算。`
+                : `Current point redemption value: 1 pt = ${formatCurrencyFromCents(programRules.redeemDollarPerPoint * 100, locale)}. The equivalent reward rate above is calculated using the current redemption value.`}
+            </p>
+          </div>
+        ) : (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+            {isZh
+              ? "当前会员参数暂时无法加载，请以结算页和会员中心当时显示的信息为准。"
+              : "Current membership parameters are temporarily unavailable. Please refer to the information shown at checkout and in the Member Center."}
+          </p>
+        )}
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            {isZh
+              ? "上表的累计消费门槛、基础积分率、等级倍率和积分兑换价值均读取当前会员配置；管理员后续调整配置时，规则页会按新配置显示，不再在页面中写死金额或倍率。"
+              : "The lifetime-spend thresholds, base earning rate, tier multipliers, and point redemption value shown above are read from the current membership configuration. If an administrator changes those settings, this page reflects the updated configuration rather than relying on hard-coded amounts or rates."}
+          </li>
+          <li>
+            {isZh
+              ? "会员等级在符合条件的订单或储值充值完成结算后重新计算。因退款、改单或其他结算调整导致累计消费减少时，会员等级也会按调整后的累计消费重新计算。"
+              : "Tier status is recalculated after an eligible order or Store Balance top-up is settled. If a refund, order amendment, or other settlement adjustment reduces lifetime spend, the tier is recalculated from the adjusted lifetime spend."}
+          </li>
+          <li>
+            {isZh
+              ? "不同等级除积分倍率外，还可能获得等级升级优惠券、会员专属活动或其他权益；具体权益以会员中心和相关活动当时显示的规则为准。"
+              : "In addition to different point earning rates, tiers may receive tier-upgrade coupons, member-only promotions, or other benefits. The Member Center and applicable promotion terms govern the specific benefit available at the relevant time."}
+          </li>
+        </ul>
       </section>
 
       <section className="space-y-2">
@@ -169,10 +353,40 @@ export default function MembershipRulesPage({
               ? "邮箱仅用于注册时识别推荐人；推荐关系实际绑定至推荐人的会员账户，因此推荐人之后更新邮箱不会改变既有推荐关系。"
               : "The email is used only to identify the referrer during registration. The referral is actually bound to the referrer’s member account, so a later email change does not alter an existing referral relationship."}
           </li>
+        </ul>
+        {programRules ? (
+          <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-700 ring-1 ring-slate-200">
+            <p className="font-medium text-slate-900">
+              {isZh ? "当前推荐人奖励" : "Current referral reward"}
+            </p>
+            <p className="mt-1">
+              {isZh
+                ? `推荐人按符合条件的新增消费金额，每 CAD $1 获得 ${formatPoints(programRules.referralPtPerDollar, locale)} pt；按当前积分兑换价值折算，约为 ${formatPercent(programRules.referralValueRatePercent, locale)} 的奖励价值。`
+                : `The referrer earns ${formatPoints(programRules.referralPtPerDollar, locale)} pt for each CAD $1 of eligible new spend. At the current point redemption value, that is approximately ${formatPercent(programRules.referralValueRatePercent, locale)} in reward value.`}
+            </p>
+          </div>
+        ) : (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+            {isZh
+              ? "当前推荐奖励参数暂时无法加载，请以会员中心和适用活动当时显示的信息为准。"
+              : "Current referral parameters are temporarily unavailable. Please refer to the Member Center and applicable promotion terms."}
+          </p>
+        )}
+        <ul className="list-disc space-y-1 pl-5">
           <li>
             {isZh
-              ? "如有推荐奖励，其发放条件、奖励内容、有效期及其他限制以当时的推荐活动规则为准。"
-              : "Where referral rewards are offered, qualification, reward value, validity, and other restrictions are governed by the referral promotion terms in effect at that time."}
+              ? "被推荐会员完成符合条件的普通订单后，推荐奖励按该订单实际新增消费金额计算。优惠、积分抵扣以及本单使用的储值余额会从推荐奖励基数中扣除，避免同一笔预付资金在充值和后续消费时重复给推荐人发奖。"
+              : "After the referred member completes an eligible ordinary order, the referral reward is calculated from the order’s eligible new spend. Discounts, redeemed points, and Store Balance used on that order are excluded from the referral-reward base so the same prepaid funds are not rewarded twice at top-up and again when spent."}
+          </li>
+          <li>
+            {isZh
+              ? "被推荐会员进行储值充值时，充值金额本身也属于新增消费，推荐人会按当前推荐奖励比例获得对应积分；之后使用该储值余额消费时，余额支付部分不会再次产生推荐奖励。"
+              : "When the referred member tops up Store Balance, the top-up amount itself is treated as new spend and the referrer earns points at the current referral rate. When that Store Balance is later spent, the balance-funded portion does not generate another referral reward."}
+          </li>
+          <li>
+            {isZh
+              ? "普通订单发生退款或改单并减少符合条件的消费金额时，已发放的推荐奖励会按实际调整结果相应扣回或修正。推荐奖励的具体有效性还受当时适用的活动规则和反滥用规则约束。"
+              : "If an ordinary order is refunded or amended and the eligible spend is reduced, referral rewards already issued are reversed or adjusted accordingly. Referral rewards also remain subject to the applicable promotion terms and anti-abuse rules in effect at the time."}
           </li>
         </ul>
       </section>

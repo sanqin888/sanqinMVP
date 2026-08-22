@@ -20,6 +20,7 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { MfaGuard } from '../auth/mfa.guard';
 import { AuthService } from '../auth/auth.service';
 import { TRUSTED_DEVICE_COOKIE } from '../auth/trusted-device.constants';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string };
@@ -504,5 +505,15 @@ export class MembershipController {
       throw new BadRequestException('addressStableId is required');
     }
     return this.membership.deleteAddress({ userStableId, addressStableId });
+  }
+}
+
+@Controller('public/membership')
+export class MembershipPublicController {
+  constructor(private readonly loyalty: LoyaltyService) {}
+
+  @Get('rules')
+  getRules() {
+    return this.loyalty.getMembershipProgramRules();
   }
 }
