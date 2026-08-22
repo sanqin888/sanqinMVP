@@ -46,7 +46,7 @@ function resolveApplicableLines(params: {
 function resolveTargetLineKeys(
   applicableLines: readonly CouponEligibleLineItem[],
 ): string[] | undefined {
-  if (applicableLines.length === 0) return [];
+  if (applicableLines.length === 0) return undefined;
   if (applicableLines.some((line) => !line.lineKey)) return undefined;
   return applicableLines.map((line) => line.lineKey as string);
 }
