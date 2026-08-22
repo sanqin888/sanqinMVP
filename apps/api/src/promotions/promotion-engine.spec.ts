@@ -97,6 +97,53 @@ describe('Promotion Engine', () => {
     );
   });
 
+  it('keeps exclusive DailySpecial pricing independent across different lines', () => {
+    const first = toDailySpecialPromotionCandidate({
+      special: {
+        stableId: 'daily-1',
+        pricingMode: 'OVERRIDE_PRICE',
+        overridePriceCents: 799,
+        discountDeltaCents: null,
+        discountPercent: null,
+        disallowCoupons: true,
+      },
+      lineKey: 'line-1',
+      productStableId: 'item-1',
+      quantity: 1,
+      baseUnitPriceCents: 949,
+    });
+    const second = toDailySpecialPromotionCandidate({
+      special: {
+        stableId: 'daily-2',
+        pricingMode: 'OVERRIDE_PRICE',
+        overridePriceCents: 599,
+        discountDeltaCents: null,
+        discountPercent: null,
+        disallowCoupons: true,
+      },
+      lineKey: 'line-2',
+      productStableId: 'item-2',
+      quantity: 2,
+      baseUnitPriceCents: 749,
+    });
+
+    const result = resolvePromotionCandidates([first, second]);
+
+    expect(result.rejected).toEqual([]);
+    expect(result.adjustments).toEqual([
+      expect.objectContaining({
+        promotionStableId: 'daily-1',
+        lineKey: 'line-1',
+        discountCents: 150,
+      }),
+      expect.objectContaining({
+        promotionStableId: 'daily-2',
+        lineKey: 'line-2',
+        discountCents: 300,
+      }),
+    ]);
+  });
+
   it('allows coupon stacking on a DailySpecial line when configured', () => {
     const dailySpecial = toDailySpecialPromotionCandidate({
       special: {
@@ -220,8 +267,9 @@ describe('Promotion Engine', () => {
       subtotalCents: 1200,
     }).candidate;
     const resolution = resolvePromotionCandidates([candidate]);
+    const snapshot = createPromotionSnapshot(resolution.adjustments);
 
-    expect(createPromotionSnapshot(resolution.adjustments)).toEqual({
+    expect(snapshot).toEqual({
       version: 1,
       adjustments: [
         expect.objectContaining({
@@ -232,5 +280,6 @@ describe('Promotion Engine', () => {
         }),
       ],
     });
+    expect(snapshot.adjustments[0]).not.toBe(resolution.adjustments[0]);
   });
 });
