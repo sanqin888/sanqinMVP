@@ -1,6 +1,6 @@
-//Users/apple/sanqinMVP/apps/api/src/common/daily-specials.ts
 import { DateTime } from 'luxon';
 import { SpecialPricingMode } from '@prisma/client';
+import { resolvePromotionLinePriceCents } from '../promotions/promotion-engine';
 
 export type DailySpecialLike = {
   pricingMode: SpecialPricingMode;
@@ -74,32 +74,11 @@ export function resolveEffectivePriceCents(
   basePriceCents: number,
   special: DailySpecialLike,
 ): number {
-  let effective = basePriceCents;
-
-  switch (special.pricingMode) {
-    case SpecialPricingMode.OVERRIDE_PRICE: {
-      if (typeof special.overridePriceCents === 'number') {
-        effective = special.overridePriceCents;
-      }
-      break;
-    }
-    case SpecialPricingMode.DISCOUNT_DELTA: {
-      if (typeof special.discountDeltaCents === 'number') {
-        effective = basePriceCents - special.discountDeltaCents;
-      }
-      break;
-    }
-    case SpecialPricingMode.DISCOUNT_PERCENT: {
-      if (typeof special.discountPercent === 'number') {
-        const percent = special.discountPercent;
-        effective = Math.round((basePriceCents * (100 - percent)) / 100);
-      }
-      break;
-    }
-    default:
-      break;
-  }
-
-  if (!Number.isFinite(effective)) return basePriceCents;
-  return Math.max(0, Math.min(basePriceCents, Math.round(effective)));
+  return resolvePromotionLinePriceCents({
+    basePriceCents,
+    pricingMode: special.pricingMode,
+    overridePriceCents: special.overridePriceCents,
+    discountDeltaCents: special.discountDeltaCents,
+    discountPercent: special.discountPercent,
+  });
 }
