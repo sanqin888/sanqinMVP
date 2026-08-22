@@ -512,6 +512,7 @@ model Order {
   couponId                   String?                 @db.Uuid
   couponMinSpendCents        Int?
   couponTitleSnapshot        String?
+  promotionSnapshot          Json?
   contactName                String?
   contactEmail               String?
   contactPhone               String?
@@ -580,6 +581,7 @@ model Coupon {
   code                  String
   title                 String
   discountCents         Int
+  discountPercent       Int?
   minSpendCents         Int?
   expiresAt             DateTime?
   issuedAt              DateTime             @default(now())
@@ -870,16 +872,16 @@ model CheckoutIntent {
   checkoutSessionId String?   @unique
   amountCents       Int
   currency          String
-  locale            String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  expiresAt         DateTime?
-  metadataJson      Json
-  orderId           String?   @db.Uuid
-  result            String?
-  status            String    @default("pending")
-  processedAt       DateTime?
-  id                String    @id @default(uuid()) @db.Uuid
+  locale             String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  expiresAt          DateTime?
+  metadataJson       Json
+  orderId            String?   @db.Uuid
+  result             String?
+  status             String    @default("pending")
+  processedAt        DateTime?
+  id                 String    @id @default(uuid()) @db.Uuid
 
   @@index([referenceId, createdAt])
 }

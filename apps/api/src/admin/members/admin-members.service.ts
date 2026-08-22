@@ -712,6 +712,7 @@ export class AdminMembersService {
       title: coupon.title,
       code: coupon.code,
       discountCents: coupon.discountCents,
+      discountPercent: coupon.discountPercent ?? undefined,
       minSpendCents: coupon.minSpendCents ?? undefined,
       expiresAt: coupon.expiresAt?.toISOString(),
       issuedAt: coupon.issuedAt.toISOString(),
@@ -1210,13 +1211,10 @@ export class AdminMembersService {
       type: 'FIXED_CENTS' | 'PERCENT';
       applyTo: 'ORDER' | 'ITEM';
       amountCents?: number;
+      percentOff?: number;
       constraints?: { minSubtotalCents?: number };
       itemStableIds?: string[];
     };
-
-    if (rule.type === 'PERCENT') {
-      throw new BadRequestException('Percent coupons are not supported');
-    }
 
     const unlockedItemStableIds =
       rule.applyTo === 'ITEM' ? (rule.itemStableIds ?? []) : [];
@@ -1244,7 +1242,10 @@ export class AdminMembersService {
           code: template.couponStableId,
           title:
             template.tittleCh ?? template.titleEn ?? template.couponStableId,
-          discountCents: rule.amountCents ?? 0,
+          discountCents:
+            rule.type === 'FIXED_CENTS' ? (rule.amountCents ?? 0) : 0,
+          discountPercent:
+            rule.type === 'PERCENT' ? (rule.percentOff ?? null) : null,
           minSpendCents,
           expiresAt,
           issuedAt: now,

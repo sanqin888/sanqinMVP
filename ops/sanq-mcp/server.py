@@ -1308,6 +1308,96 @@ def workspace_write_file(path: str, content: str) -> str:
     return f"wrote {_relative_to(WORKSPACE_ROOT, resolved)} ({len(content)} characters)"
 
 
+@mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
+def workspace_apply_patch(
+    path: str,
+    old_text: str,
+    new_text: str,
+    expected_count: int = 1,
+) -> str:
+    """Replace an exact text fragment inside one existing workspace file.
+
+    The target must be a safe UTF-8 file inside the isolated workspace. The
+    replacement is rejected unless old_text occurs exactly expected_count times.
+    """
+    _assert_workspace_ready()
+    if not 1 <= expected_count <= 1_000:
+        raise ValueError("expected_count must be between 1 and 1000")
+    old_text = _validate_plain_text(
+        old_text,
+        name="old_text",
+        max_len=MAX_FILE_WRITE_CHARS,
+    )
+    new_text = _validate_plain_text(
+        new_text,
+        name="new_text",
+        max_len=MAX_FILE_WRITE_CHARS,
+    )
+    if not old_text:
+        raise ValueError("old_text is required")
+    if old_text == new_text:
+        raise ValueError("old_text and new_text must differ")
+
+    resolved = _resolve_under(WORKSPACE_ROOT, path)
+    _assert_safe_repo_path(resolved, WORKSPACE_ROOT)
+    if not resolved.is_file():
+        raise ValueError("path is not a file")
+
+    try:
+        content = resolved.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("path is not a UTF-8 text file") from exc
+    if len(content) > MAX_FILE_WRITE_CHARS:
+        raise ValueError(
+            f"file is too large to patch (max {MAX_FILE_WRITE_CHARS} characters)"
+        )
+
+    match_count = content.count(old_text)
+    if match_count != expected_count:
+        raise ValueError(
+            "patch rejected: "
+            f"expected {expected_count} match(es), found {match_count}"
+        )
+
+    updated = content.replace(old_text, new_text, expected_count)
+    if len(updated) > MAX_FILE_WRITE_CHARS:
+        raise ValueError(
+            f"patched file would be too large (max {MAX_FILE_WRITE_CHARS} characters)"
+        )
+    resolved.write_text(updated, encoding="utf-8")
+
+    relative = _relative_to(WORKSPACE_ROOT, resolved)
+    diff = _git_diff(
+        WORKSPACE_ROOT,
+        "workspace",
+        path=relative,
+        staged=False,
+        stat=False,
+    )
+    return (
+        f"patched {relative} ({match_count} replacement(s); "
+        f"{len(old_text)} -> {len(new_text)} characters)\n{diff}"
+    )
+
+
+@mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
+def workspace_delete_file(path: str) -> str:
+    """Delete one safe regular file from the isolated writable workspace.
+
+    Directories, production paths, .git, environment files, credentials, and
+    key material are blocked.
+    """
+    _assert_workspace_ready()
+    resolved = _resolve_under(WORKSPACE_ROOT, path)
+    _assert_safe_repo_path(resolved, WORKSPACE_ROOT)
+    if not resolved.is_file():
+        raise ValueError("path is not a file")
+
+    relative = _relative_to(WORKSPACE_ROOT, resolved)
+    resolved.unlink()
+    return f"deleted {relative}"
+
+
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def workspace_search_code(
     query: str,
@@ -1457,13 +1547,13 @@ def workspace_git_checkout(ref: str) -> str:
 
 @mcp.tool(annotations=LOCAL_WRITE_ANNOTATIONS)
 def workspace_git_add(paths: list[str]) -> str:
-    """Stage selected workspace paths with git add."""
+    """Stage selected workspace paths with git add, including deleted files."""
     _assert_workspace_ready()
     if not paths or len(paths) > 50:
         raise ValueError("paths must contain between 1 and 50 entries")
     rel_paths: list[str] = []
     for path in paths:
-        resolved = _resolve_under(WORKSPACE_ROOT, path)
+        resolved = _resolve_under(WORKSPACE_ROOT, path, require_exists=False)
         _assert_safe_repo_path(resolved, WORKSPACE_ROOT)
         rel_paths.append(_relative_to(WORKSPACE_ROOT, resolved))
     return _run_workspace(
