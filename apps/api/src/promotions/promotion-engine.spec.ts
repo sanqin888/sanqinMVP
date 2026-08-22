@@ -217,9 +217,9 @@ describe('Promotion Engine', () => {
       code: 'MIN_SPEND_NOT_MET',
       reason: 'order subtotal does not meet coupon rules',
     });
-    expect(resolvePromotionCandidates([evaluation.candidate]).adjustments).toEqual(
-      [],
-    );
+    expect(
+      resolvePromotionCandidates([evaluation.candidate]).adjustments,
+    ).toEqual([]);
   });
 
   it('resolves exclusive candidates deterministically within a stacking group', () => {
