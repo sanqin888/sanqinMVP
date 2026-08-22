@@ -53,8 +53,8 @@ export default function RefundPage({
           </li>
           <li>
             {isZh
-              ? "第三方交易平台订单与 SanQ 网站订单是不同的交易渠道；我们不会在本政策中替第三方平台制定或复制其退款规则。"
-              : "Third-party marketplace orders and SanQ website orders are different transaction channels. This policy does not create or reproduce the refund rules of a third-party marketplace."}
+              ? "通过 Uber Eats 或其他第三方交易平台直接下单并完成交易的订单，适用对应平台自身的客服、取消和退款规则。"
+              : "Orders placed and transacted directly through Uber Eats or another third-party marketplace are subject to that platform’s own support, cancellation, and refund rules."}
           </li>
         </ul>
       </section>

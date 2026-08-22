@@ -315,16 +315,11 @@ export default async function MembershipRulesPage({
         ) : (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
             {isZh
-              ? "当前会员参数暂时无法加载，请以结算页和会员中心当时显示的信息为准。"
-              : "Current membership parameters are temporarily unavailable. Please refer to the information shown at checkout and in the Member Center."}
+              ? "当前会员等级与积分信息暂时无法显示，请以结算页和会员中心显示的信息为准。"
+              : "Current membership tier and points information is temporarily unavailable. Please refer to the information shown at checkout and in the Member Center."}
           </p>
         )}
         <ul className="list-disc space-y-1 pl-5">
-          <li>
-            {isZh
-              ? "上表的累计消费门槛、基础积分率、等级倍率和积分兑换价值均读取当前会员配置；管理员后续调整配置时，规则页会按新配置显示，不再在页面中写死金额或倍率。"
-              : "The lifetime-spend thresholds, base earning rate, tier multipliers, and point redemption value shown above are read from the current membership configuration. If an administrator changes those settings, this page reflects the updated configuration rather than relying on hard-coded amounts or rates."}
-          </li>
           <li>
             {isZh
               ? "会员等级在符合条件的订单或储值充值完成结算后重新计算。因退款、改单或其他结算调整导致累计消费减少时，会员等级也会按调整后的累计消费重新计算。"
@@ -368,8 +363,8 @@ export default async function MembershipRulesPage({
         ) : (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
             {isZh
-              ? "当前推荐奖励参数暂时无法加载，请以会员中心和适用活动当时显示的信息为准。"
-              : "Current referral parameters are temporarily unavailable. Please refer to the Member Center and applicable promotion terms."}
+              ? "当前推荐奖励信息暂时无法显示，请以会员中心和适用活动规则为准。"
+              : "Current referral reward information is temporarily unavailable. Please refer to the Member Center and applicable promotion terms."}
           </p>
         )}
         <ul className="list-disc space-y-1 pl-5">
