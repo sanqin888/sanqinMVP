@@ -173,10 +173,16 @@ function candidatesConflict(
   right: PromotionCandidate,
 ): boolean {
   if (left.stacking.group === right.stacking.group) {
-    return (
+    const hasExclusiveCandidate =
       left.stacking.mode === 'EXCLUSIVE' ||
-      right.stacking.mode === 'EXCLUSIVE'
-    );
+      right.stacking.mode === 'EXCLUSIVE';
+    if (!hasExclusiveCandidate) return false;
+
+    // Coupons are order-level selections, so EXCLUSIVE remains global within
+    // that group. Item-price promotions are exclusive only on overlapping
+    // lines; unrelated DailySpecial lines must be able to coexist in one order.
+    if (left.stacking.group === 'COUPON') return true;
+    return lineTargetsOverlap(left, right);
   }
 
   if (!lineTargetsOverlap(left, right)) return false;
@@ -284,6 +290,12 @@ export function createPromotionSnapshot(
 ): PromotionSnapshotV1 {
   return {
     version: 1,
-    adjustments: adjustments.map((adjustment) => ({ ...adjustment })),
+    adjustments: adjustments.map((adjustment) => ({
+      ...adjustment,
+      targetLineKeys: adjustment.targetLineKeys
+        ? [...adjustment.targetLineKeys]
+        : undefined,
+      snapshot: adjustment.snapshot ? { ...adjustment.snapshot } : undefined,
+    })),
   };
 }
