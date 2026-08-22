@@ -512,6 +512,7 @@ model Order {
   couponId                   String?                 @db.Uuid
   couponMinSpendCents        Int?
   couponTitleSnapshot        String?
+  promotionSnapshot          Json?
   contactName                String?
   contactEmail               String?
   contactPhone               String?

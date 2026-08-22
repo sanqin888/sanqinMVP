@@ -297,20 +297,47 @@ export function resolvePromotionCandidates(
   };
 }
 
+function snapshotAdjustment(
+  adjustment: PromotionAdjustment,
+): PromotionAdjustment {
+  return {
+    promotionStableId: adjustment.promotionStableId,
+    source: adjustment.source,
+    scope: adjustment.scope,
+    discountCents: adjustment.discountCents,
+    stackingGroup: adjustment.stackingGroup,
+    stackingMode: adjustment.stackingMode,
+    ...(adjustment.excludedStackingGroups
+      ? { excludedStackingGroups: [...adjustment.excludedStackingGroups] }
+      : {}),
+    ...(adjustment.lineKey ? { lineKey: adjustment.lineKey } : {}),
+    ...(adjustment.productStableId
+      ? { productStableId: adjustment.productStableId }
+      : {}),
+    ...(typeof adjustment.quantity === 'number'
+      ? { quantity: adjustment.quantity }
+      : {}),
+    ...(typeof adjustment.baseUnitPriceCents === 'number'
+      ? { baseUnitPriceCents: adjustment.baseUnitPriceCents }
+      : {}),
+    ...(typeof adjustment.effectiveUnitPriceCents === 'number'
+      ? { effectiveUnitPriceCents: adjustment.effectiveUnitPriceCents }
+      : {}),
+    ...(typeof adjustment.applicableSubtotalCents === 'number'
+      ? { applicableSubtotalCents: adjustment.applicableSubtotalCents }
+      : {}),
+    ...(adjustment.targetLineKeys
+      ? { targetLineKeys: [...adjustment.targetLineKeys] }
+      : {}),
+    ...(adjustment.snapshot ? { snapshot: { ...adjustment.snapshot } } : {}),
+  };
+}
+
 export function createPromotionSnapshot(
   adjustments: readonly PromotionAdjustment[],
 ): PromotionSnapshotV1 {
   return {
     version: 1,
-    adjustments: adjustments.map((adjustment) => ({
-      ...adjustment,
-      excludedStackingGroups: adjustment.excludedStackingGroups
-        ? [...adjustment.excludedStackingGroups]
-        : undefined,
-      targetLineKeys: adjustment.targetLineKeys
-        ? [...adjustment.targetLineKeys]
-        : undefined,
-      snapshot: adjustment.snapshot ? { ...adjustment.snapshot } : undefined,
-    })),
+    adjustments: adjustments.map(snapshotAdjustment),
   };
 }
