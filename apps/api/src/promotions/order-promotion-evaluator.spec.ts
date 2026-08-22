@@ -171,7 +171,6 @@ describe('order promotion evaluator', () => {
         source: 'DAILY_SPECIAL',
         lineKey: 'custom-special-line',
         discountCents: 0,
-        snapshot: expect.objectContaining({ priceApplied: false }),
       }),
       expect.objectContaining({
         source: 'COUPON',
@@ -179,6 +178,14 @@ describe('order promotion evaluator', () => {
         applicableSubtotalCents: 1000,
       }),
     ]);
+    expect(result.adjustments[0]?.snapshot).toEqual({
+      pricingMode: 'OVERRIDE_PRICE',
+      overridePriceCents: 799,
+      discountDeltaCents: null,
+      discountPercent: null,
+      disallowCoupons: true,
+      priceApplied: false,
+    });
   });
 
   it('returns the same adjustments in its versioned order snapshot', () => {

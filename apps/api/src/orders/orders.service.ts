@@ -164,7 +164,9 @@ type CouponForPromotion = {
   stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
 };
 
-function toCouponPromotionLike(coupon: CouponForPromotion): CouponPromotionLike {
+function toCouponPromotionLike(
+  coupon: CouponForPromotion,
+): CouponPromotionLike {
   return {
     couponStableId: coupon.couponStableId,
     code: coupon.code,
@@ -2760,7 +2762,8 @@ export class OrdersService {
                 couponTitleSnapshot: couponInfo?.coupon?.title,
                 couponMinSpendCents: couponInfo?.coupon?.minSpendCents,
                 couponExpiresAt: couponInfo?.coupon?.expiresAt,
-                promotionSnapshot: promotionEvaluation.snapshot as unknown as Prisma.InputJsonValue,
+                promotionSnapshot:
+                  promotionEvaluation.snapshot as unknown as Prisma.InputJsonValue,
                 loyaltyRedeemCents,
                 subtotalAfterDiscountCents,
                 ...(deliveryMeta
