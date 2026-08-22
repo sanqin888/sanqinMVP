@@ -54,6 +54,10 @@ export type UberOrderCartItemV1 = {
     unit?: string;
   };
   customer_request?: {
+    allergy?: {
+      allergens?: string[];
+      instructions?: string;
+    };
     special_instructions?: string;
   };
   selected_modifier_groups?: Array<{

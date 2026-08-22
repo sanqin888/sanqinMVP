@@ -19,7 +19,13 @@
             "title": "Fixture Item With Modifier",
             "external_data": "menu-item-2",
             "quantity": { "amount": 1, "unit": "PIECE" },
-            "customer_request": { "special_instructions": "Fixture item note" },
+            "customer_request": {
+              "allergy": {
+                "allergens": ["PEANUTS", "SOY"],
+                "instructions": "Use a clean surface"
+              },
+              "special_instructions": "Fixture item note"
+            },
             "selected_modifier_groups": [
               {
                 "id": "modifier-group-1",
@@ -30,6 +36,9 @@
                     "cart_item_id": "cart-option-1",
                     "title": "Fixture Option",
                     "quantity": { "amount": 1, "unit": "PIECE" },
+                    "customer_request": {
+                      "special_instructions": "Cook option separately"
+                    },
                     "selected_modifier_groups": []
                   }
                 ]

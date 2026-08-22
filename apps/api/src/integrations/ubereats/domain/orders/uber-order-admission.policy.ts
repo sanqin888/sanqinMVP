@@ -10,7 +10,8 @@ export type UberOrderAdmissionDenial = {
     | 'INVALID_ORDER'
     | 'ITEM_UNAVAILABLE'
     | 'PRICE_MISMATCH'
-    | 'POS_OFFLINE';
+    | 'POS_OFFLINE'
+    | 'SPECIAL_INSTRUCTIONS';
   reasonDetail: string;
 };
 
@@ -31,6 +32,16 @@ export type UberOrderAdmissionFacts = {
 /** Pure business policy for deciding whether an incoming Uber order is admissible. */
 export class UberOrderAdmissionPolicy {
   invalidDetail(reason: InvalidOrderReason): UberOrderAdmissionDecision {
+    if (reason === 'UNRELAYABLE_CUSTOMER_REQUEST') {
+      return {
+        kind: 'DENY',
+        denial: {
+          reasonCode: 'SPECIAL_INSTRUCTIONS',
+          reasonDetail: 'Uber customer request cannot be fully relayed to POS',
+        },
+      };
+    }
+
     const reasonDetail =
       reason === 'EMPTY_ITEMS'
         ? '订单不包含可导入商品'

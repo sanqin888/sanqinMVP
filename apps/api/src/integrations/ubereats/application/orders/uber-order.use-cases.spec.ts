@@ -133,6 +133,38 @@ describe('Uber order use-case boundaries', () => {
     expect(repository.saveImportedOrder).not.toHaveBeenCalled();
   });
 
+  it('denies an unrelayable allergy request before importing the order', async () => {
+    const repository = {
+      findByExternalOrderId: jest.fn().mockResolvedValue(null),
+      findMenuMappings: jest.fn(),
+      saveExistingOrderCancellation: jest.fn(),
+      saveImportedOrder: jest.fn(),
+    };
+    const actions = { request: jest.fn().mockResolvedValue(undefined) };
+    const useCase = new ImportUberOrderUseCase(
+      repository,
+      {
+        fetchOrderDetail: jest.fn().mockResolvedValue({
+          kind: 'invalid',
+          reason: 'UNRELAYABLE_CUSTOMER_REQUEST',
+        }),
+      },
+      actions as unknown as UberOrderActionService,
+      { findMapping: jest.fn() } as never,
+    );
+
+    await useCase.execute('orders.notification', 'event-allergy', notification);
+    expect(actions.request).toHaveBeenCalledWith(
+      'fixture-order-immediate',
+      'DENY',
+      {
+        reasonCode: 'SPECIAL_INSTRUCTIONS',
+        reasonDetail: 'Uber customer request cannot be fully relayed to POS',
+      },
+    );
+    expect(repository.saveImportedOrder).not.toHaveBeenCalled();
+  });
+
   it('commits the ACCEPT intent with a valid v1 order import', async () => {
     const saved: { order?: ImportedOrderInput } = {};
     const repository: UberOrderImportRepositoryPort = {
