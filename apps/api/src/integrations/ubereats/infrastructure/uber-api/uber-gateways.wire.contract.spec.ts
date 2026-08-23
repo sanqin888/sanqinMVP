@@ -8,10 +8,7 @@ import { UberMerchantApiAdapter } from './uber-merchant-api.adapter';
 import { UberMenuGatewayAdapter } from './uber-menu-publication.adapter';
 import { UberOrderActionGatewayAdapter } from './uber-order-action.gateway';
 import { UberOrderDetailGatewayAdapter } from './uber-order-detail.gateway';
-import {
-  UberAuthService,
-  type UberAuthHttpPort,
-} from './uber-token.provider';
+import { UberAuthService, type UberAuthHttpPort } from './uber-token.provider';
 import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 import {
   type UberTelemetryPort,
@@ -91,8 +88,7 @@ describe('Uber gateways wire contract v1', () => {
       new UberApiConfigService({
         UBER_EATS_CLIENT_ID: 'fixture-client-id',
         UBER_EATS_CLIENT_SECRET: 'fixture-client-secret',
-        UBER_EATS_APP_SCOPES:
-          'eats.store eats.order eats.store.status.write',
+        UBER_EATS_APP_SCOPES: 'eats.store eats.order eats.store.status.write',
         UBER_EATS_TOKEN_ENDPOINT: 'https://auth.uber.com/oauth/v2/token',
       }),
     );

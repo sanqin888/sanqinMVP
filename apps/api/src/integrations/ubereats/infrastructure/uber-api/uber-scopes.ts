@@ -40,7 +40,8 @@ const MERCHANT_AUTHORIZATION_SCOPE_SET = new Set<string>(
 
 export const isUberClientCredentialsScope = (
   value: string,
-): value is UberClientCredentialsScope => CLIENT_CREDENTIAL_SCOPE_SET.has(value);
+): value is UberClientCredentialsScope =>
+  CLIENT_CREDENTIAL_SCOPE_SET.has(value);
 
 export const isUberMerchantAuthorizationScope = (
   value: string,

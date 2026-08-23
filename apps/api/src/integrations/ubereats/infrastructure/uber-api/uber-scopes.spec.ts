@@ -12,7 +12,9 @@ describe('Uber OAuth scope registry', () => {
     );
     const merchantScopes = Object.values(UBER_MERCHANT_AUTHORIZATION_SCOPES);
 
-    expect(merchantScopes.filter((scope) => clientScopes.has(scope))).toEqual([]);
+    expect(merchantScopes.filter((scope) => clientScopes.has(scope))).toEqual(
+      [],
+    );
     expect(UBER_REQUIRED_CLIENT_CREDENTIAL_SCOPES).toEqual([
       'eats.store',
       'eats.order',

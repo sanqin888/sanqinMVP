@@ -18,10 +18,7 @@ import {
   type UberRateLimitConfig,
 } from './uber-api-config.service';
 import { mapUberGatewayFailure } from './uber-error.mapper';
-import type {
-  UberClientCredentialsScope,
-  UberOAuthScope,
-} from './uber-scopes';
+import type { UberClientCredentialsScope, UberOAuthScope } from './uber-scopes';
 import { isUberApplicationError } from '../../application/shared/uber-application.error';
 
 type UberGatewayRequestBase = Pick<
