@@ -238,7 +238,9 @@ describe('Uber gateways wire contract v1', () => {
       .mockResolvedValueOnce(
         uberHttpResult(200, {
           status: 'OFFLINE',
-          offlineReason: 'PAUSED_BY_RESTAURANT',
+          offline_reason: 'PAUSED_BY_RESTAURANT',
+          offline_reason_metadata: 'UNFULFILL_RATE',
+          is_offline_until: '2026-08-23T03:00:00.000Z',
         }),
       )
       .mockResolvedValueOnce(
@@ -255,8 +257,8 @@ describe('Uber gateways wire contract v1', () => {
       storeId: 'store/1',
       status: 'OFFLINE',
       offlineReason: 'PAUSED_BY_RESTAURANT',
-      offlineReasonMetadata: null,
-      isOfflineUntil: null,
+      offlineReasonMetadata: 'UNFULFILL_RATE',
+      isOfflineUntil: '2026-08-23T03:00:00.000Z',
     });
     await expect(
       adapter.updatePrepTime('store/1', 900, 'prep:key:v1'),
@@ -267,7 +269,7 @@ describe('Uber gateways wire contract v1', () => {
 
     expect(transport.inspect.mock.calls.map(([request]) => request)).toEqual([
       {
-        path: '/v1/eats/store/store%2F1/status',
+        path: '/v1/delivery/store/store%2F1/status',
         method: 'GET',
         operation: 'merchant.retrieve-store-status',
         scope: 'eats.store',
@@ -285,9 +287,11 @@ describe('Uber gateways wire contract v1', () => {
     ]);
   });
 
-  it('store status has a write scope and stable idempotency key', async () => {
+  it('store status uses the Store API Suite write endpoint and scope', async () => {
     const transport = createUberTransportFake();
-    transport.inspect.mockResolvedValue(uberHttpResult(204));
+    transport.inspect.mockResolvedValue(
+      uberHttpResult(200, { status: 'ONLINE', previous_status: 'OFFLINE' }),
+    );
     const adapter = new UberMerchantApiAdapter(
       transport,
       undefined as never,
@@ -296,13 +300,36 @@ describe('Uber gateways wire contract v1', () => {
     );
     await adapter.writeStatus('store/1', { status: 'ONLINE' }, 'status:key:v1');
     expect(transport.inspect).toHaveBeenCalledWith({
-      path: '/v1/eats/store/store%2F1/status',
+      path: '/v1/delivery/store/store%2F1/update-store-status',
       method: 'POST',
       operation: 'uber.store.status',
       scope: 'eats.store.status.write',
       partitionKey: 'store/1',
       json: { status: 'ONLINE' },
       idempotencyKey: 'status:key:v1',
+    });
+  });
+
+  it('treats a store-status 409 as an upstream rejection instead of success', async () => {
+    const transport = createUberTransportFake();
+    transport.inspect.mockResolvedValue(
+      uberHttpResult(409, { message: 'status conflict' }),
+    );
+    const adapter = new UberMerchantApiAdapter(
+      transport,
+      undefined as never,
+      undefined as never,
+      audit,
+    );
+
+    await expect(
+      adapter.writeStatus('store/1', { status: 'ONLINE' }, 'status:key:v1'),
+    ).resolves.toMatchObject({
+      uberStoreId: 'store/1',
+      outcome: 'FAILED',
+      reason: 'UPSTREAM_REJECTED',
+      retryable: false,
+      attempts: 1,
     });
   });
 

@@ -657,6 +657,53 @@ describe('Uber merchant gateway use-case boundaries', () => {
     expect(api.updatePrepTime).not.toHaveBeenCalled();
   });
 
+  it('translates a paused store target to the Store API Suite OFFLINE payload', async () => {
+    const succeeded = {
+      uberStoreId: 'uber-store-1',
+      outcome: 'SUCCEEDED' as const,
+      attempts: 1,
+      duplicate: false,
+    };
+    const api = { writeStatus: jest.fn().mockResolvedValue(succeeded) };
+    const alerts = {
+      getStoreStatusSource: jest.fn().mockResolvedValue({
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      }),
+      recordStoreStatusResult: jest.fn().mockResolvedValue(undefined),
+      createStoreStatusAlert: jest.fn().mockResolvedValue(undefined),
+    };
+    const useCase = new SyncUberStoreStatusUseCase(
+      api as never,
+      {
+        listMappings: jest
+          .fn()
+          .mockResolvedValue([
+            { uberStoreId: 'uber-store-1', isProvisioned: true },
+          ]),
+      } as never,
+      alerts as never,
+    );
+
+    await expect(
+      useCase.syncStoreStatusToUber({
+        uberStoreId: 'uber-store-1',
+        targetStatus: 'PAUSED',
+        reason: 'Kitchen maintenance',
+        pauseUntil: '2026-08-23T03:00:00.000Z',
+      }),
+    ).resolves.toMatchObject({ outcome: 'SUCCEEDED', synchronizedStores: 1 });
+    expect(api.writeStatus).toHaveBeenCalledWith(
+      'uber-store-1',
+      {
+        status: 'OFFLINE',
+        reason: 'Kitchen maintenance',
+        is_offline_until: '2026-08-23T03:00:00.000Z',
+      },
+      expect.stringMatching(/^sanqin-uber-/),
+    );
+  });
+
   it('records a rejected semantic status result without interpreting HTTP', async () => {
     const rejected = {
       uberStoreId: 'uber-store-1',
