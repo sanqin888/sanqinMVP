@@ -67,7 +67,9 @@ export class PublishUberMenuUseCase {
         `发布 Uber 菜单前必须明确标记每个商品为 PREPARED 或 PREPACKAGED。未确认：${unclassifiedItems
           .slice(0, 5)
           .map((item) => item.sourceStableId)
-          .join(', ')}${unclassifiedItems.length > 5 ? ` 等 ${unclassifiedItems.length} 项` : ''}`,
+          .join(
+            ', ',
+          )}${unclassifiedItems.length > 5 ? ` 等 ${unclassifiedItems.length} 项` : ''}`,
       );
     }
     const serviceAvailability = this.availability(snapshot.timezone);
@@ -492,7 +494,9 @@ export class RetrieveAndReconcileUberMenuUseCase {
 
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
     const expectedMenuIds = baseline.menus.map((menu) => menu.id);
-    const expectedCategoryIds = baseline.categories.map((category) => category.id);
+    const expectedCategoryIds = baseline.categories.map(
+      (category) => category.id,
+    );
     const missingMenuIds = expectedMenuIds.filter(
       (id) => !retrieved.menuIds.includes(id),
     );

@@ -126,7 +126,8 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         );
       throw new UberOrderCommandError(null);
     }
-    if (outcome.ok && outcome.status === EXPECTED_SUCCESS_STATUS[action]) return;
+    if (outcome.ok && outcome.status === EXPECTED_SUCCESS_STATUS[action])
+      return;
 
     const responseBody = this.safeErrorBody(outcome.data);
     this.logger.error(
