@@ -31,6 +31,7 @@ export function buildDraftCategories(graph: DraftGraph) {
         displayDescription: item.description,
         priceCents: item.priceCents,
         isAvailable: item.isAvailable,
+        preparationType: item.preparationType,
         imageUrl: item.imageUrl,
         groups: item.modifierGroupIds.flatMap((groupNodeId) => {
           const group = groupMap.get(groupNodeId);
@@ -50,6 +51,7 @@ export function buildDraftCategories(graph: DraftGraph) {
                     displayName: option.title,
                     priceDeltaCents: option.priceCents,
                     isAvailable: option.isAvailable,
+                    preparationType: option.preparationType,
                     childGroups: option.modifierGroupIds.flatMap(
                       (childNodeId) => {
                         const child = groupMap.get(childNodeId);
@@ -141,6 +143,7 @@ export function buildUberDraftTreeNodes(
       source: 'AUTO-MAPPED',
       priceCents: item.priceCents,
       isAvailable: item.isAvailable,
+      preparationType: item.preparationType,
       children: item.groups.map((group) => ({
         id: group.id,
         type: 'group',
@@ -155,6 +158,7 @@ export function buildUberDraftTreeNodes(
           source: 'AUTO-MAPPED',
           priceDeltaCents: option.priceDeltaCents,
           isAvailable: option.isAvailable,
+          preparationType: option.preparationType,
           children: option.childGroups.map((child) => ({
             id: child.id,
             type: 'group',

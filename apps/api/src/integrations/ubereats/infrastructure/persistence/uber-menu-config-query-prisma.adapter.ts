@@ -3,6 +3,7 @@ import { UberMenuPublishStatus } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type { UberMenuConfigQueryPort } from '../../application/menu/uber-menu-draft.ports';
 import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 @Injectable()
 export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort {
@@ -20,6 +21,7 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
         isAvailable: true,
         displayName: true,
         displayDescription: true,
+        preparationType: true,
         externalItemId: true,
         externalCategoryId: true,
         lastPublishedAt: true,
@@ -28,10 +30,14 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
       },
     });
 
+    const mappedItems = items.map((item) => ({
+      ...item,
+      preparationType: readUberPreparationType(item.preparationType),
+    }));
     return {
       storeId: normalizedStoreId,
-      count: items.length,
-      items,
+      count: mappedItems.length,
+      items: mappedItems,
     };
   }
 
@@ -79,6 +85,7 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
         isAvailable: true,
         displayName: true,
         displayDescription: true,
+        preparationType: true,
         externalItemId: true,
         lastPublishedAt: true,
         lastPublishError: true,
@@ -86,10 +93,14 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
       },
     });
 
+    const mappedItems = items.map((item) => ({
+      ...item,
+      preparationType: readUberPreparationType(item.preparationType),
+    }));
     return {
       storeId: normalizedStoreId,
-      count: items.length,
-      items,
+      count: mappedItems.length,
+      items: mappedItems,
     };
   }
 

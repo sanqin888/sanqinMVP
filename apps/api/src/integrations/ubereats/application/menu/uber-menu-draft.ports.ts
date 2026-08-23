@@ -92,6 +92,7 @@ export type UberItemChannelConfigDto = {
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;
+  preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   externalItemId: string | null;
   externalCategoryId: string | null;
   lastPublishedAt: Date | null;
@@ -104,6 +105,7 @@ export type UberOptionItemConfigDto = {
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;
+  preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   externalItemId: string | null;
   lastPublishedAt: Date | null;
   lastPublishError: string | null;

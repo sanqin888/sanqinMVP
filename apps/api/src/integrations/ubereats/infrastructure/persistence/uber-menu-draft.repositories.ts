@@ -11,6 +11,7 @@ import type {
   UberMenuUnitOfWork,
 } from '../../application/menu/uber-menu-repositories.ports';
 import type { UberMenuDraftSource } from '../../domain/menu/uber-menu-draft-source';
+import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
 type ScopedRows<T> = {
@@ -155,6 +156,7 @@ export class UberMenuDraftSourcePrismaRepository {
           isAvailable: true,
           displayName: true,
           displayDescription: true,
+          preparationType: true,
         },
       }),
       this.db.uberOptionItemConfig.findMany({
@@ -166,6 +168,7 @@ export class UberMenuDraftSourcePrismaRepository {
           isAvailable: true,
           displayName: true,
           displayDescription: true,
+          preparationType: true,
         },
       }),
       this.db.uberModifierGroupConfig.findMany({
@@ -214,7 +217,13 @@ export class UberMenuDraftSourcePrismaRepository {
           ? scoped.canonical.priceCents
           : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null)
         : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null);
-      return [{ ...base, priceCents }];
+      return [
+        {
+          ...base,
+          priceCents,
+          preparationType: readUberPreparationType(base.preparationType),
+        },
+      ];
     });
     const optionConfigs = Array.from(
       groupScopedRows(
@@ -225,7 +234,14 @@ export class UberMenuDraftSourcePrismaRepository {
       ).values(),
     ).flatMap((scoped) => {
       const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-      return base ? [base] : [];
+      return base
+        ? [
+            {
+              ...base,
+              preparationType: readUberPreparationType(base.preparationType),
+            },
+          ]
+        : [];
     });
     const modifierConfigs = Array.from(
       groupScopedRows(
@@ -343,6 +359,7 @@ export class UberItemChannelConfigPrismaRepository implements ItemChannelConfigR
         isAvailable: true,
         displayName: true,
         displayDescription: true,
+        preparationType: true,
       },
     });
     return rows.map((row) => ({
@@ -352,6 +369,7 @@ export class UberItemChannelConfigPrismaRepository implements ItemChannelConfigR
       isAvailable: row.isAvailable,
       displayName: row.displayName,
       displayDescription: row.displayDescription,
+      preparationType: readUberPreparationType(row.preparationType),
     }));
   }
 }

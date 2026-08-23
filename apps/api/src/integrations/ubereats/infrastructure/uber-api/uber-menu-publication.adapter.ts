@@ -90,6 +90,18 @@ const mapRetrievedMenuItem = (
   const taxRate = taxInfo?.tax_rate;
   const taxLabelInfo = asMenuWireObject(item.tax_label_info);
   const taxLabelDefault = asMenuWireObject(taxLabelInfo?.default_value);
+  const dishInfo = asMenuWireObject(item.dish_info);
+  const classifications = asMenuWireObject(dishInfo?.classifications);
+  const rawPreparationType = classifications?.preparation_type;
+  if (
+    rawPreparationType !== undefined &&
+    rawPreparationType !== null &&
+    rawPreparationType !== '' &&
+    rawPreparationType !== 'PREPACKAGED'
+  )
+    throw menuMappingFailure(
+      `Uber Menu GET items[${index}].dish_info.classifications.preparation_type 不受支持`,
+    );
   return {
     id,
     priceCents: price as number,
@@ -104,6 +116,10 @@ const mapRetrievedMenuItem = (
       taxLabelDefault?.labels,
       `items[${index}].tax_label_info.default_value.labels`,
     ),
+    preparationType:
+      rawPreparationType === '' || rawPreparationType === 'PREPACKAGED'
+        ? rawPreparationType
+        : null,
   };
 };
 const mapRetrievedMenuModifierGroup = (
@@ -231,6 +247,7 @@ export class UberMenuImageProbeAdapter implements UberMenuImageProbePort {
         title: { translations: { en_us: image.itemStableId } },
         price_info: { price: 0, overrides: [] },
         tax_info: { tax_rate: 0, vat_rate_percentage: null },
+        dish_info: { classifications: { preparation_type: '' as const } },
         modifier_group_ids: { ids: null, overrides: [] },
         suspension_info: null,
         image_url: image.url,

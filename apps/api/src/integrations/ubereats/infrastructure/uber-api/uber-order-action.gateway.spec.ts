@@ -12,11 +12,13 @@ describe('UberOrderActionGatewayAdapter Order Fulfillment 1.0.0', () => {
       sendActionCommand,
     } as never);
 
-    await adapter.accept({
-      externalOrderId: 'order/1',
-      idempotencyKey: 'accept-key',
-      readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
-    });
+    await expect(
+      adapter.accept({
+        externalOrderId: 'order/1',
+        idempotencyKey: 'accept-key',
+        readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
+      }),
+    ).resolves.toBeUndefined();
 
     expect(sendActionCommand).toHaveBeenCalledWith(
       'order/1',
@@ -101,13 +103,34 @@ describe('UberOrderActionGatewayAdapter Order Fulfillment 1.0.0', () => {
     );
   });
 
+  it('requires the exact documented success status instead of any 2xx', async () => {
+    const sendActionCommand = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 204, data: {} });
+    const adapter = new UberOrderActionGatewayAdapter({
+      sendActionCommand,
+    } as never);
+
+    await expect(
+      adapter.accept({
+        externalOrderId: 'order-1',
+        idempotencyKey: 'key',
+        readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
+      }),
+    ).rejects.toMatchObject({
+      status: 204,
+      code: 'UBER_ORDER_HTTP_204',
+    });
+  });
+
   it.each([
     ['ACCEPT', 409],
     ['DENY', 409],
     ['CANCEL', 404],
+    ['CANCEL', 409],
     ['READY_FOR_PICKUP', 409],
   ] as const)(
-    'treats repeated %s terminal response as idempotent',
+    'does not convert upstream %s HTTP %s into a false success',
     async (action, status) => {
       const sendActionCommand = jest
         .fn()
@@ -116,24 +139,25 @@ describe('UberOrderActionGatewayAdapter Order Fulfillment 1.0.0', () => {
         sendActionCommand,
       } as never);
       const common = { externalOrderId: 'order-1', idempotencyKey: 'key' };
-      if (action === 'ACCEPT')
-        await expect(
-          adapter.accept({
-            ...common,
-            readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
-          }),
-        ).resolves.toBeUndefined();
-      else if (action === 'DENY')
-        await expect(
-          adapter.deny({
-            ...common,
-            denial: { reasonCode: 'OTHER', reasonDetail: null },
-          }),
-        ).resolves.toBeUndefined();
-      else if (action === 'CANCEL')
-        await expect(adapter.cancel(common)).resolves.toBeUndefined();
-      else
-        await expect(adapter.readyForPickup(common)).resolves.toBeUndefined();
+      const operation =
+        action === 'ACCEPT'
+          ? adapter.accept({
+              ...common,
+              readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
+            })
+          : action === 'DENY'
+            ? adapter.deny({
+                ...common,
+                denial: { reasonCode: 'OTHER', reasonDetail: null },
+              })
+            : action === 'CANCEL'
+              ? adapter.cancel(common)
+              : adapter.readyForPickup(common);
+
+      await expect(operation).rejects.toMatchObject({
+        status,
+        code: `UBER_ORDER_HTTP_${status}`,
+      });
     },
   );
 

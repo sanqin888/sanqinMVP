@@ -10,6 +10,7 @@ describe('Uber menu diff service', () => {
   it('tolerates an unparseable historical payload', () => {
     expect(extractPublishedSnapshotFromPayload('legacy')).toEqual({
       edgeKeys: new Set(),
+      preparationTypes: new Map(),
     });
     expect(decodeDraftEdgeKey('broken')).toBeNull();
   });
@@ -29,6 +30,7 @@ describe('Uber menu diff service', () => {
             stableId: 'kept-source',
             priceCents: 150,
             isAvailable: false,
+            preparationType: 'PREPACKAGED',
             hasDelta: true,
           },
           {
@@ -36,6 +38,7 @@ describe('Uber menu diff service', () => {
             stableId: 'new-option-source',
             priceCents: 25,
             isAvailable: true,
+            preparationType: 'PREPARED',
             hasDelta: true,
           },
         ],
@@ -84,6 +87,7 @@ describe('Uber menu diff service', () => {
           },
           {
             id: nodeId('item', 'kept-source'),
+            dish_info: { classifications: { preparation_type: '' } },
             modifier_group_ids: [nodeId('group', 'kept-group-source')],
           },
         ],
@@ -107,6 +111,18 @@ describe('Uber menu diff service', () => {
       { stableId: 'kept-group-source', minSelect: 1, maxSelect: 2 },
     ]);
     expect(result.deletedGroups).toEqual(['deleted-group']);
+    expect(result.preparationTypeChanges).toEqual([
+      {
+        sourceType: 'MENU_ITEM',
+        stableId: 'kept-source',
+        preparationType: 'PREPACKAGED',
+      },
+      {
+        sourceType: 'OPTION_ITEM',
+        stableId: 'new-option-source',
+        preparationType: 'PREPARED',
+      },
+    ]);
     expect(result.hierarchyChanges).toEqual([
       {
         from: 'kept-group-source',

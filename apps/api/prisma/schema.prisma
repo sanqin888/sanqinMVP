@@ -1445,6 +1445,7 @@ model UberItemChannelConfig {
   isAvailable              Boolean   @default(true)
   displayName              String?
   displayDescription       String?
+  preparationType          String?
   externalItemId           String?
   externalCategoryId       String?
   lastPublishedPriceCents  Int?
@@ -1509,6 +1510,7 @@ model UberOptionItemConfig {
   optionChoiceStableId         String
   displayName                  String?
   displayDescription           String?
+  preparationType              String?
   priceDeltaCents              Int       @default(0)
   isAvailable                  Boolean   @default(true)
   externalItemId               String?

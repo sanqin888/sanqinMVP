@@ -17,8 +17,9 @@ export function extractPublishedSnapshotFromPayload(
   resolveNodeId: (nodeId: string) => string | null = () => null,
 ) {
   const edgeKeys = new Set<string>();
+  const preparationTypes = new Map<string, '' | 'PREPACKAGED'>();
   const root = object(payload);
-  if (!root) return { edgeKeys };
+  if (!root) return { edgeKeys, preparationTypes };
   for (const raw of Array.isArray(root.categories) ? root.categories : []) {
     const category = object(raw);
     const categoryNodeId = string(category?.id);
@@ -41,6 +42,11 @@ export function extractPublishedSnapshotFromPayload(
     const itemNodeId = string(item?.id);
     const itemStableId = itemNodeId ? resolveNodeId(itemNodeId) : null;
     if (!itemStableId) continue;
+    const dishInfo = object(item?.dish_info);
+    const classifications = object(dishInfo?.classifications);
+    const preparationType = classifications?.preparation_type;
+    if (preparationType === '' || preparationType === 'PREPACKAGED')
+      preparationTypes.set(itemStableId, preparationType);
     for (const group of Array.isArray(item?.modifier_group_ids)
       ? item.modifier_group_ids
       : []) {
@@ -68,7 +74,7 @@ export function extractPublishedSnapshotFromPayload(
       }
     }
   }
-  return { edgeKeys };
+  return { edgeKeys, preparationTypes };
 }
 
 export function decodeDraftEdgeKey(
@@ -124,6 +130,21 @@ export function buildUberMenuDraftDiff(input: {
     (nodeId) => nodeStableIds.get(nodeId) ?? null,
   );
   const changed = input.draft.uberDraft.items.filter((item) => item.hasDelta);
+  const preparationTypeChanges = input.draft.uberDraft.items
+    .filter((item) => {
+      const current =
+        item.preparationType === 'PREPACKAGED'
+          ? 'PREPACKAGED'
+          : item.preparationType === 'PREPARED'
+            ? ''
+            : null;
+      return snapshot.preparationTypes.get(item.stableId) !== current;
+    })
+    .map((item) => ({
+      sourceType: item.sourceType,
+      stableId: item.stableId,
+      preparationType: item.preparationType,
+    }));
   const edgeKeys = new Set(
     input.draft.uberDraft.edges.map(
       (edge) => `${edge.type}:${edge.from}->${edge.to}`,
@@ -186,5 +207,6 @@ export function buildUberMenuDraftDiff(input: {
       stableId: item.stableId,
       isAvailable: item.isAvailable,
     })),
+    preparationTypeChanges,
   };
 }

@@ -28,6 +28,7 @@ describe('Uber menu draft projector', () => {
         basePriceCents: 1000,
         priceCents: 1200,
         isAvailable: true,
+        preparationType: 'PREPARED',
         modifierGroupIds: ['sanq:group-node'],
         hasDelta: true,
         imageUrl: '/images/noodles.jpg',
@@ -41,6 +42,7 @@ describe('Uber menu draft projector', () => {
         basePriceCents: 0,
         priceCents: 100,
         isAvailable: true,
+        preparationType: 'PREPARED',
         modifierGroupIds: [],
         hasDelta: false,
         imageUrl: null,
@@ -67,6 +69,7 @@ describe('Uber menu draft projector', () => {
     expect(categories[0].items[0]).toMatchObject({
       id: 'item-source',
       displayName: '面',
+      preparationType: 'PREPARED',
       imageUrl: '/images/noodles.jpg',
     });
     expect(categories[0].items[0].groups[0]).toMatchObject({
@@ -76,6 +79,7 @@ describe('Uber menu draft projector', () => {
     expect(categories[0].items[0].groups[0].options[0]).toMatchObject({
       id: 'option-source',
       displayName: '辣',
+      preparationType: 'PREPARED',
     });
     const tree = buildUberDraftTreeNodes(categories);
     expect(tree[0].children[0].children[0]).toMatchObject({

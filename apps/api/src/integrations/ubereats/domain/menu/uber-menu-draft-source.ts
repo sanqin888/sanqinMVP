@@ -1,3 +1,5 @@
+import type { UberPreparationType } from './uber-menu.types';
+
 /** Prisma-independent snapshot consumed by the Uber menu graph builder. */
 export interface UberMenuDraftSource {
   storeId: string;
@@ -65,6 +67,7 @@ export interface UberMenuDraftItemConfigSource {
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;
+  preparationType: UberPreparationType | null;
 }
 export interface UberMenuDraftOptionConfigSource {
   optionChoiceStableId: string;
@@ -72,6 +75,7 @@ export interface UberMenuDraftOptionConfigSource {
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;
+  preparationType: UberPreparationType | null;
 }
 export interface UberMenuDraftModifierConfigSource {
   templateGroupStableId: string;

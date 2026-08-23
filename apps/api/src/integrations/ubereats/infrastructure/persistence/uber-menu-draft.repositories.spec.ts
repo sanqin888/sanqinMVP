@@ -59,6 +59,7 @@ describe('split Uber menu repositories field mapping', () => {
               isAvailable: true,
               displayName: null,
               displayDescription: null,
+              preparationType: 'PREPACKAGED',
               id: 'db-id',
             },
           ]),
@@ -73,6 +74,7 @@ describe('split Uber menu repositories field mapping', () => {
         isAvailable: true,
         displayName: null,
         displayDescription: null,
+        preparationType: 'PREPACKAGED',
       },
     ]);
   });

@@ -11,6 +11,7 @@ export class UberMenuItemResponse {
   isAvailable?: boolean;
   displayName?: string | null;
   displayDescription?: string | null;
+  preparationType?: 'PREPARED' | 'PREPACKAGED' | null;
   externalItemId?: string | null;
   externalCategoryId?: string | null;
   updatedAt?: string;
@@ -81,6 +82,7 @@ export class UberMenuReconciliationResponse {
     itemCount: number;
     modifierGroupCount: number;
     taxLabelItemCount: number;
+    preparationTypeItemCount: number;
   };
   baseline!: {
     itemCount: number;
@@ -89,6 +91,10 @@ export class UberMenuReconciliationResponse {
   } | null;
   reconciliation!: {
     matchesLastSuccessfulPublish: boolean | null;
+    missingMenuIds: string[];
+    extraMenuIds: string[];
+    missingCategoryIds: string[];
+    extraCategoryIds: string[];
     missingItemIds: string[];
     extraItemIds: string[];
     missingModifierGroupIds: string[];
@@ -122,5 +128,6 @@ export class UberMenuDiffResponse {
   deletedEdges!: unknown[];
   priceChanges!: unknown[];
   availabilityChanges!: unknown[];
+  preparationTypeChanges!: unknown[];
   contractVersion!: '2';
 }

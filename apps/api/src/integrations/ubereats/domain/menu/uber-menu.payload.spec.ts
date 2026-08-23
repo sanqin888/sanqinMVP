@@ -18,6 +18,7 @@ const graph = {
       description: null,
       priceCents: 1299,
       isAvailable: true,
+      preparationType: 'PREPARED' as const,
       modifierGroupIds: ['group-1'],
       imageUrl: null,
     },
@@ -65,7 +66,23 @@ describe('uber-menu-payload.builder', () => {
     expect(payload.items[0]).toMatchObject({
       id: 'item-1',
       price_info: { price: 1299, overrides: [] },
+      dish_info: { classifications: { preparation_type: '' } },
     });
+  });
+
+  it('maps an explicitly PREPACKAGED item to Uber metadata', () => {
+    const payload = buildUberUploadMenuPayload(
+      {
+        ...graph,
+        items: [{ ...graph.items[0], preparationType: 'PREPACKAGED' as const }],
+      },
+      [],
+      13,
+      urlContext,
+    );
+    expect(payload.items[0].dish_info.classifications.preparation_type).toBe(
+      'PREPACKAGED',
+    );
   });
 
   it('blocks a payload that falsely claims item-level instructions are unsupported', () => {
@@ -77,6 +94,23 @@ describe('uber-menu-payload.builder', () => {
           code: 'UBER_ITEM_INSTRUCTIONS_SUPPORT_FLAG_INVALID',
           severity: 'ERROR',
           path: '$.display_options.disable_item_instructions',
+        }),
+      ]),
+    );
+  });
+
+  it('blocks a Canadian FOOD/BEVERAGE item without preparation_type metadata', () => {
+    const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
+    const classifications = payload.items[0].dish_info.classifications as {
+      preparation_type?: '' | 'PREPACKAGED';
+    };
+    delete classifications.preparation_type;
+    expect(validateUberMenuPayload(payload)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UBER_PREPARATION_TYPE_INVALID',
+          severity: 'ERROR',
+          path: '$.items[0].dish_info.classifications.preparation_type',
         }),
       ]),
     );

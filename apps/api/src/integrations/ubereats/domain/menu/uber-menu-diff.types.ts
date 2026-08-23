@@ -27,6 +27,7 @@ type UberMenuDraftStableItem = {
   stableId: string;
   priceCents: number;
   isAvailable: boolean;
+  preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   hasDelta: boolean;
 };
 
@@ -112,5 +113,10 @@ export type UberMenuDraftDiffResult = {
     sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
     stableId: string;
     isAvailable: boolean;
+  }>;
+  preparationTypeChanges: Array<{
+    sourceType: 'MENU_ITEM' | 'OPTION_ITEM';
+    stableId: string;
+    preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   }>;
 };
