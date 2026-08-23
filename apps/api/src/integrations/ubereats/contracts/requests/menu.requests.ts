@@ -34,6 +34,10 @@ export class UpsertUberPriceBookItemDto {
   @IsOptional()
   @IsString()
   displayDescription?: string;
+
+  @IsOptional()
+  @IsIn(['PREPARED', 'PREPACKAGED'])
+  preparationType?: 'PREPARED' | 'PREPACKAGED';
 }
 
 export class UpsertUberOptionItemConfigDto {
@@ -53,6 +57,10 @@ export class UpsertUberOptionItemConfigDto {
   @IsOptional()
   @IsString()
   displayDescription?: string;
+
+  @IsOptional()
+  @IsIn(['PREPARED', 'PREPACKAGED'])
+  preparationType?: 'PREPARED' | 'PREPACKAGED';
 }
 
 export class UpdateUberDraftItemDto {
@@ -74,6 +82,10 @@ export class UpdateUberDraftItemDto {
   @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
+
+  @IsOptional()
+  @IsIn(['PREPARED', 'PREPACKAGED'])
+  preparationType?: 'PREPARED' | 'PREPACKAGED';
 
   @IsOptional()
   @Type(() => Number)
@@ -135,6 +147,10 @@ export class UpdateUberDraftOptionDto {
   @IsOptional()
   @IsBoolean()
   isAvailable?: boolean;
+
+  @IsOptional()
+  @IsIn(['PREPARED', 'PREPACKAGED'])
+  preparationType?: 'PREPARED' | 'PREPACKAGED';
 
   @IsOptional()
   @Type(() => Number)

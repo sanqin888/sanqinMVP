@@ -145,10 +145,16 @@ describe('UberOrderActionPrismaAdapter contract', () => {
       adapter.complete({
         taskId: 'task-1',
         leaseToken: 'lease-1',
+        upstreamStatus: 200,
         transition: { from: 'pending', to: 'paid' },
       }),
     ).resolves.toBe(true);
 
+    expect(actionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ uberHttpStatus: 200 }) as unknown,
+      }),
+    );
     expect(orderUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'order-db-1', status: 'pending' },
@@ -279,6 +285,7 @@ describe('UberOrderActionPrismaAdapter contract', () => {
       adapter.complete({
         taskId: 'task-1',
         leaseToken: 'lease-1',
+        upstreamStatus: 200,
         transition: { from: 'pending', to: 'paid' },
       }),
     ).rejects.toThrow('lifecycle store unavailable');

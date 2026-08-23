@@ -148,6 +148,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
           stableId: item.sourceStableId,
           priceCents: item.priceCents,
           isAvailable: item.isAvailable,
+          preparationType: item.preparationType,
           hasDelta: item.hasDelta,
         })),
         groups: normalized.graph.groups.map((group) => ({

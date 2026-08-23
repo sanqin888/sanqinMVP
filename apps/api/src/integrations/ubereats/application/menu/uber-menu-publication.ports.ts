@@ -21,6 +21,7 @@ export type UberMenuSnapshotItem = {
   priceValueSource: 'UBER_OVERRIDE' | 'SANQ_SOURCE';
   imageUrl: string | null;
   isAvailable: boolean;
+  preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   modifierGroupStableIds: string[];
 };
 
@@ -32,6 +33,7 @@ export type UberMenuSnapshotModifierOption = {
   overridePriceDeltaCents: number | null;
   priceValueSource: 'UBER_OVERRIDE' | 'SANQ_SOURCE';
   isAvailable: boolean;
+  preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   childGroupStableIds: string[];
 };
 
@@ -169,6 +171,7 @@ export type UberRetrievedMenuItem = {
   modifierGroupIds: string[];
   taxRatePercentage: number | null;
   taxLabels: string[];
+  preparationType: '' | 'PREPACKAGED' | null;
 };
 
 export type UberRetrievedMenuModifierGroup = {

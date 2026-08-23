@@ -108,6 +108,7 @@ describe('UberOrderActionService contract', () => {
         {
           taskId: 'task-1',
           leaseToken: 'lease-from-claim',
+          upstreamStatus: action === 'CANCEL' ? 204 : 200,
           transition: nextStatus
             ? { from: currentStatus, to: nextStatus }
             : null,
@@ -166,6 +167,7 @@ describe('UberOrderActionService contract', () => {
       {
         taskId: 'task-1',
         leaseToken: 'lease-from-claim',
+        upstreamStatus: 200,
         transition: { from: 'pending', to: 'paid' },
       },
     ]);
@@ -194,6 +196,7 @@ describe('UberOrderActionService contract', () => {
       {
         taskId: 'task-1',
         leaseToken: 'lease-from-claim',
+        upstreamStatus: 200,
         transition: { from: 'pending', to: 'paid' },
       },
     ]);
@@ -207,6 +210,7 @@ describe('UberOrderActionService contract', () => {
     [401, false],
     [403, false],
     [404, false],
+    [409, false],
     [422, false],
   ])('classifies HTTP %s retryable=%s', async (status, retryable) => {
     const error = Object.assign(new Error('failed'), { status });

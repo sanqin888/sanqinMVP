@@ -25,14 +25,11 @@ type UberOrderFailureReasonType =
   | 'PRICING'
   | 'OTHER';
 
-/** Uber treats repeated terminal transitions as conflicts/not-found in some states. */
-const IDEMPOTENT_CONFLICT_STATUSES: Readonly<
-  Record<UberWireOrderAction, readonly number[]>
-> = {
-  ACCEPT: [409],
-  DENY: [409],
-  READY_FOR_PICKUP: [409],
-  CANCEL: [404, 409],
+const EXPECTED_SUCCESS_STATUS: Readonly<Record<UberWireOrderAction, number>> = {
+  ACCEPT: 200,
+  DENY: 200,
+  READY_FOR_PICKUP: 200,
+  CANCEL: 204,
 };
 
 export class UberOrderCommandError
@@ -129,11 +126,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         );
       throw new UberOrderCommandError(null);
     }
-    if (
-      outcome.ok ||
-      IDEMPOTENT_CONFLICT_STATUSES[action].includes(outcome.status)
-    )
-      return;
+    if (outcome.ok && outcome.status === EXPECTED_SUCCESS_STATUS[action]) return;
 
     const responseBody = this.safeErrorBody(outcome.data);
     this.logger.error(

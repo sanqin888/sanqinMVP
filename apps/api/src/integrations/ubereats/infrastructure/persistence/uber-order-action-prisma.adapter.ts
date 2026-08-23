@@ -196,6 +196,7 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
   async complete(input: {
     taskId: string;
     leaseToken: string;
+    upstreamStatus?: number | null;
     transition: { from: UberOrderStatus; to: UberOrderStatus } | null;
   }): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
@@ -233,7 +234,7 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
           leaseToken: null,
           leaseExpiresAt: null,
           lastError: null,
-          uberHttpStatus: null,
+          uberHttpStatus: input.upstreamStatus ?? null,
           response: Prisma.DbNull,
         },
       });

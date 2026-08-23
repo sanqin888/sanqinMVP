@@ -19,12 +19,20 @@ export type UberStoreScopedInput = {
   storeId?: string;
 };
 
+export type UberPreparationType = 'PREPARED' | 'PREPACKAGED';
+
+export const readUberPreparationType = (
+  value: unknown,
+): UberPreparationType | null =>
+  value === 'PREPARED' || value === 'PREPACKAGED' ? value : null;
+
 export type UpsertPriceBookItemInput = UberStoreScopedInput & {
   menuItemStableId: string;
   priceCents: number;
   isAvailable?: boolean;
   displayName?: string;
   displayDescription?: string;
+  preparationType?: UberPreparationType;
 };
 
 export type UpsertOptionItemConfigInput = UberStoreScopedInput & {
@@ -33,6 +41,7 @@ export type UpsertOptionItemConfigInput = UberStoreScopedInput & {
   isAvailable?: boolean;
   displayName?: string;
   displayDescription?: string;
+  preparationType?: UberPreparationType;
 };
 
 export type UpdateDraftItemInput = UberStoreScopedInput & {
@@ -40,6 +49,7 @@ export type UpdateDraftItemInput = UberStoreScopedInput & {
   displayDescription?: string;
   priceCents?: number;
   isAvailable?: boolean;
+  preparationType?: UberPreparationType;
   sortOrder?: number;
 };
 
@@ -55,6 +65,7 @@ export type UpdateDraftOptionInput = UberStoreScopedInput & {
   displayName?: string;
   priceDeltaCents?: number;
   isAvailable?: boolean;
+  preparationType?: UberPreparationType;
   sortOrder?: number;
 };
 
@@ -121,6 +132,9 @@ export type UberMenuUploadPayload = {
     description?: { translations: { en_us: string } };
     price_info: { price: number; overrides: [] };
     tax_info: { tax_rate: number; vat_rate_percentage: null };
+    dish_info: {
+      classifications: { preparation_type: '' | 'PREPACKAGED' };
+    };
     modifier_group_ids: { ids: string[] | null; overrides: [] };
     suspension_info: null | {
       suspension: { suspend_until: number; reason: string };

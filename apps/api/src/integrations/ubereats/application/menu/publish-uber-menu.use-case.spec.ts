@@ -32,6 +32,7 @@ describe('PublishUberMenuUseCase', () => {
         priceValueSource: 'UBER_OVERRIDE' as const,
         imageUrl: null,
         isAvailable: true,
+        preparationType: 'PREPARED' as const,
         modifierGroupStableIds: [],
       },
     ],
@@ -151,6 +152,23 @@ describe('PublishUberMenuUseCase', () => {
     expect(x.snapshots.loadPublishSnapshot).not.toHaveBeenCalled();
   });
 
+  it('未明确 preparationType 时在发送 Uber 前阻断发布', async () => {
+    const x = setup();
+    x.snapshots.loadPublishSnapshot.mockResolvedValue({
+      ...snapshot,
+      items: snapshot.items.map((item) => ({
+        ...item,
+        preparationType: null,
+      })),
+    });
+
+    await expect(
+      x.useCase.execute({ storeId: 'store-1', dryRun: true }),
+    ).rejects.toMatchObject({ code: 'UBER_PREPARATION_TYPE_REQUIRED' });
+    expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
+    expect(x.publications.createAttempt).not.toHaveBeenCalled();
+  });
+
   it('dry-run 构建并校验 publish graph，但不暴露 payload 或创建发布尝试', async () => {
     const x = setup();
     const result = await x.useCase.execute({
@@ -189,6 +207,7 @@ describe('PublishUberMenuUseCase', () => {
           overridePriceDeltaCents: null,
           priceValueSource: 'SANQ_SOURCE' as const,
           isAvailable: true,
+          preparationType: 'PREPARED' as const,
           childGroupStableIds: [],
         },
       ],
@@ -387,6 +406,7 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
         title: { translations: { en_us: 'Roujiamo' } },
         price_info: { price: 749, overrides: [] },
         tax_info: { tax_rate: 13, vat_rate_percentage: null },
+        dish_info: { classifications: { preparation_type: '' } },
         modifier_group_ids: { ids: ['group-1'], overrides: [] },
         suspension_info: null,
       },
@@ -395,6 +415,7 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
         title: { translations: { en_us: 'Extra' } },
         price_info: { price: 100, overrides: [] },
         tax_info: { tax_rate: 13, vat_rate_percentage: null },
+        dish_info: { classifications: { preparation_type: '' } },
         modifier_group_ids: { ids: null, overrides: [] },
         suspension_info: null,
       },
@@ -420,6 +441,7 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
         modifierGroupIds: ['group-1'],
         taxRatePercentage: 13,
         taxLabels: [],
+        preparationType: '',
       },
       {
         id: 'option-1',
@@ -428,6 +450,7 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
         modifierGroupIds: [],
         taxRatePercentage: 13,
         taxLabels: [],
+        preparationType: '',
       },
     ],
     modifierGroups: [{ id: 'group-1', optionItemIds: ['option-1'] }],
@@ -481,7 +504,7 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
     expect(x.gateway.retrieveMenu).toHaveBeenCalledWith('uber-store-1');
   });
 
-  it('报告价格、availability 和 modifier 差异但不修改任何一侧', async () => {
+  it('报告价格、availability、modifier 和 required metadata 差异但不修改任何一侧', async () => {
     const x = setupReconciliation({
       ...remote,
       items: remote.items.map((item) =>
@@ -491,6 +514,7 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
               priceCents: 799,
               isAvailable: false,
               modifierGroupIds: [],
+              preparationType: null,
             }
           : item,
       ),
@@ -505,8 +529,28 @@ describe('RetrieveAndReconcileUberMenuUseCase', () => {
           resourceId: 'item-1',
           field: 'modifierGroupIds',
         }),
+        expect.objectContaining({
+          resourceId: 'item-1',
+          field: 'preparationType',
+        }),
       ]),
     );
+  });
+
+  it('把 menu/category ID 漂移计入全量对账结果', async () => {
+    const x = setupReconciliation({
+      ...remote,
+      menuIds: ['unexpected-menu'],
+      categoryIds: [],
+    });
+    const result = await x.useCase.execute('pos-store-1');
+    expect(result.reconciliation).toMatchObject({
+      matchesLastSuccessfulPublish: false,
+      missingMenuIds: ['menu-1'],
+      extraMenuIds: ['unexpected-menu'],
+      missingCategoryIds: ['cat-1'],
+      extraCategoryIds: [],
+    });
   });
 
   it('没有成功发布基准时只返回真实数量，不宣称对账成功', async () => {

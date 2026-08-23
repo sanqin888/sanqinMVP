@@ -6,6 +6,7 @@ import type {
 } from '../../application/menu/uber-menu-publication.ports';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import { composeUberDisplayName } from '../../domain/menu/uber-menu-payload.builder';
+import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 type ScopedRows<T> = {
   default?: T;
@@ -144,6 +145,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           isAvailable: true,
           displayName: true,
           displayDescription: true,
+          preparationType: true,
         },
       }),
       this.prisma.uberOptionItemConfig.findMany({
@@ -154,6 +156,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           priceDeltaCents: true,
           isAvailable: true,
           displayName: true,
+          preparationType: true,
         },
       }),
       this.prisma.uberModifierGroupConfig.findMany({
@@ -291,6 +294,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
               : ('SANQ_SOURCE' as const),
           imageUrl: item.imageUrl,
           isAvailable: config?.isAvailable ?? item.isAvailable,
+          preparationType: readUberPreparationType(config?.preparationType),
           modifierGroupStableIds: item.optionGroups.map(
             (group) => group.templateGroup.stableId,
           ),
@@ -353,6 +357,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
                 ? ('UBER_OVERRIDE' as const)
                 : ('SANQ_SOURCE' as const),
             isAvailable: config?.isAvailable ?? option.isAvailable,
+            preparationType: readUberPreparationType(config?.preparationType),
             childGroupStableIds: [],
           };
         }),
