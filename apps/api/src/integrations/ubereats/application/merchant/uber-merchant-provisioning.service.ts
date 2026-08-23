@@ -39,26 +39,173 @@ const recordOf = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
-/** SanQ owns scheduled fulfillment and relays customer instructions to POS. */
+type IntegrationConfigMutation = 'ACTIVATE' | 'UPDATE';
+
+const INTEGRATION_CONFIG_FIELDS = new Set([
+  'allowed_customer_requests',
+  'integrator_brand_id',
+  'is_order_manager',
+  'merchant_store_id',
+  'require_manual_acceptance',
+  'store_configuration_data',
+  'webhooks_config',
+  'integration_enabled',
+]);
+const CUSTOMER_REQUEST_FIELDS = new Set([
+  'allow_single_use_items_requests',
+  'allow_special_instruction_requests',
+]);
+const WEBHOOK_CONFIG_FIELDS = new Set([
+  'order_release_webhooks',
+  'schedule_order_webhooks',
+  'delivery_status_webhooks',
+  'webhooks_version',
+]);
+const WEBHOOK_FIELDS = new Set(['is_enabled']);
+
+const invalidIntegrationConfig = (message: string) =>
+  new UberValidationError({
+    code: 'INVALID_REQUEST',
+    operation: 'merchant',
+    message,
+  });
+
+const INTEGRATOR_STORE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const mappedIntegratorStoreId = (mapping: {
+  posExternalStoreId: string | null;
+}) => {
+  const storeId = mapping.posExternalStoreId?.trim();
+  if (!storeId || !INTEGRATOR_STORE_ID_PATTERN.test(storeId))
+    throw invalidIntegrationConfig(
+      '当前 Uber 门店缺少有效的本地 Store ID 映射；请先配置本地打印房间 Store ID',
+    );
+  return storeId;
+};
+
+const assertKnownFields = (
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  path: string,
+) => {
+  const unknownFields = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknownFields.length)
+    throw invalidIntegrationConfig(
+      `${path} 包含不支持的字段: ${unknownFields.join(', ')}`,
+    );
+};
+
+const optionalBoolean = (
+  value: Record<string, unknown>,
+  key: string,
+): boolean | undefined => {
+  if (!(key in value)) return undefined;
+  const candidate = value[key];
+  if (typeof candidate !== 'boolean')
+    throw invalidIntegrationConfig(`${key} 必须为 boolean`);
+  return candidate;
+};
+
+const optionalString = (
+  value: Record<string, unknown>,
+  key: string,
+): string | undefined => {
+  if (!(key in value)) return undefined;
+  const candidate = value[key];
+  if (typeof candidate !== 'string' || !candidate.trim())
+    throw invalidIntegrationConfig(`${key} 必须为非空 string`);
+  return candidate.trim();
+};
+
+const normalizedWebhookConfig = (value: unknown): Record<string, unknown> => {
+  if (value === undefined) return {};
+  const webhooks = recordOf(value);
+  if (!webhooks)
+    throw invalidIntegrationConfig('webhooks_config 必须为 object');
+  assertKnownFields(webhooks, WEBHOOK_CONFIG_FIELDS, 'webhooks_config');
+
+  const normalized: Record<string, unknown> = {};
+  for (const key of [
+    'order_release_webhooks',
+    'schedule_order_webhooks',
+    'delivery_status_webhooks',
+  ] as const) {
+    if (!(key in webhooks)) continue;
+    const webhook = recordOf(webhooks[key]);
+    if (!webhook)
+      throw invalidIntegrationConfig(`webhooks_config.${key} 必须为 object`);
+    assertKnownFields(webhook, WEBHOOK_FIELDS, `webhooks_config.${key}`);
+    const isEnabled = optionalBoolean(webhook, 'is_enabled');
+    if (isEnabled === undefined)
+      throw invalidIntegrationConfig(
+        `webhooks_config.${key}.is_enabled 不能为空`,
+      );
+    if (key !== 'schedule_order_webhooks' && isEnabled)
+      throw invalidIntegrationConfig(
+        `SanQ 当前不支持启用 webhooks_config.${key}`,
+      );
+    normalized[key] = { is_enabled: isEnabled };
+  }
+  if ('webhooks_version' in webhooks)
+    optionalString(webhooks, 'webhooks_version');
+  return normalized;
+};
+
+/** SanQ is the order manager, owns scheduled fulfillment, and relays customer requests to POS. */
 const withRequiredIntegrationConfig = (
   payload: Record<string, unknown>,
+  mutation: IntegrationConfigMutation,
+  integratorStoreId: string,
 ): Record<string, unknown> => {
-  const webhooks = recordOf(payload.webhooks_config) ?? {};
-  const scheduled = recordOf(webhooks.schedule_order_webhooks) ?? {};
-  const customerRequests = recordOf(payload.allowed_customer_requests) ?? {};
+  assertKnownFields(payload, INTEGRATION_CONFIG_FIELDS, 'integration config payload');
+  if (mutation === 'ACTIVATE' && 'integration_enabled' in payload)
+    throw invalidIntegrationConfig(
+      'Activate payload 不得包含 integration_enabled；POST /pos_data 本身即执行激活',
+    );
+
+  const configured: Record<string, unknown> = {
+    integrator_store_id: integratorStoreId,
+  };
+  for (const key of [
+    'integrator_brand_id',
+    'merchant_store_id',
+    'store_configuration_data',
+  ] as const) {
+    const normalized = optionalString(payload, key);
+    if (normalized !== undefined) configured[key] = normalized;
+  }
+  optionalBoolean(payload, 'is_order_manager');
+  optionalBoolean(payload, 'require_manual_acceptance');
+  if (mutation === 'UPDATE') {
+    const enabled = optionalBoolean(payload, 'integration_enabled');
+    if (enabled !== undefined) configured.integration_enabled = enabled;
+  }
+
+  const customerRequestsValue = payload.allowed_customer_requests;
+  if (customerRequestsValue !== undefined) {
+    const customerRequests = recordOf(customerRequestsValue);
+    if (!customerRequests)
+      throw invalidIntegrationConfig('allowed_customer_requests 必须为 object');
+    assertKnownFields(
+      customerRequests,
+      CUSTOMER_REQUEST_FIELDS,
+      'allowed_customer_requests',
+    );
+    optionalBoolean(customerRequests, 'allow_single_use_items_requests');
+    optionalBoolean(customerRequests, 'allow_special_instruction_requests');
+  }
+
+  const webhooks = normalizedWebhookConfig(payload.webhooks_config);
   return {
-    ...payload,
+    ...configured,
+    is_order_manager: true,
+    require_manual_acceptance: false,
     allowed_customer_requests: {
-      ...customerRequests,
       allow_single_use_items_requests: true,
       allow_special_instruction_requests: true,
     },
     webhooks_config: {
       ...webhooks,
-      schedule_order_webhooks: {
-        ...scheduled,
-        is_enabled: true,
-      },
+      schedule_order_webhooks: { is_enabled: true },
       webhooks_version: '1.0.0',
     },
   };
@@ -161,7 +308,11 @@ export class ProvisionUberStoreUseCase {
         operation: 'merchant',
         message: '请先确认并保存 Uber 门店映射，再执行 provisioning',
       });
-    const configuredPayload = withRequiredIntegrationConfig(payload);
+    const configuredPayload = withRequiredIntegrationConfig(
+      payload,
+      'ACTIVATE',
+      mappedIntegratorStoreId(selected),
+    );
     const response = await this.api.provisionStore(
       { connectionId: connection.connectionId },
       id,
@@ -229,7 +380,7 @@ export class UpdateUberStoreIntegrationConfigUseCase {
     payload: Record<string, unknown>,
     connectionId?: string,
   ) {
-    const { id } = await requireMappedStore(
+    const { id, mapping } = await requireMappedStore(
       storeId,
       connectionId,
       this.connections,
@@ -241,7 +392,11 @@ export class UpdateUberStoreIntegrationConfigUseCase {
         operation: 'merchant',
         message: 'integration config payload 不得包含 credential',
       });
-    const configuredPayload = withRequiredIntegrationConfig(payload);
+    const configuredPayload = withRequiredIntegrationConfig(
+      payload,
+      'UPDATE',
+      mappedIntegratorStoreId(mapping),
+    );
     const businessVersion = createHash('sha256')
       .update(JSON.stringify(configuredPayload))
       .digest('hex');

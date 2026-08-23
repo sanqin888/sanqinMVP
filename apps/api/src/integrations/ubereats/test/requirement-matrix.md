@@ -86,10 +86,21 @@ Integration Config、Menu、Order 与 Store Management app 调用继续按各自
 | Update Integration | `PATCH /v1/eats/stores/{store_id}/pos_data` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
 | Remove Integration | `DELETE /v1/eats/stores/{store_id}/pos_data` | merchant OAuth (`eats.pos_provisioning`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
 
-SanQ 的 PATCH 配置继续强制 `schedule_order_webhooks.is_enabled=true` 与
-`webhooks_version=1.0.0`，避免管理员更新其他 integration 字段时破坏预约单 webhook
-契约。DELETE 成功后本地 store mapping 保留用于后续重新 Activate，但
-`isProvisioned=false`、`provisionedAt=null`。
+SanQ 的 Activate / PATCH 配置只允许 Uber Integration Activation & Configuration 1.0.0
+当前可写字段进入 upstream；读取态/弃用字段（例如 `order_manager_client_id`、
+`pos_integration_enabled`）以及未知字段会在调用 Uber 前拒绝。`integrator_store_id` 不再接受调用方输入，
+而由后端从该 Uber Store mapping 的 `posExternalStoreId`（SanQ 稳定 `Store.storeStableId`）生成；
+如果本地 Store ID mapping 缺失或格式无效，Activate / Config 同步会在调用 Uber 前拒绝。Uber Store
+wire mapper 只允许 `pos_data.integrator_store_id` 恢复这一 SanQ external store identity，不再把
+`order_manager_client_id` 当作门店 ID。后端同时固定 `is_order_manager=true`、
+`require_manual_acceptance=false`、`allowed_customer_requests.allow_single_use_items_requests=true`、
+`allowed_customer_requests.allow_special_instruction_requests=true`、
+`schedule_order_webhooks.is_enabled=true` 与 `webhooks_version=1.0.0`。PATCH API 仍允许显式
+`integration_enabled=false` 做临时停用；Activate 不发送该 PATCH-only 字段。Admin UI 不再提供自由 JSON
+或独立 `integrator_store_id` 编辑框，Config 同步发送空 payload，由后端 policy 生成正式配置。SanQ 当前不消费
+`orders.release` 或 delivery-status webhook，因此 `order_release_webhooks` 与
+`delivery_status_webhooks` 只允许显式保持 `false`；尝试开启会在调用 Uber 前拒绝。DELETE 成功后
+本地 store mapping 保留用于后续重新 Activate，但 `isProvisioned=false`、`provisionedAt=null`。
 
 ## Store Management capability
 

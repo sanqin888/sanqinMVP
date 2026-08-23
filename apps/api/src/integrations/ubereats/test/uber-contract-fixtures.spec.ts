@@ -74,6 +74,28 @@ describe('versioned Uber wire fixtures', () => {
     }
   });
 
+  it('pins Activate Integration fixture to the writable 1.0.0 contract', () => {
+    const value = parseJson(
+      readFileSync(join(root, 'stores/provision-request.json'), 'utf8'),
+    );
+    expect(value).toMatchObject({
+      allowed_customer_requests: {
+        allow_single_use_items_requests: true,
+        allow_special_instruction_requests: true,
+      },
+      integrator_store_id: 'fixture-store-001',
+      is_order_manager: true,
+      require_manual_acceptance: false,
+      webhooks_config: {
+        schedule_order_webhooks: { is_enabled: true },
+        webhooks_version: '1.0.0',
+      },
+    });
+    expect(value).not.toHaveProperty('order_manager_client_id');
+    expect(value).not.toHaveProperty('integration_enabled');
+    expect(value).not.toHaveProperty('pos_integration_enabled');
+  });
+
   it('pins documentation to the same contract version', () => {
     const manifest: unknown = parseJson(
       readFileSync(join(root, 'manifest.json'), 'utf8'),

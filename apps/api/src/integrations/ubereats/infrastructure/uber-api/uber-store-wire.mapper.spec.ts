@@ -58,6 +58,35 @@ describe('Uber store wire mapper', () => {
     },
   );
 
+  it('只把 integrator_store_id 映射为 SanQ external store identity', () => {
+    expect(
+      mapUberStoreDiscoveryWire({
+        stores: [
+          {
+            store_id: 'store-1',
+            pos_data: {
+              integrator_store_id: '4750_Yonge_Street',
+              order_manager_client_id: 'must-not-be-used-as-store-id',
+            },
+          },
+        ],
+      }),
+    ).toMatchObject({
+      stores: [{ posExternalStoreId: '4750_Yonge_Street' }],
+    });
+    expect(
+      mapUberStoreProvisionWire(
+        {
+          pos_data: {
+            integrator_store_id: '4750_Yonge_Street',
+            order_manager_client_id: 'must-not-be-used-as-store-id',
+          },
+        },
+        'store-1',
+      ),
+    ).toMatchObject({ posExternalStoreId: '4750_Yonge_Street' });
+  });
+
   it('明确应用可选字段默认值并忽略未知字段', () => {
     expect(
       mapUberStoreDiscoveryWire({

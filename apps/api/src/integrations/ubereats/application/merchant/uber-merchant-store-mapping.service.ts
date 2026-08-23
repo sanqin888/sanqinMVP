@@ -6,6 +6,8 @@ import {
   type UberStoreMappingRepositoryPort,
 } from './uber-merchant-persistence.ports';
 
+const POS_EXTERNAL_STORE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
 export class DiscoverUberStoresUseCase {
   constructor(
     private readonly api: UberMerchantApiPort,
@@ -93,12 +95,20 @@ export class MapUberStoreUseCase {
         message: '未找到 Uber 商户授权',
       });
     const discovery = await this.api.discoverStores({ connectionId });
-    if (!discovery.stores.some((store) => store.storeId === storeId))
+    const discoveredStore = discovery.stores.find(
+      (store) => store.storeId === storeId,
+    );
+    if (!discoveredStore)
       throw new UberValidationError({
         code: 'STORE_NOT_AUTHORIZED',
         operation: 'merchant',
         message: '当前 merchant connection 未授权该 Uber 门店',
       });
+    const discoveredStoreId = discoveredStore.posExternalStoreId?.trim();
+    const recoveredStoreId =
+      discoveredStoreId && POS_EXTERNAL_STORE_ID_PATTERN.test(discoveredStoreId)
+        ? discoveredStoreId
+        : null;
     const existing = await this.mappings.findMapping(storeId);
     if (existing && existing.connectionId !== connectionId) {
       if (input.reconnectFromConnectionId?.trim() !== existing.connectionId)
@@ -135,7 +145,7 @@ export class MapUberStoreUseCase {
         input.locationSummary?.trim() || existing?.locationSummary || null,
       isProvisioned: existing?.isProvisioned ?? false,
       provisionedAt: existing?.provisionedAt ?? null,
-      posExternalStoreId: existing?.posExternalStoreId ?? null,
+      posExternalStoreId: existing?.posExternalStoreId ?? recoveredStoreId,
     });
     this.logger.log(
       `[merchant.store-mapping] storeId=${storeId} outcome=selected`,
@@ -148,7 +158,7 @@ export class MapUberStoreUseCase {
   ) {
     const id = uberStoreId.trim(),
       pos = posExternalStoreId.trim();
-    if (!id || !/^[A-Za-z0-9_-]{1,128}$/.test(pos))
+    if (!id || !POS_EXTERNAL_STORE_ID_PATTERN.test(pos))
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
         operation: 'merchant',
