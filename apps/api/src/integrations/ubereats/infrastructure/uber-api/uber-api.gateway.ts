@@ -18,6 +18,10 @@ import {
   type UberRateLimitConfig,
 } from './uber-api-config.service';
 import { mapUberGatewayFailure } from './uber-error.mapper';
+import type {
+  UberClientCredentialsScope,
+  UberOAuthScope,
+} from './uber-scopes';
 import { isUberApplicationError } from '../../application/shared/uber-application.error';
 
 type UberGatewayRequestBase = Pick<
@@ -32,22 +36,33 @@ type UberGatewayRequestBase = Pick<
 > & {
   path: string;
   operation: string;
-  scope: string;
   /** Merchant/store identifier used to isolate noisy tenants. */
   partitionKey?: string;
-  /** Explicit merchant token; app-scoped calls obtain one from UberAuthService. */
-  accessToken?: string;
 };
 
-export type UberGatewayRequest =
-  | (UberGatewayRequestBase & {
-      method?: 'GET' | 'HEAD';
-      idempotencyKey?: never;
-    })
-  | (UberGatewayRequestBase & {
-      method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-      idempotencyKey: string;
-    });
+type UberGatewayAuthentication =
+  | {
+      /** App-scoped requests must declare an explicit client_credentials scope. */
+      scope: UberClientCredentialsScope;
+      accessToken?: never;
+    }
+  | {
+      /** Explicit OAuth tokens may carry either supported grant-type scope. */
+      scope: UberOAuthScope;
+      accessToken: string;
+    };
+
+export type UberGatewayRequest = UberGatewayAuthentication &
+  (
+    | (UberGatewayRequestBase & {
+        method?: 'GET' | 'HEAD';
+        idempotencyKey?: never;
+      })
+    | (UberGatewayRequestBase & {
+        method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+        idempotencyKey: string;
+      })
+  );
 
 /** Contract mocked by application tests; global fetch belongs below this boundary. */
 export interface UberResourceGateway {
@@ -101,12 +116,13 @@ export class UberApiGatewayTransport {
     let requestError: Error | undefined;
     let requestResult: UberHttpResult<T> | undefined;
     try {
-      let token =
-        request.accessToken ?? (await this.auth.getAccessToken(request.scope));
+      let token: string;
+      if (request.accessToken !== undefined) token = request.accessToken;
+      else token = await this.auth.getAccessToken(request.scope);
       let result = await this.send<T>(request, baseUrl, path, token, requestId);
       if (
         (result.response.status === 401 || result.response.status === 403) &&
-        !request.accessToken &&
+        request.accessToken === undefined &&
         typeof this.auth.forceRefreshAccessToken === 'function'
       ) {
         token = await this.auth.forceRefreshAccessToken(request.scope);

@@ -16,7 +16,7 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
     accessToken: 'expired-access',
     refreshToken: 'refresh-secret',
     expiresAt: new Date(Date.now() - 1000),
-    scope: 'eats.store',
+    scope: 'offline_access eats.pos_provisioning',
     tokenType: 'Bearer',
     version: '2026-01-01T00:00:00.000Z',
   });
@@ -33,7 +33,7 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
       accessToken: 'fresh-access',
       refreshToken: 'fresh-refresh',
       expiresAt: new Date(Date.now() + 3600_000),
-      scope: 'eats.store',
+      scope: 'offline_access eats.pos_provisioning',
       tokenType: 'Bearer',
     });
     const auth = {
@@ -50,7 +50,7 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
 
     expect(refreshMerchantAccessToken).toHaveBeenCalledWith(
       'refresh-secret',
-      'eats.store',
+      'offline_access eats.pos_provisioning',
     );
     expect(rotateCredential).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -82,7 +82,7 @@ describe('UberMerchantApiAdapter merchant credentials', () => {
         accessToken: 'fresh-access',
         refreshToken: 'fresh-refresh',
         expiresAt: new Date(Date.now() + 3600_000),
-        scope: 'eats.store',
+        scope: 'offline_access eats.pos_provisioning',
         tokenType: 'Bearer',
       };
     });

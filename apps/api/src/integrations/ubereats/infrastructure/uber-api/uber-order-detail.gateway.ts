@@ -15,6 +15,7 @@ import {
 } from '../shared/uber-log.utils';
 import { mapUberGatewayFailure } from './uber-error.mapper';
 import { UberOrderGateway } from './uber-resource.gateways';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 
 const SENSITIVE_DIAGNOSTIC_KEY =
   /(token|authorization|signature|secret|password|cookie|rawbody|payload|phone|address)/i;
@@ -51,7 +52,7 @@ export class UberOrderDetailGatewayAdapter implements UberOrderDetailQueryPort {
       path,
       method: 'GET',
       operation: 'uber.order.detail',
-      scope: 'eats.order',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.ORDER,
       kind: 'orderDetail',
     });
     if (result.response.ok) {

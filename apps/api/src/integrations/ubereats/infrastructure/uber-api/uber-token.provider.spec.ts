@@ -1,4 +1,5 @@
 import { UberAuthService } from './uber-token.provider';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 import { UberHttpClient, UberHttpError } from './uber-http.client';
 import { AppLogger } from '../../../../common/app-logger';
 
@@ -32,7 +33,7 @@ describe('UberAuthService', () => {
   it('getAccessToken 会命中缓存，未过期时不重复请求', async () => {
     const service = new UberAuthService();
     const now = Date.now();
-    const scope = 'eats.store eats.order';
+    const scope = UBER_CLIENT_CREDENTIAL_SCOPES.STORE;
 
     Reflect.set(
       service,
@@ -51,6 +52,32 @@ describe('UberAuthService', () => {
     await expect(service.getAccessToken(scope)).resolves.toBe('token_cached');
   });
 
+  it('不同 client_credentials scope 使用独立 token cache', async () => {
+    const service = new UberAuthService();
+    const now = Date.now();
+    Reflect.set(
+      service,
+      'tokenCache',
+      new Map([
+        [
+          UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
+          { accessToken: 'store-token', expiresAt: now + 10 * 60 * 1000 },
+        ],
+        [
+          UBER_CLIENT_CREDENTIAL_SCOPES.ORDER,
+          { accessToken: 'order-token', expiresAt: now + 10 * 60 * 1000 },
+        ],
+      ]),
+    );
+
+    await expect(
+      service.getAccessToken(UBER_CLIENT_CREDENTIAL_SCOPES.STORE),
+    ).resolves.toBe('store-token');
+    await expect(
+      service.getAccessToken(UBER_CLIENT_CREDENTIAL_SCOPES.ORDER),
+    ).resolves.toBe('order-token');
+  });
+
   it('token 过期时会刷新并缓存', async () => {
     const service = new UberAuthService();
     const requestAccessTokenSpy = jest
@@ -60,8 +87,12 @@ describe('UberAuthService', () => {
         expiresAt: Date.now() + 3600000,
       });
 
-    await expect(service.getAccessToken()).resolves.toBe('token_new');
-    await expect(service.getAccessToken()).resolves.toBe('token_new');
+    await expect(
+      service.getAccessToken(UBER_CLIENT_CREDENTIAL_SCOPES.STORE),
+    ).resolves.toBe('token_new');
+    await expect(
+      service.getAccessToken(UBER_CLIENT_CREDENTIAL_SCOPES.STORE),
+    ).resolves.toBe('token_new');
     expect(requestAccessTokenSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -90,6 +121,37 @@ describe('UberAuthService', () => {
     expect(logged).toContain('description=[redacted] credential rejected');
     expect(logged).not.toContain('leaked');
     expect(logged).not.toContain('must-not-appear');
+  });
+
+  it('merchant refresh 接受已签发的 offline_access，但拒绝 app scope 混入', async () => {
+    process.env.UBER_EATS_CLIENT_ID = 'app_1';
+    process.env.UBER_EATS_CLIENT_SECRET = 'secret_1';
+    const service = new UberAuthService();
+    const performTokenRequest = jest
+      .spyOn(service as never, 'performTokenRequest' as never)
+      .mockResolvedValue({
+        access_token: 'refreshed',
+        refresh_token: 'refresh-2',
+        expires_in: 3600,
+        token_type: 'Bearer',
+        scope: 'offline_access eats.pos_provisioning',
+      });
+
+    await expect(
+      service.refreshMerchantAccessToken(
+        'refresh-1',
+        'offline_access eats.pos_provisioning',
+      ),
+    ).resolves.toMatchObject({
+      accessToken: 'refreshed',
+      scope: 'offline_access eats.pos_provisioning',
+    });
+    expect(performTokenRequest).toHaveBeenCalledTimes(1);
+
+    await expect(
+      service.refreshMerchantAccessToken('refresh-1', 'eats.store'),
+    ).rejects.toThrow('authorization_code scope 无效或 grant type 不匹配');
+    expect(performTokenRequest).toHaveBeenCalledTimes(1);
   });
 
   it('authorization_code token 无 user_id 仍成功', async () => {

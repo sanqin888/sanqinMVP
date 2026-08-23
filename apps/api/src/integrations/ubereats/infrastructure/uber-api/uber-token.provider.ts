@@ -4,6 +4,12 @@ import { AppLogger } from '../../../../common/app-logger';
 import { UberHttpClient } from './uber-http.client';
 import { UberApiConfigService } from './uber-api-config.service';
 import {
+  isUberClientCredentialsScope,
+  isUberMerchantAuthorizationScope,
+  type UberClientCredentialsScope,
+  type UberMerchantAuthorizationScope,
+} from './uber-scopes';
+import {
   UBER_RATE_LIMITER_PORT,
   type UberRateLimiterPort,
 } from '../../application/shared/uber-rate-limiter.port';
@@ -13,8 +19,8 @@ export type UberAuthConfigPort = Pick<
   UberApiConfigService,
   | 'clientId'
   | 'clientSecret'
-  | 'defaultAppScopes'
-  | 'defaultMerchantScopes'
+  | 'expectedAppScopes'
+  | 'merchantAuthorizationScopes'
   | 'authorizeEndpoint'
   | 'redirectUri'
   | 'tokenEndpoint'
@@ -90,45 +96,30 @@ export class UberAuthService {
     return { clientId, clientSecret };
   }
 
-  private normalizeScopes(scope?: string): string {
-    const deduped = this.normalizeScopesToArray(scope);
-
-    if (!deduped.length) {
-      throw new Error('Uber app scopes 不能为空');
+  private normalizeAppScope(
+    scope: UberClientCredentialsScope,
+  ): UberClientCredentialsScope {
+    if (!isUberClientCredentialsScope(scope)) {
+      throw new Error(
+        `Uber client_credentials scope 无效或 grant type 不匹配: ${String(scope)}`,
+      );
     }
-
-    return deduped.join(' ');
+    return scope;
   }
 
-  getDefaultAppScopes(): string[] {
-    return Array.from(
-      new Set(
-        (this.config.defaultAppScopes || '')
-          .split(/\s+/)
-          .map((item) => item.trim())
-          .filter(Boolean),
-      ),
-    );
-  }
-
-  normalizeScopesToArray(scope?: string): string[] {
-    const source = (
-      scope?.trim() ? scope : this.config.defaultAppScopes || ''
-    ).trim();
-
-    return Array.from(
-      new Set(
-        source
-          .split(/\s+/)
-          .map((item) => item.trim())
-          .filter(Boolean),
-      ),
-    );
+  getExpectedAppScopes(): UberClientCredentialsScope[] {
+    return this.config.expectedAppScopes
+      .split(/\s+/)
+      .map((scope) => scope.trim())
+      .filter(isUberClientCredentialsScope);
   }
 
   private normalizeMerchantScopes(scope?: string): string {
-    const source = (scope || this.config.defaultMerchantScopes || '').trim();
-
+    const source = (
+      scope ||
+      this.config.merchantAuthorizationScopes ||
+      ''
+    ).trim();
     const deduped = Array.from(
       new Set(
         source
@@ -137,11 +128,14 @@ export class UberAuthService {
           .filter(Boolean),
       ),
     );
-
-    if (!deduped.length) {
-      throw new Error('Uber merchant scopes 不能为空');
-    }
-
+    if (!deduped.length) throw new Error('Uber merchant scopes 不能为空');
+    const invalid = deduped.filter(
+      (candidate) => !isUberMerchantAuthorizationScope(candidate),
+    );
+    if (invalid.length)
+      throw new Error(
+        `Uber authorization_code scope 无效或 grant type 不匹配: ${invalid.join(', ')}`,
+      );
     return deduped.join(' ');
   }
 
@@ -163,8 +157,8 @@ export class UberAuthService {
     return !!entry && Date.now() + this.accessTokenSkewMs < entry.expiresAt;
   }
 
-  async getAccessToken(scope?: string): Promise<string> {
-    const normalizedScope = this.normalizeScopes(scope);
+  async getAccessToken(scope: UberClientCredentialsScope): Promise<string> {
+    const normalizedScope = this.normalizeAppScope(scope);
 
     const cached = this.tokenCache.get(normalizedScope);
     if (this.isTokenUsable(cached)) {
@@ -192,8 +186,10 @@ export class UberAuthService {
     return resolved.accessToken;
   }
 
-  async forceRefreshAccessToken(scope?: string): Promise<string> {
-    const normalizedScope = this.normalizeScopes(scope);
+  async forceRefreshAccessToken(
+    scope: UberClientCredentialsScope,
+  ): Promise<string> {
+    const normalizedScope = this.normalizeAppScope(scope);
     this.tokenCache.delete(normalizedScope);
 
     const fresh = await this.requestAccessToken(normalizedScope);
@@ -202,10 +198,11 @@ export class UberAuthService {
     return fresh.accessToken;
   }
 
-  clearAccessTokenCache(scope?: string): void {
-    if (scope?.trim()) {
-      this.tokenCache.delete(this.normalizeScopes(scope));
-      this.inflightTokenRequests.delete(this.normalizeScopes(scope));
+  clearAccessTokenCache(scope?: UberClientCredentialsScope): void {
+    if (scope) {
+      const normalizedScope = this.normalizeAppScope(scope);
+      this.tokenCache.delete(normalizedScope);
+      this.inflightTokenRequests.delete(normalizedScope);
       return;
     }
 
@@ -213,7 +210,10 @@ export class UberAuthService {
     this.inflightTokenRequests.clear();
   }
 
-  buildMerchantAuthorizeUrl(state: string, scope?: string): string {
+  buildMerchantAuthorizeUrl(
+    state: string,
+    scope?: UberMerchantAuthorizationScope,
+  ): string {
     if (!state.trim()) {
       throw new Error('OAuth state 不能为空');
     }
@@ -236,7 +236,7 @@ export class UberAuthService {
   async exchangeAuthorizationCode(
     code: string,
     redirectUriOverride?: string,
-    scopeOverride?: string,
+    scopeOverride?: UberMerchantAuthorizationScope,
   ): Promise<UberMerchantTokenExchangeResult> {
     if (!code.trim()) {
       throw new Error('authorization code 不能为空');
@@ -318,7 +318,9 @@ export class UberAuthService {
     };
   }
 
-  private async requestAccessToken(scope: string): Promise<CachedToken> {
+  private async requestAccessToken(
+    scope: UberClientCredentialsScope,
+  ): Promise<CachedToken> {
     const { clientId, clientSecret } = this.resolveOAuthClientCredentials();
 
     const params = new URLSearchParams({
