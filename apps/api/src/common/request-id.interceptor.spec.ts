@@ -120,12 +120,9 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
 
-    runIntercept(
-      'POST',
-      '/api/v1/orders/order-1/preparation/start',
-      200,
-      { status: 'making' },
-    );
+    runIntercept('POST', '/api/v1/orders/order-1/preparation/start', 200, {
+      status: 'making',
+    });
 
     expect(loggerLogSpy).toHaveBeenCalledWith(
       expect.stringContaining(
