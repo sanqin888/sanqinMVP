@@ -385,6 +385,7 @@ export type UberMenuReconciliationMismatch = {
     | 'isAvailable'
     | 'modifierGroupIds'
     | 'taxRatePercentage'
+    | 'preparationType'
     | 'optionItemIds';
   expected: string;
   actual: string;
