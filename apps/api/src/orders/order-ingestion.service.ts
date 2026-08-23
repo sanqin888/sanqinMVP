@@ -269,7 +269,8 @@ export class OrderIngestionService {
     if (
       fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED &&
       result.action === 'created' &&
-      (result.status === OrderStatus.pending || result.status === OrderStatus.paid)
+      (result.status === OrderStatus.pending ||
+        result.status === OrderStatus.paid)
     ) {
       this.logger.log({
         event: 'scheduled_order_board_queued',
