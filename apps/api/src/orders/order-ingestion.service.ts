@@ -266,12 +266,18 @@ export class OrderIngestionService {
       });
     }
 
-    if (fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED) {
+    if (
+      fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED &&
+      result.action === 'created' &&
+      (result.status === OrderStatus.pending ||
+        result.status === OrderStatus.paid)
+    ) {
       this.logger.log({
-        event: 'scheduled_order_waiting',
+        event: 'scheduled_order_board_queued',
         orderStableId: result.orderStableId,
         externalOrderId: input.externalOrderId ?? null,
         channel: input.channel,
+        status: result.status,
         scheduledReadyAt: input.scheduledReadyAt?.toISOString() ?? null,
         prepStartAt: prepStartAt?.toISOString() ?? null,
         prepDurationMinutes,

@@ -92,7 +92,7 @@ export class RequestIdInterceptor implements NestInterceptor {
             const status = response?.statusCode;
             const logMessage = `[reqId=${requestId}] ${method} ${safeUrl} - ${status} (${ms}ms)`;
 
-            // Only the POS scheduled-order rail's explicitly marked polling request is quiet.
+            // This GET is the dedicated POS scheduled-order rail polling endpoint.
             // Keep healthy 200 polls silent while surfacing abnormal statuses.
             if (isScheduledOrdersPoll) {
               if (status === 200) {

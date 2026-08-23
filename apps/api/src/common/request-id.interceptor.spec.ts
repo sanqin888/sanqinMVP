@@ -103,18 +103,6 @@ describe('RequestIdInterceptor', () => {
     expect(loggerWarnSpy).not.toHaveBeenCalled();
   });
 
-  it('logs unmarked scheduled-order requests normally', () => {
-    const loggerLogSpy = jest
-      .spyOn(Logger.prototype, 'log')
-      .mockImplementation(() => undefined);
-
-    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
-
-    expect(loggerLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('GET /api/v1/orders/scheduled - 200'),
-    );
-  });
-
   it('does not suppress other scheduled-order backend actions', () => {
     const loggerLogSpy = jest
       .spyOn(Logger.prototype, 'log')

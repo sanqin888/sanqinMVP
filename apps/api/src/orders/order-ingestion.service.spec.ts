@@ -15,6 +15,7 @@ jest.mock('@prisma/client', () => ({
   PaymentMethod: { UBEREATS: 'UBEREATS' },
 }));
 
+import { Logger } from '@nestjs/common';
 import { OrderIngestionService } from './order-ingestion.service';
 
 describe('OrderIngestionService', () => {
@@ -52,6 +53,10 @@ describe('OrderIngestionService', () => {
     persistExternalSnapshot: true,
     emitPaidLifecycleEvent: false,
   };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
 
   it('重复接入替换菜品但只保留一个订单', async () => {
     let existing: null | {
@@ -143,6 +148,131 @@ describe('OrderIngestionService', () => {
         externalEstimatedReadyAt,
       }) as unknown,
     });
+  });
+
+  it('logs when a new scheduled order first becomes eligible for the reservation board', async () => {
+    const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'o1',
+          orderStableId: 's1',
+          status: 'pending',
+        }),
+      },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'i1' }),
+      },
+      uberOrderItemModifier: { createMany: jest.fn() },
+    };
+    const service = new OrderIngestionService(
+      {
+        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+      } as never,
+      {} as never,
+    );
+
+    await service.ingest(
+      {
+        ...(input as object),
+        externalOrderId: 'uber-order-1',
+        fulfillmentTiming: 'SCHEDULED',
+        scheduledReadyAt,
+      } as never,
+      policies,
+    );
+
+    expect(loggerLogSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'scheduled_order_board_queued',
+        orderStableId: 's1',
+        externalOrderId: 'uber-order-1',
+        channel: 'ubereats',
+        status: 'pending',
+        scheduledReadyAt: scheduledReadyAt.toISOString(),
+      }),
+    );
+  });
+
+  it('does not log reservation-board entry again when a scheduled order is updated', async () => {
+    const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const existing = {
+      id: 'o1',
+      orderStableId: 's1',
+      status: 'pending',
+      pickupCode: null,
+    };
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(existing),
+        update: jest.fn().mockResolvedValue(existing),
+      },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'i1' }),
+      },
+      uberOrderItemModifier: { createMany: jest.fn() },
+    };
+    const service = new OrderIngestionService(
+      {
+        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+      } as never,
+      {} as never,
+    );
+
+    await service.ingest(
+      {
+        ...(input as object),
+        fulfillmentTiming: 'SCHEDULED',
+        scheduledReadyAt,
+      } as never,
+      policies,
+    );
+
+    expect(loggerLogSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'scheduled_order_board_queued' }),
+    );
+  });
+
+  it('does not log reservation-board entry for immediate orders', async () => {
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'o1',
+          orderStableId: 's1',
+          status: 'pending',
+        }),
+      },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'i1' }),
+      },
+      uberOrderItemModifier: { createMany: jest.fn() },
+    };
+    const service = new OrderIngestionService(
+      {
+        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+      } as never,
+      {} as never,
+    );
+
+    await service.ingest(input, policies);
+
+    expect(loggerLogSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'scheduled_order_board_queued' }),
+    );
   });
 
   it('rejects a scheduled order without a stable scheduledReadyAt', async () => {
