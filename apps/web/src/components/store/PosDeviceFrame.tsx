@@ -94,7 +94,9 @@ export function PosDeviceFrame({
 
     async function loadScheduledOrders() {
       try {
-        const payload = await apiFetch<unknown>("/orders/scheduled");
+        const payload = await apiFetch<unknown>(
+          "/orders/scheduled?poll=pos-scheduled-rail",
+        );
         const orders = parseScheduledOrders(payload);
         if (cancelled) return;
         setScheduledOrders(orders);

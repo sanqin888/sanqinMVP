@@ -31,6 +31,7 @@ export class RequestIdInterceptor implements NestInterceptor {
     '/api/v1/orders/prep-time',
   ];
   private readonly scheduledOrdersPollingPath = '/api/v1/orders/scheduled';
+  private readonly scheduledOrdersPollingMarker = 'pos-scheduled-rail';
   private readonly analyticsEventsPath = '/api/v1/analytics/events';
   private readonly cloverOnlineQuotePath = '/api/v1/clover/pay/online/quote';
   private readonly orderPrintStatusPath =
@@ -79,7 +80,8 @@ export class RequestIdInterceptor implements NestInterceptor {
     );
     const isScheduledOrdersPoll =
       method === 'GET' &&
-      requestPathWithoutQuery === this.scheduledOrdersPollingPath;
+      requestPathWithoutQuery === this.scheduledOrdersPollingPath &&
+      request.query?.poll === this.scheduledOrdersPollingMarker;
 
     // 3) runWithLogContext：把 requestId 写入 AsyncLocalStorage
     return runWithLogContext({ requestId }, () =>
@@ -90,8 +92,8 @@ export class RequestIdInterceptor implements NestInterceptor {
             const status = response?.statusCode;
             const logMessage = `[reqId=${requestId}] ${method} ${safeUrl} - ${status} (${ms}ms)`;
 
-            // POS scheduled-order rail polls this endpoint every 15 seconds.
-            // Keep healthy 200 responses silent while surfacing abnormal statuses.
+            // Only the POS scheduled-order rail's explicitly marked polling request is quiet.
+            // Keep healthy 200 polls silent while surfacing abnormal statuses.
             if (isScheduledOrdersPoll) {
               if (status === 200) {
                 return;
