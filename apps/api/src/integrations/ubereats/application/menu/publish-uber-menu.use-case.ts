@@ -58,6 +58,20 @@ export class PublishUberMenuUseCase {
         'Uber 门店未配置或尚未 provision。',
       );
     const graph = this.toGraph(snapshot, input);
+    const unclassifiedItems = graph.items.filter(
+      (item) => item.preparationType === null,
+    );
+    if (unclassifiedItems.length) {
+      throw this.validationError(
+        'UBER_PREPARATION_TYPE_REQUIRED',
+        `发布 Uber 菜单前必须明确标记每个商品为 PREPARED 或 PREPACKAGED。未确认：${unclassifiedItems
+          .slice(0, 5)
+          .map((item) => item.sourceStableId)
+          .join(
+            ', ',
+          )}${unclassifiedItems.length > 5 ? ` 等 ${unclassifiedItems.length} 项` : ''}`,
+      );
+    }
     const serviceAvailability = this.availability(snapshot.timezone);
     const payload = buildUberUploadMenuPayload(
       graph,
@@ -298,6 +312,7 @@ export class PublishUberMenuUseCase {
           description: item.description,
           priceCents: item.priceCents,
           isAvailable: item.isAvailable,
+          preparationType: item.preparationType,
           modifierGroupIds: item.modifierGroupStableIds
             .filter((stableId) => emittedGroupStableIds.has(stableId))
             .map(groupNodeId),
@@ -311,6 +326,7 @@ export class PublishUberMenuUseCase {
           description: null,
           priceCents: option.priceDeltaCents,
           isAvailable: option.isAvailable,
+          preparationType: option.preparationType,
           modifierGroupIds: [],
           imageUrl: null,
         })),
@@ -369,6 +385,7 @@ export type UberMenuReconciliationMismatch = {
     | 'isAvailable'
     | 'modifierGroupIds'
     | 'taxRatePercentage'
+    | 'preparationType'
     | 'optionItemIds';
   expected: string;
   actual: string;
@@ -446,6 +463,9 @@ export class RetrieveAndReconcileUberMenuUseCase {
       taxLabelItemCount: retrieved.items.filter(
         (item) => item.taxLabels.length > 0,
       ).length,
+      preparationTypeItemCount: retrieved.items.filter(
+        (item) => item.preparationType !== null,
+      ).length,
     };
 
     if (!baseline)
@@ -456,6 +476,10 @@ export class RetrieveAndReconcileUberMenuUseCase {
         baseline: null,
         reconciliation: {
           matchesLastSuccessfulPublish: null,
+          missingMenuIds: [] as string[],
+          extraMenuIds: [] as string[],
+          missingCategoryIds: [] as string[],
+          extraCategoryIds: [] as string[],
           missingItemIds: [] as string[],
           extraItemIds: [] as string[],
           missingModifierGroupIds: [] as string[],
@@ -470,6 +494,22 @@ export class RetrieveAndReconcileUberMenuUseCase {
       };
 
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
+    const expectedMenuIds = baseline.menus.map((menu) => menu.id);
+    const expectedCategoryIds = baseline.categories.map(
+      (category) => category.id,
+    );
+    const missingMenuIds = expectedMenuIds.filter(
+      (id) => !retrieved.menuIds.includes(id),
+    );
+    const extraMenuIds = retrieved.menuIds.filter(
+      (id) => !expectedMenuIds.includes(id),
+    );
+    const missingCategoryIds = expectedCategoryIds.filter(
+      (id) => !retrieved.categoryIds.includes(id),
+    );
+    const extraCategoryIds = retrieved.categoryIds.filter(
+      (id) => !expectedCategoryIds.includes(id),
+    );
     const expectedItems = new Map(
       baseline.items.map((item) => [item.id, item]),
     );
@@ -539,6 +579,19 @@ export class RetrieveAndReconcileUberMenuUseCase {
           expected: renderReconciliationValue(expected.tax_info.tax_rate),
           actual: renderReconciliationValue(actual.taxRatePercentage),
         });
+      const expectedPreparationType =
+        expected.dish_info?.classifications?.preparation_type;
+      if (
+        expectedPreparationType !== undefined &&
+        expectedPreparationType !== actual.preparationType
+      )
+        mismatches.push({
+          resourceType: 'ITEM',
+          resourceId: id,
+          field: 'preparationType',
+          expected: renderReconciliationValue(expectedPreparationType),
+          actual: renderReconciliationValue(actual.preparationType),
+        });
     }
 
     for (const [id, expected] of expectedGroups) {
@@ -561,6 +614,10 @@ export class RetrieveAndReconcileUberMenuUseCase {
       retrieved.disableItemInstructions !== null &&
       retrieved.disableItemInstructions !== expectedDisableItemInstructions;
     const matchesLastSuccessfulPublish =
+      missingMenuIds.length === 0 &&
+      extraMenuIds.length === 0 &&
+      missingCategoryIds.length === 0 &&
+      extraCategoryIds.length === 0 &&
       missingItemIds.length === 0 &&
       extraItemIds.length === 0 &&
       missingModifierGroupIds.length === 0 &&
@@ -579,6 +636,10 @@ export class RetrieveAndReconcileUberMenuUseCase {
       },
       reconciliation: {
         matchesLastSuccessfulPublish,
+        missingMenuIds: sortedIds(missingMenuIds),
+        extraMenuIds: sortedIds(extraMenuIds),
+        missingCategoryIds: sortedIds(missingCategoryIds),
+        extraCategoryIds: sortedIds(extraCategoryIds),
         missingItemIds: sortedIds(missingItemIds),
         extraItemIds: sortedIds(extraItemIds),
         missingModifierGroupIds: sortedIds(missingModifierGroupIds),

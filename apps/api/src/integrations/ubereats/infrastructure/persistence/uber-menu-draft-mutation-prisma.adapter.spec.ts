@@ -38,6 +38,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
       displayDescription: '  Spicy noodles  ',
       priceCents: 1499,
       isAvailable: false,
+      preparationType: 'PREPARED',
     });
 
     expect(upsert).toHaveBeenCalledWith(
@@ -49,6 +50,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
           isAvailable: false,
           displayName: 'Noodles',
           displayDescription: 'Spicy noodles',
+          preparationType: 'PREPARED',
         }),
       }),
     );
@@ -128,6 +130,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
       displayName: '  Extra spicy  ',
       priceDeltaCents: 300,
       isAvailable: true,
+      preparationType: 'PREPACKAGED',
     });
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -137,6 +140,7 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
           priceDeltaCents: 300,
           isAvailable: true,
           displayName: 'Extra spicy',
+          preparationType: 'PREPACKAGED',
         }),
       }),
     );

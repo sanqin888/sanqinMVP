@@ -16,6 +16,7 @@ export type ItemChannelConfig = {
   isAvailable: boolean;
   displayName: string | null;
   displayDescription: string | null;
+  preparationType: 'PREPARED' | 'PREPACKAGED' | null;
 };
 export type ModifierConfig = {
   storeId: string;

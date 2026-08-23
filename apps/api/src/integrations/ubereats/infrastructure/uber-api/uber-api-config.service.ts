@@ -1,4 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import {
+  isUberClientCredentialsScope,
+  isUberMerchantAuthorizationScope,
+  UBER_MERCHANT_AUTHORIZATION_SCOPES,
+  UBER_REQUIRED_CLIENT_CREDENTIAL_SCOPES,
+} from './uber-scopes';
 
 export interface UberApiConfig {
   readonly apiBaseUrl: string;
@@ -22,8 +28,10 @@ export class UberApiConfigService {
   readonly resourceHrefAllowedOrigins: string;
   readonly tokenEndpoint: string;
   readonly authorizeEndpoint: string;
-  readonly defaultAppScopes: string;
-  readonly defaultMerchantScopes: string;
+  /** Deployment-declared client_credentials entitlements expected to be available. */
+  readonly expectedAppScopes: string;
+  /** authorization_code scopes requested during merchant provisioning OAuth. */
+  readonly merchantAuthorizationScopes: string;
   readonly menuNotificationsEnabled: boolean;
   readonly menuConfirmTimeoutMs: number;
   readonly menuConfirmInitialDelayMs: number;
@@ -50,12 +58,14 @@ export class UberApiConfigService {
     this.authorizeEndpoint =
       read('UBER_EATS_AUTHORIZE_ENDPOINT') ||
       'https://auth.uber.com/oauth/v2/authorize';
-    this.defaultAppScopes =
+    this.expectedAppScopes = this.clientCredentialsScopes(
       read('UBER_EATS_APP_SCOPES') ||
-      read('UBER_EATS_SCOPES') ||
-      'eats.store eats.order';
-    this.defaultMerchantScopes =
-      read('UBER_EATS_USER_AUTH_SCOPES') || 'eats.pos_provisioning';
+        UBER_REQUIRED_CLIENT_CREDENTIAL_SCOPES.join(' '),
+    );
+    this.merchantAuthorizationScopes = this.merchantAuthorizationScopeList(
+      read('UBER_EATS_USER_AUTH_SCOPES') ||
+        UBER_MERCHANT_AUTHORIZATION_SCOPES.POS_PROVISIONING,
+    );
     this.menuNotificationsEnabled = /^(1|true|yes)$/i.test(
       read('UBER_EATS_MENU_NOTIFICATIONS_ENABLED'),
     );
@@ -136,6 +146,53 @@ export class UberApiConfigService {
   operationWeight(operation: string): number {
     return this.weights[operation] ?? 1;
   }
+
+  private clientCredentialsScopes(raw: string): string {
+    const scopes = this.scopeList(
+      raw,
+      'UBER_EATS_APP_SCOPES',
+      isUberClientCredentialsScope,
+    );
+    const missing = UBER_REQUIRED_CLIENT_CREDENTIAL_SCOPES.filter(
+      (required) => !scopes.includes(required),
+    );
+    if (missing.length)
+      throw new Error(
+        `Uber 配置 UBER_EATS_APP_SCOPES 缺少当前运行时必需 scope: ${missing.join(', ')}`,
+      );
+    return scopes.join(' ');
+  }
+
+  private merchantAuthorizationScopeList(raw: string): string {
+    return this.scopeList(
+      raw,
+      'UBER_EATS_USER_AUTH_SCOPES',
+      isUberMerchantAuthorizationScope,
+    ).join(' ');
+  }
+
+  private scopeList<T extends string>(
+    raw: string,
+    key: string,
+    accepts: (value: string) => value is T,
+  ): T[] {
+    const scopes = Array.from(
+      new Set(
+        raw
+          .split(/\s+/)
+          .map((scope) => scope.trim())
+          .filter(Boolean),
+      ),
+    );
+    if (!scopes.length) throw new Error(`Uber 配置 ${key} 不能为空`);
+    const invalid = scopes.filter((scope) => !accepts(scope));
+    if (invalid.length)
+      throw new Error(
+        `Uber 配置 ${key} 包含不属于该 OAuth grant type 的 scope: ${invalid.join(', ')}`,
+      );
+    return scopes.filter(accepts);
+  }
+
   private integer(
     env: Record<string, string | undefined>,
     key: string,

@@ -134,11 +134,7 @@ export function mapUberStoreDiscoveryWire(
           .join(', '),
       ),
       integrationEnabled: pos?.integration_enabled === true,
-      posExternalStoreId: readString(
-        pos?.order_manager_client_id,
-        pos?.pos_external_store_id,
-        store.pos_external_store_id,
-      ),
+      posExternalStoreId: readString(pos?.integrator_store_id),
       timezone: readString(
         store.timezone,
         store.time_zone,
@@ -180,8 +176,8 @@ export function mapUberStoreProvisionWire(
       location?.formatted_address,
     ),
     posExternalStoreId: readString(
-      raw?.pos_external_store_id,
-      asObject(raw?.pos_data)?.order_manager_client_id,
+      raw?.integrator_store_id,
+      asObject(raw?.pos_data)?.integrator_store_id,
     ),
   };
 }

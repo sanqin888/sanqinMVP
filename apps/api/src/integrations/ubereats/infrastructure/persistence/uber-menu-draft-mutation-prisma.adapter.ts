@@ -6,9 +6,10 @@ import type {
   UberDraftItemCommandPort,
   UberDraftOptionCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
-import type {
-  UpdateDraftItemInput,
-  UpdateDraftOptionInput,
+import {
+  readUberPreparationType,
+  type UpdateDraftItemInput,
+  type UpdateDraftOptionInput,
 } from '../../domain/menu/uber-menu.types';
 import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
 
@@ -57,6 +58,7 @@ export class UberMenuDraftMutationPrismaAdapter
         isAvailable: input.isAvailable ?? menuItem.isAvailable,
         displayName: input.displayName?.trim() || null,
         displayDescription: input.displayDescription?.trim() || null,
+        preparationType: input.preparationType ?? null,
       },
       update: {
         ...(input.priceCents !== undefined
@@ -71,6 +73,9 @@ export class UberMenuDraftMutationPrismaAdapter
         ...(input.displayDescription !== undefined
           ? { displayDescription: input.displayDescription?.trim() || null }
           : {}),
+        ...(input.preparationType !== undefined
+          ? { preparationType: input.preparationType }
+          : {}),
       },
     });
 
@@ -78,7 +83,10 @@ export class UberMenuDraftMutationPrismaAdapter
       ok: true,
       storeId: normalizedStoreId,
       itemId,
-      config: row,
+      config: {
+        ...row,
+        preparationType: readUberPreparationType(row.preparationType),
+      },
       warnings:
         input.sortOrder !== undefined
           ? ['当前没有 Uber item 独立 sortOrder 字段，已忽略 sortOrder 更新。']
@@ -183,6 +191,7 @@ export class UberMenuDraftMutationPrismaAdapter
           input.priceDeltaCents ?? choice.priceDeltaCents,
         ),
         isAvailable: input.isAvailable ?? choice.isAvailable,
+        preparationType: input.preparationType ?? null,
       },
       update: {
         ...(input.displayName !== undefined
@@ -194,6 +203,9 @@ export class UberMenuDraftMutationPrismaAdapter
         ...(input.isAvailable !== undefined
           ? { isAvailable: input.isAvailable }
           : {}),
+        ...(input.preparationType !== undefined
+          ? { preparationType: input.preparationType }
+          : {}),
       },
     });
 
@@ -201,7 +213,10 @@ export class UberMenuDraftMutationPrismaAdapter
       ok: true,
       storeId: normalizedStoreId,
       optionItemId,
-      config: row,
+      config: {
+        ...row,
+        preparationType: readUberPreparationType(row.preparationType),
+      },
       warnings:
         input.sortOrder !== undefined
           ? [

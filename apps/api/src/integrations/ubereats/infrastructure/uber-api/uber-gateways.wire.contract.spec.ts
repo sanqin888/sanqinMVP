@@ -8,11 +8,8 @@ import { UberMerchantApiAdapter } from './uber-merchant-api.adapter';
 import { UberMenuGatewayAdapter } from './uber-menu-publication.adapter';
 import { UberOrderActionGatewayAdapter } from './uber-order-action.gateway';
 import { UberOrderDetailGatewayAdapter } from './uber-order-detail.gateway';
-import {
-  UberAuthService,
-  type UberAuthConfigPort,
-  type UberAuthHttpPort,
-} from './uber-token.provider';
+import { UberAuthService, type UberAuthHttpPort } from './uber-token.provider';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 import {
   type UberTelemetryPort,
   UBER_TELEMETRY_PORT,
@@ -86,15 +83,18 @@ describe('Uber gateways wire contract v1', () => {
         data: fixture('oauth/token-success.json'),
       }),
     };
-    const auth = new UberAuthService(http, {
-      clientId: 'fixture-client-id',
-      clientSecret: 'fixture-client-secret',
-      defaultAppScopes: 'eats.store eats.order',
-      tokenEndpoint: 'https://auth.uber.com/oauth/v2/token',
-    } satisfies UberAuthConfigPort);
-    await expect(auth.getAccessToken('eats.store eats.order')).resolves.toBe(
-      'fixture-not-a-real-token',
+    const auth = new UberAuthService(
+      http,
+      new UberApiConfigService({
+        UBER_EATS_CLIENT_ID: 'fixture-client-id',
+        UBER_EATS_CLIENT_SECRET: 'fixture-client-secret',
+        UBER_EATS_APP_SCOPES: 'eats.store eats.order eats.store.status.write',
+        UBER_EATS_TOKEN_ENDPOINT: 'https://auth.uber.com/oauth/v2/token',
+      }),
     );
+    await expect(
+      auth.getAccessToken(UBER_CLIENT_CREDENTIAL_SCOPES.STORE),
+    ).resolves.toBe('fixture-not-a-real-token');
     const request = http.request.mock.calls[0][0];
     expect(request).toMatchObject({
       url: 'https://auth.uber.com/oauth/v2/token',
@@ -110,7 +110,7 @@ describe('Uber gateways wire contract v1', () => {
       client_id: 'fixture-client-id',
       client_secret: 'fixture-client-secret',
       grant_type: 'client_credentials',
-      scope: 'eats.store eats.order',
+      scope: 'eats.store',
     });
   });
 
@@ -144,7 +144,7 @@ describe('Uber gateways wire contract v1', () => {
         accessToken: 'fixture-merchant-token',
         refreshToken: null,
         expiresAt: new Date(Date.now() + 3600_000),
-        scope: 'eats.store',
+        scope: 'offline_access eats.pos_provisioning',
         tokenType: 'Bearer',
         version: 'v1',
       }),
@@ -191,7 +191,7 @@ describe('Uber gateways wire contract v1', () => {
         path: '/v1/eats/stores',
         method: 'GET',
         operation: 'GET /v1/eats/stores',
-        scope: 'eats.store',
+        scope: 'eats.pos_provisioning',
         accessToken: 'fixture-merchant-token',
         json: undefined,
       },
@@ -199,7 +199,7 @@ describe('Uber gateways wire contract v1', () => {
         path: '/v1/eats/stores/store%20%2F%201/pos_data',
         method: 'POST',
         operation: 'POST /v1/eats/stores/store%20%2F%201/pos_data',
-        scope: 'eats.store',
+        scope: 'eats.pos_provisioning',
         accessToken: 'fixture-merchant-token',
         json: fixture('stores/provision-request.json'),
         idempotencyKey: 'provision:store-1:v1',
@@ -238,7 +238,9 @@ describe('Uber gateways wire contract v1', () => {
       .mockResolvedValueOnce(
         uberHttpResult(200, {
           status: 'OFFLINE',
-          offlineReason: 'PAUSED_BY_RESTAURANT',
+          offline_reason: 'PAUSED_BY_RESTAURANT',
+          offline_reason_metadata: 'UNFULFILL_RATE',
+          is_offline_until: '2026-08-23T03:00:00.000Z',
         }),
       )
       .mockResolvedValueOnce(
@@ -255,8 +257,8 @@ describe('Uber gateways wire contract v1', () => {
       storeId: 'store/1',
       status: 'OFFLINE',
       offlineReason: 'PAUSED_BY_RESTAURANT',
-      offlineReasonMetadata: null,
-      isOfflineUntil: null,
+      offlineReasonMetadata: 'UNFULFILL_RATE',
+      isOfflineUntil: '2026-08-23T03:00:00.000Z',
     });
     await expect(
       adapter.updatePrepTime('store/1', 900, 'prep:key:v1'),
@@ -267,7 +269,7 @@ describe('Uber gateways wire contract v1', () => {
 
     expect(transport.inspect.mock.calls.map(([request]) => request)).toEqual([
       {
-        path: '/v1/eats/store/store%2F1/status',
+        path: '/v1/delivery/store/store%2F1/status',
         method: 'GET',
         operation: 'merchant.retrieve-store-status',
         scope: 'eats.store',
@@ -285,9 +287,11 @@ describe('Uber gateways wire contract v1', () => {
     ]);
   });
 
-  it('store status has a write scope and stable idempotency key', async () => {
+  it('store status uses the Store API Suite write endpoint and scope', async () => {
     const transport = createUberTransportFake();
-    transport.inspect.mockResolvedValue(uberHttpResult(204));
+    transport.inspect.mockResolvedValue(
+      uberHttpResult(200, { status: 'ONLINE', previous_status: 'OFFLINE' }),
+    );
     const adapter = new UberMerchantApiAdapter(
       transport,
       undefined as never,
@@ -296,13 +300,36 @@ describe('Uber gateways wire contract v1', () => {
     );
     await adapter.writeStatus('store/1', { status: 'ONLINE' }, 'status:key:v1');
     expect(transport.inspect).toHaveBeenCalledWith({
-      path: '/v1/eats/store/store%2F1/status',
+      path: '/v1/delivery/store/store%2F1/update-store-status',
       method: 'POST',
       operation: 'uber.store.status',
       scope: 'eats.store.status.write',
       partitionKey: 'store/1',
       json: { status: 'ONLINE' },
       idempotencyKey: 'status:key:v1',
+    });
+  });
+
+  it('treats a store-status 409 as an upstream rejection instead of success', async () => {
+    const transport = createUberTransportFake();
+    transport.inspect.mockResolvedValue(
+      uberHttpResult(409, { message: 'status conflict' }),
+    );
+    const adapter = new UberMerchantApiAdapter(
+      transport,
+      undefined as never,
+      undefined as never,
+      audit,
+    );
+
+    await expect(
+      adapter.writeStatus('store/1', { status: 'ONLINE' }, 'status:key:v1'),
+    ).resolves.toMatchObject({
+      uberStoreId: 'store/1',
+      outcome: 'FAILED',
+      reason: 'UPSTREAM_REJECTED',
+      retryable: false,
+      attempts: 1,
     });
   });
 
@@ -316,6 +343,7 @@ describe('Uber gateways wire contract v1', () => {
           id: 'item-1',
           price_info: { price: 749 },
           tax_info: { tax_rate: 13 },
+          dish_info: { classifications: { preparation_type: '' } },
           tax_label_info: {
             default_value: {
               labels: ['CAT_PREPARED_FOOD'],
@@ -329,6 +357,7 @@ describe('Uber gateways wire contract v1', () => {
           id: 'option-1',
           price_info: { price: 100 },
           tax_info: { tax_rate: 13 },
+          dish_info: { classifications: { preparation_type: 'PREPACKAGED' } },
           modifier_group_ids: { ids: null },
           suspension_info: {
             suspension: { suspend_until: 4070908800, reason: 'Out of stock' },
@@ -356,12 +385,14 @@ describe('Uber gateways wire contract v1', () => {
           modifierGroupIds: ['group-1'],
           taxRatePercentage: 13,
           taxLabels: ['CAT_PREPARED_FOOD'],
+          preparationType: '',
         }),
         expect.objectContaining({
           id: 'option-1',
           priceCents: 100,
           isAvailable: false,
           modifierGroupIds: [],
+          preparationType: 'PREPACKAGED',
         }),
       ],
       modifierGroups: [{ id: 'group-1', optionItemIds: ['option-1'] }],
@@ -431,9 +462,10 @@ describe('Uber gateways wire contract v1', () => {
   ] as const)(
     '%s maps domain input to the explicit Order Fulfillment 1.0.0 wire schema',
     async (method, action, bodyFixture) => {
-      const sendActionCommand = jest
-        .fn()
-        .mockResolvedValue({ ok: true, status: 200 });
+      const sendActionCommand = jest.fn().mockResolvedValue({
+        ok: true,
+        status: action === 'CANCEL' ? 204 : 200,
+      });
       const adapter = new UberOrderActionGatewayAdapter({ sendActionCommand });
       const common = {
         externalOrderId: 'order/1',

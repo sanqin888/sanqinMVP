@@ -1,5 +1,8 @@
 import { createHash } from 'crypto';
-import type { UberMenuGraphValidationIssue } from './uber-menu.types';
+import type {
+  UberMenuGraphValidationIssue,
+  UberPreparationType,
+} from './uber-menu.types';
 import type {
   UberMenuDraftFilters,
   UberMenuDraftSource,
@@ -15,6 +18,7 @@ export interface UberMenuGraphItem {
   basePriceCents: number;
   priceCents: number;
   isAvailable: boolean;
+  preparationType: UberPreparationType | null;
   modifierGroupIds: string[];
   hasDelta: boolean;
   imageUrl: string | null;
@@ -369,6 +373,15 @@ export function validateUberMenuGraph(
       (i) => i.sourceType === 'MENU_ITEM' || optionIds.has(i.id),
     ),
   };
+  for (const item of normalized.items) {
+    if (item.preparationType) continue;
+    errors.push({
+      code: 'UBER_PREPARATION_TYPE_REQUIRED',
+      message: `Item ${item.id} must explicitly declare PREPARED or PREPACKAGED before Uber publish.`,
+      itemId: item.id,
+      itemStableId: item.sourceStableId,
+    });
+  }
   const summary = summarizeUberMenuGraph(normalized);
   return errors.length
     ? { kind: 'invalid', graph: normalized, warnings, errors, summary }
@@ -434,6 +447,7 @@ export function buildUberMenuGraph(
       basePriceCents: number;
       priceCents: number;
       isAvailable: boolean;
+      preparationType: UberPreparationType | null;
       modifierGroupIds: string[];
       hasDelta: boolean;
       imageUrl: string | null;
@@ -449,6 +463,7 @@ export function buildUberMenuGraph(
     basePriceCents: number;
     priceCents: number;
     isAvailable: boolean;
+    preparationType: UberPreparationType | null;
     modifierGroupIds: string[];
     categoryStableId: string;
     sortOrder: number;
@@ -502,6 +517,7 @@ export function buildUberMenuGraph(
         basePriceCents: choice.priceDeltaCents,
         priceCents: optionPriceCents,
         isAvailable: optionAvailable,
+        preparationType: optionConfig?.preparationType ?? null,
         modifierGroupIds: childGroupIds,
         hasDelta:
           optionPriceCents !== choice.priceDeltaCents ||
@@ -567,6 +583,7 @@ export function buildUberMenuGraph(
       basePriceCents: menuItem.basePriceCents,
       priceCents,
       isAvailable,
+      preparationType: itemConfig?.preparationType ?? null,
       modifierGroupIds: mappedGroupIds,
       categoryStableId: category.stableId,
       sortOrder: menuItem.sortOrder,

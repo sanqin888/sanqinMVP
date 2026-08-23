@@ -11,6 +11,7 @@ import type { UberOrderActionName } from '../../domain/orders/uber-order.types';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import { mapUberGatewayFailure } from './uber-error.mapper';
 import { UberApiConfigService } from './uber-api-config.service';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 
 const invalidResource = (code: string, message: string, operation: string) =>
   new UberValidationError({
@@ -161,7 +162,7 @@ export class UberOrderGateway extends PrefixGateway {
       path: `/v1/delivery/order/${id}/${suffix[action]}`,
       method: 'POST',
       operation: `uber.order.${action.toLowerCase()}`,
-      scope: 'eats.order',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.ORDER,
       // Order Fulfillment actions are merchant-scoped; do not create one limiter
       // partition per order id.
       partitionKey: 'merchant:app',

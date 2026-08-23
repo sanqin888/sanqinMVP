@@ -11,9 +11,12 @@ import type {
   StoreMenuTabKey,
   UberDraftCategoryNode,
   UberDraftGroupNode,
+  UberDraftItemNode,
+  UberDraftOptionNode,
   UberDryRunResponse,
   UberMenuConfigImportPreview,
   UberMenuReconciliationResponse,
+  UberPreparationType,
   UberStore,
 } from '../types';
 import type { RunAction } from '../hooks/useUberMutationState';
@@ -45,6 +48,16 @@ function riskEntityTypeLabel(entityType: string): string {
   if (entityType === 'ITEM') return '菜品';
   if (entityType === 'OPTION_ITEM') return '选项';
   return entityType;
+}
+
+function preparationTypeLabel(value?: UberPreparationType | null): string {
+  if (value === 'PREPARED') return '现制（PREPARED）';
+  if (value === 'PREPACKAGED') return '预包装（PREPACKAGED）';
+  return '未确认';
+}
+
+function preparationTypeValue(value: unknown): UberPreparationType | undefined {
+  return value === 'PREPARED' || value === 'PREPACKAGED' ? value : undefined;
 }
 
 export function MenuWorkspace({
@@ -159,6 +172,7 @@ export function MenuWorkspace({
           source,
           priceDeltaCents: option.priceDeltaCents,
           isAvailable: option.isAvailable,
+          preparationType: option.preparationType,
           children: option.childGroups.map((childGroup) => ({
             id: childGroup.id,
             type: 'group',
@@ -185,6 +199,7 @@ export function MenuWorkspace({
               : undefined,
           priceCents: item.priceCents,
           isAvailable: item.isAvailable,
+          preparationType: item.preparationType,
           children: item.groups.map(toGroup),
         })),
       }));
@@ -307,6 +322,43 @@ export function MenuWorkspace({
     allDraftNodes.find((node) => node.id === selectedNodeId) ??
     allDraftNodes[0] ??
     null;
+  const draftItemLookup = useMemo(() => {
+    const items = new Map<string, UberDraftItemNode>();
+    draftCategories.forEach((category) =>
+      category.items.forEach((item) => items.set(item.id, item)),
+    );
+    return items;
+  }, [draftCategories]);
+  const draftOptionLookup = useMemo(() => {
+    const options = new Map<string, UberDraftOptionNode>();
+    draftCategories.forEach((category) =>
+      category.items.forEach((item) =>
+        item.groups.forEach((group) =>
+          group.options.forEach((option) => options.set(option.id, option)),
+        ),
+      ),
+    );
+    return options;
+  }, [draftCategories]);
+  const selectedDraftItem =
+    selectedNode?.type === 'item' ? draftItemLookup.get(selectedNode.id) : undefined;
+  const selectedDraftOption =
+    selectedNode?.type === 'option' ? draftOptionLookup.get(selectedNode.id) : undefined;
+  const preparationSummary = useMemo(() => {
+    const nodes = new Map<string, DraftNode>();
+    allDraftNodes.forEach((node) => {
+      if (node.type === 'item' || node.type === 'option') {
+        nodes.set(`${node.type}:${node.id}`, node);
+      }
+    });
+    const values = Array.from(nodes.values());
+    return {
+      total: values.length,
+      unclassified: values.filter((node) => !node.preparationType).length,
+      prepared: values.filter((node) => node.preparationType === 'PREPARED').length,
+      prepackaged: values.filter((node) => node.preparationType === 'PREPACKAGED').length,
+    };
+  }, [allDraftNodes]);
 
   useEffect(() => {
     if (!allDraftNodes.length) {
@@ -328,10 +380,13 @@ export function MenuWorkspace({
     }
     if (selectedNode.type === 'item') {
       setInspectorDraft({
-        displayName: selectedNode.name,
-        displayDescription: '',
-        priceCents: selectedNode.priceCents ?? 0,
-        isAvailable: selectedNode.isAvailable ?? true,
+        displayName: selectedDraftItem?.displayName ?? selectedNode.name,
+        displayDescription: selectedDraftItem?.displayDescription ?? '',
+        priceCents: selectedDraftItem?.priceCents ?? selectedNode.priceCents ?? 0,
+        isAvailable:
+          selectedDraftItem?.isAvailable ?? selectedNode.isAvailable ?? true,
+        preparationType:
+          selectedDraftItem?.preparationType ?? selectedNode.preparationType ?? null,
       });
     } else if (selectedNode.type === 'group') {
       setInspectorDraft({
@@ -342,14 +397,18 @@ export function MenuWorkspace({
       });
     } else if (selectedNode.type === 'option') {
       setInspectorDraft({
-        displayName: selectedNode.name,
-        priceDeltaCents: selectedNode.priceDeltaCents ?? 0,
-        isAvailable: selectedNode.isAvailable ?? true,
+        displayName: selectedDraftOption?.displayName ?? selectedNode.name,
+        priceDeltaCents:
+          selectedDraftOption?.priceDeltaCents ?? selectedNode.priceDeltaCents ?? 0,
+        isAvailable:
+          selectedDraftOption?.isAvailable ?? selectedNode.isAvailable ?? true,
+        preparationType:
+          selectedDraftOption?.preparationType ?? selectedNode.preparationType ?? null,
       });
     } else {
       setInspectorDraft({});
     }
-  }, [selectedNode]);
+  }, [selectedDraftItem, selectedDraftOption, selectedNode]);
 
   const selectedStore = stores.find(
     (store) => store.storeId === selectedStoreId,
@@ -360,8 +419,12 @@ export function MenuWorkspace({
     businessTimezone && uberTimezone && businessTimezone !== uberTimezone,
   );
   const blockingValidationIssues = menuDraft?.validation.errors ?? [];
+  const dryRunDisabled =
+    !selectedStoreId ||
+    !selectedStore?.isProvisioned ||
+    blockingValidationIssues.length > 0;
   const formalPublishDisabled =
-    blockingValidationIssues.length > 0 ||
+    dryRunDisabled ||
     timezoneMismatch ||
     !timezoneConfirmed ||
     !taxRateConfirmed;
@@ -497,6 +560,13 @@ export function MenuWorkspace({
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">
                   {node.source}
                 </span>
+                {node.type === 'item' || node.type === 'option' ? (
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] ${node.preparationType ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+                  >
+                    {preparationTypeLabel(node.preparationType)}
+                  </span>
+                ) : null}
                 {node.status ? (
                   <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
                     {node.status}
@@ -523,6 +593,7 @@ export function MenuWorkspace({
   const saveSelectedNode = useCallback(async () => {
     if (!selectedNode || !selectedStoreId) return;
     const stableId = encodeURIComponent(selectedNode.id);
+    const preparationType = preparationTypeValue(inspectorDraft.preparationType);
     if (selectedNode.type === 'item') {
       await uberApiFetch(`/integrations/ubereats/menu/draft/items/${stableId}`, {
         method: 'PATCH',
@@ -533,6 +604,7 @@ export function MenuWorkspace({
           displayDescription: inspectorDraft.displayDescription,
           priceCents: Number(inspectorDraft.priceCents ?? 0),
           isAvailable: Boolean(inspectorDraft.isAvailable),
+          ...(preparationType ? { preparationType } : {}),
         }),
       });
       return;
@@ -560,6 +632,7 @@ export function MenuWorkspace({
           displayName: inspectorDraft.displayName,
           priceDeltaCents: Number(inspectorDraft.priceDeltaCents ?? 0),
           isAvailable: Boolean(inspectorDraft.isAvailable),
+          ...(preparationType ? { preparationType } : {}),
         }),
       });
     }
@@ -687,7 +760,8 @@ export function MenuWorkspace({
           </button>
           <button
             type="button"
-            className="rounded border px-3 py-2 text-xs"
+            disabled={dryRunDisabled}
+            className="rounded border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() =>
               void runAction(
                 'publish-dry',
@@ -781,6 +855,21 @@ export function MenuWorkspace({
                 provision：{selectedStore?.isProvisioned ? '已 provision' : '未 provision'}
               </p>
             </div>
+          </div>
+          <div
+            className={`rounded-xl border p-4 ${preparationSummary.total === 0 ? 'border-slate-200 bg-white' : preparationSummary.unclassified ? 'border-amber-300 bg-amber-50' : 'border-emerald-300 bg-emerald-50'}`}
+          >
+            <h4 className="font-semibold">加拿大 preparationType 分类</h4>
+            <p className="mt-1 text-sm">
+              共 {preparationSummary.total} 个发布 item/option：现制 {preparationSummary.prepared}，预包装 {preparationSummary.prepackaged}，未确认 {preparationSummary.unclassified}。
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              {preparationSummary.total === 0
+                ? '当前没有可分类的发布 item/option。'
+                : preparationSummary.unclassified
+                  ? '未确认分类会触发 UBER_PREPARATION_TYPE_REQUIRED，Dry Run 与正式 Publish 均保持禁用。请在 Uber 编辑器逐项确认。'
+                  : '所有当前发布范围内的 item/option 已完成分类。'}
+            </p>
           </div>
           <div className="rounded-xl border bg-white p-4">
             <h4 className="font-semibold">Uber Menu Configuration</h4>
@@ -1077,6 +1166,26 @@ export function MenuWorkspace({
                     <option value="false">下架</option>
                   </select>
                 </label>
+                <label className="block">
+                  <span className="mb-1 block text-slate-500">preparationType（加拿大必填）</span>
+                  <select
+                    className={`w-full rounded border px-2 py-1 ${inspectorDraft.preparationType ? '' : 'border-amber-400 bg-amber-50'}`}
+                    value={String(inspectorDraft.preparationType ?? '')}
+                    onChange={(event) =>
+                      setInspectorDraft((previous) => ({
+                        ...previous,
+                        preparationType: event.target.value || null,
+                      }))
+                    }
+                  >
+                    <option value="" disabled>请选择，未确认时禁止发布</option>
+                    <option value="PREPARED">现制（PREPARED）</option>
+                    <option value="PREPACKAGED">预包装（PREPACKAGED）</option>
+                  </select>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    PREPARED 会发送空 preparation_type；PREPACKAGED 会显式发送 PREPACKAGED。
+                  </span>
+                </label>
                 <button
                   type="button"
                   className="rounded border px-3 py-1.5"
@@ -1250,6 +1359,23 @@ export function MenuWorkspace({
                     <option value="false">下架</option>
                   </select>
                 </label>
+                <label className="block">
+                  <span className="mb-1 block text-slate-500">preparationType（加拿大必填）</span>
+                  <select
+                    className={`w-full rounded border px-2 py-1 ${inspectorDraft.preparationType ? '' : 'border-amber-400 bg-amber-50'}`}
+                    value={String(inspectorDraft.preparationType ?? '')}
+                    onChange={(event) =>
+                      setInspectorDraft((previous) => ({
+                        ...previous,
+                        preparationType: event.target.value || null,
+                      }))
+                    }
+                  >
+                    <option value="" disabled>请选择，未确认时禁止发布</option>
+                    <option value="PREPARED">现制（PREPARED）</option>
+                    <option value="PREPACKAGED">预包装（PREPACKAGED）</option>
+                  </select>
+                </label>
                 <button
                   type="button"
                   className="rounded border px-3 py-1.5"
@@ -1322,16 +1448,19 @@ export function MenuWorkspace({
                       <button
                         type="button"
                         className="mt-1 underline"
-                        onClick={() => setSelectedNodeId(issue.stableId)}
+                        onClick={() => {
+                          setSelectedNodeId(issue.stableId);
+                          setStoreMenuTab('editor');
+                        }}
                       >
-                        跳转到对应菜品或选项组
+                        跳转到对应节点编辑
                       </button>
                     ) : null}
                   </div>
                 ))}
                 {blockingValidationIssues.length === 0 ? (
                   <p className="rounded bg-emerald-50 p-2 text-xs text-emerald-700">
-                    当前无阻断错误，可执行 Dry Run 与正式 Publish。
+                    当前菜单结构无阻断错误；门店已 provision 后可执行 Dry Run，正式 Publish 仍需完成时区与税率确认。
                   </p>
                 ) : null}
               </div>
@@ -1388,6 +1517,11 @@ export function MenuWorkspace({
                       </div>
                     )}
                     <p className="truncate font-medium">{item.displayName}</p>
+                    <p
+                      className={`mt-1 text-[10px] ${item.preparationType ? 'text-emerald-700' : 'font-medium text-amber-700'}`}
+                    >
+                      {preparationTypeLabel(item.preparationType)}
+                    </p>
                     <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-slate-600">
                       {item.displayDescription?.trim() || '缺少描述'}
                     </p>
@@ -1486,11 +1620,27 @@ export function MenuWorkspace({
                 <li className="rounded border p-2">
                   availabilityChanges: {menuDiff?.availabilityChanges.length ?? 0}
                 </li>
+                <li className="rounded border p-2">
+                  preparationTypeChanges: {menuDiff?.preparationTypeChanges.length ?? 0}
+                </li>
               </ul>
+              {(menuDiff?.preparationTypeChanges.length ?? 0) > 0 ? (
+                <div className="mt-2 max-h-36 space-y-1 overflow-y-auto text-xs">
+                  {menuDiff?.preparationTypeChanges.map((change) => (
+                    <p
+                      key={`${change.sourceType}:${change.stableId}`}
+                      className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-900"
+                    >
+                      {change.sourceType} · {change.stableId} → {preparationTypeLabel(change.preparationType)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               <div className="mt-3 flex gap-2">
                 <button
                   type="button"
-                  className="rounded border px-3 py-1.5 text-sm"
+                  disabled={dryRunDisabled}
+                  className="rounded border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() =>
                     void runAction(
                       'publish-dry-inline',
@@ -1540,6 +1690,9 @@ export function MenuWorkspace({
                   <p className="text-xs text-slate-500">
                     Uber 返回 tax label 的 item：{menuReconciliation.retrieved.taxLabelItemCount}
                   </p>
+                  <p className="text-xs text-slate-500">
+                    Uber 返回 preparation_type 的 item：{menuReconciliation.retrieved.preparationTypeItemCount} / {menuReconciliation.retrieved.itemCount}
+                  </p>
                   <p>
                     最近成功全量 Publish：
                     {menuReconciliation.baseline
@@ -1568,6 +1721,26 @@ export function MenuWorkspace({
                   <p className="text-xs text-slate-500">
                     Order-level special instructions 由 Uber 配置，不属于 Menu API payload。
                   </p>
+                  {menuReconciliation.reconciliation.missingMenuIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 缺少 menu：{menuReconciliation.reconciliation.missingMenuIds.join(', ')}
+                    </p>
+                  ) : null}
+                  {menuReconciliation.reconciliation.extraMenuIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 多余 menu：{menuReconciliation.reconciliation.extraMenuIds.join(', ')}
+                    </p>
+                  ) : null}
+                  {menuReconciliation.reconciliation.missingCategoryIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 缺少 category：{menuReconciliation.reconciliation.missingCategoryIds.join(', ')}
+                    </p>
+                  ) : null}
+                  {menuReconciliation.reconciliation.extraCategoryIds.length > 0 ? (
+                    <p className="break-all text-xs text-rose-700">
+                      Uber 多余 category：{menuReconciliation.reconciliation.extraCategoryIds.join(', ')}
+                    </p>
+                  ) : null}
                   {menuReconciliation.reconciliation.missingItemIds.length > 0 ? (
                     <p className="break-all text-xs text-rose-700">
                       Uber 缺少 item：{menuReconciliation.reconciliation.missingItemIds.join(', ')}

@@ -1,4 +1,7 @@
-import type { UberMenuUploadPayload } from './uber-menu.types';
+import type {
+  UberMenuUploadPayload,
+  UberPreparationType,
+} from './uber-menu.types';
 import {
   isPermanentPublicHttpsUrl,
   UBER_IMAGE_URL_MAX_LENGTH,
@@ -35,6 +38,7 @@ export interface UberUploadMenuGraph {
     description: string | null;
     priceCents: number;
     isAvailable: boolean;
+    preparationType: UberPreparationType | null;
     modifierGroupIds: string[];
     imageUrl: string | null;
   }>;
@@ -79,6 +83,14 @@ export function buildUberUploadMenuPayload(
           : {}),
         price_info: { price: item.priceCents, overrides: [] },
         tax_info: { tax_rate: taxRatePercentage, vat_rate_percentage: null },
+        dish_info: {
+          classifications: {
+            preparation_type:
+              item.preparationType === 'PREPACKAGED'
+                ? ('PREPACKAGED' as const)
+                : ('' as const),
+          },
+        },
         modifier_group_ids: {
           ids:
             item.sourceType === 'OPTION_ITEM' || !item.modifierGroupIds.length
@@ -303,6 +315,15 @@ export function validateUberMenuPayload(
         `$.items[${ii}].tax_info.tax_rate`,
         item.id,
         '税率必须使用 0～100 的百分数格式。',
+      );
+    const preparationType = item.dish_info?.classifications?.preparation_type;
+    if (preparationType !== '' && preparationType !== 'PREPACKAGED')
+      add(
+        'UBER_PREPARATION_TYPE_INVALID',
+        'ERROR',
+        `$.items[${ii}].dish_info.classifications.preparation_type`,
+        item.id,
+        '加拿大 FOOD/BEVERAGE 菜品必须显式提供 preparation_type，且只能为 PREPACKAGED 或空字符串。',
       );
     (item.modifier_group_ids.ids ?? []).forEach((id, gi) => {
       if (!groupIds.has(id))

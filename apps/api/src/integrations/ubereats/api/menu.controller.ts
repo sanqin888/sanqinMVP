@@ -106,6 +106,7 @@ export class UberEatsMenuController {
       isAvailable: dto.isAvailable,
       displayName: dto.displayName,
       displayDescription: dto.displayDescription,
+      preparationType: dto.preparationType,
     });
     return presentMenuMutation();
   }
@@ -134,6 +135,7 @@ export class UberEatsMenuController {
       isAvailable: dto.isAvailable,
       displayName: dto.displayName,
       displayDescription: dto.displayDescription,
+      preparationType: dto.preparationType,
     });
     return presentMenuMutation();
   }

@@ -1,1 +1,15 @@
-{ "order_manager_client_id": "fixture-pos-001", "integration_enabled": true }
+{
+  "allowed_customer_requests": {
+    "allow_single_use_items_requests": true,
+    "allow_special_instruction_requests": true
+  },
+  "integrator_store_id": "fixture-store-001",
+  "is_order_manager": true,
+  "require_manual_acceptance": false,
+  "webhooks_config": {
+    "schedule_order_webhooks": {
+      "is_enabled": true
+    },
+    "webhooks_version": "1.0.0"
+  }
+}

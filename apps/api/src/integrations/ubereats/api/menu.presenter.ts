@@ -45,6 +45,14 @@ const presentItem = (value: unknown): UberMenuItemResponse => {
       ],
       ['displayName', textOf(item.displayName)],
       ['displayDescription', textOf(item.displayDescription)],
+      [
+        'preparationType',
+        item.preparationType === 'PREPARED' ||
+        item.preparationType === 'PREPACKAGED' ||
+        item.preparationType === null
+          ? item.preparationType
+          : undefined,
+      ],
       ['externalItemId', textOf(item.externalItemId)],
       ['externalCategoryId', textOf(item.externalCategoryId)],
       ['updatedAt', dateOf(item.updatedAt)],
@@ -102,6 +110,7 @@ const draftFields = new Set([
   'target',
   'displayName',
   'displayDescription',
+  'preparationType',
   'groups',
   'items',
   'options',
@@ -260,6 +269,7 @@ export const presentMenuReconciliation = (
       itemCount: numberOf(retrieved.itemCount),
       modifierGroupCount: numberOf(retrieved.modifierGroupCount),
       taxLabelItemCount: numberOf(retrieved.taxLabelItemCount),
+      preparationTypeItemCount: numberOf(retrieved.preparationTypeItemCount),
     },
     baseline: baseline
       ? {
@@ -274,6 +284,10 @@ export const presentMenuReconciliation = (
       matchesLastSuccessfulPublish: nullableBoolean(
         reconciliation.matchesLastSuccessfulPublish,
       ),
+      missingMenuIds: strings(reconciliation.missingMenuIds),
+      extraMenuIds: strings(reconciliation.extraMenuIds),
+      missingCategoryIds: strings(reconciliation.missingCategoryIds),
+      extraCategoryIds: strings(reconciliation.extraCategoryIds),
       missingItemIds: strings(reconciliation.missingItemIds),
       extraItemIds: strings(reconciliation.extraItemIds),
       missingModifierGroupIds: strings(reconciliation.missingModifierGroupIds),
@@ -312,6 +326,7 @@ export const presentMenuDiff = (result: unknown): UberMenuDiffResponse => {
     deletedEdges: list('deletedEdges'),
     priceChanges: list('priceChanges'),
     availabilityChanges: list('availabilityChanges'),
+    preparationTypeChanges: list('preparationTypeChanges'),
     contractVersion: UBER_PUBLIC_CONTRACT_VERSION,
   };
 };

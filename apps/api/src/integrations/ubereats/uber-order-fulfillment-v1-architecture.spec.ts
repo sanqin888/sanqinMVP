@@ -55,7 +55,7 @@ describe('Uber Order Fulfillment API 1.0.0 architecture', () => {
       join(ROOT, 'infrastructure/uber-api/uber-resource.gateways.ts'),
       'utf8',
     );
-    expect(detail).toContain("scope: 'eats.order'");
+    expect(detail).toContain('scope: UBER_CLIENT_CREDENTIAL_SCOPES.ORDER');
     expect(detail).toContain('expand');
     expect(detail).toContain("expanded.add('carts')");
     expect(detail).toContain("expanded.add('payment')");
@@ -63,6 +63,6 @@ describe('Uber Order Fulfillment API 1.0.0 architecture', () => {
     expect(resource).toContain("DENY: 'deny'");
     expect(resource).toContain("READY_FOR_PICKUP: 'ready'");
     expect(resource).toContain("CANCEL: 'cancel'");
-    expect(resource).toContain("scope: 'eats.order'");
+    expect(resource).toContain('scope: UBER_CLIENT_CREDENTIAL_SCOPES.ORDER');
   });
 });

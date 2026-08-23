@@ -60,8 +60,22 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 | Order actions | `POST /v1/delivery/order/{order_id}/{accept\|deny\|ready\|cancel}` | 四种业务 action 使用同一 API Suite |
 | Menu | `GET/PUT /v2/eats/stores/{store_id}/menus`；`POST /v2/eats/stores/{store_id}/menus/items/{item_id}` | Menu V2 支持全量读取/发布、稀疏 item 更新和发布后对账 |
 | Integration Config | `GET/POST/PATCH/DELETE /v1/eats/stores/{store_id}/pos_data` | Activate、Retrieve、Update、Remove 生命周期完整；`webhooks_version=1.0.0` + scheduled webhook enabled |
-| Store Management | `GET /v1/eats/store/{store_id}/status`；现有 `POST /v1/eats/store/{store_id}/status`；`POST /v1/delivery/store/{store_id}/update-store-prep-time` | 新增真实状态读取和默认准备时间更新；现有暂停/恢复行为保持不变 |
+| Store Management | `GET /v1/delivery/store/{store_id}/status`；`POST /v1/delivery/store/{store_id}/update-store-status`；`POST /v1/delivery/store/{store_id}/update-store-prep-time` | 使用 Uber Store API Suite 读取/写入状态并更新默认准备时间；SanQ 内部 `PAUSED` 语义在 upstream payload 中发送为 Uber `OFFLINE` |
 | Webhook 签名 | `X-Uber-Signature` + raw body HMAC-SHA256 | 保持现有 durable receiver |
+
+## OAuth scope contract
+
+SanQ 将 Uber OAuth scope 按 grant type 分离维护。`UBER_EATS_APP_SCOPES` 只声明当前部署预期已获批的
+`client_credentials` 权限，不再作为业务请求漏写 scope 时的默认 token scope。当前运行时硬依赖
+`eats.store`、`eats.order`、`eats.store.status.write`；`eats.report` 与
+`eats.store.orders.read` 仅作为已知可选 app scope 保留，未被当前 endpoint 自动请求。
+每次 app API 调用必须显式指定单一 capability scope，并按该 scope 独立缓存 token。
+
+Merchant provisioning 使用独立的 authorization-code scope 集合：业务 scope 为
+`eats.pos_provisioning`；Uber 已签发 credential 可能同时包含辅助 `offline_access`，刷新链路允许并验证
+这一组合。`eats.pos_provisioning` / `offline_access` 不得进入 client-credentials 配置，app scopes 也
+不得进入 merchant OAuth 配置。Store discovery、Activate、Remove 使用显式 merchant token；Retrieve / Update
+Integration Config、Menu、Order 与 Store Management app 调用继续按各自最小权限 scope 获取 app token。
 
 ## Integration Configuration capability
 
@@ -72,23 +86,36 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 | Update Integration | `PATCH /v1/eats/stores/{store_id}/pos_data` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
 | Remove Integration | `DELETE /v1/eats/stores/{store_id}/pos_data` | merchant OAuth (`eats.pos_provisioning`) | `uber-merchant-api.adapter.ts` | lifecycle wire contract test |
 
-SanQ 的 PATCH 配置继续强制 `schedule_order_webhooks.is_enabled=true` 与
-`webhooks_version=1.0.0`，避免管理员更新其他 integration 字段时破坏预约单 webhook
-契约。DELETE 成功后本地 store mapping 保留用于后续重新 Activate，但
-`isProvisioned=false`、`provisionedAt=null`。
+SanQ 的 Activate / PATCH 配置只允许 Uber Integration Activation & Configuration 1.0.0
+当前可写字段进入 upstream；读取态/弃用字段（例如 `order_manager_client_id`、
+`pos_integration_enabled`）以及未知字段会在调用 Uber 前拒绝。`integrator_store_id` 不再接受调用方输入，
+而由后端从该 Uber Store mapping 的 `posExternalStoreId`（SanQ 稳定 `Store.storeStableId`）生成；
+如果本地 Store ID mapping 缺失或格式无效，Activate / Config 同步会在调用 Uber 前拒绝。Uber Store
+wire mapper 只允许 `pos_data.integrator_store_id` 恢复这一 SanQ external store identity，不再把
+`order_manager_client_id` 当作门店 ID。后端同时固定 `is_order_manager=true`、
+`require_manual_acceptance=false`、`allowed_customer_requests.allow_single_use_items_requests=true`、
+`allowed_customer_requests.allow_special_instruction_requests=true`、
+`schedule_order_webhooks.is_enabled=true` 与 `webhooks_version=1.0.0`。PATCH API 仍允许显式
+`integration_enabled=false` 做临时停用；Activate 不发送该 PATCH-only 字段。Admin UI 不再提供自由 JSON
+或独立 `integrator_store_id` 编辑框，Config 同步发送空 payload，由后端 policy 生成正式配置。SanQ 当前不消费
+`orders.release` 或 delivery-status webhook，因此 `order_release_webhooks` 与
+`delivery_status_webhooks` 只允许显式保持 `false`；尝试开启会在调用 Uber 前拒绝。DELETE 成功后
+本地 store mapping 保留用于后续重新 Activate，但 `isProvisioned=false`、`provisionedAt=null`。
 
 ## Store Management capability
 
 | Capability | Method / path | Authorization | Production code | Contract evidence |
 | ---------- | ------------- | ------------- | --------------- | ----------------- |
-| Retrieve Store Status | `GET /v1/eats/store/{store_id}/status` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
-| Set Store Status | `POST /v1/eats/store/{store_id}/status` | app token (`eats.store.status.write`) | `uber-merchant-api.adapter.ts` | existing status write contract test |
+| Retrieve Store Status | `GET /v1/delivery/store/{store_id}/status` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
+| Set Store Status | `POST /v1/delivery/store/{store_id}/update-store-status` | app token (`eats.store.status.write`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
 | Update Store Prep Time | `POST /v1/delivery/store/{store_id}/update-store-prep-time` | app token (`eats.store`) | `uber-merchant-api.adapter.ts` | Store Management wire contract test |
 
-Retrieve Store Status 与现有 pause/resume 使用同一门店状态能力；本次不改变现有状态写入
-行为。`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。Prep Time 更新通过
-可检查 HTTP response 的 gateway transport 执行，保留 Uber 实际 HTTP status 到审计记录，
-用于部署后的 `200` 验收证据。Store Management 只允许已 mapping 且已 provision 的门店执行。
+Store Management 统一使用 Uber 当前 Store API Suite。SanQ 内部仍使用 `PAUSED` 表示暂停目标，
+但发送给 Uber 时转换为 `status=OFFLINE`；暂停截止时间发送为 `is_offline_until`，恢复发送
+`status=ONLINE`。`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。状态读取、
+状态写入和 Prep Time 更新都通过可检查 HTTP response 的 gateway transport 执行，并保留 Uber
+实际 HTTP status 到审计记录，用于部署后的 `200` 验收证据。Store Management 只允许已 mapping
+且已 provision 的门店执行。
 
 ## Menu V2 capability / read-back reconciliation
 
@@ -105,15 +132,23 @@ item-level `customer_request.special_instructions`。Uber 文档将 order-level 
 Provision / Update Integration Config 中显式维护正式的 `allow_special_instruction_requests` 能力开关。
 
 Retrieve Menu 只在 infrastructure 层解析 Uber wire schema；application 获得 semantic read model，
-并与 `UberMenuPublishVersion` 中最后一次成功全量 Publish payload 对账。核验范围包括 item ID/数量、
-价格、availability、modifier group/option 关系，以及 Uber 有返回时的税率和
-`disable_item_instructions`。如果全量 Publish 后又单独执行过 Update Item，availability 差异可能是
-后续的预期状态变化，因此管理端明确标注对账基准。
+并与 `UberMenuPublishVersion` 中最后一次成功全量 Publish payload 对账。核验范围包括 menu/category/item
+ID 与数量、价格、availability、modifier group/option 关系、`dish_info.classifications.preparation_type`，
+以及 Uber 有返回时的税率和 `disable_item_instructions`。如果全量 Publish 后又单独执行过 Update Item，
+availability 差异可能是后续的预期状态变化，因此管理端明确标注对账基准。
+
+加拿大 FOOD/BEVERAGE 的 Required Metadata Regulations 要求发送 `preparation_type`。Uber Menu V2
+wire schema 只允许 `PREPACKAGED` 或空字符串；SanQ 不根据名称或类别猜测商品是否预包装，而是在现有
+`UberItemChannelConfig` / `UberOptionItemConfig` 中保存显式语义 `PREPARED | PREPACKAGED`。发送 Uber
+时 `PREPARED` 映射为空字符串，`PREPACKAGED` 映射为 `PREPACKAGED`；任一实际要发布的 menu item 或
+option item 尚未确认（`null`）时，dry-run 和真实 Publish 都必须在调用 Uber 前以
+`UBER_PREPARATION_TYPE_REQUIRED` 阻断。GET read-back reconciliation 同样核对该字段。历史成功 Publish
+JSON 可能没有 `dish_info`；这种旧基线只跳过 `preparation_type` 单字段比较，其他字段继续严格对账，
+直到下一次带显式分类的成功全量 Publish 建立新基线。
 
 税务契约继续使用现有 `tax_info.tax_rate`（tax-exclusive percentage）。Uber 公共 Menu V2 schema
-把 `tax_label_info` 定义为可选字段，Quality 标准也只要求 Tax Categories “where applicable”；Uber
-Required Metadata Regulations 的 Canada FOOD/BEVERAGE 条目列出 `preparation_type`（有酒精菜单时还
-涉及 `can_serve_alone`），没有把 `tax_label_info` 列为加拿大强制字段，因此本次不猜测 tax label。
+把 `tax_label_info` 定义为可选字段，Quality 标准也只要求 Tax Categories “where applicable”；Canada
+Required Metadata Regulations 没有把 `tax_label_info` 列为加拿大强制字段，因此本次不猜测 tax label。
 Quality 标准中的 Store-level Tax Area ID 明确以 ZIP+4 描述；SanQ 当前加拿大门店不使用美国 ZIP+4，
 本次也不构造公共 Menu Upload schema 中未定义的 tax-area 字段。Production verification 时如 Uber
 Tech Support 给出加拿大账户专属要求，再按正式契约补充，而不是预先猜值。
@@ -128,6 +163,12 @@ Tech Support 给出加拿大账户专属要求，再按正式契约补充，而�
 | Ready | `POST /v1/delivery/order/{order_id}/ready` | `eats.order` | 同上 | `v1/orders/ready-request.json` |
 | Cancel | `POST /v1/delivery/order/{order_id}/cancel` | `eats.order` | 同上 | `v1/orders/cancel-request.json` |
 | Menu | `PUT/GET /v2/eats/stores/{store_id}/menus` | `eats.store` | `uber-menu-publication.adapter.ts` | `v1/menu/*` |
+
+ACCEPT / DENY / READY 只有 Uber 实际返回文档规定的 HTTP `200` 才可完成本地 action；CANCEL 必须实际
+返回文档规定的 HTTP `204`。其他状态（包括意外的其他 2xx、`404/409`）都不得转换成“重复操作成功”。
+成功码由 infrastructure adapter 精确验证后，application 才按该已确认契约值写入既有
+`UberOrderAction.uberHttpStatus`；失败 status 继续由 `markFailed` 保存。因此 Sandbox verification
+可以直接用 action row 证明 Uber HTTP 结果，而不是仅凭本地 Order 状态推断成功。
 
 ### Order detail mapper contract
 
@@ -237,6 +278,29 @@ external order 的 `orders.failure` 是该拒单的合法终态，按 no-op 成�
 其余“本地订单尚未导入且没有成功 DENY”的 early failure 仍保持可重试，等待更早的订单事件完成。
 
 非 1.0.0 cancellation webhook 不属于 SanQ 当前 Order contract，不提供兼容 parser。
+
+## Phase D pre-production E2E verification matrix
+
+下表区分“自动化契约已覆盖”和“必须在部署后的 Uber Sandbox/Test Store 留真实证据”。单元/契约测试
+只能证明 SanQ 的映射、幂等、状态机和持久化规则，不能冒充 Uber 实际 HTTP 成功。
+
+| Scenario | Automated evidence | Sandbox / Test Store evidence required before Phase D closes |
+| -------- | ------------------ | ------------------------------------------------------------ |
+| Immediate order receive + ACCEPT | webhook/detail parser、admission、ready-time policy、action service/HTTP contract | `orders.notification` 只导入一次；ACCEPT 实际 HTTP `200`；`UberOrderAction.uberHttpStatus=200`；本地订单进入 accepted/paid 流程且只打印一次 |
+| Scheduled order receive + ACCEPT | scheduled webhook/detail、pickup/ready fallback、scheduled activation/finalize tests | `orders.scheduled.notification` 入预约队列；ACCEPT 实际 HTTP `200`；不得把 delivery target fallback 回传为 `ready_for_pickup_time`；到制作窗口后只激活/打印一次 |
+| Merchant DENY | admission DENY policy、reason mapper、durable action tests | 用 Test Store 制造可拒场景；DENY 实际 HTTP `200`；action row 保存 `200`；admission-stage standalone DENY 不创建正常本地 `Order` |
+| Merchant CANCEL | cancel command/payload、state-machine、durable action tests | 对已接订单执行取消；CANCEL 实际 HTTP `204`；action row 保存 `204`；本地终态与 Uber 一致 |
+| READY_FOR_PICKUP | ready command/transition tests | 对制作中订单执行 ready；实际 HTTP `200`；action row 保存 `200`；本地订单只推进一次 |
+| `orders.failure` after Uber cancellation/failure | failure webhook parser/handler、early-failure retry、post-DENY terminal no-op tests | Test Store 触发可观察的 failure/cancel 终态；webhook `200`；已有订单正确落取消终态；standalone DENY 后的 failure 不进入 DEAD |
+| Duplicate webhook / replay | webhook inbox unique-event/idempotency tests | 如 Sandbox 可重放相同 event，则不得重复建单、重复 enqueue action 或重复打印；无法人为重放时以自动化证据 + inbox 唯一键作为门禁 |
+| POS offline / not ready | connectivity admission policy + persisted DENY intent tests | 在可控测试窗口模拟 POS offline；订单应走 DENY 而不是静默接单；恢复连接后不得补出重复订单/打印 |
+| Special instructions + single-use items | Order 1.0 parser、ingestion、POS view/print payload tests | Test Store 下包含 order/item special instructions 与餐具选择的订单，POS 与打印内容逐字可见 |
+| Structured allergy request | recursive allergy parser、StoreConfig `RELAY_ALL`/`DENY_LIST`/`DENY_ALL`、print tests | Uber 在 integration verification 后启用该能力时，用真实 structured allergy request 验证 relay 或 policy DENY；未启用前不得伪造“已实测通过” |
+| Menu PUT → GET read-back | payload validation、Menu V2 wire contract、full reconciliation tests | 发布测试菜单成功后 GET read-back；menu/category/item/modifier、价格、availability、税率（如返回）、`preparation_type` 对账无差异 |
+| Update Item | sparse availability contract + reconciliation semantics | 下架/恢复一个测试 item，Uber 返回成功；GET/read-back 或 Test Store UI 观察状态变化，并确认不会被误判成全量 Publish 漂移 |
+
+上述 Sandbox 证据全部属于 Phase D 的部署后实测收尾；Phase E 才处理 Production App、白名单、正式 webhook、
+Tech Support verification 和 pilot-store production provisioning。
 
 ## Legacy Order API 退役门禁
 

@@ -14,6 +14,7 @@ const categoryTree = {
       displayDescription: '现烤',
       priceCents: 1099,
       isAvailable: true,
+      preparationType: 'PREPARED',
       imageUrl: 'https://cdn.example/item.jpg',
       groups: [
         {
@@ -27,6 +28,7 @@ const categoryTree = {
               displayName: '加辣',
               priceDeltaCents: 0,
               isAvailable: true,
+              preparationType: 'PREPACKAGED',
               childGroups: [],
             },
           ],
@@ -191,6 +193,8 @@ describe('menu public presenters', () => {
         categoryCount: 2,
         itemCount: 10,
         modifierGroupCount: 3,
+        taxLabelItemCount: 0,
+        preparationTypeItemCount: 10,
       },
       baseline: {
         itemCount: 10,
@@ -199,6 +203,10 @@ describe('menu public presenters', () => {
       },
       reconciliation: {
         matchesLastSuccessfulPublish: false,
+        missingMenuIds: ['menu-1'],
+        extraMenuIds: [],
+        missingCategoryIds: ['cat-1'],
+        extraCategoryIds: [],
         missingItemIds: ['item-1'],
         extraItemIds: [],
         missingModifierGroupIds: [],
@@ -225,9 +233,11 @@ describe('menu public presenters', () => {
     expect(response).toMatchObject({
       storeId: 'pos-store-1',
       uberStoreId: 'uber-store-1',
-      retrieved: { itemCount: 10 },
+      retrieved: { itemCount: 10, preparationTypeItemCount: 10 },
       reconciliation: {
         matchesLastSuccessfulPublish: false,
+        missingMenuIds: ['menu-1'],
+        missingCategoryIds: ['cat-1'],
         missingItemIds: ['item-1'],
       },
       specialInstructions: { verified: true },
@@ -254,6 +264,13 @@ describe('menu public presenters', () => {
       availabilityChanges: [
         { sourceType: 'MENU_ITEM', stableId: 'item-1', isAvailable: true },
       ],
+      preparationTypeChanges: [
+        {
+          sourceType: 'MENU_ITEM',
+          stableId: 'item-1',
+          preparationType: 'PREPARED',
+        },
+      ],
       internalSnapshot: 'must-not-leak',
     });
 
@@ -266,6 +283,13 @@ describe('menu public presenters', () => {
     expect(response.deletedEdges).toHaveLength(1);
     expect(response.priceChanges).toHaveLength(1);
     expect(response.availabilityChanges).toHaveLength(1);
+    expect(response.preparationTypeChanges).toEqual([
+      {
+        sourceType: 'MENU_ITEM',
+        stableId: 'item-1',
+        preparationType: 'PREPARED',
+      },
+    ]);
     expect(JSON.stringify(response)).not.toContain('internalSnapshot');
   });
 });

@@ -135,6 +135,9 @@ export class UberOrderActionService {
     await this.repository.complete({
       taskId: task.taskId,
       leaseToken: task.leaseToken,
+      // The infrastructure adapter only returns after the exact documented
+      // success code is observed: CANCEL=204, all other supported actions=200.
+      upstreamStatus: task.action === 'CANCEL' ? 204 : 200,
       transition:
         currentStatus !== null && nextStatus !== null
           ? { from: currentStatus, to: nextStatus }

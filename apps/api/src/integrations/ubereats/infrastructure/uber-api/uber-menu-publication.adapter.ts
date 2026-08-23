@@ -10,6 +10,7 @@ import type {
 import { UberMenuGateway } from './uber-resource.gateways';
 import { UberImageValidator } from './uber-image.validator';
 import { mapUberGatewayFailure } from './uber-error.mapper';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 
 const INDEFINITE_SUSPEND_UNTIL = Math.floor(Date.UTC(2099, 0, 1) / 1_000);
 
@@ -89,6 +90,18 @@ const mapRetrievedMenuItem = (
   const taxRate = taxInfo?.tax_rate;
   const taxLabelInfo = asMenuWireObject(item.tax_label_info);
   const taxLabelDefault = asMenuWireObject(taxLabelInfo?.default_value);
+  const dishInfo = asMenuWireObject(item.dish_info);
+  const classifications = asMenuWireObject(dishInfo?.classifications);
+  const rawPreparationType = classifications?.preparation_type;
+  if (
+    rawPreparationType !== undefined &&
+    rawPreparationType !== null &&
+    rawPreparationType !== '' &&
+    rawPreparationType !== 'PREPACKAGED'
+  )
+    throw menuMappingFailure(
+      `Uber Menu GET items[${index}].dish_info.classifications.preparation_type 不受支持`,
+    );
   return {
     id,
     priceCents: price as number,
@@ -103,6 +116,10 @@ const mapRetrievedMenuItem = (
       taxLabelDefault?.labels,
       `items[${index}].tax_label_info.default_value.labels`,
     ),
+    preparationType:
+      rawPreparationType === '' || rawPreparationType === 'PREPACKAGED'
+        ? rawPreparationType
+        : null,
   };
 };
 const mapRetrievedMenuModifierGroup = (
@@ -170,7 +187,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
   async retrieveMenu(storeId: string) {
     const raw = await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(storeId)}/menus`,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       operation: 'uber.menu.retrieve',
       partitionKey: storeId,
       method: 'GET',
@@ -181,7 +198,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
   async uploadMenu(input: Parameters<UberMenuGatewayPort['uploadMenu']>[0]) {
     await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       operation: 'uber.menu.upload',
       partitionKey: input.storeId,
       method: 'PUT',
@@ -196,7 +213,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
       input.suspendUntilEpochSeconds ?? INDEFINITE_SUSPEND_UNTIL;
     await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus/items/${encodeURIComponent(input.itemId)}`,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       operation: 'uber.menu.item.availability.update',
       partitionKey: input.storeId,
       method: 'POST',
@@ -230,6 +247,7 @@ export class UberMenuImageProbeAdapter implements UberMenuImageProbePort {
         title: { translations: { en_us: image.itemStableId } },
         price_info: { price: 0, overrides: [] },
         tax_info: { tax_rate: 0, vat_rate_percentage: null },
+        dish_info: { classifications: { preparation_type: '' as const } },
         modifier_group_ids: { ids: null, overrides: [] },
         suspension_info: null,
         image_url: image.url,

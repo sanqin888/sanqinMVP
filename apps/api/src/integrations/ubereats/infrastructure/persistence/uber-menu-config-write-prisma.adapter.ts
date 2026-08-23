@@ -6,6 +6,7 @@ import type {
   UberOptionItemConfigCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
 import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 import { UberTelemetryService } from './uber-telemetry.service';
 
 @Injectable()
@@ -43,6 +44,7 @@ export class UberMenuConfigWritePrismaAdapter
         isAvailable: input.isAvailable ?? true,
         displayName: input.displayName?.trim() || null,
         displayDescription: input.displayDescription?.trim() || null,
+        preparationType: input.preparationType ?? null,
       },
       update: {
         priceCents: Math.max(1, Math.round(input.priceCents)),
@@ -55,6 +57,9 @@ export class UberMenuConfigWritePrismaAdapter
         ...(input.displayDescription !== undefined
           ? { displayDescription: input.displayDescription?.trim() || null }
           : {}),
+        ...(input.preparationType !== undefined
+          ? { preparationType: input.preparationType }
+          : {}),
       },
     });
 
@@ -65,6 +70,7 @@ export class UberMenuConfigWritePrismaAdapter
         menuItemStableId: input.menuItemStableId,
         priceCents: row.priceCents,
         isAvailable: row.isAvailable,
+        preparationType: row.preparationType,
       },
       {
         eventId: this.eventKey(
@@ -76,6 +82,7 @@ export class UberMenuConfigWritePrismaAdapter
             isAvailable: row.isAvailable,
             displayName: row.displayName,
             displayDescription: row.displayDescription,
+            preparationType: row.preparationType,
           },
         ),
       },
@@ -84,7 +91,10 @@ export class UberMenuConfigWritePrismaAdapter
     return {
       ok: true,
       storeId: normalizedStoreId,
-      item: row,
+      item: {
+        ...row,
+        preparationType: readUberPreparationType(row.preparationType),
+      },
     };
   }
 
@@ -110,6 +120,7 @@ export class UberMenuConfigWritePrismaAdapter
         isAvailable: input.isAvailable ?? true,
         displayName: input.displayName?.trim() || null,
         displayDescription: input.displayDescription?.trim() || null,
+        preparationType: input.preparationType ?? null,
       },
       update: {
         ...(input.priceDeltaCents !== undefined
@@ -124,6 +135,9 @@ export class UberMenuConfigWritePrismaAdapter
         ...(input.displayDescription !== undefined
           ? { displayDescription: input.displayDescription?.trim() || null }
           : {}),
+        ...(input.preparationType !== undefined
+          ? { preparationType: input.preparationType }
+          : {}),
       },
     });
 
@@ -134,6 +148,7 @@ export class UberMenuConfigWritePrismaAdapter
         optionChoiceStableId: input.optionChoiceStableId,
         priceDeltaCents: row.priceDeltaCents,
         isAvailable: row.isAvailable,
+        preparationType: row.preparationType,
       },
       {
         eventId: this.eventKey(
@@ -145,6 +160,7 @@ export class UberMenuConfigWritePrismaAdapter
             isAvailable: row.isAvailable,
             displayName: row.displayName,
             displayDescription: row.displayDescription,
+            preparationType: row.preparationType,
           },
         ),
       },
@@ -153,7 +169,10 @@ export class UberMenuConfigWritePrismaAdapter
     return {
       ok: true,
       storeId: normalizedStoreId,
-      item: row,
+      item: {
+        ...row,
+        preparationType: readUberPreparationType(row.preparationType),
+      },
     };
   }
 

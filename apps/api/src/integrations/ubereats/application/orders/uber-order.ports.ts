@@ -150,6 +150,7 @@ export interface UberOrderActionRepositoryPort {
   complete(input: {
     taskId: string;
     leaseToken: string;
+    upstreamStatus?: number | null;
     transition: {
       from: UberOrderStatus;
       to: UberOrderStatus;
