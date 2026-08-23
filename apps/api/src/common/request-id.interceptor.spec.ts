@@ -8,14 +8,12 @@ describe('RequestIdInterceptor', () => {
     url: string,
     statusCode: number,
     originalUrl?: string,
-    query: Record<string, string> = {},
   ) => {
     const request = {
       method,
       url,
       originalUrl,
       headers: {},
-      query,
     };
     const response = {
       statusCode,
@@ -38,16 +36,9 @@ describe('RequestIdInterceptor', () => {
     url: string,
     statusCode: number,
     responseBody: unknown = 'ok',
-    query: Record<string, string> = {},
   ) => {
     const interceptor = new RequestIdInterceptor();
-    const { context } = createContext(
-      method,
-      url,
-      statusCode,
-      undefined,
-      query,
-    );
+    const { context } = createContext(method, url, statusCode);
     interceptor
       .intercept(context as never, { handle: () => of(responseBody) } as never)
       .subscribe();
@@ -91,28 +82,10 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept(
-      'GET',
-      '/api/v1/orders/scheduled',
-      200,
-      { orders: [] },
-      { poll: 'pos-scheduled-rail' },
-    );
+    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
 
     expect(loggerLogSpy).not.toHaveBeenCalled();
     expect(loggerWarnSpy).not.toHaveBeenCalled();
-  });
-
-  it('logs unmarked scheduled-order requests normally', () => {
-    const loggerLogSpy = jest
-      .spyOn(Logger.prototype, 'log')
-      .mockImplementation(() => undefined);
-
-    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
-
-    expect(loggerLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('GET /api/v1/orders/scheduled - 200'),
-    );
   });
 
   it('does not suppress other scheduled-order backend actions', () => {
@@ -139,13 +112,7 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept(
-      'GET',
-      '/api/v1/orders/scheduled',
-      503,
-      { ok: false },
-      { poll: 'pos-scheduled-rail' },
-    );
+    runIntercept('GET', '/api/v1/orders/scheduled', 503, { ok: false });
 
     expect(loggerWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining('GET /api/v1/orders/scheduled - 503'),
