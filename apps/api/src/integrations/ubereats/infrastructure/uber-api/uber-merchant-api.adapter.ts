@@ -26,6 +26,10 @@ import {
 } from '../../application/shared/uber-gateway-audit.port';
 import { mapUberGatewayFailure } from './uber-error.mapper';
 import {
+  UBER_CLIENT_CREDENTIAL_SCOPES,
+  UBER_MERCHANT_AUTHORIZATION_SCOPES,
+} from './uber-scopes';
+import {
   mapUberStoreDiscoveryWire,
   mapUberStoreIntegrationConfigWire,
   mapUberStorePrepTimeWire,
@@ -143,7 +147,7 @@ export class UberMerchantApiAdapter
       path,
       method: 'GET',
       operation: 'merchant.retrieve-integration-config',
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       partitionKey: storeId,
     });
     await this.auditResponse({
@@ -167,7 +171,7 @@ export class UberMerchantApiAdapter
       path,
       method: 'PATCH',
       operation: 'merchant.update-integration-config',
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       partitionKey: storeId,
       json: payload,
       idempotencyKey,
@@ -193,7 +197,7 @@ export class UberMerchantApiAdapter
       path,
       method: 'DELETE',
       operation: 'merchant.remove-integration',
-      scope: 'eats.pos_provisioning',
+      scope: UBER_MERCHANT_AUTHORIZATION_SCOPES.POS_PROVISIONING,
       partitionKey: storeId,
       accessToken,
       idempotencyKey,
@@ -215,7 +219,7 @@ export class UberMerchantApiAdapter
       path: `/v1/eats/store/${encodeURIComponent(storeId)}/status`,
       method: 'GET',
       operation,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       partitionKey: storeId,
     });
     await this.auditResponse({
@@ -246,7 +250,7 @@ export class UberMerchantApiAdapter
       path: `/v1/delivery/store/${encodeURIComponent(storeId)}/update-store-prep-time`,
       method: 'POST',
       operation,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       partitionKey: storeId,
       json: { default_prep_time: defaultPrepTimeSeconds },
       idempotencyKey,
@@ -283,7 +287,7 @@ export class UberMerchantApiAdapter
           path: `/v1/eats/store/${encodeURIComponent(storeId)}/status`,
           method: 'POST',
           operation: 'uber.store.status',
-          scope: 'eats.store.status.write',
+          scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE_STATUS_WRITE,
           partitionKey: storeId,
           json: payload,
           idempotencyKey,
@@ -384,10 +388,10 @@ export class UberMerchantApiAdapter
       const common = {
         path,
         operation: `${method} ${path}`,
-        scope: 'eats.store',
+        scope: UBER_MERCHANT_AUTHORIZATION_SCOPES.POS_PROVISIONING,
         accessToken,
         json,
-      };
+      } as const;
       return await this.transport.request<Record<string, unknown>>(
         method === 'POST'
           ? { ...common, method, idempotencyKey: idempotencyKey! }

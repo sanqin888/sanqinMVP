@@ -2,5 +2,5 @@
   "access_token": "fixture-not-a-real-token",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "scope": "eats.store eats.order"
+  "scope": "eats.store"
 }

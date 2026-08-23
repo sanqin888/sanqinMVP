@@ -8,11 +8,8 @@ import { UberMerchantApiAdapter } from './uber-merchant-api.adapter';
 import { UberMenuGatewayAdapter } from './uber-menu-publication.adapter';
 import { UberOrderActionGatewayAdapter } from './uber-order-action.gateway';
 import { UberOrderDetailGatewayAdapter } from './uber-order-detail.gateway';
-import {
-  UberAuthService,
-  type UberAuthConfigPort,
-  type UberAuthHttpPort,
-} from './uber-token.provider';
+import { UberAuthService, type UberAuthHttpPort } from './uber-token.provider';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 import {
   type UberTelemetryPort,
   UBER_TELEMETRY_PORT,
@@ -86,15 +83,18 @@ describe('Uber gateways wire contract v1', () => {
         data: fixture('oauth/token-success.json'),
       }),
     };
-    const auth = new UberAuthService(http, {
-      clientId: 'fixture-client-id',
-      clientSecret: 'fixture-client-secret',
-      defaultAppScopes: 'eats.store eats.order',
-      tokenEndpoint: 'https://auth.uber.com/oauth/v2/token',
-    } satisfies UberAuthConfigPort);
-    await expect(auth.getAccessToken('eats.store eats.order')).resolves.toBe(
-      'fixture-not-a-real-token',
+    const auth = new UberAuthService(
+      http,
+      new UberApiConfigService({
+        UBER_EATS_CLIENT_ID: 'fixture-client-id',
+        UBER_EATS_CLIENT_SECRET: 'fixture-client-secret',
+        UBER_EATS_APP_SCOPES: 'eats.store eats.order eats.store.status.write',
+        UBER_EATS_TOKEN_ENDPOINT: 'https://auth.uber.com/oauth/v2/token',
+      }),
     );
+    await expect(
+      auth.getAccessToken(UBER_CLIENT_CREDENTIAL_SCOPES.STORE),
+    ).resolves.toBe('fixture-not-a-real-token');
     const request = http.request.mock.calls[0][0];
     expect(request).toMatchObject({
       url: 'https://auth.uber.com/oauth/v2/token',
@@ -110,7 +110,7 @@ describe('Uber gateways wire contract v1', () => {
       client_id: 'fixture-client-id',
       client_secret: 'fixture-client-secret',
       grant_type: 'client_credentials',
-      scope: 'eats.store eats.order',
+      scope: 'eats.store',
     });
   });
 
@@ -144,7 +144,7 @@ describe('Uber gateways wire contract v1', () => {
         accessToken: 'fixture-merchant-token',
         refreshToken: null,
         expiresAt: new Date(Date.now() + 3600_000),
-        scope: 'eats.store',
+        scope: 'offline_access eats.pos_provisioning',
         tokenType: 'Bearer',
         version: 'v1',
       }),
@@ -191,7 +191,7 @@ describe('Uber gateways wire contract v1', () => {
         path: '/v1/eats/stores',
         method: 'GET',
         operation: 'GET /v1/eats/stores',
-        scope: 'eats.store',
+        scope: 'eats.pos_provisioning',
         accessToken: 'fixture-merchant-token',
         json: undefined,
       },
@@ -199,7 +199,7 @@ describe('Uber gateways wire contract v1', () => {
         path: '/v1/eats/stores/store%20%2F%201/pos_data',
         method: 'POST',
         operation: 'POST /v1/eats/stores/store%20%2F%201/pos_data',
-        scope: 'eats.store',
+        scope: 'eats.pos_provisioning',
         accessToken: 'fixture-merchant-token',
         json: fixture('stores/provision-request.json'),
         idempotencyKey: 'provision:store-1:v1',

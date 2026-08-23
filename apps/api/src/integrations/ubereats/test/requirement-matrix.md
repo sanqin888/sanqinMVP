@@ -63,6 +63,20 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 | Store Management | `GET /v1/eats/store/{store_id}/status`；现有 `POST /v1/eats/store/{store_id}/status`；`POST /v1/delivery/store/{store_id}/update-store-prep-time` | 新增真实状态读取和默认准备时间更新；现有暂停/恢复行为保持不变 |
 | Webhook 签名 | `X-Uber-Signature` + raw body HMAC-SHA256 | 保持现有 durable receiver |
 
+## OAuth scope contract
+
+SanQ 将 Uber OAuth scope 按 grant type 分离维护。`UBER_EATS_APP_SCOPES` 只声明当前部署预期已获批的
+`client_credentials` 权限，不再作为业务请求漏写 scope 时的默认 token scope。当前运行时硬依赖
+`eats.store`、`eats.order`、`eats.store.status.write`；`eats.report` 与
+`eats.store.orders.read` 仅作为已知可选 app scope 保留，未被当前 endpoint 自动请求。
+每次 app API 调用必须显式指定单一 capability scope，并按该 scope 独立缓存 token。
+
+Merchant provisioning 使用独立的 authorization-code scope 集合：业务 scope 为
+`eats.pos_provisioning`；Uber 已签发 credential 可能同时包含辅助 `offline_access`，刷新链路允许并验证
+这一组合。`eats.pos_provisioning` / `offline_access` 不得进入 client-credentials 配置，app scopes 也
+不得进入 merchant OAuth 配置。Store discovery、Activate、Remove 使用显式 merchant token；Retrieve / Update
+Integration Config、Menu、Order 与 Store Management app 调用继续按各自最小权限 scope 获取 app token。
+
 ## Integration Configuration capability
 
 | Capability | Method / path | Authorization | Production code | Contract evidence |

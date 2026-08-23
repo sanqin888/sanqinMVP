@@ -10,6 +10,7 @@ import type {
 import { UberMenuGateway } from './uber-resource.gateways';
 import { UberImageValidator } from './uber-image.validator';
 import { mapUberGatewayFailure } from './uber-error.mapper';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from './uber-scopes';
 
 const INDEFINITE_SUSPEND_UNTIL = Math.floor(Date.UTC(2099, 0, 1) / 1_000);
 
@@ -170,7 +171,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
   async retrieveMenu(storeId: string) {
     const raw = await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(storeId)}/menus`,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       operation: 'uber.menu.retrieve',
       partitionKey: storeId,
       method: 'GET',
@@ -181,7 +182,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
   async uploadMenu(input: Parameters<UberMenuGatewayPort['uploadMenu']>[0]) {
     await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus`,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       operation: 'uber.menu.upload',
       partitionKey: input.storeId,
       method: 'PUT',
@@ -196,7 +197,7 @@ export class UberMenuGatewayAdapter implements UberMenuGatewayPort {
       input.suspendUntilEpochSeconds ?? INDEFINITE_SUSPEND_UNTIL;
     await this.gateway.request<Record<string, unknown>>({
       path: `/v2/eats/stores/${encodeURIComponent(input.storeId)}/menus/items/${encodeURIComponent(input.itemId)}`,
-      scope: 'eats.store',
+      scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
       operation: 'uber.menu.item.availability.update',
       partitionKey: input.storeId,
       method: 'POST',

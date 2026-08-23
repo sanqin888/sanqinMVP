@@ -1,5 +1,7 @@
 x-ubereats-runtime: &ubereats-runtime
   UBER_EATS_RATE_LIMITER_MODE: "database"
+  UBER_EATS_APP_SCOPES: "eats.store eats.order eats.store.status.write"
+  UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
   # These values are populated from the deployment VM's environment/.env file.
   UBER_CREDENTIAL_ENCRYPTION_KEYS: ${UBER_CREDENTIAL_ENCRYPTION_KEYS}
   UBER_CREDENTIAL_ACTIVE_KEY_VERSION: ${UBER_CREDENTIAL_ACTIVE_KEY_VERSION}
@@ -64,8 +66,6 @@ services:
       UBER_EATS_TOKEN_ENDPOINT: ${UBER_EATS_TOKEN_ENDPOINT}
       UBER_EATS_API_BASE_URL: ${UBER_EATS_API_BASE_URL}
       UBER_EATS_RESOURCE_HREF_ALLOWED_ORIGINS: "https://api.uber.com"
-      UBER_EATS_APP_SCOPES: "eats.store eats.order eats.report eats.store.status.write"
-      UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
       UBER_EATS_REDIRECT_URI: "https://api.sanq.ca/api/v1/integrations/ubereats/oauth/callback"
       UBER_EATS_OAUTH_STATE_SECRET: ${UBER_EATS_OAUTH_STATE_SECRET}
       UBER_EATS_WORKER_ENABLED: "false"
