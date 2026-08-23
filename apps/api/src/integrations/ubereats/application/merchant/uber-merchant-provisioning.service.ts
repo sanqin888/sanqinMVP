@@ -156,7 +156,11 @@ const withRequiredIntegrationConfig = (
   mutation: IntegrationConfigMutation,
   integratorStoreId: string,
 ): Record<string, unknown> => {
-  assertKnownFields(payload, INTEGRATION_CONFIG_FIELDS, 'integration config payload');
+  assertKnownFields(
+    payload,
+    INTEGRATION_CONFIG_FIELDS,
+    'integration config payload',
+  );
   if (mutation === 'ACTIVATE' && 'integration_enabled' in payload)
     throw invalidIntegrationConfig(
       'Activate payload 不得包含 integration_enabled；POST /pos_data 本身即执行激活',

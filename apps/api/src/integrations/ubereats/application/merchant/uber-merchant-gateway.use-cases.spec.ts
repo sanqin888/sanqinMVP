@@ -77,7 +77,9 @@ describe('Uber merchant gateway use-case boundaries', () => {
   it('recovers a valid integrator store id into a new local mapping', async () => {
     const mappings = {
       findMapping: jest.fn().mockResolvedValue(null),
-      upsertMapping: jest.fn().mockImplementation((value) => Promise.resolve(value)),
+      upsertMapping: jest
+        .fn()
+        .mockImplementation((value) => Promise.resolve(value)),
     };
     const useCase = new MapUberStoreUseCase(
       mappings as never,
@@ -290,7 +292,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
   });
 
   it.each([
-    ['order_manager_client_id', { order_manager_client_id: 'read-only-client' }],
+    [
+      'order_manager_client_id',
+      { order_manager_client_id: 'read-only-client' },
+    ],
     ['integrator_store_id', { integrator_store_id: 'client-managed-store' }],
     ['integration_enabled', { integration_enabled: true }],
   ])(
@@ -325,13 +330,11 @@ describe('Uber merchant gateway use-case boundaries', () => {
       retryable: false,
     };
     const mappings = {
-      findMapping: jest
-        .fn()
-        .mockResolvedValue({
-          ...connection,
-          uberStoreId: 'uber-store-1',
-          posExternalStoreId: 'sanq-store-1',
-        }),
+      findMapping: jest.fn().mockResolvedValue({
+        ...connection,
+        uberStoreId: 'uber-store-1',
+        posExternalStoreId: 'sanq-store-1',
+      }),
       upsertMapping: jest.fn(),
     };
     const useCase = new ProvisionUberStoreUseCase(
@@ -453,7 +456,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
 
   it.each([
     ['read-only root field', { order_manager_client_id: 'read-only-client' }],
-    ['client-managed store id', { integrator_store_id: 'client-managed-store' }],
+    [
+      'client-managed store id',
+      { integrator_store_id: 'client-managed-store' },
+    ],
     [
       'unknown webhook field',
       { webhooks_config: { unsupported_webhooks: { is_enabled: true } } },
@@ -466,29 +472,26 @@ describe('Uber merchant gateway use-case boundaries', () => {
       'unsupported delivery-status webhook',
       { webhooks_config: { delivery_status_webhooks: { is_enabled: true } } },
     ],
-  ])(
-    'rejects %s before PATCH reaches Uber',
-    async (_scenario, payload) => {
-      const api = { updateIntegrationConfig: jest.fn() };
-      const mappings = {
-        findMapping: jest.fn().mockResolvedValue({
-          connectionId: 'merchant-1',
-          uberStoreId: 'uber-store-1',
-          posExternalStoreId: 'sanq-store-1',
-        }),
-      };
-      const useCase = new UpdateUberStoreIntegrationConfigUseCase(
-        api as never,
-        { findConnection: jest.fn().mockResolvedValue(connection) } as never,
-        mappings as never,
-      );
+  ])('rejects %s before PATCH reaches Uber', async (_scenario, payload) => {
+    const api = { updateIntegrationConfig: jest.fn() };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'merchant-1',
+        uberStoreId: 'uber-store-1',
+        posExternalStoreId: 'sanq-store-1',
+      }),
+    };
+    const useCase = new UpdateUberStoreIntegrationConfigUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
 
-      await expect(
-        useCase.update('uber-store-1', payload, 'merchant-1'),
-      ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
-      expect(api.updateIntegrationConfig).not.toHaveBeenCalled();
-    },
-  );
+    await expect(
+      useCase.update('uber-store-1', payload, 'merchant-1'),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(api.updateIntegrationConfig).not.toHaveBeenCalled();
+  });
 
   it('removes the upstream integration and marks the local mapping deprovisioned', async () => {
     const mapping = {
