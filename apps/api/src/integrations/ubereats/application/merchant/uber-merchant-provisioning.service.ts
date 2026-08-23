@@ -541,16 +541,20 @@ export class SyncUberStoreStatusUseCase {
     const payload: Record<string, string> = target
       ? target.targetStatus === 'PAUSED'
         ? {
-            status: 'PAUSED',
+            status: 'OFFLINE',
             reason: target.reason ?? '运营手动暂停',
-            ...(target.pauseUntil ? { pause_until: target.pauseUntil } : {}),
+            ...(target.pauseUntil
+              ? { is_offline_until: target.pauseUntil }
+              : {}),
           }
         : { status: 'ONLINE' }
       : config.isTemporarilyClosed
         ? {
-            status: 'PAUSED',
+            status: 'OFFLINE',
             reason: pause.reason,
-            ...(pause.pauseUntil ? { pause_until: pause.pauseUntil } : {}),
+            ...(pause.pauseUntil
+              ? { is_offline_until: pause.pauseUntil }
+              : {}),
           }
         : { status: 'ONLINE' };
     const results: Record<string, unknown>[] = [];

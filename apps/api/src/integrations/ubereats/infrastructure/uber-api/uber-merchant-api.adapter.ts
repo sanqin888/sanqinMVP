@@ -216,7 +216,7 @@ export class UberMerchantApiAdapter
   async retrieveStatus(storeId: string) {
     const operation = 'merchant.retrieve-store-status';
     const result = await this.transport.inspect<Record<string, unknown>>({
-      path: `/v1/eats/store/${encodeURIComponent(storeId)}/status`,
+      path: `/v1/delivery/store/${encodeURIComponent(storeId)}/status`,
       method: 'GET',
       operation,
       scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE,
@@ -284,7 +284,7 @@ export class UberMerchantApiAdapter
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const result = await this.transport.inspect<Record<string, unknown>>({
-          path: `/v1/eats/store/${encodeURIComponent(storeId)}/status`,
+          path: `/v1/delivery/store/${encodeURIComponent(storeId)}/update-store-status`,
           method: 'POST',
           operation: 'uber.store.status',
           scope: UBER_CLIENT_CREDENTIAL_SCOPES.STORE_STATUS_WRITE,
@@ -305,12 +305,12 @@ export class UberMerchantApiAdapter
           sanitizedRawResponse: sanitizeForAudit(result.data),
           recordedAt: new Date(),
         });
-        if (result.response.ok || status === 409)
+        if (result.response.ok)
           return {
             uberStoreId: storeId,
             outcome: 'SUCCEEDED' as const,
             attempts: attempt,
-            duplicate: status === 409,
+            duplicate: false,
           };
         error = summarizeUberDebugResponse(result.data, result.text);
         if (status !== 429 && status < 500)
