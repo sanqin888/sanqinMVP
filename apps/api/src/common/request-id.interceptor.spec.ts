@@ -91,13 +91,7 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept(
-      'GET',
-      '/api/v1/orders/scheduled',
-      200,
-      { orders: [] },
-      { poll: 'pos-scheduled-rail' },
-    );
+    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
 
     expect(loggerLogSpy).not.toHaveBeenCalled();
     expect(loggerWarnSpy).not.toHaveBeenCalled();
@@ -127,13 +121,7 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept(
-      'GET',
-      '/api/v1/orders/scheduled',
-      503,
-      { ok: false },
-      { poll: 'pos-scheduled-rail' },
-    );
+    runIntercept('GET', '/api/v1/orders/scheduled', 503, { ok: false });
 
     expect(loggerWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining('GET /api/v1/orders/scheduled - 503'),
