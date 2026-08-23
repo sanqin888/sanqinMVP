@@ -552,9 +552,7 @@ export class SyncUberStoreStatusUseCase {
         ? {
             status: 'OFFLINE',
             reason: pause.reason,
-            ...(pause.pauseUntil
-              ? { is_offline_until: pause.pauseUntil }
-              : {}),
+            ...(pause.pauseUntil ? { is_offline_until: pause.pauseUntil } : {}),
           }
         : { status: 'ONLINE' };
     const results: Record<string, unknown>[] = [];
