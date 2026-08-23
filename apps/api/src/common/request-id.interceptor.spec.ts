@@ -8,12 +8,14 @@ describe('RequestIdInterceptor', () => {
     url: string,
     statusCode: number,
     originalUrl?: string,
+    query: Record<string, string> = {},
   ) => {
     const request = {
       method,
       url,
       originalUrl,
       headers: {},
+      query,
     };
     const response = {
       statusCode,
@@ -36,9 +38,16 @@ describe('RequestIdInterceptor', () => {
     url: string,
     statusCode: number,
     responseBody: unknown = 'ok',
+    query: Record<string, string> = {},
   ) => {
     const interceptor = new RequestIdInterceptor();
-    const { context } = createContext(method, url, statusCode);
+    const { context } = createContext(
+      method,
+      url,
+      statusCode,
+      undefined,
+      query,
+    );
     interceptor
       .intercept(context as never, { handle: () => of(responseBody) } as never)
       .subscribe();
@@ -82,7 +91,13 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
+    runIntercept(
+      'GET',
+      '/api/v1/orders/scheduled',
+      200,
+      { orders: [] },
+      { poll: 'pos-scheduled-rail' },
+    );
 
     expect(loggerLogSpy).not.toHaveBeenCalled();
     expect(loggerWarnSpy).not.toHaveBeenCalled();
@@ -112,7 +127,13 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept('GET', '/api/v1/orders/scheduled', 503, { ok: false });
+    runIntercept(
+      'GET',
+      '/api/v1/orders/scheduled',
+      503,
+      { ok: false },
+      { poll: 'pos-scheduled-rail' },
+    );
 
     expect(loggerWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining('GET /api/v1/orders/scheduled - 503'),
