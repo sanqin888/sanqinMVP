@@ -462,9 +462,10 @@ describe('Uber gateways wire contract v1', () => {
   ] as const)(
     '%s maps domain input to the explicit Order Fulfillment 1.0.0 wire schema',
     async (method, action, bodyFixture) => {
-      const sendActionCommand = jest
-        .fn()
-        .mockResolvedValue({ ok: true, status: 200 });
+      const sendActionCommand = jest.fn().mockResolvedValue({
+        ok: true,
+        status: action === 'CANCEL' ? 204 : 200,
+      });
       const adapter = new UberOrderActionGatewayAdapter({ sendActionCommand });
       const common = {
         externalOrderId: 'order/1',
