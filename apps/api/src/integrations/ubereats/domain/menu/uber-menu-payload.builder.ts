@@ -38,6 +38,7 @@ export interface UberUploadMenuGraph {
     description: string | null;
     priceCents: number;
     isAvailable: boolean;
+    suspendUntilEpochSeconds: number | null;
     preparationType: UberPreparationType | null;
     modifierGroupIds: string[];
     imageUrl: string | null;
@@ -102,7 +103,8 @@ export function buildUberUploadMenuPayload(
           ? null
           : {
               suspension: {
-                suspend_until: INDEFINITE_SUSPEND_UNTIL,
+                suspend_until:
+                  item.suspendUntilEpochSeconds ?? INDEFINITE_SUSPEND_UNTIL,
                 reason: 'Item unavailable',
               },
             },

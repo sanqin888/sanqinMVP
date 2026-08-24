@@ -9,8 +9,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       findProvisionedStores: jest.fn(),
     };
     const commands = {
-      setItemAvailability: jest.fn(),
-      setOptionAvailability: jest.fn(),
       createItemPublishFailure: jest.fn(),
     };
     const gateway = {
@@ -33,7 +31,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   };
 
   it('通过 Uber item endpoint 同步单品可售状态', async () => {
-    const { useCase, queries, commands, gateway, telemetry } = setup();
+    const { useCase, queries, gateway, telemetry } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'uber-a' },
@@ -45,12 +43,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       isAvailable: false,
     });
 
-    expect(commands.setItemAvailability).toHaveBeenCalledWith(
-      'pos-a',
-      'uber-a',
-      'item-1',
-      false,
-    );
     expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
       expect.objectContaining({
         storeId: 'uber-a',
@@ -123,7 +115,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('未配置 publishToUberEats 的菜品返回 SKIPPED_NOT_PUBLISHED', async () => {
-    const { useCase, queries, commands, gateway } = setup();
+    const { useCase, queries, gateway } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(false);
 
     await expect(
@@ -134,7 +126,6 @@ describe('UberMenuAvailabilityUseCase', () => {
     ).resolves.toEqual({ status: 'SKIPPED_NOT_PUBLISHED', stores: [] });
 
     expect(queries.findProvisionedStores).not.toHaveBeenCalled();
-    expect(commands.setItemAvailability).not.toHaveBeenCalled();
     expect(gateway.updateItemAvailability).not.toHaveBeenCalled();
   });
 
@@ -153,7 +144,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('option 204 成功后返回 SYNCED，不保留旧的 PENDING 状态', async () => {
-    const { useCase, queries, commands, gateway, telemetry } = setup();
+    const { useCase, queries, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
@@ -164,12 +155,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       isAvailable: false,
     });
 
-    expect(commands.setOptionAvailability).toHaveBeenCalledWith(
-      'pos-a',
-      'uber-a',
-      'option-1',
-      false,
-    );
     expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
       expect.objectContaining({
         storeId: 'uber-a',
@@ -195,7 +180,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('多门店 option 部分同步失败时返回 FAILED 并继续其他门店', async () => {
-    const { useCase, queries, commands, gateway, telemetry } = setup();
+    const { useCase, queries, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'a' },
       { storeId: 'pos-b', uberStoreId: 'b' },
@@ -214,20 +199,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       'SYNCED',
       'FAILED',
     ]);
-    expect(commands.setOptionAvailability).toHaveBeenNthCalledWith(
-      1,
-      'pos-a',
-      'a',
-      'option-1',
-      true,
-    );
-    expect(commands.setOptionAvailability).toHaveBeenNthCalledWith(
-      2,
-      'pos-b',
-      'b',
-      'option-1',
-      true,
-    );
     expect(gateway.updateItemAvailability).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

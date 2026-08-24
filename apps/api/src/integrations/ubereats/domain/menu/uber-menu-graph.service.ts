@@ -1,7 +1,8 @@
 import { createHash } from 'crypto';
-import type {
-  UberMenuGraphValidationIssue,
-  UberPreparationType,
+import {
+  resolveUberMenuAvailability,
+  type UberMenuGraphValidationIssue,
+  type UberPreparationType,
 } from './uber-menu.types';
 import type {
   UberMenuDraftFilters,
@@ -18,6 +19,7 @@ export interface UberMenuGraphItem {
   basePriceCents: number;
   priceCents: number;
   isAvailable: boolean;
+  suspendUntilEpochSeconds: number | null;
   preparationType: UberPreparationType | null;
   modifierGroupIds: string[];
   hasDelta: boolean;
@@ -90,26 +92,24 @@ export function summarizeUberMenuGraph(
 }
 export function buildRequiredChildSelections(
   group: Pick<UberMenuGraphGroup, 'minSelect' | 'maxSelect' | 'optionItemIds'>,
-  optionById: ReadonlyMap<string, Pick<UberMenuGraphItem, 'isAvailable'>>,
+  optionById: ReadonlyMap<string, Pick<UberMenuGraphItem, 'id'>>,
 ): string[][] {
-  const available = group.optionItemIds.filter(
-    (id) => optionById.get(id)?.isAvailable !== false,
-  );
+  const choices = group.optionItemIds.filter((id) => optionById.has(id));
   const out: string[][] = [];
   const choose = (size: number, start = 0, selected: string[] = []) => {
     if (selected.length === size) {
       out.push([...selected]);
       return;
     }
-    for (let i = start; i < available.length; i++) {
-      selected.push(available[i]);
+    for (let i = start; i < choices.length; i++) {
+      selected.push(choices[i]);
       choose(size, i + 1, selected);
       selected.pop();
     }
   };
   for (
     let size = group.minSelect;
-    size <= Math.min(group.maxSelect, available.length);
+    size <= Math.min(group.maxSelect, choices.length);
     size++
   )
     choose(size);
@@ -210,6 +210,20 @@ export function flattenNestedModifiersForUber(input: {
           input.storeId,
           `composite:${sourcePath.join('>')}`,
         );
+        const availabilityParts = [parent, ...selected];
+        const unavailableParts = availabilityParts.filter(
+          (part) => !part.isAvailable,
+        );
+        const temporarySuspendUntil = unavailableParts.flatMap((part) =>
+          part.suspendUntilEpochSeconds === null
+            ? []
+            : [part.suspendUntilEpochSeconds],
+        );
+        const suspendUntilEpochSeconds =
+          unavailableParts.length === 0 ||
+          temporarySuspendUntil.length !== unavailableParts.length
+            ? null
+            : Math.max(...temporarySuspendUntil);
         output.set(compositeId, {
           ...parent,
           id: compositeId,
@@ -219,8 +233,8 @@ export function flattenNestedModifiersForUber(input: {
             selected.reduce((s, x) => s + x.basePriceCents, 0),
           priceCents:
             parent.priceCents + selected.reduce((s, x) => s + x.priceCents, 0),
-          isAvailable:
-            parent.isAvailable && selected.every((x) => x.isAvailable),
+          isAvailable: unavailableParts.length === 0,
+          suspendUntilEpochSeconds,
           modifierGroupIds: [],
           hasDelta: parent.hasDelta || selected.some((x) => x.hasDelta),
         });
@@ -302,16 +316,6 @@ export function validateUberMenuGraph(
             groupId: g.id,
             optionItemId: id,
           });
-          return false;
-        }
-        if (!o.isAvailable) {
-          warnings.push({
-            code: 'UBER_UNAVAILABLE_OPTION_REMOVED',
-            message: `Unavailable option item ${id} was removed from modifier group ${g.id}.`,
-            groupId: g.id,
-            optionItemId: id,
-          });
-          candidates.delete(id);
           return false;
         }
         return true;
@@ -447,6 +451,7 @@ export function buildUberMenuGraph(
       basePriceCents: number;
       priceCents: number;
       isAvailable: boolean;
+      suspendUntilEpochSeconds: number | null;
       preparationType: UberPreparationType | null;
       modifierGroupIds: string[];
       hasDelta: boolean;
@@ -463,6 +468,7 @@ export function buildUberMenuGraph(
     basePriceCents: number;
     priceCents: number;
     isAvailable: boolean;
+    suspendUntilEpochSeconds: number | null;
     preparationType: UberPreparationType | null;
     modifierGroupIds: string[];
     categoryStableId: string;
@@ -494,10 +500,15 @@ export function buildUberMenuGraph(
       }
       const optionConfig = optionConfigMap.get(choice.stableId);
       const optionItemId = buildUberNodeId('item', storeId, choice.stableId);
-      const optionAvailable =
-        optionConfig?.isAvailable !== undefined
-          ? optionConfig.isAvailable
-          : choice.isAvailable;
+      const sourceAvailability = resolveUberMenuAvailability({
+        sourceIsAvailable: choice.isAvailable,
+        tempUnavailableUntil: choice.tempUnavailableUntil,
+      });
+      const optionAvailability = resolveUberMenuAvailability({
+        sourceIsAvailable: choice.isAvailable,
+        tempUnavailableUntil: choice.tempUnavailableUntil,
+        channelIsAvailable: optionConfig?.isAvailable,
+      });
       const optionPriceCents =
         optionConfig?.priceDeltaCents ?? choice.priceDeltaCents;
       const childGroupIds = choice.childTemplateGroupStableIds.map(
@@ -516,12 +527,15 @@ export function buildUberMenuGraph(
         description: optionConfig?.displayDescription || null,
         basePriceCents: choice.priceDeltaCents,
         priceCents: optionPriceCents,
-        isAvailable: optionAvailable,
+        isAvailable: optionAvailability.isAvailable,
+        suspendUntilEpochSeconds: optionAvailability.suspendUntilEpochSeconds,
         preparationType: optionConfig?.preparationType ?? null,
         modifierGroupIds: childGroupIds,
         hasDelta:
           optionPriceCents !== choice.priceDeltaCents ||
-          optionAvailable !== choice.isAvailable,
+          optionAvailability.isAvailable !== sourceAvailability.isAvailable ||
+          optionAvailability.suspendUntilEpochSeconds !==
+            sourceAvailability.suspendUntilEpochSeconds,
         imageUrl: null,
       });
     }
@@ -562,10 +576,15 @@ export function buildUberMenuGraph(
       .filter((groupId): groupId is string => Boolean(groupId));
 
     const priceCents = itemConfig?.priceCents ?? menuItem.basePriceCents;
-    const isAvailable =
-      itemConfig?.isAvailable !== undefined
-        ? itemConfig.isAvailable
-        : menuItem.isAvailable;
+    const sourceAvailability = resolveUberMenuAvailability({
+      sourceIsAvailable: menuItem.isAvailable,
+      tempUnavailableUntil: menuItem.tempUnavailableUntil,
+    });
+    const itemAvailability = resolveUberMenuAvailability({
+      sourceIsAvailable: menuItem.isAvailable,
+      tempUnavailableUntil: menuItem.tempUnavailableUntil,
+      channelIsAvailable: itemConfig?.isAvailable,
+    });
 
     itemDrafts.push({
       id: buildUberNodeId('item', storeId, menuItem.stableId),
@@ -582,14 +601,17 @@ export function buildUberMenuGraph(
         null,
       basePriceCents: menuItem.basePriceCents,
       priceCents,
-      isAvailable,
+      isAvailable: itemAvailability.isAvailable,
+      suspendUntilEpochSeconds: itemAvailability.suspendUntilEpochSeconds,
       preparationType: itemConfig?.preparationType ?? null,
       modifierGroupIds: mappedGroupIds,
       categoryStableId: category.stableId,
       sortOrder: menuItem.sortOrder,
       hasDelta:
         priceCents !== menuItem.basePriceCents ||
-        isAvailable !== menuItem.isAvailable,
+        itemAvailability.isAvailable !== sourceAvailability.isAvailable ||
+        itemAvailability.suspendUntilEpochSeconds !==
+          sourceAvailability.suspendUntilEpochSeconds,
       imageUrl: menuItem.imageUrl,
     });
   }

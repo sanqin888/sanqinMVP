@@ -137,6 +137,12 @@ ID 与数量、价格、availability、modifier group/option 关系、`dish_info
 以及 Uber 有返回时的税率和 `disable_item_instructions`。如果全量 Publish 后又单独执行过 Update Item，
 availability 差异可能是后续的预期状态变化，因此管理端明确标注对账基准。
 
+菜单结构与运行时售罄状态必须分离：已纳入发布范围的 item/option 即使当前临时或永久不可售，也继续保留在
+Uber menu graph / editor / full PUT payload 中；不可售只通过 `suspension_info` 表达。SanQ 的
+`tempUnavailableUntil` 必须映射为相同时间点的 `suspend_until`，过期后自动恢复；永久不可售才使用无限期
+suspension。Sparse Update Item 只同步运行时 suspension，不得把临时有效状态写成持久的
+`UberItemChannelConfig.isAvailable` / `UberOptionItemConfig.isAvailable` override，从而避免次日留下陈旧下架状态。
+
 加拿大 FOOD/BEVERAGE 的 Required Metadata Regulations 要求发送 `preparation_type`。Uber Menu V2
 wire schema 只允许 `PREPACKAGED` 或空字符串；SanQ 不根据名称或类别猜测商品是否预包装，而是在现有
 `UberItemChannelConfig` / `UberOptionItemConfig` 中保存显式语义 `PREPARED | PREPACKAGED`。发送 Uber
