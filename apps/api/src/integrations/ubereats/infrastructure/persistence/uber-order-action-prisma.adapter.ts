@@ -32,7 +32,11 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
   async enqueue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>) {
     if (input.action === 'ACCEPT' || input.action === 'DENY') {
       return this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.externalOrderId}))`;
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtext(${input.externalOrderId})
+          )::text AS "lockResult"
+        `;
         const existingDecision = await tx.uberOrderAction.findFirst({
           where: {
             externalOrderId: input.externalOrderId,

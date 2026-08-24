@@ -289,7 +289,11 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       },
       async (tx, order) => {
         if (input.actionIntent) {
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.actionIntent.externalOrderId}))`;
+          await tx.$queryRaw`
+            SELECT pg_advisory_xact_lock(
+              hashtext(${input.actionIntent.externalOrderId})
+            )::text AS "lockResult"
+          `;
           const existingDecision = await tx.uberOrderAction.findFirst({
             where: {
               externalOrderId: input.actionIntent.externalOrderId,

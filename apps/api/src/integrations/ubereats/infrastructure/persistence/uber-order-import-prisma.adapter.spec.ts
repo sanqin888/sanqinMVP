@@ -1,6 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { UberOrderImportPrismaAdapter } from './uber-order-import-prisma.adapter';
 
+type RawTag = (
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+) => Promise<unknown[]>;
+
+const sqlText = (strings: TemplateStringsArray) => strings.join('?');
+
 const parsedOrder = {
   externalOrderId: 'uber-order-1',
   displayId: '1001',
@@ -298,8 +305,11 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       .mockResolvedValue({ id: 'action-task-1' });
     const inboxUpsert = jest.fn();
     const inboxUpdate = jest.fn();
+    const queryRaw = jest
+      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      .mockResolvedValue([]);
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([]),
+      $queryRaw: queryRaw,
       uberOrderAction: {
         createMany,
         findFirst: jest.fn().mockResolvedValue(null),
@@ -350,6 +360,11 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
 
     expect(first.action).toEqual({ taskId: 'action-task-1', created: true });
     expect(replay.action).toEqual({ taskId: 'action-task-1', created: false });
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    const advisoryLockSql = sqlText(queryRaw.mock.calls[0][0]);
+    expect(advisoryLockSql).toMatch(
+      /pg_advisory_xact_lock\([\s\S]*hashtext\([\s\S]*\)[\s\S]*\)::text AS "lockResult"/,
+    );
     expect(createMany).toHaveBeenCalledTimes(2);
     expect(createMany).toHaveBeenNthCalledWith(
       2,

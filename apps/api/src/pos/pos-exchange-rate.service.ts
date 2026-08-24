@@ -10,6 +10,7 @@ const BANK_OF_CANADA_SERIES = 'FXCNYCAD';
 const BANK_OF_CANADA_LATEST_URL =
   'https://www.bankofcanada.ca/valet/observations/FXCNYCAD/json?recent=10';
 const BANK_OF_CANADA_TIMEOUT_MS = 5_000;
+const BANK_OF_CANADA_CAD_CNY_MARKUP = 0.05;
 const DEFAULT_TIMEZONE = 'America/Toronto';
 const DAILY_REFRESH_HOUR = 17;
 
@@ -289,7 +290,9 @@ export class PosExchangeRateService {
   }
 
   private toCadCnyRateHundredths(cnyToCadRate: number): number {
-    const rateHundredths = Math.round((1 / cnyToCadRate) * 100);
+    const rateHundredths = Math.round(
+      (1 / cnyToCadRate + BANK_OF_CANADA_CAD_CNY_MARKUP) * 100,
+    );
     if (!Number.isSafeInteger(rateHundredths) || rateHundredths <= 0) {
       throw new Error('Calculated CAD/CNY exchange rate is invalid');
     }
