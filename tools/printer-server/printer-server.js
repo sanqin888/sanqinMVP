@@ -26,8 +26,10 @@ const KITCHEN_PRINTER = process.env.POS_KITCHEN_PRINTER || "KC80";
 const ESC = 0x1b;
 const GS = 0x1d;
 
-// 打印宽度（逻辑宽度，用于对齐和画虚线，不影响纸张本身宽度）
-const LINE_WIDTH = 32;
+// 80mm 打印机 Font A 通常可打印 48 个半角字符；此前 32 只覆盖约 2/3 纸宽。
+const LINE_WIDTH = 48;
+const CUSTOMER_LINE_SPACING_DOTS = 48;
+const KITCHEN_LINE_SPACING_DOTS = 48;
 const LOGO_WIDTH_DOTS = Number(process.env.POS_LOGO_WIDTH_DOTS || 192);
 
 // ========== 通用工具函数 ==========
@@ -151,41 +153,142 @@ function getOptionLines(
   });
 }
 
+function receiptTextWidth(value) {
+  return iconv.encode(String(value ?? ""), "gbk").length;
+}
+
+function takeReceiptTextSegment(value, maxWidth) {
+  const text = String(value ?? "");
+  let usedWidth = 0;
+  let endIndex = 0;
+
+  for (const character of text) {
+    const characterWidth = Math.max(1, receiptTextWidth(character));
+    if (endIndex > 0 && usedWidth + characterWidth > maxWidth) break;
+    usedWidth += characterWidth;
+    endIndex += character.length;
+    if (usedWidth >= maxWidth) break;
+  }
+
+  return [text.slice(0, endIndex), text.slice(endIndex)];
+}
+
 function wrapReceiptText(prefix, value, width = LINE_WIDTH) {
   const cleanPrefix = String(prefix ?? "");
   const cleanValue = String(value ?? "").trim();
   if (!cleanValue) return [];
 
-  const availableWidth = Math.max(8, width - cleanPrefix.length);
+  const paragraphs = cleanValue
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
   const lines = [];
-  let remaining = cleanValue;
-  let isFirstLine = true;
+  let isFirstOutputLine = true;
 
-  while (remaining.length > 0) {
-    const sliceWidth = isFirstLine ? availableWidth : Math.max(8, width - 2);
-    const segment = remaining.slice(0, sliceWidth);
-    lines.push(isFirstLine ? `${cleanPrefix}${segment}` : `  ${segment}`);
-    remaining = remaining.slice(sliceWidth);
-    isFirstLine = false;
-  }
+  paragraphs.forEach((paragraph) => {
+    let remaining = paragraph;
+
+    while (remaining.length > 0) {
+      const linePrefix = isFirstOutputLine ? cleanPrefix : "  ";
+      const availableWidth = Math.max(
+        8,
+        width - receiptTextWidth(linePrefix),
+      );
+      const [segment, rest] = takeReceiptTextSegment(
+        remaining,
+        availableWidth,
+      );
+      lines.push(`${linePrefix}${segment}`);
+      remaining = rest;
+      isFirstOutputLine = false;
+    }
+  });
 
   return lines;
 }
 
+function extractUtensilsSummaryFromOrderNoteLine(value) {
+  const line = String(value ?? "").trim();
+  const match = line.match(
+    /^(?:餐具\s*\/\s*Utensils|Utensils|餐具)\s*:\s*(.+)$/i,
+  );
+  return match?.[1]?.trim() || null;
+}
+
 function buildCustomerServiceNoteBlockLines(params) {
-  const utensilsSummary =
-    typeof params?.utensils?.summary === "string"
-      ? params.utensils.summary.trim()
-      : "";
+  const utensils =
+    params?.utensils && typeof params.utensils === "object"
+      ? params.utensils
+      : null;
   const orderNotes =
     typeof params?.orderNotes === "string" ? params.orderNotes.trim() : "";
 
   const lines = [];
-  if (utensilsSummary) {
-    lines.push(...wrapReceiptText("餐具 / Utensils: ", utensilsSummary));
+  const seenUtensils = new Set();
+  const appendUtensilsChoice = (value) => {
+    const normalizedValue = String(value ?? "").trim();
+    if (!normalizedValue || seenUtensils.has(normalizedValue)) return;
+    seenUtensils.add(normalizedValue);
+    lines.push({
+      kind: "utensils-choice",
+      label: "餐具 / Utensils: ",
+      value: normalizedValue,
+    });
+  };
+
+  if (utensils && typeof utensils.needed === "boolean") {
+    appendUtensilsChoice(utensils.needed ? "是 / Yes" : "否 / No");
+
+    if (utensils.needed) {
+      const typeLabel =
+        utensils.type === "chopsticks"
+          ? "筷子 / Chopsticks"
+          : utensils.type === "fork"
+            ? "叉子 / Fork"
+            : "";
+      if (typeLabel) {
+        lines.push({
+          kind: "utensils-detail",
+          text: `类型 / Type: ${typeLabel}`,
+        });
+      }
+
+      const quantity = Number(utensils.quantity);
+      if (Number.isFinite(quantity) && quantity > 0) {
+        lines.push({
+          kind: "utensils-sets",
+          text: `# Sets / 套: ${Math.round(quantity)}`,
+        });
+      }
+    }
+  } else {
+    const utensilsSummary =
+      typeof utensils?.summary === "string" ? utensils.summary.trim() : "";
+    if (utensilsSummary) appendUtensilsChoice(utensilsSummary);
   }
+
   if (orderNotes) {
-    lines.push(...wrapReceiptText("订单备注 / Order Notes: ", orderNotes));
+    let orderNotePrefixUsed = false;
+    orderNotes
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((orderNoteLine) => {
+        const embeddedUtensilsSummary =
+          extractUtensilsSummaryFromOrderNoteLine(orderNoteLine);
+        if (embeddedUtensilsSummary) {
+          appendUtensilsChoice(embeddedUtensilsSummary);
+          return;
+        }
+
+        const prefix = orderNotePrefixUsed
+          ? "  "
+          : "订单备注 / Order Notes: ";
+        wrapReceiptText(prefix, orderNoteLine).forEach((text) => {
+          lines.push({ kind: "note", text });
+        });
+        orderNotePrefixUsed = true;
+      });
   }
 
   return lines;
@@ -398,8 +501,8 @@ async function buildCustomerReceiptEscPos(params) {
   // 初始化打印机
   chunks.push(cmd(ESC, 0x40)); // ESC @
 
-  // ✅ 行距调紧（减少整体留白）
-  chunks.push(cmd(ESC, 0x33, 42));
+  // 48 dots 给双高字体留足垂直空间，避免相邻行贴得过紧。
+  chunks.push(cmd(ESC, 0x33, CUSTOMER_LINE_SPACING_DOTS));
 
   // ==== 顾客姓名（如果有的话） ====
   if (customerName) {
@@ -464,9 +567,29 @@ async function buildCustomerReceiptEscPos(params) {
   const serviceNoteBlockLines = buildCustomerServiceNoteBlockLines(params);
   if (serviceNoteBlockLines.length > 0) {
     chunks.push(encLine(makeLine("-")));
+    chunks.push(cmd(ESC, 0x45, 0x01)); // 备注加粗
+    chunks.push(cmd(GS, 0x21, 0x01)); // 双高但不加宽，保持整行可读宽度
     serviceNoteBlockLines.forEach((line) => {
-      chunks.push(encLine(line));
+      if (line.kind === "utensils-choice") {
+        // 标题保持白底黑字，只反白具体选择，例如“是 / Yes”。
+        chunks.push(iconv.encode(line.label, "gbk"));
+        chunks.push(cmd(GS, 0x42, 0x01));
+        chunks.push(encLine(line.value));
+        chunks.push(cmd(GS, 0x42, 0x00));
+        return;
+      }
+      if (line.kind === "utensils-sets") {
+        // 套数属于具体餐具信息，整段反白突出。
+        chunks.push(cmd(GS, 0x42, 0x01));
+        chunks.push(encLine(line.text));
+        chunks.push(cmd(GS, 0x42, 0x00));
+        return;
+      }
+      chunks.push(encLine(line.text));
     });
+    chunks.push(cmd(GS, 0x42, 0x00)); // safety: ensure reverse mode is off
+    chunks.push(cmd(GS, 0x21, 0x00));
+    chunks.push(cmd(ESC, 0x45, 0x00));
     chunks.push(encLine(makeLine("-")));
   } else {
     chunks.push(encLine(makeLine("-")));
@@ -628,7 +751,7 @@ function buildKitchenReceiptEscPos(params) {
 
   // 初始化打印机
   chunks.push(cmd(ESC, 0x40)); // ESC @
-  chunks.push(cmd(ESC, 0x33, 30));
+  chunks.push(cmd(ESC, 0x33, KITCHEN_LINE_SPACING_DOTS));
 
   // ==== 顶部：用餐方式（大号加粗） ====
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
@@ -676,7 +799,9 @@ function buildKitchenReceiptEscPos(params) {
       );
       if (specialInstructionLines.length > 0) {
         chunks.push(cmd(ESC, 0x45, 0x01));
+        chunks.push(cmd(GS, 0x21, 0x01)); // 菜品备注双高显示
         specialInstructionLines.forEach((line) => chunks.push(encLine(line)));
+        chunks.push(cmd(GS, 0x21, 0x00));
         chunks.push(cmd(ESC, 0x45, 0x00));
       }
 
