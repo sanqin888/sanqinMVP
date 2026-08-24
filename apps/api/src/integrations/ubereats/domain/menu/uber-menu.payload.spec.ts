@@ -67,8 +67,11 @@ describe('uber-menu-payload.builder', () => {
     expect(payload.items[0]).toMatchObject({
       id: 'item-1',
       price_info: { price: 1299, overrides: [] },
-      dish_info: { classifications: { preparation_type: '' } },
+      dish_info: { classifications: {} },
     });
+    expect(payload.items[0].dish_info.classifications).not.toHaveProperty(
+      'preparation_type',
+    );
   });
 
   it('maps an explicitly PREPACKAGED item to Uber metadata', () => {
@@ -100,12 +103,12 @@ describe('uber-menu-payload.builder', () => {
     );
   });
 
-  it('blocks a Canadian FOOD/BEVERAGE item without preparation_type metadata', () => {
+  it('blocks a literal empty preparation_type before calling Uber', () => {
     const payload = buildUberUploadMenuPayload(graph, [], 13, urlContext);
     const classifications = payload.items[0].dish_info.classifications as {
-      preparation_type?: '' | 'PREPACKAGED';
+      preparation_type?: unknown;
     };
-    delete classifications.preparation_type;
+    classifications.preparation_type = '';
     expect(validateUberMenuPayload(payload)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

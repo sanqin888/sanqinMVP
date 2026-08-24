@@ -604,19 +604,21 @@ export class RetrieveAndReconcileUberMenuUseCase {
           expected: renderReconciliationValue(expected.tax_info.tax_rate),
           actual: renderReconciliationValue(actual.taxRatePercentage),
         });
-      const expectedPreparationType =
-        expected.dish_info?.classifications?.preparation_type;
-      if (
-        expectedPreparationType !== undefined &&
-        expectedPreparationType !== actual.preparationType
-      )
-        mismatches.push({
-          resourceType: 'ITEM',
-          resourceId: id,
-          field: 'preparationType',
-          expected: renderReconciliationValue(expectedPreparationType),
-          actual: renderReconciliationValue(actual.preparationType),
-        });
+      const expectedClassifications = expected.dish_info?.classifications;
+      if (expectedClassifications !== undefined) {
+        const expectedPreparationType =
+          expectedClassifications.preparation_type ?? null;
+        const actualPreparationType =
+          actual.preparationType === '' ? null : actual.preparationType;
+        if (expectedPreparationType !== actualPreparationType)
+          mismatches.push({
+            resourceType: 'ITEM',
+            resourceId: id,
+            field: 'preparationType',
+            expected: renderReconciliationValue(expectedPreparationType),
+            actual: renderReconciliationValue(actualPreparationType),
+          });
+      }
     }
 
     for (const [id, expected] of expectedGroups) {

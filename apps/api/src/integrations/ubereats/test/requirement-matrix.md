@@ -143,14 +143,15 @@ Uber menu graph / editor / full PUT payload 中；不可售只通过 `suspension
 suspension。Sparse Update Item 只同步运行时 suspension，不得把临时有效状态写成持久的
 `UberItemChannelConfig.isAvailable` / `UberOptionItemConfig.isAvailable` override，从而避免次日留下陈旧下架状态。
 
-加拿大 FOOD/BEVERAGE 的 Required Metadata Regulations 要求发送 `preparation_type`。Uber Menu V2
-wire schema 只允许 `PREPACKAGED` 或空字符串；SanQ 不根据名称或类别猜测商品是否预包装，而是在现有
-`UberItemChannelConfig` / `UberOptionItemConfig` 中保存显式语义 `PREPARED | PREPACKAGED`。发送 Uber
-时 `PREPARED` 映射为空字符串，`PREPACKAGED` 映射为 `PREPACKAGED`；任一实际要发布的 menu item 或
-option item 尚未确认（`null`）时，dry-run 和真实 Publish 都必须在调用 Uber 前以
-`UBER_PREPARATION_TYPE_REQUIRED` 阻断。GET read-back reconciliation 同样核对该字段。历史成功 Publish
-JSON 可能没有 `dish_info`；这种旧基线只跳过 `preparation_type` 单字段比较，其他字段继续严格对账，
-直到下一次带显式分类的成功全量 Publish 建立新基线。
+加拿大 FOOD/BEVERAGE 的 Required Metadata Regulations 要求确认商品 preparation semantics。Uber Menu
+V2 将 `preparation_type` 定义为可选字段，唯一非空枚举值为 `PREPACKAGED`；官方 prepared-food 示例
+省略该字段。SanQ 不根据名称或类别猜测商品是否预包装，而是在现有 `UberItemChannelConfig` /
+`UberOptionItemConfig` 中保存显式语义 `PREPARED | PREPACKAGED`。发送 Uber 时 `PREPARED` 省略
+`preparation_type`，`PREPACKAGED` 映射为 `PREPACKAGED`；任一实际要发布的 menu item 或 option item
+尚未确认（`null`）时，dry-run 和真实 Publish 都必须在调用 Uber 前以
+`UBER_PREPARATION_TYPE_REQUIRED` 阻断。GET read-back reconciliation 将缺省和 Uber 旧式空字符串响应
+都归一化为 prepared 后对账。历史成功 Publish JSON 可能没有 `dish_info`；这种旧基线只跳过
+`preparation_type` 单字段比较，其他字段继续严格对账，直到下一次带显式分类的成功全量 Publish 建立新基线。
 
 税务契约继续使用现有 `tax_info.tax_rate`（tax-exclusive percentage）。Uber 公共 Menu V2 schema
 把 `tax_label_info` 定义为可选字段，Quality 标准也只要求 Tax Categories “where applicable”；Canada

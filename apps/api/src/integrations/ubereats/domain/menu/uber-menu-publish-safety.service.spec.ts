@@ -34,7 +34,7 @@ const payload = (price = 1099): UberMenuUploadPayload => ({
       title: { translations: { en_us: 'Pork Roujiamo' } },
       price_info: { price, overrides: [] },
       tax_info: { tax_rate: 0, vat_rate_percentage: null },
-      dish_info: { classifications: { preparation_type: '' } },
+      dish_info: { classifications: {} },
       modifier_group_ids: { ids: ['group-b', 'group-a'], overrides: [] },
       suspension_info: null,
     },
