@@ -145,9 +145,9 @@ describe('buildUberMenuGraph', () => {
 
     const validated = validateUberMenuGraph(graph);
     expect(validated.graph.groups[0]?.optionItemIds).toContain(optionId);
-    expect(
-      validated.graph.items.some((item) => item.id === optionId),
-    ).toBe(true);
+    expect(validated.graph.items.some((item) => item.id === optionId)).toBe(
+      true,
+    );
     expect(validated.warnings).toEqual([]);
   });
 });
