@@ -18,7 +18,7 @@ describe('UberOrderActionGatewayAdapter Order Fulfillment 1.0.0', () => {
         idempotencyKey: 'accept-key',
         readyForPickupAt: new Date('2026-08-20T13:30:00.000Z'),
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ upstreamStatus: 200 });
 
     expect(sendActionCommand).toHaveBeenCalledWith(
       'order/1',
@@ -64,11 +64,13 @@ describe('UberOrderActionGatewayAdapter Order Fulfillment 1.0.0', () => {
       sendActionCommand,
     } as never);
 
-    await adapter.cancel({
-      externalOrderId: 'order-1',
-      idempotencyKey: 'cancel-key',
-      denial: { reasonCode: 'STORE_CLOSED', reasonDetail: 'closed' },
-    });
+    await expect(
+      adapter.cancel({
+        externalOrderId: 'order-1',
+        idempotencyKey: 'cancel-key',
+        denial: { reasonCode: 'STORE_CLOSED', reasonDetail: 'closed' },
+      }),
+    ).resolves.toEqual({ upstreamStatus: 204 });
 
     expect(sendActionCommand).toHaveBeenCalledWith(
       'order-1',
@@ -82,6 +84,65 @@ describe('UberOrderActionGatewayAdapter Order Fulfillment 1.0.0', () => {
       },
       'cancel-key',
     );
+  });
+
+  it.each([{}, null, undefined, ''])(
+    'accepts the observed Sandbox CANCEL HTTP 200 only with an empty response body: %p',
+    async (data) => {
+      const sendActionCommand = jest
+        .fn()
+        .mockResolvedValue({ ok: true, status: 200, data });
+      const adapter = new UberOrderActionGatewayAdapter({
+        sendActionCommand,
+      } as never);
+
+      await expect(
+        adapter.cancel({
+          externalOrderId: 'order-1',
+          idempotencyKey: 'cancel-key',
+        }),
+      ).resolves.toEqual({ upstreamStatus: 200 });
+    },
+  );
+
+  it('rejects CANCEL HTTP 200 when the response body is not empty', async () => {
+    const sendActionCommand = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { unexpected: true },
+    });
+    const adapter = new UberOrderActionGatewayAdapter({
+      sendActionCommand,
+    } as never);
+
+    await expect(
+      adapter.cancel({
+        externalOrderId: 'order-1',
+        idempotencyKey: 'cancel-key',
+      }),
+    ).rejects.toMatchObject({
+      status: 200,
+      code: 'UBER_ORDER_HTTP_200',
+    });
+  });
+
+  it('rejects other unexpected CANCEL 2xx responses', async () => {
+    const sendActionCommand = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 202, data: {} });
+    const adapter = new UberOrderActionGatewayAdapter({
+      sendActionCommand,
+    } as never);
+
+    await expect(
+      adapter.cancel({
+        externalOrderId: 'order-1',
+        idempotencyKey: 'cancel-key',
+      }),
+    ).rejects.toMatchObject({
+      status: 202,
+      code: 'UBER_ORDER_HTTP_202',
+    });
   });
 
   it('sends an empty body when marking READY', async () => {

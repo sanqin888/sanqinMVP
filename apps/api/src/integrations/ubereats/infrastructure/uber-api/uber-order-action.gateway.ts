@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AppLogger } from '../../../../common/app-logger';
 import type {
   UberOrderActionGatewayPort,
+  UberOrderActionSuccess,
   UberOrderCommandFailure,
   UberOrderDenial,
   UberOrderSafeErrorBody,
@@ -31,6 +32,15 @@ const EXPECTED_SUCCESS_STATUS: Readonly<Record<UberWireOrderAction, number>> = {
   READY_FOR_PICKUP: 200,
   CANCEL: 204,
 };
+
+function isEmptyCancelSuccessBody(value: unknown): boolean {
+  if (value === null || value === undefined || value === '') return true;
+  return (
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length === 0
+  );
+}
 
 export class UberOrderCommandError
   extends Error
@@ -107,7 +117,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     input: { externalOrderId: string; idempotencyKey: string },
     action: UberWireOrderAction,
     payload: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<UberOrderActionSuccess> {
     let outcome: Awaited<ReturnType<UberOrderGateway['sendActionCommand']>>;
     try {
       outcome = await this.gateway.sendActionCommand(
@@ -126,8 +136,16 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         );
       throw new UberOrderCommandError(null);
     }
-    if (outcome.ok && outcome.status === EXPECTED_SUCCESS_STATUS[action])
-      return;
+    const isDocumentedSuccess =
+      outcome.ok && outcome.status === EXPECTED_SUCCESS_STATUS[action];
+    const isSandboxCancelCompatibilitySuccess =
+      action === 'CANCEL' &&
+      outcome.ok &&
+      outcome.status === 200 &&
+      isEmptyCancelSuccessBody(outcome.data);
+    if (isDocumentedSuccess || isSandboxCancelCompatibilitySuccess) {
+      return { upstreamStatus: outcome.status };
+    }
 
     const responseBody = this.safeErrorBody(outcome.data);
     this.logger.error(

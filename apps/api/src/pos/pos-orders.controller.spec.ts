@@ -4,7 +4,12 @@ describe('PosOrdersController Uber orders', () => {
   const orders = {
     board: jest.fn(),
   };
-  const posOrders = { cancelUberOrder: jest.fn() };
+  const posOrders = {
+    cancelUberOrder: jest.fn(),
+    denyUberOrder: jest.fn(),
+    getAutoAcceptOnlineOrders: jest.fn(),
+    setAutoAcceptOnlineOrders: jest.fn(),
+  };
   const schedulingQuery = {
     listUpcomingForDeviceStore: jest.fn(),
     findTimingsByStableIds: jest.fn(),
@@ -80,6 +85,42 @@ describe('PosOrdersController Uber orders', () => {
     ).resolves.toEqual([
       { orderStableId: 'scheduled_active', fulfillmentTiming: 'SCHEDULED' },
     ]);
+  });
+
+  it('POS 将人工拒单提交到 Uber DENY 应用边界', async () => {
+    posOrders.denyUberOrder.mockResolvedValue({ actionId: 'deny-1' });
+
+    await expect(
+      controller.denyUberOrder('order_1', {
+        reasonCode: 'ITEM_ISSUE',
+        reasonDetail: '商品售罄',
+      }),
+    ).resolves.toEqual({ actionId: 'deny-1' });
+    expect(posOrders.denyUberOrder).toHaveBeenCalledWith(
+      'order_1',
+      'ITEM_ISSUE',
+      '商品售罄',
+    );
+  });
+
+  it('POS 自动接单设置按设备所属门店读写', async () => {
+    posOrders.getAutoAcceptOnlineOrders.mockResolvedValue({ enabled: false });
+    posOrders.setAutoAcceptOnlineOrders.mockResolvedValue({ enabled: true });
+    const req = { posDevice: { storeId: 'store-uuid-1' } } as never;
+
+    await expect(controller.getAutoAcceptOnlineOrders(req)).resolves.toEqual({
+      enabled: false,
+    });
+    await expect(
+      controller.setAutoAcceptOnlineOrders(req, { enabled: true }),
+    ).resolves.toEqual({ enabled: true });
+    expect(posOrders.getAutoAcceptOnlineOrders).toHaveBeenCalledWith(
+      'store-uuid-1',
+    );
+    expect(posOrders.setAutoAcceptOnlineOrders).toHaveBeenCalledWith(
+      'store-uuid-1',
+      true,
+    );
   });
 
   it('POS 将店员主动取消提交到 Uber CANCEL 应用边界', async () => {

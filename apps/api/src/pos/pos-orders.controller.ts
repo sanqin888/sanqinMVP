@@ -44,6 +44,7 @@ import { PosOrdersService } from './pos-orders.service';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsIn,
   IsInt,
@@ -84,6 +85,29 @@ class CancelUberOrderDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+class DenyUberOrderDto {
+  @IsString()
+  @IsIn([
+    'ITEM_ISSUE',
+    'STORE_CLOSED',
+    'CAPACITY',
+    'SPECIAL_INSTRUCTIONS',
+    'POS_OFFLINE',
+    'TECHNICAL_FAILURE',
+    'OTHER',
+  ])
+  reasonCode!: string;
+
+  @IsOptional()
+  @IsString()
+  reasonDetail?: string;
+}
+
+class UpdateAutoAcceptOnlineOrdersDto {
+  @IsBoolean()
+  enabled!: boolean;
 }
 
 class CreateAmendmentItemDto {
@@ -245,6 +269,30 @@ export class PosOrdersController {
       }));
   }
 
+  @Get('settings/auto-accept')
+  getAutoAcceptOnlineOrders(@Req() req: PosDeviceRequest) {
+    const deviceStoreId = req.posDevice?.storeId;
+    if (!deviceStoreId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+    return this.posOrders.getAutoAcceptOnlineOrders(deviceStoreId);
+  }
+
+  @Patch('settings/auto-accept')
+  setAutoAcceptOnlineOrders(
+    @Req() req: PosDeviceRequest,
+    @Body() body: UpdateAutoAcceptOnlineOrdersDto,
+  ) {
+    const deviceStoreId = req.posDevice?.storeId;
+    if (!deviceStoreId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+    return this.posOrders.setAutoAcceptOnlineOrders(
+      deviceStoreId,
+      body.enabled,
+    );
+  }
+
   @Get(':orderStableId')
   findOne(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
@@ -322,6 +370,19 @@ export class PosOrdersController {
   @HttpCode(200)
   retryUberSync(@Param('orderStableId', StableIdPipe) orderStableId: string) {
     return this.posOrders.retryUberSync(orderStableId);
+  }
+
+  @Post(':orderStableId/uber-deny')
+  @HttpCode(202)
+  denyUberOrder(
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+    @Body() body: DenyUberOrderDto,
+  ) {
+    return this.posOrders.denyUberOrder(
+      orderStableId,
+      body.reasonCode,
+      body.reasonDetail,
+    );
   }
 
   @Post(':orderStableId/uber-cancel')

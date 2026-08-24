@@ -937,30 +937,30 @@ setHolidays(
 
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">
-          {isZh ? 'POS 支付汇率' : 'POS payment exchange rate'}
+          {isZh ? 'POS 支付备用汇率' : 'POS payment fallback rate'}
         </h2>
         <p className="text-xs text-slate-600">
           {isZh
-            ? '用于 POS 端微信/支付宝结算的金额换算展示。'
-            : 'Used for showing converted totals when POS payments use WeChat/Alipay.'}
+            ? '正常情况下 POS 使用加拿大央行自动汇率；仅在自动汇率不可用且没有已缓存汇率时使用这里的备用值。'
+            : 'POS normally uses the automatic Bank of Canada rate. This fallback is used only when the automatic rate is unavailable and no cached rate exists.'}
         </p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <label className="flex flex-col text-xs font-medium text-slate-700">
             <span>
-              {isZh ? '微信/支付宝汇率' : 'WeChat/Alipay exchange rate'}
+              {isZh ? '微信/支付宝备用汇率' : 'WeChat/Alipay fallback rate'}
             </span>
             <input
               type="number"
-              min="0"
-              step="0.0001"
+              min="0.01"
+              step="0.01"
               value={config.wechatAlipayExchangeRate}
               onChange={(e) => handleWechatAlipayRateChange(e.target.value)}
               className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none"
             />
             <span className="mt-1 text-[11px] font-normal text-slate-500">
               {isZh
-                ? '示例：1 CAD = 5.25 RMB，则填写 5.25。'
-                : 'Example: 1 CAD = 5.25 RMB, enter 5.25.'}
+                ? '仅保留两位小数。示例：1 CAD = 4.89 CNY，则填写 4.89。'
+                : 'Two decimals only. Example: 1 CAD = 4.89 CNY, enter 4.89.'}
             </span>
           </label>
         </div>

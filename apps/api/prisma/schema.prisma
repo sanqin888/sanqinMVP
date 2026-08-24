@@ -394,6 +394,7 @@ model StoreConfig {
   timezone                  String              @default("America/Toronto")
   allergyHandlingMode       AllergyHandlingMode @default(RELAY_ALL)
   unsupportedAllergens      String[]            @default([])
+  autoAcceptOnlineOrders    Boolean             @default(true)
   isTemporarilyClosed       Boolean  @default(false)
   temporaryCloseReason      String?
   publicNotice              String?

@@ -171,11 +171,13 @@ Tech Support 给出加拿大账户专属要求，再按正式契约补充，而�
 | Cancel | `POST /v1/delivery/order/{order_id}/cancel` | `eats.order` | 同上 | `v1/orders/cancel-request.json` |
 | Menu | `PUT/GET /v2/eats/stores/{store_id}/menus` | `eats.store` | `uber-menu-publication.adapter.ts` | `v1/menu/*` |
 
-ACCEPT / DENY / READY 只有 Uber 实际返回文档规定的 HTTP `200` 才可完成本地 action；CANCEL 必须实际
-返回文档规定的 HTTP `204`。其他状态（包括意外的其他 2xx、`404/409`）都不得转换成“重复操作成功”。
-成功码由 infrastructure adapter 精确验证后，application 才按该已确认契约值写入既有
-`UberOrderAction.uberHttpStatus`；失败 status 继续由 `markFailed` 保存。因此 Sandbox verification
-可以直接用 action row 证明 Uber HTTP 结果，而不是仅凭本地 Order 状态推断成功。
+ACCEPT / DENY / READY 只有 Uber 实际返回文档规定的 HTTP `200` 才可完成本地 action；CANCEL 的标准
+成功码仍是文档规定的 HTTP `204`。由于 Sandbox 已实测同一 `/v1/delivery/order/{order_id}/cancel`
+路径可能返回 HTTP `200` + 空响应（`{}`），CANCEL 仅额外兼容该明确形态；`200` 非空响应及其他意外
+2xx、`404/409` 都不得转换成成功。成功码由 infrastructure adapter 精确验证后返回实际 HTTP status，
+application 再将该真实值写入既有 `UberOrderAction.uberHttpStatus`；失败 status 继续由 `markFailed`
+保存。因此 Sandbox verification 可以直接用 action row 证明 Uber HTTP 结果，而不是仅凭本地 Order
+状态推断成功。
 
 ### Order detail mapper contract
 
@@ -296,7 +298,7 @@ external order 的 `orders.failure` 是该拒单的合法终态，按 no-op 成�
 | Immediate order receive + ACCEPT | webhook/detail parser、admission、ready-time policy、action service/HTTP contract | `orders.notification` 只导入一次；ACCEPT 实际 HTTP `200`；`UberOrderAction.uberHttpStatus=200`；本地订单进入 accepted/paid 流程且只打印一次 |
 | Scheduled order receive + ACCEPT | scheduled webhook/detail、pickup/ready fallback、scheduled activation/finalize tests | `orders.scheduled.notification` 入预约队列；ACCEPT 实际 HTTP `200`；不得把 delivery target fallback 回传为 `ready_for_pickup_time`；到制作窗口后只激活/打印一次 |
 | Merchant DENY | admission DENY policy、reason mapper、durable action tests | 用 Test Store 制造可拒场景；DENY 实际 HTTP `200`；action row 保存 `200`；admission-stage standalone DENY 不创建正常本地 `Order` |
-| Merchant CANCEL | cancel command/payload、state-machine、durable action tests | 对已接订单执行取消；CANCEL 实际 HTTP `204`；action row 保存 `204`；本地终态与 Uber 一致 |
+| Merchant CANCEL | cancel command/payload、state-machine、durable action tests | 对已接订单执行取消；标准成功为 HTTP `204`，Sandbox 明确兼容 HTTP `200` + 空响应；action row 保存实际 `204/200`；本地终态与 Uber 一致 |
 | READY_FOR_PICKUP | ready command/transition tests | 对制作中订单执行 ready；实际 HTTP `200`；action row 保存 `200`；本地订单只推进一次 |
 | `orders.failure` after Uber cancellation/failure | failure webhook parser/handler、early-failure retry、post-DENY terminal no-op tests | Test Store 触发可观察的 failure/cancel 终态；webhook `200`；已有订单正确落取消终态；standalone DENY 后的 failure 不进入 DEAD |
 | Duplicate webhook / replay | webhook inbox unique-event/idempotency tests | 如 Sandbox 可重放相同 event，则不得重复建单、重复 enqueue action 或重复打印；无法人为重放时以自动化证据 + inbox 唯一键作为门禁 |

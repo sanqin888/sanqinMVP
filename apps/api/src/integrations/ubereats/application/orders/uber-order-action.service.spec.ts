@@ -33,10 +33,10 @@ const setup = (overrides: Partial<UberOrderActionGatewayPort> = {}) => {
     markFailed: jest.fn().mockResolvedValue(true),
   } as jest.Mocked<UberOrderActionRepositoryPort>;
   const gateway = {
-    accept: jest.fn().mockResolvedValue(undefined),
-    deny: jest.fn().mockResolvedValue(undefined),
-    cancel: jest.fn().mockResolvedValue(undefined),
-    readyForPickup: jest.fn().mockResolvedValue(undefined),
+    accept: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
+    deny: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
+    cancel: jest.fn().mockResolvedValue({ upstreamStatus: 204 }),
+    readyForPickup: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
     ...overrides,
   } as jest.Mocked<UberOrderActionGatewayPort>;
   return {
@@ -116,6 +116,31 @@ describe('UberOrderActionService contract', () => {
       ]);
     },
   );
+
+  it('persists the actual compatible CANCEL 200 success status', async () => {
+    const { repository, service } = setup({
+      cancel: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
+    });
+    repository.getOrderContext.mockResolvedValue({
+      status: 'making',
+      totalCents: 1_000,
+      referenceAt,
+      fulfillmentTiming: 'IMMEDIATE',
+      scheduledReadyAt: null,
+      externalEstimatedReadyAt: null,
+    });
+
+    await service.executeClaimed({ ...task, action: 'CANCEL' });
+
+    expect(repository.complete.mock.calls).toContainEqual([
+      {
+        taskId: 'task-1',
+        leaseToken: 'lease-from-claim',
+        upstreamStatus: 200,
+        transition: { from: 'making', to: 'refunded' },
+      },
+    ]);
+  });
 
   it.each([
     [1, '2026-08-18T18:10:00.000Z'],

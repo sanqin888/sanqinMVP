@@ -24,6 +24,7 @@ describe('PosOrdersService', () => {
         actionResult: { status: 'SUCCEEDED', actionId: 'action_1' },
       }),
       accept: jest.fn().mockResolvedValue({ ok: true }),
+      deny: jest.fn().mockResolvedValue({ ok: false, status: 'QUEUED' }),
       cancel: jest.fn().mockResolvedValue({ ok: true }),
       getReadyForPickupAction: jest.fn().mockResolvedValue(null),
       retryReadyForPickup: jest.fn(),
@@ -220,6 +221,46 @@ describe('PosOrdersService', () => {
     expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
+  it('POS 允许店员拒绝仍处于 pending 的 Uber 订单', async () => {
+    const { service, uberEats } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'pending',
+      }),
+    );
+
+    await expect(
+      service.denyUberOrder('order_1', 'ITEM_ISSUE', '商品售罄'),
+    ).resolves.toMatchObject({
+      orderStableId: 'order_1',
+      uberActionStatus: 'QUEUED',
+    });
+    expect(uberEats.deny).toHaveBeenCalledWith(
+      'external-123',
+      'ITEM_ISSUE',
+      '商品售罄',
+    );
+    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+      actions: [{ action: 'UBER_DENY', available: true }],
+    });
+  });
+
+  it('POS 不允许对已接单 Uber 订单再提交 DENY', async () => {
+    const { service, uberEats } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'making',
+      }),
+    );
+
+    await expect(service.denyUberOrder('order_1', 'OTHER')).rejects.toThrow(
+      '只有待接单的 Uber 订单可以拒单',
+    );
+    expect(uberEats.deny).not.toHaveBeenCalled();
+  });
+
   it('POS 允许店员为已接单的 Uber 订单提交 CANCEL', async () => {
     const { service, uberEats } = setup(
       order({
@@ -236,7 +277,6 @@ describe('PosOrdersService', () => {
       uberActionStatus: null,
     });
     expect(uberEats.cancel).toHaveBeenCalledWith('external-123', '商品售罄');
-    expect('denyUberOrder' in uberEats).toBe(false);
   });
 
   it('POS 在 Uber 订单 ready 后不再提供 CANCEL，避免上游成功但本地无法进入退款终态', async () => {

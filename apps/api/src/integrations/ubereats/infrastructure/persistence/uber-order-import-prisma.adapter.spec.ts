@@ -299,7 +299,12 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const inboxUpsert = jest.fn();
     const inboxUpdate = jest.fn();
     const tx = {
-      uberOrderAction: { createMany, findUniqueOrThrow },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      uberOrderAction: {
+        createMany,
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUniqueOrThrow,
+      },
       uberWebhookInbox: {
         upsert: inboxUpsert,
         updateMany: inboxUpdate,

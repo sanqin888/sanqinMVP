@@ -6,7 +6,12 @@ import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE } from "@/lib/order/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
-import { advanceOrder, printOrderCloud } from "@/lib/api/pos";
+import {
+  advanceOrder,
+  printOrderCloud,
+  quotePosCadToCny,
+  type PosExchangeRateQuote,
+} from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
   POS_DISPLAY_STORAGE_KEY,
@@ -17,7 +22,6 @@ import type { PaymentMethod } from "@/lib/api/pos";
 type FulfillmentType = "pickup" | "dine_in";
 type PosOrderChannel = "in_store" | "ubereats";
 type BusinessConfigLite = {
-  wechatAlipayExchangeRate: number;
   earnPtPerDollar: number;
   tierMultiplierBronze: number;
   tierMultiplierSilver: number;
@@ -120,6 +124,7 @@ const STRINGS: Record<
     memberBalanceAfter: string;
     fulfillmentRequired: string;
     wechatAlipayConverted: string;
+    wechatAlipayRate: string;
     memberBalance: string; // [新增]
     useBalanceLabel: string; // [新增]
     useBalanceHint: string; // [新增]
@@ -187,6 +192,7 @@ const STRINGS: Record<
     memberBalanceAfter: "预计结算后积分",
     fulfillmentRequired: "请选择用餐方式后再继续。",
     wechatAlipayConverted: "微信/支付宝折算金额",
+    wechatAlipayRate: "汇率",
     memberBalance: "储值余额",
     useBalanceLabel: "使用余额",
     useBalanceHint: "输入金额",
@@ -254,6 +260,7 @@ const STRINGS: Record<
     memberBalanceAfter: "Estimated balance after",
     fulfillmentRequired: "Select a dining option before continuing.",
     wechatAlipayConverted: "WeChat/Alipay converted total",
+    wechatAlipayRate: "Exchange rate",
     memberBalance: "Store Balance",
     useBalanceLabel: "Use Balance",
     useBalanceHint: "Amount",
@@ -275,8 +282,8 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function formatFx(amount: number): string {
-  return `¥${amount.toFixed(2)}`;
+function formatCnyFen(fen: number): string {
+  return `¥${(fen / 100).toFixed(2)}`;
 }
 
 function roundUpToFiveCents(cents: number): number {
@@ -314,7 +321,8 @@ export default function StorePosPaymentPage() {
   const [memberLookupLoading, setMemberLookupLoading] = useState(false);
   const [memberLookupError, setMemberLookupError] = useState<string | null>(null);
   
-  const [wechatAlipayRate, setWechatAlipayRate] = useState<number>(1);
+  const [wechatAlipayQuote, setWechatAlipayQuote] =
+    useState<PosExchangeRateQuote | null>(null);
   const [earnRate, setEarnRate] = useState(0.01);
   const [tierMultipliers, setTierMultipliers] = useState({
     BRONZE: 1,
@@ -360,7 +368,6 @@ export default function StorePosPaymentPage() {
     apiFetch<BusinessConfigLite>("/admin/business/config")
       .then((config) => {
         if (!active) return;
-        if (typeof config.wechatAlipayExchangeRate === "number") setWechatAlipayRate(config.wechatAlipayExchangeRate);
         if (typeof config.earnPtPerDollar === "number") setEarnRate(config.earnPtPerDollar);
         if (typeof config.tierMultiplierBronze === "number") {
           setTierMultipliers({
@@ -371,7 +378,7 @@ export default function StorePosPaymentPage() {
           });
         }
       })
-      .catch((err) => console.warn("Failed to load exchange rate config:", err));
+      .catch((err) => console.warn("Failed to load POS business config:", err));
     return () => { active = false; };
   }, []);
 
@@ -582,11 +589,34 @@ const loyaltyRedeemCents = redeemCents;
   const summaryTaxCents = computedSnapshot?.taxCents ?? 0;
   const summaryTotalCents = computedSnapshot?.totalCents ?? 0; // 这是剩余应付
   const summaryLoyaltyRedeemCents = redeemCents;
-  
-  const wechatConvertedTotal =
-    paymentMethod === "wechat_alipay" && wechatAlipayRate > 0
-      ? (summaryTotalCents / 100) * wechatAlipayRate
-      : null;
+
+  useEffect(() => {
+    let active = true;
+    if (paymentMethod !== "wechat_alipay" || summaryTotalCents <= 0) {
+      setWechatAlipayQuote(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setWechatAlipayQuote(null);
+    void quotePosCadToCny(summaryTotalCents)
+      .then((quote) => {
+        if (active && quote.cadAmountCents === summaryTotalCents) {
+          setWechatAlipayQuote(quote);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          console.warn("Failed to load WeChat/Alipay exchange-rate quote:", err);
+          setWechatAlipayQuote(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [paymentMethod, summaryTotalCents]);
 
   // 余额计算
   const balanceRemainingAfterOrder = Math.max(
@@ -933,11 +963,17 @@ const loyaltyRedeemCents = redeemCents;
                   <span>{t.total}</span>
                   <span>{formatMoney(summaryTotalCents)}</span>
                 </div>
-                {wechatConvertedTotal != null && (
-                  <div className="flex justify-between text-sm text-emerald-200">
-                    <span>{t.wechatAlipayConverted}</span>
-                    <span>{formatFx(wechatConvertedTotal)}</span>
-                  </div>
+                {paymentMethod === "wechat_alipay" && wechatAlipayQuote && (
+                  <>
+                    <div className="flex justify-between text-sm text-emerald-200">
+                      <span>{t.wechatAlipayConverted}</span>
+                      <span>{formatCnyFen(wechatAlipayQuote.cnyAmountFen)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-emerald-200">
+                      <span>{t.wechatAlipayRate}</span>
+                      <span>1 CAD = {wechatAlipayQuote.cadToCnyRate.toFixed(2)} CNY</span>
+                    </div>
+                  </>
                 )}
               </div>
             </>

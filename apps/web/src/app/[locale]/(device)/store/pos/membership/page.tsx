@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
+import {
+  quotePosCadToCny,
+  type PosExchangeRateQuote,
+} from "@/lib/api/pos";
 
 const COPY = {
   zh: {
@@ -81,6 +85,7 @@ const COPY = {
       payCash: "现金",
       payWeChatAlipay: "微信或支付宝",
       wechatAlipayConverted: "微信/支付宝折算金额",
+      wechatAlipayRate: "汇率",
       sendCode: "发送验证码",
       verifyCode: "验证",
       codeLabel: "验证码",
@@ -172,6 +177,7 @@ const COPY = {
       payCash: "Cash",
       payWeChatAlipay: "WeChat / Alipay",
       wechatAlipayConverted: "WeChat/Alipay converted total",
+      wechatAlipayRate: "Exchange rate",
       sendCode: "Send code",
       verifyCode: "Verify",
       codeLabel: "Verification code",
@@ -287,8 +293,8 @@ function formatMoney(cents: number, locale: Locale) {
   }).format(amount);
 }
 
-function formatFxAmount(value: number) {
-  return `¥${value.toFixed(2)}`;
+function formatCnyFen(fen: number) {
+  return `¥${(fen / 100).toFixed(2)}`;
 }
 
 function formatDate(value: string | null, locale: Locale) {
@@ -321,7 +327,8 @@ export default function PosMembershipPage() {
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
   const copy = COPY[locale];
 
-  const [wechatAlipayRate, setWechatAlipayRate] = useState<number>(1);
+  const [wechatAlipayQuote, setWechatAlipayQuote] =
+    useState<PosExchangeRateQuote | null>(null);
   const [rechargePaymentMethod, setRechargePaymentMethod] =
     useState<PaymentMethod>("cash");
   const [searchPhone, setSearchPhone] = useState("");
@@ -353,26 +360,6 @@ export default function PosMembershipPage() {
   >("idle");
   const [rechargeSubmitting, setRechargeSubmitting] = useState(false);
   const [rechargeError, setRechargeError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    apiFetch<{ wechatAlipayExchangeRate: number }>("/admin/business/config")
-      .then((config) => {
-        if (!active) return;
-        if (
-          typeof config.wechatAlipayExchangeRate === "number" &&
-          Number.isFinite(config.wechatAlipayExchangeRate)
-        ) {
-          setWechatAlipayRate(config.wechatAlipayExchangeRate);
-        }
-      })
-      .catch((error) => {
-        console.warn("Failed to load exchange rate config:", error);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const handleSelectMember = useCallback((member: MemberSummary) => {
     setSelectedMemberId(member.userStableId);
@@ -466,11 +453,42 @@ export default function PosMembershipPage() {
     const base = Number.parseFloat(rechargeAmount) || 0;
     return base > 0 ? base : 0;
   }, [rechargeAmount]);
+  const rechargeAmountCents = Math.round(rechargeAmountValue * 100);
 
-  const rechargeConvertedAmount =
-    rechargePaymentMethod === "wechat_alipay" && wechatAlipayRate > 0
-      ? rechargeAmountValue * wechatAlipayRate
-      : null;
+  useEffect(() => {
+    let active = true;
+    if (
+      !rechargeOpen ||
+      rechargePaymentMethod !== "wechat_alipay" ||
+      rechargeAmountCents <= 0
+    ) {
+      setWechatAlipayQuote(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setWechatAlipayQuote(null);
+    const handle = window.setTimeout(() => {
+      void quotePosCadToCny(rechargeAmountCents)
+        .then((quote) => {
+          if (active && quote.cadAmountCents === rechargeAmountCents) {
+            setWechatAlipayQuote(quote);
+          }
+        })
+        .catch((error) => {
+          if (active) {
+            console.warn("Failed to load recharge exchange-rate quote:", error);
+            setWechatAlipayQuote(null);
+          }
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(handle);
+    };
+  }, [rechargeAmountCents, rechargeOpen, rechargePaymentMethod]);
 
   const canSubmitAdjust =
     !adjustSubmitting &&
@@ -1122,10 +1140,16 @@ export default function PosMembershipPage() {
                   {copy.pointsBalance}: {formatPoints(rechargeBonusPoints, locale)}
                 </p>
               </div>
-              {rechargeConvertedAmount != null && (
+              {rechargePaymentMethod === "wechat_alipay" && wechatAlipayQuote && (
                 <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
-                  {copy.modal.wechatAlipayConverted}:{" "}
-                  {formatFxAmount(rechargeConvertedAmount)}
+                  <p>
+                    {copy.modal.wechatAlipayConverted}:{" "}
+                    {formatCnyFen(wechatAlipayQuote.cnyAmountFen)}
+                  </p>
+                  <p className="mt-1">
+                    {copy.modal.wechatAlipayRate}: 1 CAD ={" "}
+                    {wechatAlipayQuote.cadToCnyRate.toFixed(2)} CNY
+                  </p>
                 </div>
               )}
             </div>
