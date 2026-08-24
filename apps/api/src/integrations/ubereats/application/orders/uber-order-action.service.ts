@@ -116,7 +116,8 @@ export class UberOrderActionService {
           })
         ).upstreamStatus;
       else
-        upstreamStatus = (await this.gateway.readyForPickup(common)).upstreamStatus;
+        upstreamStatus = (await this.gateway.readyForPickup(common))
+          .upstreamStatus;
     } catch (error) {
       const upstream = this.classifyFailure(error);
       await this.repository.markFailed(task.taskId, task.leaseToken, {
