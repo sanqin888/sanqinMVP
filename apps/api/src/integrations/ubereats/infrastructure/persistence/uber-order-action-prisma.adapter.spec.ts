@@ -32,8 +32,11 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     'enqueues %s as an admission decision under a transaction lock',
     async (action) => {
       const create = jest.fn().mockResolvedValue({ id: `task-${action}` });
+      const queryRaw = jest
+        .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+        .mockResolvedValue([]);
       const tx = {
-        $queryRaw: jest.fn().mockResolvedValue([]),
+        $queryRaw: queryRaw,
         uberOrderAction: {
           findFirst: jest.fn().mockResolvedValue(null),
           create,
@@ -49,6 +52,10 @@ describe('UberOrderActionPrismaAdapter contract', () => {
         taskId: `task-${action}`,
         created: true,
       });
+      const advisoryLockSql = sqlText(queryRaw.mock.calls[0][0]);
+      expect(advisoryLockSql).toMatch(
+        /pg_advisory_xact_lock\([\s\S]*hashtext\([\s\S]*\)[\s\S]*\)::text AS "lockResult"/,
+      );
       expect(tx.uberOrderAction.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
