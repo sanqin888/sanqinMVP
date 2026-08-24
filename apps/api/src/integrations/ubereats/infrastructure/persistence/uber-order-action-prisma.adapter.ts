@@ -30,6 +30,43 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
   constructor(private readonly prisma: PrismaService) {}
 
   async enqueue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>) {
+    if (input.action === 'ACCEPT' || input.action === 'DENY') {
+      return this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.externalOrderId}))`;
+        const existingDecision = await tx.uberOrderAction.findFirst({
+          where: {
+            externalOrderId: input.externalOrderId,
+            action: { in: ['ACCEPT', 'DENY'] },
+          },
+          select: { id: true, action: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (existingDecision) {
+          if (existingDecision.action !== input.action) {
+            throw new Error(
+              `UBER_ORDER_DECISION_CONFLICT:${existingDecision.action}`,
+            );
+          }
+          return { taskId: existingDecision.id, created: false };
+        }
+        const result = await tx.uberOrderAction.create({
+          data: {
+            externalOrderId: input.externalOrderId,
+            action: input.action,
+            idempotencyKey: input.idempotencyKey,
+            businessVersion: input.businessVersion,
+            reasonCode: input.reasonCode,
+            reasonDetail: input.reasonDetail,
+            status: 'PENDING',
+            retryable: true,
+            nextRetryAt: new Date(),
+          },
+          select: { id: true },
+        });
+        return { taskId: result.id, created: true };
+      });
+    }
+
     try {
       const result = await this.prisma.uberOrderAction.create({
         data: {

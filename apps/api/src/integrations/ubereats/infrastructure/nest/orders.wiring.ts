@@ -171,6 +171,8 @@ export function createOrdersWiring(): Provider[] {
       useFactory: (actions: RequestUberOrderActionUseCase) => ({
         accept: async (id: string) =>
           presentOrderAction(await actions.accept(id)),
+        deny: async (id: string, reasonCode: string, reasonDetail?: string) =>
+          presentOrderAction(await actions.deny(id, reasonCode, reasonDetail)),
         cancel: async (id: string, reason?: string) =>
           presentOrderAction(await actions.cancel(id, reason)),
         retryReadyForPickup: async (id: string) =>

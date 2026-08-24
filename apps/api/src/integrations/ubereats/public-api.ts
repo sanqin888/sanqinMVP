@@ -41,6 +41,11 @@ export interface UberEatsMenuAvailabilityPort {
 
 export interface UberEatsOrderActionsPort {
   accept(externalOrderId: string): Promise<UberEatsOrderActionResult>;
+  deny(
+    externalOrderId: string,
+    reasonCode: string,
+    reasonDetail?: string,
+  ): Promise<UberEatsOrderActionResult>;
   cancel(
     externalOrderId: string,
     reason?: string,

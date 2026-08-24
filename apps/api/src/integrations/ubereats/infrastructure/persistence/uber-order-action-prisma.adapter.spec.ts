@@ -28,8 +28,43 @@ const intent = {
 };
 
 describe('UberOrderActionPrismaAdapter contract', () => {
-  it.each(['ACCEPT', 'DENY', 'CANCEL', 'READY_FOR_PICKUP'] as const)(
-    'enqueues %s as a durable command',
+  it.each(['ACCEPT', 'DENY'] as const)(
+    'enqueues %s as an admission decision under a transaction lock',
+    async (action) => {
+      const create = jest.fn().mockResolvedValue({ id: `task-${action}` });
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        uberOrderAction: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create,
+        },
+      };
+      const adapter = new UberOrderActionPrismaAdapter({
+        $transaction: jest.fn(
+          (callback: (client: typeof tx) => unknown) => callback(tx),
+        ),
+      } as never);
+
+      await expect(adapter.enqueue({ ...intent, action })).resolves.toEqual({
+        taskId: `task-${action}`,
+        created: true,
+      });
+      expect(tx.uberOrderAction.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ externalOrderId: 'order-1' }) as unknown,
+        }),
+      );
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action, status: 'PENDING' }) as unknown,
+          select: { id: true },
+        }),
+      );
+    },
+  );
+
+  it.each(['CANCEL', 'READY_FOR_PICKUP'] as const)(
+    'enqueues %s as a durable non-admission command',
     async (action) => {
       const create = jest.fn().mockResolvedValue({ id: `task-${action}` });
       const adapter = new UberOrderActionPrismaAdapter({
@@ -40,26 +75,37 @@ describe('UberOrderActionPrismaAdapter contract', () => {
         taskId: `task-${action}`,
         created: true,
       });
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            action,
-            status: 'PENDING',
-          }) as unknown,
-          select: { id: true },
-        }),
-      );
     },
   );
 
-  it('returns the existing task after a duplicate enqueue race', async () => {
+  it('blocks the opposite admission decision when ACCEPT or DENY already exists', async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      uberOrderAction: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'accept-1', action: 'ACCEPT' }),
+      },
+    };
+    const adapter = new UberOrderActionPrismaAdapter({
+      $transaction: jest.fn(
+        (callback: (client: typeof tx) => unknown) => callback(tx),
+      ),
+    } as never);
+
+    await expect(
+      adapter.enqueue({ ...intent, action: 'DENY' }),
+    ).rejects.toThrow('UBER_ORDER_DECISION_CONFLICT:ACCEPT');
+  });
+
+  it('returns the existing task after a duplicate non-admission enqueue race', async () => {
     const adapter = new UberOrderActionPrismaAdapter({
       uberOrderAction: {
         create: jest.fn().mockRejectedValue({ code: 'P2002' }),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'existing-task' }),
       },
     } as never);
-    await expect(adapter.enqueue(intent)).resolves.toEqual({
+    await expect(
+      adapter.enqueue({ ...intent, action: 'CANCEL' }),
+    ).resolves.toEqual({
       taskId: 'existing-task',
       created: false,
     });

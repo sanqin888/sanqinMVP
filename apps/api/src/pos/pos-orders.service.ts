@@ -74,6 +74,7 @@ export type PosOrderManagementAction =
   | 'VOID_ITEM'
   | 'FULL_REFUND'
   | 'CHANGE_PAYMENT'
+  | 'UBER_DENY'
   | 'UBER_CANCEL';
 
 export type PosOrderActionCapability = {
@@ -125,11 +126,18 @@ export class PosOrdersService {
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
 
     if (order.status === 'pending' && externalOrderId) {
-      const result = await this.uberOrderActions.accept(externalOrderId);
-      const current = result.ok
-        ? await this.orders.getByStableId(orderStableId)
-        : order;
-      return this.advanceResult(current, result);
+      try {
+        const result = await this.uberOrderActions.accept(externalOrderId);
+        const current = result.ok
+          ? await this.orders.getByStableId(orderStableId)
+          : order;
+        return this.advanceResult(current, result);
+      } catch (error) {
+        if (this.isUberDecisionConflict(error)) {
+          throw new BadRequestException('该 Uber 订单已由另一终端完成接单或拒单');
+        }
+        throw error;
+      }
     }
 
     if (nextStatus === 'ready' && externalOrderId) {
@@ -158,6 +166,59 @@ export class PosOrdersService {
     const result =
       await this.uberOrderActions.retryReadyForPickup(externalOrderId);
     return this.advanceResult(order, result);
+  }
+
+  async getAutoAcceptOnlineOrders(storeId: string): Promise<{ enabled: boolean }> {
+    const config = await this.prisma.storeConfig.findUnique({
+      where: { storeId },
+      select: { autoAcceptOnlineOrders: true },
+    });
+    return { enabled: config?.autoAcceptOnlineOrders ?? true };
+  }
+
+  async setAutoAcceptOnlineOrders(
+    storeId: string,
+    enabled: boolean,
+  ): Promise<{ enabled: boolean }> {
+    const config = await this.prisma.storeConfig.upsert({
+      where: { storeId },
+      create: { storeId, autoAcceptOnlineOrders: enabled },
+      update: { autoAcceptOnlineOrders: enabled },
+      select: { autoAcceptOnlineOrders: true },
+    });
+    return { enabled: config.autoAcceptOnlineOrders };
+  }
+
+  async denyUberOrder(
+    orderStableId: string,
+    reasonCode: string,
+    reasonDetail?: string,
+  ): Promise<PosOrderAdvanceResult> {
+    const order = await this.orders.getByStableId(orderStableId);
+    const externalOrderId = this.getUberWebhookExternalOrderId(order);
+    if (!externalOrderId) {
+      throw new BadRequestException('只有 Uber 订单可以拒单');
+    }
+    if (order.status !== 'pending') {
+      throw new BadRequestException('只有待接单的 Uber 订单可以拒单');
+    }
+    const normalizedReasonCode = reasonCode.trim();
+    if (!normalizedReasonCode) {
+      throw new BadRequestException('拒单原因不能为空');
+    }
+    try {
+      const result = await this.uberOrderActions.deny(
+        externalOrderId,
+        normalizedReasonCode,
+        reasonDetail?.trim() || undefined,
+      );
+      return this.advanceResult(order, result);
+    } catch (error) {
+      if (this.isUberDecisionConflict(error)) {
+        throw new BadRequestException('该 Uber 订单已由另一终端完成接单或拒单');
+      }
+      throw error;
+    }
   }
 
   async cancelUberOrder(
@@ -194,8 +255,12 @@ export class PosOrdersService {
     }
 
     if (order.channel === Channel.ubereats) {
-      const available = ['paid', 'making'].includes(order.status);
-      if (available) {
+      if (order.status === 'pending') {
+        return {
+          actions: [{ action: 'UBER_DENY', available: true }],
+        };
+      }
+      if (['paid', 'making'].includes(order.status)) {
         return {
           actions: [{ action: 'UBER_CANCEL', available: true }],
         };
@@ -370,6 +435,13 @@ export class PosOrdersService {
       actionId: action?.actionId ?? null,
       errorSummary: action?.errorSummary ?? null,
     };
+  }
+
+  private isUberDecisionConflict(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      error.message.startsWith('UBER_ORDER_DECISION_CONFLICT:')
+    );
   }
 
   private getUberWebhookExternalOrderId(order: OrderDto): string | null {

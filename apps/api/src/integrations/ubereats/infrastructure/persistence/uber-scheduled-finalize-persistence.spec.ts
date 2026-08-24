@@ -70,12 +70,14 @@ describe('Uber scheduled finalize persistence', () => {
   });
 
   it('resolves a replayed admission action by the stable order-action key after its phase key changed', async () => {
-    const createMany = jest.fn().mockResolvedValue({ count: 0 });
-    const findUniqueOrThrow = jest
-      .fn()
-      .mockResolvedValue({ id: 'accept-task-1' });
+    const createMany = jest.fn();
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 'accept-task-1',
+      action: 'ACCEPT',
+    });
     const tx = {
-      uberOrderAction: { createMany, findUniqueOrThrow },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      uberOrderAction: { createMany, findFirst },
     };
     const ingest = jest.fn(
       async (
@@ -174,14 +176,13 @@ describe('Uber scheduled finalize persistence', () => {
     await expect(adapter.saveImportedOrder(input)).resolves.toMatchObject({
       action: { taskId: 'accept-task-1', created: false },
     });
-    expect(findUniqueOrThrow).toHaveBeenCalledWith({
-      where: {
-        externalOrderId_action: {
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
           externalOrderId: 'scheduled-order-1',
-          action: 'ACCEPT',
-        },
-      },
-      select: { id: true },
-    });
+        }) as unknown,
+      }),
+    );
+    expect(createMany).not.toHaveBeenCalled();
   });
 });

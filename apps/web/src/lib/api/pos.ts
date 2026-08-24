@@ -52,6 +52,18 @@ export async function retryUberOrderSync<T = unknown>(id: string) {
   );
 }
 
+export async function denyUberOrder<T = unknown>(
+  id: string,
+  reasonCode: string,
+  reasonDetail?: string,
+) {
+  return apiFetch<PosAdvanceResult<T>>(`/pos/orders/${enc(id)}/uber-deny`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reasonCode, reasonDetail }),
+  });
+}
+
 export async function cancelUberOrder<T = unknown>(
   id: string,
   reason?: string,
@@ -63,11 +75,24 @@ export async function cancelUberOrder<T = unknown>(
   });
 }
 
+export async function fetchPosAutoAcceptSetting() {
+  return apiFetch<{ enabled: boolean }>("/pos/orders/settings/auto-accept");
+}
+
+export async function updatePosAutoAcceptSetting(enabled: boolean) {
+  return apiFetch<{ enabled: boolean }>("/pos/orders/settings/auto-accept", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export type PosOrderManagementAction =
   | "SWAP_ITEM"
   | "VOID_ITEM"
   | "FULL_REFUND"
   | "CHANGE_PAYMENT"
+  | "UBER_DENY"
   | "UBER_CANCEL";
 
 export type PosOrderActionCapability = {
