@@ -54,7 +54,7 @@ describe('PosExchangeRateService', () => {
     jest.restoreAllMocks();
   });
 
-  it('uses a two-decimal CAD/CNY rate for both display and backend amount conversion', async () => {
+  it('adds the Bank of Canada markup, rounds to two decimals, and uses the cached rate for display and conversion', async () => {
     const { service } = setup();
     global.fetch = jest
       .fn()
@@ -62,8 +62,8 @@ describe('PosExchangeRateService', () => {
 
     await expect(service.quoteCadToCny(2345)).resolves.toEqual({
       cadAmountCents: 2345,
-      cnyAmountFen: 11467,
-      cadToCnyRate: 4.89,
+      cnyAmountFen: 11584,
+      cadToCnyRate: 4.94,
       rateDate: '2026-08-21',
       source: 'BANK_OF_CANADA',
     });
@@ -85,8 +85,8 @@ describe('PosExchangeRateService', () => {
 
     jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z')); // 17:00 Toronto
     await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
-      cnyAmountFen: 4850,
-      cadToCnyRate: 4.85,
+      cnyAmountFen: 4900,
+      cadToCnyRate: 4.9,
       rateDate: '2026-08-24',
       source: 'BANK_OF_CANADA',
     });
@@ -106,8 +106,8 @@ describe('PosExchangeRateService', () => {
     jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z'));
 
     await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
-      cnyAmountFen: 4890,
-      cadToCnyRate: 4.89,
+      cnyAmountFen: 4940,
+      cadToCnyRate: 4.94,
       rateDate: '2026-08-21',
     });
     expect(global.fetch).toHaveBeenCalledTimes(2);
@@ -123,8 +123,8 @@ describe('PosExchangeRateService', () => {
     );
 
     await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
-      cnyAmountFen: 4890,
-      cadToCnyRate: 4.89,
+      cnyAmountFen: 4940,
+      cadToCnyRate: 4.94,
       rateDate: '2026-08-21',
     });
   });
