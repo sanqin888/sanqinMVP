@@ -255,9 +255,9 @@ describe('PosOrdersService', () => {
       }),
     );
 
-    await expect(
-      service.denyUberOrder('order_1', 'OTHER'),
-    ).rejects.toThrow('只有待接单的 Uber 订单可以拒单');
+    await expect(service.denyUberOrder('order_1', 'OTHER')).rejects.toThrow(
+      '只有待接单的 Uber 订单可以拒单',
+    );
     expect(uberEats.deny).not.toHaveBeenCalled();
   });
 

@@ -134,7 +134,9 @@ export class PosOrdersService {
         return this.advanceResult(current, result);
       } catch (error) {
         if (this.isUberDecisionConflict(error)) {
-          throw new BadRequestException('该 Uber 订单已由另一终端完成接单或拒单');
+          throw new BadRequestException(
+            '该 Uber 订单已由另一终端完成接单或拒单',
+          );
         }
         throw error;
       }
@@ -168,7 +170,9 @@ export class PosOrdersService {
     return this.advanceResult(order, result);
   }
 
-  async getAutoAcceptOnlineOrders(storeId: string): Promise<{ enabled: boolean }> {
+  async getAutoAcceptOnlineOrders(
+    storeId: string,
+  ): Promise<{ enabled: boolean }> {
     const config = await this.prisma.storeConfig.findUnique({
       where: { storeId },
       select: { autoAcceptOnlineOrders: true },
@@ -215,7 +219,9 @@ export class PosOrdersService {
       return this.advanceResult(order, result);
     } catch (error) {
       if (this.isUberDecisionConflict(error)) {
-        throw new BadRequestException('该 Uber 订单已由另一终端完成接单或拒单');
+        throw new BadRequestException(
+          '该 Uber 订单已由另一终端完成接单或拒单',
+        );
       }
       throw error;
     }

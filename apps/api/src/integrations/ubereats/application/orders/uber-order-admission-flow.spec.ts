@@ -181,7 +181,11 @@ describe('Uber order admission flow', () => {
     const saved: { input?: ImportedOrderInput } = {};
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
-      return Promise.resolve({ orderId: 'local-1', created: true, action: null });
+      return Promise.resolve({
+        orderId: 'local-1',
+        created: true,
+        action: null,
+      });
     });
     const getStoreAutoAcceptOnlineOrders = jest.fn().mockResolvedValue(false);
     const useCase = new ImportUberOrderUseCase(
@@ -201,7 +205,11 @@ describe('Uber order admission flow', () => {
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
     );
 
-    await useCase.execute('orders.notification', 'event-manual-1', notification);
+    await useCase.execute(
+      'orders.notification',
+      'event-manual-1',
+      notification,
+    );
 
     expect(getStoreAutoAcceptOnlineOrders).toHaveBeenCalledWith('pos-store-1');
     expect(saved.input?.actionIntent).toBeNull();

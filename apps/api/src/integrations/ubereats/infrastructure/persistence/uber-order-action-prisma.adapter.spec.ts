@@ -40,8 +40,8 @@ describe('UberOrderActionPrismaAdapter contract', () => {
         },
       };
       const adapter = new UberOrderActionPrismaAdapter({
-        $transaction: jest.fn(
-          (callback: (client: typeof tx) => unknown) => callback(tx),
+        $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+          callback(tx),
         ),
       } as never);
 
@@ -51,12 +51,17 @@ describe('UberOrderActionPrismaAdapter contract', () => {
       });
       expect(tx.uberOrderAction.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ externalOrderId: 'order-1' }) as unknown,
+          where: expect.objectContaining({
+            externalOrderId: 'order-1',
+          }) as unknown,
         }),
       );
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ action, status: 'PENDING' }) as unknown,
+          data: expect.objectContaining({
+            action,
+            status: 'PENDING',
+          }) as unknown,
           select: { id: true },
         }),
       );
@@ -82,12 +87,14 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       uberOrderAction: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'accept-1', action: 'ACCEPT' }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'accept-1', action: 'ACCEPT' }),
       },
     };
     const adapter = new UberOrderActionPrismaAdapter({
-      $transaction: jest.fn(
-        (callback: (client: typeof tx) => unknown) => callback(tx),
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+        callback(tx),
       ),
     } as never);
 
