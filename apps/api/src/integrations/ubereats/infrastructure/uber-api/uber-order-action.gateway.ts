@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AppLogger } from '../../../../common/app-logger';
 import type {
   UberOrderActionGatewayPort,
+  UberOrderActionSuccess,
   UberOrderCommandFailure,
   UberOrderDenial,
   UberOrderSafeErrorBody,
@@ -116,7 +117,7 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
     input: { externalOrderId: string; idempotencyKey: string },
     action: UberWireOrderAction,
     payload: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<UberOrderActionSuccess> {
     let outcome: Awaited<ReturnType<UberOrderGateway['sendActionCommand']>>;
     try {
       outcome = await this.gateway.sendActionCommand(
