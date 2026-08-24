@@ -6,6 +6,11 @@ import type { OAuthConnectionResponse, OAuthConnectUrlResponse, UberIntegrationC
 
 function safeTime(input?: string | null) { return input ? new Date(input).toLocaleString() : '-'; }
 function flagLabel(value?: boolean | null) { return value === true ? '是' : value === false ? '否' : '未返回'; }
+function orderManagerLabel(config: UberIntegrationConfigResponse) {
+  if (typeof config.isOrderManager === 'boolean') return flagLabel(config.isOrderManager);
+  if (!config.orderManagerClientId) return '未返回';
+  return config.isOrderManagerPending === true ? '已设置（待生效）' : '已设置';
+}
 export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading, setActionError, runAction }: { connectUrl: OAuthConnectUrlResponse | null; connection: OAuthConnectionResponse | null; stores: UberStore[]; retry: () => Promise<void>; actionLoading: Record<string, boolean>; setActionError: (message: string | null) => void; runAction: RunAction }) {
   const [integrationConfigs, setIntegrationConfigs] = useState<Record<string, UberIntegrationConfigResponse>>({});
   const [storeStatuses, setStoreStatuses] = useState<Record<string, UberStoreStatusResponse>>({});
@@ -33,7 +38,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
   };
   const removeIntegration = (store: UberStore) => {
     if (!connectionId) return setActionError('缺少 Uber connectionId');
-    if (!window.confirm(`确定从 Uber 永久移除「${store.storeName ?? store.storeId}」的 Integration 吗？完成后需要重新 Activate 才能恢复。`)) return;
+    if (!window.confirm(`确定从 Uber 永久移除「${store.storeName ?? store.storeId}」的 Integration 吗？这是永久解除操作；Uber 之后可能不再在 Store Discovery 返回该门店，恢复通常需要重新走 onboarding，Test Store 还可能需要 Uber Support 重新 whitelist。仅在确实要永久解除集成时继续。`)) return;
     void runAction(`integration-remove-${store.storeId}`, () => uberApiFetch(`${integrationPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE' }).then((result) => {
       setIntegrationConfigs((current) => { const next = { ...current }; delete next[store.storeId]; return next; });
       setStoreStatuses((current) => { const next = { ...current }; delete next[store.storeId]; return next; });
@@ -164,7 +169,8 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                             <div className="mt-2 grid gap-1 rounded bg-slate-50 p-2 text-xs text-slate-700 md:grid-cols-2">
                               <p>Integration Enabled：{flagLabel(integrationConfigs[s.storeId].integrationEnabled)}</p>
                               <p>integrator_store_id：<span className="font-mono">{integrationConfigs[s.storeId].integratorStoreId ?? '-'}</span></p>
-                              <p>Order Manager：{flagLabel(integrationConfigs[s.storeId].isOrderManager)}</p>
+                              <p>Order Manager：{orderManagerLabel(integrationConfigs[s.storeId])}</p>
+                              {integrationConfigs[s.storeId].orderManagerClientId ? <p>Order Manager Client ID：<span className="font-mono break-all">{integrationConfigs[s.storeId].orderManagerClientId}</span></p> : null}
                               <p>Manual Acceptance：{flagLabel(integrationConfigs[s.storeId].requireManualAcceptance)}</p>
                               <p>Special Instructions：{flagLabel(integrationConfigs[s.storeId].allowedCustomerRequests?.allowSpecialInstructionRequests)}</p>
                               <p>Single-use Item Requests：{flagLabel(integrationConfigs[s.storeId].allowedCustomerRequests?.allowSingleUseItemsRequests)}</p>

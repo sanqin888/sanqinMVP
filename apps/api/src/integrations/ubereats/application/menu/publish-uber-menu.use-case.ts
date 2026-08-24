@@ -312,6 +312,7 @@ export class PublishUberMenuUseCase {
           description: item.description,
           priceCents: item.priceCents,
           isAvailable: item.isAvailable,
+          suspendUntilEpochSeconds: item.suspendUntilEpochSeconds,
           preparationType: item.preparationType,
           modifierGroupIds: item.modifierGroupStableIds
             .filter((stableId) => emittedGroupStableIds.has(stableId))
@@ -326,6 +327,7 @@ export class PublishUberMenuUseCase {
           description: null,
           priceCents: option.priceDeltaCents,
           isAvailable: option.isAvailable,
+          suspendUntilEpochSeconds: option.suspendUntilEpochSeconds,
           preparationType: option.preparationType,
           modifierGroupIds: [],
           imageUrl: null,

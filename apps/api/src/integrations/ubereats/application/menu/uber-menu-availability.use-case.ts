@@ -42,12 +42,6 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
         this.queries.findMenuItemSuspendUntil(input.menuItemStableId),
       ]);
       for (const mapping of mappings) {
-        await this.commands.setItemAvailability(
-          mapping.storeId,
-          mapping.uberStoreId,
-          input.menuItemStableId,
-          input.isAvailable,
-        );
         try {
           await this.updateUberItemAvailability(
             mapping,
@@ -104,12 +98,6 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     ]);
     const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const mapping of mappings) {
-      await this.commands.setOptionAvailability(
-        mapping.storeId,
-        mapping.uberStoreId,
-        input.optionChoiceStableId,
-        input.isAvailable,
-      );
       try {
         await this.updateUberItemAvailability(
           mapping,

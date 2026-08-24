@@ -74,6 +74,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
         nameZh: '番茄鸡蛋面',
         basePriceCents: 1099,
         isAvailable: true,
+        tempUnavailableUntil: null,
         imageUrl: null,
         ingredientsEn: null,
         optionGroups: [{ templateGroup: { stableId: 'group-stable' } }],
@@ -93,6 +94,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
             nameZh: '大份',
             priceDeltaCents: 200,
             isAvailable: true,
+            tempUnavailableUntil: null,
           },
         ],
       },
@@ -134,6 +136,44 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     );
     expect(snapshot?.modifierGroups[0]?.name).toBe('Size 份量');
     expect(snapshot?.modifierOptions[0]?.name).toBe('Large 大份');
+  });
+
+  it('preserves temporary sold-out expiry in the full publish snapshot', async () => {
+    const suspendUntil = new Date('2090-01-02T03:04:05.000Z');
+    const x = setup(
+      { timezone: 'America/Toronto', salesTaxRate: 0.13 },
+      {
+        ...bilingualRows,
+        menuItems: bilingualRows.menuItems?.map((item) => ({
+          ...(item as Record<string, unknown>),
+          tempUnavailableUntil: suspendUntil,
+        })),
+        templates: bilingualRows.templates?.map((template) => ({
+          ...(template as Record<string, unknown>),
+          options: ((template as { options?: unknown[] }).options ?? []).map(
+            (option) => ({
+              ...(option as Record<string, unknown>),
+              tempUnavailableUntil: suspendUntil,
+            }),
+          ),
+        })),
+      },
+    );
+
+    const snapshot = await x.adapter.loadPublishSnapshot(
+      'pos-store',
+      'uber-store',
+    );
+    const expectedEpoch = Math.floor(suspendUntil.getTime() / 1_000);
+
+    expect(snapshot?.items[0]).toMatchObject({
+      isAvailable: false,
+      suspendUntilEpochSeconds: expectedEpoch,
+    });
+    expect(snapshot?.modifierOptions[0]).toMatchObject({
+      isAvailable: false,
+      suspendUntilEpochSeconds: expectedEpoch,
+    });
   });
 
   it('keeps explicit Uber display-name overrides ahead of bilingual fallbacks', async () => {
@@ -332,6 +372,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
           nameZh: true,
           basePriceCents: true,
           isAvailable: true,
+          tempUnavailableUntil: true,
           imageUrl: true,
           ingredientsEn: true,
           optionGroups: {
@@ -360,6 +401,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
               nameZh: true,
               priceDeltaCents: true,
               isAvailable: true,
+              tempUnavailableUntil: true,
             },
           },
         },

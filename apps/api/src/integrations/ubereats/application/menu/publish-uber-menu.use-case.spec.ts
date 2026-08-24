@@ -32,6 +32,7 @@ describe('PublishUberMenuUseCase', () => {
         priceValueSource: 'UBER_OVERRIDE' as const,
         imageUrl: null,
         isAvailable: true,
+        suspendUntilEpochSeconds: null,
         preparationType: 'PREPARED' as const,
         modifierGroupStableIds: [],
       },
@@ -100,6 +101,9 @@ describe('PublishUberMenuUseCase', () => {
     items: Array<{
       title: { translations: { en_us: string } };
       price_info: { price: number };
+      suspension_info: null | {
+        suspension: { suspend_until: number; reason: string };
+      };
     }>;
   };
 
@@ -181,6 +185,28 @@ describe('PublishUberMenuUseCase', () => {
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
   });
 
+  it('full publish preserves a temporary sold-out suspend_until instead of making it indefinite', async () => {
+    const x = setup();
+    const suspendUntilEpochSeconds = 3786995045;
+    x.snapshots.loadPublishSnapshot.mockResolvedValue({
+      ...snapshot,
+      items: snapshot.items.map((item) => ({
+        ...item,
+        isAvailable: false,
+        suspendUntilEpochSeconds,
+      })),
+    });
+
+    await x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true });
+
+    expect(lastUploadedPayload(x.gateway).items[0]?.suspension_info).toEqual({
+      suspension: {
+        suspend_until: suspendUntilEpochSeconds,
+        reason: 'Item unavailable',
+      },
+    });
+  });
+
   it('uses the outgoing hashed option id to detect option price fallback', async () => {
     const x = setup();
     x.snapshots.loadPublishSnapshot.mockResolvedValue({
@@ -207,6 +233,7 @@ describe('PublishUberMenuUseCase', () => {
           overridePriceDeltaCents: null,
           priceValueSource: 'SANQ_SOURCE' as const,
           isAvailable: true,
+          suspendUntilEpochSeconds: null,
           preparationType: 'PREPARED' as const,
           childGroupStableIds: [],
         },

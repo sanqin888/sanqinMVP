@@ -21,6 +21,7 @@ export type UberMenuSnapshotItem = {
   priceValueSource: 'UBER_OVERRIDE' | 'SANQ_SOURCE';
   imageUrl: string | null;
   isAvailable: boolean;
+  suspendUntilEpochSeconds: number | null;
   preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   modifierGroupStableIds: string[];
 };
@@ -33,6 +34,7 @@ export type UberMenuSnapshotModifierOption = {
   overridePriceDeltaCents: number | null;
   priceValueSource: 'UBER_OVERRIDE' | 'SANQ_SOURCE';
   isAvailable: boolean;
+  suspendUntilEpochSeconds: number | null;
   preparationType: 'PREPARED' | 'PREPACKAGED' | null;
   childGroupStableIds: string[];
 };
