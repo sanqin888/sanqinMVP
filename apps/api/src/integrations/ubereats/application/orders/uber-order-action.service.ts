@@ -72,43 +72,53 @@ export class UberOrderActionService {
       task.externalOrderId,
     );
     const currentStatus = orderContext?.status ?? null;
+    let upstreamStatus: number;
     try {
       const common = {
         externalOrderId: task.externalOrderId,
         idempotencyKey: task.idempotencyKey,
       };
       if (task.action === 'ACCEPT')
-        await this.gateway.accept({
-          ...common,
-          // A scheduled order may only have Uber's target delivery window when
-          // first created. That window is sufficient for SanQ's local queue but
-          // is not a kitchen-ready estimate, so only echo an actual Uber
-          // preparation estimate back as ready_for_pickup_time.
-          readyForPickupAt:
-            orderContext?.fulfillmentTiming === 'SCHEDULED'
-              ? (orderContext.externalEstimatedReadyAt ?? undefined)
-              : resolveUberReadyForPickupAt(
-                  orderContext?.totalCents ?? 0,
-                  orderContext?.referenceAt ?? new Date(),
-                ),
-        });
+        upstreamStatus = (
+          await this.gateway.accept({
+            ...common,
+            // A scheduled order may only have Uber's target delivery window when
+            // first created. That window is sufficient for SanQ's local queue but
+            // is not a kitchen-ready estimate, so only echo an actual Uber
+            // preparation estimate back as ready_for_pickup_time.
+            readyForPickupAt:
+              orderContext?.fulfillmentTiming === 'SCHEDULED'
+                ? (orderContext.externalEstimatedReadyAt ?? undefined)
+                : resolveUberReadyForPickupAt(
+                    orderContext?.totalCents ?? 0,
+                    orderContext?.referenceAt ?? new Date(),
+                  ),
+          })
+        ).upstreamStatus;
       else if (task.action === 'DENY')
-        await this.gateway.deny({
-          ...common,
-          denial: {
-            reasonCode: task.reasonCode ?? 'OTHER',
-            reasonDetail: task.reasonDetail,
-          },
-        });
+        upstreamStatus = (
+          await this.gateway.deny({
+            ...common,
+            denial: {
+              reasonCode: task.reasonCode ?? 'OTHER',
+              reasonDetail: task.reasonDetail,
+            },
+          })
+        ).upstreamStatus;
       else if (task.action === 'CANCEL')
-        await this.gateway.cancel({
-          ...common,
-          denial: {
-            reasonCode: task.reasonCode ?? 'OTHER',
-            reasonDetail: task.reasonDetail,
-          },
-        });
-      else await this.gateway.readyForPickup(common);
+        upstreamStatus = (
+          await this.gateway.cancel({
+            ...common,
+            denial: {
+              reasonCode: task.reasonCode ?? 'OTHER',
+              reasonDetail: task.reasonDetail,
+            },
+          })
+        ).upstreamStatus;
+      else
+        upstreamStatus = (
+          await this.gateway.readyForPickup(common)
+        ).upstreamStatus;
     } catch (error) {
       const upstream = this.classifyFailure(error);
       await this.repository.markFailed(task.taskId, task.leaseToken, {
@@ -135,9 +145,9 @@ export class UberOrderActionService {
     await this.repository.complete({
       taskId: task.taskId,
       leaseToken: task.leaseToken,
-      // The infrastructure adapter only returns after the exact documented
-      // success code is observed: CANCEL=204, all other supported actions=200.
-      upstreamStatus: task.action === 'CANCEL' ? 204 : 200,
+      // Preserve the exact upstream success code confirmed by the infrastructure
+      // adapter, including the narrowly supported Sandbox CANCEL 200 compatibility.
+      upstreamStatus,
       transition:
         currentStatus !== null && nextStatus !== null
           ? { from: currentStatus, to: nextStatus }

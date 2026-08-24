@@ -32,6 +32,15 @@ const EXPECTED_SUCCESS_STATUS: Readonly<Record<UberWireOrderAction, number>> = {
   CANCEL: 204,
 };
 
+function isEmptyCancelSuccessBody(value: unknown): boolean {
+  if (value === null || value === undefined || value === '') return true;
+  return (
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length === 0
+  );
+}
+
 export class UberOrderCommandError
   extends Error
   implements UberOrderCommandFailure
@@ -126,8 +135,16 @@ export class UberOrderActionGatewayAdapter implements UberOrderActionGatewayPort
         );
       throw new UberOrderCommandError(null);
     }
-    if (outcome.ok && outcome.status === EXPECTED_SUCCESS_STATUS[action])
-      return;
+    const isDocumentedSuccess =
+      outcome.ok && outcome.status === EXPECTED_SUCCESS_STATUS[action];
+    const isSandboxCancelCompatibilitySuccess =
+      action === 'CANCEL' &&
+      outcome.ok &&
+      outcome.status === 200 &&
+      isEmptyCancelSuccessBody(outcome.data);
+    if (isDocumentedSuccess || isSandboxCancelCompatibilitySuccess) {
+      return { upstreamStatus: outcome.status };
+    }
 
     const responseBody = this.safeErrorBody(outcome.data);
     this.logger.error(
