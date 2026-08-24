@@ -13,6 +13,8 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { PosOrdersService } from './pos-orders.service';
 import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.service';
 import { StoreStatusModule } from '../store/store-status.module';
+import { PosExchangeRateModule } from './pos-exchange-rate.module';
+import { PosExchangeRateController } from './pos-exchange-rate.controller';
 
 @Module({
   imports: [
@@ -22,11 +24,13 @@ import { StoreStatusModule } from '../store/store-status.module';
     PrismaModule,
     UberEatsModule,
     StoreStatusModule,
+    PosExchangeRateModule,
   ],
   controllers: [
     PosSummaryController,
     PosOrdersController,
     PosStoreStatusController,
+    PosExchangeRateController,
   ],
   providers: [
     PosSummaryService,

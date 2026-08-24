@@ -87,6 +87,22 @@ export async function updatePosAutoAcceptSetting(enabled: boolean) {
   });
 }
 
+export type PosExchangeRateQuote = {
+  cadAmountCents: number;
+  cnyAmountFen: number;
+  cadToCnyRate: number;
+  rateDate: string | null;
+  source: "BANK_OF_CANADA" | "BUSINESS_CONFIG_FALLBACK";
+};
+
+export async function quotePosCadToCny(cadAmountCents: number) {
+  return apiFetch<PosExchangeRateQuote>("/pos/exchange-rate/quote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cadAmountCents }),
+  });
+}
+
 export type PosOrderManagementAction =
   | "SWAP_ITEM"
   | "VOID_ITEM"
