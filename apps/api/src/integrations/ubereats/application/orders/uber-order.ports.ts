@@ -183,26 +183,30 @@ export interface UberOrderCommandFailure extends Error {
   responseBody?: UberOrderSafeErrorBody | null;
 }
 
+export type UberOrderActionSuccess = {
+  upstreamStatus: number;
+};
+
 export interface UberOrderActionGatewayPort {
   accept(input: {
     externalOrderId: string;
     idempotencyKey: string;
     readyForPickupAt?: Date;
-  }): Promise<void>;
+  }): Promise<UberOrderActionSuccess>;
   deny(input: {
     externalOrderId: string;
     idempotencyKey: string;
     denial: UberOrderDenial;
-  }): Promise<void>;
+  }): Promise<UberOrderActionSuccess>;
   cancel(input: {
     externalOrderId: string;
     idempotencyKey: string;
     denial?: UberOrderDenial;
-  }): Promise<void>;
+  }): Promise<UberOrderActionSuccess>;
   readyForPickup(input: {
     externalOrderId: string;
     idempotencyKey: string;
-  }): Promise<void>;
+  }): Promise<UberOrderActionSuccess>;
 }
 
 export interface UberOrderStatusRepositoryPort {
