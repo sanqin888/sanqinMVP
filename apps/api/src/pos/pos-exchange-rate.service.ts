@@ -254,11 +254,7 @@ export class PosExchangeRateService {
       }
       const observations = payload.observations as unknown[];
 
-      for (
-        let index = observations.length - 1;
-        index >= 0;
-        index -= 1
-      ) {
+      for (let index = observations.length - 1; index >= 0; index -= 1) {
         const observation: unknown = observations[index];
         if (!isRecord(observation) || typeof observation.d !== 'string') {
           continue;
