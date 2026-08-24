@@ -31,7 +31,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   };
 
   it('通过 Uber item endpoint 同步单品可售状态', async () => {
-    const { useCase, queries, commands, gateway, telemetry } = setup();
+    const { useCase, queries, gateway, telemetry } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'uber-a' },
@@ -115,7 +115,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('未配置 publishToUberEats 的菜品返回 SKIPPED_NOT_PUBLISHED', async () => {
-    const { useCase, queries, commands, gateway } = setup();
+    const { useCase, queries, gateway } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(false);
 
     await expect(
@@ -144,7 +144,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('option 204 成功后返回 SYNCED，不保留旧的 PENDING 状态', async () => {
-    const { useCase, queries, commands, gateway, telemetry } = setup();
+    const { useCase, queries, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
@@ -180,7 +180,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('多门店 option 部分同步失败时返回 FAILED 并继续其他门店', async () => {
-    const { useCase, queries, commands, gateway, telemetry } = setup();
+    const { useCase, queries, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
       { storeId: 'pos-a', uberStoreId: 'a' },
       { storeId: 'pos-b', uberStoreId: 'b' },

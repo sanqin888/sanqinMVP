@@ -102,9 +102,7 @@ describe('buildUberMenuGraph', () => {
             sortOrder: 1,
             imageUrl: null,
             ingredientsEn: null,
-            optionGroups: [
-              { templateGroupStableId: 'group-1', sortOrder: 1 },
-            ],
+            optionGroups: [{ templateGroupStableId: 'group-1', sortOrder: 1 }],
           },
         ],
         modifierTemplates: [
@@ -147,7 +145,9 @@ describe('buildUberMenuGraph', () => {
 
     const validated = validateUberMenuGraph(graph);
     expect(validated.graph.groups[0]?.optionItemIds).toContain(optionId);
-    expect(validated.graph.items.some((item) => item.id === optionId)).toBe(true);
+    expect(
+      validated.graph.items.some((item) => item.id === optionId),
+    ).toBe(true);
     expect(validated.warnings).toEqual([]);
   });
 });
