@@ -9,8 +9,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       findProvisionedStores: jest.fn(),
     };
     const commands = {
-      setItemAvailability: jest.fn(),
-      setOptionAvailability: jest.fn(),
       createItemPublishFailure: jest.fn(),
     };
     const gateway = {
@@ -45,12 +43,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       isAvailable: false,
     });
 
-    expect(commands.setItemAvailability).toHaveBeenCalledWith(
-      'pos-a',
-      'uber-a',
-      'item-1',
-      false,
-    );
     expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
       expect.objectContaining({
         storeId: 'uber-a',
@@ -134,7 +126,6 @@ describe('UberMenuAvailabilityUseCase', () => {
     ).resolves.toEqual({ status: 'SKIPPED_NOT_PUBLISHED', stores: [] });
 
     expect(queries.findProvisionedStores).not.toHaveBeenCalled();
-    expect(commands.setItemAvailability).not.toHaveBeenCalled();
     expect(gateway.updateItemAvailability).not.toHaveBeenCalled();
   });
 
@@ -164,12 +155,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       isAvailable: false,
     });
 
-    expect(commands.setOptionAvailability).toHaveBeenCalledWith(
-      'pos-a',
-      'uber-a',
-      'option-1',
-      false,
-    );
     expect(gateway.updateItemAvailability).toHaveBeenCalledWith(
       expect.objectContaining({
         storeId: 'uber-a',
@@ -214,20 +199,6 @@ describe('UberMenuAvailabilityUseCase', () => {
       'SYNCED',
       'FAILED',
     ]);
-    expect(commands.setOptionAvailability).toHaveBeenNthCalledWith(
-      1,
-      'pos-a',
-      'a',
-      'option-1',
-      true,
-    );
-    expect(commands.setOptionAvailability).toHaveBeenNthCalledWith(
-      2,
-      'pos-b',
-      'b',
-      'option-1',
-      true,
-    );
     expect(gateway.updateItemAvailability).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

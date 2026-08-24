@@ -18,6 +18,7 @@ const graph = {
       description: null,
       priceCents: 1299,
       isAvailable: true,
+      suspendUntilEpochSeconds: null,
       preparationType: 'PREPARED' as const,
       modifierGroupIds: ['group-1'],
       imageUrl: null,

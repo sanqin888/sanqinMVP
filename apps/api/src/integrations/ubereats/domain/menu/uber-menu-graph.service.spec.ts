@@ -1,4 +1,8 @@
-import { buildUberMenuGraph, buildUberNodeId } from './uber-menu-graph.service';
+import {
+  buildUberMenuGraph,
+  buildUberNodeId,
+  validateUberMenuGraph,
+} from './uber-menu-graph.service';
 import { emptyUberMenuDraftFilters } from './uber-menu-draft-source';
 
 describe('Uber menu graph public identifiers', () => {
@@ -43,6 +47,7 @@ describe('buildUberMenuGraph', () => {
             nameZh: '面',
             basePriceCents: 1200,
             isAvailable: true,
+            tempUnavailableUntil: null,
             sortOrder: 1,
             imageUrl: null,
             ingredientsEn: 'Wheat',
@@ -67,5 +72,82 @@ describe('buildUberMenuGraph', () => {
       title: 'Noodles 面',
       description: 'Wheat',
     });
+  });
+
+  it('keeps temporarily unavailable options in the Uber menu structure', () => {
+    const suspendUntil = new Date('2090-01-02T03:04:05.000Z');
+    const graph = buildUberMenuGraph(
+      {
+        storeId: 'store-1',
+        uberStoreId: 'uber-store-1',
+        categories: [
+          {
+            id: 'db-cat',
+            stableId: 'cat-1',
+            nameEn: 'Mains',
+            nameZh: '主菜',
+            sortOrder: 1,
+            isActive: true,
+          },
+        ],
+        menuItems: [
+          {
+            stableId: 'item-1',
+            categoryId: 'db-cat',
+            nameEn: 'Cool Noodle',
+            nameZh: '凉皮',
+            basePriceCents: 999,
+            isAvailable: true,
+            tempUnavailableUntil: null,
+            sortOrder: 1,
+            imageUrl: null,
+            ingredientsEn: null,
+            optionGroups: [
+              { templateGroupStableId: 'group-1', sortOrder: 1 },
+            ],
+          },
+        ],
+        modifierTemplates: [
+          {
+            stableId: 'group-1',
+            nameEn: 'Noodle',
+            nameZh: '面型',
+            defaultMinSelect: 1,
+            defaultMaxSelect: 1,
+            isAvailable: true,
+            sortOrder: 1,
+            options: [
+              {
+                stableId: 'rice-noodle',
+                nameEn: 'Rice Noodle',
+                nameZh: '米皮',
+                priceDeltaCents: 0,
+                isAvailable: true,
+                tempUnavailableUntil: suspendUntil,
+                sortOrder: 1,
+                childTemplateGroupStableIds: [],
+              },
+            ],
+          },
+        ],
+        itemConfigs: [],
+        optionConfigs: [],
+        modifierConfigs: [],
+        categoryConfigs: [],
+      },
+      emptyUberMenuDraftFilters(),
+    );
+    const optionId = buildUberNodeId('item', 'store-1', 'rice-noodle');
+    const option = graph.items.find((item) => item.id === optionId);
+    expect(option).toMatchObject({
+      sourceStableId: 'rice-noodle',
+      isAvailable: false,
+      suspendUntilEpochSeconds: Math.floor(suspendUntil.getTime() / 1_000),
+    });
+
+    const validated = validateUberMenuGraph(graph);
+    expect(validated.graph.groups[0]?.optionItemIds).toContain(optionId);
+    expect(validated.graph.items.some((item) => item.id === optionId)).toBe(true);
+    expect(validated.warnings).toEqual([]);
   });
 });

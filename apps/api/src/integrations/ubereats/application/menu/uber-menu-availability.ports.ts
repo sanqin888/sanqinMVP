@@ -26,18 +26,6 @@ export interface UberMenuAvailabilityQueryPort {
 }
 
 export interface UberMenuAvailabilityCommandPort {
-  setItemAvailability(
-    storeId: string,
-    uberStoreId: string,
-    menuItemStableId: string,
-    isAvailable: boolean,
-  ): Promise<void>;
-  setOptionAvailability(
-    storeId: string,
-    uberStoreId: string,
-    optionChoiceStableId: string,
-    isAvailable: boolean,
-  ): Promise<void>;
   createItemPublishFailure(input: {
     storeId: string;
     uberStoreId: string;

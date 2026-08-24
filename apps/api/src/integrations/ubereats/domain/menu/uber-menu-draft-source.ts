@@ -36,6 +36,7 @@ export interface UberMenuDraftItemSource {
   nameZh: string | null;
   basePriceCents: number;
   isAvailable: boolean;
+  tempUnavailableUntil: Date | null;
   sortOrder: number;
   imageUrl: string | null;
   ingredientsEn: string | null;
@@ -56,6 +57,7 @@ export interface UberMenuDraftModifierTemplateSource {
     nameZh: string | null;
     priceDeltaCents: number;
     isAvailable: boolean;
+    tempUnavailableUntil: Date | null;
     sortOrder: number;
     childTemplateGroupStableIds: string[];
   }>;

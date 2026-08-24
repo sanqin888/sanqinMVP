@@ -594,6 +594,11 @@ export function MenuWorkspace({
     if (!selectedNode || !selectedStoreId) return;
     const stableId = encodeURIComponent(selectedNode.id);
     const preparationType = preparationTypeValue(inspectorDraft.preparationType);
+    const availabilityOverride =
+      typeof inspectorDraft.isAvailable === 'boolean' &&
+      inspectorDraft.isAvailable !== selectedNode.isAvailable
+        ? { isAvailable: inspectorDraft.isAvailable }
+        : {};
     if (selectedNode.type === 'item') {
       await uberApiFetch(`/integrations/ubereats/menu/draft/items/${stableId}`, {
         method: 'PATCH',
@@ -603,7 +608,7 @@ export function MenuWorkspace({
           displayName: inspectorDraft.displayName,
           displayDescription: inspectorDraft.displayDescription,
           priceCents: Number(inspectorDraft.priceCents ?? 0),
-          isAvailable: Boolean(inspectorDraft.isAvailable),
+          ...availabilityOverride,
           ...(preparationType ? { preparationType } : {}),
         }),
       });
@@ -631,7 +636,7 @@ export function MenuWorkspace({
           storeId: selectedStoreId,
           displayName: inspectorDraft.displayName,
           priceDeltaCents: Number(inspectorDraft.priceDeltaCents ?? 0),
-          isAvailable: Boolean(inspectorDraft.isAvailable),
+          ...availabilityOverride,
           ...(preparationType ? { preparationType } : {}),
         }),
       });

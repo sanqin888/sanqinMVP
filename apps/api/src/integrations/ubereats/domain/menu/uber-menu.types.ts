@@ -21,6 +21,39 @@ export type UberStoreScopedInput = {
 
 export type UberPreparationType = 'PREPARED' | 'PREPACKAGED';
 
+export type UberMenuAvailability = {
+  isAvailable: boolean;
+  suspendUntilEpochSeconds: number | null;
+};
+
+export const resolveUberMenuAvailability = (input: {
+  sourceIsAvailable: boolean;
+  tempUnavailableUntil?: Date | null;
+  channelIsAvailable?: boolean | null;
+  now?: Date;
+}): UberMenuAvailability => {
+  const nowMs = (input.now ?? new Date()).getTime();
+  const tempUntilMs = input.tempUnavailableUntil?.getTime() ?? null;
+  const tempUnavailable =
+    input.sourceIsAvailable &&
+    tempUntilMs !== null &&
+    Number.isFinite(tempUntilMs) &&
+    tempUntilMs > nowMs;
+  const sourceAvailableNow = input.sourceIsAvailable && !tempUnavailable;
+  const channelAvailable = input.channelIsAvailable !== false;
+  const isAvailable = sourceAvailableNow && channelAvailable;
+
+  if (isAvailable) return { isAvailable: true, suspendUntilEpochSeconds: null };
+  if (!input.sourceIsAvailable || input.channelIsAvailable === false)
+    return { isAvailable: false, suspendUntilEpochSeconds: null };
+  if (tempUnavailable && tempUntilMs !== null)
+    return {
+      isAvailable: false,
+      suspendUntilEpochSeconds: Math.floor(tempUntilMs / 1_000),
+    };
+  return { isAvailable: false, suspendUntilEpochSeconds: null };
+};
+
 export const readUberPreparationType = (
   value: unknown,
 ): UberPreparationType | null =>

@@ -101,6 +101,7 @@ export class UberMenuDraftSourcePrismaRepository {
           nameZh: true,
           basePriceCents: true,
           isAvailable: true,
+          tempUnavailableUntil: true,
           sortOrder: true,
           imageUrl: true,
           ingredientsEn: true,
@@ -133,6 +134,7 @@ export class UberMenuDraftSourcePrismaRepository {
               nameZh: true,
               priceDeltaCents: true,
               isAvailable: true,
+              tempUnavailableUntil: true,
               sortOrder: true,
               childLinks: {
                 select: {

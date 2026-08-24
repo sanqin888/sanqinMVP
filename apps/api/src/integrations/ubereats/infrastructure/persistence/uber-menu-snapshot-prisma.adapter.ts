@@ -6,7 +6,10 @@ import type {
 } from '../../application/menu/uber-menu-publication.ports';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import { composeUberDisplayName } from '../../domain/menu/uber-menu-payload.builder';
-import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
+import {
+  readUberPreparationType,
+  resolveUberMenuAvailability,
+} from '../../domain/menu/uber-menu.types';
 
 type ScopedRows<T> = {
   default?: T;
@@ -105,6 +108,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
           nameZh: true,
           basePriceCents: true,
           isAvailable: true,
+          tempUnavailableUntil: true,
           imageUrl: true,
           ingredientsEn: true,
           optionGroups: {
@@ -132,6 +136,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
               nameZh: true,
               priceDeltaCents: true,
               isAvailable: true,
+              tempUnavailableUntil: true,
             },
           },
         },
@@ -277,6 +282,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       .filter((item) => categoryById.has(item.categoryId))
       .map((item) => {
         const config = itemConfig.get(item.stableId);
+        const availability = resolveUberMenuAvailability({
+          sourceIsAvailable: item.isAvailable,
+          tempUnavailableUntil: item.tempUnavailableUntil,
+          channelIsAvailable: config?.isAvailable,
+        });
         return {
           stableId: item.stableId,
           categoryStableId: categoryById.get(item.categoryId)!.stableId,
@@ -293,7 +303,8 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
               ? ('UBER_OVERRIDE' as const)
               : ('SANQ_SOURCE' as const),
           imageUrl: item.imageUrl,
-          isAvailable: config?.isAvailable ?? item.isAvailable,
+          isAvailable: availability.isAvailable,
+          suspendUntilEpochSeconds: availability.suspendUntilEpochSeconds,
           preparationType: readUberPreparationType(config?.preparationType),
           modifierGroupStableIds: item.optionGroups.map(
             (group) => group.templateGroup.stableId,
@@ -343,6 +354,11 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       modifierOptions: activeTemplates.flatMap((template) =>
         template.options.map((option) => {
           const config = optionConfig.get(option.stableId);
+          const availability = resolveUberMenuAvailability({
+            sourceIsAvailable: option.isAvailable,
+            tempUnavailableUntil: option.tempUnavailableUntil,
+            channelIsAvailable: config?.isAvailable,
+          });
           return {
             stableId: option.stableId,
             name:
@@ -356,7 +372,8 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
               config?.priceDeltaCents != null
                 ? ('UBER_OVERRIDE' as const)
                 : ('SANQ_SOURCE' as const),
-            isAvailable: config?.isAvailable ?? option.isAvailable,
+            isAvailable: availability.isAvailable,
+            suspendUntilEpochSeconds: availability.suspendUntilEpochSeconds,
             preparationType: readUberPreparationType(config?.preparationType),
             childGroupStableIds: [],
           };
