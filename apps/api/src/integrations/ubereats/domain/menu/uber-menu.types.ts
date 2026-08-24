@@ -166,7 +166,7 @@ export type UberMenuUploadPayload = {
     price_info: { price: number; overrides: [] };
     tax_info: { tax_rate: number; vat_rate_percentage: null };
     dish_info: {
-      classifications: { preparation_type: '' | 'PREPACKAGED' };
+      classifications: { preparation_type?: 'PREPACKAGED' };
     };
     modifier_group_ids: { ids: string[] | null; overrides: [] };
     suspension_info: null | {

@@ -85,12 +85,10 @@ export function buildUberUploadMenuPayload(
         price_info: { price: item.priceCents, overrides: [] },
         tax_info: { tax_rate: taxRatePercentage, vat_rate_percentage: null },
         dish_info: {
-          classifications: {
-            preparation_type:
-              item.preparationType === 'PREPACKAGED'
-                ? ('PREPACKAGED' as const)
-                : ('' as const),
-          },
+          classifications:
+            item.preparationType === 'PREPACKAGED'
+              ? { preparation_type: 'PREPACKAGED' as const }
+              : {},
         },
         modifier_group_ids: {
           ids:
@@ -319,13 +317,13 @@ export function validateUberMenuPayload(
         '税率必须使用 0～100 的百分数格式。',
       );
     const preparationType = item.dish_info?.classifications?.preparation_type;
-    if (preparationType !== '' && preparationType !== 'PREPACKAGED')
+    if (preparationType !== undefined && preparationType !== 'PREPACKAGED')
       add(
         'UBER_PREPARATION_TYPE_INVALID',
         'ERROR',
         `$.items[${ii}].dish_info.classifications.preparation_type`,
         item.id,
-        '加拿大 FOOD/BEVERAGE 菜品必须显式提供 preparation_type，且只能为 PREPACKAGED 或空字符串。',
+        'Uber preparation_type 只能省略或设为 PREPACKAGED，不能发送空字符串。',
       );
     (item.modifier_group_ids.ids ?? []).forEach((id, gi) => {
       if (!groupIds.has(id))
