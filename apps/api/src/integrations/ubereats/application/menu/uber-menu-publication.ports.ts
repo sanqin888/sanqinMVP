@@ -117,6 +117,7 @@ export interface UberMenuPublicationRepositoryPort {
   findSucceededAttempt(
     idempotencyKey: string,
   ): Promise<UberMenuPublicationAttempt | null>;
+  /** Creates a logical attempt or rearms its existing FAILED idempotent record. */
   createAttempt(input: {
     storeId: string;
     uberStoreId: string;
@@ -133,7 +134,13 @@ export interface UberMenuPublicationRepositoryPort {
   ): Promise<boolean>;
   markFailed(
     attemptId: string,
-    input: { errorCode: string; errorMessage: string; retryable: boolean },
+    input: {
+      errorCode: string;
+      errorMessage: string;
+      retryable: boolean;
+      upstreamStatus: number | null;
+      upstreamDetail: string | null;
+    },
   ): Promise<boolean>;
   claimDueConfirmations(
     limit: number,

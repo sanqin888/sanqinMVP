@@ -5,7 +5,7 @@ import {
 } from './uber-error.mapper';
 
 describe('Uber error mapper', () => {
-  it('maps transport, HTTP and mapping failures without exposing HTTP status', () => {
+  it('maps transport, HTTP and mapping failures with safe upstream diagnostics', () => {
     const transport = mapUberGatewayFailure({
       kind: 'transport',
       operation: 'stores.list',
@@ -16,6 +16,7 @@ describe('Uber error mapper', () => {
       operation: 'stores.list',
       status: 503,
       upstreamCode: 'service-unavailable',
+      upstreamDetail: 'token=top-secret service unavailable',
     });
     const mapping = mapUberGatewayFailure({
       kind: 'mapping',
@@ -31,7 +32,9 @@ describe('Uber error mapper', () => {
     expect(http).toMatchObject({
       category: 'transient-upstream',
       code: 'UBER_SERVICE_UNAVAILABLE',
-      upstreamStatus: null,
+      upstreamStatus: 503,
+      upstreamDetail: 'token=[REDACTED] service unavailable',
+      message: 'Uber API 请求失败',
     });
     expect(mapping).toMatchObject({
       category: 'non-retryable-upstream',

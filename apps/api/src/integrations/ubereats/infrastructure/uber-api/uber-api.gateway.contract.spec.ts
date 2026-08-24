@@ -238,7 +238,39 @@ describe('Uber API gateway contract', () => {
       category: 'rate-limited',
       code: 'UBER_RATE_LIMIT_EXCEEDED',
       operation: 'uber.store.list',
-      upstreamStatus: null,
+      upstreamStatus: 429,
+    });
+  });
+
+  it('preserves sanitized HTTP 400 response diagnostics', async () => {
+    const http = createUberHttpFake();
+    http.request.mockResolvedValue(
+      uberHttpResult(400, {
+        code: 'invalid-menu',
+        message: 'category cat-1 has no items; token=top-secret',
+      }),
+    );
+    const auth = createUberAuthFake();
+    auth.getAccessToken.mockResolvedValue('token');
+    const gateway = new UberApiGatewayTransport(http, auth, {
+      apiBaseUrl: 'https://api.uber.com',
+    });
+
+    await expect(
+      gateway.request({
+        path: '/v2/eats/stores/store-1/menus',
+        method: 'PUT',
+        operation: 'uber.menu.upload',
+        scope: 'eats.store',
+        idempotencyKey: 'menu-publish-1',
+      }),
+    ).rejects.toMatchObject({
+      category: 'validation',
+      code: 'UBER_INVALID_MENU',
+      retryable: false,
+      upstreamStatus: 400,
+      upstreamDetail: 'category cat-1 has no items; token=[REDACTED]',
+      message: 'Uber API 请求失败',
     });
   });
 });
