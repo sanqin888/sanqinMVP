@@ -252,13 +252,14 @@ export class PosExchangeRateService {
       if (!isRecord(payload) || !Array.isArray(payload.observations)) {
         throw new Error('Bank of Canada response missing observations');
       }
+      const observations = payload.observations as unknown[];
 
       for (
-        let index = payload.observations.length - 1;
+        let index = observations.length - 1;
         index >= 0;
         index -= 1
       ) {
-        const observation = payload.observations[index];
+        const observation: unknown = observations[index];
         if (!isRecord(observation) || typeof observation.d !== 'string') {
           continue;
         }

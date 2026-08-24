@@ -54,108 +54,93 @@ describe('PosExchangeRateService', () => {
     jest.restoreAllMocks();
   });
 
-  it(
-    'uses a two-decimal CAD/CNY rate for both display and backend amount conversion',
-    async () => {
-      const { service } = setup();
-      global.fetch = jest
-        .fn()
-        .mockResolvedValue(bankResponse('2026-08-21', '0.2047'));
+  it('uses a two-decimal CAD/CNY rate for both display and backend amount conversion', async () => {
+    const { service } = setup();
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(bankResponse('2026-08-21', '0.2047'));
 
-      await expect(service.quoteCadToCny(2345)).resolves.toEqual({
-        cadAmountCents: 2345,
-        cnyAmountFen: 11467,
-        cadToCnyRate: 4.89,
-        rateDate: '2026-08-21',
-        source: 'BANK_OF_CANADA',
-      });
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+    await expect(service.quoteCadToCny(2345)).resolves.toEqual({
+      cadAmountCents: 2345,
+      cnyAmountFen: 11467,
+      cadToCnyRate: 4.89,
+      rateDate: '2026-08-21',
+      source: 'BANK_OF_CANADA',
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
 
-      await service.quoteCadToCny(1000);
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-    },
-  );
+    await service.quoteCadToCny(1000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
 
-  it(
-    'refreshes once on the first quote at or after 17:00 and adopts a newer observation',
-    async () => {
-      const { service } = setup();
-      global.fetch = jest
-        .fn()
-        .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'))
-        .mockResolvedValueOnce(bankResponse('2026-08-24', '0.2060'));
+  it('refreshes once on the first quote at or after 17:00 and adopts a newer observation', async () => {
+    const { service } = setup();
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'))
+      .mockResolvedValueOnce(bankResponse('2026-08-24', '0.2060'));
 
-      await service.quoteCadToCny(1000);
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+    await service.quoteCadToCny(1000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
 
-      jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z')); // 17:00 Toronto
-      await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
-        cnyAmountFen: 4850,
-        cadToCnyRate: 4.85,
-        rateDate: '2026-08-24',
-        source: 'BANK_OF_CANADA',
-      });
-      await service.quoteCadToCny(1000);
+    jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z')); // 17:00 Toronto
+    await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
+      cnyAmountFen: 4850,
+      cadToCnyRate: 4.85,
+      rateDate: '2026-08-24',
+      source: 'BANK_OF_CANADA',
+    });
+    await service.quoteCadToCny(1000);
 
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-    },
-  );
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
 
-  it(
-    'keeps the cached rate when the first post-17:00 quote has no newer observation',
-    async () => {
-      const { service } = setup();
-      global.fetch = jest
-        .fn()
-        .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'))
-        .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'));
+  it('keeps the cached rate when the first post-17:00 quote has no newer observation', async () => {
+    const { service } = setup();
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'))
+      .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'));
 
-      await service.quoteCadToCny(1000);
-      jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z'));
+    await service.quoteCadToCny(1000);
+    jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z'));
 
-      await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
-        cnyAmountFen: 4890,
-        cadToCnyRate: 4.89,
-        rateDate: '2026-08-21',
-      });
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-    },
-  );
+    await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
+      cnyAmountFen: 4890,
+      cadToCnyRate: 4.89,
+      rateDate: '2026-08-21',
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
 
-  it(
-    'uses the most recent valid observation when a newer date has no published value',
-    async () => {
-      const { service } = setup();
-      global.fetch = jest.fn().mockResolvedValue(
-        bankResponseFromObservations([
-          { d: '2026-08-21', FXCNYCAD: { v: '0.2047' } },
-          { d: '2026-08-24', FXCNYCAD: { e: -64 } },
-        ]),
-      );
+  it('uses the most recent valid observation when a newer date has no published value', async () => {
+    const { service } = setup();
+    global.fetch = jest.fn().mockResolvedValue(
+      bankResponseFromObservations([
+        { d: '2026-08-21', FXCNYCAD: { v: '0.2047' } },
+        { d: '2026-08-24', FXCNYCAD: { e: -64 } },
+      ]),
+    );
 
-      await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
-        cnyAmountFen: 4890,
-        cadToCnyRate: 4.89,
-        rateDate: '2026-08-21',
-      });
-    },
-  );
+    await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
+      cnyAmountFen: 4890,
+      cadToCnyRate: 4.89,
+      rateDate: '2026-08-21',
+    });
+  });
 
-  it(
-    'uses the BusinessConfig rate rounded to two decimals only when no Bank of Canada cache exists',
-    async () => {
-      const { service } = setup(4.856);
-      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+  it('uses the BusinessConfig rate rounded to two decimals only when no Bank of Canada cache exists', async () => {
+    const { service } = setup(4.856);
+    global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
-      await expect(service.quoteCadToCny(1000)).resolves.toEqual({
-        cadAmountCents: 1000,
-        cnyAmountFen: 4860,
-        cadToCnyRate: 4.86,
-        rateDate: null,
-        source: 'BUSINESS_CONFIG_FALLBACK',
-      });
-    },
-  );
+    await expect(service.quoteCadToCny(1000)).resolves.toEqual({
+      cadAmountCents: 1000,
+      cnyAmountFen: 4860,
+      cadToCnyRate: 4.86,
+      rateDate: null,
+      source: 'BUSINESS_CONFIG_FALLBACK',
+    });
+  });
 
   it('rejects non-integer CAD cents', async () => {
     const { service } = setup();
