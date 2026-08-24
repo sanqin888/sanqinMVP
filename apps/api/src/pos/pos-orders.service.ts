@@ -219,9 +219,7 @@ export class PosOrdersService {
       return this.advanceResult(order, result);
     } catch (error) {
       if (this.isUberDecisionConflict(error)) {
-        throw new BadRequestException(
-          '该 Uber 订单已由另一终端完成接单或拒单',
-        );
+        throw new BadRequestException('该 Uber 订单已由另一终端完成接单或拒单');
       }
       throw error;
     }
