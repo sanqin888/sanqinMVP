@@ -12,6 +12,8 @@ export interface UberApplicationErrorOptions {
   operation: string;
   retryAfterMs?: number | null;
   upstreamStatus?: number | null;
+  /** Sanitized, bounded upstream diagnostic; never raw credentials or PII. */
+  upstreamDetail?: string | null;
   cause?: unknown;
 }
 
@@ -19,6 +21,7 @@ export interface UberApplicationErrorOptions {
 export class UberApplicationError extends Error {
   readonly retryAfterMs: number | null;
   readonly upstreamStatus: number | null;
+  readonly upstreamDetail: string | null;
 
   constructor(
     readonly category: UberErrorCategory,
@@ -29,6 +32,7 @@ export class UberApplicationError extends Error {
     options: {
       retryAfterMs?: number | null;
       upstreamStatus?: number | null;
+      upstreamDetail?: string | null;
       cause?: unknown;
     } = {},
   ) {
@@ -39,6 +43,7 @@ export class UberApplicationError extends Error {
     this.name = 'UberApplicationError';
     this.retryAfterMs = options.retryAfterMs ?? null;
     this.upstreamStatus = options.upstreamStatus ?? null;
+    this.upstreamDetail = options.upstreamDetail ?? null;
   }
 }
 

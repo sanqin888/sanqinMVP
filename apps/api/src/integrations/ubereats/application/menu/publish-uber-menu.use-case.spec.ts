@@ -356,6 +356,34 @@ describe('PublishUberMenuUseCase', () => {
     );
   });
 
+  it('将 Uber HTTP 400 诊断持久化并标记为不可重试', async () => {
+    const x = setup();
+    x.gateway.uploadMenu.mockRejectedValue(
+      new UberValidationError({
+        code: 'UBER_INVALID_MENU',
+        message: 'Uber API 请求失败',
+        operation: 'uber.menu.upload',
+        upstreamStatus: 400,
+        upstreamDetail: 'category cat-1 has no items',
+      }),
+    );
+
+    await expect(
+      x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true }),
+    ).rejects.toMatchObject({
+      code: 'UBER_INVALID_MENU',
+      retryable: false,
+      upstreamStatus: 400,
+    });
+    expect(x.publications.markFailed).toHaveBeenCalledWith('attempt-1', {
+      errorCode: 'UBER_INVALID_MENU',
+      errorMessage: 'Uber API 请求失败',
+      retryable: false,
+      upstreamStatus: 400,
+      upstreamDetail: 'category cat-1 has no items',
+    });
+  });
+
   it('不可重试的 payload 校验失败不会创建尝试', async () => {
     const x = setup();
     x.snapshots.loadPublishSnapshot.mockResolvedValue({

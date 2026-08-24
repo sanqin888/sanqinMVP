@@ -140,6 +140,31 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
   ) {
     const publishedAt = new Date();
     const row = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.uberMenuPublishVersion.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+      });
+      if (existing) {
+        if (existing.status !== UberMenuPublishStatus.FAILED) return existing;
+        return tx.uberMenuPublishVersion.update({
+          where: { id: existing.id },
+          data: {
+            status: UberMenuPublishStatus.SUBMITTED,
+            requestPayload: input.payload as Prisma.InputJsonValue,
+            payload: input.payload as Prisma.InputJsonValue,
+            totalItems: input.totalItems,
+            changedItems: input.totalItems,
+            checksum: input.payloadHash,
+            responsePayload: Prisma.DbNull,
+            errorMessage: null,
+            errorDetails: Prisma.DbNull,
+            startedAt: publishedAt,
+            finishedAt: null,
+            nextConfirmationAt: null,
+            confirmationLeaseToken: null,
+            confirmationLeaseExpiresAt: null,
+          },
+        });
+      }
       const created = await tx.uberMenuPublishVersion.create({
         data: {
           id: randomUUID(),
@@ -192,7 +217,7 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
   }
   async markFailed(
     attemptId: string,
-    input: { errorCode: string; errorMessage: string; retryable: boolean },
+    input: Parameters<UberMenuPublicationRepositoryPort['markFailed']>[1],
   ) {
     const result = await this.prisma.uberMenuPublishVersion.updateMany({
       where: { id: attemptId },

@@ -136,6 +136,7 @@ export class UberApiGatewayTransport {
           operation: request.operation,
           status: result.response.status,
           upstreamCode: this.upstreamCode(result.data),
+          upstreamDetail: this.upstreamDetail(result.data, result.text),
         });
       requestResult = result;
     } catch (cause) {
@@ -173,6 +174,25 @@ export class UberApiGatewayTransport {
         typeof candidate === 'string' && candidate.trim().length > 0,
     );
     return value?.trim() ?? null;
+  }
+
+  private upstreamDetail(data: unknown, rawText: string): string | null {
+    if (typeof data === 'string' && data.trim()) return data.trim();
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const body = data as Record<string, unknown>;
+      const value = [body.message, body.error_description, body.detail].find(
+        (candidate): candidate is string =>
+          typeof candidate === 'string' && candidate.trim().length > 0,
+      );
+      if (value) return value.trim();
+      try {
+        const serialized = JSON.stringify(data);
+        if (serialized !== '{}') return serialized;
+      } catch {
+        // Fall through to the bounded raw response captured by UberHttpClient.
+      }
+    }
+    return rawText.trim() || null;
   }
 
   private send<T>(

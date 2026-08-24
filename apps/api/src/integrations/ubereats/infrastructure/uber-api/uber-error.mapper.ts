@@ -22,6 +22,7 @@ export type UberGatewayFailure =
       operation: string;
       status: number;
       upstreamCode: string | null;
+      upstreamDetail?: string | null;
     }
   | {
       kind: 'mapping';
@@ -72,10 +73,15 @@ export function mapUberGatewayFailure(
         : failure.upstreamCode
           ? `UBER_${failure.upstreamCode.replace(/[^A-Za-z0-9]+/g, '_').toUpperCase()}`
           : `UBER_HTTP_${status}`;
+  const upstreamDetail = failure.upstreamDetail
+    ? redactUberLogText(failure.upstreamDetail).slice(0, 500)
+    : null;
   return new ErrorType({
     code,
     message: 'Uber API 请求失败',
     operation: failure.operation,
+    upstreamStatus: status,
+    upstreamDetail,
   });
 }
 
