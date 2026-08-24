@@ -154,6 +154,14 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     };
   }
 
+  async getStoreAutoAcceptOnlineOrders(posStoreId: string): Promise<boolean> {
+    const store = await this.prisma.store.findUnique({
+      where: { storeStableId: posStoreId },
+      select: { config: { select: { autoAcceptOnlineOrders: true } } },
+    });
+    return store?.config?.autoAcceptOnlineOrders ?? true;
+  }
+
   async saveExistingOrderCancellation(
     input: Parameters<
       UberOrderImportRepositoryPort['saveExistingOrderCancellation']
@@ -281,25 +289,38 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       },
       async (tx, order) => {
         if (input.actionIntent) {
-          const inserted = await tx.uberOrderAction.createMany({
-            data: {
-              ...input.actionIntent,
-              status: 'PENDING',
-              retryable: true,
-              nextRetryAt: input.receivedAt,
-            },
-            skipDuplicates: true,
-          });
-          const action = await tx.uberOrderAction.findUniqueOrThrow({
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.actionIntent.externalOrderId}))`;
+          const existingDecision = await tx.uberOrderAction.findFirst({
             where: {
-              externalOrderId_action: {
-                externalOrderId: input.actionIntent.externalOrderId,
-                action: input.actionIntent.action,
-              },
+              externalOrderId: input.actionIntent.externalOrderId,
+              action: { in: ['ACCEPT', 'DENY'] },
             },
-            select: { id: true },
+            select: { id: true, action: true },
+            orderBy: { createdAt: 'asc' },
           });
-          savedAction = { taskId: action.id, created: inserted.count === 1 };
+          if (existingDecision) {
+            savedAction = { taskId: existingDecision.id, created: false };
+          } else {
+            const inserted = await tx.uberOrderAction.createMany({
+              data: {
+                ...input.actionIntent,
+                status: 'PENDING',
+                retryable: true,
+                nextRetryAt: input.receivedAt,
+              },
+              skipDuplicates: true,
+            });
+            const action = await tx.uberOrderAction.findUniqueOrThrow({
+              where: {
+                externalOrderId_action: {
+                  externalOrderId: input.actionIntent.externalOrderId,
+                  action: input.actionIntent.action,
+                },
+              },
+              select: { id: true },
+            });
+            savedAction = { taskId: action.id, created: inserted.count === 1 };
+          }
         }
         if (input.cancellation) {
           await this.persistCancellation(tx, {

@@ -176,6 +176,46 @@ describe('Uber order admission flow', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
+  it('imports a valid order without ACCEPT when the store disables auto-accept', async () => {
+    const enqueue: EnqueueMock = jest.fn();
+    const saved: { input?: ImportedOrderInput } = {};
+    const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
+      saved.input = input;
+      return Promise.resolve({
+        orderId: 'local-1',
+        created: true,
+        action: null,
+      });
+    });
+    const getStoreAutoAcceptOnlineOrders = jest.fn().mockResolvedValue(false);
+    const useCase = new ImportUberOrderUseCase(
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue(null),
+        findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
+        getPosStoreConnectivity: jest.fn().mockResolvedValue({
+          status: 'ONLINE',
+          lastHeartbeatAt: new Date(),
+        }),
+        getStoreAutoAcceptOnlineOrders,
+        saveExistingOrderCancellation: jest.fn(),
+        saveImportedOrder,
+      },
+      { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
+      createActions(enqueue),
+      { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+    );
+
+    await useCase.execute(
+      'orders.notification',
+      'event-manual-1',
+      notification,
+    );
+
+    expect(getStoreAutoAcceptOnlineOrders).toHaveBeenCalledWith('pos-store-1');
+    expect(saved.input?.actionIntent).toBeNull();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it('processes orders.failure directly against the existing order', async () => {
     const enqueue: EnqueueMock = jest.fn();
     const saveExistingOrderCancellation: SaveExistingOrderCancellationMock =

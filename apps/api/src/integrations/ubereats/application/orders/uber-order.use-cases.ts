@@ -169,8 +169,9 @@ export class ImportUberOrderUseCase {
       cursor,
       menuMappings: admission.menuMappings,
       cancellation: null,
-      actionIntent: this.buildAdmissionIntent(
+      actionIntent: await this.buildAdmissionIntent(
         order.externalOrderId,
+        admission.posStoreId,
         admission.decision,
       ),
       receivedAt: new Date(),
@@ -186,17 +187,24 @@ export class ImportUberOrderUseCase {
     return this.execute(eventType, eventId, payload, ordering);
   }
 
-  private buildAdmissionIntent(
+  private async buildAdmissionIntent(
     externalOrderId: string,
+    posStoreId: string,
     decision: UberOrderAdmissionDecision,
-  ): UberOrderImportActionIntent {
-    return decision.kind === 'DENY'
-      ? this.actions.buildIntent({
-          externalOrderId,
-          action: 'DENY',
-          denial: decision.denial,
-        })
-      : this.actions.buildIntent({ externalOrderId, action: 'ACCEPT' });
+  ): Promise<UberOrderImportActionIntent | null> {
+    if (decision.kind === 'DENY') {
+      return this.actions.buildIntent({
+        externalOrderId,
+        action: 'DENY',
+        denial: decision.denial,
+      });
+    }
+    const autoAcceptEnabled = this.repository.getStoreAutoAcceptOnlineOrders
+      ? await this.repository.getStoreAutoAcceptOnlineOrders(posStoreId)
+      : true;
+    return autoAcceptEnabled
+      ? this.actions.buildIntent({ externalOrderId, action: 'ACCEPT' })
+      : null;
   }
 
   private async persistStandaloneDecision(

@@ -68,6 +68,7 @@ export interface UberOrderImportRepositoryPort {
     lastHeartbeatAt: Date | null;
   }>;
   getStoreAllergyPolicy?(posStoreId: string): Promise<UberStoreAllergyPolicy>;
+  getStoreAutoAcceptOnlineOrders?(posStoreId: string): Promise<boolean>;
   saveExistingOrderCancellation(input: {
     orderId: string;
     externalOrderId: string;

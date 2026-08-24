@@ -7,11 +7,14 @@ import { apiFetch } from "@/lib/api/client";
 import {
   advanceOrder,
   cancelUberOrder,
+  denyUberOrder,
   fetchOrderActions,
+  fetchPosAutoAcceptSetting,
   fetchOrderAmendments,
   fetchOrderById,
   fetchOrderPrintStatus,
   printOrderCloud,
+  updatePosAutoAcceptSetting,
   type OrderPrintStatus,
   type PosOrderActionCapability,
   type PosOrderAmendmentHistory,
@@ -153,6 +156,7 @@ const STRINGS = {
     scheduledOrder: "预约单",
     pickupCodeLabel: "取餐码",
     acceptOrder: "接单",
+    denyOrder: "拒单",
     terminal: "终态",
     syncingUber: "同步中…",
     reprintFront: "重打前台",
@@ -177,6 +181,7 @@ const STRINGS = {
     scheduledOrder: "Scheduled",
     pickupCodeLabel: "Pickup",
     acceptOrder: "Accept",
+    denyOrder: "Deny",
     terminal: "Terminal",
     syncingUber: "Syncing…",
     reprintFront: "Reprint front",
@@ -202,7 +207,6 @@ const NEXT_STATUS: Record<BoardOrder["status"], BoardOrder["status"] | null> = {
 };
 
 const PRINTED_STORAGE_KEY = "sanqin:storeBoard:processedStableIds:v2";
-const AUTO_ACCEPT_STORAGE_KEY = "sanqin:storeBoard:autoAcceptEnabled:v1";
 const PRINTED_TTL_MS = 12 * 60 * 60 * 1000;
 type ProcessedMap = Record<string, number>;
 
@@ -347,6 +351,7 @@ function actionLabel(action: PosOrderManagementAction, locale: Locale): string {
     VOID_ITEM: "退菜 / 部分退款",
     FULL_REFUND: "取消订单 / 全额退款",
     CHANGE_PAYMENT: "更改支付方式",
+    UBER_DENY: "拒绝 Uber 订单",
     UBER_CANCEL: "取消 Uber 订单",
   };
   const en: Record<PosOrderManagementAction, string> = {
@@ -354,6 +359,7 @@ function actionLabel(action: PosOrderManagementAction, locale: Locale): string {
     VOID_ITEM: "Void item / partial refund",
     FULL_REFUND: "Cancel / full refund",
     CHANGE_PAYMENT: "Change payment method",
+    UBER_DENY: "Deny Uber order",
     UBER_CANCEL: "Cancel Uber order",
   };
   return locale === "zh" ? zh[action] : en[action];
@@ -371,13 +377,111 @@ function historyItemName(
     : en || display || zh || item.productStableId;
 }
 
+const UBER_DENY_REASONS = [
+  { code: "ITEM_ISSUE", zh: "商品 / 选项问题", en: "Item / option issue" },
+  { code: "STORE_CLOSED", zh: "门店已关闭", en: "Store closed" },
+  { code: "CAPACITY", zh: "门店繁忙 / 无法接单", en: "Store capacity" },
+  {
+    code: "SPECIAL_INSTRUCTIONS",
+    zh: "特殊要求 / 过敏原无法处理",
+    en: "Special instructions / allergen request",
+  },
+  { code: "POS_OFFLINE", zh: "POS 无法处理", en: "POS unavailable" },
+  { code: "TECHNICAL_FAILURE", zh: "技术故障", en: "Technical failure" },
+  { code: "OTHER", zh: "其他", en: "Other" },
+] as const;
+
+function UberDenyDialog(props: {
+  orderStableId: string | null;
+  locale: Locale;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (reasonCode: string, reasonDetail?: string) => void | Promise<void>;
+}) {
+  const { orderStableId, locale, busy, onClose, onSubmit } = props;
+  const isZh = locale === "zh";
+  const [reasonCode, setReasonCode] = useState("ITEM_ISSUE");
+  const [reasonDetail, setReasonDetail] = useState("");
+
+  useEffect(() => {
+    if (!orderStableId) return;
+    setReasonCode("ITEM_ISSUE");
+    setReasonDetail("");
+  }, [orderStableId]);
+
+  if (!orderStableId) return null;
+
+  return (
+    <div className="pointer-events-auto fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md rounded-3xl border border-rose-500/40 bg-slate-900 p-5 text-slate-100 shadow-2xl">
+        <h3 className="text-lg font-bold text-rose-200">
+          {isZh ? "拒绝 Uber 订单" : "Deny Uber order"}
+        </h3>
+        <p className="mt-1 text-sm text-slate-400">
+          {isZh
+            ? "选择拒单原因。提交后会向 Uber 发送 DENY，不能再接单。"
+            : "Choose a denial reason. This sends DENY to Uber and cannot be accepted afterward."}
+        </p>
+        <label className="mt-4 block text-sm">
+          <span className="text-slate-300">{isZh ? "拒单原因" : "Reason"}</span>
+          <select
+            value={reasonCode}
+            onChange={(event) => setReasonCode(event.target.value)}
+            disabled={busy}
+            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+          >
+            {UBER_DENY_REASONS.map((reason) => (
+              <option key={reason.code} value={reason.code}>
+                {isZh ? reason.zh : reason.en}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mt-4 block text-sm">
+          <span className="text-slate-300">
+            {isZh ? "补充说明（可选）" : "Details (optional)"}
+          </span>
+          <textarea
+            value={reasonDetail}
+            onChange={(event) => setReasonDetail(event.target.value)}
+            disabled={busy}
+            rows={3}
+            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+          />
+        </label>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+            className="rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-200 disabled:opacity-50"
+          >
+            {isZh ? "取消" : "Cancel"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void onSubmit(reasonCode, reasonDetail.trim() || undefined)
+            }
+            className="rounded-xl border border-rose-500/70 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/25 disabled:opacity-50"
+          >
+            {busy ? (isZh ? "提交中…" : "Submitting…") : isZh ? "确认拒单" : "Confirm deny"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderDetailModal(props: {
   orderStableId: string | null;
   locale: Locale;
   onClose: () => void;
   onChanged?: () => void | Promise<void>;
+  onRequestDeny?: (orderStableId: string) => void;
 }) {
-  const { orderStableId, locale, onClose, onChanged } = props;
+  const { orderStableId, locale, onClose, onChanged, onRequestDeny } = props;
   const isZh = locale === "zh";
   const [order, setOrder] = useState<DetailOrder | null>(null);
   const [actions, setActions] = useState<PosOrderActionCapability[]>([]);
@@ -443,6 +547,11 @@ function OrderDetailModal(props: {
 
   const handleAction = async (capability: PosOrderActionCapability) => {
     if (!capability.available || !order) return;
+    if (capability.action === "UBER_DENY") {
+      onRequestDeny?.(order.orderStableId);
+      onClose();
+      return;
+    }
     if (capability.action !== "UBER_CANCEL") {
       openStoreAction(capability.action);
       return;
@@ -757,7 +866,10 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const [orders, setOrders] = useState<BoardOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(true);
+  const [autoAcceptEnabled, setAutoAcceptEnabled] = useState<boolean | null>(null);
+  const [autoAcceptBusy, setAutoAcceptBusy] = useState(false);
+  const [denyOrderStableId, setDenyOrderStableId] = useState<string | null>(null);
+  const [denyBusy, setDenyBusy] = useState(false);
   const [syncingReadyOrders, setSyncingReadyOrders] = useState<
     Record<string, boolean>
   >({});
@@ -884,15 +996,18 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = window.localStorage.getItem(AUTO_ACCEPT_STORAGE_KEY);
-    if (raw === "0") {
-      setAutoAcceptEnabled(false);
-      return;
-    }
-    if (raw === "1") {
-      setAutoAcceptEnabled(true);
-    }
+    let cancelled = false;
+    void fetchPosAutoAcceptSetting()
+      .then((result) => {
+        if (!cancelled) setAutoAcceptEnabled(result.enabled);
+      })
+      .catch((error) => {
+        console.error("Failed to load auto-accept setting:", error);
+        if (!cancelled) setAutoAcceptEnabled(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handlePrintFront = useCallback(
@@ -1010,12 +1125,14 @@ export function StoreBoardWidget(props: { locale: Locale }) {
       });
 
       if (autoAcceptEnabled) {
-        for (const order of newOnlinePaid) {
+        for (const order of newOnlinePaid.filter(
+          (item) => item.channel === "web",
+        )) {
           try {
             await advanceOrder(order.orderStableId);
           } catch (error) {
             console.error(
-              "Failed to auto-accept order:",
+              "Failed to auto-accept web order:",
               order.orderStableId,
               error,
             );
@@ -1032,6 +1149,28 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     startAlarmLoop,
     stopAlarmLoop,
   ]);
+
+  const handleDeny = useCallback(
+    async (reasonCode: string, reasonDetail?: string) => {
+      if (!denyOrderStableId || denyBusy) return;
+      try {
+        setDenyBusy(true);
+        await denyUberOrder(denyOrderStableId, reasonCode, reasonDetail);
+        setDenyOrderStableId(null);
+        await fetchOrdersAndProcess();
+      } catch (error) {
+        console.error("Failed to deny Uber order:", error);
+        alert(
+          isZh
+            ? "Uber 拒单失败，请确认订单仍处于待接单状态后重试。"
+            : "Failed to deny the Uber order. Confirm it is still pending and retry.",
+        );
+      } finally {
+        setDenyBusy(false);
+      }
+    },
+    [denyBusy, denyOrderStableId, fetchOrdersAndProcess, isZh],
+  );
 
   const handleAdvance = useCallback(
     async (order: BoardOrder) => {
@@ -1208,15 +1347,24 @@ export function StoreBoardWidget(props: { locale: Locale }) {
               <button
                 type="button"
                 role="switch"
-                aria-checked={autoAcceptEnabled}
-                onClick={() => {
+                aria-checked={autoAcceptEnabled ?? false}
+                disabled={autoAcceptBusy || autoAcceptEnabled === null}
+                onClick={async () => {
+                  if (autoAcceptEnabled === null || autoAcceptBusy) return;
                   const next = !autoAcceptEnabled;
-                  setAutoAcceptEnabled(next);
-                  if (typeof window !== "undefined") {
-                    window.localStorage.setItem(
-                      AUTO_ACCEPT_STORAGE_KEY,
-                      next ? "1" : "0",
+                  try {
+                    setAutoAcceptBusy(true);
+                    const result = await updatePosAutoAcceptSetting(next);
+                    setAutoAcceptEnabled(result.enabled);
+                  } catch (error) {
+                    console.error("Failed to update auto-accept setting:", error);
+                    alert(
+                      isZh
+                        ? "自动接单设置保存失败，请重试。"
+                        : "Failed to save auto-accept setting.",
                     );
+                  } finally {
+                    setAutoAcceptBusy(false);
                   }
                 }}
                 className="rounded-full border border-slate-700 bg-slate-950/40 px-2 py-1 text-xs text-slate-100 transition hover:bg-slate-800/50"
@@ -1418,23 +1566,37 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                   </ul>
 
                   <div className="mt-3 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleAdvance(order);
-                      }}
-                      disabled={!next || isSyncingUberReady}
-                      aria-busy={isSyncingUberReady}
-                      className={[
-                        "rounded-md border px-3 py-2 text-sm font-semibold transition",
-                        next && !isSyncingUberReady
-                          ? "border-slate-600 bg-slate-950/30 text-slate-100 hover:bg-slate-800/60"
-                          : "cursor-not-allowed border-slate-800 bg-slate-950/30 text-slate-600",
-                      ].join(" ")}
-                    >
-                      {advanceLabel}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleAdvance(order);
+                        }}
+                        disabled={!next || isSyncingUberReady}
+                        aria-busy={isSyncingUberReady}
+                        className={[
+                          "rounded-md border px-3 py-2 text-sm font-semibold transition",
+                          next && !isSyncingUberReady
+                            ? "border-slate-600 bg-slate-950/30 text-slate-100 hover:bg-slate-800/60"
+                            : "cursor-not-allowed border-slate-800 bg-slate-950/30 text-slate-600",
+                        ].join(" ")}
+                      >
+                        {advanceLabel}
+                      </button>
+                      {isPendingUberEats && autoAcceptEnabled === false && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDenyOrderStableId(sid);
+                          }}
+                          className="rounded-md border border-rose-500/70 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20"
+                        >
+                          {t.denyOrder}
+                        </button>
+                      )}
+                    </div>
 
                     <div className="flex gap-2">
                       <button
@@ -1471,6 +1633,16 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         locale={locale}
         onClose={() => setSelectedOrderStableId(null)}
         onChanged={fetchOrdersAndProcess}
+        onRequestDeny={setDenyOrderStableId}
+      />
+      <UberDenyDialog
+        orderStableId={denyOrderStableId}
+        locale={locale}
+        busy={denyBusy}
+        onClose={() => {
+          if (!denyBusy) setDenyOrderStableId(null);
+        }}
+        onSubmit={handleDeny}
       />
     </div>
   );
