@@ -343,7 +343,7 @@ describe('Uber gateways wire contract v1', () => {
           id: 'item-1',
           price_info: { price: 749 },
           tax_info: { tax_rate: 13 },
-          dish_info: { classifications: { preparation_type: '' } },
+          dish_info: { classifications: {} },
           tax_label_info: {
             default_value: {
               labels: ['CAT_PREPARED_FOOD'],
@@ -385,7 +385,7 @@ describe('Uber gateways wire contract v1', () => {
           modifierGroupIds: ['group-1'],
           taxRatePercentage: 13,
           taxLabels: ['CAT_PREPARED_FOOD'],
-          preparationType: '',
+          preparationType: null,
         }),
         expect.objectContaining({
           id: 'option-1',

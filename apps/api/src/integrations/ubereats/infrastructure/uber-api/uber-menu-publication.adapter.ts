@@ -247,7 +247,7 @@ export class UberMenuImageProbeAdapter implements UberMenuImageProbePort {
         title: { translations: { en_us: image.itemStableId } },
         price_info: { price: 0, overrides: [] },
         tax_info: { tax_rate: 0, vat_rate_percentage: null },
-        dish_info: { classifications: { preparation_type: '' as const } },
+        dish_info: { classifications: {} },
         modifier_group_ids: { ids: null, overrides: [] },
         suspension_info: null,
         image_url: image.url,

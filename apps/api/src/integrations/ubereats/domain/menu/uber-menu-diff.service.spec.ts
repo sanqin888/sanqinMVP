@@ -87,7 +87,7 @@ describe('Uber menu diff service', () => {
           },
           {
             id: nodeId('item', 'kept-source'),
-            dish_info: { classifications: { preparation_type: '' } },
+            dish_info: { classifications: {} },
             modifier_group_ids: [nodeId('group', 'kept-group-source')],
           },
         ],
