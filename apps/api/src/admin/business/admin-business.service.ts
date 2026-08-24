@@ -124,7 +124,9 @@ export class AdminBusinessService {
       supportPhone: config.supportPhone ?? null,
       supportEmail: config.supportEmail ?? null,
       salesTaxRate: config.salesTaxRate,
-      wechatAlipayExchangeRate: config.wechatAlipayExchangeRate,
+      wechatAlipayExchangeRate: Number(
+        config.wechatAlipayExchangeRate.toFixed(2),
+      ),
       earnPtPerDollar: config.earnPtPerDollar,
       redeemDollarPerPoint: config.redeemDollarPerPoint,
       referralPtPerDollar: config.referralPtPerDollar,
@@ -562,7 +564,7 @@ export class AdminBusinessService {
     }
 
     if (wechatAlipayExchangeRate !== undefined) {
-      updates.wechatAlipayExchangeRate = this.normalizePositiveNumber(
+      updates.wechatAlipayExchangeRate = this.normalizeExchangeRate(
         'wechatAlipayExchangeRate',
         wechatAlipayExchangeRate,
       );
@@ -967,6 +969,18 @@ export class AdminBusinessService {
     }
 
     return Number(value.toFixed(4));
+  }
+
+  private normalizeExchangeRate(label: string, value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${label} must be a finite number`);
+    }
+
+    if (value <= 0) {
+      throw new BadRequestException(`${label} must be > 0`);
+    }
+
+    return Number(value.toFixed(2));
   }
 
   private normalizeOptionalNumber(
