@@ -1,5 +1,8 @@
 import { createHash } from 'crypto';
-import { UberValidationError } from '../shared/uber-application.error';
+import {
+  isUberApplicationError,
+  UberValidationError,
+} from '../shared/uber-application.error';
 import type {
   PublishMenuInput,
   UberMenuUploadPayload,
@@ -220,6 +223,16 @@ export class PublishUberMenuUseCase {
           publishedName: item.title,
         })),
     });
+    if (attempt.status === 'SUCCEEDED')
+      return {
+        ok: true,
+        dryRun: false,
+        duplicate: true,
+        storeId: posStoreId,
+        uberStoreId: snapshot.uberStoreId,
+        versionStableId: attempt.businessVersion,
+        summary,
+      };
     try {
       await this.gateway.uploadMenu({
         storeId: snapshot.uberStoreId,
@@ -238,11 +251,17 @@ export class PublishUberMenuUseCase {
         summary,
       };
     } catch (error) {
+      const applicationError = isUberApplicationError(error) ? error : null;
       const retryable = this.isRetryable(error);
       await this.publications.markFailed(attempt.attemptId, {
-        errorCode: retryable ? 'UBER_UPLOAD_RETRYABLE' : 'UBER_UPLOAD_REJECTED',
+        errorCode:
+          applicationError?.code ??
+          (retryable ? 'UBER_UPLOAD_RETRYABLE' : 'UBER_UPLOAD_REJECTED'),
         errorMessage: error instanceof Error ? error.message : String(error),
         retryable,
+        upstreamStatus:
+          applicationError?.upstreamStatus ?? this.upstreamStatus(error),
+        upstreamDetail: applicationError?.upstreamDetail ?? null,
       });
       throw error;
     }
@@ -370,12 +389,18 @@ export class PublishUberMenuUseCase {
   }
 
   private isRetryable(error: unknown) {
+    if (isUberApplicationError(error)) return error.retryable;
+    const status = this.upstreamStatus(error);
+    return (
+      status === null || status === 408 || status === 429 || status >= 500
+    );
+  }
+
+  private upstreamStatus(error: unknown): number | null {
     const status =
       (error as { status?: number; response?: { status?: number } })?.status ??
       (error as { response?: { status?: number } })?.response?.status;
-    return (
-      status === undefined || status === 408 || status === 429 || status >= 500
-    );
+    return typeof status === 'number' ? status : null;
   }
 }
 

@@ -28,7 +28,10 @@ describe('UberMenuPublicationPrismaAdapter', () => {
       .fn<Promise<{ count: number }>, [PublishedItemCreateManyInput]>()
       .mockResolvedValue({ count: 1 });
     const tx = {
-      uberMenuPublishVersion: { create: createVersion },
+      uberMenuPublishVersion: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: createVersion,
+      },
       uberPublishedMenuItem: { createMany },
     };
     const transaction = jest
@@ -76,5 +79,70 @@ describe('UberMenuPublicationPrismaAdapter', () => {
       publishedName: 'Noodles',
     });
     expect(input?.data[0]?.publishedAt).toBeInstanceOf(Date);
+  });
+
+  it('复用相同幂等键的 FAILED 记录并清除旧失败状态', async () => {
+    const failed = {
+      id: 'version-1',
+      storeId: 'pos-1',
+      idempotencyKey: 'key-1',
+      businessVersion: 'business-1',
+      status: 'FAILED',
+      responsePayload: { code: 'old-response' },
+    };
+    const update = jest.fn().mockResolvedValue({
+      ...failed,
+      status: 'SUBMITTED',
+      responsePayload: null,
+    });
+    const create = jest.fn();
+    const createMany = jest.fn();
+    const tx = {
+      uberMenuPublishVersion: {
+        findUnique: jest.fn().mockResolvedValue(failed),
+        update,
+        create,
+      },
+      uberPublishedMenuItem: { createMany },
+    };
+    const adapter = new UberMenuPublicationPrismaAdapter({
+      $transaction: jest
+        .fn()
+        .mockImplementation(
+          async (callback: (client: typeof tx) => Promise<unknown>) =>
+            callback(tx),
+        ),
+    } as never);
+
+    await expect(
+      adapter.createAttempt({
+        storeId: 'pos-1',
+        uberStoreId: 'uber-1',
+        idempotencyKey: 'key-1',
+        businessVersion: 'business-1',
+        payloadHash: 'hash-1',
+        payload: {} as never,
+        totalItems: 1,
+        publishedItems: [],
+      }),
+    ).resolves.toMatchObject({
+      attemptId: 'version-1',
+      status: 'SUBMITTED',
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'version-1' },
+      data: expect.objectContaining({
+        status: 'SUBMITTED',
+        responsePayload: expect.anything(),
+        errorMessage: null,
+        errorDetails: expect.anything(),
+        finishedAt: null,
+        confirmationLeaseToken: null,
+        confirmationLeaseExpiresAt: null,
+      }),
+    });
   });
 });
