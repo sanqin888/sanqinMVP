@@ -14,6 +14,20 @@ type PublishedItemCreateManyInput = {
   }>;
 };
 
+type PublishVersionUpdateInput = {
+  where: { id: string };
+  data: {
+    status: string;
+    responsePayload: unknown;
+    errorMessage: null;
+    errorDetails: unknown;
+    finishedAt: null;
+    confirmationLeaseToken: null;
+    confirmationLeaseExpiresAt: null;
+    [key: string]: unknown;
+  };
+};
+
 describe('UberMenuPublicationPrismaAdapter', () => {
   it('在同一事务中创建发布版本和 Uber item 快照映射', async () => {
     const createVersion = jest.fn().mockResolvedValue({
@@ -90,11 +104,16 @@ describe('UberMenuPublicationPrismaAdapter', () => {
       status: 'FAILED',
       responsePayload: { code: 'old-response' },
     };
-    const update = jest.fn().mockResolvedValue({
-      ...failed,
-      status: 'SUBMITTED',
-      responsePayload: null,
-    });
+    const update = jest
+      .fn<
+        Promise<typeof failed & { status: string; responsePayload: null }>,
+        [PublishVersionUpdateInput]
+      >()
+      .mockResolvedValue({
+        ...failed,
+        status: 'SUBMITTED',
+        responsePayload: null,
+      });
     const create = jest.fn();
     const createMany = jest.fn();
     const tx = {
@@ -132,17 +151,17 @@ describe('UberMenuPublicationPrismaAdapter', () => {
 
     expect(create).not.toHaveBeenCalled();
     expect(createMany).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledWith({
-      where: { id: 'version-1' },
-      data: expect.objectContaining({
-        status: 'SUBMITTED',
-        responsePayload: expect.anything(),
-        errorMessage: null,
-        errorDetails: expect.anything(),
-        finishedAt: null,
-        confirmationLeaseToken: null,
-        confirmationLeaseExpiresAt: null,
-      }),
+    expect(update).toHaveBeenCalledTimes(1);
+    const updateInput = update.mock.calls[0]?.[0];
+    expect(updateInput?.where).toEqual({ id: 'version-1' });
+    expect(updateInput?.data).toMatchObject({
+      status: 'SUBMITTED',
+      errorMessage: null,
+      finishedAt: null,
+      confirmationLeaseToken: null,
+      confirmationLeaseExpiresAt: null,
     });
+    expect(updateInput?.data.responsePayload).toBeDefined();
+    expect(updateInput?.data.errorDetails).toBeDefined();
   });
 });

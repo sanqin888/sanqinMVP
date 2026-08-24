@@ -391,9 +391,7 @@ export class PublishUberMenuUseCase {
   private isRetryable(error: unknown) {
     if (isUberApplicationError(error)) return error.retryable;
     const status = this.upstreamStatus(error);
-    return (
-      status === null || status === 408 || status === 429 || status >= 500
-    );
+    return status === null || status === 408 || status === 429 || status >= 500;
   }
 
   private upstreamStatus(error: unknown): number | null {
