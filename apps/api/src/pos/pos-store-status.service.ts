@@ -10,6 +10,13 @@ import { AppLogger } from '../common/app-logger';
 
 const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';
 
+export type PosStoreStatusActionContext = {
+  operatorUserId?: string;
+  operatorRole?: string;
+  posDeviceStableId?: string;
+  posDeviceName?: string | null;
+};
+
 function parseAutoPauseReason(reason: string | null | undefined): {
   autoResumeAt: string;
   displayReason: string | null;
@@ -48,6 +55,7 @@ export class PosStoreStatusService {
   ) {}
 
   async getCustomerOrderingStatus() {
+    await this.reconcileExpiredPause();
     const config = await this.ensureConfig();
 
     if (!config.isTemporarilyClosed) {
@@ -58,43 +66,47 @@ export class PosStoreStatusService {
     }
 
     const parsed = parseAutoPauseReason(config.temporaryCloseReason);
-    if (!parsed) {
-      return {
-        isTemporarilyClosed: true,
-        autoResumeAt: null,
-      };
-    }
-
-    const resumeAt = DateTime.fromISO(parsed.autoResumeAt);
-    if (resumeAt.isValid && resumeAt <= DateTime.now()) {
-      await this.prisma.businessConfig.update({
-        where: { id: 1 },
-        data: {
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-        },
-      });
-
-      const status = {
-        isTemporarilyClosed: false,
-        autoResumeAt: null,
-      };
-      this.posGateway.publishCustomerOrderingStatusUpdate(status);
-      await this.syncUberStoreStatusSafely('auto_resume');
-
-      return status;
-    }
-
     return {
       isTemporarilyClosed: true,
-      autoResumeAt: parsed.autoResumeAt,
+      autoResumeAt: parsed?.autoResumeAt ?? null,
     };
   }
 
-  async pauseCustomerOrdering(input: {
-    durationMinutes?: number;
-    untilTomorrow?: boolean;
-  }) {
+  async reconcileExpiredPause(): Promise<boolean> {
+    const config = await this.ensureConfig();
+    if (!config.isTemporarilyClosed || !config.temporaryCloseReason)
+      return false;
+
+    const parsed = parseAutoPauseReason(config.temporaryCloseReason);
+    if (!parsed) return false;
+
+    const resumeAt = DateTime.fromISO(parsed.autoResumeAt);
+    if (!resumeAt.isValid || resumeAt > DateTime.now()) return false;
+
+    const result = await this.prisma.businessConfig.updateMany({
+      where: {
+        id: 1,
+        isTemporarilyClosed: true,
+        temporaryCloseReason: config.temporaryCloseReason,
+      },
+      data: {
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      },
+    });
+    if (result.count === 0) return false;
+
+    await this.finalizeResume('auto_resume', undefined, parsed.autoResumeAt);
+    return true;
+  }
+
+  async pauseCustomerOrdering(
+    input: {
+      durationMinutes?: number;
+      untilTomorrow?: boolean;
+    },
+    context?: PosStoreStatusActionContext,
+  ) {
     const config = await this.ensureConfig();
     const timezone = config.timezone || 'America/Toronto';
     const nowInStoreTz = DateTime.now().setZone(timezone);
@@ -133,14 +145,26 @@ export class PosStoreStatusService {
       autoResumeAt: autoResumeAtIso,
     };
 
+    this.logger.log({
+      event: 'pos_store_paused',
+      durationMinutes: input.untilTomorrow
+        ? null
+        : (input.durationMinutes ?? null),
+      untilTomorrow: input.untilTomorrow === true,
+      autoResumeAt: autoResumeAtIso,
+      operatorUserId: context?.operatorUserId ?? null,
+      operatorRole: context?.operatorRole ?? null,
+      posDeviceStableId: context?.posDeviceStableId ?? null,
+      posDeviceName: context?.posDeviceName ?? null,
+    });
     this.posGateway.publishCustomerOrderingStatusUpdate(status);
     await this.syncUberStoreStatusSafely('pause');
 
     return status;
   }
 
-  async resumeCustomerOrdering() {
-    const updated = await this.prisma.businessConfig.update({
+  async resumeCustomerOrdering(context?: PosStoreStatusActionContext) {
+    await this.prisma.businessConfig.update({
       where: { id: 1 },
       data: {
         isTemporarilyClosed: false,
@@ -148,13 +172,32 @@ export class PosStoreStatusService {
       },
     });
 
+    return this.finalizeResume('resume', context);
+  }
+
+  private async finalizeResume(
+    source: 'resume' | 'auto_resume',
+    context?: PosStoreStatusActionContext,
+    autoResumeAt?: string,
+  ) {
     const status = {
-      isTemporarilyClosed: updated.isTemporarilyClosed,
+      isTemporarilyClosed: false,
       autoResumeAt: null,
     };
 
+    this.logger.log({
+      event:
+        source === 'auto_resume'
+          ? 'pos_store_auto_resumed'
+          : 'pos_store_resumed',
+      autoResumeAt: autoResumeAt ?? null,
+      operatorUserId: context?.operatorUserId ?? null,
+      operatorRole: context?.operatorRole ?? null,
+      posDeviceStableId: context?.posDeviceStableId ?? null,
+      posDeviceName: context?.posDeviceName ?? null,
+    });
     this.posGateway.publishCustomerOrderingStatusUpdate(status);
-    await this.syncUberStoreStatusSafely('resume');
+    await this.syncUberStoreStatusSafely(source);
 
     return status;
   }

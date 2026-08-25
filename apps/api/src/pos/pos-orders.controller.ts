@@ -82,9 +82,21 @@ class CreateFullRefundDto {
 }
 
 class CancelUberOrderDto {
+  @IsString()
+  @IsIn([
+    'ITEM_ISSUE',
+    'STORE_CLOSED',
+    'CAPACITY',
+    'SPECIAL_INSTRUCTIONS',
+    'POS_OFFLINE',
+    'TECHNICAL_FAILURE',
+    'OTHER',
+  ])
+  reasonCode!: string;
+
   @IsOptional()
   @IsString()
-  reason?: string;
+  reasonDetail?: string;
 }
 
 class DenyUberOrderDto {
@@ -391,7 +403,11 @@ export class PosOrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CancelUberOrderDto,
   ) {
-    return this.posOrders.cancelUberOrder(orderStableId, body.reason);
+    return this.posOrders.cancelUberOrder(
+      orderStableId,
+      body.reasonCode,
+      body.reasonDetail,
+    );
   }
 
   @Post(':orderStableId/amendments')

@@ -127,10 +127,14 @@ describe('PosOrdersController Uber orders', () => {
     posOrders.cancelUberOrder.mockResolvedValue({ actionId: 'action-1' });
 
     await expect(
-      controller.cancelUberOrder('order_1', { reason: '商品售罄' }),
+      controller.cancelUberOrder('order_1', {
+        reasonCode: 'ITEM_ISSUE',
+        reasonDetail: '商品售罄',
+      }),
     ).resolves.toEqual({ actionId: 'action-1' });
     expect(posOrders.cancelUberOrder).toHaveBeenCalledWith(
       'order_1',
+      'ITEM_ISSUE',
       '商品售罄',
     );
   });

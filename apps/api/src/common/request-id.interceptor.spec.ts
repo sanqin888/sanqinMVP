@@ -83,6 +83,35 @@ describe('RequestIdInterceptor', () => {
     expect(loggerLogSpy).not.toHaveBeenCalled();
   });
 
+  it('suppresses only the GET POS store-status poll', () => {
+    const loggerLogSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+
+    runIntercept('GET', '/api/v1/pos/store-status', 200, {
+      isTemporarilyClosed: false,
+    });
+
+    expect(loggerLogSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(['pause', 'resume'])(
+    'logs POS store-status %s actions instead of treating them as polling',
+    (action) => {
+      const loggerLogSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+
+      runIntercept('POST', `/api/v1/pos/store-status/${action}`, 200);
+
+      expect(loggerLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `POST /api/v1/pos/store-status/${action} - 200`,
+        ),
+      );
+    },
+  );
+
   it('suppresses healthy scheduled-order polling logs', () => {
     const loggerLogSpy = jest
       .spyOn(Logger.prototype, 'log')

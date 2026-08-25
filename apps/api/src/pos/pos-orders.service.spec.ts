@@ -271,12 +271,31 @@ describe('PosOrdersService', () => {
     );
 
     await expect(
-      service.cancelUberOrder('order_1', '商品售罄'),
+      service.cancelUberOrder('order_1', ' ITEM_ISSUE ', ' 商品售罄 '),
     ).resolves.toMatchObject({
       orderStableId: 'order_1',
       uberActionStatus: null,
     });
-    expect(uberEats.cancel).toHaveBeenCalledWith('external-123', '商品售罄');
+    expect(uberEats.cancel).toHaveBeenCalledWith(
+      'external-123',
+      'ITEM_ISSUE',
+      '商品售罄',
+    );
+  });
+
+  it('POS 拒绝空的 Uber 取消原因代码', async () => {
+    const { service, uberEats } = setup(
+      order({
+        channel: 'ubereats',
+        clientRequestId: 'ubereats:external-123',
+        status: 'making',
+      }),
+    );
+
+    await expect(service.cancelUberOrder('order_1', '   ')).rejects.toThrow(
+      '取消原因不能为空',
+    );
+    expect(uberEats.cancel).not.toHaveBeenCalled();
   });
 
   it('POS 在 Uber 订单 ready 后不再提供 CANCEL，避免上游成功但本地无法进入退款终态', async () => {
@@ -287,7 +306,7 @@ describe('PosOrdersService', () => {
     });
     const { service, uberEats } = setup(ready);
 
-    await expect(service.cancelUberOrder('order_1')).rejects.toThrow(
+    await expect(service.cancelUberOrder('order_1', 'OTHER')).rejects.toThrow(
       '当前 Uber 订单状态不允许取消',
     );
     await expect(service.getManagementActions('order_1')).resolves.toEqual({
@@ -305,7 +324,7 @@ describe('PosOrdersService', () => {
   it('POS 拒绝为非 Uber 订单提交 CANCEL', async () => {
     const { service, uberEats } = setup(order());
 
-    await expect(service.cancelUberOrder('order_1')).rejects.toThrow(
+    await expect(service.cancelUberOrder('order_1', 'OTHER')).rejects.toThrow(
       '只有 Uber 订单可以提交取消',
     );
     expect(uberEats.cancel).not.toHaveBeenCalled();

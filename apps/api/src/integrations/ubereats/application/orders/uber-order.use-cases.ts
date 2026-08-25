@@ -256,11 +256,11 @@ export class RequestUberOrderActionUseCase {
     );
   }
 
-  async cancel(id: string, reason?: string) {
+  async cancel(id: string, reasonCode: string, reasonDetail?: string) {
     return this.present(
       await this.actions.request(id, 'CANCEL', {
-        reasonCode: 'OTHER',
-        reasonDetail: reason?.trim() || null,
+        reasonCode: reasonCode.trim(),
+        reasonDetail: reasonDetail?.trim() || null,
       }),
     );
   }

@@ -89,7 +89,7 @@ describe('UberOrderActionService contract', () => {
 
   it.each([
     ['ACCEPT', 'accept', 'pending', 'paid'],
-    ['DENY', 'deny', 'pending', null],
+    ['DENY', 'deny', 'pending', 'refunded'],
     ['CANCEL', 'cancel', 'making', 'refunded'],
     ['READY_FOR_PICKUP', 'readyForPickup', 'making', 'ready'],
   ] as const)(

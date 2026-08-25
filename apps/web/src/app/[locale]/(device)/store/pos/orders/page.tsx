@@ -122,6 +122,15 @@ const COPY = {
       UBEREATS: "Uber Eats",
     },
     reasonPresets: ["顾客取消", "商品售罄", "操作失误", "支付方式调整"],
+    operatorConfirmTitle: "确认门店订单操作",
+    operatorNameLabel: "操作人姓名",
+    operatorNamePlaceholder: "请输入员工姓名",
+    operatorConfirmHint: "请确认已在实际支付设备完成退款或补收，再由操作人确认记录。",
+    operatorConfirmAction: "确认并记录",
+    dialogBack: "返回",
+    syncRetryTitle: "重试 Uber 同步",
+    syncRetryHint: "本地订单状态已推进，但 Uber 同步失败。重试只会重新发送同步动作，不会再次推进本地订单状态。",
+    syncRetryAction: "重试同步",
     itemSelectTitle: "选择退/换菜品",
     itemSelectHint: "退菜/换菜必须勾选对应菜品。",
     channelLabel: {
@@ -272,6 +281,15 @@ const COPY = {
       "Operator mistake",
       "Payment adjustment",
     ],
+    operatorConfirmTitle: "Confirm store order action",
+    operatorNameLabel: "Operator name",
+    operatorNamePlaceholder: "Enter staff name",
+    operatorConfirmHint: "Confirm the refund or additional charge is complete on the actual payment device before recording this action.",
+    operatorConfirmAction: "Confirm and record",
+    dialogBack: "Back",
+    syncRetryTitle: "Retry Uber sync",
+    syncRetryHint: "The local order state already advanced, but Uber synchronization failed. Retrying only resends the sync action and will not advance the local state again.",
+    syncRetryAction: "Retry sync",
     itemSelectTitle: "Select items to void/swap",
     itemSelectHint: "Void/swap requires selecting the items to change.",
     channelLabel: {
@@ -1072,6 +1090,10 @@ export default function PosOrdersPage() {
   >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [operatorDialogOpen, setOperatorDialogOpen] = useState(false);
+  const [operatorName, setOperatorName] = useState("");
+  const [syncRetryOrderId, setSyncRetryOrderId] = useState<string | null>(null);
+  const [syncRetryBusy, setSyncRetryBusy] = useState(false);
   const [menuCategories, setMenuCategories] = useState<PublicMenuCategory[]>([]);
   const [swapSelection, setSwapSelection] = useState<SwapSelection | null>(null);
   const [swapActiveItem, setSwapActiveItem] = useState<SwapSelection | null>(null);
@@ -1591,22 +1613,16 @@ export default function PosOrdersPage() {
     setSwapActiveItem(null);
   };
 
-  const promptOperatorName = (): string | null => {
-    return (
-      window
-        .prompt(
-          locale === "zh"
-            ? "操作人姓名（必填）：请在实际退款/补收完成后输入员工姓名确认"
-            : "Operator name (required): enter the staff name after the external refund/charge is complete",
-        )
-        ?.trim() || null
-    );
-  };
-
   const handleSubmit = () => {
     if (!selectedOrder || !selectedAction || !canSubmit) return;
-    const operatorName = promptOperatorName();
-    if (!operatorName) return;
+    setOperatorName("");
+    setOperatorDialogOpen(true);
+  };
+
+  const handleConfirmSubmit = () => {
+    if (!selectedOrder || !selectedAction || !canSubmit || isSubmitting) return;
+    const confirmedOperatorName = operatorName.trim();
+    if (!confirmedOperatorName) return;
 
     const selectedItems = selectedOrder.items
       .filter((item) => selectedItemIds.includes(item.lineId))
@@ -1645,7 +1661,7 @@ export default function PosOrdersPage() {
             selectedOrder.stableId,
             {
               reason: reason.trim(),
-              operatorName,
+              operatorName: confirmedOperatorName,
               refundAmountCents: selectedOrder.amountCents,
               originalPaymentMethod,
               refundMethod: selectedPaymentMethod!,
@@ -1658,6 +1674,8 @@ export default function PosOrdersPage() {
             ),
           );
           setSelectedId(mapped.stableId);
+          setOperatorDialogOpen(false);
+          setOperatorName("");
           showToast(
             result.outcome === "pending_platform"
               ? copy.refundPendingPlatform
@@ -1738,7 +1756,7 @@ export default function PosOrdersPage() {
         const payload: CreateOrderAmendmentInput = {
           type: amendmentType,
           reason: reason.trim(),
-          operatorName,
+          operatorName: confirmedOperatorName,
           paymentMethod: shouldShowPaymentMethodPicker
             ? selectedPaymentMethod
             : null,
@@ -1757,6 +1775,8 @@ export default function PosOrdersPage() {
             order.stableId === mapped.stableId ? mapped : order,
           ),
         );
+        setOperatorDialogOpen(false);
+        setOperatorName("");
         showToast(copy.actionSuccess, "success");
         completeReset();
       } catch (error) {
@@ -1794,27 +1814,8 @@ export default function PosOrdersPage() {
             : "Ready locally, but Uber sync failed",
           "error",
         );
-        if (
-          updated.retryable &&
-          window.confirm(
-            locale.startsWith("zh")
-              ? "是否重试 Uber 同步？这不会推进订单状态。"
-              : "Retry Uber sync? This will not advance the order.",
-          )
-        ) {
-          const retried = await retryUberOrderSync<BackendOrder>(
-            selectedOrder.stableId,
-          );
-          showToast(
-            retried.uberActionStatus === "SUCCEEDED"
-              ? locale.startsWith("zh")
-                ? "Uber 同步成功"
-                : "Uber sync succeeded"
-              : locale.startsWith("zh")
-                ? "Uber 同步仍失败"
-                : "Uber sync is still failing",
-            retried.uberActionStatus === "SUCCEEDED" ? "success" : "error",
-          );
+        if (updated.retryable) {
+          setSyncRetryOrderId(selectedOrder.stableId);
         }
       } else {
         showToast(copy.advanceSuccess, "success");
@@ -1824,6 +1825,40 @@ export default function PosOrdersPage() {
       showToast(copy.advanceFailed, "error");
     } finally {
       setIsAdvancing(false);
+    }
+  };
+
+  const handleRetryUberSync = async () => {
+    if (!syncRetryOrderId || syncRetryBusy) return;
+    try {
+      setSyncRetryBusy(true);
+      const retried = await retryUberOrderSync<BackendOrder>(syncRetryOrderId);
+      if (retried.uberActionStatus === "FAILED") {
+        showToast(
+          locale.startsWith("zh") ? "Uber 同步仍失败" : "Uber sync is still failing",
+          "error",
+        );
+        return;
+      }
+      setSyncRetryOrderId(null);
+      showToast(
+        retried.uberActionStatus === "SUCCEEDED"
+          ? locale.startsWith("zh")
+            ? "Uber 同步成功"
+            : "Uber sync succeeded"
+          : locale.startsWith("zh")
+            ? "Uber 同步已重新提交"
+            : "Uber sync resubmitted",
+        "success",
+      );
+    } catch (error) {
+      console.error("Failed to retry Uber sync:", error);
+      showToast(
+        locale.startsWith("zh") ? "Uber 同步重试失败" : "Failed to retry Uber sync",
+        "error",
+      );
+    } finally {
+      setSyncRetryBusy(false);
     }
   };
 
@@ -2474,6 +2509,86 @@ export default function PosOrdersPage() {
                 }`}
               >
                 {copy.swapItemConfirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {operatorDialogOpen && selectedOrder && selectedAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 text-slate-100 shadow-2xl">
+            <h3 className="text-xl font-semibold">{copy.operatorConfirmTitle}</h3>
+            <p className="mt-2 text-sm text-slate-300">{copy.operatorConfirmHint}</p>
+            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 px-4 py-3 text-sm">
+              <div className="font-semibold">{selectedOrder.clientRequestId}</div>
+              <div className="mt-1 text-slate-400">
+                {selectedAction === "full_refund"
+                  ? copy.actionLabels.full_refund
+                  : selectedAction === "retender"
+                    ? copy.actionLabels.retender
+                    : selectedAction === "void_item"
+                      ? copy.actionLabels.void_item
+                      : copy.actionLabels.swap_item}
+              </div>
+            </div>
+            <label className="mt-4 block text-sm">
+              <span className="text-slate-300">{copy.operatorNameLabel}</span>
+              <input
+                autoFocus
+                value={operatorName}
+                onChange={(event) => setOperatorName(event.target.value)}
+                disabled={isSubmitting}
+                placeholder={copy.operatorNamePlaceholder}
+                className="mt-2 h-12 w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 text-base text-slate-100 focus:border-emerald-400 focus:outline-none disabled:opacity-50"
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => {
+                  setOperatorDialogOpen(false);
+                  setOperatorName("");
+                }}
+                className="rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-200 disabled:opacity-50"
+              >
+                {copy.dialogBack}
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting || operatorName.trim().length === 0}
+                onClick={handleConfirmSubmit}
+                className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSubmitting ? copy.actionProcessing : copy.operatorConfirmAction}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {syncRetryOrderId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-amber-500/40 bg-slate-900 p-6 text-slate-100 shadow-2xl">
+            <h3 className="text-xl font-semibold text-amber-100">{copy.syncRetryTitle}</h3>
+            <p className="mt-2 text-sm text-slate-300">{copy.syncRetryHint}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={syncRetryBusy}
+                onClick={() => setSyncRetryOrderId(null)}
+                className="rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-200 disabled:opacity-50"
+              >
+                {copy.dialogBack}
+              </button>
+              <button
+                type="button"
+                disabled={syncRetryBusy}
+                onClick={() => void handleRetryUberSync()}
+                className="rounded-xl border border-amber-400/60 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+              >
+                {syncRetryBusy ? copy.actionProcessing : copy.syncRetryAction}
               </button>
             </div>
           </div>
