@@ -7,7 +7,6 @@ import {
 
 import { ClaimAndExecuteUberOrderActionsUseCase } from '../../application/orders/claim-and-execute-uber-order-actions.use-case';
 import { ClaimAndProcessUberWebhookInboxUseCase } from '../../application/orders/claim-and-process-uber-webhook-inbox.use-case';
-import { ConfirmUberMenuPublicationsUseCase } from '../../application/menu/confirm-uber-menu-publications.use-case';
 import {
   UberWorkerConfigService,
   type UberWorkerKind,
@@ -45,6 +44,7 @@ abstract class UberPollingWorkerAdapter
   private timer?: NodeJS.Timeout;
   private inFlight?: Promise<boolean>;
   private stopping = false;
+  private wakeRequested = false;
   private metrics: UberWorkerMetrics = {
     lastSuccessfulAt: null,
     lastAttemptAt: null,
@@ -69,7 +69,9 @@ abstract class UberPollingWorkerAdapter
 
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
+    this.wakeRequested = false;
     if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
     if (!this.inFlight) return;
     await Promise.race([
       this.inFlight.then(() => undefined),
@@ -85,6 +87,21 @@ abstract class UberPollingWorkerAdapter
 
   getMetrics(): Readonly<UberWorkerMetrics> {
     return { ...this.metrics };
+  }
+
+  /** Coalesces wake hints and brings the next durable claim forward without overlap. */
+  wake(): boolean {
+    if (this.stopping || !this.config.workerEnabled) return false;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+    if (this.inFlight) {
+      this.wakeRequested = true;
+      return true;
+    }
+    this.schedule(0);
+    return true;
   }
 
   /** Local guard plus repository leases prevent overlapping claims across instances. */
@@ -165,8 +182,11 @@ abstract class UberPollingWorkerAdapter
   private schedule(delayMs: number): void {
     if (this.stopping) return;
     this.timer = setTimeout(() => {
+      this.timer = undefined;
       void this.runOnce().then((succeeded) => {
         if (this.stopping) return;
+        const immediateWake = this.wakeRequested;
+        this.wakeRequested = false;
         const policy = this.config.workerPolicies[this.kind];
         const retryDelay = Math.min(
           policy.maxBackoffMs,
@@ -174,7 +194,11 @@ abstract class UberPollingWorkerAdapter
             2 ** Math.max(0, this.metrics.consecutiveFailures - 1),
         );
         this.schedule(
-          succeeded ? this.config.workerPollIntervalMs : retryDelay,
+          immediateWake
+            ? 0
+            : succeeded
+              ? this.config.workerWakeFallbackPollIntervalMs
+              : retryDelay,
         );
       });
     }, delayMs);
@@ -212,18 +236,3 @@ export class UberOrderActionWorkerAdapter extends UberPollingWorkerAdapter {
   }
 }
 
-@Injectable()
-export class UberMenuPublishConfirmationWorkerAdapter extends UberPollingWorkerAdapter {
-  protected readonly logger = new Logger(
-    UberMenuPublishConfirmationWorkerAdapter.name,
-  );
-  constructor(
-    private readonly useCase: ConfirmUberMenuPublicationsUseCase,
-    config: UberWorkerConfigService,
-  ) {
-    super(config, 'menuConfirmation');
-  }
-  protected dispatch(limit: number) {
-    return this.useCase.execute(limit);
-  }
-}

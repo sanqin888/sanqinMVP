@@ -27,10 +27,9 @@ describe('UberWorkerHealthService', () => {
     new UberWorkerHealthService(
       adapter(adapterMetrics[0]) as never,
       adapter(adapterMetrics[1]) as never,
-      adapter(adapterMetrics[2]) as never,
       new UberWorkerConfigService({
         UBER_EATS_WORKER_ENABLED: 'true',
-        UBER_EATS_WORKER_POLL_INTERVAL_MS: '1000',
+        UBER_EATS_WORKER_WAKE_FALLBACK_POLL_INTERVAL_MS: '1000',
         UBER_EATS_WORKER_UNHEALTHY_FAILURE_THRESHOLD: '3',
         ...env,
       }),
@@ -43,14 +42,13 @@ describe('UberWorkerHealthService', () => {
     const health = createHealth([
       metrics(),
       metrics({ lastAttemptAt: now, lastSuccessfulAt: now }),
-      metrics({ lastAttemptAt: now, lastSuccessfulAt: now }),
     ]);
     expect(health.snapshot().status).toBe('starting');
   });
 
   it('is ok after the first successful poll on every adapter', () => {
     const healthy = metrics({ lastAttemptAt: now, lastSuccessfulAt: now });
-    expect(createHealth([healthy, healthy, healthy]).snapshot()).toMatchObject({
+    expect(createHealth([healthy, healthy]).snapshot()).toMatchObject({
       status: 'ok',
       thresholds: { consecutiveFailures: 3, lastSuccessAgeMs: 3000 },
     });
@@ -65,12 +63,11 @@ describe('UberWorkerHealthService', () => {
       consecutiveFailures: 1,
       failures: 1,
     });
+    expect(createHealth([healthy, temporaryFailure]).snapshot().status).toBe(
+      'degraded',
+    );
     expect(
-      createHealth([healthy, temporaryFailure, healthy]).snapshot().status,
-    ).toBe('degraded');
-    expect(
-      createHealth([healthy, { ...healthy, backlog: 5 }, healthy]).snapshot()
-        .status,
+      createHealth([healthy, { ...healthy, backlog: 5 }]).snapshot().status,
     ).toBe('degraded');
   });
 
@@ -83,19 +80,15 @@ describe('UberWorkerHealthService', () => {
       consecutiveFailures: 3,
       failures: 3,
     });
-    expect(createHealth([healthy, failing, healthy]).snapshot().status).toBe(
-      'unhealthy',
-    );
+    expect(createHealth([healthy, failing]).snapshot().status).toBe('unhealthy');
   });
 
-  it('is unhealthy when success is older than poll interval times the threshold', () => {
+  it('is unhealthy when success is older than fallback poll interval times the threshold', () => {
     const stale = metrics({
       lastAttemptAt: now,
       lastSuccessfulAt: new Date(now.getTime() - 3001),
     });
-    expect(createHealth([stale, stale, stale]).snapshot().status).toBe(
-      'unhealthy',
-    );
+    expect(createHealth([stale, stale]).snapshot().status).toBe('unhealthy');
   });
 
   it('returns to ok after a successful recovery snapshot', () => {
@@ -106,14 +99,12 @@ describe('UberWorkerHealthService', () => {
       failures: 2,
       consecutiveFailures: 0,
     });
-    expect(
-      createHealth([recovered, recovered, recovered]).snapshot().status,
-    ).toBe('ok');
+    expect(createHealth([recovered, recovered]).snapshot().status).toBe('ok');
   });
 
   it('is unhealthy once graceful shutdown begins', () => {
     const healthy = metrics({ lastAttemptAt: now, lastSuccessfulAt: now });
-    const health = createHealth([healthy, healthy, healthy]);
+    const health = createHealth([healthy, healthy]);
 
     health.onModuleDestroy();
 

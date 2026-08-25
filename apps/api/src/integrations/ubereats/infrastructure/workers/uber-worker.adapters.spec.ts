@@ -1,12 +1,14 @@
 import {
-  UberMenuPublishConfirmationWorkerAdapter,
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './uber-worker.adapters';
 import { UberWorkerConfigService } from './uber-worker-config.service';
 
 describe('Uber durable worker adapters', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
 
   const config = (env: Record<string, string> = {}) =>
     new UberWorkerConfigService({
@@ -19,7 +21,6 @@ describe('Uber durable worker adapters', () => {
   it.each([
     ['webhook inbox', UberWebhookInboxWorkerAdapter],
     ['order action', UberOrderActionWorkerAdapter],
-    ['menu confirmation', UberMenuPublishConfirmationWorkerAdapter],
   ])(
     '%s delegates a poll exclusively to its injected use case',
     async (_name, Worker) => {
@@ -38,7 +39,6 @@ describe('Uber durable worker adapters', () => {
   it.each([
     ['webhook inbox', UberWebhookInboxWorkerAdapter],
     ['order action', UberOrderActionWorkerAdapter],
-    ['menu publish confirmation', UberMenuPublishConfirmationWorkerAdapter],
   ])('%s prevents concurrent claims in one process', async (_name, Worker) => {
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => (release = resolve));
@@ -52,6 +52,56 @@ describe('Uber durable worker adapters', () => {
     await expect(first).resolves.toBe(true);
     await adapter.runOnce();
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('pulls a 30 second fallback poll forward when a wake signal arrives', async () => {
+    jest.useFakeTimers();
+    const execute = jest.fn().mockResolvedValue(0);
+    const adapter = new UberOrderActionWorkerAdapter(
+      { execute } as never,
+      config({ UBER_EATS_WORKER_WAKE_FALLBACK_POLL_INTERVAL_MS: '30000' }),
+    );
+
+    adapter.onModuleInit();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    expect(adapter.wake()).toBe(true);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    await adapter.onModuleDestroy();
+  });
+
+  it('coalesces a wake received while a claim is already in flight', async () => {
+    jest.useFakeTimers();
+    let release!: (value: number) => void;
+    const execute = jest
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<number>((resolve) => (release = resolve)),
+      )
+      .mockResolvedValue(0);
+    const adapter = new UberWebhookInboxWorkerAdapter(
+      { execute } as never,
+      config({ UBER_EATS_WORKER_WAKE_FALLBACK_POLL_INTERVAL_MS: '30000' }),
+    );
+
+    adapter.onModuleInit();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    expect(adapter.wake()).toBe(true);
+    release(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    await adapter.onModuleDestroy();
   });
 
   it('requeues on the next poll after an interrupted/error poll', async () => {

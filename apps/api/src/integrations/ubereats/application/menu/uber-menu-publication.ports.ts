@@ -83,10 +83,6 @@ export type UberMenuPublicationAttempt = {
   uberResourceId: string | null;
 };
 
-export type UberMenuPublicationLease = UberMenuPublicationAttempt & {
-  leaseToken: string;
-};
-
 export type UberPublishedMenuItemSnapshot = {
   uberItemId: string;
   menuItemStableId: string;
@@ -128,10 +124,6 @@ export interface UberMenuPublicationRepositoryPort {
     totalItems: number;
     publishedItems: UberPublishedMenuItemSnapshot[];
   }): Promise<UberMenuPublicationAttempt>;
-  markSubmitted(
-    attemptId: string,
-    input: { uberRequestId: string | null; uberResourceId: string | null },
-  ): Promise<boolean>;
   markFailed(
     attemptId: string,
     input: {
@@ -141,35 +133,6 @@ export interface UberMenuPublicationRepositoryPort {
       upstreamStatus: number | null;
       upstreamDetail: string | null;
     },
-  ): Promise<boolean>;
-  claimDueConfirmations(
-    limit: number,
-    lease: { owner: string; durationMs: number; now: Date },
-  ): Promise<UberMenuPublicationLease[]>;
-  markConfirmed(
-    attemptId: string,
-    leaseToken: string,
-    input: {
-      status: 'SUCCEEDED' | 'FAILED';
-      uberRequestId: string | null;
-      uberResourceId: string | null;
-      errorCode: string | null;
-      errorMessage: string | null;
-    },
-  ): Promise<boolean>;
-  rescheduleConfirmation(
-    attemptId: string,
-    leaseToken: string,
-    nextConfirmationAt: Date,
-  ): Promise<boolean>;
-  claimTimedOutConfirmations(
-    cutoff: Date,
-    limit: number,
-    lease: { owner: string; durationMs: number; now: Date },
-  ): Promise<UberMenuPublicationLease[]>;
-  markConfirmationTimedOut(
-    attemptId: string,
-    leaseToken: string,
   ): Promise<boolean>;
 }
 

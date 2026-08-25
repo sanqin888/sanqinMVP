@@ -3,6 +3,7 @@ import type { ImportUberOrderUseCase } from '../application/orders/uber-order.us
 import { ReceiveUberWebhookUseCase } from '../application/orders/uber-webhook-receiver.use-case';
 import type { UberWebhookInboxPort } from '../application/orders/uber-order-processing.ports';
 import type { UberCryptoConfigService } from '../infrastructure/crypto/uber-crypto-config.service';
+import type { UberWorkerWakePort } from '../application/shared/uber-worker-wake.port';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
 
 type WebhookInboxTestPrisma = {
@@ -16,6 +17,7 @@ export function createReceiveUberWebhookUseCase(
   config: UberCryptoConfigService,
   orders: ImportUberOrderUseCase,
   menu?: PublishUberMenuUseCase,
+  workerWake: UberWorkerWakePort = { signal: () => undefined },
 ) {
   void orders;
   void menu;
@@ -37,5 +39,6 @@ export function createReceiveUberWebhookUseCase(
     inbox,
     new HmacUberWebhookSignatureVerifier(config),
     { captureEvent: () => Promise.resolve(), workflowLog: () => undefined },
+    workerWake,
   );
 }

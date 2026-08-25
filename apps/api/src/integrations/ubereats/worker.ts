@@ -1,18 +1,18 @@
 import type { Provider } from '@nestjs/common';
 import { createUberEatsWorkerRuntimeModule } from './ubereats.module';
 import {
-  UberMenuPublishConfirmationWorkerAdapter,
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
 import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
+import { UberWorkerWakeService } from './infrastructure/workers/uber-worker-wake.service';
 
 /** Worker runtime declarations consumed only through this dedicated entry. */
 export const UBER_EATS_WORKER_PROVIDERS: Provider[] = [
   UberWebhookInboxWorkerAdapter,
   UberOrderActionWorkerAdapter,
-  UberMenuPublishConfirmationWorkerAdapter,
   UberWorkerHealthService,
+  UberWorkerWakeService,
 ];
 
 /**
@@ -22,5 +22,5 @@ export const UBER_EATS_WORKER_PROVIDERS: Provider[] = [
 export const UBER_EATS_WORKER_RUNTIME_MODULE =
   createUberEatsWorkerRuntimeModule(UBER_EATS_WORKER_PROVIDERS);
 
-/** Stable health-check contract for worker process hosts. */
-export { UberWorkerHealthService };
+/** Stable process-host contracts for worker health and wake signaling. */
+export { UberWorkerHealthService, UberWorkerWakeService };

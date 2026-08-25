@@ -54,6 +54,7 @@ const createActions = (enqueue: EnqueueMock) =>
   new UberOrderActionService(
     { enqueue } as unknown as UberOrderActionRepositoryPort,
     {} as UberOrderActionGatewayPort,
+    { signal: () => undefined },
   );
 
 describe('Uber order admission flow', () => {

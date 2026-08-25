@@ -66,10 +66,7 @@ describe('PublishUberMenuUseCase', () => {
         uberRequestId: null,
         uberResourceId: null,
       }),
-      markSubmitted: jest.fn().mockResolvedValue(true),
       markFailed: jest.fn().mockResolvedValue(true),
-      claimDueConfirmations: jest.fn(),
-      markConfirmed: jest.fn(),
     };
     const gateway = {
       uploadMenu: jest.fn().mockResolvedValue(undefined),
@@ -341,7 +338,6 @@ describe('PublishUberMenuUseCase', () => {
       'attempt-1',
       { status_code: 204 },
     );
-    expect(x.publications.markSubmitted).not.toHaveBeenCalled();
   });
 
   it('将网络上传失败标为可重试', async () => {

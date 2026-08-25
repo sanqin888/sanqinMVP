@@ -22,8 +22,6 @@ type PublishVersionUpdateInput = {
     errorMessage: null;
     errorDetails: unknown;
     finishedAt: null;
-    confirmationLeaseToken: null;
-    confirmationLeaseExpiresAt: null;
     [key: string]: unknown;
   };
 };
@@ -158,8 +156,6 @@ describe('UberMenuPublicationPrismaAdapter', () => {
       status: 'SUBMITTED',
       errorMessage: null,
       finishedAt: null,
-      confirmationLeaseToken: null,
-      confirmationLeaseExpiresAt: null,
     });
     expect(updateInput?.data.responsePayload).toBeDefined();
     expect(updateInput?.data.errorDetails).toBeDefined();

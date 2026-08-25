@@ -9,6 +9,7 @@ import {
   type UberOrderActionTask,
   type UberOrderDenial,
 } from './uber-order.ports';
+import type { UberWorkerWakePort } from '../shared/uber-worker-wake.port';
 
 const SCHEDULED_FINALIZE_PHASE = 'scheduled-finalize';
 
@@ -16,26 +17,37 @@ export class UberOrderActionService {
   constructor(
     private readonly repository: UberOrderActionRepositoryPort,
     private readonly gateway: UberOrderActionGatewayPort,
+    private readonly workerWake: UberWorkerWakePort,
   ) {}
 
-  request(
+  async request(
     externalOrderId: string,
     action: UberOrderActionName,
     denial?: UberOrderDenial,
   ) {
-    return this.repository.enqueue(
+    const queued = await this.repository.enqueue(
       this.buildIntent({ externalOrderId, action, denial }),
     );
+    this.notifyPersistedAction(queued);
+    return queued;
   }
 
-  requestScheduledFinalizeAccept(externalOrderId: string) {
-    return this.repository.requeue(
+  async requestScheduledFinalizeAccept(externalOrderId: string) {
+    const queued = await this.repository.requeue(
       this.buildIntent({
         externalOrderId,
         action: 'ACCEPT',
         phase: SCHEDULED_FINALIZE_PHASE,
       }),
     );
+    this.notifyPersistedAction(queued);
+    return queued;
+  }
+
+  notifyPersistedAction(
+    action: { taskId: string; created: boolean } | null,
+  ): void {
+    if (action) this.workerWake.signal('orderAction');
   }
 
   buildIntent<TAction extends UberOrderActionName>(input: {

@@ -2,6 +2,10 @@ import {
   type UberTelemetryPort,
   UBER_TELEMETRY_PORT,
 } from '../../application/shared/uber-telemetry.port';
+import {
+  type UberWorkerWakePort,
+  UBER_WORKER_WAKE_PORT,
+} from '../../application/shared/uber-worker-wake.port';
 import type { Provider } from '@nestjs/common';
 import { ReceiveUberWebhookUseCase } from '../../application/orders/uber-webhook-receiver.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../../application/orders/process-uber-webhook-inbox.use-case';
@@ -99,12 +103,20 @@ export function createOrdersWiring(): Provider[] {
         UBER_WEBHOOK_INBOX_PORT,
         UBER_WEBHOOK_SIGNATURE_VERIFIER,
         UBER_TELEMETRY_PORT,
+        UBER_WORKER_WAKE_PORT,
       ],
       useFactory: (
         inbox: UberWebhookInboxPort,
         signatures: UberWebhookSignatureVerifier,
         telemetry: UberTelemetryPort,
-      ) => new ReceiveUberWebhookUseCase(inbox, signatures, telemetry),
+        workerWake: UberWorkerWakePort,
+      ) =>
+        new ReceiveUberWebhookUseCase(
+          inbox,
+          signatures,
+          telemetry,
+          workerWake,
+        ),
     },
     {
       provide: ReplayUnsupportedUberWebhooksUseCase,
@@ -114,11 +126,16 @@ export function createOrdersWiring(): Provider[] {
     },
     {
       provide: UberOrderActionService,
-      inject: [UBER_ORDER_ACTION_REPOSITORY, UBER_ORDER_ACTION_GATEWAY],
+      inject: [
+        UBER_ORDER_ACTION_REPOSITORY,
+        UBER_ORDER_ACTION_GATEWAY,
+        UBER_WORKER_WAKE_PORT,
+      ],
       useFactory: (
         repository: UberOrderActionRepositoryPort,
         gateway: UberOrderActionGatewayPort,
-      ) => new UberOrderActionService(repository, gateway),
+        workerWake: UberWorkerWakePort,
+      ) => new UberOrderActionService(repository, gateway, workerWake),
     },
     {
       provide: UberOrderStatusSyncService,

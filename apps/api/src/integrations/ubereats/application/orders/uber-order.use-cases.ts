@@ -162,7 +162,7 @@ export class ImportUberOrderUseCase {
       return;
     }
 
-    await this.repository.saveImportedOrder({
+    const imported = await this.repository.saveImportedOrder({
       order,
       posStoreId: admission.posStoreId,
       eventType: normalizedEventType,
@@ -176,6 +176,7 @@ export class ImportUberOrderUseCase {
       ),
       receivedAt: new Date(),
     });
+    if (imported?.action) this.actions.notifyPersistedAction(imported.action);
   }
 
   processWebhookEvent(

@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-export type UberWorkerKind =
-  | 'webhookInbox'
-  | 'orderAction'
-  | 'menuConfirmation';
+export type UberWorkerKind = 'webhookInbox' | 'orderAction';
 
 export interface UberWorkerPolicy {
   readonly concurrency: number;
@@ -15,7 +12,9 @@ export interface UberWorkerPolicy {
 @Injectable()
 export class UberWorkerConfigService {
   readonly workerEnabled: boolean;
-  readonly workerPollIntervalMs: number;
+  readonly workerWakeFallbackPollIntervalMs: number;
+  readonly workerWakeBaseUrl: string | null;
+  readonly workerWakeTimeoutMs: number;
   readonly workerBatchSize: number;
   readonly workerLeaseDurationMs: number;
   readonly workerShutdownTimeoutMs: number;
@@ -26,12 +25,23 @@ export class UberWorkerConfigService {
     this.workerEnabled = /^(1|true|yes)$/i.test(
       this.read(env, 'UBER_EATS_WORKER_ENABLED'),
     );
-    this.workerPollIntervalMs = this.milliseconds(
+    this.workerWakeFallbackPollIntervalMs = this.milliseconds(
       env,
-      'UBER_EATS_WORKER_POLL_INTERVAL_MS',
-      15_000,
+      'UBER_EATS_WORKER_WAKE_FALLBACK_POLL_INTERVAL_MS',
+      30_000,
       10,
       3_600_000,
+    );
+    this.workerWakeBaseUrl = this.optionalHttpUrl(
+      env,
+      'UBER_EATS_WORKER_WAKE_URL',
+    );
+    this.workerWakeTimeoutMs = this.milliseconds(
+      env,
+      'UBER_EATS_WORKER_WAKE_TIMEOUT_MS',
+      500,
+      50,
+      10_000,
     );
     this.workerBatchSize = this.integer(
       env,
@@ -64,7 +74,6 @@ export class UberWorkerConfigService {
     this.workerPolicies = Object.freeze({
       webhookInbox: this.policy(env, 'WEBHOOK_INBOX'),
       orderAction: this.policy(env, 'ORDER_ACTION'),
-      menuConfirmation: this.policy(env, 'MENU_CONFIRMATION'),
     });
     this.validateLeaseBudget(env);
   }
@@ -139,6 +148,28 @@ export class UberWorkerConfigService {
   private read(env: Record<string, string | undefined>, key: string): string {
     return env[key]?.trim() || '';
   }
+
+  private optionalHttpUrl(
+    env: Record<string, string | undefined>,
+    key: string,
+  ): string | null {
+    const raw = this.read(env, key);
+    if (!raw) return null;
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw new Error(`Uber 配置 ${key} 必须是有效 URL`);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`Uber 配置 ${key} 只允许 http/https URL`);
+    }
+    parsed.search = '';
+    parsed.hash = '';
+    parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+    return parsed.toString().replace(/\/$/, '');
+  }
+
   private milliseconds(
     env: Record<string, string | undefined>,
     key: string,

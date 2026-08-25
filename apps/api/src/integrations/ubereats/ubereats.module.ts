@@ -10,9 +10,6 @@ import { UberEatsOAuthController } from './api/oauth.controller';
 import { UberEatsOperationsController } from './api/operations.controller';
 import { UberEatsOrdersController } from './api/orders.controller';
 import { UberEatsWebhookController } from './api/webhook.controller';
-import { ConfirmUberMenuPublicationUseCase } from './application/menu/confirm-uber-menu-publication.use-case';
-import { ConfirmUberMenuPublicationsUseCase } from './application/menu/confirm-uber-menu-publications.use-case';
-import { RecoverTimedOutMenuPublicationsUseCase } from './application/menu/recover-timed-out-menu-publications.use-case';
 import { ClaimAndExecuteUberOrderActionsUseCase } from './application/orders/claim-and-execute-uber-order-actions.use-case';
 import { ClaimAndProcessUberWebhookInboxUseCase } from './application/orders/claim-and-process-uber-webhook-inbox.use-case';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
@@ -56,17 +53,6 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
     inject: [ExecuteUberOrderActionWorker],
     useFactory: (actions: ExecuteUberOrderActionWorker) =>
       new ClaimAndExecuteUberOrderActionsUseCase(actions),
-  },
-  {
-    provide: ConfirmUberMenuPublicationsUseCase,
-    inject: [
-      ConfirmUberMenuPublicationUseCase,
-      RecoverTimedOutMenuPublicationsUseCase,
-    ],
-    useFactory: (
-      confirmations: ConfirmUberMenuPublicationUseCase,
-      recovery: RecoverTimedOutMenuPublicationsUseCase,
-    ) => new ConfirmUberMenuPublicationsUseCase(confirmations, recovery),
   },
 ];
 
@@ -117,7 +103,6 @@ export function createUberEatsWorkerRuntimeModule(
     UBER_EATS_STORE_STATUS_SYNC,
     ClaimAndProcessUberWebhookInboxUseCase,
     ClaimAndExecuteUberOrderActionsUseCase,
-    ConfirmUberMenuPublicationsUseCase,
     UberWorkerConfigService,
   ],
 })

@@ -13,6 +13,8 @@ import {
 import { UberCryptoConfigService } from '../../infrastructure/crypto/uber-crypto-config.service';
 import { UberApiConfigService } from '../../infrastructure/uber-api/uber-api-config.service';
 import { UberWorkerConfigService } from '../../infrastructure/workers/uber-worker-config.service';
+import { UberWorkerWakeHttpAdapter } from '../../infrastructure/workers/uber-worker-wake-http.adapter';
+import { UBER_WORKER_WAKE_PORT } from '../../application/shared/uber-worker-wake.port';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 import {
   HmacUberWebhookSignatureVerifier,
@@ -44,6 +46,11 @@ export function createCommonWiring(): Provider[] {
       provide: UberWorkerConfigService,
       inject: [UBER_EATS_STARTUP_CONFIG],
       useFactory: () => new UberWorkerConfigService(process.env),
+    },
+    UberWorkerWakeHttpAdapter,
+    {
+      provide: UBER_WORKER_WAKE_PORT,
+      useExisting: UberWorkerWakeHttpAdapter,
     },
     BrowserWriteCsrfGuard,
     {
