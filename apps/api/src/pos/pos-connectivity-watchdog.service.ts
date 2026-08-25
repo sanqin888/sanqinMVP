@@ -20,6 +20,7 @@ import {
   type UberEatsStoreStatusSyncPort,
 } from '../integrations/ubereats/public-api';
 import { StoreStatusService } from '../store/store-status.service';
+import { PosStoreStatusService } from './pos-store-status.service';
 
 type RuntimeState = {
   phase: 'ONLINE' | 'OFFLINE' | 'RECOVERING';
@@ -58,6 +59,7 @@ export class PosConnectivityWatchdogService
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uber: UberEatsStoreStatusSyncPort,
     private readonly storeStatus: StoreStatusService,
+    private readonly posStoreStatus: PosStoreStatusService,
   ) {}
 
   onModuleInit(): void {
@@ -98,6 +100,8 @@ export class PosConnectivityWatchdogService
   private async poll(): Promise<void> {
     const now = Date.now();
     const storeId = resolveConfiguredStoreId();
+
+    await this.posStoreStatus.reconcileExpiredPause();
     const schedule = await this.storeStatus.getCurrentStatus();
     if (!schedule.isOpenBySchedule) {
       this.scheduleOpen = false;

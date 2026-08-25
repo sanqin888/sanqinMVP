@@ -18,9 +18,9 @@ export class RequestIdInterceptor implements NestInterceptor {
   private readonly quietPaths = [
     '/api/v1/pos/orders/board',
     '/api/v1/public/store-status',
-    '/api/v1/pos/store-status',
     '/api/v1/pos/devices/heartbeat',
   ];
+  private readonly quietGetPaths = ['/api/v1/pos/store-status'];
   private readonly debugPaths = [
     '/api/v1/auth/me',
     '/api/v1/menu/public',
@@ -74,9 +74,9 @@ export class RequestIdInterceptor implements NestInterceptor {
     const requestPath = request.originalUrl ?? url;
     const safeUrl = sanitizeUrlForLog(url);
     const requestPathWithoutQuery = requestPath.split('?')[0];
-    const shouldSkipInfoLog = this.quietPaths.some((path) =>
-      requestPathWithoutQuery.startsWith(path),
-    );
+    const shouldSkipInfoLog =
+      this.quietPaths.some((path) => requestPathWithoutQuery.startsWith(path)) ||
+      (method === 'GET' && this.quietGetPaths.includes(requestPathWithoutQuery));
     const isScheduledOrdersPoll =
       method === 'GET' &&
       requestPathWithoutQuery === this.scheduledOrdersPollingPath;
