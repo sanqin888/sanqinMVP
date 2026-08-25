@@ -117,13 +117,9 @@ export class StoreStatusService {
       if (parsedAutoPause) {
         const resumeAt = DateTime.fromISO(parsedAutoPause.autoResumeAt);
         if (resumeAt.isValid && resumeAt <= nowZ) {
-          await this.prisma.businessConfig.update({
-            where: { id: 1 },
-            data: {
-              isTemporarilyClosed: false,
-              temporaryCloseReason: null,
-            },
-          });
+          // 到期恢复的持久化、POS 广播和 Uber 同步统一由
+          // PosStoreStatusService.reconcileExpiredPause() 负责。
+          // 这里只计算“当前有效状态”，避免读接口抢先清库导致漏同步。
           isTemporarilyClosed = false;
           temporaryCloseReason = null;
         } else {

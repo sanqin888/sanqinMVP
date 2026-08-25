@@ -1,5 +1,6 @@
 import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.service';
 import { PosStoreStatusService } from './pos-store-status.service';
+import { StoreStatusService } from '../store/store-status.service';
 
 const heartbeatMeta = { connectivityHeartbeatV1: true };
 const NOW = Date.parse('2026-08-25T12:00:00.000Z');
@@ -68,13 +69,30 @@ describe('PosConnectivityWatchdogService', () => {
     const storeStatus = {
       getCurrentStatus: jest.fn().mockResolvedValue(schedule),
     };
+    const posStoreStatus = {
+      reconcileExpiredPause: jest.fn().mockResolvedValue(false),
+    };
     const service = new PosConnectivityWatchdogService(
       prisma as never,
       uber as never,
       storeStatus as never,
+      posStoreStatus as never,
     );
-    return { service, prisma, uber, storeStatus };
+    return { service, prisma, uber, storeStatus, posStoreStatus };
   }
+
+  it('reconciles an expired employee pause before evaluating store schedule', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { service, storeStatus, posStoreStatus } = setup(new Date(NOW));
+
+    await service.runOnce();
+
+    expect(posStoreStatus.reconcileExpiredPause).toHaveBeenCalledTimes(1);
+    expect(storeStatus.getCurrentStatus).toHaveBeenCalledTimes(1);
+    expect(
+      posStoreStatus.reconcileExpiredPause.mock.invocationCallOrder[0],
+    ).toBeLessThan(storeStatus.getCurrentStatus.mock.invocationCallOrder[0]);
+  });
 
   it('does not check connectivity while the store is closed by schedule', async () => {
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
@@ -188,6 +206,7 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
                 isTemporarilyClosed: data.isTemporarilyClosed,
               }),
           ),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn(),
       },
     };
@@ -260,5 +279,103 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       },
     });
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+  });
+
+  it('atomically auto-resumes an expired pause and propagates the open state', async () => {
+    const { service, prisma, posGateway, uber } = setup();
+    const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
+    prisma.businessConfig.findUnique.mockResolvedValue({
+      id: 1,
+      timezone: 'America/Toronto',
+      isTemporarilyClosed: true,
+      temporaryCloseReason: pauseReason,
+    });
+
+    await expect(service.reconcileExpiredPause()).resolves.toBe(true);
+
+    expect(prisma.businessConfig.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 1,
+        isTemporarilyClosed: true,
+        temporaryCloseReason: pauseReason,
+      },
+      data: {
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      },
+    });
+    expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith(
+      {
+        isTemporarilyClosed: false,
+        autoResumeAt: null,
+      },
+    );
+    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not clear or propagate when the pause changed during expiry reconciliation', async () => {
+    const { service, prisma, posGateway, uber } = setup();
+    prisma.businessConfig.findUnique.mockResolvedValue({
+      id: 1,
+      timezone: 'America/Toronto',
+      isTemporarilyClosed: true,
+      temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|',
+    });
+    prisma.businessConfig.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.reconcileExpiredPause()).resolves.toBe(false);
+
+    expect(
+      posGateway.publishCustomerOrderingStatusUpdate,
+    ).not.toHaveBeenCalled();
+    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
+  });
+});
+
+describe('StoreStatusService temporary pause expiry', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-25T14:00:00.000Z')); // 10:00 Toronto
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('treats an expired timed pause as open without mutating BusinessConfig', async () => {
+    const prisma = {
+      businessConfig: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 1,
+          timezone: 'America/Toronto',
+          isTemporarilyClosed: true,
+          temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
+          publicNotice: null,
+          publicNoticeEn: null,
+        }),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+      holiday: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      businessHour: {
+        findUnique: jest.fn().mockResolvedValue({
+          isClosed: false,
+          openMinutes: 8 * 60,
+          closeMinutes: 22 * 60,
+        }),
+      },
+    };
+    const service = new StoreStatusService(prisma as never);
+
+    await expect(service.getCurrentStatus()).resolves.toMatchObject({
+      isOpenBySchedule: true,
+      isTemporarilyClosed: false,
+      temporaryCloseReason: null,
+      isOpen: true,
+    });
+    expect(prisma.businessConfig.update).not.toHaveBeenCalled();
   });
 });
