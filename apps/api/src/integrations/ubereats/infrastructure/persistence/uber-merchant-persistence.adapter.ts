@@ -341,6 +341,60 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
     retryable: boolean,
     payload: Record<string, string>,
   ) {
+    const description = redactUberLogText(error).slice(0, 500);
+    const targetStatus = payload.status === 'OFFLINE' ? 'PAUSED' : 'ONLINE';
+    const context = {
+      uberStoreId,
+      targetStatus,
+      ...(payload.reason ? { reason: payload.reason } : {}),
+      ...(payload.is_offline_until
+        ? { pauseUntil: payload.is_offline_until }
+        : {}),
+      outcome: 'FAILED',
+      failureReason: reason,
+      retryable,
+    };
+    const existing = await this.prisma.uberOpsTicket.findFirst({
+      where: {
+        storeId: uberStoreId,
+        type: UberOpsTicketType.STORE_STATUS_SYNC,
+        status: {
+          in: [UberOpsTicketStatus.OPEN, UberOpsTicketStatus.IN_PROGRESS],
+        },
+        OR: [
+          {
+            context: {
+              path: ['targetStatus'],
+              equals: targetStatus,
+            },
+          },
+          ...(targetStatus === payload.status
+            ? []
+            : [
+                {
+                  context: {
+                    path: ['targetStatus'],
+                    equals: payload.status,
+                  },
+                },
+              ]),
+        ],
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (existing) {
+      await this.prisma.uberOpsTicket.update({
+        where: { id: existing.id },
+        data: {
+          priority: UberOpsTicketPriority.HIGH,
+          description,
+          context,
+        },
+      });
+      return;
+    }
+
     await this.prisma.uberOpsTicket.create({
       data: {
         storeId: uberStoreId,
@@ -348,14 +402,8 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,
         title: 'Uber 门店状态同步需要运营处理',
-        description: redactUberLogText(error).slice(0, 500),
-        context: {
-          uberStoreId,
-          targetStatus: payload.status,
-          outcome: 'FAILED',
-          reason,
-          retryable,
-        },
+        description,
+        context,
       },
     });
   }
