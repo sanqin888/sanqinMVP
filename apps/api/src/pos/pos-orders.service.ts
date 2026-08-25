@@ -227,7 +227,8 @@ export class PosOrdersService {
 
   async cancelUberOrder(
     orderStableId: string,
-    reason?: string,
+    reasonCode: string,
+    reasonDetail?: string,
   ): Promise<PosOrderAdvanceResult> {
     const order = await this.orders.getByStableId(orderStableId);
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
@@ -237,7 +238,15 @@ export class PosOrdersService {
     if (!['paid', 'making'].includes(order.status)) {
       throw new BadRequestException('当前 Uber 订单状态不允许取消');
     }
-    const result = await this.uberOrderActions.cancel(externalOrderId, reason);
+    const normalizedReasonCode = reasonCode.trim();
+    if (!normalizedReasonCode) {
+      throw new BadRequestException('取消原因不能为空');
+    }
+    const result = await this.uberOrderActions.cancel(
+      externalOrderId,
+      normalizedReasonCode,
+      reasonDetail?.trim() || undefined,
+    );
     return this.advanceResult(order, result);
   }
 

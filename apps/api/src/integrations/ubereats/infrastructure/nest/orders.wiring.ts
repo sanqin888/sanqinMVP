@@ -185,8 +185,8 @@ export function createOrdersWiring(): Provider[] {
           presentOrderAction(await actions.accept(id)),
         deny: async (id: string, reasonCode: string, reasonDetail?: string) =>
           presentOrderAction(await actions.deny(id, reasonCode, reasonDetail)),
-        cancel: async (id: string, reason?: string) =>
-          presentOrderAction(await actions.cancel(id, reason)),
+        cancel: async (id: string, reasonCode: string, reasonDetail?: string) =>
+          presentOrderAction(await actions.cancel(id, reasonCode, reasonDetail)),
         retryReadyForPickup: async (id: string) =>
           presentOrderAction(await actions.retryReadyForPickup(id)),
         getReadyForPickupAction: async (id: string) =>

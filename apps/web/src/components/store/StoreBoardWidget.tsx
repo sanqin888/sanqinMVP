@@ -377,78 +377,185 @@ function historyItemName(
     : en || display || zh || item.productStableId;
 }
 
-const UBER_DENY_REASONS = [
-  { code: "ITEM_ISSUE", zh: "商品 / 选项问题", en: "Item / option issue" },
-  { code: "STORE_CLOSED", zh: "门店已关闭", en: "Store closed" },
-  { code: "CAPACITY", zh: "门店繁忙 / 无法接单", en: "Store capacity" },
+type UberOrderActionDialogMode = "DENY" | "CANCEL";
+
+type UberOrderActionReason = {
+  code: string;
+  denyZh: string;
+  denyEn: string;
+  cancelZh: string;
+  cancelEn: string;
+};
+
+const UBER_ORDER_ACTION_REASONS: readonly UberOrderActionReason[] = [
+  {
+    code: "ITEM_ISSUE",
+    denyZh: "商品 / 选项问题",
+    denyEn: "Item / option issue",
+    cancelZh: "商品售罄 / 关键选项不可用",
+    cancelEn: "Item sold out / required option unavailable",
+  },
+  {
+    code: "CAPACITY",
+    denyZh: "门店繁忙 / 无法接单",
+    denyEn: "Store capacity",
+    cancelZh: "门店繁忙 / 无法继续制作",
+    cancelEn: "Store too busy to continue",
+  },
+  {
+    code: "STORE_CLOSED",
+    denyZh: "门店已关闭",
+    denyEn: "Store closed",
+    cancelZh: "门店临时关闭",
+    cancelEn: "Store temporarily closed",
+  },
   {
     code: "SPECIAL_INSTRUCTIONS",
-    zh: "特殊要求 / 过敏原无法处理",
-    en: "Special instructions / allergen request",
+    denyZh: "特殊要求 / 过敏原无法处理",
+    denyEn: "Special instructions / allergen request",
+    cancelZh: "特殊要求 / 过敏原无法完成",
+    cancelEn: "Special instructions / allergen request cannot be fulfilled",
   },
-  { code: "POS_OFFLINE", zh: "POS 无法处理", en: "POS unavailable" },
-  { code: "TECHNICAL_FAILURE", zh: "技术故障", en: "Technical failure" },
-  { code: "OTHER", zh: "其他", en: "Other" },
+  {
+    code: "POS_OFFLINE",
+    denyZh: "POS 离线 / 无法处理",
+    denyEn: "POS offline / unavailable",
+    cancelZh: "POS 离线 / 无法继续处理",
+    cancelEn: "POS offline / cannot continue",
+  },
+  {
+    code: "TECHNICAL_FAILURE",
+    denyZh: "系统 / 设备故障",
+    denyEn: "System / device failure",
+    cancelZh: "系统 / 设备故障",
+    cancelEn: "System / device failure",
+  },
+  {
+    code: "OTHER",
+    denyZh: "其他原因",
+    denyEn: "Other reason",
+    cancelZh: "其他原因",
+    cancelEn: "Other reason",
+  },
 ] as const;
 
-function UberDenyDialog(props: {
+function UberOrderActionDialog(props: {
   orderStableId: string | null;
+  action: UberOrderActionDialogMode | null;
   locale: Locale;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onSubmit: (reasonCode: string, reasonDetail?: string) => void | Promise<void>;
 }) {
-  const { orderStableId, locale, busy, onClose, onSubmit } = props;
+  const { orderStableId, action, locale, busy, error, onClose, onSubmit } = props;
   const isZh = locale === "zh";
   const [reasonCode, setReasonCode] = useState("ITEM_ISSUE");
   const [reasonDetail, setReasonDetail] = useState("");
 
   useEffect(() => {
-    if (!orderStableId) return;
+    if (!orderStableId || !action) return;
     setReasonCode("ITEM_ISSUE");
     setReasonDetail("");
-  }, [orderStableId]);
+  }, [action, orderStableId]);
 
-  if (!orderStableId) return null;
+  if (!orderStableId || !action) return null;
+
+  const isDeny = action === "DENY";
+  const otherReasonSelected = reasonCode === "OTHER";
+  const canSubmit = !busy && (!otherReasonSelected || reasonDetail.trim().length > 0);
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-3xl border border-rose-500/40 bg-slate-900 p-5 text-slate-100 shadow-2xl">
+    <div
+      className="pointer-events-auto fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4"
+      onMouseDown={(event) => {
+        if (!busy && event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-lg rounded-3xl border border-rose-500/40 bg-slate-900 p-5 text-slate-100 shadow-2xl">
         <h3 className="text-lg font-bold text-rose-200">
-          {isZh ? "拒绝 Uber 订单" : "Deny Uber order"}
+          {isDeny
+            ? isZh
+              ? "拒绝 Uber 订单"
+              : "Deny Uber order"
+            : isZh
+              ? "取消 Uber 订单"
+              : "Cancel Uber order"}
         </h3>
         <p className="mt-1 text-sm text-slate-400">
-          {isZh
-            ? "选择拒单原因。提交后会向 Uber 发送 DENY，不能再接单。"
-            : "Choose a denial reason. This sends DENY to Uber and cannot be accepted afterward."}
+          {isDeny
+            ? isZh
+              ? "请选择拒单原因。提交后会向 Uber 发送 DENY，不能再接单。"
+              : "Choose a denial reason. This sends DENY to Uber and cannot be accepted afterward."
+            : isZh
+              ? "该订单已经接受。请选择取消原因，确认后会向 Uber 提交 CANCEL。"
+              : "This order has already been accepted. Choose a reason before sending CANCEL to Uber."}
         </p>
-        <label className="mt-4 block text-sm">
-          <span className="text-slate-300">{isZh ? "拒单原因" : "Reason"}</span>
-          <select
-            value={reasonCode}
-            onChange={(event) => setReasonCode(event.target.value)}
-            disabled={busy}
-            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
-          >
-            {UBER_DENY_REASONS.map((reason) => (
-              <option key={reason.code} value={reason.code}>
-                {isZh ? reason.zh : reason.en}
-              </option>
-            ))}
-          </select>
-        </label>
+
+        <div className="mt-4">
+          <div className="text-sm text-slate-300">{isZh ? "原因" : "Reason"}</div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {UBER_ORDER_ACTION_REASONS.map((reason) => {
+              const selected = reasonCode === reason.code;
+              const label = isDeny
+                ? isZh
+                  ? reason.denyZh
+                  : reason.denyEn
+                : isZh
+                  ? reason.cancelZh
+                  : reason.cancelEn;
+              return (
+                <button
+                  key={reason.code}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setReasonCode(reason.code)}
+                  className={[
+                    "min-h-12 rounded-2xl border px-3 py-2 text-left text-sm transition disabled:opacity-50",
+                    selected
+                      ? "border-rose-400/80 bg-rose-500/20 text-rose-50"
+                      : "border-slate-700 bg-slate-950/60 text-slate-200 hover:border-slate-500",
+                  ].join(" ")}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <label className="mt-4 block text-sm">
           <span className="text-slate-300">
-            {isZh ? "补充说明（可选）" : "Details (optional)"}
+            {otherReasonSelected
+              ? isZh
+                ? "其他原因（必填）"
+                : "Other reason (required)"
+              : isZh
+                ? "补充说明（可选）"
+                : "Details (optional)"}
           </span>
           <textarea
             value={reasonDetail}
             onChange={(event) => setReasonDetail(event.target.value)}
             disabled={busy}
             rows={3}
-            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100"
+            placeholder={
+              otherReasonSelected
+                ? isZh
+                  ? "请输入具体原因"
+                  : "Enter the reason"
+                : undefined
+            }
+            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 focus:border-rose-400 focus:outline-none disabled:opacity-50"
           />
         </label>
+
+        {error && (
+          <div className="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            {error}
+          </div>
+        )}
+
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
@@ -456,17 +563,27 @@ function UberDenyDialog(props: {
             onClick={onClose}
             className="rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-200 disabled:opacity-50"
           >
-            {isZh ? "取消" : "Cancel"}
+            {isZh ? "返回" : "Back"}
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={!canSubmit}
             onClick={() =>
               void onSubmit(reasonCode, reasonDetail.trim() || undefined)
             }
-            className="rounded-xl border border-rose-500/70 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/25 disabled:opacity-50"
+            className="rounded-xl border border-rose-500/70 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? (isZh ? "提交中…" : "Submitting…") : isZh ? "确认拒单" : "Confirm deny"}
+            {busy
+              ? isZh
+                ? "提交中…"
+                : "Submitting…"
+              : isDeny
+                ? isZh
+                  ? "确认拒单"
+                  : "Confirm deny"
+                : isZh
+                  ? "确认取消"
+                  : "Confirm cancel"}
           </button>
         </div>
       </div>
@@ -478,17 +595,18 @@ function OrderDetailModal(props: {
   orderStableId: string | null;
   locale: Locale;
   onClose: () => void;
-  onChanged?: () => void | Promise<void>;
-  onRequestDeny?: (orderStableId: string) => void;
+  onRequestUberAction?: (
+    orderStableId: string,
+    action: UberOrderActionDialogMode,
+  ) => void;
 }) {
-  const { orderStableId, locale, onClose, onChanged, onRequestDeny } = props;
+  const { orderStableId, locale, onClose, onRequestUberAction } = props;
   const isZh = locale === "zh";
   const [order, setOrder] = useState<DetailOrder | null>(null);
   const [actions, setActions] = useState<PosOrderActionCapability[]>([]);
   const [history, setHistory] = useState<PosOrderAmendmentHistory[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [actionBusy, setActionBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -545,59 +663,20 @@ function OrderDetailModal(props: {
     window.location.assign(`/${locale}/store/pos/orders?${params.toString()}`);
   };
 
-  const handleAction = async (capability: PosOrderActionCapability) => {
+  const handleAction = (capability: PosOrderActionCapability) => {
     if (!capability.available || !order) return;
-    if (capability.action === "UBER_DENY") {
-      onRequestDeny?.(order.orderStableId);
+    if (
+      capability.action === "UBER_DENY" ||
+      capability.action === "UBER_CANCEL"
+    ) {
+      onRequestUberAction?.(
+        order.orderStableId,
+        capability.action === "UBER_DENY" ? "DENY" : "CANCEL",
+      );
       onClose();
       return;
     }
-    if (capability.action !== "UBER_CANCEL") {
-      openStoreAction(capability.action);
-      return;
-    }
-
-    const reason = window
-      .prompt(
-        isZh
-          ? "请输入取消原因（必填）"
-          : "Enter cancellation reason (required)",
-      )
-      ?.trim();
-    if (!reason) return;
-    const confirmed = window.confirm(
-      isZh
-        ? `确认向 Uber 提交取消订单 ${title}？`
-        : `Submit cancellation for Uber order ${title}?`,
-    );
-    if (!confirmed) return;
-
-    try {
-      setActionBusy(true);
-      setMessage(null);
-      const result = await cancelUberOrder<DetailOrder>(
-        order.orderStableId,
-        reason,
-      );
-      setMessage(
-        result.uberActionStatus === "FAILED"
-          ? isZh
-            ? "Uber 取消提交失败，请查看同步状态后重试。"
-            : "Uber cancellation failed. Check sync status and retry."
-          : isZh
-            ? "Uber 取消已提交。"
-            : "Uber cancellation submitted.",
-      );
-      await load();
-      await onChanged?.();
-    } catch (error) {
-      console.error("Failed to cancel Uber order:", error);
-      setMessage(
-        isZh ? "Uber 取消失败，请稍后重试。" : "Uber cancellation failed.",
-      );
-    } finally {
-      setActionBusy(false);
-    }
+    openStoreAction(capability.action);
   };
 
   return (
@@ -732,12 +811,12 @@ function OrderDetailModal(props: {
                       <button
                         key={capability.action}
                         type="button"
-                        disabled={!capability.available || actionBusy}
+                        disabled={!capability.available}
                         title={reason ?? undefined}
-                        onClick={() => void handleAction(capability)}
+                        onClick={() => handleAction(capability)}
                         className={[
                           "rounded-2xl border px-4 py-3 text-left transition",
-                          capability.available && !actionBusy
+                          capability.available
                             ? capability.action === "UBER_CANCEL"
                               ? "border-rose-500/60 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20"
                               : "border-slate-600 bg-slate-800/70 text-slate-100 hover:bg-slate-700"
@@ -868,8 +947,16 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState<boolean | null>(null);
   const [autoAcceptBusy, setAutoAcceptBusy] = useState(false);
-  const [denyOrderStableId, setDenyOrderStableId] = useState<string | null>(null);
-  const [denyBusy, setDenyBusy] = useState(false);
+  const [uberActionDialog, setUberActionDialog] = useState<{
+    orderStableId: string;
+    action: UberOrderActionDialogMode;
+  } | null>(null);
+  const [uberActionBusy, setUberActionBusy] = useState(false);
+  const [uberActionError, setUberActionError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    tone: "success" | "error";
+  } | null>(null);
   const [syncingReadyOrders, setSyncingReadyOrders] = useState<
     Record<string, boolean>
   >({});
@@ -898,6 +985,19 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   );
 
   const activeCount = orders.length;
+
+  const showToast = useCallback(
+    (message: string, tone: "success" | "error" = "success") => {
+      setToast({ message, tone });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1046,13 +1146,26 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         (a, b) =>
           safeParseCreatedAtMs(a.createdAt) - safeParseCreatedAtMs(b.createdAt),
       );
+    const currentById = new Map(
+      visibleOrders.map((order) => [order.orderStableId, order] as const),
+    );
     setOrders(visibleOrders);
+    setSelectedOrderStableId((current) =>
+      current && !currentById.has(current) ? null : current,
+    );
+    setUberActionDialog((current) => {
+      if (!current) return current;
+      const order = currentById.get(current.orderStableId);
+      if (!order || order.channel !== "ubereats") return null;
+      const stillAvailable =
+        current.action === "DENY"
+          ? order.status === "pending"
+          : order.status === "paid" || order.status === "making";
+      return stillAvailable ? current : null;
+    });
     setSyncingReadyOrders((prev) => {
       const syncingIds = Object.keys(prev);
       if (syncingIds.length === 0) return prev;
-      const currentById = new Map(
-        visibleOrders.map((order) => [order.orderStableId, order] as const),
-      );
       const next = { ...prev };
       let changed = false;
       for (const sid of syncingIds) {
@@ -1150,26 +1263,90 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     stopAlarmLoop,
   ]);
 
-  const handleDeny = useCallback(
+  const handleUberAction = useCallback(
     async (reasonCode: string, reasonDetail?: string) => {
-      if (!denyOrderStableId || denyBusy) return;
+      if (!uberActionDialog || uberActionBusy) return;
+      const currentAction = uberActionDialog;
       try {
-        setDenyBusy(true);
-        await denyUberOrder(denyOrderStableId, reasonCode, reasonDetail);
-        setDenyOrderStableId(null);
-        await fetchOrdersAndProcess();
+        setUberActionBusy(true);
+        setUberActionError(null);
+        const result =
+          currentAction.action === "DENY"
+            ? await denyUberOrder(
+                currentAction.orderStableId,
+                reasonCode,
+                reasonDetail,
+              )
+            : await cancelUberOrder(
+                currentAction.orderStableId,
+                reasonCode,
+                reasonDetail,
+              );
+        if (result.uberActionStatus === "FAILED") {
+          setUberActionError(
+            currentAction.action === "DENY"
+              ? isZh
+                ? "Uber 拒单提交失败，请确认订单仍处于待接单状态后重试。"
+                : "Uber denial failed. Confirm the order is still pending and retry."
+              : isZh
+                ? "Uber 取消提交失败，请确认同步状态后重试。"
+                : "Uber cancellation failed. Check the sync status and retry.",
+          );
+          return;
+        }
+
+        setUberActionDialog(null);
+        setSelectedOrderStableId(null);
+        showToast(
+          currentAction.action === "DENY"
+            ? result.uberActionStatus === "SUCCEEDED"
+              ? isZh
+                ? "Uber 订单已拒绝。"
+                : "Uber order denied."
+              : isZh
+                ? "Uber 拒单已提交，正在同步。"
+                : "Uber denial submitted and syncing."
+            : result.uberActionStatus === "SUCCEEDED"
+              ? isZh
+                ? "Uber 订单已取消。"
+                : "Uber order cancelled."
+              : isZh
+                ? "Uber 取消已提交，正在同步。"
+                : "Uber cancellation submitted and syncing.",
+        );
+        try {
+          await fetchOrdersAndProcess();
+        } catch (refreshError) {
+          console.error("Failed to refresh POS board after Uber action:", refreshError);
+          showToast(
+            isZh
+              ? "Uber 操作已提交，但订单看板刷新失败，将自动重试。"
+              : "Uber action submitted, but the board refresh failed and will retry automatically.",
+            "error",
+          );
+        }
       } catch (error) {
-        console.error("Failed to deny Uber order:", error);
-        alert(
-          isZh
-            ? "Uber 拒单失败，请确认订单仍处于待接单状态后重试。"
-            : "Failed to deny the Uber order. Confirm it is still pending and retry.",
+        console.error("Failed to submit Uber order action:", error);
+        setUberActionError(
+          currentAction.action === "DENY"
+            ? isZh
+              ? "Uber 拒单失败，请稍后重试。"
+              : "Uber denial failed. Please retry."
+            : isZh
+              ? "Uber 取消失败，请稍后重试。"
+              : "Uber cancellation failed. Please retry.",
         );
       } finally {
-        setDenyBusy(false);
+        setUberActionBusy(false);
       }
     },
-    [denyBusy, denyOrderStableId, fetchOrdersAndProcess, isZh],
+    [
+      fetchOrdersAndProcess,
+      isZh,
+      showToast,
+      uberActionBusy,
+      uberActionDialog,
+    ],
   );
 
   const handleAdvance = useCallback(
@@ -1195,14 +1372,15 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           });
         }
         console.error("Failed to advance order:", error);
-        alert(
+        showToast(
           isZh
             ? "推进订单状态失败，请稍后重试。"
             : "Failed to update order status.",
+          "error",
         );
       }
     },
-    [fetchOrdersAndProcess, isZh],
+    [fetchOrdersAndProcess, isZh, showToast],
   );
 
   useEffect(() => {
@@ -1358,10 +1536,11 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                     setAutoAcceptEnabled(result.enabled);
                   } catch (error) {
                     console.error("Failed to update auto-accept setting:", error);
-                    alert(
+                    showToast(
                       isZh
                         ? "自动接单设置保存失败，请重试。"
                         : "Failed to save auto-accept setting.",
+                      "error",
                     );
                   } finally {
                     setAutoAcceptBusy(false);
@@ -1589,7 +1768,11 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setDenyOrderStableId(sid);
+                            setUberActionError(null);
+                            setUberActionDialog({
+                              orderStableId: sid,
+                              action: "DENY",
+                            });
                           }}
                           className="rounded-md border border-rose-500/70 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20"
                         >
@@ -1628,21 +1811,39 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         </div>
       )}
 
+      {toast && (
+        <div
+          className={[
+            "pointer-events-none fixed right-4 top-4 z-[100] max-w-sm rounded-2xl border px-4 py-3 text-sm font-medium shadow-2xl",
+            toast.tone === "error"
+              ? "border-rose-500/50 bg-rose-950/95 text-rose-100"
+              : "border-emerald-500/50 bg-emerald-950/95 text-emerald-100",
+          ].join(" ")}
+        >
+          {toast.message}
+        </div>
+      )}
       <OrderDetailModal
         orderStableId={selectedOrderStableId}
         locale={locale}
         onClose={() => setSelectedOrderStableId(null)}
-        onChanged={fetchOrdersAndProcess}
-        onRequestDeny={setDenyOrderStableId}
-      />
-      <UberDenyDialog
-        orderStableId={denyOrderStableId}
-        locale={locale}
-        busy={denyBusy}
-        onClose={() => {
-          if (!denyBusy) setDenyOrderStableId(null);
+        onRequestUberAction={(orderStableId, action) => {
+          setUberActionError(null);
+          setUberActionDialog({ orderStableId, action });
         }}
-        onSubmit={handleDeny}
+      />
+      <UberOrderActionDialog
+        orderStableId={uberActionDialog?.orderStableId ?? null}
+        action={uberActionDialog?.action ?? null}
+        locale={locale}
+        busy={uberActionBusy}
+        error={uberActionError}
+        onClose={() => {
+          if (uberActionBusy) return;
+          setUberActionDialog(null);
+          setUberActionError(null);
+        }}
+        onSubmit={handleUberAction}
       />
     </div>
   );
