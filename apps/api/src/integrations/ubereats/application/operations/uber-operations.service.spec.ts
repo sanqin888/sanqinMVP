@@ -2,7 +2,13 @@ import { UberValidationError } from '../shared/uber-application.error';
 import {
   GenerateUberReconciliationReportUseCase,
   QueryUberOperationsSummary,
+  RetryUberOpsTicketUseCase,
 } from './uber-operations.use-cases';
+import {
+  UberOpsTicketPriority,
+  UberOpsTicketStatus,
+  UberOpsTicketType,
+} from './uber-operations.types';
 
 describe('Uber operations application workflows', () => {
   const telemetry = {
@@ -76,5 +82,75 @@ describe('Uber operations application workflows', () => {
     );
     await query.listReports(' store-1 ', 500);
     expect(reports.list).toHaveBeenCalledWith('store-1', 100);
+  });
+
+  it('retries a store pause ticket with the required Uber pause deadline', async () => {
+    const tickets = {
+      find: jest.fn().mockResolvedValue({
+        ticketStableId: 'ticket-1',
+        storeId: 'store-1',
+        type: UberOpsTicketType.STORE_STATUS_SYNC,
+        status: UberOpsTicketStatus.OPEN,
+        priority: UberOpsTicketPriority.HIGH,
+        title: 'Store status sync failed',
+        description: null,
+        externalOrderId: null,
+        menuItemStableId: null,
+        context: {
+          uberStoreId: 'uber-store-1',
+          targetStatus: 'PAUSED',
+          reason: 'POS connectivity lost',
+          pauseUntil: '2026-08-26T03:30:00.000Z',
+          outcome: 'FAILED',
+          failureReason: 'UPSTREAM_REJECTED',
+          retryable: false,
+        },
+        retryCount: 0,
+        lastError: null,
+        createdAt: new Date('2026-08-25T12:00:00.000Z'),
+        updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+        resolvedAt: null,
+      }),
+      markInProgress: jest.fn().mockResolvedValue(undefined),
+      finishRetry: jest.fn().mockResolvedValue({
+        ticketStableId: 'ticket-1',
+        status: UberOpsTicketStatus.RESOLVED,
+        retryCount: 1,
+        lastError: null,
+        resolvedAt: new Date('2026-08-25T12:01:00.000Z'),
+      }),
+    };
+    const unitOfWork = {
+      transaction: jest.fn(
+        async (work: (scope: { tickets: typeof tickets }) => Promise<unknown>) =>
+          work({ tickets }),
+      ),
+    };
+    const storeStatusSync = {
+      syncStoreStatusToUber: jest.fn().mockResolvedValue({
+        outcome: 'SUCCEEDED',
+        synchronizedStores: 1,
+      }),
+    };
+    const retry = new RetryUberOpsTicketUseCase(
+      unitOfWork as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      storeStatusSync as never,
+      telemetry,
+    );
+
+    await expect(retry.execute('ticket-1')).resolves.toMatchObject({
+      ok: true,
+      ticketStableId: 'ticket-1',
+      status: UberOpsTicketStatus.RESOLVED,
+    });
+    expect(storeStatusSync.syncStoreStatusToUber).toHaveBeenCalledWith({
+      uberStoreId: 'uber-store-1',
+      targetStatus: 'PAUSED',
+      reason: 'POS connectivity lost',
+      pauseUntil: '2026-08-26T03:30:00.000Z',
+    });
   });
 });

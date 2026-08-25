@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import {
@@ -96,10 +97,12 @@ export class PosConnectivityWatchdogService
 
   private async poll(): Promise<void> {
     const now = Date.now();
+    const storeId = resolveConfiguredStoreId();
     const schedule = await this.storeStatus.getCurrentStatus();
     if (!schedule.isOpenBySchedule) {
       this.scheduleOpen = false;
       this.openingGraceUntil = 0;
+      this.states.delete(storeId);
       return;
     }
 
@@ -109,11 +112,14 @@ export class PosConnectivityWatchdogService
     }
     if (now < this.openingGraceUntil) return;
 
+    // POS 员工手动暂停有自己明确的恢复时间，并会独立同步到 Uber。
+    // Watchdog 不应把员工选择的 15/30/60... 分钟覆盖成“暂停到当天打烊”。
+    if (schedule.isTemporarilyClosed) return;
+
     const devices = await this.prisma.posDevice.findMany({
       where: { status: 'ACTIVE' },
       select: { lastSeenAt: true, meta: true },
     });
-    const storeId = resolveConfiguredStoreId();
     const connectivity = resolvePosConnectivityStatus(
       devices,
       now,
@@ -121,7 +127,23 @@ export class PosConnectivityWatchdogService
     );
     if (connectivity.status === 'UNKNOWN') return;
     if (connectivity.status === 'OFFLINE') {
-      await this.handleOffline(storeId, connectivity.lastHeartbeatAt, now);
+      const pauseUntil = this.resolveScheduleCloseAt(schedule);
+      if (!pauseUntil) {
+        this.logger.error({
+          event: 'pos_connectivity_uber_pause_until_unavailable',
+          storeId,
+          scheduleDate: schedule.today.date,
+          closeMinutes: schedule.today.closeMinutes,
+          timezone: schedule.timezone,
+        });
+        return;
+      }
+      await this.handleOffline(
+        storeId,
+        connectivity.lastHeartbeatAt,
+        now,
+        pauseUntil,
+      );
     } else {
       await this.handleOnline(storeId, now);
     }
@@ -131,6 +153,7 @@ export class PosConnectivityWatchdogService
     storeId: string,
     lastHeartbeatAt: Date | null,
     now: number,
+    pauseUntil: string,
   ): Promise<void> {
     const previous = this.states.get(storeId);
     if (!previous || previous.phase !== 'OFFLINE') {
@@ -150,7 +173,11 @@ export class PosConnectivityWatchdogService
 
     const state = this.states.get(storeId)!;
     if (state.pauseConfirmed || now < state.nextSyncAttemptAt) return;
-    const synced = await this.syncMappedUberStores(storeId, 'PAUSED');
+    const synced = await this.syncMappedUberStores(
+      storeId,
+      'PAUSED',
+      pauseUntil,
+    );
     if (synced) {
       state.pauseConfirmed = true;
       state.syncFailures = 0;
@@ -239,6 +266,7 @@ export class PosConnectivityWatchdogService
   private async syncMappedUberStores(
     posStoreId: string,
     targetStatus: 'ONLINE' | 'PAUSED',
+    pauseUntil?: string,
   ): Promise<boolean> {
     const mappings = await this.prisma.uberStoreMapping.findMany({
       where: { posExternalStoreId: posStoreId, isProvisioned: true },
@@ -249,12 +277,29 @@ export class PosConnectivityWatchdogService
         uberStoreId: mapping.uberStoreId,
         targetStatus,
         ...(targetStatus === 'PAUSED'
-          ? { reason: 'POS connectivity lost' }
+          ? {
+              reason: 'POS connectivity lost',
+              ...(pauseUntil ? { pauseUntil } : {}),
+            }
           : {}),
       });
       if (result.outcome === 'FAILED') return false;
     }
     return true;
+  }
+
+  private resolveScheduleCloseAt(
+    schedule: Awaited<ReturnType<StoreStatusService['getCurrentStatus']>>,
+  ): string | null {
+    const closeMinutes = schedule.today.closeMinutes;
+    if (closeMinutes === null) return null;
+    const closeAt = DateTime.fromISO(schedule.today.date, {
+      zone: schedule.timezone,
+    })
+      .startOf('day')
+      .plus({ minutes: closeMinutes })
+      .toUTC();
+    return closeAt.isValid ? closeAt.toISO() : null;
   }
 
   private retryDelayMs(failures: number): number {
