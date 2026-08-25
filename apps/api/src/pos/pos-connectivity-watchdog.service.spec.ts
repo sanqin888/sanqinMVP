@@ -304,7 +304,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
         temporaryCloseReason: null,
       },
     });
-    expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith({
+    expect(
+      posGateway.publishCustomerOrderingStatusUpdate,
+    ).toHaveBeenCalledWith({
       isTemporarilyClosed: false,
       autoResumeAt: null,
     });
@@ -323,7 +325,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
 
     await expect(service.reconcileExpiredPause()).resolves.toBe(false);
 
-    expect(posGateway.publishCustomerOrderingStatusUpdate).not.toHaveBeenCalled();
+    expect(
+      posGateway.publishCustomerOrderingStatusUpdate,
+    ).not.toHaveBeenCalled();
     expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
   });
 });
@@ -346,8 +350,7 @@ describe('StoreStatusService temporary pause expiry', () => {
           id: 1,
           timezone: 'America/Toronto',
           isTemporarilyClosed: true,
-          temporaryCloseReason:
-            '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
+          temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
           publicNotice: null,
           publicNoticeEn: null,
         }),

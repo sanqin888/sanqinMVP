@@ -74,7 +74,8 @@ export class PosStoreStatusService {
 
   async reconcileExpiredPause(): Promise<boolean> {
     const config = await this.ensureConfig();
-    if (!config.isTemporarilyClosed || !config.temporaryCloseReason) return false;
+    if (!config.isTemporarilyClosed || !config.temporaryCloseReason)
+      return false;
 
     const parsed = parseAutoPauseReason(config.temporaryCloseReason);
     if (!parsed) return false;
@@ -146,7 +147,9 @@ export class PosStoreStatusService {
 
     this.logger.log({
       event: 'pos_store_paused',
-      durationMinutes: input.untilTomorrow ? null : input.durationMinutes ?? null,
+      durationMinutes: input.untilTomorrow
+        ? null
+        : (input.durationMinutes ?? null),
       untilTomorrow: input.untilTomorrow === true,
       autoResumeAt: autoResumeAtIso,
       operatorUserId: context?.operatorUserId ?? null,
@@ -184,7 +187,9 @@ export class PosStoreStatusService {
 
     this.logger.log({
       event:
-        source === 'auto_resume' ? 'pos_store_auto_resumed' : 'pos_store_resumed',
+        source === 'auto_resume'
+          ? 'pos_store_auto_resumed'
+          : 'pos_store_resumed',
       autoResumeAt: autoResumeAt ?? null,
       operatorUserId: context?.operatorUserId ?? null,
       operatorRole: context?.operatorRole ?? null,

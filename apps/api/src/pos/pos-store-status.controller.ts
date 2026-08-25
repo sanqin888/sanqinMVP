@@ -25,7 +25,9 @@ type PosStoreStatusRequest = Request & {
   };
 };
 
-function actionContext(req: PosStoreStatusRequest): PosStoreStatusActionContext {
+function actionContext(
+  req: PosStoreStatusRequest,
+): PosStoreStatusActionContext {
   return {
     operatorUserId: req.user?.id,
     operatorRole: req.user?.role,

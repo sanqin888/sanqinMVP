@@ -75,8 +75,11 @@ export class RequestIdInterceptor implements NestInterceptor {
     const safeUrl = sanitizeUrlForLog(url);
     const requestPathWithoutQuery = requestPath.split('?')[0];
     const shouldSkipInfoLog =
-      this.quietPaths.some((path) => requestPathWithoutQuery.startsWith(path)) ||
-      (method === 'GET' && this.quietGetPaths.includes(requestPathWithoutQuery));
+      this.quietPaths.some((path) =>
+        requestPathWithoutQuery.startsWith(path),
+      ) ||
+      (method === 'GET' &&
+        this.quietGetPaths.includes(requestPathWithoutQuery));
     const isScheduledOrdersPoll =
       method === 'GET' &&
       requestPathWithoutQuery === this.scheduledOrdersPollingPath;

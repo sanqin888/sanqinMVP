@@ -105,7 +105,9 @@ describe('RequestIdInterceptor', () => {
       runIntercept('POST', `/api/v1/pos/store-status/${action}`, 200);
 
       expect(loggerLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`POST /api/v1/pos/store-status/${action} - 200`),
+        expect.stringContaining(
+          `POST /api/v1/pos/store-status/${action} - 200`,
+        ),
       );
     },
   );
