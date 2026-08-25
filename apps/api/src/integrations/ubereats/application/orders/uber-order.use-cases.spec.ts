@@ -44,6 +44,7 @@ const createActions = () =>
   new UberOrderActionService(
     { enqueue: jest.fn() } as unknown as UberOrderActionRepositoryPort,
     {} as UberOrderActionGatewayPort,
+    { signal: () => undefined },
   );
 
 const mapping = {
@@ -182,6 +183,7 @@ describe('Uber order use-case boundaries', () => {
     };
     const actions = createActions();
     const request = jest.spyOn(actions, 'request');
+    const notifyPersistedAction = jest.spyOn(actions, 'notifyPersistedAction');
     const findMapping = jest.fn().mockResolvedValue(mapping);
     const useCase = new ImportUberOrderUseCase(
       repository,
@@ -200,6 +202,10 @@ describe('Uber order use-case boundaries', () => {
     expect(saved.order?.order.fulfillmentTiming).toBe('IMMEDIATE');
     expect(saved.order?.order.scheduledReadyAt).toBeNull();
     expect(saved.order?.posStoreId).toBe('4750_Yonge_Street');
+    expect(notifyPersistedAction).toHaveBeenCalledWith({
+      taskId: 'action-1',
+      created: true,
+    });
     expect(request).not.toHaveBeenCalled();
   });
 

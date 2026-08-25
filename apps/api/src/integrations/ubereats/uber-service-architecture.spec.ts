@@ -382,7 +382,6 @@ describe('Uber Eats bounded-context architecture', () => {
     ).toEqual([
       '../../application/orders/claim-and-execute-uber-order-actions.use-case',
       '../../application/orders/claim-and-process-uber-webhook-inbox.use-case',
-      '../../application/menu/confirm-uber-menu-publications.use-case',
       './uber-worker-config.service',
     ]);
   });

@@ -1,7 +1,6 @@
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 
 import {
-  UberMenuPublishConfirmationWorkerAdapter,
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
   type UberWorkerMetrics,
@@ -23,7 +22,6 @@ export interface UberWorkerHealth {
   readonly adapters: Readonly<{
     webhookInbox: Readonly<UberWorkerMetrics>;
     orderAction: Readonly<UberWorkerMetrics>;
-    menuConfirmation: Readonly<UberWorkerMetrics>;
   }>;
 }
 
@@ -35,7 +33,6 @@ export class UberWorkerHealthService implements OnModuleDestroy {
   constructor(
     private readonly webhookInbox: UberWebhookInboxWorkerAdapter,
     private readonly orderAction: UberOrderActionWorkerAdapter,
-    private readonly menuConfirmation: UberMenuPublishConfirmationWorkerAdapter,
     private readonly config: UberWorkerConfigService,
   ) {}
 
@@ -47,11 +44,10 @@ export class UberWorkerHealthService implements OnModuleDestroy {
     const adapters = {
       webhookInbox: this.webhookInbox.getMetrics(),
       orderAction: this.orderAction.getMetrics(),
-      menuConfirmation: this.menuConfirmation.getMetrics(),
     };
     const metrics = Object.values(adapters);
     const lastSuccessAgeMs =
-      this.config.workerPollIntervalMs *
+      this.config.workerWakeFallbackPollIntervalMs *
       this.config.workerUnhealthyFailureThreshold;
     const now = Date.now();
     let status: UberWorkerHealthStatus;

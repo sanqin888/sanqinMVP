@@ -1,5 +1,6 @@
 x-ubereats-runtime: &ubereats-runtime
   UBER_EATS_RATE_LIMITER_MODE: "database"
+  UBER_EATS_WORKER_WAKE_URL: "http://ubereats-worker:4001"
   UBER_EATS_APP_SCOPES: "eats.store eats.order eats.store.status.write"
   UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
   # These values are populated from the deployment VM's environment/.env file.
@@ -112,6 +113,7 @@ services:
       WEB_BASE_URL: "https://sanq.ca"
       PUBLIC_BASE_URL: "https://sanq.ca"
       UBER_EATS_WORKER_ENABLED: "true"
+      UBER_EATS_WORKER_WAKE_FALLBACK_POLL_INTERVAL_MS: "30000"
       UBER_EATS_WORKER_HEALTH_PORT: 4001
       UBER_EATS_CLIENT_ID: ${UBER_EATS_CLIENT_ID}
       UBER_EATS_CLIENT_SECRET: ${UBER_EATS_CLIENT_SECRET}

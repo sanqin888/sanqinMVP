@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import {
   UBER_EATS_WORKER_RUNTIME_MODULE,
   UberWorkerHealthService,
+  UberWorkerWakeService,
 } from './integrations/ubereats/worker';
 
 export function assertUberWorkerEnabled(
@@ -16,8 +17,30 @@ export function assertUberWorkerEnabled(
   }
 }
 
-export function createHealthServer(health: UberWorkerHealthService): Server {
+export function createHealthServer(
+  health: UberWorkerHealthService,
+  wake: UberWorkerWakeService,
+): Server {
   return createServer((request, response) => {
+    if (request.method === 'POST' && request.url === '/wake/webhook-inbox') {
+      wake.wake('webhookInbox');
+      response.writeHead(204).end();
+      return;
+    }
+    if (request.method === 'POST' && request.url === '/wake/order-action') {
+      wake.wake('orderAction');
+      response.writeHead(204).end();
+      return;
+    }
+    if (request.url?.startsWith('/wake/')) {
+      response.writeHead(request.method === 'POST' ? 404 : 405, {
+        allow: 'POST',
+      });
+      response.end(
+        request.method === 'POST' ? 'Not Found' : 'Method Not Allowed',
+      );
+      return;
+    }
     if (request.url === '/live') {
       response.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
@@ -45,7 +68,10 @@ async function bootstrap(): Promise<void> {
   context.enableShutdownHooks();
 
   const port = Number(process.env.UBER_EATS_WORKER_HEALTH_PORT ?? 4001);
-  const server = createHealthServer(context.get(UberWorkerHealthService));
+  const server = createHealthServer(
+    context.get(UberWorkerHealthService),
+    context.get(UberWorkerWakeService),
+  );
   server.listen(port, '0.0.0.0', () => {
     console.log(
       `Uber Eats worker health listening on :${port} (/health, /ready, /live)`,

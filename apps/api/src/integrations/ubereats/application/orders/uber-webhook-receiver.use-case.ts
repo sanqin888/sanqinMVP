@@ -1,4 +1,5 @@
 import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
+import type { UberWorkerWakePort } from '../shared/uber-worker-wake.port';
 import { createHash } from 'crypto';
 import {
   canonicalizeUberWebhookPayload,
@@ -23,6 +24,7 @@ export class ReceiveUberWebhookUseCase {
     private readonly inbox: UberWebhookInboxPort,
     private readonly signatures: UberWebhookSignatureVerifier,
     private readonly telemetry: UberTelemetryPort,
+    private readonly workerWake: UberWorkerWakePort,
   ) {}
 
   async execute(input: UberWebhookInput): Promise<void> {
@@ -85,6 +87,7 @@ export class ReceiveUberWebhookUseCase {
         cause,
       });
     }
+    this.workerWake.signal('webhookInbox');
     if (!inserted)
       this.telemetry.workflowLog('warn', 'duplicate webhook ignored');
   }
