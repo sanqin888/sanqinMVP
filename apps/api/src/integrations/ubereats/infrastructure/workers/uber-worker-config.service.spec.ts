@@ -1,6 +1,19 @@
 import { UberWorkerConfigService } from './uber-worker-config.service';
 
 describe('UberWorkerConfigService lease budget', () => {
+  it('uses a 30 second fallback poll for durable order workers', () => {
+    const config = new UberWorkerConfigService({});
+    expect(config.workerWakeFallbackPollIntervalMs).toBe(30_000);
+  });
+
+  it('normalizes the optional worker wake URL', () => {
+    const config = new UberWorkerConfigService({
+      UBER_EATS_WORKER_WAKE_URL: 'http://ubereats-worker:4001/',
+    });
+    expect(config.workerWakeBaseUrl).toBe('http://ubereats-worker:4001');
+    expect(config.workerWakeTimeoutMs).toBe(500);
+  });
+
   it('accepts the safe default HTTP retry budget', () => {
     expect(() => new UberWorkerConfigService({})).not.toThrow();
   });

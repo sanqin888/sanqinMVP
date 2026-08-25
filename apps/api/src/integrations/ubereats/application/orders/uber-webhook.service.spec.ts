@@ -284,6 +284,7 @@ describe('Uber webhook use cases', () => {
 
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {
     const uberWebhookInbox = inbox();
+    const signal = jest.fn();
     const orders = {
       processWebhookEvent: jest.fn().mockResolvedValue(undefined),
     };
@@ -298,6 +299,8 @@ describe('Uber webhook use cases', () => {
       orders as unknown as ConstructorParameters<
         typeof ReceiveUberWebhookUseCase
       >[2],
+      undefined,
+      { signal },
     );
     const body = {
       event_type: 'orders.notification',
@@ -309,6 +312,7 @@ describe('Uber webhook use cases', () => {
     await service.execute(signed(body));
 
     expect(orders.processWebhookEvent).not.toHaveBeenCalled();
+    expect(signal).toHaveBeenCalledWith('webhookInbox');
     expect(uberWebhookInbox.create).toHaveBeenCalledTimes(1);
     expect(uberWebhookInbox.create).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -413,7 +417,7 @@ describe('Uber webhook use cases', () => {
 
 describe('ReceiveUberWebhookUseCase 最小依赖装配', () => {
   it('构造函数只声明工作流依赖与统一 telemetry service', () => {
-    expect(ReceiveUberWebhookUseCase.length).toBe(3);
+    expect(ReceiveUberWebhookUseCase.length).toBe(4);
   });
   it('只要求 webhook 签名密钥，不要求 OAuth state 密钥', () => {
     const webhookOnly = new UberCryptoConfigService({

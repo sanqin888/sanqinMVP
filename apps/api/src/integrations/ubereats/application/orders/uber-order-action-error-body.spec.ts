@@ -52,7 +52,9 @@ describe.skip('Uber order action failure diagnostics', () => {
       readyForPickup: jest.fn().mockRejectedValue(error),
     } as unknown as UberOrderActionGatewayPort;
 
-    await new UberOrderActionService(repository, gateway).executeClaimed(task);
+    await new UberOrderActionService(repository, gateway, {
+      signal: () => undefined,
+    }).executeClaimed(task);
 
     expect(markFailed).toHaveBeenCalledWith('task-1', 'lease-1', {
       retryable: false,

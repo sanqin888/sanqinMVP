@@ -39,10 +39,12 @@ const setup = (overrides: Partial<UberOrderActionGatewayPort> = {}) => {
     readyForPickup: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
     ...overrides,
   } as jest.Mocked<UberOrderActionGatewayPort>;
+  const signal = jest.fn();
   return {
     repository,
     gateway,
-    service: new UberOrderActionService(repository, gateway),
+    signal,
+    service: new UberOrderActionService(repository, gateway, { signal }),
   };
 };
 
@@ -75,6 +77,14 @@ describe('UberOrderActionService contract', () => {
         deny.idempotencyKey,
       ]).size,
     ).toBe(3);
+  });
+
+  it('wakes the order-action worker after the durable command is queued', async () => {
+    const { service, signal } = setup();
+
+    await service.request('order-1', 'CANCEL');
+
+    expect(signal).toHaveBeenCalledWith('orderAction');
   });
 
   it.each([

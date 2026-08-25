@@ -9,11 +9,11 @@ import { UberEatsOperationsController } from './api/operations.controller';
 import { UberEatsOrdersController } from './api/orders.controller';
 import { UberEatsWebhookController } from './api/webhook.controller';
 import {
-  UberMenuPublishConfirmationWorkerAdapter,
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
 import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
+import { UberWorkerWakeService } from './infrastructure/workers/uber-worker-wake.service';
 import {
   createUberEatsWorkerRuntimeModule,
   UberEatsModule,
@@ -40,14 +40,11 @@ describe('UberEats compositions', () => {
     const apiProviders = metadata(UberEatsModule, MODULE_METADATA.PROVIDERS);
     expect(apiProviders).not.toContain(UberWebhookInboxWorkerAdapter);
     expect(apiProviders).not.toContain(UberOrderActionWorkerAdapter);
-    expect(apiProviders).not.toContain(
-      UberMenuPublishConfirmationWorkerAdapter,
-    );
     expect(UBER_EATS_WORKER_PROVIDERS).toEqual([
       UberWebhookInboxWorkerAdapter,
       UberOrderActionWorkerAdapter,
-      UberMenuPublishConfirmationWorkerAdapter,
       UberWorkerHealthService,
+      UberWorkerWakeService,
     ]);
   });
 
@@ -82,8 +79,8 @@ describe('UberEats compositions', () => {
     expect(UBER_EATS_WORKER_PROVIDERS).toEqual([
       UberWebhookInboxWorkerAdapter,
       UberOrderActionWorkerAdapter,
-      UberMenuPublishConfirmationWorkerAdapter,
       UberWorkerHealthService,
+      UberWorkerWakeService,
     ]);
   });
 });

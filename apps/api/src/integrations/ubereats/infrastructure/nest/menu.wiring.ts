@@ -13,8 +13,6 @@ import {
   PublishUberMenuUseCase,
   RetrieveAndReconcileUberMenuUseCase,
 } from '../../application/menu/publish-uber-menu.use-case';
-import { ConfirmUberMenuPublicationUseCase } from '../../application/menu/confirm-uber-menu-publication.use-case';
-import { RecoverTimedOutMenuPublicationsUseCase } from '../../application/menu/recover-timed-out-menu-publications.use-case';
 import {
   type MenuNotificationRepository,
   MENU_NOTIFICATION_REPOSITORY,
@@ -336,18 +334,6 @@ export function createMenuWiring(): Provider[] {
         ),
     },
     { provide: UBER_MENU_PUBLISH_COMMAND, useExisting: PublishUberMenuUseCase },
-    {
-      provide: ConfirmUberMenuPublicationUseCase,
-      inject: [UBER_MENU_PUBLICATION_REPOSITORY],
-      useFactory: (publications: UberMenuPublicationRepositoryPort) =>
-        new ConfirmUberMenuPublicationUseCase(publications),
-    },
-    {
-      provide: RecoverTimedOutMenuPublicationsUseCase,
-      inject: [UBER_MENU_PUBLICATION_REPOSITORY],
-      useFactory: (publications: UberMenuPublicationRepositoryPort) =>
-        new RecoverTimedOutMenuPublicationsUseCase(publications),
-    },
     {
       provide: UberMenuNotificationHandler,
       inject: [MENU_NOTIFICATION_REPOSITORY],
