@@ -235,4 +235,3 @@ export class UberOrderActionWorkerAdapter extends UberPollingWorkerAdapter {
     return this.useCase.execute(limit) as Promise<DispatchResult>;
   }
 }
-

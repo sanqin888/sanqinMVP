@@ -110,13 +110,7 @@ export function createOrdersWiring(): Provider[] {
         signatures: UberWebhookSignatureVerifier,
         telemetry: UberTelemetryPort,
         workerWake: UberWorkerWakePort,
-      ) =>
-        new ReceiveUberWebhookUseCase(
-          inbox,
-          signatures,
-          telemetry,
-          workerWake,
-        ),
+      ) => new ReceiveUberWebhookUseCase(inbox, signatures, telemetry, workerWake),
     },
     {
       provide: ReplayUnsupportedUberWebhooksUseCase,

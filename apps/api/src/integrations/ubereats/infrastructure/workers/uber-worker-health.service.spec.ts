@@ -80,7 +80,9 @@ describe('UberWorkerHealthService', () => {
       consecutiveFailures: 3,
       failures: 3,
     });
-    expect(createHealth([healthy, failing]).snapshot().status).toBe('unhealthy');
+    expect(createHealth([healthy, failing]).snapshot().status).toBe(
+      'unhealthy',
+    );
   });
 
   it('is unhealthy when success is older than fallback poll interval times the threshold', () => {
