@@ -122,8 +122,9 @@ describe('Uber operations application workflows', () => {
     };
     const unitOfWork = {
       transaction: jest.fn(
-        async (work: (scope: { tickets: typeof tickets }) => Promise<unknown>) =>
-          work({ tickets }),
+        (
+          work: (scope: { tickets: typeof tickets }) => Promise<unknown>,
+        ) => work({ tickets }),
       ),
     };
     const storeStatusSync = {

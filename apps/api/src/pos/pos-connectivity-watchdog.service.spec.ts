@@ -135,7 +135,9 @@ describe('PosConnectivityWatchdogService', () => {
     await service.runOnce();
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
 
-    storeStatus.getCurrentStatus.mockResolvedValue(closedSchedule('2026-08-25'));
+    storeStatus.getCurrentStatus.mockResolvedValue(
+      closedSchedule('2026-08-25'),
+    );
     nowSpy.mockReturnValue(Date.parse('2026-08-26T04:00:00.000Z'));
     await service.runOnce();
 
@@ -178,11 +180,14 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
           isTemporarilyClosed: false,
           temporaryCloseReason: null,
         }),
-        update: jest.fn().mockImplementation(
-          async ({ data }: { data: { isTemporarilyClosed: boolean } }) => ({
-            isTemporarilyClosed: data.isTemporarilyClosed,
-          }),
-        ),
+        update: jest
+          .fn()
+          .mockImplementation(
+            ({ data }: { data: { isTemporarilyClosed: boolean } }) =>
+              Promise.resolve({
+                isTemporarilyClosed: data.isTemporarilyClosed,
+              }),
+          ),
         create: jest.fn(),
       },
     };
@@ -227,12 +232,12 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
           temporaryCloseReason: `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
         },
       });
-      expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith(
-        {
-          isTemporarilyClosed: true,
-          autoResumeAt: expectedAutoResumeAt,
-        },
-      );
+      expect(
+        posGateway.publishCustomerOrderingStatusUpdate,
+      ).toHaveBeenCalledWith({
+        isTemporarilyClosed: true,
+        autoResumeAt: expectedAutoResumeAt,
+      });
       expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
     },
   );

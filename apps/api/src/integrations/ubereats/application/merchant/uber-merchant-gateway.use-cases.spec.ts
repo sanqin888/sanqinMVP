@@ -715,8 +715,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     const alerts = {
       getStoreStatusSource: jest.fn().mockResolvedValue({
         isTemporarilyClosed: true,
-        temporaryCloseReason:
-          '__AUTO_UNTIL__:2026-08-25T14:30:00-04:00|',
+        temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T14:30:00-04:00|',
       }),
       recordStoreStatusResult: jest.fn().mockResolvedValue(undefined),
       createStoreStatusAlert: jest.fn().mockResolvedValue(undefined),
