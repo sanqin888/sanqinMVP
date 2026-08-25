@@ -22,6 +22,15 @@ describe('UberOrderStateMachine', () => {
     ).toBe('paid');
   });
 
+  it('makes a confirmed DENY terminal without waiting for orders.failure', () => {
+    expect(
+      UberOrderStateMachine.afterConfirmedAction('pending' as never, 'DENY'),
+    ).toBe('refunded');
+    expect(
+      UberOrderStateMachine.afterConfirmedAction('completed' as never, 'DENY'),
+    ).toBeNull();
+  });
+
   it('validates commands and only advances after confirmed actions', () => {
     expect(
       UberOrderStateMachine.canRequestAction(

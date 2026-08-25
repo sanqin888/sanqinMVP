@@ -117,9 +117,11 @@ export const UberOrderStateMachine = {
       (status === UberOrderStatus.pending || status === UberOrderStatus.paid)
     )
       return UberOrderStatus.paid;
-    // Merchant-issued cancellation commands have their own action idempotency
-    // key, but share the lifecycle decision with cancellation webhook events.
-    if (action === 'CANCEL') return statusAfterCancellation(status);
+    // A confirmed merchant DENY/CANCEL is already terminal locally. Do not wait
+    // for a later orders.failure webhook before removing the order from the POS
+    // board; that webhook remains the durable external cancellation evidence.
+    if (action === 'DENY' || action === 'CANCEL')
+      return statusAfterCancellation(status);
     if (
       action === 'READY_FOR_PICKUP' &&
       (status === UberOrderStatus.paid || status === UberOrderStatus.making)

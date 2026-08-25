@@ -960,6 +960,9 @@ export function StoreBoardWidget(props: { locale: Locale }) {
   const [syncingReadyOrders, setSyncingReadyOrders] = useState<
     Record<string, boolean>
   >({});
+  const [syncingDenyOrders, setSyncingDenyOrders] = useState<
+    Record<string, boolean>
+  >({});
   const [selectedOrderStableId, setSelectedOrderStableId] = useState<
     string | null
   >(null);
@@ -1163,6 +1166,24 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           : order.status === "paid" || order.status === "making";
       return stillAvailable ? current : null;
     });
+    setSyncingDenyOrders((prev) => {
+      const syncingIds = Object.keys(prev);
+      if (syncingIds.length === 0) return prev;
+      const next = { ...prev };
+      let changed = false;
+      for (const sid of syncingIds) {
+        const current = currentById.get(sid);
+        if (
+          !current ||
+          current.channel !== "ubereats" ||
+          current.status !== "pending"
+        ) {
+          delete next[sid];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
     setSyncingReadyOrders((prev) => {
       const syncingIds = Object.keys(prev);
       if (syncingIds.length === 0) return prev;
@@ -1295,6 +1316,24 @@ export function StoreBoardWidget(props: { locale: Locale }) {
           return;
         }
 
+        const queuedDeny =
+          currentAction.action === "DENY" &&
+          result.uberActionStatus !== "SUCCEEDED";
+        if (queuedDeny) {
+          setSyncingDenyOrders((prev) => ({
+            ...prev,
+            [currentAction.orderStableId]: true,
+          }));
+          window.setTimeout(() => {
+            setSyncingDenyOrders((prev) => {
+              if (!prev[currentAction.orderStableId]) return prev;
+              const next = { ...prev };
+              delete next[currentAction.orderStableId];
+              return next;
+            });
+          }, 10_000);
+        }
+
         setUberActionDialog(null);
         setSelectedOrderStableId(null);
         showToast(
@@ -1316,6 +1355,12 @@ export function StoreBoardWidget(props: { locale: Locale }) {
         );
         try {
           await fetchOrdersAndProcess();
+          if (queuedDeny) {
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, 750);
+            });
+            await fetchOrdersAndProcess();
+          }
         } catch (refreshError) {
           console.error("Failed to refresh POS board after Uber action:", refreshError);
           showToast(
@@ -1619,6 +1664,7 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                 order.channel === "ubereats" ? order.pickupCode : sid;
               const next = NEXT_STATUS[order.status];
               const isSyncingUberReady = Boolean(syncingReadyOrders[sid]);
+              const isSyncingUberDeny = Boolean(syncingDenyOrders[sid]);
               const advanceLabel = isSyncingUberReady
                 ? t.syncingUber
                 : next
@@ -1681,7 +1727,10 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                       )}
 
                       <div className="mt-2 text-sm text-slate-100">
-                        {t.statusLabel}: {formatStatus(order.status, locale)}
+                        {t.statusLabel}:{" "}
+                        {isSyncingUberDeny
+                          ? `${t.denyOrder} · ${t.syncingUber}`
+                          : formatStatus(order.status, locale)}
                       </div>
                       <div
                         className={[
@@ -1752,11 +1801,13 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                           event.stopPropagation();
                           void handleAdvance(order);
                         }}
-                        disabled={!next || isSyncingUberReady}
-                        aria-busy={isSyncingUberReady}
+                        disabled={
+                          !next || isSyncingUberReady || isSyncingUberDeny
+                        }
+                        aria-busy={isSyncingUberReady || isSyncingUberDeny}
                         className={[
                           "rounded-md border px-3 py-2 text-sm font-semibold transition",
-                          next && !isSyncingUberReady
+                          next && !isSyncingUberReady && !isSyncingUberDeny
                             ? "border-slate-600 bg-slate-950/30 text-slate-100 hover:bg-slate-800/60"
                             : "cursor-not-allowed border-slate-800 bg-slate-950/30 text-slate-600",
                         ].join(" ")}
@@ -1774,9 +1825,16 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                               action: "DENY",
                             });
                           }}
-                          className="rounded-md border border-rose-500/70 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20"
+                          disabled={isSyncingUberDeny}
+                          aria-busy={isSyncingUberDeny}
+                          className={[
+                            "rounded-md border px-3 py-2 text-sm font-semibold transition",
+                            isSyncingUberDeny
+                              ? "cursor-not-allowed border-rose-900/60 bg-rose-950/20 text-rose-300/60"
+                              : "border-rose-500/70 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20",
+                          ].join(" ")}
                         >
-                          {t.denyOrder}
+                          {isSyncingUberDeny ? t.syncingUber : t.denyOrder}
                         </button>
                       )}
                     </div>
