@@ -338,7 +338,11 @@ describe('Uber order use-case boundaries', () => {
     ],
     [
       'cancel',
-      ['order-1', 'CANCEL', { reasonCode: 'OTHER', reasonDetail: 'closed' }],
+      [
+        'order-1',
+        'CANCEL',
+        { reasonCode: 'ITEM_ISSUE', reasonDetail: 'closed' },
+      ],
     ],
     ['getReadyForPickupAction', ['order-1', 'READY_FOR_PICKUP']],
   ] as const)(
@@ -353,7 +357,7 @@ describe('Uber order use-case boundaries', () => {
         method === 'deny'
           ? (['order-1', ' STORE_CLOSED ', 'closed'] as const)
           : method === 'cancel'
-            ? (['order-1', ' closed '] as const)
+            ? (['order-1', ' ITEM_ISSUE ', ' closed '] as const)
             : (['order-1'] as const);
       const result = await (
         useCase[method] as (...input: never[]) => Promise<unknown>

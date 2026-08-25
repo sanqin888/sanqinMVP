@@ -66,12 +66,13 @@ export async function denyUberOrder<T = unknown>(
 
 export async function cancelUberOrder<T = unknown>(
   id: string,
-  reason?: string,
+  reasonCode: string,
+  reasonDetail?: string,
 ) {
   return apiFetch<PosAdvanceResult<T>>(`/pos/orders/${enc(id)}/uber-cancel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reasonCode, reasonDetail }),
   });
 }
 

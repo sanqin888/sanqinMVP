@@ -27,6 +27,8 @@ const COPY = {
     breakdownByPayment: "按支付方式汇总",
     breakdownByChannel: "按渠道汇总",
     printSummary: "打印汇总报表",
+    printSuccess: "打印任务已提交。",
+    printFailed: "打印失败，请稍后重试。",
     printPreview: {
       title: "打印预览",
       subtitle: "请确认打印内容无误。",
@@ -70,6 +72,8 @@ const COPY = {
     breakdownByPayment: "By payment method",
     breakdownByChannel: "By channel",
     printSummary: "Print summary report",
+    printSuccess: "Print job submitted.",
+    printFailed: "Printing failed. Please retry.",
     printPreview: {
       title: "Print preview",
       subtitle: "Please confirm the print details.",
@@ -304,11 +308,21 @@ export default function PosDailySummaryPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [data, setData] = useState<PosDailySummaryResponse | null>(null);
-  
+  const [toast, setToast] = useState<{
+    message: string;
+    tone: "success" | "error";
+  } | null>(null);
+
   // 弹窗控制
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   // 预览状态：null = 选择模式, 'payment'/'channel' = 预览模式
   const [previewType, setPreviewType] = useState<'payment' | 'channel' | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const [storeTimezone, setStoreTimezone] = useState<string>(() => {
     try {
@@ -490,9 +504,11 @@ export default function PosDailySummaryPage() {
 
       await printSummaryCloud(params);
       setIsPrintDialogOpen(false);
+      setPreviewType(null);
+      setToast({ message: copy.printSuccess, tone: "success" });
     } catch (err) {
       console.error("Failed to print summary via cloud:", err);
-      alert("打印失败，请稍后重试。");
+      setToast({ message: copy.printFailed, tone: "error" });
     } finally {
       setLoading(false);
     }
@@ -577,6 +593,19 @@ export default function PosDailySummaryPage() {
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
+      {toast && (
+        <div className="fixed inset-x-0 top-6 z-[70] flex justify-center px-4">
+          <div
+            className={`rounded-full border px-4 py-2 text-sm font-medium shadow-lg ${
+              toast.tone === "success"
+                ? "border-emerald-400/60 bg-emerald-500/90 text-slate-900"
+                : "border-rose-400/60 bg-rose-500/90 text-white"
+            }`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      )}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 px-6 py-4">
         <div>
           <h1 className="text-2xl font-semibold">{copy.title}</h1>

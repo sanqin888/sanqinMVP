@@ -48,7 +48,8 @@ export interface UberEatsOrderActionsPort {
   ): Promise<UberEatsOrderActionResult>;
   cancel(
     externalOrderId: string,
-    reason?: string,
+    reasonCode: string,
+    reasonDetail?: string,
   ): Promise<UberEatsOrderActionResult>;
   retryReadyForPickup(
     externalOrderId: string,
