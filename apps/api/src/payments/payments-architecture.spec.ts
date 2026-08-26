@@ -4,7 +4,7 @@ import {
   importViolations,
   interfaceMethods,
   scanTypeScript,
-} from '../integrations/ubereats/test/architecture-test.utils';
+} from './test/architecture-test.utils';
 
 const PAYMENTS_ROOT = resolve(__dirname);
 const SOURCE_ROOT = resolve(PAYMENTS_ROOT, '..');
