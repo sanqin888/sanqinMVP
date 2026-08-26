@@ -134,9 +134,10 @@ describe('Payments bounded-context architecture', () => {
   });
 
   it('prevents unified-payment orchestration from importing Clover infrastructure', () => {
-    const orchestrationFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orchestration'), {
-      productionOnly: true,
-    });
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    );
 
     expect(
       importViolations(orchestrationFiles, SOURCE_ROOT, (specifier) =>

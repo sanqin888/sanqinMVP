@@ -421,11 +421,13 @@ export class PosCardPaymentOrchestrationService {
       return view;
     }
     const surchargeCents =
-      checkout.externalAmountCents === 0 ? 0 : paymentSnapshot?.surchargeCents ?? 0;
+      checkout.externalAmountCents === 0
+        ? 0
+        : (paymentSnapshot?.surchargeCents ?? 0);
     const chargedTotalCents =
       checkout.externalAmountCents === 0
         ? 0
-        : paymentSnapshot?.chargedTotalCents ?? 0;
+        : (paymentSnapshot?.chargedTotalCents ?? 0);
 
     const created = await this.orders.createFromConfirmedPaymentSnapshot(
       checkout.snapshot,

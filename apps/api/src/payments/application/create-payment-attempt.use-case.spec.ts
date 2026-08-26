@@ -356,7 +356,7 @@ describe('TerminalPaymentService', () => {
 
     const originalRequest = service.startSale(terminalInput);
     const providerRequest = await started.promise;
-    const processing = transactions.rows[0]!;
+    const processing = transactions.rows[0];
     expect(processing?.status).toBe('PROCESSING');
 
     const recoveryResult = await service.reconcile(processing.id);
@@ -380,7 +380,7 @@ describe('TerminalPaymentService', () => {
 
     const originalRequest = service.startSale(terminalInput);
     const providerRequest = await started.promise;
-    const processing = transactions.rows[0]!;
+    const processing = transactions.rows[0];
     const moved = await transactions.saveIfCurrentStatus(
       processing.applyProviderOutcome({
         status: 'UNKNOWN',
@@ -440,7 +440,7 @@ describe('TerminalPaymentService', () => {
 
     const originalRequest = service.startSale(terminalInput);
     const providerRequest = await started.promise;
-    const processing = transactions.rows[0]!;
+    const processing = transactions.rows[0];
     const winner = processing.applyProviderOutcome(
       canonicalOutcome(providerRequest),
     );
@@ -464,7 +464,7 @@ describe('TerminalPaymentService', () => {
 
     const originalRequest = service.startSale(terminalInput);
     const providerRequest = await started.promise;
-    const processing = transactions.rows[0]!;
+    const processing = transactions.rows[0];
     const winner = processing.applyProviderOutcome(
       canonicalOutcome(providerRequest),
     );
@@ -488,7 +488,7 @@ describe('TerminalPaymentService', () => {
 
     const originalRequest = service.startSale(terminalInput);
     const providerRequest = await started.promise;
-    const processing = transactions.rows[0]!;
+    const processing = transactions.rows[0];
     await transactions.saveIfCurrentStatus(
       processing.applyProviderOutcome({ status: 'UNKNOWN' }),
       'PROCESSING',
@@ -562,15 +562,18 @@ describe('TerminalPaymentService', () => {
 
     const provider: jest.Mocked<PaymentProvider> = {
       startPayment: jest.fn(),
-      getPaymentStatus: jest.fn().mockImplementation((request) =>
-        Promise.resolve(
-          canonicalOutcome(request, 'SUCCEEDED', {
-            providerPaymentId: 'clover-recovered',
-            surchargeCents: 0,
-            chargedTotalCents: 1599,
-          }),
+      getPaymentStatus: jest
+        .fn()
+        .mockImplementation(
+          (request: Parameters<PaymentProvider['getPaymentStatus']>[0]) =>
+            Promise.resolve(
+              canonicalOutcome(request, 'SUCCEEDED', {
+                providerPaymentId: 'clover-recovered',
+                surchargeCents: 0,
+                chargedTotalCents: 1599,
+              }),
+            ),
         ),
-      ),
       cancelPayment: jest.fn(),
       voidPayment: jest.fn(),
       refundPayment: jest.fn(),

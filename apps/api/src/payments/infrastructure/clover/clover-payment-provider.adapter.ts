@@ -62,27 +62,31 @@ const integerValue = (
     : undefined;
 };
 
+const recordsFromArray = (
+  values: unknown[],
+): Record<string, unknown>[] | null => {
+  const rows: Record<string, unknown>[] = [];
+  for (const value of values) {
+    const row = asRecord(value);
+    if (!row) return null;
+    rows.push(row);
+  }
+  return rows;
+};
+
 const elementRecords = (
   record: Record<string, unknown> | null,
   key: string,
 ): Record<string, unknown>[] | null => {
   const value = record?.[key];
   if (value === undefined || value === null) return [];
-  if (Array.isArray(value)) {
-    const rows = value.map(asRecord);
-    return rows.every((row) => row !== null)
-      ? (rows as Record<string, unknown>[])
-      : null;
-  }
+  if (Array.isArray(value)) return recordsFromArray(value);
   const wrapper = asRecord(value);
   if (!wrapper) return null;
   const elements = wrapper.elements;
   if (elements === undefined || elements === null) return [];
   if (!Array.isArray(elements)) return null;
-  const rows = elements.map(asRecord);
-  return rows.every((row) => row !== null)
-    ? (rows as Record<string, unknown>[])
-    : null;
+  return recordsFromArray(elements);
 };
 
 const canonicalBase = (
@@ -332,7 +336,8 @@ const mapPlatformPayment = (
     resultCode: resultCode ?? null,
     failureCode:
       status === 'DECLINED' ? 'CLOVER_PLATFORM_PAYMENT_DECLINED' : null,
-    failureMessage: status === 'DECLINED' ? 'Clover declined the payment' : null,
+    failureMessage:
+      status === 'DECLINED' ? 'Clover declined the payment' : null,
   };
 };
 
@@ -457,7 +462,9 @@ export class CloverPlatformPaymentsGateway {
     );
   }
 
-  private async request(path: string): Promise<CloverPlatformHttpResult | null> {
+  private async request(
+    path: string,
+  ): Promise<CloverPlatformHttpResult | null> {
     const token = this.config.platformAccessToken;
     if (!token) return null;
 

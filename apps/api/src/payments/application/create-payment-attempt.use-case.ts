@@ -387,7 +387,9 @@ export class TerminalPaymentService {
       const canonicalProblems = requiresCanonicalFinal
         ? this.canonicalEvidenceProblems(current, outcome)
         : [];
-      const problems = [...new Set([...correlationProblems, ...canonicalProblems])];
+      const problems = [
+        ...new Set([...correlationProblems, ...canonicalProblems]),
+      ];
 
       let next: PaymentTransaction;
       if (problems.length > 0) {

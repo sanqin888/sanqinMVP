@@ -15,12 +15,15 @@ describe('CloverPaymentProviderAdapter', () => {
     const ecommerce = new CloverEcommerceTransport(config);
     const terminal = new CloverTerminalTransport(config);
     const platform = new CloverPlatformPaymentsGateway(config);
-    jest.spyOn(platform, 'isConfigured').mockReturnValue(true);
+    const platformConfigured = jest
+      .spyOn(platform, 'isConfigured')
+      .mockReturnValue(true);
     return {
       adapter: new CloverPaymentProviderAdapter(ecommerce, terminal, platform),
       ecommerce,
       terminal,
       platform,
+      platformConfigured,
     };
   };
 
@@ -268,8 +271,8 @@ describe('CloverPaymentProviderAdapter', () => {
   });
 
   it('blocks Terminal availability and sale before execution when Platform v3 is not configured', async () => {
-    const { adapter, terminal, platform } = createAdapter();
-    jest.mocked(platform.isConfigured).mockReturnValue(false);
+    const { adapter, terminal, platformConfigured } = createAdapter();
+    platformConfigured.mockReturnValue(false);
     const terminalAvailability = jest.spyOn(terminal, 'getAvailability');
     const terminalStart = jest.spyOn(terminal, 'startPayment');
     const availability = await adapter.getAvailability();
@@ -606,19 +609,13 @@ describe('Clover Platform Payments Gateway', () => {
   const setPlatformEnv = (key: string, value: string): void => {
     process.env[key] = value;
   };
-  const restorePlatformEnv = (
-    key: string,
-    value: string | undefined,
-  ): void => {
+  const restorePlatformEnv = (key: string, value: string | undefined): void => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   };
 
   beforeEach(() => {
-    setPlatformEnv(
-      'CLOVER_PLATFORM_API_BASE',
-      'https://platform.example.test',
-    );
+    setPlatformEnv('CLOVER_PLATFORM_API_BASE', 'https://platform.example.test');
     setPlatformEnv('CLOVER_V3_ACCESS_TOKEN', 'platform-v3-fixture-token');
     setPlatformEnv('CLOVER_MERCHANT_ID', 'merchant-1');
   });
@@ -632,10 +629,14 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('reads canonical payment by provider id with dedicated Platform v3 credentials', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(platformPayment()), { status: 200 }),
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(platformPayment()), { status: 200 }),
+      );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
     );
-    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -653,22 +654,30 @@ describe('Clover Platform Payments Gateway', () => {
       cardBrand: 'VISA',
       cardLast4: '4242',
     });
-    expect(String(fetchSpy.mock.calls[0][0])).toContain(
+    const firstUrl = fetchSpy.mock.calls[0]?.[0];
+    if (typeof firstUrl !== 'string') {
+      throw new Error('Expected Platform request URL to be a string');
+    }
+    expect(firstUrl).toContain(
       'https://platform.example.test/v3/merchants/merchant-1/payments/clover-payment-1',
     );
-    expect(String(fetchSpy.mock.calls[0][0])).toContain('expand=');
-    expect(fetchSpy.mock.calls[0][1]?.headers).toMatchObject({
+    expect(firstUrl).toContain('expand=');
+    expect(fetchSpy.mock.calls[0]?.[1]?.headers).toMatchObject({
       Authorization: 'Bearer platform-v3-fixture-token',
     });
   });
 
   it('uses payment collection filter by externalPaymentId when provider id is unknown', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ elements: [platformPayment()] }), {
-        status: 200,
-      }),
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ elements: [platformPayment()] }), {
+          status: 200,
+        }),
+      );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
     );
-    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
 
     await expect(
       gateway.getCanonicalPayment({
@@ -679,18 +688,24 @@ describe('Clover Platform Payments Gateway', () => {
       status: 'SUCCEEDED',
       providerPaymentId: 'clover-payment-1',
     });
-    expect(String(fetchSpy.mock.calls[0][0])).toContain(
-      'filter=externalPaymentId%3Dexternal-1',
-    );
+    const collectionUrl = fetchSpy.mock.calls[0]?.[0];
+    if (typeof collectionUrl !== 'string') {
+      throw new Error('Expected Platform collection URL to be a string');
+    }
+    expect(collectionUrl).toContain('filter=externalPaymentId%3Dexternal-1');
   });
 
   it('does not finalize when canonical amount mismatches the prepared amount', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(platformPayment({ amount: 1999 })), {
-        status: 200,
-      }),
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(platformPayment({ amount: 1999 })), {
+          status: 200,
+        }),
+      );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
     );
-    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -701,13 +716,17 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('does not finalize when canonical payment id mismatches the expected provider id', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify(platformPayment({ id: 'different-payment' })),
-        { status: 200 },
-      ),
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(platformPayment({ id: 'different-payment' })),
+          { status: 200 },
+        ),
+      );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
     );
-    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -718,22 +737,26 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('maps CREDIT_SURCHARGE separately while charged total includes all additional charges', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          platformPayment({
-            additionalCharges: {
-              elements: [
-                { type: 'CREDIT_SURCHARGE', amount: 48 },
-                { type: 'OTHER', amount: 15 },
-              ],
-            },
-          }),
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(
+            platformPayment({
+              additionalCharges: {
+                elements: [
+                  { type: 'CREDIT_SURCHARGE', amount: 48 },
+                  { type: 'OTHER', amount: 15 },
+                ],
+              },
+            }),
+          ),
+          { status: 200 },
         ),
-        { status: 200 },
-      ),
+      );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
     );
-    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -748,7 +771,9 @@ describe('Clover Platform Payments Gateway', () => {
     delete process.env.CLOVER_V3_ACCESS_TOKEN;
     setPlatformEnv('CLOVER_ACCESS_TOKEN', 'ecommerce-only-fixture-token');
     const fetchSpy = jest.spyOn(global, 'fetch');
-    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
+    );
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
