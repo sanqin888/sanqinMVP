@@ -29,7 +29,8 @@ type PublishVersionUpdateInput = {
 describe('UberMenuPublicationPrismaAdapter', () => {
   it('在同一事务中创建发布版本和 Uber item 快照映射', async () => {
     const createVersion = jest.fn().mockResolvedValue({
-      id: 'version-1',
+      id: '8a3d4c0e-4750-4f6a-9138-000000000001',
+      versionStableId: 'publish-version-1',
       storeId: 'pos-1',
       idempotencyKey: 'key-1',
       businessVersion: 'business-1',
@@ -81,7 +82,7 @@ describe('UberMenuPublicationPrismaAdapter', () => {
     const input = createMany.mock.calls[0]?.[0];
     expect(input?.data).toHaveLength(1);
     expect(input?.data[0]).toMatchObject({
-      publishVersionId: 'version-1',
+      publishVersionId: '8a3d4c0e-4750-4f6a-9138-000000000001',
       storeId: 'pos-1',
       uberStoreId: 'uber-1',
       uberItemId: 'sanq:item-1',
@@ -93,9 +94,40 @@ describe('UberMenuPublicationPrismaAdapter', () => {
     expect(input?.data[0]?.publishedAt).toBeInstanceOf(Date);
   });
 
+  it('uses versionStableId for publication state updates across the application boundary', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const adapter = new UberMenuPublicationPrismaAdapter({
+      uberMenuPublishVersion: { update, updateMany },
+    } as never);
+
+    await adapter.markPublishVersionSucceeded('publish-version-1', {
+      status_code: 204,
+    });
+    await adapter.markFailed('publish-version-1', {
+      errorCode: 'UPLOAD_FAILED',
+      errorMessage: 'failed',
+      retryable: false,
+      upstreamStatus: 400,
+      upstreamDetail: null,
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { versionStableId: 'publish-version-1' },
+      }),
+    );
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { versionStableId: 'publish-version-1' },
+      }),
+    );
+  });
+
   it('复用相同幂等键的 FAILED 记录并清除旧失败状态', async () => {
     const failed = {
-      id: 'version-1',
+      id: '8a3d4c0e-4750-4f6a-9138-000000000002',
+      versionStableId: 'publish-version-retry-1',
       storeId: 'pos-1',
       idempotencyKey: 'key-1',
       businessVersion: 'business-1',
@@ -143,7 +175,7 @@ describe('UberMenuPublicationPrismaAdapter', () => {
         publishedItems: [],
       }),
     ).resolves.toMatchObject({
-      attemptId: 'version-1',
+      versionStableId: 'publish-version-retry-1',
       status: 'SUBMITTED',
     });
 
@@ -151,7 +183,9 @@ describe('UberMenuPublicationPrismaAdapter', () => {
     expect(createMany).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledTimes(1);
     const updateInput = update.mock.calls[0]?.[0];
-    expect(updateInput?.where).toEqual({ id: 'version-1' });
+    expect(updateInput?.where).toEqual({
+      id: '8a3d4c0e-4750-4f6a-9138-000000000002',
+    });
     expect(updateInput?.data).toMatchObject({
       status: 'SUBMITTED',
       errorMessage: null,

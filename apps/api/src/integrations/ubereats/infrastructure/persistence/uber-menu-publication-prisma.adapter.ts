@@ -86,11 +86,11 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
     });
   }
   async markPublishVersionSucceeded(
-    attemptId: string,
+    versionStableId: string,
     responsePayload: Record<string, unknown>,
   ) {
     await this.prisma.uberMenuPublishVersion.update({
-      where: { id: attemptId },
+      where: { versionStableId },
       data: {
         status: UberMenuPublishStatus.SUCCEEDED,
         responsePayload: responsePayload as Prisma.InputJsonValue,
@@ -101,12 +101,12 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
     });
   }
   async markPublishVersionFailed(
-    attemptId: string,
+    versionStableId: string,
     errorMessage: string,
     errors: Array<Record<string, unknown>> = [],
   ) {
     await this.prisma.uberMenuPublishVersion.update({
-      where: { id: attemptId },
+      where: { versionStableId },
       data: {
         status: UberMenuPublishStatus.FAILED,
         errorMessage,
@@ -117,7 +117,7 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
   }
   private dto(row: PublicationRow): UberMenuPublicationAttempt {
     return {
-      attemptId: row.id,
+      versionStableId: row.versionStableId,
       storeId: row.storeId,
       idempotencyKey: row.idempotencyKey || '',
       businessVersion: row.businessVersion,
@@ -196,11 +196,11 @@ export class UberMenuPublicationPrismaAdapter implements UberMenuPublicationRepo
     return this.dto(row);
   }
   async markFailed(
-    attemptId: string,
+    versionStableId: string,
     input: Parameters<UberMenuPublicationRepositoryPort['markFailed']>[1],
   ) {
     const result = await this.prisma.uberMenuPublishVersion.updateMany({
-      where: { id: attemptId },
+      where: { versionStableId },
       data: {
         status: UberMenuPublishStatus.FAILED,
         errorMessage: input.errorMessage,

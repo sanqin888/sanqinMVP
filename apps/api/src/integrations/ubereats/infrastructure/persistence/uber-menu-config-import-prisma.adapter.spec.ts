@@ -125,6 +125,15 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       menuItemStableId: 'pork',
       priceCents: 849,
     });
+    const events = x.prisma.opsEvent.create.mock.calls as unknown as Array<
+      [{ data: { eventName: string; payload: Record<string, unknown> } }]
+    >;
+    const appliedEvent = events.find(
+      ([input]) => input.data.eventName === 'ubereats_menu_config_import_applied',
+    );
+    expect(appliedEvent?.[0].data.payload).toMatchObject({
+      administratorStableId: 'admin-1',
+    });
   });
 
   it('restores only the selected item price and records administrator intent', async () => {
@@ -155,7 +164,7 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       posStoreId: 'production',
       menuItemStableId: 'pork',
       sourcePriceCents: 749,
-      administratorId: 'admin-1',
+      administratorStableId: 'admin-1',
     });
   });
 
@@ -186,7 +195,7 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       posStoreId: 'production',
       optionChoiceStableId: 'extra',
       sourcePriceDeltaCents: 200,
-      administratorId: 'admin-1',
+      administratorStableId: 'admin-1',
     });
   });
 });

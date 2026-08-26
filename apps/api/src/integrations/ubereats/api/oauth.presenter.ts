@@ -44,7 +44,6 @@ export const presentOAuthStart = <T extends { authorizeUrl: string }>(
 
 export const presentOAuthCallback = <
   T extends {
-    connectionId: string;
     scope?: string | null;
     expiresAt?: Date | null;
   },

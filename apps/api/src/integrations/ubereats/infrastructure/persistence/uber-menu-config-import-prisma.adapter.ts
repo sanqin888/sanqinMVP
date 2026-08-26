@@ -98,7 +98,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
     targetStoreId: string,
     mode: UberMenuConfigImportMode,
     previewFingerprint: string,
-    administratorId: string,
+    administratorStableId: string,
   ) {
     const [source, target] = await Promise.all([
       this.canonicalStoreId(this.prisma, sourceStoreId),
@@ -119,7 +119,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
             message: '来源或目标配置在 Preview 后已变化，请重新 Preview。',
             operation: 'uber.menu.config.import',
           });
-        return this.plan(tx, source, target, mode, true, true, administratorId);
+        return this.plan(tx, source, target, mode, true, true, administratorStableId);
       },
       { isolationLevel: 'Serializable' },
     );
@@ -127,7 +127,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
   async restoreItemPrice(
     storeId: string,
     menuItemStableId: string,
-    administratorId: string,
+    administratorStableId: string,
   ) {
     return this.prisma.$transaction(async (tx) => {
       const canonicalStoreId = await this.canonicalStoreId(tx, storeId);
@@ -165,7 +165,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
             posStoreId: canonicalStoreId,
             menuItemStableId,
             sourcePriceCents: item.basePriceCents,
-            administratorId,
+            administratorStableId,
             occurredAt: occurredAt.toISOString(),
           },
           occurredAt,
@@ -177,7 +177,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
   async restoreOptionPrice(
     storeId: string,
     optionChoiceStableId: string,
-    administratorId: string,
+    administratorStableId: string,
   ) {
     return this.prisma.$transaction(async (tx) => {
       const canonicalStoreId = await this.canonicalStoreId(tx, storeId);
@@ -215,7 +215,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
             posStoreId: canonicalStoreId,
             optionChoiceStableId,
             sourcePriceDeltaCents: option.priceDeltaCents,
-            administratorId,
+            administratorStableId,
             occurredAt: occurredAt.toISOString(),
           },
           occurredAt,
@@ -245,7 +245,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
     mode: UberMenuConfigImportMode,
     write: boolean,
     audit = true,
-    administratorId?: string,
+    administratorStableId?: string,
   ): Promise<UberMenuConfigImportPreview> {
     const counts = Object.fromEntries(
       DEFINITIONS.map((definition) => [definition.kind, emptyCount()]),
@@ -331,7 +331,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
             targetStoreId,
             mode,
             conflictCount: conflicts.length,
-            administratorId,
+            administratorStableId,
             previewFingerprint: fingerprint,
           },
         },

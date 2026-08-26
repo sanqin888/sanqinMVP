@@ -74,7 +74,7 @@ export type UberMenuPublicationStatus =
   | 'FAILED';
 
 export type UberMenuPublicationAttempt = {
-  attemptId: string;
+  versionStableId: string;
   storeId: string;
   idempotencyKey: string;
   businessVersion: string;
@@ -102,11 +102,11 @@ export interface UberMenuPublicationRepositoryPort {
     criticalCount: number;
   }): Promise<void>;
   markPublishVersionSucceeded(
-    attemptId: string,
+    versionStableId: string,
     responsePayload: Record<string, unknown>,
   ): Promise<void>;
   markPublishVersionFailed(
-    attemptId: string,
+    versionStableId: string,
     errorMessage: string,
     errors?: Array<Record<string, unknown>>,
   ): Promise<void>;
@@ -125,7 +125,7 @@ export interface UberMenuPublicationRepositoryPort {
     publishedItems: UberPublishedMenuItemSnapshot[];
   }): Promise<UberMenuPublicationAttempt>;
   markFailed(
-    attemptId: string,
+    versionStableId: string,
     input: {
       errorCode: string;
       errorMessage: string;

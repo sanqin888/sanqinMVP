@@ -11,9 +11,9 @@ export type SummaryResponse = { count: number; updatedAt: string | null };
 export type OperationPhase = 'QUEUED' | 'PROCESSING' | 'WAITING_WEBHOOK' | 'RETRYABLE_FAILED' | 'MANUAL_REVIEW' | 'COMPLETED';
 
 export type OAuthConnectUrlResponse = { authorizeUrl: string; state: string };
-export type OAuthConnectionResponse = { connectionId: string; scope?: string | null; tokenType?: string | null; expiresAt?: string | null; connectedAt?: string | null };
-export type UberStore = { storeId: string; storeName?: string; locationSummary?: string; isMapped?: boolean; mappedConnectionId?: string | null; requiresReconnect?: boolean; isProvisioned?: boolean; provisionedAt?: string | null; posExternalStoreId?: string | null; timezone?: string | null };
-export type OAuthStoresResponse = { connectionId?: string; stores: UberStore[] };
+export type OAuthConnectionResponse = { connected: true; scope?: string | null; tokenType?: string | null; expiresAt?: string | null; connectedAt?: string | null };
+export type UberStore = { storeId: string; storeName?: string; locationSummary?: string; isMapped?: boolean; requiresReconnect?: boolean; isProvisioned?: boolean; provisionedAt?: string | null; posExternalStoreId?: string | null; timezone?: string | null };
+export type OAuthStoresResponse = { stores: UberStore[] };
 export type UberStoreStatusResponse = {
   storeId: string;
   status: string;

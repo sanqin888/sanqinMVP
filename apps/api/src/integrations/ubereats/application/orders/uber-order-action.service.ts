@@ -25,23 +25,27 @@ export class UberOrderActionService {
     action: UberOrderActionName,
     denial?: UberOrderDenial,
   ) {
-    const queued = await this.repository.enqueue(
-      this.buildIntent({ externalOrderId, action, denial }),
-    );
+    const intent = this.buildIntent({ externalOrderId, action, denial });
+    const queued = await this.repository.enqueue(intent);
     this.notifyPersistedAction(queued);
-    return queued;
+    return {
+      created: queued.created,
+      actionReference: intent.idempotencyKey,
+    };
   }
 
   async requestScheduledFinalizeAccept(externalOrderId: string) {
-    const queued = await this.repository.requeue(
-      this.buildIntent({
-        externalOrderId,
-        action: 'ACCEPT',
-        phase: SCHEDULED_FINALIZE_PHASE,
-      }),
-    );
+    const intent = this.buildIntent({
+      externalOrderId,
+      action: 'ACCEPT',
+      phase: SCHEDULED_FINALIZE_PHASE,
+    });
+    const queued = await this.repository.requeue(intent);
     this.notifyPersistedAction(queued);
-    return queued;
+    return {
+      created: queued.created,
+      actionReference: intent.idempotencyKey,
+    };
   }
 
   notifyPersistedAction(

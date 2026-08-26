@@ -11,15 +11,6 @@ import {
 } from 'class-validator';
 import { UBER_RESOURCE_ID_PATTERN } from '../uber-resource-id';
 
-export class MerchantQuery {
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
-  connectionId?: string;
-}
-
 export class OAuthCallbackQuery {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(2048) code?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(512) state?: string;
@@ -40,43 +31,17 @@ export class ProvisionUberStoreDto {
   @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId!: string;
 
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
-  connectionId!: string;
-
   @IsOptional()
   @IsObject()
   payload?: Record<string, unknown>;
 }
 
-export class StoreIntegrationQuery {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
-  connectionId!: string;
-}
-
 export class UpdateUberStoreIntegrationDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
-  connectionId!: string;
-
   @IsObject()
   payload!: Record<string, unknown>;
 }
 
 export class UpdateUberStorePrepTimeDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
-  connectionId!: string;
-
   @IsInt()
   @Min(1)
   @Max(10_800)
@@ -88,19 +53,9 @@ export class SelectUberStoreDto {
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  connectionId!: string;
-  @IsString()
-  @MinLength(1)
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
   storeId!: string;
   @IsOptional() @IsString() @MaxLength(256) storeName?: string;
   @IsOptional() @IsString() @MaxLength(512) locationSummary?: string;
-  @IsOptional()
-  @IsString()
-  @MaxLength(128)
-  @Matches(UBER_RESOURCE_ID_PATTERN)
-  reconnectFromConnectionId?: string;
 }
 
 export class UpdatePosExternalStoreIdDto {

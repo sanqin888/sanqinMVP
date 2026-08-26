@@ -217,47 +217,39 @@ const withRequiredIntegrationConfig = (
 
 const requireMappedStore = async (
   storeId: string,
-  connectionId: string | undefined,
   connections: UberMerchantConnectionRepositoryPort,
   mappings: UberStoreMappingRepositoryPort,
 ) => {
   const id = storeId.trim();
-  const merchantId = connectionId?.trim();
-  if (!id || !merchantId)
+  if (!id)
     throw new UberValidationError({
       code: 'INVALID_REQUEST',
       operation: 'merchant',
-      message: 'storeId 和 connectionId 不能为空',
+      message: 'storeId 不能为空',
     });
-  const connection = await connections.findConnection(merchantId);
+  const mapping = await mappings.findMapping(id);
+  if (!mapping)
+    throw new UberValidationError({
+      code: 'STORE_NOT_MAPPED',
+      operation: 'merchant',
+      message: '当前 Uber 门店尚未绑定授权连接',
+    });
+  const connection = await connections.findConnection(mapping.connectionId);
   if (!connection)
     throw new UberValidationError({
       code: 'INVALID_REQUEST',
       operation: 'merchant',
       message: '未找到 Uber 商户授权',
     });
-  const mapping = await mappings.findMapping(id);
-  if (!mapping || mapping.connectionId !== connection.connectionId)
-    throw new UberValidationError({
-      code: 'STORE_NOT_MAPPED',
-      operation: 'merchant',
-      message: '当前 Uber 商户授权未绑定该门店',
-    });
   return { id, connection, mapping };
 };
 
 const requireProvisionedMappedStore = async (
   storeId: string,
-  connectionId: string | undefined,
   connections: UberMerchantConnectionRepositoryPort,
   mappings: UberStoreMappingRepositoryPort,
 ) => {
-  const result = await requireMappedStore(
-    storeId,
-    connectionId,
-    connections,
-    mappings,
-  );
+  const result = await requireMappedStore(storeId, connections, mappings);
   if (!result.mapping.isProvisioned)
     throw new UberValidationError({
       code: 'STORE_NOT_PROVISIONED',
@@ -277,7 +269,6 @@ export class ProvisionUberStoreUseCase {
   async provisionStore(
     storeId: string,
     payload: Record<string, unknown> = {},
-    merchantId?: string,
   ) {
     const id = storeId.trim();
     if (!id)
@@ -292,26 +283,11 @@ export class ProvisionUberStoreUseCase {
         operation: 'merchant',
         message: 'provision payload 不得包含 credential',
       });
-    if (!merchantId?.trim())
-      throw new UberValidationError({
-        code: 'INVALID_REQUEST',
-        operation: 'merchant',
-        message: 'connectionId 不能为空',
-      });
-    const connection = await this.connections.findConnection(merchantId.trim());
-    if (!connection)
-      throw new UberValidationError({
-        code: 'INVALID_REQUEST',
-        operation: 'merchant',
-        message: '未找到 Uber 商户授权',
-      });
-    const selected = await this.mappings.findMapping(id);
-    if (!selected || selected.connectionId !== connection.connectionId)
-      throw new UberValidationError({
-        code: 'STORE_NOT_MAPPED',
-        operation: 'merchant',
-        message: '请先确认并保存 Uber 门店映射，再执行 provisioning',
-      });
+    const { connection, mapping: selected } = await requireMappedStore(
+      id,
+      this.connections,
+      this.mappings,
+    );
     const configuredPayload = withRequiredIntegrationConfig(
       payload,
       'ACTIVATE',
@@ -322,7 +298,7 @@ export class ProvisionUberStoreUseCase {
       id,
       configuredPayload,
       buildUberIdempotencyKey({
-        taskId: `store-provision:${connection.connectionId}:${id}`,
+        taskId: `store-provision:${id}`,
         resourceId: id,
         action: 'PROVISION_STORE',
         businessVersion: createHash('sha256')
@@ -343,7 +319,6 @@ export class ProvisionUberStoreUseCase {
     this.logger.log(`[merchant.provisioning] storeId=${id} outcome=success`);
     return {
       ok: true,
-      connectionId: connection.connectionId,
       storeId: id,
       isProvisioned: true,
       provisionedAt: mapping.provisionedAt,
@@ -358,10 +333,9 @@ export class RetrieveUberStoreIntegrationConfigUseCase {
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
 
-  async retrieve(storeId: string, connectionId?: string) {
+  async retrieve(storeId: string) {
     const { id } = await requireMappedStore(
       storeId,
-      connectionId,
       this.connections,
       this.mappings,
     );
@@ -379,14 +353,9 @@ export class UpdateUberStoreIntegrationConfigUseCase {
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
 
-  async update(
-    storeId: string,
-    payload: Record<string, unknown>,
-    connectionId?: string,
-  ) {
+  async update(storeId: string, payload: Record<string, unknown>) {
     const { id, mapping } = await requireMappedStore(
       storeId,
-      connectionId,
       this.connections,
       this.mappings,
     );
@@ -429,23 +398,22 @@ export class DeprovisionUberStoreUseCase {
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
 
-  async revokeOrDeprovisionStore(storeId: string, connectionId?: string) {
+  async revokeOrDeprovisionStore(storeId: string) {
     const { id, connection, mapping } = await requireMappedStore(
       storeId,
-      connectionId,
       this.connections,
       this.mappings,
     );
     const businessVersion = createHash('sha256')
       .update(
-        `${connection.connectionId}:${mapping.provisionedAt?.toISOString() ?? 'not-provisioned'}`,
+        mapping.provisionedAt?.toISOString() ?? 'not-provisioned',
       )
       .digest('hex');
     await this.api.removeIntegration(
       { connectionId: connection.connectionId },
       id,
       buildUberIdempotencyKey({
-        taskId: `store-integration-remove:${connection.connectionId}:${id}`,
+        taskId: `store-integration-remove:${id}`,
         resourceId: id,
         action: 'REMOVE_INTEGRATION',
         businessVersion,
@@ -470,10 +438,9 @@ export class RetrieveUberStoreStatusUseCase {
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
 
-  async retrieve(storeId: string, connectionId?: string) {
+  async retrieve(storeId: string) {
     const { id } = await requireProvisionedMappedStore(
       storeId,
-      connectionId,
       this.connections,
       this.mappings,
     );
@@ -490,14 +457,9 @@ export class UpdateUberStorePrepTimeUseCase {
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
 
-  async update(
-    storeId: string,
-    defaultPrepTimeSeconds: number,
-    connectionId?: string,
-  ) {
+  async update(storeId: string, defaultPrepTimeSeconds: number) {
     const { id } = await requireProvisionedMappedStore(
       storeId,
-      connectionId,
       this.connections,
       this.mappings,
     );

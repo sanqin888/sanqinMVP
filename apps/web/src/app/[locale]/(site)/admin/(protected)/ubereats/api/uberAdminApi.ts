@@ -8,7 +8,7 @@ export async function loadConnectionStores(signal: AbortSignal) {
     apiFetch<OAuthConnectUrlResponse>('/integrations/ubereats/oauth/connect-url', { signal }),
     apiFetch<OAuthConnectionResponse>('/integrations/ubereats/oauth/connection', { signal }),
   ]);
-  const response = await apiFetch<OAuthStoresResponse>(`/integrations/ubereats/oauth/stores?connectionId=${encodeURIComponent(connection.connectionId)}`, { signal });
+  const response = await apiFetch<OAuthStoresResponse>('/integrations/ubereats/oauth/stores', { signal });
   return { connectUrl, connection, stores: response.stores ?? [] };
 }
 

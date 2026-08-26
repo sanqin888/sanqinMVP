@@ -31,11 +31,10 @@
     "provisionedAt",
     "posExternalStoreId",
     "isMapped",
-    "mappedConnectionId",
     "requiresReconnect"
   ],
   "merchantConnection": [
-    "connectionId",
+    "connected",
     "scope",
     "tokenType",
     "expiresAt",
@@ -78,6 +77,8 @@
     "payload",
     "stack",
     "uberError",
-    "lastError"
+    "lastError",
+    "connectionId",
+    "mappedConnectionId"
   ]
 }

@@ -12,7 +12,7 @@ type CreateAttemptInput = {
 };
 
 type CreateAttemptResult = {
-  attemptId: string;
+  versionStableId: string;
   storeId: string;
   idempotencyKey: string;
   businessVersion: string;
@@ -26,7 +26,7 @@ describe('PublishUberMenuUseCase published item snapshots', () => {
     const createAttempt = jest
       .fn<Promise<CreateAttemptResult>, [CreateAttemptInput]>()
       .mockResolvedValue({
-        attemptId: 'attempt-1',
+        versionStableId: 'attempt-1',
         storeId: 'pos-1',
         idempotencyKey: 'key-1',
         businessVersion: 'version-1',
@@ -112,7 +112,7 @@ describe('PublishUberMenuUseCase published item snapshots', () => {
     const createAttempt = jest
       .fn<Promise<CreateAttemptResult>, [CreateAttemptInput]>()
       .mockResolvedValue({
-        attemptId: 'attempt-1',
+        versionStableId: 'attempt-1',
         storeId: 'pos-1',
         idempotencyKey: 'key-1',
         businessVersion: 'version-1',

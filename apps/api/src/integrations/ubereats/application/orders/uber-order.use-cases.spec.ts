@@ -349,7 +349,7 @@ describe('Uber order use-case boundaries', () => {
     '%s delegates its semantic action without building a key',
     async (method, expected) => {
       const request = jest.fn().mockResolvedValue({
-        taskId: 'same-task',
+        actionReference: 'same-action-reference',
         created: false,
       });
       const useCase = new RequestUberOrderActionUseCase({ request } as never);
@@ -363,7 +363,10 @@ describe('Uber order use-case boundaries', () => {
         useCase[method] as (...input: never[]) => Promise<unknown>
       )(...(args as never[]));
       expect(request).toHaveBeenCalledWith(...expected);
-      expect(result).toMatchObject({ duplicate: true, actionId: 'same-task' });
+      expect(result).toMatchObject({
+        duplicate: true,
+        actionId: 'same-action-reference',
+      });
     },
   );
 
