@@ -1,7 +1,7 @@
 # SanQ 支付域模块化 + Clover POS 实时同步任务目标与边界
 
-**状态：** Implementation Charter v1  
-**日期：** 2026-08-25  
+**状态：** Implementation Charter v2  
+**日期：** 2026-08-26  
 **适用范围：** SanQ Payments / Clover / POS / Orders 的支付相关边界
 
 ## 1. 文档目的
@@ -12,7 +12,7 @@
 
 本次改造的最高原则：
 
-> 在不中断当前生产 POS 银行卡支付能力的前提下，建立独立 Payment bounded context，接入 Clover POS Terminal 实时支付，并在充分实测和生产稳定后移除旧人工链路。
+> 在不中断当前生产 POS 银行卡支付和 Web Ecommerce 支付能力的前提下，建立未来唯一的 Unified Payment Core。Phase D 先让 POS Clover Terminal 使用新核心；POS 实测稳定后再迁移 Web CARD / Apple Pay / Google Pay；双渠道验证通过后才删除旧 Web / POS 支付链路。任何会被并发消耗的内部权益（积分、储值余额、优惠券）必须在外部支付前 HOLD，并在最终支付结果后 COMMIT 或 RELEASE。
 
 ## 2. 当前状态基线
 
@@ -139,17 +139,61 @@ POS 请求退款
 
 Clover webhook 用于外部 payment update、Dashboard/device refund 等反向同步和最终一致性。Webhook 不作为 POS 刷卡成功的唯一主确认路径；主链路优先使用当前支付请求的同步/状态结果，Webhook + reconciliation 负责外部变化和恢复。
 
-### 3.8 Web 与 POS 最终统一资金事实模型
+### 3.8 Web 与 POS 最终统一支付核心
 
-现有 `CheckoutIntent` 保留：
+最终不得长期维护两套平级支付状态机。Web 与 POS 应共享同一套 provider-neutral payment lifecycle：
 
 ```text
-CheckoutIntent = checkout / 支付会话意图
-PaymentTransaction = 实际资金交易
-Order = 商业订单
+Web Checkout ----\
+                  -> Unified Payment Core -> Payment Provider -> Clover Ecommerce / Terminal
+POS Checkout ----/              |
+                                 -> Order finalization
 ```
 
-允许一次 CheckoutIntent 对应多个 Payment attempt，例如第一次失败、第二次成功。现有 Web Ecommerce 支付应在后续阶段逐步写入 `PaymentTransaction`，但不得为了模型统一破坏现有 Web 支付 UX/API。
+统一的是 PaymentAttempt / PaymentTransaction、状态机、幂等、pricing snapshot、order draft snapshot、tender allocation、reservation、reconciliation 和 order finalization 语义；不同渠道只保留必要的 presentation / provider interaction 差异。
+
+Phase D 先建设该统一核心，但第一位生产消费者只能是 POS Terminal。现有 Web `CheckoutIntent` / `CloverPayController` 在 POS 实测稳定前保持原生产行为，不得提前迁移或删除。Web 后续迁移成功后，`CheckoutIntent` 只能作为 legacy history 或纯 checkout-session context，不得继续作为另一套长期支付事实状态机。
+
+### 3.9 内部权益必须先 HOLD 后外部支付
+
+凡是会影响外部应收金额、且可能被其他请求并发消费的内部权益，必须在向 Clover 发起不可逆金融动作前完成 reservation：
+
+- Loyalty Points
+- Stored Balance
+- 单次/限次 Coupon entitlement
+
+统一生命周期最低为：
+
+```text
+HELD -> COMMITTED
+HELD -> RELEASED
+```
+
+规则：
+
+1. server quote 完成后先固化 immutable order/pricing snapshot。
+2. 在同一 logical payment attempt 下 HOLD 对应 Points / Balance / Coupon。
+3. HOLD 成功后才能计算并发起 external tender。
+4. provider 明确成功后，finalize transaction 中 COMMIT reservation 并创建 Order。
+5. provider 明确 DECLINED / CANCELLED / FAILED 后 RELEASE reservation。
+6. `UNKNOWN` / `RECONCILING` 时 reservation 必须继续 HELD，不得因 timeout 或 TTL 自动释放后允许第二次收费。
+7. reservation 的 `expiresAt` 只能用于 stale detection / reconciliation，不是无条件自动释放授权。
+8. 100% 由内部 tender 覆盖时，不创建不必要的 Clover Sale；仍需经过统一 finalize / reservation commit 语义。
+
+不得用“先真实扣积分/余额，失败再补偿退款”的方式伪装 HOLD；必须能区分 HELD、COMMITTED、RELEASED。
+
+### 3.10 Snapshot 是支付恢复事实的一部分
+
+在任何 external payment 发起前，必须持久化服务端批准的：
+
+- canonical order draft snapshot
+- pricing snapshot
+- tender allocation
+- external amount
+- currency
+- logical attempt identity / idempotency identity
+
+一旦支付进入 PROCESSING，该 attempt 后续 recovery/finalize 必须使用该 immutable snapshot，不得因为菜单价格、促销、税率、Coupon 或会员余额发生变化而重新按“当前规则”改变已批准应收金额。
 
 ## 4. 永久架构边界
 
@@ -192,17 +236,40 @@ Clover wire contract 必须停留在 Payments infrastructure / Clover adapter �
 
 ## 5. Payment 核心数据边界
 
-建议建立通用 `PaymentTransaction`，而不是 `CloverPosPayment`。最低应能表达：
+长期核心必须是 channel-neutral，而不是 `CloverPosPayment`。现有 Phase A `PaymentTransaction` 继续作为资金事实基础；Phase D 新增的 checkout preparation / reservation 能力不得把 POS 语义写死进 Payments domain。
+
+最低需要表达两组互补事实：
+
+### 5.1 PaymentTransaction / PaymentAttempt 资金事实
 
 - internal payment identity
-- optional `orderId` / `checkoutIntentId`
+- optional `orderId` / legacy `checkoutIntentId`
 - provider / source / paymentMethod / operation
-- amount / surcharge / charged total / refunded amount / currency
+- external amount / surcharge / charged total / refunded amount / currency
 - status / failure/result code / timestamps
 - `externalPaymentId`
 - provider payment/refund/order IDs
 - idempotency key
 - terminal/card facts（仅保存 provider 合法返回且确有业务用途的字段）
+
+### 5.2 Payment checkout preparation / reservation 事实
+
+在 external payment 前必须可持久化：
+
+- channel/source（WEB / POS 等）
+- store identity
+- immutable order draft snapshot
+- immutable pricing snapshot
+- tender allocation
+- reservation references
+- external amount / currency
+- attempt identity
+- stale/reconciliation deadline
+- finalization/order binding
+
+reservation 至少能表达 `POINTS`、`BALANCE`、`COUPON` 及 `HELD / COMMITTED / RELEASED`。
+
+是否将 preparation/reservation 作为独立表或通过明确关联模型实现，由实施阶段按现有 Prisma/模块边界确定；但不得把完整订单业务塞进 `PaymentTransaction`，也不得让 Payments infrastructure 直接操作 Loyalty/Membership internals。
 
 原始 provider payload 不应无限制成为核心业务模型；如确有审计需要，应明确字段、脱敏和 retention policy。
 
@@ -256,9 +323,11 @@ POS Terminal 支付应优先让 Clover 根据 merchant/tender 配置处理 surch
 
 本节为本项目最高优先级门禁。
 
-### 9.1 开发期间旧 POS CARD 必须始终可用
+### 9.1 开发期间旧 POS CARD 和旧 Web Ecommerce 必须始终可用
 
 在新 Terminal 主链路完整完成以前，当前 `POS CARD -> /pos/orders -> 直接创建 CARD Order` 必须继续工作。不得提前加入“CARD Order 必须提供 Clover paymentId”等硬约束。
+
+在 POS 新核心尚未完成实测和生产稳定前，现有 Web `CheckoutIntent / CloverPayController / Clover Ecommerce` 生产链路不得迁移、删除或改变外部行为。新统一核心可以为未来 Web 迁移预留 channel-neutral contract，但 Phase D 不得把旧 Web 流量切入新核心。
 
 ### 9.2 每个中间提交都必须可部署
 
@@ -330,7 +399,13 @@ Refund 为 UNKNOWN 时，Order 不得假装已退款成功，必须等待 reconc
 
 ## 15. CheckoutIntent 边界
 
-`CheckoutIntent` 本次不删除。长期语义：CheckoutIntent 管 checkout session / pricing / customer / fulfillment context / expiry；PaymentTransaction 管资金交易；Order 管商业订单。
+`CheckoutIntent` 在 POS 新核心建设和实测期间不删除、不迁移、不改变现有 Web 生产行为。
+
+长期目标不是保留两套支付状态机。Web 迁入 Unified Payment Core 后：
+
+- 若仍需 Web checkout session，可保留轻量 session/context 模型承载 contact verification、3DS/wallet/browser context、短期 expiry 等 Web 专属信息。
+- Payment lifecycle、资金状态、reconciliation、idempotency、snapshot、reservation、finalization 必须统一进入新核心。
+- 旧 `CheckoutIntent` 历史数据可继续只读保留；其旧 payment-state responsibilities 在 Web cutover + stability window 完成后由独立 cleanup 移除。
 
 ## 16. 本项目不强制顺带完成的事项
 

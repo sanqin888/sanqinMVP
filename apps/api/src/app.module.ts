@@ -31,6 +31,7 @@ import { AccountingModule } from './accounting/accounting.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { UberEatsModule } from './integrations/ubereats/ubereats.module';
 import { CloverWebCheckoutOrchestrationModule } from './orchestration/clover-web-checkout-orchestration.module';
+import { PosCardPaymentOrchestrationModule } from './orchestration/pos-card-payment-orchestration.module';
 import { PaymentsModule } from './payments/payments.module';
 
 const configModuleFactory: {
@@ -72,6 +73,7 @@ const envConfigModule = configModuleFactory.forRoot({
     UberEatsModule,
     PaymentsModule,
     CloverWebCheckoutOrchestrationModule,
+    PosCardPaymentOrchestrationModule,
   ],
   controllers: [AppController],
   providers: [

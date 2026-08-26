@@ -1,7 +1,7 @@
 # SanQ 支付域模块化 + Clover POS 实时同步分阶段实施方案
 
-**状态：** Phase Execution Plan v1  
-**日期：** 2026-08-25  
+**状态：** Phase Execution Plan v2  
+**日期：** 2026-08-26  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
 ## 0. 总体原则
@@ -20,6 +20,9 @@
 10. Payments 不得直接依赖 Orders internals。
 11. 每阶段完成后必须给出改动报告，再决定是否进入下一阶段。
 12. 所有代码修改前继续遵守 `AGENTS.md`、GitHub Actions、architecture tests 和现有模块边界。
+13. 新核心从 Phase D 起即按 Web / POS 最终共用设计，但 Phase D 只允许 POS 接入；现有 Web 生产链路必须保持原行为直到 POS 实测稳定。
+14. 会被并发消费并改变 external due 的内部权益（积分、储值余额、优惠券）必须先 HOLD；支付成功后 COMMIT，明确失败后 RELEASE，UNKNOWN/RECONCILING 继续 HELD。
+15. external payment 发起前必须持久化 immutable order/pricing snapshot 和 tender allocation；进入 PROCESSING 后 recovery 不得按当前价格/促销重新定价。
 
 执行顺序：
 
@@ -27,10 +30,10 @@
 Phase A  Payment Domain Foundation
 Phase B  Clover Provider Separation
 Phase C  Clover Terminal Backend Capability
-Phase D  POS New Payment Flow（flag=false）
+Phase D  Unified Payment Core + POS First Consumer（flag=false）
 Phase E  Refund / Void
 Phase F  Clover Webhook / Reverse Sync
-Phase G  Web Ecommerce Payment Normalization
+Phase G  Web Ecommerce Migration to Unified Payment Core
 Phase H  Full Verification / Cutover
 Phase I  Production Stability Window
 Phase J  Legacy Cleanup
@@ -317,29 +320,64 @@ Sale success、decline、cancel、timeout、unknown、reconcile、duplicate requ
 
 ---
 
-# Phase D — POS New Payment Flow（flag=false）
+# Phase D — Unified Payment Core + POS First Consumer（flag=false）
 
 ## 目标
 
-完成 POS 新 CARD 交互与 orchestration，但生产默认仍走旧链路。
+建立未来 Web / POS 共用的 Unified Payment Core，并让 POS Clover Terminal 成为第一位消费者；生产默认仍走旧 POS CARD，现有 Web Ecommerce 链路完全不迁移。
+
+Phase D 不再建设 POS 专属支付状态机。所有新增 payment preparation、snapshot、reservation、tender allocation、recovery 和 finalization contract 必须保持 channel-neutral，以便后续 Web 直接迁入而不是复制第二套实现。
 
 ## 主要工作
 
-1. 新银行卡支付弹窗。
-2. Terminal 状态展示。
-3. Waiting / Processing / Success / Declined / Cancelled / Unknown UX。
-4. retry / change payment method。
-5. POS reload 恢复 payment state。
-6. WebSocket / realtime status push。
-7. Payment success 后创建 Order。
-8. Order creation 幂等。
-9. 成功后打印并进入 board。
+1. 建立统一 checkout/payment preparation application contract。
+2. external payment 前持久化 immutable order draft snapshot、pricing snapshot、tender allocation、store/source/attempt identity。
+3. 建立内部权益 reservation：Points / Stored Balance / Coupon。
+4. reservation 状态至少覆盖 HELD / COMMITTED / RELEASED。
+5. HOLD 成功后才允许发起 Clover Terminal Sale。
+6. 计算 external card due；100% internal tender 时不得发起无意义 Clover Sale。
+7. 新银行卡支付弹窗。
+8. Terminal 状态展示。
+9. Waiting / Processing / Success / Declined / Cancelled / Unknown / Reconciling UX。
+10. retry / change payment method。
+11. POS reload 恢复相同 logical payment attempt。
+12. WebSocket / realtime status push。
+13. provider success 后使用已固化 snapshot finalize Order，不重新按当前价格/促销计算已批准 external due。
+14. finalize transaction 中 COMMIT reservation + consume payment attempt + create Order；明确失败时 RELEASE reservation。
+15. Order creation / reservation commit / release / print 全部幂等。
+16. 成功后打印并进入 board。
+17. 新核心从命名和 contract 上不得绑定 POS；POS controller/UI 只是第一层 adapter。
+
+## Reservation 硬规则
+
+```text
+Quote + Snapshot
+      -> HOLD Points / Balance / Coupon
+      -> persist logical attempt
+      -> external payment
+
+SUCCEEDED
+      -> COMMIT reservations
+      -> create Order
+
+DECLINED / CANCELLED / definitive FAILED
+      -> RELEASE reservations
+
+UNKNOWN / RECONCILING
+      -> KEEP HELD
+      -> reconcile provider truth
+```
+
+- `expiresAt` 只能标记 stale reservation 并触发 reconciliation，不得直接自动 RELEASE unresolved attempt。
+- 不得通过“先真实扣减，再失败补偿”模拟 HOLD。
+- Coupon entitlement 必须与 Points / Balance 一样防止并发重复消费。
+- snapshot 固化后，菜单价格、Promotion、税率、Coupon 当前状态变化不得改变该 attempt 已批准 external amount。
 
 ## Feature Flag
 
 ```text
 POS_CLOVER_TERMINAL_PAYMENT_ENABLED=false -> legacy CARD
-POS_CLOVER_TERMINAL_PAYMENT_ENABLED=true  -> new Payment flow
+POS_CLOVER_TERMINAL_PAYMENT_ENABLED=true  -> Unified Payment Core + Clover Terminal
 ```
 
 默认必须为 `false`。
@@ -348,11 +386,15 @@ POS_CLOVER_TERMINAL_PAYMENT_ENABLED=true  -> new Payment flow
 
 ```text
 POS
- -> start PaymentTransaction
- -> Terminal Sale
+ -> Unified Payment Preparation
+ -> immutable snapshot + tender allocation
+ -> HOLD internal entitlements
+ -> PaymentTransaction / logical attempt
+ -> Clover Terminal Sale (if external due > 0)
  -> wait final payment truth
  -> SUCCEEDED
- -> create Order
+ -> finalize snapshot
+ -> COMMIT reservations + create Order
  -> bind Payment <-> Order
  -> print
  -> board
@@ -360,24 +402,49 @@ POS
 
 ## UNKNOWN UX
 
-不得允许直接再次刷卡；必须显示正在确认支付结果并等待 reconciliation。
+不得允许直接再次刷卡；必须显示正在确认支付结果并等待 reconciliation。UNKNOWN / RECONCILING 期间 Points / Balance / Coupon 继续 HELD。
+
+## Web 生产边界
+
+Phase D 只能建设 Web 未来可复用的通用 contract / model，不得：
+
+- 改 Web checkout API 行为；
+- 把 Web 流量切到新核心；
+- 删除/替换 `CheckoutIntent`、`CloverPayController` 或旧 Web reconciliation；
+- 为了统一而同时切换两条生产支付链路。
 
 ## Architecture Test 收紧
 
 - POS 不得 import Clover gateway/OAuth/raw schema。
-- POS 只能调用 Payment application/public contract。
-- 明确 orchestration/composition 层是同时依赖 Payments + Orders 的唯一允许位置。
-- 新流程禁止在 Payment success 前创建 paid Order。
+- POS 只能调用 Unified Payment application/public contract。
+- 新 Unified Payment core contract 不得依赖 POS UI/types。
+- 明确 orchestration/composition 层是同时依赖 Payments + Orders / Loyalty / Membership public boundary 的允许位置。
+- Payments infrastructure 不得直接操作 Loyalty / Membership reservation internals。
+- 新流程禁止在 external payment success / internal-only finalize 前创建 paid Order。
+- Web legacy exception 仍精确保留，Phase D 不得扩大。
 
-legacy CARD 仍存在，所以“全仓库禁止 CARD direct order”此时尚不能启用最终规则；只能锁定**新路径**不得绕过 Payment。
+legacy CARD 仍存在，所以“全仓库禁止 CARD direct order”此时尚不能启用最终规则；只能锁定**新路径**不得绕过 Unified Payment Core。
 
 ## 测试要求
 
-flag=false regression、flag=true success、decline、cancel、unknown、double click、reload、WebSocket duplicate、Order once only、print once only。
+除原有 flag=false regression、flag=true success、decline、cancel、unknown、double click、reload、WebSocket duplicate、Order once only、print once only 外，必须新增：
+
+- Points HOLD -> COMMIT / RELEASE。
+- Balance HOLD -> COMMIT / RELEASE。
+- Coupon HOLD -> COMMIT / RELEASE。
+- Points + Card。
+- Balance + Card。
+- Coupon + Card。
+- Points + Balance + Coupon + Card。
+- 100% internal tender（不调用 Clover）。
+- UNKNOWN 保持全部 reservation HELD。
+- API restart / POS reload 后从 persisted snapshot 恢复。
+- snapshot 后价格/Promotion/税率变化不改变已批准 external amount。
+- 并发尝试不能重复 HOLD 同一 Coupon 或超额 HOLD Points/Balance。
 
 ## 完成标准
 
-新 POS flow 完整，但 production default 仍是 legacy。
+新 Unified Payment Core 的 POS 路径完整，reservation/snapshot/recovery 可承受最坏故障场景；production default 仍是 legacy POS，Web 生产链路行为不变。
 
 ## VM 部署
 
@@ -475,20 +542,22 @@ valid/invalid webhook、duplicate event、unknown payment、external refund、ou
 
 ---
 
-# Phase G — Web Ecommerce Payment Normalization
+# Phase G — Web Ecommerce Migration to Unified Payment Core
 
 ## 目标
 
-让现有 Web Clover 支付也写入统一 PaymentTransaction，同时保留 CheckoutIntent 和现有 UX/API。
+在 POS 新核心完成实测并经过稳定观察后，把现有 Web CARD / Apple Pay / Google Pay 迁入 Phase D 建立的同一 Unified Payment Core。迁移前旧 Web 链路仍是唯一生产收费路径；迁移过程中不得并行发起第二笔 Clover charge。
 
 ## 主要工作
 
-1. Web payment 成功/失败 attempt 写 PaymentTransaction。
-2. CheckoutIntent 与 PaymentTransaction 关联。
-3. external/provider IDs 统一进入 Payment。
-4. surcharge 统一进入 Payment。
-5. reconciliation 逐步迁移到 Payments。
-6. 收敛 CloverPayController 过重职责。
+1. 复用同一 payment preparation / snapshot / reservation / tender allocation contract。
+2. Web Ecommerce 仅替换 provider interaction adapter，核心状态机、幂等、reconciliation、finalization 与 POS 共用。
+3. Web Points / Balance / Coupon 统一先 HOLD，再 external payment，成功 COMMIT，明确失败 RELEASE。
+4. Web CARD / Apple Pay / Google Pay 的 external/provider IDs、surcharge、UNKNOWN/reconciliation 统一进入 PaymentTransaction。
+5. 保留 Web 专属 contact verification、3DS、wallet/browser/session context，但不再让其形成另一套 payment lifecycle。
+6. 迁移前可做 shadow quote / tender allocation compare，但 shadow path 不得向 Clover 发起收费。
+7. 收敛并最终替换 `CloverPayController` 内部 payment-state responsibilities。
+8. Web 新链路实测稳定前不删除旧 `CheckoutIntent` 或旧支付实现。
 
 ## Architecture Test 收紧
 

@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 
 import {
+  importSpecifiers,
   importViolations,
   interfaceMethods,
   scanTypeScript,
@@ -118,7 +119,7 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
-  it('prevents Orders and POS from importing Clover transport or wire infrastructure', () => {
+  it('prevents Orders and POS from importing Clover or payment provider infrastructure', () => {
     const consumers = [
       ...scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
         productionOnly: true,
@@ -129,10 +130,39 @@ describe('Payments bounded-context architecture', () => {
     ];
 
     expect(
-      importViolations(consumers, SOURCE_ROOT, (specifier) =>
-        /(?:^|\/)clover(?:\/|$)/.test(specifier),
+      importViolations(
+        consumers,
+        SOURCE_ROOT,
+        (specifier) =>
+          /(?:^|\/)clover(?:\/|$)/.test(specifier) ||
+          /payments\/infrastructure(?:\/|$)/.test(specifier),
       ),
     ).toEqual([]);
+  });
+
+  it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
+    const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
+      .filter((file) => {
+        const imports = importSpecifiers(file.source);
+        const importsPayments = imports.some((specifier) =>
+          /(?:^|\/)payments(?:\/|$)/.test(specifier),
+        );
+        const importsOrders = imports.some((specifier) =>
+          /(?:^|\/)orders(?:\/|$)/.test(specifier),
+        );
+        return importsPayments && importsOrders;
+      })
+      .map(({ path }) =>
+        path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+
+    expect(composers).toEqual([
+      'app.module.ts',
+      'orchestration/payment-checkout-attempt.service.ts',
+      'orchestration/pos-card-payment-orchestration.module.ts',
+      'orchestration/pos-card-payment-orchestration.service.ts',
+    ]);
   });
 
   it('tracks the one remaining legacy Web checkout Clover -> Orders exception and prevents it from spreading', () => {
