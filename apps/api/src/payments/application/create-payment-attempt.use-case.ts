@@ -196,7 +196,10 @@ export class TerminalPaymentService {
     } catch (error) {
       outcome = providerCallUnknown(
         'TERMINAL_PAYMENT_REQUEST_UNCERTAIN',
-        this.errorMessage(error, 'Terminal payment request outcome is uncertain'),
+        this.errorMessage(
+          error,
+          'Terminal payment request outcome is uncertain',
+        ),
       );
     }
 
@@ -236,7 +239,10 @@ export class TerminalPaymentService {
     } catch (error) {
       outcome = providerCallUnknown(
         'TERMINAL_CANCEL_REQUEST_UNCERTAIN',
-        this.errorMessage(error, 'Terminal cancel request outcome is uncertain'),
+        this.errorMessage(
+          error,
+          'Terminal cancel request outcome is uncertain',
+        ),
       );
     }
 
@@ -328,9 +334,8 @@ export class TerminalPaymentService {
     }
 
     const settled = transaction.applyProviderOutcome(outcome);
-    return (
-      await this.transactions.saveIfCurrentStatus(settled, 'PROCESSING')
-    ).transaction;
+    return (await this.transactions.saveIfCurrentStatus(settled, 'PROCESSING'))
+      .transaction;
   }
 
   private async requireTransaction(

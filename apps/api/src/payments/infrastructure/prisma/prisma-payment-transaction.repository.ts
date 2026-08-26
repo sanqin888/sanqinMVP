@@ -176,7 +176,9 @@ export class PrismaPaymentTransactionRepository implements PaymentTransactionRep
       });
       const current = await this.findById(snapshot.id);
       if (!current) {
-        throw new Error(`Payment transaction ${snapshot.id} disappeared during save`);
+        throw new Error(
+          `Payment transaction ${snapshot.id} disappeared during save`,
+        );
       }
       return { updated: result.count === 1, transaction: current };
     } catch (error) {

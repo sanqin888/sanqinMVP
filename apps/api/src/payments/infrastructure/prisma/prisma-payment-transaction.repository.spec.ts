@@ -200,7 +200,9 @@ describe('PrismaPaymentTransactionRepository', () => {
 
     expect(result.updated).toBe(false);
     expect(result.transaction.status).toBe('SUCCEEDED');
-    expect(result.transaction.toSnapshot().providerPaymentId).toBe('clover-winner');
+    expect(result.transaction.toSnapshot().providerPaymentId).toBe(
+      'clover-winner',
+    );
   });
 
   it('rejects unknown persisted classifications instead of leaking raw strings into domain', async () => {

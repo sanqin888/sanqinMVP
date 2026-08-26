@@ -82,10 +82,12 @@ describe('CloverPaymentProviderAdapter', () => {
 
   it('routes POS Terminal payments through the Terminal transport', async () => {
     const { adapter, terminal } = createAdapter();
-    const startPayment = jest.spyOn(terminal, 'startPayment').mockResolvedValue({
-      status: 'SUCCEEDED',
-      providerPaymentId: 'terminal-payment-1',
-    });
+    const startPayment = jest
+      .spyOn(terminal, 'startPayment')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        providerPaymentId: 'terminal-payment-1',
+      });
     const request = {
       paymentId: 'payment_terminal',
       amountCents: 1000,
@@ -196,7 +198,11 @@ describe('CloverTerminalTransport', () => {
       'X-Clover-Timeout': '10',
       'Idempotency-Key': 'attempt-1-sale',
     });
-    expect(JSON.parse(String(init?.body))).toEqual({
+    const requestBody = init?.body;
+    if (typeof requestBody !== 'string') {
+      throw new Error('Expected Clover Terminal request body to be JSON text');
+    }
+    expect(JSON.parse(requestBody)).toEqual({
       amount: 2000,
       externalPaymentId: 'external-1',
     });

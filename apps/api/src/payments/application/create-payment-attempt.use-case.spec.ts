@@ -15,9 +15,7 @@ import {
   type PaymentTransactionRepository,
 } from './payment-transaction.repository';
 
-class InMemoryPaymentTransactionRepository
-  implements PaymentTransactionRepository
-{
+class InMemoryPaymentTransactionRepository implements PaymentTransactionRepository {
   readonly rows: PaymentTransaction[] = [];
 
   findById(id: string): Promise<PaymentTransaction | null> {
@@ -273,7 +271,7 @@ describe('TerminalPaymentService', () => {
     const second = await service.startSale(terminalInput);
 
     expect(second.id).toBe(first.id);
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
   });
 
   it('allows only one provider call when duplicate starts race', async () => {
@@ -288,7 +286,7 @@ describe('TerminalPaymentService', () => {
       service.startSale(terminalInput),
     ]);
 
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
   });
 
   it('persists timeout uncertainty and reconciles without re-charging', async () => {
@@ -320,8 +318,8 @@ describe('TerminalPaymentService', () => {
     expect(resolved.toSnapshot().providerPaymentId).toBe(
       'clover-payment-after-reconcile',
     );
-    expect(provider.startPayment).toHaveBeenCalledTimes(1);
-    expect(provider.getPaymentStatus).toHaveBeenCalledWith(
+    expect(provider.startPayment.mock.calls).toHaveLength(1);
+    expect(provider.getPaymentStatus.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         externalPaymentId: uncertainPayment.toSnapshot().externalPaymentId,
         amountCents: 2599,
@@ -373,7 +371,7 @@ describe('TerminalPaymentService', () => {
 
     expect(recovered.status).toBe('SUCCEEDED');
     expect(recovered.toSnapshot().providerPaymentId).toBe('clover-recovered');
-    expect(provider.startPayment).not.toHaveBeenCalled();
+    expect(provider.startPayment.mock.calls).toHaveLength(0);
   });
 
   it('forces a PROCESSING cancel through UNKNOWN and reconciliation', async () => {

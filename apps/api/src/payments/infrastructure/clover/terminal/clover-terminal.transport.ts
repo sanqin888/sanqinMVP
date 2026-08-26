@@ -277,8 +277,7 @@ export const mapTerminalPaymentResponse = (
       providerOrderId,
       terminalId,
       resultCode,
-      failureCode:
-        stringValue(result.body, 'code') ?? 'CLOVER_TERMINAL_FAILED',
+      failureCode: stringValue(result.body, 'code') ?? 'CLOVER_TERMINAL_FAILED',
       failureMessage: errorText(result.body) || 'Clover payment failed',
     };
   }
@@ -360,8 +359,8 @@ export class CloverTerminalTransport {
   isConfigured(): boolean {
     return Boolean(
       this.config.terminalAccessToken &&
-        this.config.terminalDeviceId &&
-        this.config.terminalPosId,
+      this.config.terminalDeviceId &&
+      this.config.terminalPosId,
     );
   }
 
