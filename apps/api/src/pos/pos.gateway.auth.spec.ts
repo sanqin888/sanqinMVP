@@ -134,9 +134,9 @@ describe('PosGateway device authorization', () => {
       success: true,
     });
 
-    expect((client as unknown as { join: jest.Mock }).join).toHaveBeenCalledWith(
-      'store:store-a',
-    );
+    expect(
+      (client as unknown as { join: jest.Mock }).join,
+    ).toHaveBeenCalledWith('store:store-a');
     expect(posPrintJob.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { jobId: 'job-printer-1' },
@@ -181,13 +181,12 @@ describe('PosGateway device authorization', () => {
 
     await gateway.handleJoinStore(client, { storeId: 'store-a' });
 
-    expect((client as unknown as { join: jest.Mock }).join).toHaveBeenCalledWith(
-      'store:store-a',
-    );
-    expect((client as unknown as { emit: jest.Mock }).emit).toHaveBeenCalledWith(
-      'joined',
-      { room: 'store:store-a' },
-    );
+    expect(
+      (client as unknown as { join: jest.Mock }).join,
+    ).toHaveBeenCalledWith('store:store-a');
+    expect(
+      (client as unknown as { emit: jest.Mock }).emit,
+    ).toHaveBeenCalledWith('joined', { room: 'store:store-a' });
     expect(posPrintJob.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ storeId: 'store-a' }) as unknown,
@@ -219,9 +218,9 @@ describe('PosGateway device authorization', () => {
 
     await gateway.handleJoinStore(client);
 
-    expect((client as unknown as { join: jest.Mock }).join).toHaveBeenCalledWith(
-      'store:store-a',
-    );
+    expect(
+      (client as unknown as { join: jest.Mock }).join,
+    ).toHaveBeenCalledWith('store:store-a');
   });
 
   it('keeps anonymous sockets out of printer online detection', async () => {
