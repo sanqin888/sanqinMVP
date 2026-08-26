@@ -87,6 +87,10 @@ const paymentFixture = (
     | 'RECONCILING'
     | 'FAILED',
   amountCents = 700,
+  canonicalChargeFacts: {
+    surchargeCents: number;
+    chargedTotalCents: number;
+  } = { surchargeCents: 20, chargedTotalCents: amountCents + 20 },
 ): PaymentTransaction => {
   let payment = PaymentTransaction.create({
     id: '33333333-3333-4333-8333-333333333333',
@@ -116,9 +120,7 @@ const paymentFixture = (
   return payment.applyProviderOutcome(
     {
       status,
-      ...(status === 'SUCCEEDED'
-        ? { surchargeCents: 20, chargedTotalCents: amountCents + 20 }
-        : {}),
+      ...(status === 'SUCCEEDED' ? canonicalChargeFacts : {}),
     },
     new Date('2026-08-26T22:00:02.000Z'),
   );
@@ -289,6 +291,33 @@ describe('PosCardPaymentOrchestrationService', () => {
       balanceCents: 300,
       orderStableId: 'cpaymentorder1',
     });
+  });
+
+  it('accepts canonical charged total with non-surcharge additional charges without re-deriving Clover ledger', async () => {
+    const harness = createHarness();
+    jest.mocked(harness.terminalPayments.startSale).mockResolvedValue(
+      paymentFixture('SUCCEEDED', 700, {
+        surchargeCents: 20,
+        chargedTotalCents: 735,
+      }),
+    );
+
+    const result = await harness.service.start('store-1', {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      order: orderInput,
+    });
+
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        cardSurchargeCents: 20,
+        chargedTotalCents: 735,
+      }),
+    );
+    expect(result.status).toBe('SUCCEEDED');
   });
 
   it('finalizes a 100% internal tender without checking or calling Clover', async () => {

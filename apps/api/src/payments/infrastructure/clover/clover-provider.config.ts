@@ -5,6 +5,8 @@ export class CloverProviderConfig {
   readonly ecommerceApiBase: string;
   readonly accessToken: string | undefined;
   readonly merchantId: string | undefined;
+  readonly platformApiBase: string;
+  readonly platformAccessToken: string | undefined;
   readonly terminalApiBase: string;
   readonly terminalAccessToken: string | undefined;
   readonly terminalDeviceId: string | undefined;
@@ -16,6 +18,10 @@ export class CloverProviderConfig {
       process.env.CLOVER_BASE?.trim() || 'https://api.clover.com';
     this.accessToken = process.env.CLOVER_ACCESS_TOKEN?.trim();
     this.merchantId = process.env.CLOVER_MERCHANT_ID?.trim();
+    this.platformApiBase = (
+      process.env.CLOVER_PLATFORM_API_BASE?.trim() || 'https://api.clover.com'
+    ).replace(/\/$/, '');
+    this.platformAccessToken = process.env.CLOVER_V3_ACCESS_TOKEN?.trim();
     this.terminalApiBase = (
       process.env.CLOVER_TERMINAL_BASE?.trim() || this.ecommerceApiBase
     ).replace(/\/$/, '');

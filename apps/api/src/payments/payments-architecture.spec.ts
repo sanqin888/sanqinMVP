@@ -100,7 +100,7 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
-  it('keeps Clover Terminal transport and wire contracts inside provider infrastructure', () => {
+  it('keeps Clover execution/canonical gateways and raw mappers inside provider infrastructure', () => {
     const cloverInfrastructureRoot = resolve(
       PAYMENTS_ROOT,
       'infrastructure',
@@ -112,7 +112,7 @@ describe('Payments bounded-context architecture', () => {
 
     expect(
       importViolations(sourceFiles, SOURCE_ROOT, (specifier) =>
-        /(?:payments\/)?infrastructure\/clover\/terminal|clover-terminal\.(?:transport|contracts|mapper)/.test(
+        /(?:payments\/)?infrastructure\/clover\/(?:terminal|platform)|clover-terminal\.(?:transport|contracts|mapper)|clover-platform-payments\.(?:gateway|contracts|mapper)|clover-ecommerce\.(?:contracts|mapper)/.test(
           specifier,
         ),
       ),

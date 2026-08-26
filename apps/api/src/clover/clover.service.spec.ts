@@ -1,6 +1,7 @@
 import { CloverProviderConfig } from '../payments/infrastructure/clover/clover-provider.config';
+import { toChargeStatusSuccess } from '../payments/infrastructure/clover/ecommerce/clover-ecommerce.mapper';
 import { CloverEcommerceTransport } from '../payments/infrastructure/clover/ecommerce/clover-ecommerce.transport';
-import { CloverService, toChargeStatusSuccess } from './clover.service';
+import { CloverService } from './clover.service';
 
 describe('toChargeStatusSuccess', () => {
   it('优先采用 Clover 返回的实际 charged total 作为总扣款金额', () => {

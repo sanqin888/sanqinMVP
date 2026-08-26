@@ -1,6 +1,7 @@
 import { CloverPaymentProviderAdapter } from './clover-payment-provider.adapter';
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
+import { CloverPlatformPaymentsGateway } from './platform/clover-platform-payments.gateway';
 import {
   CloverTerminalTransport,
   mapTerminalPaymentResponse,
@@ -11,10 +12,13 @@ describe('CloverPaymentProviderAdapter', () => {
     const config = new CloverProviderConfig();
     const ecommerce = new CloverEcommerceTransport(config);
     const terminal = new CloverTerminalTransport(config);
+    const platform = new CloverPlatformPaymentsGateway(config);
+    jest.spyOn(platform, 'isConfigured').mockReturnValue(true);
     return {
-      adapter: new CloverPaymentProviderAdapter(ecommerce, terminal),
+      adapter: new CloverPaymentProviderAdapter(ecommerce, terminal, platform),
       ecommerce,
       terminal,
+      platform,
     };
   };
 
@@ -31,6 +35,7 @@ describe('CloverPaymentProviderAdapter', () => {
     await expect(
       adapter.startPayment({
         paymentId: 'payment_1',
+        attemptId: 'attempt_1',
         amountCents: 1024,
         currency: 'CAD',
         paymentMethod: 'CARD',
@@ -65,6 +70,7 @@ describe('CloverPaymentProviderAdapter', () => {
     await expect(
       adapter.startPayment({
         paymentId: 'payment_2',
+        attemptId: 'attempt_2',
         amountCents: 1000,
         currency: 'CAD',
         paymentMethod: 'CARD',
@@ -80,16 +86,36 @@ describe('CloverPaymentProviderAdapter', () => {
     expect(createCardPayment).not.toHaveBeenCalled();
   });
 
-  it('routes POS Terminal payments through the Terminal transport', async () => {
-    const { adapter, terminal } = createAdapter();
+  it('treats Terminal success as execution evidence until Platform v3 confirms it', async () => {
+    const { adapter, terminal, platform } = createAdapter();
     const startPayment = jest
       .spyOn(terminal, 'startPayment')
       .mockResolvedValue({
         status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
         providerPaymentId: 'terminal-payment-1',
+        externalPaymentId: 'external-terminal-1',
+        terminalId: 'device-1',
+      });
+    const canonicalRead = jest
+      .spyOn(platform, 'getCanonicalPayment')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        idempotencyKey: 'attempt_terminal',
+        providerPaymentId: 'terminal-payment-1',
+        externalPaymentId: 'external-terminal-1',
+        amountCents: 1000,
+        currency: 'CAD',
+        surchargeCents: 24,
+        chargedTotalCents: 1024,
+        resultCode: 'success',
       });
     const request = {
       paymentId: 'payment_terminal',
+      attemptId: 'attempt_terminal',
       amountCents: 1000,
       currency: 'CAD',
       paymentMethod: 'CARD' as const,
@@ -98,11 +124,178 @@ describe('CloverPaymentProviderAdapter', () => {
       externalPaymentId: 'external-terminal-1',
     };
 
-    await expect(adapter.startPayment(request)).resolves.toEqual({
+    await expect(adapter.startPayment(request)).resolves.toMatchObject({
       status: 'SUCCEEDED',
+      evidence: 'CANONICAL',
       providerPaymentId: 'terminal-payment-1',
+      terminalId: 'device-1',
+      surchargeCents: 24,
+      chargedTotalCents: 1024,
     });
     expect(startPayment).toHaveBeenCalledWith(request);
+    expect(canonicalRead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        providerPaymentId: 'terminal-payment-1',
+        externalPaymentId: 'external-terminal-1',
+        amountCents: 1000,
+        currency: 'CAD',
+      }),
+    );
+  });
+
+  it('keeps Terminal success UNKNOWN when Platform v3 has not exposed the payment yet', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    jest.spyOn(terminal, 'startPayment').mockResolvedValue({
+      status: 'SUCCEEDED',
+      evidence: 'EXECUTION',
+      providerPaymentId: 'terminal-payment-1',
+      externalPaymentId: 'external-terminal-1',
+    });
+    jest.spyOn(platform, 'getCanonicalPayment').mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      paymentId: 'payment_terminal',
+      attemptId: 'attempt_terminal',
+      idempotencyKey: 'attempt_terminal',
+      providerPaymentId: 'terminal-payment-1',
+      externalPaymentId: 'external-terminal-1',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+      failureMessage: 'not visible yet',
+    });
+
+    await expect(
+      adapter.startPayment({
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        amountCents: 1000,
+        currency: 'CAD',
+        paymentMethod: 'CARD',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt_terminal',
+        externalPaymentId: 'external-terminal-1',
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+    });
+  });
+
+  it('recovers a lost Terminal response through Platform v3 externalPaymentId lookup', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    jest.spyOn(terminal, 'startPayment').mockResolvedValue({
+      status: 'UNKNOWN',
+      externalPaymentId: 'external-terminal-1',
+      failureCode: 'CLOVER_TERMINAL_PAYMENT_REQUEST_UNCERTAIN',
+    });
+    const canonicalRead = jest
+      .spyOn(platform, 'getCanonicalPayment')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        idempotencyKey: 'attempt_terminal',
+        providerPaymentId: 'terminal-payment-recovered',
+        externalPaymentId: 'external-terminal-1',
+        amountCents: 1000,
+        currency: 'CAD',
+        surchargeCents: 0,
+        chargedTotalCents: 1000,
+        resultCode: 'success',
+      });
+
+    await expect(
+      adapter.startPayment({
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        amountCents: 1000,
+        currency: 'CAD',
+        paymentMethod: 'CARD',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt_terminal',
+        externalPaymentId: 'external-terminal-1',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'terminal-payment-recovered',
+    });
+    expect(canonicalRead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerPaymentId: undefined,
+        externalPaymentId: 'external-terminal-1',
+      }),
+    );
+  });
+
+  it('uses Platform v3 rather than REST Pay status for POS reconciliation', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    const terminalStatus = jest.spyOn(terminal, 'getPaymentStatus');
+    const canonicalRead = jest
+      .spyOn(platform, 'getCanonicalPayment')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        idempotencyKey: 'attempt_terminal',
+        externalPaymentId: 'external-terminal-1',
+        providerPaymentId: 'terminal-payment-1',
+        amountCents: 1000,
+        currency: 'CAD',
+        surchargeCents: 0,
+        chargedTotalCents: 1000,
+      });
+
+    await expect(
+      adapter.getPaymentStatus({
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt_terminal',
+        externalPaymentId: 'external-terminal-1',
+        providerPaymentId: 'terminal-payment-1',
+        amountCents: 1000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({ status: 'SUCCEEDED', evidence: 'CANONICAL' });
+
+    expect(canonicalRead).toHaveBeenCalledTimes(1);
+    expect(terminalStatus).not.toHaveBeenCalled();
+  });
+
+  it('blocks Terminal availability and sale before execution when Platform v3 is not configured', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    jest.mocked(platform.isConfigured).mockReturnValue(false);
+    const terminalAvailability = jest.spyOn(terminal, 'getAvailability');
+    const terminalStart = jest.spyOn(terminal, 'startPayment');
+    const availability = await adapter.getAvailability();
+
+    expect(availability).toMatchObject({
+      state: 'MISCONFIGURED',
+      configured: false,
+      available: false,
+      failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
+    });
+    expect(terminalAvailability).not.toHaveBeenCalled();
+
+    await expect(
+      adapter.startPayment({
+        paymentId: 'payment_terminal',
+        attemptId: 'attempt_terminal',
+        amountCents: 1000,
+        currency: 'CAD',
+        paymentMethod: 'CARD',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'attempt_terminal',
+        externalPaymentId: 'external-terminal-1',
+      }),
+    ).resolves.toMatchObject({
+      status: 'FAILED',
+      failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
+    });
+    expect(terminalStart).not.toHaveBeenCalled();
   });
 
   it('routes terminal availability through the Terminal transport', async () => {
@@ -183,6 +376,7 @@ describe('CloverTerminalTransport', () => {
     await expect(
       transport.startPayment({
         paymentId: 'payment-1',
+        attemptId: 'attempt-1',
         amountCents: 2000,
         currency: 'CAD',
         paymentMethod: 'CARD',
@@ -223,6 +417,7 @@ describe('CloverTerminalTransport', () => {
     await expect(
       transport.startPayment({
         paymentId: 'payment-1',
+        attemptId: 'attempt-1',
         amountCents: 2000,
         currency: 'CAD',
         paymentMethod: 'CARD',
@@ -258,6 +453,7 @@ describe('CloverTerminalTransport', () => {
     await expect(
       transport.getPaymentStatus({
         paymentId: 'payment-1',
+        attemptId: 'attempt-1',
         source: 'POS_TERMINAL',
         idempotencyKey: 'attempt-1-sale',
         providerPaymentId: 'clover-payment-1',
@@ -287,6 +483,7 @@ describe('CloverTerminalTransport', () => {
     await expect(
       transport.cancelPayment({
         paymentId: 'payment-1',
+        attemptId: 'attempt-1',
         source: 'POS_TERMINAL',
         idempotencyKey: 'attempt-1-sale',
         externalPaymentId: 'external-1',

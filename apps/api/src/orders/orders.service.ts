@@ -2408,13 +2408,13 @@ export class OrdersService {
         'cardSurchargeCents must be a non-negative integer',
       );
     }
-    const expectedChargedTotalCents =
-      snapshot.tender.externalCents + input.cardSurchargeCents;
-    if (input.chargedTotalCents !== expectedChargedTotalCents) {
-      throw new ConflictException({
-        code: 'PAYMENT_CHARGED_TOTAL_MISMATCH',
-        message: 'Confirmed payment total does not match the prepared tender.',
-      });
+    if (
+      !Number.isSafeInteger(input.chargedTotalCents) ||
+      input.chargedTotalCents < 0
+    ) {
+      throw new BadRequestException(
+        'chargedTotalCents must be a non-negative integer',
+      );
     }
 
     const existing = await this.prisma.order.findUnique({
