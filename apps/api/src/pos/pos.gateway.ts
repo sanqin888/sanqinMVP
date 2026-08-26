@@ -23,7 +23,7 @@ export const POS_CARD_PAYMENT_STATUS_UPDATED_EVENT =
 
 type PosSocketDeviceIdentity = {
   deviceStableId: string;
-  storeId: string;
+  storeStableId: string;
 };
 
 type PosSocketData = {
@@ -112,7 +112,7 @@ export class PosGateway
     const data = client.data as PosSocketData;
     data.posDevice = {
       deviceStableId: device.deviceStableId,
-      storeId: device.storeId,
+      storeStableId: device.storeStableId,
     };
     return true;
   }
@@ -188,7 +188,7 @@ export class PosGateway
       event: 'pos_socket_connected',
       socketId: client.id,
       deviceStableId: device?.deviceStableId ?? null,
-      storeId: device?.storeId ?? null,
+      storeId: device?.storeStableId ?? null,
     });
   }
 
@@ -198,7 +198,7 @@ export class PosGateway
       event: 'pos_socket_disconnected',
       socketId: client.id,
       deviceStableId: device?.deviceStableId ?? null,
-      storeId: device?.storeId ?? null,
+      storeId: device?.storeStableId ?? null,
     });
   }
 
@@ -218,29 +218,29 @@ export class PosGateway
       typeof payload?.storeId === 'string' && payload.storeId.trim()
         ? payload.storeId.trim()
         : null;
-    if (requestedStoreId && requestedStoreId !== device.storeId) {
+    if (requestedStoreId && requestedStoreId !== device.storeStableId) {
       this.logger.warn({
         event: 'pos_socket_cross_store_join_rejected',
         socketId: client.id,
         deviceStableId: device.deviceStableId,
-        storeId: device.storeId,
+        storeId: device.storeStableId,
         requestedStoreId,
         reason: 'STORE_MISMATCH',
       });
       return;
     }
 
-    const roomName = `store:${device.storeId}`;
+    const roomName = `store:${device.storeStableId}`;
     await client.join(roomName);
     this.logger.log({
       event: 'pos_socket_store_joined',
       socketId: client.id,
       deviceStableId: device.deviceStableId,
-      storeId: device.storeId,
+      storeId: device.storeStableId,
       room: roomName,
     });
     client.emit('joined', { room: roomName });
-    await this.dispatchPending(device.storeId);
+    await this.dispatchPending(device.storeStableId);
   }
 
   @SubscribeMessage('PRINT_JOB_ACK')
@@ -277,7 +277,7 @@ export class PosGateway
         event: 'pos_print_ack_rejected',
         socketId: client.id,
         deviceStableId: device.deviceStableId,
-        storeId: device.storeId,
+        storeId: device.storeStableId,
         jobId: jobId || null,
         reason: 'INVALID_PAYLOAD',
       });
@@ -292,18 +292,18 @@ export class PosGateway
         event: 'pos_print_ack_rejected',
         socketId: client.id,
         deviceStableId: device.deviceStableId,
-        storeId: device.storeId,
+        storeId: device.storeStableId,
         jobId,
         reason: 'JOB_NOT_FOUND',
       });
       return;
     }
-    if (existingJob.storeId !== device.storeId) {
+    if (existingJob.storeId !== device.storeStableId) {
       this.logger.warn({
         event: 'pos_print_ack_rejected',
         socketId: client.id,
         deviceStableId: device.deviceStableId,
-        storeId: device.storeId,
+        storeId: device.storeStableId,
         jobId,
         jobStoreId: existingJob.storeId,
         reason: 'STORE_MISMATCH',

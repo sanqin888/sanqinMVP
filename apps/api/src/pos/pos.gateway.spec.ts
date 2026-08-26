@@ -146,7 +146,7 @@ describe('PosGateway durable print delivery', () => {
     const client = {
       id: 'socket-1',
       data: {
-        posDevice: { deviceStableId: 'device-1', storeId: 'store-1' },
+        posDevice: { deviceStableId: 'device-1', storeStableId: 'store-1' },
       },
     } as never;
     await gateway.handlePrintJobAck(client, {
