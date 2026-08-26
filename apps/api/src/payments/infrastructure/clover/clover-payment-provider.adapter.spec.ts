@@ -1,7 +1,9 @@
-import { CloverPaymentProviderAdapter } from './clover-payment-provider.adapter';
+import {
+  CloverPaymentProviderAdapter,
+  CloverPlatformPaymentsGateway,
+} from './clover-payment-provider.adapter';
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
-import { CloverPlatformPaymentsGateway } from './platform/clover-platform-payments.gateway';
 import {
   CloverTerminalTransport,
   mapTerminalPaymentResponse,
@@ -567,5 +569,193 @@ describe('Clover Terminal response mapping', () => {
         'device-1',
       ),
     ).toMatchObject({ status: 'DECLINED' });
+  });
+});
+
+describe('Clover Platform Payments Gateway', () => {
+  const platformRequest = {
+    paymentId: 'payment-internal-1',
+    attemptId: 'attempt-1',
+    idempotencyKey: 'attempt-1-sale',
+    externalPaymentId: 'external-1',
+    providerPaymentId: 'clover-payment-1',
+    amountCents: 2000,
+    currency: 'CAD',
+  };
+  const platformPayment = (
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    id: 'clover-payment-1',
+    externalPaymentId: 'external-1',
+    amount: 2000,
+    result: 'success',
+    order: { id: 'clover-order-1', currency: 'CAD' },
+    cardTransaction: { cardType: 'VISA', last4: '4242' },
+    additionalCharges: {
+      elements: [{ type: 'CREDIT_SURCHARGE', amount: 48 }],
+    },
+    refunds: { elements: [] },
+    ...overrides,
+  });
+  const original = {
+    base: process.env.CLOVER_PLATFORM_API_BASE,
+    platformToken: process.env.CLOVER_V3_ACCESS_TOKEN,
+    ecommerceToken: process.env.CLOVER_ACCESS_TOKEN,
+    merchantId: process.env.CLOVER_MERCHANT_ID,
+  };
+  const setPlatformEnv = (key: string, value: string): void => {
+    process.env[key] = value;
+  };
+  const restorePlatformEnv = (
+    key: string,
+    value: string | undefined,
+  ): void => {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  };
+
+  beforeEach(() => {
+    setPlatformEnv(
+      'CLOVER_PLATFORM_API_BASE',
+      'https://platform.example.test',
+    );
+    setPlatformEnv('CLOVER_V3_ACCESS_TOKEN', 'platform-v3-fixture-token');
+    setPlatformEnv('CLOVER_MERCHANT_ID', 'merchant-1');
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    restorePlatformEnv('CLOVER_PLATFORM_API_BASE', original.base);
+    restorePlatformEnv('CLOVER_V3_ACCESS_TOKEN', original.platformToken);
+    restorePlatformEnv('CLOVER_ACCESS_TOKEN', original.ecommerceToken);
+    restorePlatformEnv('CLOVER_MERCHANT_ID', original.merchantId);
+  });
+
+  it('reads canonical payment by provider id with dedicated Platform v3 credentials', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(platformPayment()), { status: 200 }),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'CANONICAL',
+      paymentId: 'payment-internal-1',
+      attemptId: 'attempt-1',
+      externalPaymentId: 'external-1',
+      providerPaymentId: 'clover-payment-1',
+      amountCents: 2000,
+      currency: 'CAD',
+      surchargeCents: 48,
+      chargedTotalCents: 2048,
+      cardBrand: 'VISA',
+      cardLast4: '4242',
+    });
+    expect(String(fetchSpy.mock.calls[0][0])).toContain(
+      'https://platform.example.test/v3/merchants/merchant-1/payments/clover-payment-1',
+    );
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('expand=');
+    expect(fetchSpy.mock.calls[0][1]?.headers).toMatchObject({
+      Authorization: 'Bearer platform-v3-fixture-token',
+    });
+  });
+
+  it('uses payment collection filter by externalPaymentId when provider id is unknown', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ elements: [platformPayment()] }), {
+        status: 200,
+      }),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
+
+    await expect(
+      gateway.getCanonicalPayment({
+        ...platformRequest,
+        providerPaymentId: null,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerPaymentId: 'clover-payment-1',
+    });
+    expect(String(fetchSpy.mock.calls[0][0])).toContain(
+      'filter=externalPaymentId%3Dexternal-1',
+    );
+  });
+
+  it('does not finalize when canonical amount mismatches the prepared amount', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(platformPayment({ amount: 1999 })), {
+        status: 200,
+      }),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_AMOUNT_MISMATCH',
+    });
+  });
+
+  it('does not finalize when canonical payment id mismatches the expected provider id', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(platformPayment({ id: 'different-payment' })),
+        { status: 200 },
+      ),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_PAYMENT_ID_MISMATCH',
+    });
+  });
+
+  it('maps CREDIT_SURCHARGE separately while charged total includes all additional charges', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          platformPayment({
+            additionalCharges: {
+              elements: [
+                { type: 'CREDIT_SURCHARGE', amount: 48 },
+                { type: 'OTHER', amount: 15 },
+              ],
+            },
+          }),
+        ),
+        { status: 200 },
+      ),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      surchargeCents: 48,
+      chargedTotalCents: 2063,
+    });
+  });
+
+  it('does not fall back to Ecommerce credentials for Platform v3', async () => {
+    delete process.env.CLOVER_V3_ACCESS_TOKEN;
+    setPlatformEnv('CLOVER_ACCESS_TOKEN', 'ecommerce-only-fixture-token');
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const gateway = new CloverPlatformPaymentsGateway(new CloverProviderConfig());
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

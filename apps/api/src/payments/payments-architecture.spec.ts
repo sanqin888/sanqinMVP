@@ -119,6 +119,32 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
+  it('defines the Platform v3 gateway only inside Payments Clover infrastructure', () => {
+    const definitions = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
+      .filter(({ source }) =>
+        source.includes('class CloverPlatformPaymentsGateway'),
+      )
+      .map(({ path }) =>
+        path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
+      );
+
+    expect(definitions).toEqual([
+      'payments/infrastructure/clover/clover-payment-provider.adapter.ts',
+    ]);
+  });
+
+  it('prevents unified-payment orchestration from importing Clover infrastructure', () => {
+    const orchestrationFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orchestration'), {
+      productionOnly: true,
+    });
+
+    expect(
+      importViolations(orchestrationFiles, SOURCE_ROOT, (specifier) =>
+        /payments\/infrastructure\/clover(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
+
   it('prevents Orders and POS from importing Clover or payment provider infrastructure', () => {
     const consumers = [
       ...scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
