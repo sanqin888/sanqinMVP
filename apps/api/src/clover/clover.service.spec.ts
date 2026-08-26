@@ -1,4 +1,6 @@
-import { toChargeStatusSuccess } from './clover.service';
+import { CloverProviderConfig } from '../payments/infrastructure/clover/clover-provider.config';
+import { CloverEcommerceTransport } from '../payments/infrastructure/clover/ecommerce/clover-ecommerce.transport';
+import { CloverService, toChargeStatusSuccess } from './clover.service';
 
 describe('toChargeStatusSuccess', () => {
   it('优先采用 Clover 返回的实际 charged total 作为总扣款金额', () => {
@@ -41,5 +43,36 @@ describe('toChargeStatusSuccess', () => {
       baseAmountCents: 133,
       chargedTotalCents: 136,
     });
+  });
+});
+
+describe('CloverService compatibility facade', () => {
+  it('preserves the existing createCardPayment request and result shape', async () => {
+    const transport = new CloverEcommerceTransport(new CloverProviderConfig());
+    const service = new CloverService(transport);
+    const createCardPayment = jest
+      .spyOn(transport, 'createCardPayment')
+      .mockResolvedValue({
+        ok: true,
+        paymentId: 'pay_web_1',
+        status: 'succeeded',
+      });
+
+    const request = {
+      amountCents: 1024,
+      currency: 'CAD',
+      source: 'token_web_1',
+      orderId: 'checkout_web_1',
+      externalPaymentId: 'checkout_web_1',
+      idempotencyKey: 'checkout_web_1',
+      description: 'Online Order checkout_web_1',
+    };
+
+    await expect(service.createCardPayment(request)).resolves.toEqual({
+      ok: true,
+      paymentId: 'pay_web_1',
+      status: 'succeeded',
+    });
+    expect(createCardPayment).toHaveBeenCalledWith(request);
   });
 });

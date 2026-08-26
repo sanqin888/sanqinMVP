@@ -74,7 +74,49 @@ describe('Payments bounded-context architecture', () => {
     ]);
   });
 
-  it('tracks the exact Phase B legacy Clover -> Orders exceptions and prevents them from spreading', () => {
+  it('keeps the Payments bounded context isolated from Orders and POS internals', () => {
+    const paymentFiles = scanTypeScript(PAYMENTS_ROOT, {
+      productionOnly: true,
+    });
+
+    expect(
+      importViolations(paymentFiles, SOURCE_ROOT, (specifier) =>
+        /(?:^|\/)(?:orders|pos)(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps Clover provider infrastructure isolated from Orders and POS', () => {
+    const cloverInfrastructure = scanTypeScript(
+      resolve(PAYMENTS_ROOT, 'infrastructure', 'clover'),
+      { productionOnly: true },
+    );
+
+    expect(
+      importViolations(cloverInfrastructure, PAYMENTS_ROOT, (specifier) =>
+        /(?:^|\/)(?:orders|pos)(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
+
+  it('prevents Orders and POS from importing Clover transport or wire infrastructure', () => {
+    const consumers = [
+      ...scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
+        productionOnly: true,
+      }),
+      ...scanTypeScript(resolve(SOURCE_ROOT, 'pos'), {
+        productionOnly: true,
+      }),
+    ];
+
+    expect(
+      importViolations(consumers, SOURCE_ROOT, (specifier) =>
+        /(?:^|\/)clover(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+  });
+
+  it('tracks the one remaining legacy Web checkout Clover -> Orders exception and prevents it from spreading', () => {
     const cloverFiles = scanTypeScript(resolve(SOURCE_ROOT, 'clover'), {
       productionOnly: true,
     });
@@ -82,12 +124,11 @@ describe('Payments bounded-context architecture', () => {
       /(?:^|\/)orders(?:\/|$)/.test(specifier),
     ).sort();
 
-    // Phase B must delete these two exceptions when Clover becomes a Payment provider.
-    expect(violations).toEqual(
-      [
-        'clover/clover-pay.controller.ts -> ../orders/orders.service',
-        'clover/clover.module.ts -> ../orders/orders.module',
-      ].sort(),
-    );
+    // Phase B removes CloverModule -> OrdersModule. The existing Web checkout
+    // controller remains a precise compatibility exception until the Web flow
+    // is normalized in a later phase; do not broaden this exception.
+    expect(violations).toEqual([
+      'clover/clover-pay.controller.ts -> ../orders/orders.service',
+    ]);
   });
 });
