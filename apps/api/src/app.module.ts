@@ -30,6 +30,7 @@ import { DataRetentionModule } from './data-retention/data-retention.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { UberEatsModule } from './integrations/ubereats/ubereats.module';
+import { PaymentsModule } from './payments/payments.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -68,6 +69,7 @@ const envConfigModule = configModuleFactory.forRoot({
     StoreStatusModule,
     PublicMenuModule,
     UberEatsModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [
