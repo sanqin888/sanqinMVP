@@ -12,10 +12,6 @@ import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
     CloverTerminalTransport,
     CloverPaymentProviderAdapter,
   ],
-  exports: [
-    CloverEcommerceTransport,
-    CloverTerminalTransport,
-    CloverPaymentProviderAdapter,
-  ],
+  exports: [CloverEcommerceTransport, CloverPaymentProviderAdapter],
 })
 export class CloverProviderInfrastructureModule {}

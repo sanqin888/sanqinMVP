@@ -100,6 +100,68 @@ const mergeStableIdentifier = (
   return next;
 };
 
+const mergeProviderFacts = (
+  snapshot: PaymentTransactionSnapshot,
+  outcome: PaymentProviderOutcome,
+  occurredAt: Date,
+): PaymentTransactionSnapshot => {
+  const surchargeCents = keepWhenUndefined(
+    snapshot.surchargeCents,
+    outcome.surchargeCents,
+  );
+  const chargedTotalCents = keepWhenUndefined(
+    snapshot.chargedTotalCents,
+    outcome.chargedTotalCents,
+  );
+  const refundedAmountCents = keepWhenUndefined(
+    snapshot.refundedAmountCents,
+    outcome.refundedAmountCents,
+  );
+
+  if (surchargeCents !== null) requireMoney('surchargeCents', surchargeCents);
+  if (chargedTotalCents !== null) {
+    requireMoney('chargedTotalCents', chargedTotalCents);
+  }
+  requireMoney('refundedAmountCents', refundedAmountCents);
+
+  return {
+    ...snapshot,
+    surchargeCents,
+    chargedTotalCents,
+    refundedAmountCents,
+    externalPaymentId: mergeStableIdentifier(
+      'externalPaymentId',
+      snapshot.externalPaymentId,
+      outcome.externalPaymentId,
+    ),
+    providerPaymentId: mergeStableIdentifier(
+      'providerPaymentId',
+      snapshot.providerPaymentId,
+      outcome.providerPaymentId,
+    ),
+    providerRefundId: mergeStableIdentifier(
+      'providerRefundId',
+      snapshot.providerRefundId,
+      outcome.providerRefundId,
+    ),
+    providerOrderId: mergeStableIdentifier(
+      'providerOrderId',
+      snapshot.providerOrderId,
+      outcome.providerOrderId,
+    ),
+    terminalId: keepWhenUndefined(snapshot.terminalId, outcome.terminalId),
+    cardBrand: keepWhenUndefined(snapshot.cardBrand, outcome.cardBrand),
+    cardLast4: keepWhenUndefined(snapshot.cardLast4, outcome.cardLast4),
+    resultCode: keepWhenUndefined(snapshot.resultCode, outcome.resultCode),
+    failureCode: keepWhenUndefined(snapshot.failureCode, outcome.failureCode),
+    failureMessage: keepWhenUndefined(
+      snapshot.failureMessage,
+      outcome.failureMessage,
+    ),
+    updatedAt: occurredAt,
+  };
+};
+
 export class PaymentTransaction {
   private constructor(private readonly snapshot: PaymentTransactionSnapshot) {}
 
@@ -202,68 +264,17 @@ export class PaymentTransaction {
     occurredAt: Date = new Date(),
   ): PaymentTransaction {
     const transitioned = this.transitionTo(outcome.status, occurredAt).snapshot;
-    const surchargeCents = keepWhenUndefined(
-      transitioned.surchargeCents,
-      outcome.surchargeCents,
+    return new PaymentTransaction(
+      mergeProviderFacts(transitioned, outcome, occurredAt),
     );
-    const chargedTotalCents = keepWhenUndefined(
-      transitioned.chargedTotalCents,
-      outcome.chargedTotalCents,
-    );
-    const refundedAmountCents = keepWhenUndefined(
-      transitioned.refundedAmountCents,
-      outcome.refundedAmountCents,
-    );
+  }
 
-    if (surchargeCents !== null) requireMoney('surchargeCents', surchargeCents);
-    if (chargedTotalCents !== null) {
-      requireMoney('chargedTotalCents', chargedTotalCents);
-    }
-    requireMoney('refundedAmountCents', refundedAmountCents);
-
-    return new PaymentTransaction({
-      ...transitioned,
-      surchargeCents,
-      chargedTotalCents,
-      refundedAmountCents,
-      externalPaymentId: mergeStableIdentifier(
-        'externalPaymentId',
-        transitioned.externalPaymentId,
-        outcome.externalPaymentId,
-      ),
-      providerPaymentId: mergeStableIdentifier(
-        'providerPaymentId',
-        transitioned.providerPaymentId,
-        outcome.providerPaymentId,
-      ),
-      providerRefundId: mergeStableIdentifier(
-        'providerRefundId',
-        transitioned.providerRefundId,
-        outcome.providerRefundId,
-      ),
-      providerOrderId: mergeStableIdentifier(
-        'providerOrderId',
-        transitioned.providerOrderId,
-        outcome.providerOrderId,
-      ),
-      terminalId: keepWhenUndefined(
-        transitioned.terminalId,
-        outcome.terminalId,
-      ),
-      cardBrand: keepWhenUndefined(transitioned.cardBrand, outcome.cardBrand),
-      cardLast4: keepWhenUndefined(transitioned.cardLast4, outcome.cardLast4),
-      resultCode: keepWhenUndefined(
-        transitioned.resultCode,
-        outcome.resultCode,
-      ),
-      failureCode: keepWhenUndefined(
-        transitioned.failureCode,
-        outcome.failureCode,
-      ),
-      failureMessage: keepWhenUndefined(
-        transitioned.failureMessage,
-        outcome.failureMessage,
-      ),
-    });
+  recordProviderObservation(
+    outcome: PaymentProviderOutcome,
+    occurredAt: Date = new Date(),
+  ): PaymentTransaction {
+    return new PaymentTransaction(
+      mergeProviderFacts(this.snapshot, outcome, occurredAt),
+    );
   }
 }
