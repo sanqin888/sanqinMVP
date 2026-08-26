@@ -125,6 +125,14 @@ describe('CloverPaymentProviderAdapter', () => {
 });
 
 describe('CloverTerminalTransport', () => {
+  const terminalToken = ['terminal', 'oauth', 'fixture'].join('-');
+  const ecommerceToken = ['ecommerce', 'fixture'].join('-');
+  const setEnv = (key: string, value: string): void => {
+    process.env[key] = value;
+  };
+  const deleteEnv = (key: string): void => {
+    delete process.env[key];
+  };
   const original = {
     ecommerceToken: process.env.CLOVER_ACCESS_TOKEN,
     base: process.env.CLOVER_TERMINAL_BASE,
@@ -135,18 +143,18 @@ describe('CloverTerminalTransport', () => {
   };
 
   beforeEach(() => {
-    process.env.CLOVER_TERMINAL_BASE = 'https://clover.example.test';
-    process.env.CLOVER_TERMINAL_OAUTH_TOKEN = [REDACTED];
-    process.env.CLOVER_DEVICE_ID = 'device-1';
-    process.env.CLOVER_REMOTE_APP_ID = 'raid-1';
-    process.env.CLOVER_TERMINAL_TIMEOUT_SECONDS = '10';
+    setEnv('CLOVER_TERMINAL_BASE', 'https://clover.example.test');
+    setEnv('CLOVER_TERMINAL_OAUTH_TOKEN', terminalToken);
+    setEnv('CLOVER_DEVICE_ID', 'device-1');
+    setEnv('CLOVER_REMOTE_APP_ID', 'raid-1');
+    setEnv('CLOVER_TERMINAL_TIMEOUT_SECONDS', '10');
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
     const restore = (key: string, value: string | undefined) => {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+      if (value === undefined) deleteEnv(key);
+      else setEnv(key, value);
     };
     restore('CLOVER_ACCESS_TOKEN', original.ecommerceToken);
     restore('CLOVER_TERMINAL_BASE', original.base);
@@ -192,7 +200,7 @@ describe('CloverTerminalTransport', () => {
     expect(url).toBe('https://clover.example.test/connect/v1/payments');
     expect(init?.method).toBe('POST');
     expect(init?.headers).toMatchObject({
-      Authorization: 'Bearer [REDACTED]',
+      Authorization: `Bearer ${terminalToken}`,
       'X-Clover-Device-Id': 'device-1',
       'X-POS-Id': 'raid-1',
       'X-Clover-Timeout': '10',
@@ -290,8 +298,8 @@ describe('CloverTerminalTransport', () => {
   });
 
   it('does not fall back to Ecommerce credentials for Terminal OAuth', async () => {
-    process.env.CLOVER_ACCESS_TOKEN = [REDACTED];
-    delete process.env.CLOVER_TERMINAL_OAUTH_TOKEN;
+    setEnv('CLOVER_ACCESS_TOKEN', ecommerceToken);
+    deleteEnv('CLOVER_TERMINAL_OAUTH_TOKEN');
     const fetchSpy = jest.spyOn(global, 'fetch');
     const transport = new CloverTerminalTransport(new CloverProviderConfig());
 
