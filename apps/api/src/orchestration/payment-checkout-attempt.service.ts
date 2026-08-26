@@ -29,6 +29,7 @@ const PAYMENT_PREPARATION_TTL_MS = 20 * 60 * 1000;
 export type PreparePaymentCheckoutInput = {
   source: 'POS_TERMINAL' | 'WEB_ECOMMERCE';
   paymentMethod: PaymentTransactionMethod;
+  /** Business store identity: Store.storeStableId, never Store.id. */
   storeId: string;
   attemptId: string;
   clientIdempotencyKey: string;
@@ -41,6 +42,7 @@ export type PreparedPaymentCheckout = {
   idempotencyKey: string;
   source: PaymentSource;
   paymentMethod: PaymentTransactionMethod;
+  /** Business store identity: Store.storeStableId, never Store.id. */
   storeId: string;
   status: PaymentCheckoutAttemptStatus;
   externalAmountCents: number;
@@ -463,9 +465,9 @@ export class PaymentCheckoutAttemptService {
 
   private normalizeInput(input: PreparePaymentCheckoutInput) {
     const attemptId = input.attemptId.trim();
-    const storeId = input.storeId.trim();
+    const storeStableId = input.storeId.trim();
     const clientIdempotencyKey = input.clientIdempotencyKey.trim();
-    if (!attemptId || !storeId || !clientIdempotencyKey) {
+    if (!attemptId || !storeStableId || !clientIdempotencyKey) {
       throw new BadRequestException(
         'attemptId, storeId and idempotencyKey are required',
       );
@@ -473,7 +475,7 @@ export class PaymentCheckoutAttemptService {
     return {
       ...input,
       attemptId,
-      storeId,
+      storeId: storeStableId,
       clientIdempotencyKey,
     };
   }

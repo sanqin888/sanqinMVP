@@ -20,7 +20,8 @@ describe('PosDeviceService.verifyDevice', () => {
     const device = {
       id: 'db-device-1',
       deviceStableId: 'device-1',
-      storeId: 'store-a',
+      storeId: 'store-db-a',
+      store: { storeStableId: 'store-a' },
       status: 'ACTIVE',
       deviceKeyHash: hashDeviceKey(deviceKey),
       meta: null,
@@ -29,7 +30,22 @@ describe('PosDeviceService.verifyDevice', () => {
 
     await expect(
       service.verifyDevice({ deviceStableId: 'device-1', deviceKey }),
-    ).resolves.toEqual(device);
+    ).resolves.toEqual({
+      id: 'db-device-1',
+      deviceStableId: 'device-1',
+      storeId: 'store-db-a',
+      storeStableId: 'store-a',
+      status: 'ACTIVE',
+      deviceKeyHash: hashDeviceKey(deviceKey),
+      meta: null,
+    });
+    expect(posDevice.findUnique).toHaveBeenCalledWith({
+      where: { deviceStableId: 'device-1' },
+      select: expect.objectContaining({
+        storeId: true,
+        store: { select: { storeStableId: true } },
+      }) as unknown,
+    });
     expect(posDevice.update).toHaveBeenCalledWith({
       where: { id: 'db-device-1' },
       data: { lastSeenAt: expect.any(Date) as unknown },

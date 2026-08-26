@@ -213,6 +213,37 @@ describe('UberOrderPayloadParser Order Fulfillment 1.0.0', () => {
     });
   });
 
+  it('rejects an unknown structured-allergy field on a nested modifier', () => {
+    const payload = fixture('detail-modifiers.json') as {
+      order: {
+        carts: Array<{
+          items: Array<{
+            selected_modifier_groups: Array<{
+              selected_items: Array<{
+                customer_request: { allergy?: Record<string, unknown> };
+              }>;
+            }>;
+          }>;
+        }>;
+      };
+    };
+    const modifier =
+      payload.order.carts[0].items[0].selected_modifier_groups[0]
+        .selected_items[0];
+    modifier.customer_request.allergy = {
+      allergens: ['PEANUTS'],
+      future_safety_field: true,
+    };
+
+    expect(
+      parser.parseResult(payload, { eventType: 'orders.notification' }),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'UNRELAYABLE_CUSTOMER_REQUEST',
+      category: 'business',
+    });
+  });
+
   it('maps item promotion totals without changing original item lines', () => {
     const order = parser.parse(fixture('detail-promotion.json'), {
       eventType: 'orders.notification',

@@ -6,6 +6,7 @@ import type { OAuthConnectionResponse, OAuthConnectUrlResponse, UberIntegrationC
 
 function safeTime(input?: string | null) { return input ? new Date(input).toLocaleString() : '-'; }
 function flagLabel(value?: boolean | null) { return value === true ? '是' : value === false ? '否' : '未返回'; }
+function specialInstructionsReturnLabel(value?: boolean | null) { return typeof value === 'boolean' ? flagLabel(value) : '未返回（需 Uber capability/whitelist confirmation）'; }
 function orderManagerLabel(config: UberIntegrationConfigResponse) {
   if (typeof config.isOrderManager === 'boolean') return flagLabel(config.isOrderManager);
   if (!config.orderManagerClientId) return '未返回';
@@ -172,8 +173,10 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                               <p>Order Manager：{orderManagerLabel(integrationConfigs[s.storeId])}</p>
                               {integrationConfigs[s.storeId].orderManagerClientId ? <p>Order Manager Client ID：<span className="font-mono break-all">{integrationConfigs[s.storeId].orderManagerClientId}</span></p> : null}
                               <p>Manual Acceptance：{flagLabel(integrationConfigs[s.storeId].requireManualAcceptance)}</p>
-                              <p>Special Instructions：{flagLabel(integrationConfigs[s.storeId].allowedCustomerRequests?.allowSpecialInstructionRequests)}</p>
-                              <p>Single-use Item Requests：{flagLabel(integrationConfigs[s.storeId].allowedCustomerRequests?.allowSingleUseItemsRequests)}</p>
+                              <p>Special Instructions / SanQ requested：是</p>
+                              <p>Special Instructions / Uber returned：{specialInstructionsReturnLabel(integrationConfigs[s.storeId].allowedCustomerRequests?.allowSpecialInstructionRequests)}</p>
+                              <p>Single-use Item Requests / SanQ requested：是</p>
+                              <p>Single-use Item Requests / Uber returned：{flagLabel(integrationConfigs[s.storeId].allowedCustomerRequests?.allowSingleUseItemsRequests)}</p>
                               <p>Online Status：{integrationConfigs[s.storeId].onlineStatus ?? '-'}</p>
                               <p>Order Release：{flagLabel(integrationConfigs[s.storeId].orderReleaseEnabled)}</p>
                             </div>

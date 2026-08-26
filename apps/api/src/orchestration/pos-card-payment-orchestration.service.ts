@@ -71,18 +71,18 @@ export class PosCardPaymentOrchestrationService {
     private readonly posGateway: PosGateway,
   ) {}
 
-  getConfig(storeId: string) {
+  getConfig(storeStableId: string) {
     return {
       enabled: this.featureConfig.isEnabled(),
-      storeId,
+      storeId: storeStableId,
     };
   }
 
-  async getAvailability(storeId: string) {
+  async getAvailability(storeStableId: string) {
     if (!this.featureConfig.isEnabled()) {
       return {
         enabled: false,
-        storeId,
+        storeId: storeStableId,
         state: 'DISABLED',
         configured: false,
         available: false,
@@ -93,46 +93,46 @@ export class PosCardPaymentOrchestrationService {
 
     return {
       enabled: true,
-      storeId,
+      storeId: storeStableId,
       ...(await this.terminalPayments.getAvailability()),
     };
   }
 
   async start(
-    storeId: string,
+    storeStableId: string,
     input: PosCardPaymentStartInput,
   ): Promise<PosCardPaymentView> {
     this.requireEnabled();
     this.requireTerminalCardOrder(input.order);
 
     const checkout = await this.checkouts.prepare(
-      this.toCheckoutInput(storeId, input),
+      this.toCheckoutInput(storeStableId, input),
     );
-    return this.continueCheckout(storeId, checkout, 'START');
+    return this.continueCheckout(storeStableId, checkout, 'START');
   }
 
   async recover(
-    storeId: string,
+    storeStableId: string,
     input: PosCardPaymentStartInput,
   ): Promise<PosCardPaymentView> {
     this.requireEnabled();
     this.requireTerminalCardOrder(input.order);
 
     const checkout = await this.checkouts.requireForInput(
-      this.toCheckoutInput(storeId, input),
+      this.toCheckoutInput(storeStableId, input),
     );
-    return this.continueCheckout(storeId, checkout, 'RECOVER');
+    return this.continueCheckout(storeStableId, checkout, 'RECOVER');
   }
 
   async cancel(
-    storeId: string,
+    storeStableId: string,
     input: PosCardPaymentStartInput,
   ): Promise<PosCardPaymentView> {
     this.requireEnabled();
     this.requireTerminalCardOrder(input.order);
 
     let checkout = await this.checkouts.requireForInput(
-      this.toCheckoutInput(storeId, input),
+      this.toCheckoutInput(storeStableId, input),
     );
 
     if (
@@ -140,7 +140,7 @@ export class PosCardPaymentOrchestrationService {
       checkout.status === 'FINALIZING' ||
       checkout.status === 'SUCCEEDED'
     ) {
-      return this.finalizeCheckout(storeId, checkout);
+      return this.finalizeCheckout(storeStableId, checkout);
     }
 
     if (checkout.status === 'PREPARED') {
@@ -150,7 +150,7 @@ export class PosCardPaymentOrchestrationService {
       checkout = cancelled.checkout;
       if (cancelled.cancelled) {
         const view = this.toView(checkout);
-        this.publish(storeId, view);
+        this.publish(storeStableId, view);
         return view;
       }
     }
@@ -161,7 +161,7 @@ export class PosCardPaymentOrchestrationService {
         'CANCELLED',
       );
       const view = this.toView(checkout);
-      this.publish(storeId, view);
+      this.publish(storeStableId, view);
       return view;
     }
 
@@ -173,12 +173,12 @@ export class PosCardPaymentOrchestrationService {
         failureMessage:
           'Payment start is still being established. Recheck before retrying or changing payment method.',
       });
-      this.publish(storeId, view);
+      this.publish(storeStableId, view);
       return view;
     }
 
     const cancelled = await this.terminalPayments.cancel(payment.id);
-    return this.handlePayment(storeId, checkout, cancelled);
+    return this.handlePayment(storeStableId, checkout, cancelled);
   }
 
   private async continueCheckout(
@@ -511,13 +511,13 @@ export class PosCardPaymentOrchestrationService {
   }
 
   private toCheckoutInput(
-    storeId: string,
+    storeStableId: string,
     input: PosCardPaymentStartInput,
   ): PreparePaymentCheckoutInput {
     return {
       source: 'POS_TERMINAL',
       paymentMethod: 'CARD',
-      storeId,
+      storeId: storeStableId,
       attemptId: input.attemptId,
       clientIdempotencyKey: input.idempotencyKey,
       order: input.order,
@@ -572,9 +572,9 @@ export class PosCardPaymentOrchestrationService {
     }
   }
 
-  private publish(storeId: string, view: PosCardPaymentView): void {
+  private publish(storeStableId: string, view: PosCardPaymentView): void {
     try {
-      this.posGateway.publishCardPaymentStatus(storeId, view);
+      this.posGateway.publishCardPaymentStatus(storeStableId, view);
     } catch {
       // Realtime delivery is best-effort; persisted checkout/payment/order truth wins.
     }

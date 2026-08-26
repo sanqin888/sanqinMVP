@@ -15,6 +15,9 @@ import type {
 } from './payment-checkout-attempt.service';
 import { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
 
+const storeDbId = '8a3d4c0e-4750-4f6a-9138-000000000001';
+const storeStableId = '4750_Yonge_Street';
+
 const orderInput: CreateOrderInput = {
   channel: 'in_store',
   fulfillmentType: 'pickup',
@@ -39,7 +42,7 @@ const checkoutFixture = (
   idempotencyKey: 'checkout_identity_1',
   source: 'POS_TERMINAL',
   paymentMethod: 'CARD',
-  storeId: 'store-1',
+  storeId: storeStableId,
   status: 'PREPARED',
   externalAmountCents: 700,
   paymentTransactionId: null,
@@ -51,7 +54,7 @@ const checkoutFixture = (
     version: 1,
     order: orderInput,
     userId: '22222222-2222-4222-8222-222222222222',
-    storeId: 'store-1',
+    storeId: storeStableId,
     pricing: {
       subtotalCents: 1200,
       couponDiscountCents: 100,
@@ -241,7 +244,7 @@ describe('PosCardPaymentOrchestrationService', () => {
     jest.mocked(harness.featureConfig.isEnabled).mockReturnValue(false);
 
     await expect(
-      harness.service.start('store-1', {
+      harness.service.start(storeStableId, {
         attemptId: 'attempt-1',
         idempotencyKey: 'client-idem-1',
         order: orderInput,
@@ -255,12 +258,18 @@ describe('PosCardPaymentOrchestrationService', () => {
   it('charges only the external remainder for points + balance + card', async () => {
     const harness = createHarness();
 
-    const result = await harness.service.start('store-1', {
+    const result = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
     });
 
+    expect(harness.checkouts.prepare).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: storeStableId }),
+    );
+    expect(harness.checkouts.prepare).not.toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: storeDbId }),
+    );
     expect(harness.terminalPayments.startSale).toHaveBeenCalledWith({
       attemptId: 'attempt-1',
       idempotencyKey: 'checkout_identity_1',
@@ -272,6 +281,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.orders.createFromConfirmedPaymentSnapshot,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
+        storeId: storeStableId,
         tender: expect.objectContaining({
           pointsCents: 200,
           balanceCents: 300,
@@ -284,6 +294,19 @@ describe('PosCardPaymentOrchestrationService', () => {
         chargedTotalCents: 720,
       }),
     );
+    expect(harness.posGateway.sendPrintJob).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: storeStableId }),
+    );
+    expect(harness.posGateway.sendPrintJob).not.toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: storeDbId }),
+    );
+    expect(harness.posGateway.publishCardPaymentStatus).toHaveBeenCalledWith(
+      storeStableId,
+      expect.objectContaining({ status: 'SUCCEEDED' }),
+    );
+    expect(
+      harness.posGateway.publishCardPaymentStatus,
+    ).not.toHaveBeenCalledWith(storeDbId, expect.anything());
     expect(result).toMatchObject({
       status: 'SUCCEEDED',
       externalAmountCents: 700,
@@ -302,7 +325,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       }),
     );
 
-    const result = await harness.service.start('store-1', {
+    const result = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -338,7 +361,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       }),
     );
 
-    const result = await harness.service.start('store-1', {
+    const result = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -364,7 +387,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       .mocked(harness.terminalPayments.startSale)
       .mockResolvedValue(paymentFixture('DECLINED'));
 
-    const result = await harness.service.start('store-1', {
+    const result = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -385,7 +408,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       .mocked(harness.terminalPayments.startSale)
       .mockResolvedValue(paymentFixture('UNKNOWN'));
 
-    const result = await harness.service.start('store-1', {
+    const result = await harness.service.start(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -414,7 +437,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       .mocked(harness.terminalPayments.reconcile)
       .mockResolvedValue(paymentFixture('SUCCEEDED'));
 
-    const result = await harness.service.recover('store-1', {
+    const result = await harness.service.recover(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -434,7 +457,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       }),
     );
 
-    const result = await harness.service.recover('store-1', {
+    const result = await harness.service.recover(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -451,7 +474,7 @@ describe('PosCardPaymentOrchestrationService', () => {
   it('cancels a PREPARED checkout locally before any provider charge starts', async () => {
     const harness = createHarness();
 
-    const result = await harness.service.cancel('store-1', {
+    const result = await harness.service.cancel(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -468,7 +491,7 @@ describe('PosCardPaymentOrchestrationService', () => {
     const harness = createHarness();
     harness.setCheckout(checkoutFixture({ status: 'PROCESSING' }));
 
-    const result = await harness.service.cancel('store-1', {
+    const result = await harness.service.cancel(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
@@ -490,12 +513,12 @@ describe('PosCardPaymentOrchestrationService', () => {
       }),
     );
 
-    await harness.service.recover('store-1', {
+    await harness.service.recover(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
     });
-    await harness.service.recover('store-1', {
+    await harness.service.recover(storeStableId, {
       attemptId: 'attempt-1',
       idempotencyKey: 'client-idem-1',
       order: orderInput,
