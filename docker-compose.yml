@@ -21,6 +21,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
   api:
+    image: sanq-app-api:latest
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -100,9 +101,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
   ubereats-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
+    image: sanq-app-api:latest
     command: ["node", "apps/api/dist/ubereats-worker.main.js"]
     restart: always
     environment:

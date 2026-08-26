@@ -13,8 +13,10 @@ COPY libs/shared/package.json ./libs/shared/
 # 2. 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 3. 复制所有源代码
-COPY . .
+# 3. 只复制 API 及其共享库源码，避免纯 Web 改动使 API 构建缓存失效
+COPY apps/api ./apps/api
+COPY libs/order ./libs/order
+COPY libs/shared ./libs/shared
 
 # 4. 生成 Prisma Client
 WORKDIR /app/apps/api
@@ -24,6 +26,14 @@ RUN npx prisma generate
 WORKDIR /app
 RUN pnpm --filter api build
 
+# 6. 生成仅包含 API workspace 依赖的便携运行目录。
+# 不使用 --prod，以保留 Prisma CLI / Studio 的现有运行时诊断能力。
+RUN pnpm --filter api deploy --legacy /app/api-runtime
+
+# deploy 会重组 node_modules；在目标目录内重新生成 Prisma Client，
+# 确保 runner 使用的自包含依赖目录拥有与当前 schema 匹配的 client。
+RUN cd /app/api-runtime && npx prisma generate --schema=./prisma/schema.prisma
+
 # --- 运行阶段 (Runner) ---
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -31,13 +41,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
-# [关键修复] 复制 node_modules 和构建好的 libs 目录
-# 这样软链接才能找到真正的文件
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/libs ./libs
+# 复制 pnpm deploy 生成的自包含 API workspace 依赖。
+# 不再把 Web 和整个 monorepo 的根 node_modules / libs 复制进运行镜像。
+COPY --from=builder /app/api-runtime/node_modules ./apps/api/node_modules
 
 # 复制 API 的构建产物
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
