@@ -27,9 +27,7 @@ export const importSpecifiers = (source: string): string[] => {
       /(?:import|export)\s+(?:type\s+)?[\s\S]*?\sfrom\s+['"]([^'"]+)['"]/g,
     ),
     ...source.matchAll(/import\s*['"]([^'"]+)['"]/g),
-    ...source.matchAll(
-      /(?:import\s*\(|require\s*\()\s*['"]([^'"]+)['"]\s*\)/g,
-    ),
+    ...source.matchAll(/(?:import\s*\(|require\s*\()\s*['"]([^'"]+)['"]\s*\)/g),
   ];
   return [...new Set(matches.map((match) => match[1]))];
 };
