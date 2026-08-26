@@ -60,7 +60,9 @@ describe('PrismaPaymentTransactionRepository', () => {
 
     const saved = await repository.create(transaction);
 
-    expect((createInput as { data: Record<string, unknown> }).data).toMatchObject({
+    expect(
+      (createInput as { data: Record<string, unknown> }).data,
+    ).toMatchObject({
       id: persistedRow.id,
       attemptId: persistedRow.attemptId,
       idempotencyKey: persistedRow.idempotencyKey,

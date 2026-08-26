@@ -35,9 +35,7 @@ class InMemoryPaymentTransactionRepository implements PaymentTransactionReposito
       return Promise.reject(new PaymentTransactionUniquenessError('attemptId'));
     }
     if (
-      this.rows.some(
-        (row) => row.idempotencyKey === transaction.idempotencyKey,
-      )
+      this.rows.some((row) => row.idempotencyKey === transaction.idempotencyKey)
     ) {
       return Promise.reject(
         new PaymentTransactionUniquenessError('idempotencyKey'),
