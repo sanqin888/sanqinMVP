@@ -105,7 +105,9 @@ export class CloverPaymentProviderAdapter implements PaymentProvider {
     });
   }
 
-  refundPayment(request: RefundPaymentRequest): Promise<PaymentProviderOutcome> {
+  refundPayment(
+    request: RefundPaymentRequest,
+  ): Promise<PaymentProviderOutcome> {
     if (request.source === 'POS_TERMINAL') {
       return this.terminal.refundPayment(request);
     }

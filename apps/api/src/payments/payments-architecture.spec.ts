@@ -75,13 +75,13 @@ describe('Payments bounded-context architecture', () => {
   });
 
   it('keeps the Payments bounded context isolated from Orders and POS internals', () => {
-    const paymentFiles = scanTypeScript(PAYMENTS_ROOT, { productionOnly: true });
+    const paymentFiles = scanTypeScript(PAYMENTS_ROOT, {
+      productionOnly: true,
+    });
 
     expect(
-      importViolations(
-        paymentFiles,
-        SOURCE_ROOT,
-        (specifier) => /(?:^|\/)(?:orders|pos)(?:\/|$)/.test(specifier),
+      importViolations(paymentFiles, SOURCE_ROOT, (specifier) =>
+        /(?:^|\/)(?:orders|pos)(?:\/|$)/.test(specifier),
       ),
     ).toEqual([]);
   });
@@ -93,10 +93,8 @@ describe('Payments bounded-context architecture', () => {
     );
 
     expect(
-      importViolations(
-        cloverInfrastructure,
-        PAYMENTS_ROOT,
-        (specifier) => /(?:^|\/)(?:orders|pos)(?:\/|$)/.test(specifier),
+      importViolations(cloverInfrastructure, PAYMENTS_ROOT, (specifier) =>
+        /(?:^|\/)(?:orders|pos)(?:\/|$)/.test(specifier),
       ),
     ).toEqual([]);
   });

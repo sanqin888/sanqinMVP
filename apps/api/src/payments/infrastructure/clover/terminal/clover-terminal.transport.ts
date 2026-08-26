@@ -23,8 +23,8 @@ export class CloverTerminalTransport {
   isConfigured(): boolean {
     return Boolean(
       this.config.accessToken &&
-        this.config.merchantId &&
-        this.config.terminalDeviceId,
+      this.config.merchantId &&
+      this.config.terminalDeviceId,
     );
   }
 
@@ -44,7 +44,9 @@ export class CloverTerminalTransport {
     return Promise.resolve(terminalNotEnabled());
   }
 
-  cancelPayment(request: CancelPaymentRequest): Promise<PaymentProviderOutcome> {
+  cancelPayment(
+    request: CancelPaymentRequest,
+  ): Promise<PaymentProviderOutcome> {
     void request;
     return Promise.resolve(terminalNotEnabled());
   }
@@ -54,7 +56,9 @@ export class CloverTerminalTransport {
     return Promise.resolve(terminalNotEnabled());
   }
 
-  refundPayment(request: RefundPaymentRequest): Promise<PaymentProviderOutcome> {
+  refundPayment(
+    request: RefundPaymentRequest,
+  ): Promise<PaymentProviderOutcome> {
     void request;
     return Promise.resolve(terminalNotEnabled());
   }

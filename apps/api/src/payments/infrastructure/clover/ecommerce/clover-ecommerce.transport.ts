@@ -336,7 +336,9 @@ export class CloverEcommerceTransport {
       const responses = await this.fetchV1ChargeStatuses(url);
       if (!responses || responses.length === 0) continue;
       const matched = responses.find(
-        (response): response is CloverEcommerceChargeStatusResult & {
+        (
+          response,
+        ): response is CloverEcommerceChargeStatusResult & {
           ok: true;
         } => response.ok && filter.matcher(response),
       );
