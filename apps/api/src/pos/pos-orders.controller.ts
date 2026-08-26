@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ConflictException,
   DefaultValuePipe,
   Get,
   HttpCode,
@@ -39,6 +40,7 @@ import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
 import { PosGateway } from './pos.gateway';
 import { PosOrdersService } from './pos-orders.service';
 import { Type } from 'class-transformer';
@@ -203,6 +205,7 @@ export class PosOrdersController {
     private readonly posGateway: PosGateway,
     private readonly posOrders: PosOrdersService,
     private readonly schedulingQuery: OrderSchedulingQueryService,
+    private readonly posCardPaymentFeature: PosCardPaymentFeatureConfig,
   ) {}
 
   @Post()
@@ -221,6 +224,17 @@ export class PosOrdersController {
       throw new BadRequestException(
         'UberEats channel orders must use paymentMethod=UBEREATS',
       );
+    }
+    if (
+      dto.channel === 'in_store' &&
+      dto.paymentMethod === 'CARD' &&
+      this.posCardPaymentFeature.isEnabled()
+    ) {
+      throw new ConflictException({
+        code: 'POS_CLOVER_TERMINAL_PAYMENT_REQUIRED',
+        message:
+          'Legacy POS card order creation is disabled while Clover Terminal payments are enabled.',
+      });
     }
     return this.orders.create(dto);
   }

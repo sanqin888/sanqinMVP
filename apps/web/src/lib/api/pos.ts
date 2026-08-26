@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
+import type { CreateOrderInput } from "@shared/order";
 
 /**
  * =========================
@@ -102,6 +103,87 @@ export async function quotePosCadToCny(cadAmountCents: number) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cadAmountCents }),
   });
+}
+
+export type PosCardTerminalConfig = {
+  enabled: boolean;
+  storeId: string;
+};
+
+export type PosCardTerminalAvailability = PosCardTerminalConfig & {
+  state: string;
+  configured: boolean;
+  available: boolean;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+};
+
+export type PosCardPaymentResult = {
+  attemptId: string;
+  paymentId: string | null;
+  status:
+    | "CREATED"
+    | "PROCESSING"
+    | "SUCCEEDED"
+    | "DECLINED"
+    | "CANCELLED"
+    | "UNKNOWN"
+    | "RECONCILING"
+    | "FAILED";
+  failureCode: string | null;
+  failureMessage: string | null;
+  externalAmountCents: number;
+  surchargeCents: number | null;
+  chargedTotalCents: number | null;
+  pointsCents: number;
+  balanceCents: number;
+  couponDiscountCents: number;
+  orderStableId: string | null;
+  orderNumber: string | null;
+  pickupCode: string | null;
+};
+
+export type PosCardPaymentRequest = {
+  attemptId: string;
+  idempotencyKey: string;
+  order: CreateOrderInput;
+};
+
+export async function fetchPosCardTerminalConfig() {
+  return apiFetch<PosCardTerminalConfig>("/pos/payments/card/config");
+}
+
+export async function fetchPosCardTerminalAvailability() {
+  return apiFetch<PosCardTerminalAvailability>(
+    "/pos/payments/card/availability",
+  );
+}
+
+export async function startPosCardPayment(input: PosCardPaymentRequest) {
+  return apiFetch<PosCardPaymentResult>("/pos/payments/card/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function recoverPosCardPayment(input: PosCardPaymentRequest) {
+  return apiFetch<PosCardPaymentResult>("/pos/payments/card/recover", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function cancelPosCardPayment(input: PosCardPaymentRequest) {
+  return apiFetch<PosCardPaymentResult>(
+    `/pos/payments/card/${encodeURIComponent(input.attemptId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export type PosOrderManagementAction =

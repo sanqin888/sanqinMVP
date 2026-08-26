@@ -16,6 +16,7 @@ import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engin
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 
 const LEDGER_SOURCE_ORDER = 'ORDER';
+const LEDGER_SOURCE_PAYMENT_BALANCE = 'PAYMENT_BALANCE';
 const LEDGER_SOURCE_FULL_REFUND = 'FULL_REFUND';
 const ledgerSourceAmend = (amendStableId: string) => `AMEND:${amendStableId}`;
 const LEDGER_SOURCE_TOPUP = 'TOPUP';
@@ -114,6 +115,10 @@ function isTierUpgrade(before: Tier, after: Tier): boolean {
 function toMicroPoints(points: number): bigint {
   // 四舍五入到 micro
   return BigInt(Math.round(points * Number(MICRO_PER_POINT)));
+}
+
+function centsFromDollarMicro(micro: bigint): number {
+  return Number((micro * 100n) / MICRO_PER_POINT);
 }
 
 function dollarsFromPointsMicro(
@@ -413,6 +418,290 @@ export class LoyaltyService {
         tier: true,
         lifetimeSpendCents: true,
       },
+    });
+  }
+
+  async getAvailablePaymentTender(userId: string): Promise<{
+    pointsMicro: bigint;
+    balanceCents: number;
+  }> {
+    if (!userId) return { pointsMicro: 0n, balanceCents: 0 };
+
+    const account = await this.prisma.loyaltyAccount.findUnique({
+      where: { userId },
+      select: { id: true, pointsMicro: true, balanceMicro: true },
+    });
+    if (!account) return { pointsMicro: 0n, balanceCents: 0 };
+
+    const held = await this.prisma.loyaltyTenderReservation.aggregate({
+      where: { accountId: account.id, status: 'HELD' },
+      _sum: { pointsMicro: true, balanceMicro: true },
+    });
+    const heldPointsMicro = held._sum.pointsMicro ?? 0n;
+    const heldBalanceMicro = held._sum.balanceMicro ?? 0n;
+    const pointsMicro =
+      account.pointsMicro > heldPointsMicro
+        ? account.pointsMicro - heldPointsMicro
+        : 0n;
+    const balanceMicro =
+      account.balanceMicro > heldBalanceMicro
+        ? account.balanceMicro - heldBalanceMicro
+        : 0n;
+
+    return {
+      pointsMicro,
+      balanceCents: centsFromDollarMicro(balanceMicro),
+    };
+  }
+
+  async holdPaymentTender(params: {
+    attemptId: string;
+    userStableId?: string;
+    pointsValueCents: number;
+    balanceCents: number;
+    expiresAt: Date;
+  }): Promise<{
+    reservationId: string | null;
+    userId: string | null;
+    pointsValueCents: number;
+    balanceCents: number;
+  }> {
+    const attemptId = params.attemptId.trim();
+    const pointsValueCents = normalizeLoyaltyCents(params.pointsValueCents);
+    const balanceCents = normalizeLoyaltyCents(params.balanceCents);
+    if (!attemptId) throw new BadRequestException('payment attemptId is required');
+    if (pointsValueCents === 0 && balanceCents === 0) {
+      return {
+        reservationId: null,
+        userId: null,
+        pointsValueCents: 0,
+        balanceCents: 0,
+      };
+    }
+    if (!params.userStableId?.trim()) {
+      throw new BadRequestException(
+        'member is required for points or stored balance payment',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const userId = await this.resolveUserIdByStableIdWithTx(
+        tx,
+        params.userStableId!,
+      );
+      const account = await this.ensureAccountWithTx(tx, userId);
+      await tx.$queryRaw`
+        SELECT id
+        FROM "LoyaltyAccount"
+        WHERE id = ${account.id}::uuid
+        FOR UPDATE
+      `;
+      const lockedAccount = await tx.loyaltyAccount.findUnique({
+        where: { id: account.id },
+      });
+      if (!lockedAccount) {
+        throw new BadRequestException('loyalty account not found');
+      }
+
+      const existing = await tx.loyaltyTenderReservation.findUnique({
+        where: { attemptId },
+      });
+      const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
+      const pointsMicro =
+        pointsValueCents > 0
+          ? toMicroPoints(
+              pointsValueCents /
+                100 /
+                loyaltyConfig.redeemDollarPerPoint,
+            )
+          : 0n;
+      const balanceMicro =
+        balanceCents > 0 ? toMicroPoints(balanceCents / 100) : 0n;
+
+      if (existing) {
+        if (
+          existing.userId !== userId ||
+          existing.pointsMicro !== pointsMicro ||
+          existing.pointsValueCents !== pointsValueCents ||
+          existing.balanceMicro !== balanceMicro ||
+          existing.balanceCents !== balanceCents ||
+          existing.status === 'RELEASED'
+        ) {
+          throw new BadRequestException(
+            'payment tender reservation identity was reused with different facts',
+          );
+        }
+        return {
+          reservationId: existing.id,
+          userId,
+          pointsValueCents: existing.pointsValueCents,
+          balanceCents: existing.balanceCents,
+        };
+      }
+
+      const held = await tx.loyaltyTenderReservation.aggregate({
+        where: { accountId: lockedAccount.id, status: 'HELD' },
+        _sum: { pointsMicro: true, balanceMicro: true },
+      });
+      const availablePointsMicro =
+        lockedAccount.pointsMicro - (held._sum.pointsMicro ?? 0n);
+      const availableBalanceMicro =
+        lockedAccount.balanceMicro - (held._sum.balanceMicro ?? 0n);
+
+      if (pointsMicro > availablePointsMicro) {
+        throw new BadRequestException(
+          'insufficient loyalty points after active payment holds',
+        );
+      }
+      if (balanceMicro > availableBalanceMicro) {
+        throw new BadRequestException(
+          'insufficient store balance after active payment holds',
+        );
+      }
+
+      const reservation = await tx.loyaltyTenderReservation.create({
+        data: {
+          attemptId,
+          accountId: account.id,
+          userId,
+          pointsMicro,
+          pointsValueCents,
+          balanceMicro,
+          balanceCents,
+          expiresAt: params.expiresAt,
+        },
+      });
+
+      return {
+        reservationId: reservation.id,
+        userId,
+        pointsValueCents,
+        balanceCents,
+      };
+    });
+  }
+
+  async commitPaymentTenderForOrder(params: {
+    tx: Prisma.TransactionClient;
+    attemptId: string;
+    orderId: string;
+  }): Promise<{ pointsValueCents: number; balanceCents: number }> {
+    const { tx, orderId } = params;
+    const attemptId = params.attemptId.trim();
+    if (!attemptId) throw new BadRequestException('payment attemptId is required');
+
+    await tx.$queryRaw`
+      SELECT id
+      FROM "LoyaltyTenderReservation"
+      WHERE "attemptId" = ${attemptId}
+      FOR UPDATE
+    `;
+    const reservation = await tx.loyaltyTenderReservation.findUnique({
+      where: { attemptId },
+    });
+    if (!reservation) {
+      return { pointsValueCents: 0, balanceCents: 0 };
+    }
+    if (reservation.status === 'COMMITTED') {
+      if (reservation.orderId !== orderId) {
+        throw new BadRequestException(
+          'payment tender reservation is already committed to another order',
+        );
+      }
+      return {
+        pointsValueCents: reservation.pointsValueCents,
+        balanceCents: reservation.balanceCents,
+      };
+    }
+    if (reservation.status === 'RELEASED') {
+      throw new BadRequestException('payment tender reservation was released');
+    }
+
+    const account = await tx.loyaltyAccount.findUnique({
+      where: { id: reservation.accountId },
+    });
+    if (!account) throw new BadRequestException('loyalty account not found');
+    await tx.$queryRaw`
+      SELECT id
+      FROM "LoyaltyAccount"
+      WHERE id = ${reservation.accountId}::uuid
+      FOR UPDATE
+    `;
+    const lockedAccount = await tx.loyaltyAccount.findUnique({
+      where: { id: reservation.accountId },
+    });
+    if (!lockedAccount) throw new BadRequestException('loyalty account not found');
+    if (lockedAccount.pointsMicro < reservation.pointsMicro) {
+      throw new BadRequestException('reserved loyalty points are no longer available');
+    }
+    if (lockedAccount.balanceMicro < reservation.balanceMicro) {
+      throw new BadRequestException('reserved store balance is no longer available');
+    }
+
+    const newPointsMicro = lockedAccount.pointsMicro - reservation.pointsMicro;
+    const newBalanceMicro = lockedAccount.balanceMicro - reservation.balanceMicro;
+
+    if (reservation.pointsMicro > 0n) {
+      await tx.loyaltyLedger.create({
+        data: {
+          accountId: reservation.accountId,
+          orderId,
+          type: LoyaltyEntryType.REDEEM_ON_ORDER,
+          target: 'POINTS',
+          sourceKey: LEDGER_SOURCE_ORDER,
+          deltaMicro: -reservation.pointsMicro,
+          balanceAfterMicro: newPointsMicro,
+          note: `payment hold committed $${(
+            reservation.pointsValueCents / 100
+          ).toFixed(2)}`,
+        },
+      });
+    }
+    if (reservation.balanceMicro > 0n) {
+      await tx.loyaltyLedger.create({
+        data: {
+          accountId: reservation.accountId,
+          orderId,
+          type: LoyaltyEntryType.REDEEM_ON_ORDER,
+          target: 'BALANCE',
+          sourceKey: LEDGER_SOURCE_PAYMENT_BALANCE,
+          deltaMicro: -reservation.balanceMicro,
+          balanceAfterMicro: newBalanceMicro,
+          note: `payment hold committed balance $${(
+            reservation.balanceCents / 100
+          ).toFixed(2)}`,
+        },
+      });
+    }
+
+    await tx.loyaltyAccount.update({
+      where: { id: reservation.accountId },
+      data: {
+        pointsMicro: newPointsMicro,
+        balanceMicro: newBalanceMicro,
+      },
+    });
+    await tx.loyaltyTenderReservation.update({
+      where: { id: reservation.id },
+      data: {
+        status: 'COMMITTED',
+        orderId,
+        committedAt: new Date(),
+      },
+    });
+
+    return {
+      pointsValueCents: reservation.pointsValueCents,
+      balanceCents: reservation.balanceCents,
+    };
+  }
+
+  async releasePaymentTender(attemptIdRaw: string): Promise<void> {
+    const attemptId = attemptIdRaw.trim();
+    if (!attemptId) return;
+    await this.prisma.loyaltyTenderReservation.updateMany({
+      where: { attemptId, status: 'HELD' },
+      data: { status: 'RELEASED', releasedAt: new Date() },
     });
   }
 
@@ -754,8 +1043,16 @@ export class LoyaltyService {
     // 需要确认 balanceMicro 的单位。在 applyTopup 中：toMicroPoints(cents / 100).
     // 所以 balanceMicro 是以“元”为单位的 micro 值 (1e6 micro = 1 dollar).
     const deductMicro = toMicroPoints(amountCents / 100);
+    const held = await tx.loyaltyTenderReservation.aggregate({
+      where: { accountId: account.id, status: 'HELD' },
+      _sum: { balanceMicro: true },
+    });
+    const availableBalanceMicro =
+      account.balanceMicro > (held._sum.balanceMicro ?? 0n)
+        ? account.balanceMicro - (held._sum.balanceMicro ?? 0n)
+        : 0n;
 
-    if (account.balanceMicro < deductMicro) {
+    if (availableBalanceMicro < deductMicro) {
       throw new BadRequestException(`Insufficient store balance.`);
     }
 
@@ -919,9 +1216,9 @@ export class LoyaltyService {
         where: {
           orderId,
           type: LoyaltyEntryType.REDEEM_ON_ORDER,
-          sourceKey: LEDGER_SOURCE_ORDER,
-          target: 'BALANCE', // ✅ 明确查找余额扣除记录
+          target: 'BALANCE', // 兼容 legacy ORDER 与 Unified Payment 独立 balance ledger
         },
+        orderBy: { createdAt: 'asc' },
       });
       const balanceUsedCents =
         redeemBalanceRecord && redeemBalanceRecord.deltaMicro < 0n
@@ -1145,8 +1442,17 @@ export class LoyaltyService {
       );
     }
 
+    const held = await tx.loyaltyTenderReservation.aggregate({
+      where: { accountId: account.id, status: 'HELD' },
+      _sum: { pointsMicro: true },
+    });
+    const availablePointsMicro =
+      account.pointsMicro > (held._sum.pointsMicro ?? 0n)
+        ? account.pointsMicro - (held._sum.pointsMicro ?? 0n)
+        : 0n;
+
     const redeemValueCents = this.calculateRedeemableCentsFromBalance(
-      account.pointsMicro,
+      availablePointsMicro,
       loyaltyConfig.redeemDollarPerPoint,
       requestedPoints,
       subtotalAfterCoupon,
@@ -1558,9 +1864,9 @@ export class LoyaltyService {
       where: {
         orderId,
         type: LoyaltyEntryType.REDEEM_ON_ORDER,
-        sourceKey: LEDGER_SOURCE_ORDER,
         target: 'BALANCE',
       },
+      orderBy: { createdAt: 'asc' },
       select: { deltaMicro: true },
     });
     const balanceUsedCents =

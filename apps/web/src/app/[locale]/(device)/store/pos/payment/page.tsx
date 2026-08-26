@@ -4,12 +4,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { TAX_RATE } from "@/lib/order/shared";
+import type { CreateOrderInput } from "@shared/order";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import {
   advanceOrder,
+  cancelPosCardPayment,
+  fetchPosCardTerminalConfig,
   printOrderCloud,
   quotePosCadToCny,
+  recoverPosCardPayment,
+  startPosCardPayment,
+  type PosCardPaymentRequest,
+  type PosCardPaymentResult,
+  type PosCardTerminalConfig,
   type PosExchangeRateQuote,
 } from "@/lib/api/pos";
 import {
@@ -70,6 +78,85 @@ type MemberDetailResponse = {
 // ✅ 本地支付方式状态类型
 type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance" | "ubereats";
 type DiscountOption = "5" | "10" | "15" | "other";
+type CardFlowState = "IDLE" | "WAITING" | PosCardPaymentResult["status"];
+
+type PosCardPaymentSocketEvent = {
+  attemptId: string;
+  paymentId: string | null;
+  status: PosCardPaymentResult["status"];
+  failureCode?: string | null;
+  failureMessage?: string | null;
+  externalAmountCents?: number;
+  surchargeCents?: number | null;
+  chargedTotalCents?: number | null;
+  pointsCents?: number;
+  balanceCents?: number;
+  couponDiscountCents?: number;
+  orderStableId?: string | null;
+  orderNumber?: string | null;
+  pickupCode?: string | null;
+};
+
+type PosPaymentSocketClient = {
+  on: (event: string, handler: (payload: PosCardPaymentSocketEvent) => void) => void;
+  off: (event: string, handler: (payload: PosCardPaymentSocketEvent) => void) => void;
+  emit: (event: string, payload: unknown) => void;
+  disconnect: () => void;
+};
+
+type SocketIoBrowserGlobal = {
+  io: (
+    uri: string,
+    options?: {
+      path?: string;
+      withCredentials?: boolean;
+      transports?: Array<"websocket" | "polling">;
+    },
+  ) => PosPaymentSocketClient;
+};
+
+const POS_CARD_PAYMENT_PENDING_STORAGE_KEY = "sanq.pos.cardPayment.pending.v1";
+const POS_CARD_PAYMENT_STATUS_UPDATED_EVENT = "POS_CARD_PAYMENT_STATUS_UPDATED";
+
+async function loadSocketIoFromCdn(): Promise<SocketIoBrowserGlobal["io"] | null> {
+  if (typeof window === "undefined") return null;
+  const existing = (window as typeof window & { io?: SocketIoBrowserGlobal["io"] }).io;
+  if (typeof existing === "function") return existing;
+
+  const scriptId = "pos-socket-io-cdn";
+  const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+  await new Promise<void>((resolve, reject) => {
+    if (existingScript) {
+      if ((window as typeof window & { io?: SocketIoBrowserGlobal["io"] }).io) {
+        resolve();
+        return;
+      }
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener(
+        "error",
+        () => reject(new Error("Failed to load Socket.IO client script")),
+        { once: true },
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://cdn.socket.io/4.8.1/socket.io.min.js";
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener(
+      "error",
+      () => reject(new Error("Failed to load Socket.IO client script")),
+      { once: true },
+    );
+    document.head.appendChild(script);
+  });
+
+  const io = (window as typeof window & { io?: SocketIoBrowserGlobal["io"] }).io;
+  return typeof io === "function" ? io : null;
+}
 
 const STRINGS: Record<
   Locale,
@@ -139,6 +226,21 @@ const STRINGS: Record<
     cashDialogCancel: string;
     cashDialogConfirm: string;
     cashDialogInvalid: string;
+    cardTerminalTitle: string;
+    cardTerminalWaiting: string;
+    cardTerminalProcessing: string;
+    cardTerminalSucceeded: string;
+    cardTerminalDeclined: string;
+    cardTerminalCancelled: string;
+    cardTerminalUnknown: string;
+    cardTerminalFailed: string;
+    cardTerminalRetry: string;
+    cardTerminalRecheck: string;
+    cardTerminalCancel: string;
+    cardTerminalChangeMethod: string;
+    cardTerminalUnavailable: string;
+    cardTerminalRecoveryStorageFailed: string;
+    cardTerminalNotStarted: string;
   }
 > = {
   zh: {
@@ -207,6 +309,21 @@ const STRINGS: Record<
     cashDialogCancel: "取消",
     cashDialogConfirm: "确认",
     cashDialogInvalid: "收款金额不能小于合计金额",
+    cardTerminalTitle: "Clover 刷卡支付",
+    cardTerminalWaiting: "正在确认刷卡机状态…",
+    cardTerminalProcessing: "请顾客在 Clover 刷卡机上完成支付。",
+    cardTerminalSucceeded: "支付成功，正在生成订单…",
+    cardTerminalDeclined: "银行卡支付被拒绝。",
+    cardTerminalCancelled: "本次银行卡支付已取消。",
+    cardTerminalUnknown: "支付结果暂不确定，禁止再次刷卡。请重新确认支付结果。",
+    cardTerminalFailed: "刷卡机处理失败，本次支付未完成。",
+    cardTerminalRetry: "重新刷卡",
+    cardTerminalRecheck: "重新确认结果",
+    cardTerminalCancel: "取消本次支付",
+    cardTerminalChangeMethod: "改用其他支付方式",
+    cardTerminalUnavailable: "Clover 刷卡机当前不可用，请检查设备连接。",
+    cardTerminalRecoveryStorageFailed: "无法保存支付恢复信息，因此本次未向刷卡机发起扣款。请重试。",
+    cardTerminalNotStarted: "未找到对应的支付记录，本次没有向 Clover 发起扣款，可以重新支付。",
   },
   en: {
     title: "Store POS · Payment",
@@ -275,6 +392,21 @@ const STRINGS: Record<
     cashDialogCancel: "Cancel",
     cashDialogConfirm: "Confirm",
     cashDialogInvalid: "Amount received cannot be less than total",
+    cardTerminalTitle: "Clover card payment",
+    cardTerminalWaiting: "Checking Clover terminal status…",
+    cardTerminalProcessing: "Ask the customer to complete payment on the Clover terminal.",
+    cardTerminalSucceeded: "Payment succeeded. Creating the order…",
+    cardTerminalDeclined: "The card payment was declined.",
+    cardTerminalCancelled: "This card payment was cancelled.",
+    cardTerminalUnknown: "The payment result is uncertain. Do not charge again. Recheck the payment result.",
+    cardTerminalFailed: "The terminal could not complete this payment.",
+    cardTerminalRetry: "Retry card payment",
+    cardTerminalRecheck: "Recheck payment",
+    cardTerminalCancel: "Cancel this payment",
+    cardTerminalChangeMethod: "Use another payment method",
+    cardTerminalUnavailable: "The Clover terminal is unavailable. Check the device connection.",
+    cardTerminalRecoveryStorageFailed: "Payment recovery data could not be saved, so no terminal charge was started. Please retry.",
+    cardTerminalNotStarted: "No matching payment record was found. No Clover charge was started, so you can retry payment.",
   },
 };
 
@@ -347,6 +479,17 @@ export default function StorePosPaymentPage() {
     pickupCode?: string | null;
     cashChangeCents?: number;
   } | null>(null);
+  const [cardTerminalConfig, setCardTerminalConfig] =
+    useState<PosCardTerminalConfig | null>(null);
+  const [cardPaymentOpen, setCardPaymentOpen] = useState(false);
+  const [cardFlowState, setCardFlowState] = useState<CardFlowState>("IDLE");
+  const [cardPaymentResult, setCardPaymentResult] =
+    useState<PosCardPaymentResult | null>(null);
+  const [cardFlowError, setCardFlowError] = useState<string | null>(null);
+  const [pendingCardRequest, setPendingCardRequest] =
+    useState<PosCardPaymentRequest | null>(null);
+  const cardRecoveryAttemptedRef = useRef(false);
+  const cardConfirmInFlightRef = useRef(false);
 
   // 从 localStorage 读取 POS 界面保存的订单快照
   useEffect(() => {
@@ -380,6 +523,20 @@ export default function StorePosPaymentPage() {
       })
       .catch((err) => console.warn("Failed to load POS business config:", err));
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchPosCardTerminalConfig()
+      .then((config) => {
+        if (active) setCardTerminalConfig(config);
+      })
+      .catch((err) => {
+        console.warn("Failed to load POS card terminal config:", err);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const hasItems = !!snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0;
@@ -707,6 +864,58 @@ const loyaltyRedeemCents = redeemCents;
     setUseBalanceInput((maxAllowed / 100).toFixed(2));
   };
 
+  const buildOrderPayload = useCallback((): CreateOrderInput | null => {
+    if (!computedSnapshot || !fulfillment) return null;
+
+    const items = normalizedSnapshotItems.map((item) => ({
+      productStableId: item.stableId,
+      qty: item.quantity,
+      unitPrice: item.unitPriceCents / 100,
+      displayName: locale === "zh" ? item.nameZh : item.nameEn,
+      nameEn: item.nameEn,
+      nameZh: item.nameZh,
+      options: item.options,
+    }));
+
+    let apiPaymentMethod: PaymentMethod = "CASH";
+    if (orderChannel === "ubereats") {
+      apiPaymentMethod = "UBEREATS";
+    } else if (isFullyPaidByBalance) {
+      apiPaymentMethod = "STORE_BALANCE";
+    } else if (paymentMethod === "card") {
+      apiPaymentMethod = "CARD";
+    } else if (paymentMethod === "wechat_alipay") {
+      apiPaymentMethod = "WECHAT_ALIPAY";
+    }
+
+    return {
+      channel: orderChannel,
+      fulfillmentType: fulfillment,
+      subtotalCents: computedSnapshot.subtotalCents,
+      taxCents: computedSnapshot.taxCents,
+      totalCents: computedSnapshot.totalCents,
+      paymentMethod: apiPaymentMethod,
+      items,
+      userStableId: memberInfo?.userStableId ?? undefined,
+      pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
+      balanceUsedCents: balanceToUseCents > 0 ? balanceToUseCents : undefined,
+      discountCents: discountCents > 0 ? discountCents : undefined,
+      contactPhone: memberInfo?.phone ?? undefined,
+    };
+  }, [
+    balanceToUseCents,
+    computedSnapshot,
+    discountCents,
+    fulfillment,
+    isFullyPaidByBalance,
+    locale,
+    memberInfo,
+    normalizedSnapshotItems,
+    orderChannel,
+    paymentMethod,
+    pointsToRedeem,
+  ]);
+
   const submitOrder = async (cashMeta?: { cashReceivedCents: number; cashChangeCents: number }) => {
     setError(null);
     setSubmitting(true);
@@ -737,46 +946,11 @@ const loyaltyRedeemCents = redeemCents;
     }
 
     try {
-      const itemsPayload = normalizedSnapshotItems.map((item) => ({
-        productStableId: item.stableId,
-        qty: item.quantity,
-        unitPrice: item.unitPriceCents / 100,
-        displayName: locale === "zh" ? item.nameZh : item.nameEn,
-        nameEn: item.nameEn,
-        nameZh: item.nameZh,
-        options: item.options,
-      }));
-
-      // ✅ 映射 PaymentMethod
-      let apiPaymentMethod: PaymentMethod = "CASH";
-      if (orderChannel === "ubereats") {
-        apiPaymentMethod = "UBEREATS";
-      } else if (isFullyPaidByBalance) {
-        apiPaymentMethod = "STORE_BALANCE";
-      } else if (paymentMethod === "card") {
-        apiPaymentMethod = "CARD";
-      } else if (paymentMethod === "wechat_alipay") {
-        apiPaymentMethod = "WECHAT_ALIPAY";
+      const body = buildOrderPayload();
+      if (!body) {
+        setError(t.fulfillmentRequired);
+        return;
       }
-
-      const body = {
-        channel: orderChannel,
-        fulfillmentType: fulfillment,
-        // 这里传原始小计，后端会重算，但我们要在 DTO 扩展支持部分支付
-        subtotalCents: computedSnapshot.subtotalCents,
-        taxCents: computedSnapshot.taxCents,
-        totalCents: computedSnapshot.totalCents, // 这里的 totalCents 已经是扣除余额后的剩余应付? 不，Order模型通常存总价。
-        // 修正：后端创建订单时，totalCents 应该是订单总价值。
-        // 但 createInternal 会重算。
-        // 我们需要传递 balanceUsedCents 告诉后端扣多少余额。
-        paymentMethod: apiPaymentMethod,
-        items: itemsPayload,
-        userStableId: memberInfo?.userStableId ?? undefined,
-        pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
-        balanceUsedCents: balanceToUseCents > 0 ? balanceToUseCents : undefined, // [新增]
-        discountCents: discountCents > 0 ? discountCents : undefined,
-        contactPhone: memberInfo?.phone ?? undefined,
-      };
 
       const order = await apiFetch<CreatePosOrderResponse>("/pos/orders", {
         method: "POST",
@@ -820,7 +994,294 @@ const loyaltyRedeemCents = redeemCents;
     }
   };
 
+  const clearPendingCardPayment = useCallback(() => {
+    setPendingCardRequest(null);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(POS_CARD_PAYMENT_PENDING_STORAGE_KEY);
+      } catch (err) {
+        console.warn("Failed to clear pending POS card payment:", err);
+      }
+    }
+  }, []);
+
+  const applyCardPaymentResult = useCallback(
+    (result: PosCardPaymentResult) => {
+      setCardPaymentResult(result);
+      setCardFlowState(result.status);
+      setCardFlowError(result.failureMessage ?? null);
+
+      if (result.status === "SUCCEEDED" && result.orderStableId) {
+        clearPendingCardPayment();
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.removeItem(POS_DISPLAY_STORAGE_KEY);
+          } catch (err) {
+            console.warn("Failed to clear POS display snapshot:", err);
+          }
+        }
+        setCardPaymentOpen(false);
+        setSuccessInfo({
+          orderNumber: result.orderNumber ?? result.orderStableId,
+          pickupCode: result.pickupCode,
+          cashChangeCents: 0,
+        });
+      }
+    },
+    [clearPendingCardPayment],
+  );
+
+  const startTerminalCardPayment = useCallback(
+    async (order: CreateOrderInput) => {
+      setError(null);
+      setCardFlowError(null);
+      setCardPaymentResult(null);
+      setCardPaymentOpen(true);
+      setCardFlowState("WAITING");
+      setSubmitting(true);
+
+      try {
+        const request: PosCardPaymentRequest = {
+          attemptId: globalThis.crypto.randomUUID(),
+          idempotencyKey: globalThis.crypto.randomUUID(),
+          order,
+        };
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              POS_CARD_PAYMENT_PENDING_STORAGE_KEY,
+              JSON.stringify(request),
+            );
+          } catch (storageError) {
+            console.error(
+              "Failed to persist pending POS card payment:",
+              storageError,
+            );
+            setCardFlowState("FAILED");
+            setCardFlowError(t.cardTerminalRecoveryStorageFailed);
+            return;
+          }
+        }
+        setPendingCardRequest(request);
+
+        setCardFlowState("PROCESSING");
+        const result = await startPosCardPayment(request);
+        applyCardPaymentResult(result);
+      } catch (err) {
+        console.error("Failed to start Clover terminal payment:", err);
+        setCardFlowState("UNKNOWN");
+        setCardFlowError(err instanceof Error ? err.message : t.errorGeneric);
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [applyCardPaymentResult, t],
+  );
+
+  const recoverTerminalCardPayment = useCallback(
+    async (request: PosCardPaymentRequest) => {
+      setCardPaymentOpen(true);
+      setCardFlowState("RECONCILING");
+      setCardFlowError(null);
+      setSubmitting(true);
+      try {
+        const result = await recoverPosCardPayment(request);
+        applyCardPaymentResult(result);
+      } catch (err) {
+        console.error("Failed to recover Clover terminal payment:", err);
+        if (err instanceof ApiError && err.status === 404) {
+          clearPendingCardPayment();
+          setCardFlowState("FAILED");
+          setCardFlowError(t.cardTerminalNotStarted);
+        } else {
+          setCardFlowState("UNKNOWN");
+          setCardFlowError(err instanceof Error ? err.message : t.errorGeneric);
+        }
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [
+      applyCardPaymentResult,
+      clearPendingCardPayment,
+      t.cardTerminalNotStarted,
+      t.errorGeneric,
+    ],
+  );
+
+  const handleCardPaymentCancel = useCallback(async () => {
+    if (!pendingCardRequest) return;
+    setSubmitting(true);
+    setCardFlowError(null);
+    try {
+      const result = await cancelPosCardPayment(pendingCardRequest);
+      applyCardPaymentResult(result);
+    } catch (err) {
+      console.error("Failed to cancel Clover terminal payment:", err);
+      setCardFlowState("UNKNOWN");
+      setCardFlowError(err instanceof Error ? err.message : t.errorGeneric);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [applyCardPaymentResult, pendingCardRequest, t.errorGeneric]);
+
+  const handleCardPaymentRetry = useCallback(async () => {
+    const order = pendingCardRequest?.order ?? buildOrderPayload();
+    if (!order) return;
+    clearPendingCardPayment();
+    await startTerminalCardPayment({ ...order, paymentMethod: "CARD" });
+  }, [
+    buildOrderPayload,
+    clearPendingCardPayment,
+    pendingCardRequest,
+    startTerminalCardPayment,
+  ]);
+
+  const handleCardPaymentChangeMethod = useCallback(() => {
+    clearPendingCardPayment();
+    setCardPaymentOpen(false);
+    setCardPaymentResult(null);
+    setCardFlowError(null);
+    setCardFlowState("IDLE");
+    setPaymentMethod("cash");
+  }, [clearPendingCardPayment]);
+
+  const handleCardPaymentRecheck = useCallback(async () => {
+    if (!pendingCardRequest) return;
+    await recoverTerminalCardPayment(pendingCardRequest);
+  }, [pendingCardRequest, recoverTerminalCardPayment]);
+
+  useEffect(() => {
+    if (
+      cardTerminalConfig?.enabled !== true ||
+      cardRecoveryAttemptedRef.current ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+    cardRecoveryAttemptedRef.current = true;
+
+    try {
+      const raw = window.localStorage.getItem(
+        POS_CARD_PAYMENT_PENDING_STORAGE_KEY,
+      );
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<PosCardPaymentRequest>;
+      if (
+        typeof parsed.attemptId !== "string" ||
+        typeof parsed.idempotencyKey !== "string" ||
+        !parsed.order ||
+        typeof parsed.order !== "object"
+      ) {
+        window.localStorage.removeItem(POS_CARD_PAYMENT_PENDING_STORAGE_KEY);
+        return;
+      }
+      const request = parsed as PosCardPaymentRequest;
+      setPendingCardRequest(request);
+      void recoverTerminalCardPayment(request);
+    } catch (err) {
+      console.warn("Failed to restore pending POS card payment:", err);
+    }
+  }, [cardTerminalConfig?.enabled, recoverTerminalCardPayment]);
+
+  useEffect(() => {
+    const storeId = cardTerminalConfig?.storeId?.trim();
+    if (
+      cardTerminalConfig?.enabled !== true ||
+      !storeId ||
+      !pendingCardRequest?.attemptId
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let socket: PosPaymentSocketClient | null = null;
+    const attemptId = pendingCardRequest.attemptId;
+    const handlePaymentStatus = (payload: PosCardPaymentSocketEvent) => {
+      if (payload.attemptId !== attemptId) return;
+      applyCardPaymentResult({
+        attemptId: payload.attemptId,
+        paymentId: payload.paymentId,
+        status: payload.status,
+        failureCode: payload.failureCode ?? null,
+        failureMessage: payload.failureMessage ?? null,
+        externalAmountCents: payload.externalAmountCents ?? 0,
+        surchargeCents: payload.surchargeCents ?? null,
+        chargedTotalCents: payload.chargedTotalCents ?? null,
+        pointsCents: payload.pointsCents ?? 0,
+        balanceCents: payload.balanceCents ?? 0,
+        couponDiscountCents: payload.couponDiscountCents ?? 0,
+        orderStableId: payload.orderStableId ?? null,
+        orderNumber: payload.orderNumber ?? null,
+        pickupCode: payload.pickupCode ?? null,
+      });
+    };
+
+    void loadSocketIoFromCdn()
+      .then((io) => {
+        if (!io || cancelled) return;
+        socket = io(`${window.location.origin}/pos`, {
+          path: "/socket.io",
+          withCredentials: true,
+          transports: ["websocket", "polling"],
+        });
+        socket.emit("joinStore", { storeId });
+        socket.on(POS_CARD_PAYMENT_STATUS_UPDATED_EVENT, handlePaymentStatus);
+      })
+      .catch((err) => {
+        console.warn("Failed to subscribe POS card payment status:", err);
+      });
+
+    return () => {
+      cancelled = true;
+      if (socket) {
+        socket.off(POS_CARD_PAYMENT_STATUS_UPDATED_EVENT, handlePaymentStatus);
+        socket.disconnect();
+      }
+    };
+  }, [
+    applyCardPaymentResult,
+    cardTerminalConfig?.enabled,
+    cardTerminalConfig?.storeId,
+    pendingCardRequest?.attemptId,
+  ]);
+
   const handleConfirm = async () => {
+    const shouldUseUnifiedPayment =
+      orderChannel === "in_store" &&
+      (paymentMethod === "card" ||
+        (paymentMethod === "store_balance" && isFullyPaidByBalance));
+    if (shouldUseUnifiedPayment) {
+      if (cardConfirmInFlightRef.current) return;
+      cardConfirmInFlightRef.current = true;
+      try {
+        let config: PosCardTerminalConfig;
+        try {
+          config = await fetchPosCardTerminalConfig();
+          setCardTerminalConfig(config);
+        } catch (configError) {
+          console.error("Failed to resolve POS card payment route:", configError);
+          setError(t.cardTerminalUnavailable);
+          return;
+        }
+
+        if (config.enabled) {
+          const order = buildOrderPayload();
+          if (!order) {
+            setError(t.noOrder);
+            return;
+          }
+          await startTerminalCardPayment({
+            ...order,
+            paymentMethod: "CARD",
+          });
+          return;
+        }
+      } finally {
+        cardConfirmInFlightRef.current = false;
+      }
+    }
+
     if (paymentMethod === "cash" && orderChannel === "in_store") {
       setCashDialogError(null);
       setCashReceivedInput(String(summaryTotalCents));
@@ -879,6 +1340,36 @@ const loyaltyRedeemCents = redeemCents;
     const timer = window.setTimeout(() => handleCloseSuccess(), modalDurationMs);
     return () => window.clearTimeout(timer);
   }, [handleCloseSuccess, successInfo]);
+
+  const cardFlowMessage = (() => {
+    switch (cardFlowState) {
+      case "WAITING":
+        return t.cardTerminalWaiting;
+      case "PROCESSING":
+      case "CREATED":
+        return t.cardTerminalProcessing;
+      case "SUCCEEDED":
+        return t.cardTerminalSucceeded;
+      case "DECLINED":
+        return t.cardTerminalDeclined;
+      case "CANCELLED":
+        return t.cardTerminalCancelled;
+      case "UNKNOWN":
+      case "RECONCILING":
+        return t.cardTerminalUnknown;
+      case "FAILED":
+        return t.cardTerminalFailed;
+      default:
+        return t.cardTerminalWaiting;
+    }
+  })();
+  const canRetryCardPayment = ["DECLINED", "CANCELLED", "FAILED"].includes(
+    cardFlowState,
+  );
+  const canRecheckCardPayment = ["UNKNOWN", "RECONCILING"].includes(
+    cardFlowState,
+  );
+  const canCancelCardPayment = cardFlowState === "PROCESSING";
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50">
@@ -1162,6 +1653,88 @@ const loyaltyRedeemCents = redeemCents;
           </div>
         </div>
       </section>
+
+      {cardPaymentOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-slate-600 bg-slate-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-xl font-bold text-white">{t.cardTerminalTitle}</h3>
+              <span className="rounded-full border border-slate-600 bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200">
+                {cardFlowState}
+              </span>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-800/70 p-5 text-center">
+              {(cardFlowState === "WAITING" ||
+                cardFlowState === "PROCESSING" ||
+                cardFlowState === "RECONCILING" ||
+                cardFlowState === "SUCCEEDED") && (
+                <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-600 border-t-emerald-400" />
+              )}
+              <p className="text-base font-medium text-slate-100">{cardFlowMessage}</p>
+              {cardPaymentResult?.chargedTotalCents != null && (
+                <p className="mt-3 text-2xl font-bold text-white">
+                  {formatMoney(cardPaymentResult.chargedTotalCents)}
+                </p>
+              )}
+              {cardPaymentResult?.surchargeCents != null &&
+                cardPaymentResult.surchargeCents > 0 && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    {locale === "zh" ? "信用卡附加费" : "Credit card surcharge"}: {formatMoney(cardPaymentResult.surchargeCents)}
+                  </p>
+                )}
+              {cardFlowError && (
+                <p className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                  {cardFlowError}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              {canCancelCardPayment && (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void handleCardPaymentCancel()}
+                  className="h-11 flex-1 rounded-xl border border-rose-400/60 text-sm font-semibold text-rose-100 disabled:opacity-50"
+                >
+                  {t.cardTerminalCancel}
+                </button>
+              )}
+              {canRecheckCardPayment && (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void handleCardPaymentRecheck()}
+                  className="h-11 flex-1 rounded-xl bg-amber-400 text-sm font-bold text-slate-950 disabled:opacity-50"
+                >
+                  {t.cardTerminalRecheck}
+                </button>
+              )}
+              {canRetryCardPayment && (
+                <>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => void handleCardPaymentRetry()}
+                    className="h-11 flex-1 rounded-xl bg-emerald-500 text-sm font-bold text-slate-950 disabled:opacity-50"
+                  >
+                    {t.cardTerminalRetry}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={handleCardPaymentChangeMethod}
+                    className="h-11 flex-1 rounded-xl border border-slate-600 text-sm font-semibold text-slate-100 disabled:opacity-50"
+                  >
+                    {t.cardTerminalChangeMethod}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {successInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">

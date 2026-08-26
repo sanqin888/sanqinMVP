@@ -12,6 +12,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export const POS_CUSTOMER_ORDERING_STATUS_UPDATED_EVENT =
   'CUSTOMER_ORDERING_STATUS_UPDATED';
+export const POS_CARD_PAYMENT_STATUS_UPDATED_EVENT =
+  'POS_CARD_PAYMENT_STATUS_UPDATED';
 
 @WebSocketGateway({ namespace: 'pos', cors: { origin: '*' } })
 export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -332,6 +334,40 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const roomName = `store:${storeId}`;
     this.logger.log(`🚀 Sending PRINT_SUMMARY to ${roomName}`);
     this.server.to(roomName).emit('PRINT_SUMMARY', data);
+  }
+
+  publishCardPaymentStatus(
+    storeId: string,
+    data: {
+      attemptId: string;
+      paymentId: string | null;
+      status: string;
+      failureCode?: string | null;
+      failureMessage?: string | null;
+      externalAmountCents?: number;
+      surchargeCents?: number | null;
+      chargedTotalCents?: number | null;
+      pointsCents?: number;
+      balanceCents?: number;
+      couponDiscountCents?: number;
+      orderStableId?: string | null;
+      orderNumber?: string | null;
+      pickupCode?: string | null;
+    },
+  ) {
+    this.server.to(`store:${storeId}`).emit(
+      POS_CARD_PAYMENT_STATUS_UPDATED_EVENT,
+      {
+        attemptId: data.attemptId,
+        paymentId: data.paymentId,
+        status: data.status,
+        failureCode: data.failureCode ?? null,
+        failureMessage: data.failureMessage ?? null,
+        orderStableId: data.orderStableId ?? null,
+        orderNumber: data.orderNumber ?? null,
+        pickupCode: data.pickupCode ?? null,
+      },
+    );
   }
 
   publishCustomerOrderingStatusUpdate(data: {
