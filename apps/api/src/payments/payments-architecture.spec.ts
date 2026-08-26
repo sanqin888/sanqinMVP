@@ -99,6 +99,25 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
+  it('keeps Clover Terminal transport and wire contracts inside provider infrastructure', () => {
+    const cloverInfrastructureRoot = resolve(
+      PAYMENTS_ROOT,
+      'infrastructure',
+      'clover',
+    );
+    const sourceFiles = scanTypeScript(SOURCE_ROOT, {
+      productionOnly: true,
+    }).filter(({ path }) => !path.startsWith(cloverInfrastructureRoot));
+
+    expect(
+      importViolations(sourceFiles, SOURCE_ROOT, (specifier) =>
+        /(?:payments\/)?infrastructure\/clover\/terminal|clover-terminal\.(?:transport|contracts|mapper)/.test(
+          specifier,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
   it('prevents Orders and POS from importing Clover transport or wire infrastructure', () => {
     const consumers = [
       ...scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {

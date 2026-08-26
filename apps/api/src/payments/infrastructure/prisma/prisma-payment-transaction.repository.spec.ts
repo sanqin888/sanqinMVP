@@ -133,6 +133,78 @@ describe('PrismaPaymentTransactionRepository', () => {
     );
   });
 
+  it('atomically advances payment state only from the expected persisted status', async () => {
+    let updateManyInput: unknown;
+    const updateMany = jest.fn((input: unknown) => {
+      updateManyInput = input;
+      return Promise.resolve({ count: 1 });
+    });
+    const findUnique = jest.fn().mockResolvedValue({
+      ...persistedRow,
+      status: 'PROCESSING',
+      processedAt: new Date('2026-08-25T20:01:00.000Z'),
+      updatedAt: new Date('2026-08-25T20:01:00.000Z'),
+    });
+    const repository = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { updateMany, findUnique },
+    } as unknown as PrismaService);
+    const transaction = PaymentTransaction.create({
+      id: persistedRow.id,
+      attemptId: persistedRow.attemptId,
+      idempotencyKey: persistedRow.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: 1299,
+      currency: 'CAD',
+      createdAt: persistedRow.createdAt,
+    }).transitionTo('PROCESSING', new Date('2026-08-25T20:01:00.000Z'));
+
+    const result = await repository.saveIfCurrentStatus(transaction, 'CREATED');
+
+    expect(result.updated).toBe(true);
+    expect(result.transaction.status).toBe('PROCESSING');
+    expect(updateManyInput).toMatchObject({
+      where: { id: persistedRow.id, status: 'CREATED' },
+      data: { status: 'PROCESSING' },
+    });
+  });
+
+  it('returns the current winner when a concurrent state transition already happened', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const findUnique = jest.fn().mockResolvedValue({
+      ...persistedRow,
+      status: 'SUCCEEDED',
+      providerPaymentId: 'clover-winner',
+      completedAt: new Date('2026-08-25T20:01:00.000Z'),
+      updatedAt: new Date('2026-08-25T20:01:00.000Z'),
+    });
+    const repository = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { updateMany, findUnique },
+    } as unknown as PrismaService);
+    const transaction = PaymentTransaction.create({
+      id: persistedRow.id,
+      attemptId: persistedRow.attemptId,
+      idempotencyKey: persistedRow.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: 1299,
+      currency: 'CAD',
+      createdAt: persistedRow.createdAt,
+    }).transitionTo('PROCESSING', new Date('2026-08-25T20:01:00.000Z'));
+
+    const result = await repository.saveIfCurrentStatus(transaction, 'CREATED');
+
+    expect(result.updated).toBe(false);
+    expect(result.transaction.status).toBe('SUCCEEDED');
+    expect(result.transaction.toSnapshot().providerPaymentId).toBe(
+      'clover-winner',
+    );
+  });
+
   it('rejects unknown persisted classifications instead of leaking raw strings into domain', async () => {
     const findUnique = jest
       .fn()

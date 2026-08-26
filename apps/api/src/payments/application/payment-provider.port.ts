@@ -22,6 +22,8 @@ export type GetPaymentStatusRequest = {
   idempotencyKey: string;
   externalPaymentId?: string | null;
   providerPaymentId?: string | null;
+  amountCents?: number;
+  currency?: string;
 };
 
 export type CancelPaymentRequest = GetPaymentStatusRequest;
@@ -42,4 +44,26 @@ export interface PaymentProvider {
   refundPayment(request: RefundPaymentRequest): Promise<PaymentProviderOutcome>;
 }
 
+export type PaymentTerminalAvailabilityState =
+  | 'AVAILABLE'
+  | 'BUSY'
+  | 'UNAVAILABLE'
+  | 'MISCONFIGURED'
+  | 'UNKNOWN';
+
+export type PaymentTerminalAvailability = {
+  state: PaymentTerminalAvailabilityState;
+  configured: boolean;
+  available: boolean;
+  terminalId?: string | null;
+  providerState?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+};
+
+export interface PaymentTerminalProvider {
+  getAvailability(): Promise<PaymentTerminalAvailability>;
+}
+
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
+export const PAYMENT_TERMINAL_PROVIDER = Symbol('PAYMENT_TERMINAL_PROVIDER');

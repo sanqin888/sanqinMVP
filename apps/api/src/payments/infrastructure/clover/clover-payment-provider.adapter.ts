@@ -4,6 +4,8 @@ import type {
   CancelPaymentRequest,
   GetPaymentStatusRequest,
   PaymentProvider,
+  PaymentTerminalAvailability,
+  PaymentTerminalProvider,
   RefundPaymentRequest,
   StartPaymentRequest,
   VoidPaymentRequest,
@@ -23,11 +25,17 @@ const unsupportedSource = (source: string): PaymentProviderOutcome => ({
 });
 
 @Injectable()
-export class CloverPaymentProviderAdapter implements PaymentProvider {
+export class CloverPaymentProviderAdapter
+  implements PaymentProvider, PaymentTerminalProvider
+{
   constructor(
     private readonly ecommerce: CloverEcommerceTransport,
     private readonly terminal: CloverTerminalTransport,
   ) {}
+
+  getAvailability(): Promise<PaymentTerminalAvailability> {
+    return this.terminal.getAvailability();
+  }
 
   async startPayment(
     request: StartPaymentRequest,
@@ -90,7 +98,7 @@ export class CloverPaymentProviderAdapter implements PaymentProvider {
     return Promise.resolve({
       status: 'FAILED',
       failureCode: 'CLOVER_CANCEL_NOT_IMPLEMENTED',
-      failureMessage: 'Clover cancel is not implemented in Phase B',
+      failureMessage: 'Clover Ecommerce cancel is not implemented',
     });
   }
 
@@ -101,7 +109,7 @@ export class CloverPaymentProviderAdapter implements PaymentProvider {
     return Promise.resolve({
       status: 'FAILED',
       failureCode: 'CLOVER_VOID_NOT_IMPLEMENTED',
-      failureMessage: 'Clover void is not implemented in Phase B',
+      failureMessage: 'Clover Ecommerce void is deferred to Payment Phase E',
     });
   }
 
@@ -114,7 +122,7 @@ export class CloverPaymentProviderAdapter implements PaymentProvider {
     return Promise.resolve({
       status: 'FAILED',
       failureCode: 'CLOVER_REFUND_NOT_IMPLEMENTED',
-      failureMessage: 'Clover refund is not implemented in Phase B',
+      failureMessage: 'Clover Ecommerce refund is deferred to Payment Phase E',
     });
   }
 }

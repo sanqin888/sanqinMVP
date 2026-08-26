@@ -12,6 +12,7 @@ import {
   parsePaymentProviderName,
   parsePaymentSource,
   parsePaymentStatus,
+  type PaymentStatus,
 } from '../../domain/payment.types';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -153,24 +154,7 @@ export class PrismaPaymentTransactionRepository implements PaymentTransactionRep
     try {
       const row = await this.prisma.paymentTransaction.update({
         where: { id: snapshot.id },
-        data: {
-          status: snapshot.status,
-          surchargeCents: snapshot.surchargeCents,
-          chargedTotalCents: snapshot.chargedTotalCents,
-          refundedAmountCents: snapshot.refundedAmountCents,
-          externalPaymentId: snapshot.externalPaymentId ?? null,
-          providerPaymentId: snapshot.providerPaymentId ?? null,
-          providerRefundId: snapshot.providerRefundId ?? null,
-          providerOrderId: snapshot.providerOrderId ?? null,
-          resultCode: snapshot.resultCode,
-          failureCode: snapshot.failureCode,
-          failureMessage: snapshot.failureMessage,
-          terminalId: snapshot.terminalId ?? null,
-          cardBrand: snapshot.cardBrand ?? null,
-          cardLast4: snapshot.cardLast4 ?? null,
-          processedAt: snapshot.processedAt,
-          completedAt: snapshot.completedAt,
-        },
+        data: this.mutableData(transaction),
       });
       return toDomain(row);
     } catch (error) {
@@ -178,5 +162,51 @@ export class PrismaPaymentTransactionRepository implements PaymentTransactionRep
       if (field) throw new PaymentTransactionUniquenessError(field);
       throw error;
     }
+  }
+
+  async saveIfCurrentStatus(
+    transaction: PaymentTransaction,
+    expectedStatus: PaymentStatus,
+  ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
+    const snapshot = transaction.toSnapshot();
+    try {
+      const result = await this.prisma.paymentTransaction.updateMany({
+        where: { id: snapshot.id, status: expectedStatus },
+        data: this.mutableData(transaction),
+      });
+      const current = await this.findById(snapshot.id);
+      if (!current) {
+        throw new Error(
+          `Payment transaction ${snapshot.id} disappeared during save`,
+        );
+      }
+      return { updated: result.count === 1, transaction: current };
+    } catch (error) {
+      const field = uniqueField(error);
+      if (field) throw new PaymentTransactionUniquenessError(field);
+      throw error;
+    }
+  }
+
+  private mutableData(transaction: PaymentTransaction) {
+    const snapshot = transaction.toSnapshot();
+    return {
+      status: snapshot.status,
+      surchargeCents: snapshot.surchargeCents,
+      chargedTotalCents: snapshot.chargedTotalCents,
+      refundedAmountCents: snapshot.refundedAmountCents,
+      externalPaymentId: snapshot.externalPaymentId ?? null,
+      providerPaymentId: snapshot.providerPaymentId ?? null,
+      providerRefundId: snapshot.providerRefundId ?? null,
+      providerOrderId: snapshot.providerOrderId ?? null,
+      resultCode: snapshot.resultCode,
+      failureCode: snapshot.failureCode,
+      failureMessage: snapshot.failureMessage,
+      terminalId: snapshot.terminalId ?? null,
+      cardBrand: snapshot.cardBrand ?? null,
+      cardLast4: snapshot.cardLast4 ?? null,
+      processedAt: snapshot.processedAt,
+      completedAt: snapshot.completedAt,
+    };
   }
 }

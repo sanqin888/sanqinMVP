@@ -1,4 +1,5 @@
 import type { PaymentTransaction } from '../domain/payment-transaction';
+import type { PaymentStatus } from '../domain/payment.types';
 
 export type PaymentTransactionUniqueField =
   | 'attemptId'
@@ -12,6 +13,11 @@ export class PaymentTransactionUniquenessError extends Error {
   }
 }
 
+export type ConditionalPaymentSaveResult = {
+  updated: boolean;
+  transaction: PaymentTransaction;
+};
+
 export interface PaymentTransactionRepository {
   findById(id: string): Promise<PaymentTransaction | null>;
   findByAttemptId(attemptId: string): Promise<PaymentTransaction | null>;
@@ -20,6 +26,10 @@ export interface PaymentTransactionRepository {
   ): Promise<PaymentTransaction | null>;
   create(transaction: PaymentTransaction): Promise<PaymentTransaction>;
   save(transaction: PaymentTransaction): Promise<PaymentTransaction>;
+  saveIfCurrentStatus(
+    transaction: PaymentTransaction,
+    expectedStatus: PaymentStatus,
+  ): Promise<ConditionalPaymentSaveResult>;
 }
 
 export const PAYMENT_TRANSACTION_REPOSITORY = Symbol(
