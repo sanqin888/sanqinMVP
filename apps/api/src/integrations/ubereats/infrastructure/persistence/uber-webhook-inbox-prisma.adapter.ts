@@ -159,6 +159,7 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
       eventType: string;
       safeSummary: string;
       businessVersion: string;
+      diagnostic?: 'CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED';
     },
   ): Promise<boolean> {
     const result = await this.prisma.uberWebhookInbox.updateMany({

@@ -16,6 +16,7 @@ jest.mock('@prisma/client', () => ({
 
 import { createHmac } from 'crypto';
 import { UberCryptoConfigService } from '../../infrastructure/crypto/uber-crypto-config.service';
+import { HmacUberWebhookSignatureVerifier } from '../../infrastructure/crypto/uber-webhook-signature-verifier';
 import { ProcessUberWebhookInboxUseCase } from './process-uber-webhook-inbox.use-case';
 import { ReceiveUberWebhookUseCase } from './uber-webhook-receiver.use-case';
 import { createReceiveUberWebhookUseCase } from '../../test/uber-service-test.helpers';
@@ -199,6 +200,67 @@ describe('Uber webhook use cases', () => {
     },
   );
 
+  it('明确隔离 orders.customer_order_edit，并标记需要订单 reconciliation', async () => {
+    const item = {
+      eventId: 'evt-customer-order-edit',
+      eventType: 'orders.customer_order_edit',
+      payload: {
+        event_type: 'orders.customer_order_edit',
+        event_id: 'evt-customer-order-edit',
+        resource_href: 'https://api.uber.com/v1/delivery/order/order-1',
+        meta: { resource_id: 'order-1', user_id: 'store-1' },
+      },
+      leaseToken: 'lease',
+      idempotencyKey: 'key',
+      businessVersion: 'v1',
+    };
+    const inboxPort = {
+      claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
+      markSucceeded: jest.fn(),
+      markUnsupported: jest.fn().mockResolvedValue(true),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
+      markFailed: jest.fn(),
+      enqueue: jest.fn(),
+      setStoreProvisioned: jest.fn(),
+    };
+    const orders = { execute: jest.fn() };
+    const telemetry = {
+      captureEvent: jest.fn().mockResolvedValue(undefined),
+      workflowLog: jest.fn(),
+    };
+    const worker = new ProcessUberWebhookInboxUseCase(
+      inboxPort,
+      orders as never,
+      { handle: jest.fn() } as never,
+      { execute: jest.fn() } as never,
+      telemetry,
+    );
+
+    await worker.execute();
+
+    expect(inboxPort.markUnsupported).toHaveBeenCalledWith(
+      item,
+      expect.objectContaining({
+        code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
+        eventType: 'orders.customer_order_edit',
+        diagnostic: 'CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED',
+      }),
+    );
+    expect(telemetry.captureEvent).toHaveBeenCalledWith(
+      'ubereats_webhook_unsupported',
+      expect.objectContaining({
+        eventType: 'orders.customer_order_edit',
+        diagnostic: 'CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED',
+      }),
+    );
+    expect(telemetry.workflowLog).toHaveBeenCalledWith(
+      'error',
+      expect.stringContaining('order reconciliation support is required'),
+    );
+    expect(orders.execute).not.toHaveBeenCalled();
+    expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
+  });
+
   it('仍会完成已支持的 store 事件', async () => {
     const item = {
       eventId: 'evt-store',
@@ -318,6 +380,48 @@ describe('Uber webhook use cases', () => {
       expect.objectContaining({
         data: expect.objectContaining({ status: 'PENDING' }) as unknown,
       }),
+    );
+  });
+
+  it('重复 webhook 去重后仍完成 receive，不触发业务处理', async () => {
+    const enqueue = jest.fn().mockResolvedValue(false);
+    const signal = jest.fn();
+    const telemetry = {
+      captureEvent: jest.fn().mockResolvedValue(undefined),
+      workflowLog: jest.fn(),
+    };
+    const inboxPort: UberWebhookInboxPort = {
+      enqueue,
+      claimDue: () => Promise.resolve([]),
+      markSucceeded: () => Promise.resolve(true),
+      markUnsupported: () => Promise.resolve(true),
+      requeueUnsupported: () => Promise.resolve(0),
+      markFailed: () => Promise.resolve(true),
+      setStoreProvisioned: () => Promise.resolve(false),
+    };
+    const service = new ReceiveUberWebhookUseCase(
+      inboxPort,
+      new HmacUberWebhookSignatureVerifier(config()),
+      telemetry,
+      { signal },
+    );
+
+    await expect(
+      service.execute(
+        signed({
+          event_type: 'orders.notification',
+          event_id: 'evt-duplicate',
+          resource_href: 'https://api.uber.com/v1/delivery/order/order-1',
+          meta: { resource_id: 'order-1', user_id: 'store-1' },
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(signal).toHaveBeenCalledWith('webhookInbox');
+    expect(telemetry.workflowLog).toHaveBeenCalledWith(
+      'warn',
+      'duplicate webhook ignored',
     );
   });
 

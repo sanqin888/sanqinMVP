@@ -96,6 +96,18 @@ describe('Uber webhook event domain parser', () => {
     ).toEqual({ kind: 'unsupported', reason: 'event' });
   });
 
+  it('keeps orders.customer_order_edit out of the new-order import path', () => {
+    const payload = { ...envelope, event_type: 'orders.customer_order_edit' };
+    expect(parseUberOrderNotificationV1(payload)).toBeNull();
+    expect(
+      dispatchUberWebhookV1({
+        eventType: 'orders.customer_order_edit',
+        businessVersion: 'v1',
+        payload,
+      }),
+    ).toEqual({ kind: 'unsupported', reason: 'event' });
+  });
+
   it.each([
     ['store.provisioned', true],
     ['store.deprovisioned', false],

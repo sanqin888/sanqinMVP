@@ -41,6 +41,7 @@ export interface UberWebhookInboxPort {
       eventType: string;
       safeSummary: string;
       businessVersion: string;
+      diagnostic?: 'CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED';
     },
   ): Promise<boolean>;
   requeueUnsupported(

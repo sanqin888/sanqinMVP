@@ -81,4 +81,34 @@ describe('UberHttpClient structured error mapping', () => {
       expect.stringContaining('code=UBER_HTTP_400 retryable=false'),
     );
   });
+
+  it.each(['POST', 'PATCH'] as const)(
+    'serializes both customer-request capability flags into %s JSON bodies',
+    async (method) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response('{}', { status: 200 }));
+      const payload = {
+        allowed_customer_requests: {
+          allow_single_use_items_requests: true,
+          allow_special_instruction_requests: true,
+        },
+      };
+
+      await new UberHttpClient().request({
+        url: 'https://api.uber.com/v1/eats/stores/store-1/pos_data',
+        method,
+        operation: `merchant.${method.toLowerCase()}-integration-config`,
+        idempotencyKey: `fixture-${method.toLowerCase()}-idempotency`,
+        json: payload,
+      });
+
+      const init = fetchSpy.mock.calls[0]?.[1];
+      expect(init?.headers).toMatchObject({
+        'Content-Type': 'application/json',
+      });
+      expect(typeof init?.body).toBe('string');
+      expect(JSON.parse(init?.body as string)).toEqual(payload);
+    },
+  );
 });

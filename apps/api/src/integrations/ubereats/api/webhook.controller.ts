@@ -35,7 +35,7 @@ export class UberEatsWebhookController {
 
   @Post('webhook')
   @HttpCode(200)
-  async webhook(@Req() req: Request) {
+  async webhook(@Req() req: Request, @Res() res: Response) {
     if (!Buffer.isBuffer(req.body)) {
       throw new UberValidationError({
         code: 'UBER_WEBHOOK_RAW_BODY_REQUIRED',
@@ -48,6 +48,6 @@ export class UberEatsWebhookController {
       rawBody: req.body,
     });
 
-    return presentWebhookHealth();
+    return res.status(200).end();
   }
 }

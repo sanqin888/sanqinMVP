@@ -119,6 +119,9 @@ describe('Uber gateways wire contract v1', () => {
       store_id: 'store-1',
       integration_enabled: true,
       integrator_store_id: 'sanq-store-1',
+      allowed_customer_requests: {
+        allow_single_use_items_requests: true,
+      },
       webhooks_config: {
         schedule_order_webhooks: { is_enabled: true },
         webhooks_version: '1.0.0',
@@ -126,6 +129,10 @@ describe('Uber gateways wire contract v1', () => {
     };
     const integrationUpdate = {
       integrator_store_id: 'sanq-store-1-updated',
+      allowed_customer_requests: {
+        allow_single_use_items_requests: true,
+        allow_special_instruction_requests: true,
+      },
       webhooks_config: {
         schedule_order_webhooks: { is_enabled: true },
         webhooks_version: '1.0.0',
@@ -170,6 +177,10 @@ describe('Uber gateways wire contract v1', () => {
       storeId: 'store-1',
       integrationEnabled: true,
       integratorStoreId: 'sanq-store-1',
+      allowedCustomerRequests: {
+        allowSingleUseItemsRequests: true,
+        allowSpecialInstructionRequests: null,
+      },
       webhooksConfig: {
         schedule_order_webhooks: { is_enabled: true },
         webhooks_version: '1.0.0',
