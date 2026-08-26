@@ -14,8 +14,11 @@ COPY libs/shared/package.json ./libs/shared/
 # 2. 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 3. 复制源码
-COPY . .
+# 3. 只复制 Web 及其实际共享源码，避免纯 API 改动使 Web 构建缓存失效
+COPY apps/web ./apps/web
+COPY libs/order ./libs/order
+COPY libs/shared ./libs/shared
+COPY libs/status ./libs/status
 
 # 4. 构建 Web (Next.js Standalone)
 # 这一步会生成 .next/standalone 文件夹，里面包含了所有运行所需的代码和依赖
