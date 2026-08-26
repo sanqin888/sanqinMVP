@@ -1,6 +1,6 @@
 # SanQ 支付域模块化 + Clover POS 实时同步分阶段实施方案
 
-**状态：** Phase Execution Plan v2  
+**状态：** Phase Execution Plan v3  
 **日期：** 2026-08-26  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
@@ -138,6 +138,8 @@ apps/api/src/payments/payments-architecture.spec.ts
 9. 明确 provider / source / paymentMethod 分类。
 10. 建立并通过本阶段 architecture tests。
 
+Phase A 只建立 provider-neutral payment core，不实现 Clover wire API，也不决定 Ecommerce `/v1/charges`、REST Pay Display `/connect/v1/payments` 或 Platform REST v3 的具体 transport/auth。Clover API family separation 从 Phase B 开始。
+
 ## 建议目录
 
 ```text
@@ -205,18 +207,20 @@ Payment domain / data model / architecture baseline 已稳定，legacy CARD 无�
 
 ## 目标
 
-把 Clover 从“支付业务本身”降级为 Payments infrastructure/provider，同时将现有 Ecommerce 与未来 Terminal transport 分开。
+把 Clover 从“支付业务本身”降级为 Payments infrastructure/provider，并按 capability 明确分离 Ecommerce execution、REST Pay Display execution 与 Platform REST v3 canonical read/reconciliation。
 
 ## 主要工作
 
 1. 定义 Clover provider adapter。
 2. 拆分现有 `CloverService` 过重职责。
-3. Ecommerce transport 单独封装。
-4. Terminal transport 建立 skeleton。
-5. Clover response mapper 单独建立。
-6. OAuth / credential / device config 边界明确。
-7. provider wire schema 限制在 infrastructure 层。
-8. 保持现有线上支付行为不变。
+3. Ecommerce transport 单独封装，继续承载 legacy Web `/v1/charges` execution compatibility。
+4. Terminal transport 建立 skeleton，承载 REST Pay Display `/connect/v1/payments` / device interaction。
+5. 新建 Clover Platform Payments v3 gateway/read model，支持按 provider payment ID 获取 payment，并支持按 `externalPaymentId` 查询/恢复。
+6. Platform v3 mapper 支持 canonical amount/result、`additionalCharges`、card transaction、refund 等所需字段，不把 raw v3 schema 暴露给 Payment application/domain。
+7. Clover response mapper 按 API family 分开，不允许使用一个宽松 mapper 同时猜 `/v1/charges`、REST Pay 和 v3 shape。
+8. OAuth / credential / device config 边界明确；Ecommerce、Terminal、Platform v3 配置槽必须显式区分，禁止隐式 token fallback。
+9. provider wire schema 限制在 infrastructure 层。
+10. 保持现有线上支付行为不变；Phase B 建立 v3 capability 不等于提前迁移 Web 流量。
 
 ## Architecture Test 收紧
 
@@ -224,7 +228,8 @@ Phase B 完成时应至少新增/收紧：
 
 - Orders 不得新增 Clover wire/transport 依赖。
 - 新 Payments application 不得 import Clover concrete gateway。
-- Clover wire schema 不得越出 infrastructure。
+- Ecommerce / REST Pay Display / Platform v3 wire schema 不得越出 infrastructure。
+- Platform v3 gateway 不得被 Orders/POS/orchestration 直接 import；只能通过 Payment provider/application boundary 暴露 canonical payment facts。
 - 对完成迁移的旧 Clover -> Orders 直接依赖，删除对应 legacy exception。
 
 若仍有旧 `CloverPayController` 为兼容 Web checkout 暂时需要 orchestration，应将 exception 精确限制在该文件和迁移期限，不得扩大到整个 Clover 目录。
@@ -245,6 +250,11 @@ Phase B 完成时应至少新增/收紧：
 ## 测试要求
 
 - Ecommerce mapper。
+- REST Pay Display / Platform v3 mapper 分离。
+- Platform v3 payment-by-id 查询。
+- Platform v3 `externalPaymentId` reconciliation 查询。
+- `additionalCharges` / `CREDIT_SURCHARGE` canonical mapping。
+- Platform v3 auth/config 不与 Ecommerce token 隐式混用。
 - Provider result normalization。
 - Clover failure mapping。
 - amount/currency/paymentId mapping。
@@ -253,7 +263,7 @@ Phase B 完成时应至少新增/收紧：
 
 ## 完成标准
 
-Clover provider 边界清晰、Ecommerce/Terminal transport 分离、Web/POS legacy 无回归、CI 全绿。
+Clover provider 边界清晰，Ecommerce/Terminal/Platform v3 三类 capability 已分离；Platform v3 canonical read/reconciliation capability 可被 Phase C 使用；Web/POS legacy 无回归，CI 全绿。
 
 ## VM 部署
 
@@ -265,54 +275,70 @@ Clover provider 边界清晰、Ecommerce/Terminal transport 分离、Web/POS leg
 
 ## 目标
 
-完成 Clover REST Pay Display 后端能力，但不切 POS 主链路。
+完成 Clover REST Pay Display 的 POS transaction execution，并把 Platform REST v3 接入为 Unified Payment Core 的 canonical payment truth / reconciliation source；不切 POS 主链路。
 
 ## 主要工作
 
 1. Terminal device/config 读取。
 2. Terminal health / availability。
-3. Sale request。
-4. payment status query。
-5. cancel payment。
-6. `externalPaymentId`。
-7. idempotency key。
-8. provider payment ID 保存。
-9. UNKNOWN 状态。
-10. reconciliation。
-11. Terminal payment persistence。
-12. 必要 OAuth / RAID / device binding。
+3. REST Pay Display Sale request。
+4. REST Pay Display immediate status / cancel 能力。
+5. `externalPaymentId`。
+6. idempotency key。
+7. provider payment ID 保存。
+8. Sale response 成功后使用 Platform REST v3 按 payment ID 读取 canonical payment。
+9. response 丢失/provider payment ID 未知时，使用 v3 collection 按 `externalPaymentId` 做 reconciliation。
+10. v3 canonical mapper 核验 amount / result / provider payment identity，并读取 `additionalCharges` / card transaction 等所需事实。
+11. v3 暂时未看到刚完成交易或 Platform API 临时不可用时进入 UNKNOWN / RECONCILING，不得提前 finalize Order。
+12. reconciliation。
+13. Terminal payment persistence。
+14. 必要 OAuth / RAID / device binding。
+15. Platform v3 merchant-authorized token/config 与 Ecommerce/Terminal 配置显式隔离。
 
 ## 主状态链路
 
 ```text
 PaymentTransaction CREATED
   -> PROCESSING
-  -> Clover Terminal Sale
+  -> REST Pay Display Sale
+  -> execution observation
+  -> Platform REST v3 canonical read
   -> SUCCEEDED / DECLINED / CANCELLED / UNKNOWN
 ```
 
+REST Pay Display 返回 `SUCCESS` 只代表 execution observation 成功；对 Unified Payment Core 而言，在 Platform REST v3 尚未取得足够 canonical payment evidence 前，不得据此 finalize paid Order。
+
 ## UNKNOWN 要求
 
-发生 timeout、response lost、provider 暂时不可查询、network interruption 时必须进入 UNKNOWN/RECONCILING，不得直接 FAILED 后允许重新刷卡。
+发生 timeout、response lost、provider 暂时不可查询、network interruption，或 REST Pay 已成功但 v3 payment 暂时不可见时，必须进入 UNKNOWN/RECONCILING，不得直接 FAILED 后允许重新刷卡。
 
 ## Reconciliation 要求
 
-优先使用 provider payment ID，其次 externalPaymentId，并结合 idempotency key。不得用金额+时间或 last4+金额猜交易。
+优先使用 provider payment ID 通过 Platform REST v3 查询；provider payment ID 未知时使用 v3 payment collection 按 `externalPaymentId` 查询，并结合本地 idempotency identity。不得用金额+时间或 last4+金额猜交易。REST Pay Display status 可以辅助设备交互恢复，但不能替代 Platform v3 的长期 canonical transaction read。
 
 ## Architecture Test 收紧
 
 - Terminal gateway 只能位于 provider infrastructure。
-- API/application 层不得解析 raw Terminal wire response。
+- Platform v3 gateway / mapper 只能位于 provider infrastructure。
+- API/application 层不得解析 raw Terminal 或 Platform v3 wire response。
 - reconciliation 必须经 Payment application/repository boundary。
-- POS/Orders 不得直接引用 Terminal gateway。
+- POS/Orders/orchestration 不得直接引用 Terminal 或 Platform v3 gateway。
 
 ## 测试要求
 
-Sale success、decline、cancel、timeout、unknown、reconcile、duplicate request、idempotency、device unavailable、可模拟的 restart recovery。
+除 Sale success、decline、cancel、timeout、unknown、duplicate request、idempotency、device unavailable、可模拟的 restart recovery 外，必须覆盖：
+
+- REST Pay success + v3 canonical payment success -> `SUCCEEDED`。
+- REST Pay success + v3 暂时 404/不可见 -> `UNKNOWN/RECONCILING`，不得创建 paid Order。
+- REST Pay response lost + v3 `externalPaymentId` lookup 恢复成功。
+- v3 amount/result/payment ID mismatch -> 不得 `SUCCEEDED`。
+- v3 `additionalCharges` 中 `CREDIT_SURCHARGE` 正确进入 `surchargeCents`。
+- charged total 基于 Clover canonical payment + actual additional charges 核验。
+- Platform v3 timeout/auth temporary failure 保留 unresolved payment，不允许二次无保护扣款。
 
 ## 完成标准
 
-不接 POS UI 的情况下，后端已能：`start payment -> obtain final payment truth -> persist -> recover unknown`，legacy CARD 不受影响。
+不接 POS UI 的情况下，后端已能：`REST Pay execution -> Platform v3 canonical truth -> persist -> recover unknown`；只有取得足够 canonical provider evidence 才向 Unified Payment Core 暴露最终 `SUCCEEDED`，legacy CARD 不受影响。
 
 ## VM 部署
 
@@ -342,11 +368,12 @@ Phase D 不再建设 POS 专属支付状态机。所有新增 payment preparatio
 10. retry / change payment method。
 11. POS reload 恢复相同 logical payment attempt。
 12. WebSocket / realtime status push。
-13. provider success 后使用已固化 snapshot finalize Order，不重新按当前价格/促销计算已批准 external due。
-14. finalize transaction 中 COMMIT reservation + consume payment attempt + create Order；明确失败时 RELEASE reservation。
-15. Order creation / reservation commit / release / print 全部幂等。
-16. 成功后打印并进入 board。
-17. 新核心从命名和 contract 上不得绑定 POS；POS controller/UI 只是第一层 adapter。
+13. 只接受 Payment provider/application boundary 返回的 canonical `SUCCEEDED`；Phase D orchestration 不直接读取 REST Pay 或 Platform v3 raw response。
+14. provider canonical success 后使用已固化 snapshot finalize Order，不重新按当前价格/促销计算已批准 external due。
+15. finalize transaction 中 COMMIT reservation + consume payment attempt + create Order；明确失败时 RELEASE reservation。
+16. Order creation / reservation commit / release / print 全部幂等。
+17. 成功后打印并进入 board。
+18. 新核心从命名和 contract 上不得绑定 POS；POS controller/UI 只是第一层 adapter。
 
 ## Reservation 硬规则
 
@@ -420,7 +447,8 @@ Phase D 只能建设 Web 未来可复用的通用 contract / model，不得：
 - 新 Unified Payment core contract 不得依赖 POS UI/types。
 - 明确 orchestration/composition 层是同时依赖 Payments + Orders / Loyalty / Membership public boundary 的允许位置。
 - Payments infrastructure 不得直接操作 Loyalty / Membership reservation internals。
-- 新流程禁止在 external payment success / internal-only finalize 前创建 paid Order。
+- Phase D orchestration 不得直接 import REST Pay Display / Platform v3 gateway 或 mapper。
+- 新流程禁止在 Payment provider/application 给出 canonical `SUCCEEDED` / internal-only finalize 前创建 paid Order。
 - Web legacy exception 仍精确保留，Phase D 不得扩大。
 
 legacy CARD 仍存在，所以“全仓库禁止 CARD direct order”此时尚不能启用最终规则；只能锁定**新路径**不得绕过 Unified Payment Core。
@@ -462,7 +490,8 @@ legacy CARD 仍存在，所以“全仓库禁止 CARD direct order”此时尚�
 
 - 查找原 PaymentTransaction。
 - 判断 Void / Refund。
-- Clover Void / Refund。
+- Clover Void / Refund execution。
+- Platform REST v3 refund/payment read-back，取得 canonical refund amount / result / additional-charge refund facts。
 - Refund transaction。
 - refund idempotency。
 - refund UNKNOWN / reconciliation。
@@ -551,13 +580,16 @@ valid/invalid webhook、duplicate event、unknown payment、external refund、ou
 ## 主要工作
 
 1. 复用同一 payment preparation / snapshot / reservation / tender allocation contract。
-2. Web Ecommerce 仅替换 provider interaction adapter，核心状态机、幂等、reconciliation、finalization 与 POS 共用。
-3. Web Points / Balance / Coupon 统一先 HOLD，再 external payment，成功 COMMIT，明确失败 RELEASE。
-4. Web CARD / Apple Pay / Google Pay 的 external/provider IDs、surcharge、UNKNOWN/reconciliation 统一进入 PaymentTransaction。
-5. 保留 Web 专属 contact verification、3DS、wallet/browser/session context，但不再让其形成另一套 payment lifecycle。
-6. 迁移前可做 shadow quote / tender allocation compare，但 shadow path 不得向 Clover 发起收费。
-7. 收敛并最终替换 `CloverPayController` 内部 payment-state responsibilities。
-8. Web 新链路实测稳定前不删除旧 `CheckoutIntent` 或旧支付实现。
+2. Web Ecommerce transaction execution 继续使用 Clover 当前正式支持的 Ecommerce API（当前 `/v1/charges`），但不再把 `/v1/charges` response/status 当作长期唯一 payment truth。
+3. Web execution 成功或恢复时，经同一 Clover Platform Payments v3 gateway canonicalize payment：payment ID / result / amount / `additionalCharges` / refund/card facts 统一映射进 PaymentTransaction。
+4. Web Ecommerce 只保留渠道必要的 provider interaction 差异，核心状态机、幂等、reconciliation、finalization 与 POS 共用。
+5. Web Points / Balance / Coupon 统一先 HOLD，再 external payment，成功 COMMIT，明确失败 RELEASE。
+6. Web CARD / Apple Pay / Google Pay 的 external/provider IDs、surcharge、UNKNOWN/reconciliation 统一进入 PaymentTransaction。
+7. `/v1/charges` 成功但 Platform v3 暂时无法确认时必须进入 UNKNOWN/RECONCILING，不得先创建 paid Order；v3 canonical truth 恢复后再 finalize。
+8. 保留 Web 专属 contact verification、3DS、wallet/browser/session context，但不再让其形成另一套 payment lifecycle。
+9. 迁移前可做 shadow quote / tender allocation compare，但 shadow path 不得向 Clover 发起收费。
+10. 收敛并最终替换 `CloverPayController` 内部 payment-state responsibilities。
+11. Web 新链路实测稳定前不删除旧 `CheckoutIntent` 或旧支付实现。
 
 ## Architecture Test 收紧
 
