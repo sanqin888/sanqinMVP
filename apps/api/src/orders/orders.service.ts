@@ -662,7 +662,8 @@ export class OrdersService {
 
     let loyaltyRedeemCents = 0;
     if (userId && typeof requestedPoints === 'number' && requestedPoints > 0) {
-      const availableTender = await this.loyalty.getAvailablePaymentTender(userId);
+      const availableTender =
+        await this.loyalty.getAvailablePaymentTender(userId);
       const maxRedeemableCents =
         await this.loyalty.maxRedeemableCentsFromBalance(
           availableTender.pointsMicro,
@@ -2207,7 +2208,9 @@ export class OrdersService {
 
     let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
       null;
-    const productStableIds = calculatedItems.map((item) => item.productStableId);
+    const productStableIds = calculatedItems.map(
+      (item) => item.productStableId,
+    );
     const hiddenItems = await this.prisma.menuItem.findMany({
       where: {
         stableId: { in: productStableIds },
@@ -2233,7 +2236,9 @@ export class OrdersService {
               coupon: {
                 isActive: true,
                 AND: [
-                  { OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }] },
+                  {
+                    OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }],
+                  },
                   { OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
                 ],
               },
@@ -2437,7 +2442,8 @@ export class OrdersService {
         ) {
           throw new ConflictException({
             code: 'PAYMENT_TENDER_RESERVATION_MISMATCH',
-            message: 'Committed internal tender does not match prepared payment.',
+            message:
+              'Committed internal tender does not match prepared payment.',
           });
         }
         await this.membership.commitPaymentCouponsForOrder({
@@ -2522,8 +2528,7 @@ export class OrdersService {
                 dailySpecialStableId: item.dailySpecialStableId,
                 ...(item.optionsJson !== null
                   ? {
-                      optionsJson:
-                        item.optionsJson as Prisma.InputJsonValue,
+                      optionsJson: item.optionsJson as Prisma.InputJsonValue,
                     }
                   : {}),
               })),

@@ -319,7 +319,10 @@ export class PosCardPaymentOrchestrationService {
     checkout: PreparedPaymentCheckout,
     payment: PaymentTransaction,
   ): Promise<PosCardPaymentView> {
-    checkout = await this.checkouts.markFromPayment(checkout.attemptId, payment);
+    checkout = await this.checkouts.markFromPayment(
+      checkout.attemptId,
+      payment,
+    );
 
     if (
       payment.status === 'DECLINED' ||
@@ -353,7 +356,9 @@ export class PosCardPaymentOrchestrationService {
         checkout.orderStableId,
       );
       const payment =
-        knownPayment ?? (await this.findPaymentForCheckout(checkout)) ?? undefined;
+        knownPayment ??
+        (await this.findPaymentForCheckout(checkout)) ??
+        undefined;
       await this.printOrderOnce(checkout, existingOrder);
       const view = this.toView(checkout, payment, existingOrder, {
         status: 'SUCCEEDED',
@@ -362,10 +367,7 @@ export class PosCardPaymentOrchestrationService {
       return view;
     }
 
-    if (
-      checkout.status !== 'SUCCEEDED' &&
-      checkout.status !== 'FINALIZING'
-    ) {
+    if (checkout.status !== 'SUCCEEDED' && checkout.status !== 'FINALIZING') {
       const view = this.toView(checkout, knownPayment);
       this.publish(storeId, view);
       return view;
@@ -374,7 +376,8 @@ export class PosCardPaymentOrchestrationService {
     checkout = await this.checkouts.markFinalizing(checkout.attemptId);
     let payment = knownPayment;
     if (checkout.externalAmountCents > 0) {
-      payment = payment ?? (await this.findPaymentForCheckout(checkout)) ?? undefined;
+      payment =
+        payment ?? (await this.findPaymentForCheckout(checkout)) ?? undefined;
       if (!payment || payment.status !== 'SUCCEEDED') {
         const view = this.toView(checkout, payment, undefined, {
           status: 'UNKNOWN',
@@ -507,10 +510,7 @@ export class PosCardPaymentOrchestrationService {
     payment?: PaymentTransaction,
     order?: OrderDto,
     override?: Partial<
-      Pick<
-        PosCardPaymentView,
-        'status' | 'failureCode' | 'failureMessage'
-      >
+      Pick<PosCardPaymentView, 'status' | 'failureCode' | 'failureMessage'>
     >,
   ): PosCardPaymentView {
     const paymentSnapshot = payment?.toSnapshot();

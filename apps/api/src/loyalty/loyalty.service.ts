@@ -469,7 +469,9 @@ export class LoyaltyService {
     const attemptId = params.attemptId.trim();
     const pointsValueCents = normalizeLoyaltyCents(params.pointsValueCents);
     const balanceCents = normalizeLoyaltyCents(params.balanceCents);
-    if (!attemptId) throw new BadRequestException('payment attemptId is required');
+    if (!attemptId) {
+      throw new BadRequestException('payment attemptId is required');
+    }
     if (pointsValueCents === 0 && balanceCents === 0) {
       return {
         reservationId: null,
@@ -510,9 +512,7 @@ export class LoyaltyService {
       const pointsMicro =
         pointsValueCents > 0
           ? toMicroPoints(
-              pointsValueCents /
-                100 /
-                loyaltyConfig.redeemDollarPerPoint,
+              pointsValueCents / 100 / loyaltyConfig.redeemDollarPerPoint,
             )
           : 0n;
       const balanceMicro =
@@ -588,7 +588,9 @@ export class LoyaltyService {
   }): Promise<{ pointsValueCents: number; balanceCents: number }> {
     const { tx, orderId } = params;
     const attemptId = params.attemptId.trim();
-    if (!attemptId) throw new BadRequestException('payment attemptId is required');
+    if (!attemptId) {
+      throw new BadRequestException('payment attemptId is required');
+    }
 
     await tx.$queryRaw`
       SELECT id
@@ -620,7 +622,9 @@ export class LoyaltyService {
     const account = await tx.loyaltyAccount.findUnique({
       where: { id: reservation.accountId },
     });
-    if (!account) throw new BadRequestException('loyalty account not found');
+    if (!account) {
+      throw new BadRequestException('loyalty account not found');
+    }
     await tx.$queryRaw`
       SELECT id
       FROM "LoyaltyAccount"
@@ -630,16 +634,24 @@ export class LoyaltyService {
     const lockedAccount = await tx.loyaltyAccount.findUnique({
       where: { id: reservation.accountId },
     });
-    if (!lockedAccount) throw new BadRequestException('loyalty account not found');
+    if (!lockedAccount) {
+      throw new BadRequestException('loyalty account not found');
+    }
     if (lockedAccount.pointsMicro < reservation.pointsMicro) {
-      throw new BadRequestException('reserved loyalty points are no longer available');
+      throw new BadRequestException(
+        'reserved loyalty points are no longer available',
+      );
     }
     if (lockedAccount.balanceMicro < reservation.balanceMicro) {
-      throw new BadRequestException('reserved store balance is no longer available');
+      throw new BadRequestException(
+        'reserved store balance is no longer available',
+      );
     }
 
-    const newPointsMicro = lockedAccount.pointsMicro - reservation.pointsMicro;
-    const newBalanceMicro = lockedAccount.balanceMicro - reservation.balanceMicro;
+    const newPointsMicro =
+      lockedAccount.pointsMicro - reservation.pointsMicro;
+    const newBalanceMicro =
+      lockedAccount.balanceMicro - reservation.balanceMicro;
 
     if (reservation.pointsMicro > 0n) {
       await tx.loyaltyLedger.create({

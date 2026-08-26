@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/unbound-method */
 import type { PaymentCheckoutAttempt } from '@prisma/client';
 import type { CreateOrderInput } from '@shared/order';
 
@@ -98,12 +99,20 @@ const createHarness = () => {
       const attemptMatches =
         where.attemptId === undefined || where.attemptId === row.attemptId;
       if (!statusMatches || !idMatches || !attemptMatches) return { count: 0 };
-      row = { ...row, ...data, updatedAt: new Date() } as PaymentCheckoutAttempt;
+      row = {
+        ...row,
+        ...data,
+        updatedAt: new Date(),
+      } as PaymentCheckoutAttempt;
       return { count: 1 };
     }),
     update: jest.fn().mockImplementation(async ({ data }) => {
       if (!row) throw new Error('missing checkout row');
-      row = { ...row, ...data, updatedAt: new Date() } as PaymentCheckoutAttempt;
+      row = {
+        ...row,
+        ...data,
+        updatedAt: new Date(),
+      } as PaymentCheckoutAttempt;
       return row;
     }),
   };
@@ -151,21 +160,23 @@ const createHarness = () => {
 describe('PaymentCheckoutAttemptService', () => {
   it('persists PREPARING before HOLD and becomes PREPARED only after all holds succeed', async () => {
     const harness = createHarness();
-    jest.mocked(harness.loyalty.holdPaymentTender).mockImplementation(async () => {
-      expect(harness.getRow()?.status).toBe('PREPARING');
-      return {
-        reservationId: 'loyalty-reservation-1',
-        userId: snapshot.userId,
-        pointsValueCents: 200,
-        balanceCents: 300,
-      };
-    });
-    jest.mocked(harness.membership.holdPaymentCoupons).mockImplementation(
-      async () => {
+    jest
+      .mocked(harness.loyalty.holdPaymentTender)
+      .mockImplementation(async () => {
+        expect(harness.getRow()?.status).toBe('PREPARING');
+        return {
+          reservationId: 'loyalty-reservation-1',
+          userId: snapshot.userId,
+          pointsValueCents: 200,
+          balanceCents: 300,
+        };
+      });
+    jest
+      .mocked(harness.membership.holdPaymentCoupons)
+      .mockImplementation(async () => {
         expect(harness.getRow()?.status).toBe('PREPARING');
         return { couponId: null, selectedUserCouponId: null };
-      },
-    );
+      });
 
     const prepared = await harness.service.prepare({
       source: 'POS_TERMINAL',
@@ -211,7 +222,9 @@ describe('PaymentCheckoutAttemptService', () => {
       }),
     ).rejects.toThrow('coupon race');
 
-    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith('attempt-1');
+    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith(
+      'attempt-1',
+    );
     expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledWith(
       'attempt-1',
     );
@@ -281,7 +294,9 @@ describe('PaymentCheckoutAttemptService', () => {
     await expect(harness.service.prepare(input)).rejects.toMatchObject({
       response: { code: 'PAYMENT_PREPARATION_EXPIRED' },
     });
-    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith('attempt-1');
+    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith(
+      'attempt-1',
+    );
     expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledWith(
       'attempt-1',
     );
@@ -303,7 +318,9 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(cancelled.cancelled).toBe(true);
     expect(cancelled.checkout.status).toBe('CANCELLED');
-    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith('attempt-1');
+    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith(
+      'attempt-1',
+    );
     expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledWith(
       'attempt-1',
     );

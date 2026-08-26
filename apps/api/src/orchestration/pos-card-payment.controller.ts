@@ -53,19 +53,13 @@ export class PosCardPaymentController {
 
   @Post('start')
   @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
-  start(
-    @Req() req: PosDeviceRequest,
-    @Body() body: PosCardPaymentStartDto,
-  ) {
+  start(@Req() req: PosDeviceRequest, @Body() body: PosCardPaymentStartDto) {
     return this.cardPayments.start(this.requireStoreId(req), body);
   }
 
   @Post('recover')
   @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
-  recover(
-    @Req() req: PosDeviceRequest,
-    @Body() body: PosCardPaymentStartDto,
-  ) {
+  recover(@Req() req: PosDeviceRequest, @Body() body: PosCardPaymentStartDto) {
     return this.cardPayments.recover(this.requireStoreId(req), body);
   }
 

@@ -152,7 +152,9 @@ describe('Payments bounded-context architecture', () => {
         );
         return importsPayments && importsOrders;
       })
-      .map(({ path }) => path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'))
+      .map(({ path }) =>
+        path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
+      )
       .sort();
 
     expect(composers).toEqual([

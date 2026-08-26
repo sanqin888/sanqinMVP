@@ -156,7 +156,9 @@ export class PaymentCheckoutAttemptService {
     return this.resumePreparation(this.mapRecord(record));
   }
 
-  async findByAttemptId(attemptIdRaw: string): Promise<PreparedPaymentCheckout> {
+  async findByAttemptId(
+    attemptIdRaw: string,
+  ): Promise<PreparedPaymentCheckout> {
     const attemptId = attemptIdRaw.trim();
     const record = await this.prisma.paymentCheckoutAttempt.findUnique({
       where: { attemptId },
@@ -304,7 +306,9 @@ export class PaymentCheckoutAttemptService {
     ]);
   }
 
-  private async releaseExpiredPreProviderAttempts(storeId: string): Promise<void> {
+  private async releaseExpiredPreProviderAttempts(
+    storeId: string,
+  ): Promise<void> {
     const expired = await this.prisma.paymentCheckoutAttempt.findMany({
       where: {
         storeId,
@@ -401,9 +405,7 @@ export class PaymentCheckoutAttemptService {
     }
   }
 
-  private mapRecord(
-    record: PaymentCheckoutRecord,
-  ): PreparedPaymentCheckout {
+  private mapRecord(record: PaymentCheckoutRecord): PreparedPaymentCheckout {
     const draft = record.orderDraftJson as Record<string, unknown>;
     const snapshot = {
       version: draft.version,

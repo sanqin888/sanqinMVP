@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/unbound-method */
 import type { CreateOrderInput } from '@shared/order';
 
 import type { OrderDto } from '../orders/dto/order.dto';
@@ -146,14 +147,16 @@ const createHarness = () => {
         checkout = { ...checkout, status: 'SUCCEEDED' };
         return checkout;
       }),
-    markFromPayment: jest.fn().mockImplementation(async (_attemptId, payment) => {
-      checkout = {
-        ...checkout,
-        status: payment.status,
-        paymentTransactionId: payment.id,
-      };
-      return checkout;
-    }),
+    markFromPayment: jest
+      .fn()
+      .mockImplementation(async (_attemptId, payment) => {
+        checkout = {
+          ...checkout,
+          status: payment.status,
+          paymentTransactionId: payment.id,
+        };
+        return checkout;
+      }),
     markDefinitiveFailureAndRelease: jest
       .fn()
       .mockImplementation(async (_attemptId, status) => {
@@ -241,7 +244,9 @@ describe('PosCardPaymentOrchestrationService', () => {
         idempotencyKey: 'client-idem-1',
         order: orderInput,
       }),
-    ).rejects.toMatchObject({ response: { code: 'POS_CLOVER_TERMINAL_PAYMENT_DISABLED' } });
+    ).rejects.toMatchObject({
+      response: { code: 'POS_CLOVER_TERMINAL_PAYMENT_DISABLED' },
+    });
     expect(harness.checkouts.prepare).not.toHaveBeenCalled();
   });
 
@@ -261,7 +266,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       currency: 'CAD',
       description: 'SanQ POS card sale',
     });
-    expect(harness.orders.createFromConfirmedPaymentSnapshot).toHaveBeenCalledWith(
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         tender: expect.objectContaining({
           pointsCents: 200,
@@ -310,7 +317,9 @@ describe('PosCardPaymentOrchestrationService', () => {
 
     expect(harness.terminalPayments.getAvailability).not.toHaveBeenCalled();
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
-    expect(harness.orders.createFromConfirmedPaymentSnapshot).toHaveBeenCalledWith(
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         cardSurchargeCents: 0,
@@ -332,11 +341,12 @@ describe('PosCardPaymentOrchestrationService', () => {
       order: orderInput,
     });
 
-    expect(harness.checkouts.markDefinitiveFailureAndRelease).toHaveBeenCalledWith(
-      'attempt-1',
-      'DECLINED',
-    );
-    expect(harness.orders.createFromConfirmedPaymentSnapshot).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).toHaveBeenCalledWith('attempt-1', 'DECLINED');
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).not.toHaveBeenCalled();
     expect(result.status).toBe('DECLINED');
   });
 
@@ -352,8 +362,12 @@ describe('PosCardPaymentOrchestrationService', () => {
       order: orderInput,
     });
 
-    expect(harness.checkouts.markDefinitiveFailureAndRelease).not.toHaveBeenCalled();
-    expect(harness.orders.createFromConfirmedPaymentSnapshot).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).not.toHaveBeenCalled();
     expect(result.status).toBe('UNKNOWN');
   });
 
@@ -398,7 +412,9 @@ describe('PosCardPaymentOrchestrationService', () => {
     });
 
     expect(harness.orders.getByStableId).toHaveBeenCalledWith('cpaymentorder1');
-    expect(harness.orders.createFromConfirmedPaymentSnapshot).not.toHaveBeenCalled();
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).not.toHaveBeenCalled();
     expect(harness.terminalPayments.startSale).not.toHaveBeenCalled();
     expect(result.status).toBe('SUCCEEDED');
   });
@@ -412,7 +428,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       order: orderInput,
     });
 
-    expect(harness.checkouts.cancelBeforeProvider).toHaveBeenCalledWith('attempt-1');
+    expect(harness.checkouts.cancelBeforeProvider).toHaveBeenCalledWith(
+      'attempt-1',
+    );
     expect(harness.terminalPayments.cancel).not.toHaveBeenCalled();
     expect(result.status).toBe('CANCELLED');
   });
@@ -427,7 +445,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       order: orderInput,
     });
 
-    expect(harness.checkouts.markDefinitiveFailureAndRelease).not.toHaveBeenCalled();
+    expect(
+      harness.checkouts.markDefinitiveFailureAndRelease,
+    ).not.toHaveBeenCalled();
     expect(harness.terminalPayments.cancel).not.toHaveBeenCalled();
     expect(result.status).toBe('PROCESSING');
   });

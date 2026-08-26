@@ -355,9 +355,9 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
       pickupCode?: string | null;
     },
   ) {
-    this.server.to(`store:${storeId}`).emit(
-      POS_CARD_PAYMENT_STATUS_UPDATED_EVENT,
-      {
+    this.server
+      .to(`store:${storeId}`)
+      .emit(POS_CARD_PAYMENT_STATUS_UPDATED_EVENT, {
         attemptId: data.attemptId,
         paymentId: data.paymentId,
         status: data.status,
@@ -366,8 +366,7 @@ export class PosGateway implements OnGatewayConnection, OnGatewayDisconnect {
         orderStableId: data.orderStableId ?? null,
         orderNumber: data.orderNumber ?? null,
         pickupCode: data.pickupCode ?? null,
-      },
-    );
+      });
   }
 
   publishCustomerOrderingStatusUpdate(data: {
