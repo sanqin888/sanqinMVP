@@ -114,11 +114,19 @@ bash
 cd tools/printer-server
 npm i
 node printer-server.js
-Environment (optional):
+Environment:
+
+API_URL (default: http://localhost:3000; remote device authentication requires HTTPS)
 
 POS_FRONT_PRINTER (default: POS80)
 
 POS_KITCHEN_PRINTER (default: KC80)
+
+STORE_ID (optional consistency check only; store authorization comes from the authenticated POS device)
+
+For first-time cloud auto-print enrollment, create a dedicated POS device for the printer agent in Admin (do not reuse the browser POS device), set its one-time `POS_DEVICE_ENROLLMENT_CODE`, and start `printer-server.js`. The agent exchanges the enrollment code through the existing POS device claim endpoint, stores the resulting device credentials in the local user profile, and uses them for subsequent Socket.IO reconnects. Remove the one-time enrollment code after enrollment.
+
+Alternatively, a managed installation may provide `POS_DEVICE_ID` and `POS_DEVICE_KEY` together. Do not place the device key in browser JavaScript, URLs, or logs. `POS_DEVICE_CREDENTIALS_FILE` may override the default local credential file path.
 
 POS_PRINTER_PORT (default: 19191)
 

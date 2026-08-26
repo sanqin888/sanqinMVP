@@ -9,6 +9,8 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const fs = require("fs");
+const http = require("http");
+const https = require("https");
 const os = require("os");
 const path = require("path");
 const { exec } = require("child_process");
@@ -1011,22 +1013,218 @@ app.listen(19191, () =>
 
 const API_URL = process.env.API_URL || "http://localhost:3000";
 const STORE_ID = process.env.STORE_ID;
+const POS_DEVICE_CREDENTIALS_FILE =
+  process.env.POS_DEVICE_CREDENTIALS_FILE ||
+  path.join(os.homedir(), ".sanq-printer-device.json");
 
-if (STORE_ID) {
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function assertSecureDeviceTransport(apiUrl) {
+  const parsed = new URL(apiUrl);
+  const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(
+    parsed.hostname,
+  );
+  if (parsed.protocol !== "https:" && !isLoopback) {
+    throw new Error(
+      "POS device credentials require HTTPS unless API_URL points to localhost",
+    );
+  }
+}
+
+function readStoredPosDeviceCredentials() {
+  if (!fs.existsSync(POS_DEVICE_CREDENTIALS_FILE)) return null;
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(POS_DEVICE_CREDENTIALS_FILE, "utf8"),
+    );
+    if (
+      isNonEmptyString(parsed?.deviceStableId) &&
+      isNonEmptyString(parsed?.deviceKey)
+    ) {
+      return {
+        deviceStableId: parsed.deviceStableId.trim(),
+        deviceKey: parsed.deviceKey,
+      };
+    }
+  } catch {
+    console.warn(
+      "[Cloud] Stored POS device credentials are unreadable; enrollment is required.",
+    );
+  }
+  return null;
+}
+
+function persistPosDeviceCredentials(credentials) {
+  const directory = path.dirname(POS_DEVICE_CREDENTIALS_FILE);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(
+    POS_DEVICE_CREDENTIALS_FILE,
+    `${JSON.stringify(credentials)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  try {
+    fs.chmodSync(POS_DEVICE_CREDENTIALS_FILE, 0o600);
+  } catch {
+    // Windows may not apply POSIX mode bits; the file still remains local-only.
+  }
+}
+
+function readSetCookieValue(setCookieHeaders, cookieName) {
+  for (const header of setCookieHeaders) {
+    const cookiePair = String(header).split(";", 1)[0];
+    const separator = cookiePair.indexOf("=");
+    if (separator <= 0) continue;
+    if (cookiePair.slice(0, separator).trim() !== cookieName) continue;
+    try {
+      return decodeURIComponent(cookiePair.slice(separator + 1));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function claimPosDeviceCredentials(enrollmentCode) {
+  const claimUrl = new URL(
+    process.env.POS_DEVICE_CLAIM_URL || "/api/v1/pos/devices/claim",
+    API_URL,
+  );
+  assertSecureDeviceTransport(claimUrl.toString());
+  const requestBody = JSON.stringify({
+    enrollmentCode,
+    meta: { client: "printer-server", hostname: os.hostname() },
+  });
+  const transport = claimUrl.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const request = transport.request(
+      claimUrl,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(requestBody),
+        },
+      },
+      (response) => {
+        const setCookieHeader = response.headers["set-cookie"];
+        const setCookieHeaders = Array.isArray(setCookieHeader)
+          ? setCookieHeader
+          : setCookieHeader
+            ? [setCookieHeader]
+            : [];
+        response.resume();
+        response.on("end", () => {
+          if (
+            !response.statusCode ||
+            response.statusCode < 200 ||
+            response.statusCode >= 300
+          ) {
+            reject(
+              new Error(
+                `POS device enrollment failed with HTTP ${response.statusCode || "unknown"}`,
+              ),
+            );
+            return;
+          }
+
+          const deviceStableId = readSetCookieValue(
+            setCookieHeaders,
+            "posDeviceId",
+          );
+          const deviceKey = readSetCookieValue(setCookieHeaders, "posDeviceKey");
+          if (!deviceStableId || !deviceKey) {
+            reject(
+              new Error(
+                "POS device enrollment response did not include device credentials",
+              ),
+            );
+            return;
+          }
+          resolve({ deviceStableId, deviceKey });
+        });
+      },
+    );
+
+    request.setTimeout(10_000, () => {
+      request.destroy(new Error("POS device enrollment request timed out"));
+    });
+    request.on("error", reject);
+    request.write(requestBody);
+    request.end();
+  });
+}
+
+async function resolvePosDeviceCredentials() {
+  const envDeviceStableId = process.env.POS_DEVICE_ID;
+  const envDeviceKey = process.env.POS_DEVICE_KEY;
+  if (envDeviceStableId || envDeviceKey) {
+    if (!isNonEmptyString(envDeviceStableId) || !isNonEmptyString(envDeviceKey)) {
+      throw new Error(
+        "POS_DEVICE_ID and POS_DEVICE_KEY must be configured together",
+      );
+    }
+    return {
+      deviceStableId: envDeviceStableId.trim(),
+      deviceKey: envDeviceKey,
+    };
+  }
+
+  const storedCredentials = readStoredPosDeviceCredentials();
+  if (storedCredentials) return storedCredentials;
+
+  const enrollmentCode = process.env.POS_DEVICE_ENROLLMENT_CODE;
+  if (!isNonEmptyString(enrollmentCode)) {
+    throw new Error(
+      "No POS device credentials found. Configure POS_DEVICE_ENROLLMENT_CODE once, or POS_DEVICE_ID + POS_DEVICE_KEY.",
+    );
+  }
+
+  const claimedCredentials = await claimPosDeviceCredentials(
+    enrollmentCode.trim(),
+  );
+  persistPosDeviceCredentials(claimedCredentials);
+  console.log(
+    `[Cloud] POS device enrollment completed; credentials stored at ${POS_DEVICE_CREDENTIALS_FILE}`,
+  );
+  return claimedCredentials;
+}
+
+async function startCloudAutoPrint() {
+  assertSecureDeviceTransport(API_URL);
+  const credentials = await resolvePosDeviceCredentials();
+
   console.log(`Connecting POS DNS...`);
   console.log(`Target: ${API_URL}/pos`);
-  console.log(`Store: ${STORE_ID}\n`);
+  if (STORE_ID) {
+    console.log(`Configured store consistency check: ${STORE_ID}`);
+  }
+  console.log(`POS device: ${credentials.deviceStableId}\n`);
 
   const socket = io(`${API_URL}/pos`, {
     transports: ["websocket"],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 5000,
+    auth: {
+      posDeviceId: credentials.deviceStableId,
+      posDeviceKey: credentials.deviceKey,
+    },
   });
 
   socket.on("connect", () => {
     console.log(`[Cloud] Connected! Socket ID: ${socket.id}`);
-    socket.emit("joinStore", { storeId: STORE_ID });
+    socket.emit("joinStore", STORE_ID ? { storeId: STORE_ID } : {});
+  });
+
+  socket.on("joined", ({ room } = {}) => {
+    console.log(`[Cloud] Authorized room joined: ${room || "store room"}`);
+  });
+
+  socket.on("connect_error", (error) => {
+    console.error(`[Cloud] POS socket connection rejected: ${error.message}`);
   });
 
   socket.on("disconnect", (reason) => {
@@ -1112,6 +1310,8 @@ if (STORE_ID) {
       console.error("Failed print ”Daily Summary“:", err);
     }
   });
-} else {
-  console.warn(`[Cloud] No STORE_ID Found，cloud print server stop。`);
 }
+
+void startCloudAutoPrint().catch((error) => {
+  console.error(`[Cloud] Auto-print disabled: ${error.message}`);
+});
