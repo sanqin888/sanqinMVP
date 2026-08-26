@@ -11,6 +11,9 @@ import type {
 import type { PrismaService } from '../prisma/prisma.service';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 
+const storeDbId = '8a3d4c0e-4750-4f6a-9138-000000000001';
+const storeStableId = '4750_Yonge_Street';
+
 const order: CreateOrderInput = {
   channel: 'in_store',
   fulfillmentType: 'pickup',
@@ -27,7 +30,7 @@ const snapshot: PreparedPaymentOrderSnapshot = {
   version: 1,
   order,
   userId: '22222222-2222-4222-8222-222222222222',
-  storeId: 'store-1',
+  storeId: storeStableId,
   pricing: {
     subtotalCents: 1200,
     couponDiscountCents: 100,
@@ -181,7 +184,7 @@ describe('PaymentCheckoutAttemptService', () => {
     const prepared = await harness.service.prepare({
       source: 'POS_TERMINAL',
       paymentMethod: 'CARD',
-      storeId: 'store-1',
+      storeId: storeStableId,
       attemptId: 'attempt-1',
       clientIdempotencyKey: 'client-idem-1',
       order,
@@ -189,6 +192,22 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(prepared.status).toBe('PREPARED');
     expect(prepared.externalAmountCents).toBe(700);
+    expect(prepared.storeId).toBe(storeStableId);
+    expect(prepared.snapshot.storeId).toBe(storeStableId);
+    expect(harness.orders.preparePaymentOrder).toHaveBeenCalledWith(
+      order,
+      storeStableId,
+    );
+    expect(harness.paymentCheckoutAttempt.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ storeId: storeStableId }),
+      }),
+    );
+    expect(harness.paymentCheckoutAttempt.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ storeId: storeDbId }),
+      }),
+    );
     expect(harness.loyalty.holdPaymentTender).toHaveBeenCalledWith(
       expect.objectContaining({
         attemptId: 'attempt-1',
@@ -215,7 +234,7 @@ describe('PaymentCheckoutAttemptService', () => {
       harness.service.prepare({
         source: 'POS_TERMINAL',
         paymentMethod: 'CARD',
-        storeId: 'store-1',
+        storeId: storeStableId,
         attemptId: 'attempt-1',
         clientIdempotencyKey: 'client-idem-1',
         order,
@@ -236,7 +255,7 @@ describe('PaymentCheckoutAttemptService', () => {
     const input = {
       source: 'POS_TERMINAL' as const,
       paymentMethod: 'CARD' as const,
-      storeId: 'store-1',
+      storeId: storeStableId,
       attemptId: 'attempt-1',
       clientIdempotencyKey: 'client-idem-1',
       order,
@@ -256,7 +275,7 @@ describe('PaymentCheckoutAttemptService', () => {
     await harness.service.prepare({
       source: 'POS_TERMINAL',
       paymentMethod: 'CARD',
-      storeId: 'store-1',
+      storeId: storeStableId,
       attemptId: 'attempt-1',
       clientIdempotencyKey: 'client-idem-1',
       order,
@@ -266,7 +285,7 @@ describe('PaymentCheckoutAttemptService', () => {
       harness.service.requireForInput({
         source: 'POS_TERMINAL',
         paymentMethod: 'CARD',
-        storeId: 'store-2',
+        storeId: storeDbId,
         attemptId: 'attempt-1',
         clientIdempotencyKey: 'client-idem-1',
         order,
@@ -281,7 +300,7 @@ describe('PaymentCheckoutAttemptService', () => {
     const input = {
       source: 'POS_TERMINAL' as const,
       paymentMethod: 'CARD' as const,
-      storeId: 'store-1',
+      storeId: storeStableId,
       attemptId: 'attempt-1',
       clientIdempotencyKey: 'client-idem-1',
       order,
@@ -308,7 +327,7 @@ describe('PaymentCheckoutAttemptService', () => {
     await harness.service.prepare({
       source: 'POS_TERMINAL',
       paymentMethod: 'CARD',
-      storeId: 'store-1',
+      storeId: storeStableId,
       attemptId: 'attempt-1',
       clientIdempotencyKey: 'client-idem-1',
       order,
@@ -331,7 +350,7 @@ describe('PaymentCheckoutAttemptService', () => {
     await harness.service.prepare({
       source: 'POS_TERMINAL',
       paymentMethod: 'CARD',
-      storeId: 'store-1',
+      storeId: storeStableId,
       attemptId: 'attempt-1',
       clientIdempotencyKey: 'client-idem-1',
       order,

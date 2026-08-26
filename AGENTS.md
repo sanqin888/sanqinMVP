@@ -82,6 +82,19 @@ If a migration is required, propose an appropriate migration name and provide th
 
 ---
 
+## 3.1 Database IDs and stable business IDs
+
+Database primary keys and stable business identifiers are different identities and must not be used interchangeably.
+
+* Prisma `id` fields backed by UUID primary keys are internal database identities unless an explicit contract says otherwise.
+* Stable identifiers such as `storeStableId`, `orderStableId`, `userStableId`, `deviceStableId`, and entity-specific `stableId` fields are the preferred business identities across API, browser, WebSocket, printing, external-provider, and cross-process boundaries.
+* Never infer identity semantics from a generic field name such as `storeId` or `orderId`. Inspect the Prisma relation and the owning contract. For example, `PosDevice.storeId` references internal `Store.id`, while `Order.storeId` references business `Store.storeStableId`.
+* When both identities are present in one flow, variables, DTOs, ports, fixtures, and tests must use explicit names such as `storeDbId` and `storeStableId`. Do not use one ambiguous value to represent both identities.
+* Internal database UUIDs must not cross an external/business boundary merely because they are available on an authenticated database record. Translate to the appropriate stable business identifier at the boundary.
+* Regression tests covering identity translation must use visibly different values for database and stable IDs, for example `storeDbId = 8a3d4c0e-4750-4f6a-9138-000000000001` and `storeStableId = 4750_Yonge_Street`.
+
+---
+
 ## 4. CI validation
 
 Before declaring a coding task complete:

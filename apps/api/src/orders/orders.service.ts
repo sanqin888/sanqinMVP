@@ -355,6 +355,7 @@ export type PreparedPaymentOrderSnapshot = {
   version: 1;
   order: CreateOrderInput;
   userId: string | null;
+  /** Business store identity: Store.storeStableId, matching Order.storeId. */
   storeId: string;
   pricing: OrderPricingQuote;
   tender: PaymentTenderAllocation;
@@ -2173,15 +2174,15 @@ export class OrdersService {
 
   async preparePaymentOrder(
     dto: CreateOrderInput,
-    storeIdRaw: string,
+    storeStableIdRaw: string,
   ): Promise<PreparedPaymentOrderSnapshot> {
     if (dto.channel !== Channel.in_store) {
       throw new BadRequestException(
         'Phase D payment preparation currently accepts in-store orders only',
       );
     }
-    const storeId = storeIdRaw.trim();
-    if (!storeId) throw new BadRequestException('storeId is required');
+    const storeStableId = storeStableIdRaw.trim();
+    if (!storeStableId) throw new BadRequestException('storeId is required');
 
     const pricing = await this.quoteOrderPricing(dto, {
       allowCustomUnitPrice: true,
@@ -2352,7 +2353,7 @@ export class OrdersService {
         balanceUsedCents: balanceCents > 0 ? balanceCents : undefined,
       },
       userId,
-      storeId,
+      storeId: storeStableId,
       pricing,
       tender,
       items: calculatedItems.map((item) => ({
