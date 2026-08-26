@@ -112,7 +112,6 @@ export type UberOptionItemConfigDto = {
   updatedAt: Date;
 };
 export type UberModifierGroupConfigDto = {
-  id: string;
   createdAt: Date;
   updatedAt: Date;
   isActive: boolean;
@@ -127,7 +126,7 @@ export type UberModifierGroupConfigDto = {
   externalModifierGroupId: string | null;
 };
 export type UberPublishedMenuItemDto = {
-  publishVersionId: string;
+  publishVersionStableId: string;
   uberStoreId: string;
   uberItemId: string;
   menuItemStableId: string;

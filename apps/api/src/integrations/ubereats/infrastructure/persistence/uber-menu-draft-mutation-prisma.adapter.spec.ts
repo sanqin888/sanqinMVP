@@ -64,9 +64,21 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
   });
 
   it('upserts a group with template defaults and required selection semantics', async () => {
-    const upsert = jest
-      .fn()
-      .mockResolvedValue({ templateGroupStableId: 'group-1' });
+    const upsert = jest.fn().mockResolvedValue({
+      id: '8a3d4c0e-4750-4f6a-9138-000000000003',
+      createdAt: new Date('2026-08-26T12:00:00Z'),
+      updatedAt: new Date('2026-08-26T12:00:00Z'),
+      isActive: true,
+      storeId: 'pos-room-1',
+      templateGroupStableId: 'group-1',
+      minSelect: 1,
+      maxSelect: 2,
+      displayName: 'Size',
+      uberStoreId: null,
+      lastPublishedAt: null,
+      lastPublishError: null,
+      externalModifierGroupId: null,
+    });
     const adapter = new UberMenuDraftMutationPrismaAdapter(
       db({
         uberStoreMapping: storeMapping,
@@ -82,20 +94,21 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
       }),
     );
 
-    await expect(
-      adapter.updateUberDraftGroup({
-        resourceKey: {
-          storeId: 'store-1',
-          templateGroupStableId: 'group-1',
-        },
-        payload: { storeId: 'store-1', required: true },
-        semantics,
-      }),
-    ).resolves.toMatchObject({
+    const result = await adapter.updateUberDraftGroup({
+      resourceKey: {
+        storeId: 'store-1',
+        templateGroupStableId: 'group-1',
+      },
+      payload: { storeId: 'store-1', required: true },
+      semantics,
+    });
+    expect(result).toMatchObject({
       storeId: 'pos-room-1',
       groupId: 'group-1',
+      config: { templateGroupStableId: 'group-1' },
       warnings: [],
     });
+    expect(result.config).not.toHaveProperty('id');
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({

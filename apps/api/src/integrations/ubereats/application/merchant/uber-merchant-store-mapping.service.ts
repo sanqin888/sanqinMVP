@@ -14,8 +14,8 @@ export class DiscoverUberStoresUseCase {
     private readonly connections: UberMerchantConnectionRepositoryPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
-  async getMerchantStores(id?: string) {
-    const connection = await this.resolve(id);
+  async getMerchantStores() {
+    const connection = await this.resolve();
     const { stores } = await this.api.discoverStores({
       connectionId: connection.connectionId,
     });
@@ -28,12 +28,10 @@ export class DiscoverUberStoresUseCase {
     const byId = new Map(existing.map((m) => [m.uberStoreId, m]));
     return {
       ok: true,
-      connectionId: connection.connectionId,
       count: uniqueStores.length,
       stores: uniqueStores.map((s) => ({
         ...s,
         isMapped: byId.get(s.storeId)?.connectionId === connection.connectionId,
-        mappedConnectionId: byId.get(s.storeId)?.connectionId ?? null,
         requiresReconnect:
           Boolean(byId.get(s.storeId)) &&
           byId.get(s.storeId)?.connectionId !== connection.connectionId,
@@ -47,14 +45,8 @@ export class DiscoverUberStoresUseCase {
       })),
     };
   }
-  private async resolve(id?: string) {
-    if (!id?.trim())
-      throw new UberValidationError({
-        code: 'INVALID_REQUEST',
-        operation: 'merchant',
-        message: 'connectionId 不能为空',
-      });
-    const row = await this.connections.findConnection(id.trim());
+  private async resolve() {
+    const row = await this.connections.findConnection();
     if (!row)
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
@@ -73,27 +65,25 @@ export class MapUberStoreUseCase {
     private readonly connections: UberMerchantConnectionRepositoryPort,
   ) {}
   async selectStore(input: {
-    connectionId: string;
     storeId: string;
     storeName?: string | null;
     locationSummary?: string | null;
-    reconnectFromConnectionId?: string;
   }) {
-    const connectionId = input.connectionId.trim();
     const storeId = input.storeId.trim();
-    if (!connectionId || !storeId)
+    if (!storeId)
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
         operation: 'merchant',
-        message: '连接和门店 ID 不能为空',
+        message: '门店 ID 不能为空',
       });
-    const connection = await this.connections.findConnection(connectionId);
+    const connection = await this.connections.findConnection();
     if (!connection)
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
         operation: 'merchant',
         message: '未找到 Uber 商户授权',
       });
+    const connectionId = connection.connectionId;
     const discovery = await this.api.discoverStores({ connectionId });
     const discoveredStore = discovery.stores.find(
       (store) => store.storeId === storeId,
@@ -111,13 +101,6 @@ export class MapUberStoreUseCase {
         : null;
     const existing = await this.mappings.findMapping(storeId);
     if (existing && existing.connectionId !== connectionId) {
-      if (input.reconnectFromConnectionId?.trim() !== existing.connectionId)
-        throw new UberValidationError({
-          code: 'STORE_ALREADY_MAPPED',
-          operation: 'merchant',
-          message:
-            '该 Uber 门店已绑定到其他授权连接；重新授权需要明确确认原 connectionId',
-        });
       const reconnected = await this.mappings.reconnectMapping({
         uberStoreId: storeId,
         fromConnectionId: existing.connectionId,

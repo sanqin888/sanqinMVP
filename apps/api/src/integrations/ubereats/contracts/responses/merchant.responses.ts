@@ -9,12 +9,10 @@ export class UberMerchantStoreResponse {
   provisionedAt!: string | null;
   posExternalStoreId!: string | null;
   isMapped!: boolean;
-  mappedConnectionId!: string | null;
   requiresReconnect!: boolean;
 }
 
 export class UberMerchantStoresResponse {
-  connectionId!: string;
   stores!: UberMerchantStoreResponse[];
   pageInfo!: {
     limit: number;
@@ -26,7 +24,7 @@ export class UberMerchantStoresResponse {
 }
 
 export class UberMerchantConnectionResponse {
-  connectionId!: string;
+  connected!: true;
   scope!: string | null;
   tokenType!: string | null;
   expiresAt!: string | null;

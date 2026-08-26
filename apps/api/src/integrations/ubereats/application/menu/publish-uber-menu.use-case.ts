@@ -201,7 +201,7 @@ export class PublishUberMenuUseCase {
         duplicate: true,
         storeId: posStoreId,
         uberStoreId: snapshot.uberStoreId,
-        versionStableId: succeeded.businessVersion,
+        versionStableId: succeeded.versionStableId,
         summary,
       };
     const payloadItemIds = new Set(payload.items.map((item) => item.id));
@@ -230,7 +230,7 @@ export class PublishUberMenuUseCase {
         duplicate: true,
         storeId: posStoreId,
         uberStoreId: snapshot.uberStoreId,
-        versionStableId: attempt.businessVersion,
+        versionStableId: attempt.versionStableId,
         summary,
       };
     try {
@@ -239,21 +239,22 @@ export class PublishUberMenuUseCase {
         payload,
         idempotencyKey,
       });
-      await this.publications.markPublishVersionSucceeded(attempt.attemptId, {
-        status_code: 204,
-      });
+      await this.publications.markPublishVersionSucceeded(
+        attempt.versionStableId,
+        { status_code: 204 },
+      );
       return {
         ok: true,
         dryRun: false,
         storeId: posStoreId,
         uberStoreId: snapshot.uberStoreId,
-        versionStableId: attempt.businessVersion,
+        versionStableId: attempt.versionStableId,
         summary,
       };
     } catch (error) {
       const applicationError = isUberApplicationError(error) ? error : null;
       const retryable = this.isRetryable(error);
-      await this.publications.markFailed(attempt.attemptId, {
+      await this.publications.markFailed(attempt.versionStableId, {
         errorCode:
           applicationError?.code ??
           (retryable ? 'UBER_UPLOAD_RETRYABLE' : 'UBER_UPLOAD_REJECTED'),

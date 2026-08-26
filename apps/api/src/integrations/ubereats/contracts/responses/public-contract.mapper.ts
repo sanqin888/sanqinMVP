@@ -32,14 +32,13 @@ export const presentAvailabilitySync = (
 
 export const presentOrderAction = (result: {
   ok: boolean;
-  id?: string;
-  actionId?: string;
+  actionId: string;
   status: string;
   retryable: boolean;
   lastError?: string | null;
 }): UberEatsOrderActionResult => ({
   ok: result.ok,
-  actionId: result.actionId ?? result.id ?? '',
+  actionId: result.actionId,
   status:
     result.status === 'SUCCEEDED'
       ? 'SUCCEEDED'

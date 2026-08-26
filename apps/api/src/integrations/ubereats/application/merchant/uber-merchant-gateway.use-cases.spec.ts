@@ -36,11 +36,8 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.getMerchantStores(' merchant-1 '),
-    ).resolves.toMatchObject({
+    await expect(useCase.getMerchantStores()).resolves.toMatchObject({
       ok: true,
-      connectionId: 'merchant-1',
       count: 1,
       stores: [
         expect.objectContaining({
@@ -70,7 +67,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(useCase.getMerchantStores('merchant-1')).rejects.toBe(failure);
+    await expect(useCase.getMerchantStores()).rejects.toBe(failure);
     expect(mappings.findMappings).not.toHaveBeenCalled();
   });
 
@@ -98,7 +95,6 @@ describe('Uber merchant gateway use-case boundaries', () => {
 
     await expect(
       useCase.selectStore({
-        connectionId: 'merchant-1',
         storeId: 'uber-store-1',
       }),
     ).resolves.toMatchObject({
@@ -142,8 +138,6 @@ describe('Uber merchant gateway use-case boundaries', () => {
 
     await expect(
       useCase.selectStore({
-        connectionId: 'new-connection',
-        reconnectFromConnectionId: 'old-connection',
         storeId: 'uber-store-1',
       }),
     ).resolves.toMatchObject({
@@ -162,7 +156,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
   });
 
-  it('does not let an unrelated connection hijack an existing mapping', async () => {
+  it('does not map a store missing from the current authorized connection', async () => {
     const mappings = {
       findMapping: jest.fn().mockResolvedValue({
         connectionId: 'owner-connection',
@@ -181,9 +175,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
     await expect(
       useCase.selectStore({
-        connectionId: 'attacker',
         storeId: 'uber-store-1',
-        reconnectFromConnectionId: 'owner-connection',
       }),
     ).rejects.toMatchObject({ code: 'STORE_NOT_AUTHORIZED' });
     expect(mappings.reconnectMapping).not.toHaveBeenCalled();
@@ -220,23 +212,19 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
 
     await expect(
-      useCase.provisionStore(
-        ' uber-store-1 ',
-        {
-          is_order_manager: false,
-          require_manual_acceptance: true,
-          allowed_customer_requests: {
-            allow_single_use_items_requests: false,
-            allow_special_instruction_requests: false,
-          },
-          webhooks_config: {
-            delivery_status_webhooks: { is_enabled: false },
-            schedule_order_webhooks: { is_enabled: false },
-            webhooks_version: '0.9.0',
-          },
+      useCase.provisionStore(' uber-store-1 ', {
+        is_order_manager: false,
+        require_manual_acceptance: true,
+        allowed_customer_requests: {
+          allow_single_use_items_requests: false,
+          allow_special_instruction_requests: false,
         },
-        'merchant-1',
-      ),
+        webhooks_config: {
+          delivery_status_webhooks: { is_enabled: false },
+          schedule_order_webhooks: { is_enabled: false },
+          webhooks_version: '0.9.0',
+        },
+      }),
     ).resolves.toMatchObject({
       ok: true,
       storeId: 'uber-store-1',
@@ -286,7 +274,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
 
     await expect(
-      useCase.provisionStore('uber-store-1', {}, 'merchant-1'),
+      useCase.provisionStore('uber-store-1', {}),
     ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
     expect(api.provisionStore).not.toHaveBeenCalled();
   });
@@ -317,7 +305,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       );
 
       await expect(
-        useCase.provisionStore('uber-store-1', payload, 'merchant-1'),
+        useCase.provisionStore('uber-store-1', payload),
       ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
       expect(api.provisionStore).not.toHaveBeenCalled();
     },
@@ -343,9 +331,9 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.provisionStore('uber-store-1', {}, 'merchant-1'),
-    ).rejects.toBe(failure);
+    await expect(useCase.provisionStore('uber-store-1', {})).rejects.toBe(
+      failure,
+    );
     expect(mappings.upsertMapping).not.toHaveBeenCalled();
   });
 
@@ -369,9 +357,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.retrieve(' uber-store-1 ', 'merchant-1'),
-    ).resolves.toBe(config);
+    await expect(useCase.retrieve(' uber-store-1 ')).resolves.toBe(config);
     expect(api.retrieveIntegrationConfig).toHaveBeenCalledWith('uber-store-1');
   });
 
@@ -393,24 +379,20 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
 
     await expect(
-      useCase.update(
-        'uber-store-1',
-        {
-          integration_enabled: false,
-          is_order_manager: false,
-          require_manual_acceptance: true,
-          allowed_customer_requests: {
-            allow_single_use_items_requests: false,
-            allow_special_instruction_requests: false,
-          },
-          webhooks_config: {
-            order_release_webhooks: { is_enabled: false },
-            schedule_order_webhooks: { is_enabled: false },
-            webhooks_version: '0.9.0',
-          },
+      useCase.update('uber-store-1', {
+        integration_enabled: false,
+        is_order_manager: false,
+        require_manual_acceptance: true,
+        allowed_customer_requests: {
+          allow_single_use_items_requests: false,
+          allow_special_instruction_requests: false,
         },
-        'merchant-1',
-      ),
+        webhooks_config: {
+          order_release_webhooks: { is_enabled: false },
+          schedule_order_webhooks: { is_enabled: false },
+          webhooks_version: '0.9.0',
+        },
+      }),
     ).resolves.toMatchObject({ ok: true, storeId: 'uber-store-1' });
     expect(api.updateIntegrationConfig).toHaveBeenCalledWith(
       'uber-store-1',
@@ -448,9 +430,9 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.update('uber-store-1', {}, 'merchant-1'),
-    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(useCase.update('uber-store-1', {})).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    });
     expect(api.updateIntegrationConfig).not.toHaveBeenCalled();
   });
 
@@ -487,9 +469,9 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.update('uber-store-1', payload, 'merchant-1'),
-    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(useCase.update('uber-store-1', payload)).rejects.toMatchObject(
+      { code: 'INVALID_REQUEST' },
+    );
     expect(api.updateIntegrationConfig).not.toHaveBeenCalled();
   });
 
@@ -519,7 +501,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
 
     await expect(
-      useCase.revokeOrDeprovisionStore('uber-store-1', 'merchant-1'),
+      useCase.revokeOrDeprovisionStore('uber-store-1'),
     ).resolves.toMatchObject({ isProvisioned: false });
     expect(api.removeIntegration).toHaveBeenCalledWith(
       connection,
@@ -554,9 +536,9 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.revokeOrDeprovisionStore('uber-store-1', 'merchant-1'),
-    ).rejects.toBe(failure);
+    await expect(useCase.revokeOrDeprovisionStore('uber-store-1')).rejects.toBe(
+      failure,
+    );
     expect(mappings.upsertMapping).not.toHaveBeenCalled();
   });
 
@@ -582,9 +564,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.retrieve(' uber-store-1 ', 'merchant-1'),
-    ).resolves.toBe(status);
+    await expect(useCase.retrieve(' uber-store-1 ')).resolves.toBe(status);
     expect(api.retrieveStatus).toHaveBeenCalledWith('uber-store-1');
   });
 
@@ -602,9 +582,9 @@ describe('Uber merchant gateway use-case boundaries', () => {
       } as never,
     );
 
-    await expect(
-      useCase.retrieve('uber-store-1', 'merchant-1'),
-    ).rejects.toMatchObject({ code: 'STORE_NOT_PROVISIONED' });
+    await expect(useCase.retrieve('uber-store-1')).rejects.toMatchObject({
+      code: 'STORE_NOT_PROVISIONED',
+    });
     expect(api.retrieveStatus).not.toHaveBeenCalled();
   });
 
@@ -627,9 +607,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       mappings as never,
     );
 
-    await expect(
-      useCase.update('uber-store-1', 900, 'merchant-1'),
-    ).resolves.toBe(prepTime);
+    await expect(useCase.update('uber-store-1', 900)).resolves.toBe(prepTime);
     expect(api.updatePrepTime).toHaveBeenCalledWith(
       'uber-store-1',
       900,
@@ -651,9 +629,9 @@ describe('Uber merchant gateway use-case boundaries', () => {
       } as never,
     );
 
-    await expect(
-      useCase.update('uber-store-1', seconds, 'merchant-1'),
-    ).rejects.toMatchObject({ code: 'INVALID_PREP_TIME' });
+    await expect(useCase.update('uber-store-1', seconds)).rejects.toMatchObject(
+      { code: 'INVALID_PREP_TIME' },
+    );
     expect(api.updatePrepTime).not.toHaveBeenCalled();
   });
 

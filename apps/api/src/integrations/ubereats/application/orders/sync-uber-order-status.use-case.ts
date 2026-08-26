@@ -42,7 +42,7 @@ export class SyncUberOrderStatusUseCase {
     const actionResult = {
       ok: false,
       action,
-      actionId: queued.taskId,
+      actionId: queued.actionReference,
       status: 'PENDING' as const,
       retryable: true,
       duplicate: !queued.created,

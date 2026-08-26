@@ -102,7 +102,6 @@ export class CompleteUberOAuthUseCase {
     merchantContext?: string,
   ): Promise<
     UberOAuthResult<{
-      connectionId: string;
       scope: string | null;
       tokenType: string | null;
       expiresAt: Date | null;
@@ -207,7 +206,6 @@ export class CompleteUberOAuthUseCase {
       return {
         ok: true,
         value: {
-          connectionId: token.connectionId,
           scope: token.scope,
           tokenType: token.tokenType,
           expiresAt: token.expiresAt,
@@ -232,8 +230,8 @@ export class CompleteUberOAuthUseCase {
       };
     }
   }
-  async getMerchantConnectionStatus(id?: string) {
-    const row = await this.connections.findConnection(id);
+  async getMerchantConnectionStatus() {
+    const row = await this.connections.findConnection();
     if (!row)
       throw new UberValidationError({
         code: 'INVALID_REQUEST',
@@ -242,7 +240,6 @@ export class CompleteUberOAuthUseCase {
       });
     return {
       ok: true,
-      connectionId: row.connectionId,
       scope: row.scope,
       tokenType: row.tokenType,
       expiresAt: row.expiresAt,
@@ -316,7 +313,6 @@ export class CompleteUberOAuthUseCase {
         message: 'OAuth 完成结果不完整',
       });
     return {
-      connectionId: request.connectionId,
       scope: request.scope,
       tokenType: request.tokenType,
       expiresAt: request.tokenExpiresAt,

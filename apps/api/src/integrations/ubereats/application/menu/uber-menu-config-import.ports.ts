@@ -35,17 +35,17 @@ export interface UberMenuConfigImportPort {
     targetStoreId: string,
     mode: UberMenuConfigImportMode,
     previewFingerprint: string,
-    administratorId: string,
+    administratorStableId: string,
   ): Promise<UberMenuConfigImportPreview>;
   restoreItemPrice(
     storeId: string,
     menuItemStableId: string,
-    administratorId: string,
+    administratorStableId: string,
   ): Promise<{ sourcePriceCents: number }>;
   restoreOptionPrice(
     storeId: string,
     optionChoiceStableId: string,
-    administratorId: string,
+    administratorStableId: string,
   ): Promise<{ sourcePriceDeltaCents: number }>;
 }
 export const UBER_MENU_CONFIG_IMPORT_PORT = Symbol(

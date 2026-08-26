@@ -28,14 +28,17 @@ export class UberMenuNotificationPrismaRepository implements MenuNotificationRep
     if (!correlations.length) return null;
     return this.prisma.uberMenuPublishVersion.findFirst({
       where: { OR: correlations },
-      select: { id: true },
+      select: { versionStableId: true },
     });
   }
 
-  async apply(id: string, event: UberMenuNotification): Promise<void> {
+  async apply(
+    versionStableId: string,
+    event: UberMenuNotification,
+  ): Promise<void> {
     if (event.status !== 'SUCCEEDED' && event.status !== 'FAILED') return;
     await this.prisma.uberMenuPublishVersion.updateMany({
-      where: { id, status: UberMenuPublishStatus.SUBMITTED },
+      where: { versionStableId, status: UberMenuPublishStatus.SUBMITTED },
       data: {
         status: event.status,
         finishedAt: new Date(),

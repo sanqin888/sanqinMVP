@@ -76,9 +76,9 @@ describe('OrderPreparationService', () => {
 
     expect(findFirst).toHaveBeenCalledWith({
       where: {
-        idempotencyKey: 'order.accepted:order-1',
         source: 'orders.lifecycle',
         eventName: 'order.accepted',
+        payload: { path: ['orderStableId'], equals: 'stable-1' },
       },
       select: { id: true },
     });
@@ -92,10 +92,10 @@ describe('OrderPreparationService', () => {
     });
     expect(createMany).toHaveBeenCalledWith({
       data: {
-        idempotencyKey: 'order.prep_started:order-1',
+        idempotencyKey: 'order.prep_started:stable-1',
         eventName: 'order.prep_started',
         source: 'orders.lifecycle',
-        payload: { orderId: 'order-1', orderStableId: 'stable-1' },
+        payload: { orderStableId: 'stable-1' },
       },
       skipDuplicates: true,
     });

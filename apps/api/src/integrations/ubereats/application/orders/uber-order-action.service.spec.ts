@@ -87,6 +87,19 @@ describe('UberOrderActionService contract', () => {
     expect(signal).toHaveBeenCalledWith('orderAction');
   });
 
+  it('returns a stable action reference without exposing the queue row UUID', async () => {
+    const { service } = setup();
+    const expectedReference = service.buildIntent({
+      externalOrderId: 'order-1',
+      action: 'CANCEL',
+    }).idempotencyKey;
+
+    await expect(service.request('order-1', 'CANCEL')).resolves.toEqual({
+      created: true,
+      actionReference: expectedReference,
+    });
+  });
+
   it.each([
     ['ACCEPT', 'accept', 'pending', 'paid'],
     ['DENY', 'deny', 'pending', 'refunded'],

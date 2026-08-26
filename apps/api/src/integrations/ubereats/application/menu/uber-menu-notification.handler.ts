@@ -8,8 +8,8 @@ export interface MenuNotificationRepository {
   findByCorrelation(input: {
     publishVersion: string | null;
     resourceId: string | null;
-  }): Promise<{ id: string } | null>;
-  apply(id: string, event: UberMenuNotification): Promise<void>;
+  }): Promise<{ versionStableId: string } | null>;
+  apply(versionStableId: string, event: UberMenuNotification): Promise<void>;
 }
 export const MENU_NOTIFICATION_REPOSITORY = Symbol(
   'MENU_NOTIFICATION_REPOSITORY',
@@ -28,7 +28,7 @@ export class UberMenuNotificationHandler {
     });
     if (!version)
       return { kind: 'ignored' as const, reason: 'unknown_publication' };
-    await this.repository.apply(version.id, event);
-    return { kind: 'handled' as const, versionId: version.id };
+    await this.repository.apply(version.versionStableId, event);
+    return { kind: 'handled' as const };
   }
 }

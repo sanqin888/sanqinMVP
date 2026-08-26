@@ -58,7 +58,7 @@ describe('PublishUberMenuUseCase', () => {
       markPublishVersionFailed: jest.fn().mockResolvedValue(undefined),
       findSucceededAttempt: jest.fn().mockResolvedValue(null),
       createAttempt: jest.fn().mockResolvedValue({
-        attemptId: 'attempt-1',
+        versionStableId: 'attempt-1',
         storeId: 'pos-room-1',
         idempotencyKey: 'key',
         businessVersion: 'version-1',
@@ -322,18 +322,20 @@ describe('PublishUberMenuUseCase', () => {
   it('重复的成功发布直接返回，不再次上传', async () => {
     const x = setup();
     x.publications.findSucceededAttempt.mockResolvedValue({
-      attemptId: 'old',
+      versionStableId: 'old',
       businessVersion: 'old-version',
     } as any);
     await expect(
       x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true }),
-    ).resolves.toMatchObject({ duplicate: true });
+    ).resolves.toMatchObject({ duplicate: true, versionStableId: 'old' });
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
   });
 
   it('上传 204 成功后直接标记 SUCCEEDED', async () => {
     const x = setup();
-    await x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true });
+    await expect(
+      x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true }),
+    ).resolves.toMatchObject({ versionStableId: 'attempt-1' });
     expect(x.publications.markPublishVersionSucceeded).toHaveBeenCalledWith(
       'attempt-1',
       { status_code: 204 },

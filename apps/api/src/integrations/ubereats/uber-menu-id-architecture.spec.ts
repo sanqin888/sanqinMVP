@@ -45,6 +45,16 @@ describe('Uber Eats menu id architecture', () => {
     );
   });
 
+  it('uses authenticated userStableId for menu audit operations', () => {
+    const controller = scanTypeScript(join(__dirname, 'api'), {
+      productionOnly: true,
+    }).find((file) => file.path.endsWith('menu.controller.ts'));
+    expect(controller).toBeDefined();
+    expect(controller!.source).toContain('userStableId');
+    expect(controller!.source).not.toMatch(/req\.user(?:!|\?)?\.id\b/);
+    expect(controller!.source).not.toMatch(/user\?:\s*{\s*id\?:\s*string/);
+  });
+
   it('keeps graph-id generation out of Admin API and persistence', () => {
     const roots = [
       join(__dirname, 'api'),
@@ -56,6 +66,20 @@ describe('Uber Eats menu id architecture', () => {
         [...file.source.matchAll(/\bbuildUberNodeId\b/g)].map((match) =>
           formatSourceViolation(__dirname, file, match[0]),
         ),
+      ),
+    );
+
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps persistence UUID aliases out of menu application contracts', () => {
+    const applicationRoot = join(__dirname, 'application', 'menu');
+    const forbidden = /\b(?:attemptId|publishVersionId|administratorId)\b/g;
+    const violations = scanTypeScript(applicationRoot, {
+      productionOnly: true,
+    }).flatMap((file) =>
+      [...file.source.matchAll(forbidden)].map((match) =>
+        formatSourceViolation(__dirname, file, match[0]),
       ),
     );
 

@@ -23,11 +23,9 @@ import {
   UberReadOnlyAdmin,
 } from './ubereats-access.decorator';
 import {
-  MerchantQuery,
   OAuthCallbackQuery,
   ProvisionUberStoreDto,
   SelectUberStoreDto,
-  StoreIntegrationQuery,
   UpdatePosExternalStoreIdDto,
   UpdateUberStoreIntegrationDto,
   UpdateUberStorePrepTimeDto,
@@ -127,15 +125,11 @@ export class UberEatsOAuthController {
     );
     if (result.ok) {
       try {
-        const discovery = await this.storeDiscovery.getMerchantStores(
-          result.value.connectionId,
-        );
-        this.logger.log(
-          `[merchant.store-discovery] connectionId=${result.value.connectionId} count=${discovery.count}`,
-        );
+        const discovery = await this.storeDiscovery.getMerchantStores();
+        this.logger.log(`[merchant.store-discovery] count=${discovery.count}`);
       } catch (error) {
         this.logger.warn(
-          `[merchant.store-discovery] connectionId=${result.value.connectionId} outcome=failed error=${error instanceof Error ? error.name : 'unknown'}`,
+          `[merchant.store-discovery] outcome=failed error=${error instanceof Error ? error.name : 'unknown'}`,
         );
       }
     }
@@ -150,10 +144,8 @@ export class UberEatsOAuthController {
 
   @Get('oauth/stores')
   @UberReadOnlyAdmin()
-  async oauthStores(@Query() query: MerchantQuery) {
-    return presentMerchantStores(
-      await this.storeDiscovery.getMerchantStores(query.connectionId),
-    );
+  async oauthStores() {
+    return presentMerchantStores(await this.storeDiscovery.getMerchantStores());
   }
 
   @Patch('oauth/stores/:storeId/pos-external-store-id')
@@ -178,20 +170,16 @@ export class UberEatsOAuthController {
 
   @Get('oauth/connection')
   @UberReadOnlyAdmin()
-  async oauthConnection(@Query() query: MerchantQuery) {
+  async oauthConnection() {
     return presentMerchantConnection(
-      await this.oauthComplete.getMerchantConnectionStatus(query.connectionId),
+      await this.oauthComplete.getMerchantConnectionStatus(),
     );
   }
 
   @Post('oauth/provision')
   @UberMfaAdminWrite()
   async oauthProvision(@Body() dto: ProvisionUberStoreDto) {
-    await this.storeProvisioning.provisionStore(
-      dto.storeId,
-      dto.payload,
-      dto.connectionId,
-    );
+    await this.storeProvisioning.provisionStore(dto.storeId, dto.payload);
     return presentMerchantMutation();
   }
 
@@ -199,10 +187,9 @@ export class UberEatsOAuthController {
   @UberReadOnlyAdmin()
   async retrieveIntegrationConfig(
     @Param('storeId', ResourceIdPipe) storeId: string,
-    @Query() query: StoreIntegrationQuery,
   ) {
     return presentStoreIntegrationConfig(
-      await this.storeIntegrationConfig.retrieve(storeId, query.connectionId),
+      await this.storeIntegrationConfig.retrieve(storeId),
     );
   }
 
@@ -212,11 +199,7 @@ export class UberEatsOAuthController {
     @Param('storeId', ResourceIdPipe) storeId: string,
     @Body() dto: UpdateUberStoreIntegrationDto,
   ) {
-    await this.storeIntegrationUpdate.update(
-      storeId,
-      dto.payload,
-      dto.connectionId,
-    );
+    await this.storeIntegrationUpdate.update(storeId, dto.payload);
     return presentMerchantMutation();
   }
 
@@ -224,24 +207,15 @@ export class UberEatsOAuthController {
   @UberMfaAdminWrite()
   async removeIntegrationConfig(
     @Param('storeId', ResourceIdPipe) storeId: string,
-    @Query() query: StoreIntegrationQuery,
   ) {
-    await this.storeDeprovisioning.revokeOrDeprovisionStore(
-      storeId,
-      query.connectionId,
-    );
+    await this.storeDeprovisioning.revokeOrDeprovisionStore(storeId);
     return presentMerchantMutation();
   }
 
   @Get('oauth/stores/:storeId/status')
   @UberReadOnlyAdmin()
-  async retrieveStoreStatus(
-    @Param('storeId', ResourceIdPipe) storeId: string,
-    @Query() query: StoreIntegrationQuery,
-  ) {
-    return presentStoreStatus(
-      await this.storeStatusRead.retrieve(storeId, query.connectionId),
-    );
+  async retrieveStoreStatus(@Param('storeId', ResourceIdPipe) storeId: string) {
+    return presentStoreStatus(await this.storeStatusRead.retrieve(storeId));
   }
 
   @Patch('oauth/stores/:storeId/prep-time')
@@ -254,7 +228,6 @@ export class UberEatsOAuthController {
       await this.storePrepTimeUpdate.update(
         storeId,
         dto.defaultPrepTimeSeconds,
-        dto.connectionId,
       ),
     );
   }

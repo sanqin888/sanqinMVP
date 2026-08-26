@@ -17,36 +17,36 @@ export class UberMenuConfigImportUseCase {
     targetStoreId: string,
     mode: UberMenuConfigImportMode,
     previewFingerprint: string,
-    administratorId: string,
+    administratorStableId: string,
   ) {
     return this.imports.apply(
       sourceStoreId,
       targetStoreId,
       mode,
       previewFingerprint,
-      administratorId,
+      administratorStableId,
     );
   }
   restoreItemPrice(
     storeId: string,
     menuItemStableId: string,
-    administratorId: string,
+    administratorStableId: string,
   ) {
     return this.imports.restoreItemPrice(
       storeId,
       menuItemStableId,
-      administratorId,
+      administratorStableId,
     );
   }
   restoreOptionPrice(
     storeId: string,
     optionChoiceStableId: string,
-    administratorId: string,
+    administratorStableId: string,
   ) {
     return this.imports.restoreOptionPrice(
       storeId,
       optionChoiceStableId,
-      administratorId,
+      administratorStableId,
     );
   }
 }
