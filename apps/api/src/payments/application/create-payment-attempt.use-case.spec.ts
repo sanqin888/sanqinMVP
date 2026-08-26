@@ -1,14 +1,19 @@
 import { PaymentTransaction } from '../domain/payment-transaction';
-import type { PaymentStatus } from '../domain/payment.types';
+import type {
+  PaymentProviderOutcome,
+  PaymentStatus,
+} from '../domain/payment.types';
 import {
   CreatePaymentAttemptUseCase,
   PaymentAttemptConflictError,
+  PaymentFinalStateConflictError,
   TerminalPaymentService,
   type CreatePaymentAttemptInput,
 } from './create-payment-attempt.use-case';
 import type {
   PaymentProvider,
   PaymentTerminalProvider,
+  StartPaymentRequest,
 } from './payment-provider.port';
 import {
   PaymentTransactionUniquenessError,
@@ -209,6 +214,47 @@ const terminalInput = {
   currency: 'CAD',
 };
 
+const canonicalOutcome = (
+  request: Pick<
+    StartPaymentRequest,
+    'paymentId' | 'attemptId' | 'idempotencyKey' | 'externalPaymentId'
+  > & { amountCents?: number; currency?: string },
+  status: 'SUCCEEDED' | 'DECLINED' | 'CANCELLED' | 'FAILED' = 'SUCCEEDED',
+  overrides: Partial<PaymentProviderOutcome> = {},
+): PaymentProviderOutcome => {
+  if (request.amountCents === undefined || request.currency === undefined) {
+    throw new Error('canonical test outcome requires amount and currency');
+  }
+  return {
+    status,
+    evidence: 'CANONICAL',
+    paymentId: request.paymentId,
+    attemptId: request.attemptId,
+    idempotencyKey: request.idempotencyKey,
+    externalPaymentId: request.externalPaymentId,
+    providerPaymentId: 'clover-payment-1',
+    amountCents: request.amountCents,
+    currency: request.currency,
+    surchargeCents: status === 'SUCCEEDED' ? 62 : 0,
+    chargedTotalCents:
+      status === 'SUCCEEDED' ? request.amountCents + 62 : request.amountCents,
+    resultCode: status === 'SUCCEEDED' ? 'success' : status.toLowerCase(),
+    failureCode: status === 'SUCCEEDED' ? null : `CLOVER_${status}`,
+    failureMessage: status === 'SUCCEEDED' ? null : `Clover ${status}`,
+    ...overrides,
+  };
+};
+
+const deferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
 const createTerminalHarness = () => {
   const transactions = new InMemoryPaymentTransactionRepository();
   const createAttempt = new CreatePaymentAttemptUseCase(transactions);
@@ -236,18 +282,16 @@ describe('TerminalPaymentService', () => {
     const { service, provider } = createTerminalHarness();
     provider.startPayment.mockImplementation((request) => {
       expect(request.externalPaymentId).toHaveLength(32);
-      return Promise.resolve({
-        status: 'SUCCEEDED',
-        externalPaymentId: request.externalPaymentId,
-        providerPaymentId: 'clover-payment-1',
-        providerOrderId: 'clover-order-1',
-        terminalId: 'device-1',
-        cardBrand: 'VISA',
-        cardLast4: '4242',
-        chargedTotalCents: 2661,
-        surchargeCents: 62,
-        resultCode: 'SUCCESS',
-      });
+      return Promise.resolve(
+        canonicalOutcome(request, 'SUCCEEDED', {
+          providerOrderId: 'clover-order-1',
+          terminalId: 'device-1',
+          cardBrand: 'VISA',
+          cardLast4: '4242',
+          chargedTotalCents: 2661,
+          surchargeCents: 62,
+        }),
+      );
     });
 
     const payment = await service.startSale(terminalInput);
@@ -262,10 +306,9 @@ describe('TerminalPaymentService', () => {
 
   it('does not send a second sale for the same logical attempt', async () => {
     const { service, provider } = createTerminalHarness();
-    provider.startPayment.mockResolvedValue({
-      status: 'SUCCEEDED',
-      providerPaymentId: 'clover-payment-1',
-    });
+    provider.startPayment.mockImplementation((request) =>
+      Promise.resolve(canonicalOutcome(request)),
+    );
 
     const first = await service.startSale(terminalInput);
     const second = await service.startSale(terminalInput);
@@ -276,10 +319,9 @@ describe('TerminalPaymentService', () => {
 
   it('allows only one provider call when duplicate starts race', async () => {
     const { service, provider } = createTerminalHarness();
-    provider.startPayment.mockResolvedValue({
-      status: 'SUCCEEDED',
-      providerPaymentId: 'clover-payment-1',
-    });
+    provider.startPayment.mockImplementation((request) =>
+      Promise.resolve(canonicalOutcome(request)),
+    );
 
     await Promise.all([
       service.startSale(terminalInput),
@@ -287,6 +329,182 @@ describe('TerminalPaymentService', () => {
     ]);
 
     expect(provider.startPayment.mock.calls).toHaveLength(1);
+  });
+
+  it('merges a late canonical success after recovery moves PROCESSING through UNKNOWN to RECONCILING', async () => {
+    const { service, provider, transactions } = createTerminalHarness();
+    const late = deferred<PaymentProviderOutcome>();
+    const started = deferred<StartPaymentRequest>();
+    provider.startPayment.mockImplementation((request) => {
+      started.resolve(request);
+      return late.promise;
+    });
+    provider.getPaymentStatus.mockImplementation((request) =>
+      Promise.resolve({
+        status: 'UNKNOWN',
+        evidence: 'CANONICAL',
+        paymentId: request.paymentId,
+        attemptId: request.attemptId,
+        idempotencyKey: request.idempotencyKey,
+        externalPaymentId: request.externalPaymentId,
+        amountCents: request.amountCents,
+        currency: request.currency,
+        failureCode: 'CLOVER_PLATFORM_PAYMENT_NOT_FOUND',
+        failureMessage: 'not visible yet',
+      }),
+    );
+
+    const originalRequest = service.startSale(terminalInput);
+    const providerRequest = await started.promise;
+    const processing = transactions.rows[0];
+    expect(processing?.status).toBe('PROCESSING');
+
+    const recoveryResult = await service.reconcile(processing.id);
+    expect(recoveryResult.status).toBe('RECONCILING');
+
+    late.resolve(canonicalOutcome(providerRequest));
+    const resolved = await originalRequest;
+
+    expect(resolved.status).toBe('SUCCEEDED');
+    expect(transactions.rows[0]?.status).toBe('SUCCEEDED');
+  });
+
+  it('merges a late canonical success when recovery has only reached UNKNOWN', async () => {
+    const { service, provider, transactions } = createTerminalHarness();
+    const late = deferred<PaymentProviderOutcome>();
+    const started = deferred<StartPaymentRequest>();
+    provider.startPayment.mockImplementation((request) => {
+      started.resolve(request);
+      return late.promise;
+    });
+
+    const originalRequest = service.startSale(terminalInput);
+    const providerRequest = await started.promise;
+    const processing = transactions.rows[0];
+    const moved = await transactions.saveIfCurrentStatus(
+      processing.applyProviderOutcome({
+        status: 'UNKNOWN',
+        failureCode: 'SIMULATED_RECOVERY',
+      }),
+      'PROCESSING',
+    );
+    expect(moved.transaction.status).toBe('UNKNOWN');
+
+    late.resolve(canonicalOutcome(providerRequest));
+    const resolved = await originalRequest;
+
+    expect(resolved.status).toBe('SUCCEEDED');
+    expect(transactions.rows[0]?.status).toBe('SUCCEEDED');
+  });
+
+  it('allows RECONCILING to converge to canonical DECLINED', async () => {
+    const { service, provider, transactions } = createTerminalHarness();
+    const reconciling = PaymentTransaction.create({
+      id: '44444444-4444-4444-8444-444444444444',
+      attemptId: 'decline-attempt',
+      idempotencyKey: 'decline-attempt-sale',
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: 1800,
+      currency: 'CAD',
+      externalPaymentId: 'decline-external',
+    })
+      .transitionTo('PROCESSING')
+      .applyProviderOutcome({ status: 'UNKNOWN' })
+      .transitionTo('RECONCILING');
+    transactions.rows.push(reconciling);
+    provider.getPaymentStatus.mockImplementation((request) =>
+      Promise.resolve(
+        canonicalOutcome(request, 'DECLINED', {
+          providerPaymentId: 'clover-declined',
+        }),
+      ),
+    );
+
+    const resolved = await service.reconcile(reconciling.id);
+
+    expect(resolved.status).toBe('DECLINED');
+    expect(resolved.toSnapshot().providerPaymentId).toBe('clover-declined');
+  });
+
+  it('treats duplicate late canonical success as idempotent after another writer already finalized success', async () => {
+    const { service, provider, transactions } = createTerminalHarness();
+    const late = deferred<PaymentProviderOutcome>();
+    const started = deferred<StartPaymentRequest>();
+    provider.startPayment.mockImplementation((request) => {
+      started.resolve(request);
+      return late.promise;
+    });
+
+    const originalRequest = service.startSale(terminalInput);
+    const providerRequest = await started.promise;
+    const processing = transactions.rows[0];
+    const winner = processing.applyProviderOutcome(
+      canonicalOutcome(providerRequest),
+    );
+    await transactions.saveIfCurrentStatus(winner, 'PROCESSING');
+
+    late.resolve(canonicalOutcome(providerRequest));
+    const resolved = await originalRequest;
+
+    expect(resolved.status).toBe('SUCCEEDED');
+    expect(transactions.rows[0]?.status).toBe('SUCCEEDED');
+  });
+
+  it('preserves an existing final result and surfaces a conflicting late final result', async () => {
+    const { service, provider, transactions } = createTerminalHarness();
+    const late = deferred<PaymentProviderOutcome>();
+    const started = deferred<StartPaymentRequest>();
+    provider.startPayment.mockImplementation((request) => {
+      started.resolve(request);
+      return late.promise;
+    });
+
+    const originalRequest = service.startSale(terminalInput);
+    const providerRequest = await started.promise;
+    const processing = transactions.rows[0];
+    const winner = processing.applyProviderOutcome(
+      canonicalOutcome(providerRequest),
+    );
+    await transactions.saveIfCurrentStatus(winner, 'PROCESSING');
+
+    late.resolve(canonicalOutcome(providerRequest, 'DECLINED'));
+    await expect(originalRequest).rejects.toBeInstanceOf(
+      PaymentFinalStateConflictError,
+    );
+    expect(transactions.rows[0]?.status).toBe('SUCCEEDED');
+  });
+
+  it('does not finalize a late canonical result with mismatched externalPaymentId', async () => {
+    const { service, provider, transactions } = createTerminalHarness();
+    const late = deferred<PaymentProviderOutcome>();
+    const started = deferred<StartPaymentRequest>();
+    provider.startPayment.mockImplementation((request) => {
+      started.resolve(request);
+      return late.promise;
+    });
+
+    const originalRequest = service.startSale(terminalInput);
+    const providerRequest = await started.promise;
+    const processing = transactions.rows[0];
+    await transactions.saveIfCurrentStatus(
+      processing.applyProviderOutcome({ status: 'UNKNOWN' }),
+      'PROCESSING',
+    );
+
+    late.resolve(
+      canonicalOutcome(providerRequest, 'SUCCEEDED', {
+        externalPaymentId: 'different-external-id',
+      }),
+    );
+    const resolved = await originalRequest;
+
+    expect(resolved.status).toBe('UNKNOWN');
+    expect(resolved.toSnapshot().failureCode).toBe(
+      'PAYMENT_PROVIDER_CORRELATION_MISMATCH',
+    );
   });
 
   it('persists timeout uncertainty and reconciles without re-charging', async () => {
@@ -301,15 +519,13 @@ describe('TerminalPaymentService', () => {
     expect(uncertainPayment.status).toBe('UNKNOWN');
 
     provider.getPaymentStatus.mockImplementation((request) =>
-      Promise.resolve({
-        status: 'SUCCEEDED',
-        externalPaymentId: request.externalPaymentId,
-        providerPaymentId: 'clover-payment-after-reconcile',
-        chargedTotalCents: 2599,
-        resultCode: 'SUCCESS',
-        failureCode: null,
-        failureMessage: null,
-      }),
+      Promise.resolve(
+        canonicalOutcome(request, 'SUCCEEDED', {
+          providerPaymentId: 'clover-payment-after-reconcile',
+          surchargeCents: 0,
+          chargedTotalCents: 2599,
+        }),
+      ),
     );
 
     const resolved = await service.reconcile(uncertainPayment.id);
@@ -346,13 +562,18 @@ describe('TerminalPaymentService', () => {
 
     const provider: jest.Mocked<PaymentProvider> = {
       startPayment: jest.fn(),
-      getPaymentStatus: jest.fn().mockResolvedValue({
-        status: 'SUCCEEDED',
-        externalPaymentId: 'restart-external-id',
-        providerPaymentId: 'clover-recovered',
-        chargedTotalCents: 1599,
-        resultCode: 'SUCCESS',
-      }),
+      getPaymentStatus: jest
+        .fn()
+        .mockImplementation(
+          (request: Parameters<PaymentProvider['getPaymentStatus']>[0]) =>
+            Promise.resolve(
+              canonicalOutcome(request, 'SUCCEEDED', {
+                providerPaymentId: 'clover-recovered',
+                surchargeCents: 0,
+                chargedTotalCents: 1599,
+              }),
+            ),
+        ),
       cancelPayment: jest.fn(),
       voidPayment: jest.fn(),
       refundPayment: jest.fn(),

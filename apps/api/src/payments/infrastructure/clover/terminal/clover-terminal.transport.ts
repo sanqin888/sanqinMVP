@@ -433,12 +433,15 @@ export class CloverTerminalTransport {
         terminalId,
       );
     }
-    return mapTerminalPaymentResponse(
-      result,
-      request.amountCents,
-      externalPaymentId,
-      terminalId,
-    );
+    return {
+      ...mapTerminalPaymentResponse(
+        result,
+        request.amountCents,
+        externalPaymentId,
+        terminalId,
+      ),
+      evidence: 'EXECUTION',
+    };
   }
 
   async getPaymentStatus(

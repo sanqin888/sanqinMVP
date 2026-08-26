@@ -50,9 +50,17 @@ export type PaymentProviderIdentifiers = {
   providerOrderId?: string | null;
 };
 
+export type PaymentProviderEvidence = 'EXECUTION' | 'CANONICAL';
+
 export type PaymentProviderOutcome = PaymentProviderIdentifiers &
   PaymentProviderTerminalFacts & {
     status: Exclude<PaymentStatus, 'CREATED' | 'RECONCILING'>;
+    evidence?: PaymentProviderEvidence;
+    paymentId?: string;
+    attemptId?: string;
+    idempotencyKey?: string;
+    amountCents?: number;
+    currency?: string;
     chargedTotalCents?: number;
     surchargeCents?: number;
     refundedAmountCents?: number;
