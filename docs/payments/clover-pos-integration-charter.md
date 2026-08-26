@@ -1,6 +1,6 @@
 # SanQ 支付域模块化 + Clover POS 实时同步任务目标与边界
 
-**状态：** Implementation Charter v2  
+**状态：** Implementation Charter v3  
 **日期：** 2026-08-26  
 **适用范围：** SanQ Payments / Clover / POS / Orders 的支付相关边界
 
@@ -27,10 +27,10 @@
 - amount / currency / payment ID 校验
 - unresolved reconciliation
 - 支付成功后创建 Order
-- surcharge reconciliation
+- 现有基于 Ecommerce response/status 的 surcharge reconciliation 尝试
 - 支付失败处理
 
-该链路目前属于生产有效链路，本次改造不得在早期阶段破坏其现有对外行为。
+该链路目前属于生产有效链路，本次改造不得在早期阶段破坏其现有对外行为。但它存在已知硬伤：`/v1/charges` execution/read 能提供的交易事实不足以作为完整 Clover 账本，历史实现无法可靠取得 Platform payment 的 `additionalCharges`，因此 surcharge 等信息可能缺失于 SanQ 顾客账单。该问题不应继续通过扩展 v1 猜字段修补；Web 在 Phase G 迁入 Unified Payment Core 后必须改用 Platform REST v3 canonical payment truth。
 
 ### 2.2 POS CARD
 
@@ -82,14 +82,17 @@ PaymentProvider
   - refundPayment
 ```
 
-Clover 具体实现可区分：
+Clover 具体实现必须按 API capability 分离：
 
-- Clover Ecommerce Gateway
-- Clover Terminal / REST Pay Display Gateway
-- Clover OAuth / Device integration
-- Clover Webhook adapter
+- Clover Ecommerce Gateway：Web card-not-present 的 transaction execution，当前正式入口为 Ecommerce `/v1/charges`。
+- Clover Terminal / REST Pay Display Gateway：POS card-present 的 device interaction / transaction execution，当前正式入口为 `/connect/v1/payments` 等 REST Pay Display API。
+- Clover Platform Payments Gateway：统一读取/核验 Clover merchant payment/refund 事实，使用 Platform REST `/v3/merchants/{mId}/payments...` / refund read model。
+- Clover OAuth / Device integration。
+- Clover Webhook adapter。
 
-Clover wire response 必须先映射为 SanQ Payment domain model，不得泄漏到 Orders / POS domain。
+URL 中的 `v1` / `v3` 不得被当作“旧接口/新接口”的简单版本替代关系。Ecommerce、REST Pay Display、Platform REST 是不同 API family；SanQ 必须按 capability 使用 Clover 当前正式契约，不得为了表面上的“统一 v3”把 Terminal Sale 错接到 Platform REST。
+
+Clover wire response 必须先映射为 SanQ Payment domain model，不得泄漏到 Orders / POS domain。Unified Payment Core 的最终 Clover 资金事实必须再经过 Platform REST v3 canonicalization；transaction execution 的即时 response 可以提供 provisional observation，但不得长期作为唯一 payment truth。
 
 ### 3.3 POS CARD 改为“先支付、后创建订单”
 
@@ -315,9 +318,14 @@ SanQ 应区分：
 
 - Order 应付金额
 - credit card surcharge
+- 其他 provider additional charge（如 Clover 实际返回且业务需要表达）
 - 实际 card charged total
 
-POS Terminal 支付应优先让 Clover 根据 merchant/tender 配置处理 surcharge，SanQ 读取并记录 provider 返回的实际 surcharge 事实。不得只按 SanQ 自己的 2.4% 推算覆盖 Clover transaction data。现有 Ecommerce surcharge reconciliation 的安全思想应保留。
+Unified Payment Core 中，Clover surcharge / additional charge 的 canonical 事实必须来自 Platform REST v3 payment/refund read model。对于 payment，应通过 `/v3/merchants/{mId}/payments/{paymentId}?expand=additionalCharges`（或等价的 v3 payment 查询）读取 `additionalCharges`；`CREDIT_SURCHARGE` 才计入 SanQ 的 credit-card surcharge 事实，customer charged total 必须基于 Clover payment amount 与实际 additional charges 计算/核验。
+
+POS Terminal 支付应让 Clover 根据 merchant/tender 配置处理 surcharge。SanQ 不得按固定 2.4% 自行生成、覆盖或“补齐” surcharge；2.4% 只能作为当前加拿大 Clover 配置/规则的外部事实参考，不能作为账本来源。若 REST Pay / Ecommerce 即时 response 已返回 surcharge，可用于 provisional display/observation，但最终持久化和 reconciliation 仍以 Platform REST v3 为准。
+
+Refund 也必须读取 Clover 实际 refund/additional-charge 事实，不得按原支付 surcharge 比例自行猜测退款 surcharge。
 
 ## 9. 兼容上线硬约束
 
@@ -372,11 +380,56 @@ New CARD：必须经过 Payment domain，必须有 PaymentTransaction，必须�
 
 同一次 POS 操作不得同时调用 legacy order creation 和 new Clover payment。
 
-## 12. Clover Terminal 集成边界
+## 12. Clover API Family / Terminal / Platform v3 集成边界
 
-目标方式：Clover REST Pay Display，优先 Cloud connection。SanQ POS 是 Web POS、API 已云端部署，Cloud 模式更符合现有架构并减少 Local Device Server / CA 证书等额外运维复杂度。
+### 12.1 API family separation
+
+SanQ 必须把 Clover 的三类能力分开实现和配置：
+
+1. **Ecommerce API**：Web card-not-present transaction execution，当前正式支付入口为 `/v1/charges`。
+2. **REST Pay Display API**：POS card-present / device interaction，当前正式支付入口为 `/connect/v1/payments`；金融操作必须遵守 Clover 要求的 `X-Clover-Device-Id`、`X-POS-Id` 和 `Idempotency-Key`。
+3. **Platform REST API v3**：Clover merchant transaction read/reconciliation 的 canonical source，用于 payment/refund 查询、`externalPaymentId` 恢复、`additionalCharges`、card transaction、refund 等完整资金事实。
+
+不得把三套 API 的 URL version、认证方式或 response shape 混为一体。
+
+### 12.2 Unified Payment Core 的 v3 canonical truth
+
+凡是已经迁入 Unified Payment Core 的 Clover external payment，都必须遵守：
+
+1. transaction execution adapter 先完成对应渠道的 Clover 操作，并立即保存 `externalPaymentId` / provider payment ID / idempotency identity。
+2. 若 execution response 报告成功，SanQ 仍应通过 Platform REST v3 读取/核验对应 payment 事实，再向 Unified Payment Core 提供 canonical success facts。
+3. provider payment ID 已知时优先按 ID 查询；response 丢失或 ID 未知时，应使用 v3 payment collection 对 `externalPaymentId` 做确定性 reconciliation。
+4. v3 暂时查不到刚完成的交易、Platform API timeout 或认证/网络临时失败时，不得把支付降级成 definitive FAILED，也不得直接创建 Order；应保持/进入 `UNKNOWN` / `RECONCILING`，直到获得最终 Clover 事实。
+5. `SUCCEEDED` 用于 Order finalization 时，必须具有足够的 canonical provider evidence，包括 provider payment identity、amount/result，以及适用时的 `additionalCharges`。
+6. transaction execution response 可以作为实时 UX 的 provisional observation，但不能成为长期唯一账本来源。
+
+### 12.3 Authentication/config separation
+
+Ecommerce、REST Pay Display、Platform REST v3 的 credential/config 必须显式分开管理。不得因为某个 token 在测试环境“碰巧可用”就默认跨 API family 共用；只有 Clover 正式文档明确允许同一 OAuth token/application/scopes 用于对应能力时才允许复用。
+
+至少应为 Platform REST v3 提供独立、明确的 merchant-authorized API token/OAuth 配置入口，不得隐式 fallback 到 Ecommerce private access token，也不得把 production credential 写入代码或暴露到 browser。
+
+### 12.4 Terminal connection
+
+POS Terminal 目标方式仍为 Clover REST Pay Display，优先 Cloud connection。SanQ POS 是 Web POS、API 已云端部署，Cloud 模式更符合现有架构并减少 Local Device Server / CA 证书等额外运维复杂度。
 
 具体 RAID / OAuth / device / production approval 以 Clover 正式账号能力和官方审核结果为准；不得猜测 production credential、硬编码 secret 或将 OAuth token 暴露到 browser。
+
+### 12.5 Legacy Web migration exception
+
+现有 Web `/v1/charges` 链路在 Phase G 迁移前继续作为 legacy production path，其当前 reconciliation 行为不因本规则在中途被强制替换。Phase G 将 Web transaction execution 接入同一 Unified Payment Core 后，Web 也必须使用 Platform REST v3 作为 canonical payment truth；届时旧 `/v1/charges` status/read logic 只能作为 execution compatibility，不得继续形成第二套长期账本。
+
+### 12.6 Clover 官方契约基线
+
+实施和 architecture tests 应至少对照以下 Clover 官方契约；如 Clover 后续变更，以实施时最新正式文档为准，并先更新本文档再改变 integration behavior：
+
+- REST Pay Display API tutorials：`https://docs.clover.com/dev/docs/api-tutorials`
+- Payment reconciliation and recovery：`https://docs.clover.com/dev/docs/payment-reconciliation-and-recovery-rest-pay`
+- Platform API — Get all payments：`https://docs.clover.com/dev/reference/paygetpayments`
+- Platform API — Get a single payment：`https://docs.clover.com/dev/reference/paygetpayment`
+- Manage transaction data (REST API)：`https://docs.clover.com/dev/docs/working-with-transaction-data-rest`
+- Use Clover REST API / OAuth：`https://docs.clover.com/dev/docs/making-rest-api-calls`
+- Ecommerce — Accept payments and tips：`https://docs.clover.com/dev/docs/ecommerce-accepting-payments`
 
 ## 13. Clover Webhook 边界
 
@@ -491,7 +544,9 @@ paymentMethod=CARD -> 直接创建已支付 Order
 - POS 不得 import Clover gateway / OAuth / raw schema。
 - Clover infrastructure 不得直接创建 Order、打印、操作 loyalty/kitchen。
 - Payments application 只能经 Provider port 使用 Clover。
-- Clover wire schema 不得越出 Payments infrastructure。
+- Ecommerce / REST Pay Display / Platform v3 wire schema 都不得越出 Payments infrastructure。
+- Clover Platform v3 gateway 只能作为 provider infrastructure/read-reconciliation capability，被 Unified Payment Core 通过 provider/application boundary 间接使用。
+- Unified Payment Core / orchestration 不得直接解析 `/v1/charges`、REST Pay 或 v3 raw response。
 - 只有 composition/orchestration 层可以同时依赖 Payments 和 Orders。
 - legacy cleanup 后禁止恢复 `CARD -> 直接创建 paid Order`。
 
