@@ -1,6 +1,7 @@
 import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
 import { createHash } from 'crypto';
 import { dispatchUberWebhookV1 } from '../../domain/webhook/uber-webhook-event.parser';
+import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import { UberMenuNotificationHandler } from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 import {
@@ -131,11 +132,17 @@ export class ProcessUberWebhookInboxUseCase {
     priority: 'high',
   ): Promise<void> {
     const safeSummary = this.safeEventSummary(item);
+    const customerOrderEdit =
+      normalizeUberEventType(item.eventType) === 'orders.customer_order_edit';
+    const diagnostic = customerOrderEdit
+      ? ('CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED' as const)
+      : undefined;
     const committed = await this.inbox.markUnsupported(item, {
       code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED',
       eventType: item.eventType,
       safeSummary,
       businessVersion: item.businessVersion,
+      ...(diagnostic ? { diagnostic } : {}),
     });
     if (!committed)
       throw new UberWebhookLeaseLostError(item.eventId, 'markUnsupported');
@@ -145,10 +152,13 @@ export class ProcessUberWebhookInboxUseCase {
       eventId: item.eventId,
       safeSummary,
       businessVersion: item.businessVersion,
+      ...(diagnostic ? { diagnostic } : {}),
     });
     this.telemetry.workflowLog(
       'error',
-      'HIGH: unsupported Uber webhook quarantined',
+      customerOrderEdit
+        ? 'HIGH: orders.customer_order_edit quarantined; order reconciliation support is required before replay'
+        : 'HIGH: unsupported Uber webhook quarantined',
     );
   }
 

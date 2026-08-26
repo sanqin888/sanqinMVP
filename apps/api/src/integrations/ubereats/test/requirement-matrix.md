@@ -281,6 +281,7 @@ Fulfillment timing 由 webhook contract 决定，不通过 detail `status` 猜�
 | `orders.notification` | Order Fulfillment 1.0.0 | 拉取 v1 detail，映射并 admission/import | `webhooks/orders.notification.json` |
 | `orders.scheduled.notification` | 1.0.0 + scheduled enabled | 与普通单共用 mapper；增加 deliveries expansion 并解析 scheduled timing | `webhooks/orders.scheduled.notification.json` |
 | `orders.failure` | Order Fulfillment 1.0.0 | 已存在本地订单时直接按 external order id 落 cancellation；不要求 detail 再次可读 | `webhooks/orders.failure.json` |
+| `orders.customer_order_edit` | Order Fulfillment 1.0.0 当前文档已列出，但是否向本餐厅/Test Client 下发仍需 Uber 确认 | **不进入普通新单 import**；保持 unsupported quarantine，并记录 `CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED`，待独立 reconciliation 方案获批后再支持/replay | 暂无 live fixture；不得伪造 Sandbox PASS |
 
 若 SanQ 在 admission 阶段已成功执行 standalone DENY（订单因此从未落本地 `Order`），后续同一
 external order 的 `orders.failure` 是该拒单的合法终态，按 no-op 成功处理，不能继续重试到 DEAD。
