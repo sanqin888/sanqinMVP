@@ -668,13 +668,11 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('uses payment collection filter by externalPaymentId when provider id is unknown', async () => {
-    const fetchSpy = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ elements: [platformPayment()] }), {
-          status: 200,
-        }),
-      );
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ elements: [platformPayment()] }), {
+        status: 200,
+      }),
+    );
     const gateway = new CloverPlatformPaymentsGateway(
       new CloverProviderConfig(),
     );
@@ -696,13 +694,11 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('does not finalize when canonical amount mismatches the prepared amount', async () => {
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify(platformPayment({ amount: 1999 })), {
-          status: 200,
-        }),
-      );
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(platformPayment({ amount: 1999 })), {
+        status: 200,
+      }),
+    );
     const gateway = new CloverPlatformPaymentsGateway(
       new CloverProviderConfig(),
     );
@@ -737,23 +733,21 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('maps CREDIT_SURCHARGE separately while charged total includes all additional charges', async () => {
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify(
-            platformPayment({
-              additionalCharges: {
-                elements: [
-                  { type: 'CREDIT_SURCHARGE', amount: 48 },
-                  { type: 'OTHER', amount: 15 },
-                ],
-              },
-            }),
-          ),
-          { status: 200 },
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          platformPayment({
+            additionalCharges: {
+              elements: [
+                { type: 'CREDIT_SURCHARGE', amount: 48 },
+                { type: 'OTHER', amount: 15 },
+              ],
+            },
+          }),
         ),
-      );
+        { status: 200 },
+      ),
+    );
     const gateway = new CloverPlatformPaymentsGateway(
       new CloverProviderConfig(),
     );
