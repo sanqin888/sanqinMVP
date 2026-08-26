@@ -12,7 +12,8 @@ const activeDevice = {
   deviceStableId: 'device-1',
   deviceKeyHash: 'hash',
   status: 'ACTIVE',
-  storeId: 'store-a',
+  storeId: 'store-db-a',
+  storeStableId: 'store-a',
   meta: null,
 };
 
@@ -33,7 +34,7 @@ function makeSocket(input?: {
         ? {
             posDevice: {
               deviceStableId: input.deviceStableId,
-              storeId: input.storeId,
+              storeStableId: input.storeId,
             },
           }
         : {},
@@ -78,7 +79,7 @@ describe('PosGateway device authorization', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('authenticates browser POS from HttpOnly device cookies', async () => {
+  it('authenticates browser POS and maps the device store UUID to the stable POS room id', async () => {
     const { middleware, verifyDevice } = setup();
     const client = makeSocket({
       cookie: 'other=value; posDeviceId=device-1; posDeviceKey=secret%2Bkey',
@@ -90,7 +91,7 @@ describe('PosGateway device authorization', () => {
       deviceKey: 'secret+key',
     });
     expect(client.data).toEqual({
-      posDevice: { deviceStableId: 'device-1', storeId: 'store-a' },
+      posDevice: { deviceStableId: 'device-1', storeStableId: 'store-a' },
     });
     expect(client.data).not.toHaveProperty('posDeviceKey');
   });
@@ -107,7 +108,7 @@ describe('PosGateway device authorization', () => {
       deviceKey: 'printer-secret',
     });
     expect(client.data).toEqual({
-      posDevice: { deviceStableId: 'device-1', storeId: 'store-a' },
+      posDevice: { deviceStableId: 'device-1', storeStableId: 'store-a' },
     });
   });
 

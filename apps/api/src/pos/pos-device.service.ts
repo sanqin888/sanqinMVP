@@ -96,6 +96,7 @@ export class PosDeviceService {
         status: true,
         deviceStableId: true,
         storeId: true,
+        store: { select: { storeStableId: true } },
         meta: true,
       },
     });
@@ -113,7 +114,8 @@ export class PosDeviceService {
       data: { lastSeenAt: new Date() },
     });
 
-    return device;
+    const { store, ...verifiedDevice } = device;
+    return { ...verifiedDevice, storeStableId: store.storeStableId };
   }
 
   async recordConnectivityHeartbeat(deviceStableId: string): Promise<void> {
