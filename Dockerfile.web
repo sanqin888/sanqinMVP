@@ -18,7 +18,6 @@ RUN pnpm install --frozen-lockfile
 COPY apps/web ./apps/web
 COPY libs/order ./libs/order
 COPY libs/shared ./libs/shared
-COPY libs/status ./libs/status
 
 # 4. 构建 Web (Next.js Standalone)
 # 这一步会生成 .next/standalone 文件夹，里面包含了所有运行所需的代码和依赖
