@@ -1,11 +1,7 @@
-import {
-  PaymentTransactionUniquenessError,
-} from '../../application/payment-transaction.repository';
+import { PaymentTransactionUniquenessError } from '../../application/payment-transaction.repository';
 import { PaymentTransaction } from '../../domain/payment-transaction';
 import { PrismaService } from '../../../prisma/prisma.service';
-import {
-  PrismaPaymentTransactionRepository,
-} from './prisma-payment-transaction.repository';
+import { PrismaPaymentTransactionRepository } from './prisma-payment-transaction.repository';
 
 const persistedRow = {
   id: '0f9a2139-c482-4ad6-946e-16642f078a0a',
@@ -41,7 +37,11 @@ const persistedRow = {
 
 describe('PrismaPaymentTransactionRepository', () => {
   it('persists the provider-independent payment snapshot', async () => {
-    const create = jest.fn().mockResolvedValue(persistedRow);
+    let createInput: unknown;
+    const create = jest.fn((input: unknown) => {
+      createInput = input;
+      return Promise.resolve(persistedRow);
+    });
     const repository = new PrismaPaymentTransactionRepository({
       paymentTransaction: { create },
     } as unknown as PrismaService);
@@ -60,20 +60,18 @@ describe('PrismaPaymentTransactionRepository', () => {
 
     const saved = await repository.create(transaction);
 
-    expect(create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        id: persistedRow.id,
-        attemptId: persistedRow.attemptId,
-        idempotencyKey: persistedRow.idempotencyKey,
-        provider: 'CLOVER',
-        source: 'POS_TERMINAL',
-        paymentMethod: 'CARD',
-        operation: 'SALE',
-        status: 'CREATED',
-        amountCents: 1299,
-        surchargeCents: null,
-        chargedTotalCents: null,
-      }),
+    expect((createInput as { data: Record<string, unknown> }).data).toMatchObject({
+      id: persistedRow.id,
+      attemptId: persistedRow.attemptId,
+      idempotencyKey: persistedRow.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      status: 'CREATED',
+      amountCents: 1299,
+      surchargeCents: null,
+      chargedTotalCents: null,
     });
     expect(saved.toSnapshot()).toMatchObject({
       id: persistedRow.id,
@@ -82,76 +80,67 @@ describe('PrismaPaymentTransactionRepository', () => {
     });
   });
 
-  it(
-    'maps Prisma attempt uniqueness into the repository boundary error',
-    async () => {
-      const error = {
-        code: 'P2002',
-        meta: { target: ['attemptId'] },
-      };
-      const repository = new PrismaPaymentTransactionRepository({
-        paymentTransaction: { create: jest.fn().mockRejectedValue(error) },
-      } as unknown as PrismaService);
-      const transaction = PaymentTransaction.create({
-        id: persistedRow.id,
-        attemptId: persistedRow.attemptId,
-        idempotencyKey: persistedRow.idempotencyKey,
-        provider: 'CLOVER',
-        source: 'POS_TERMINAL',
-        paymentMethod: 'CARD',
-        operation: 'SALE',
-        amountCents: 1299,
-        currency: 'CAD',
-      });
+  it('maps Prisma attempt uniqueness into the repository boundary error', async () => {
+    const error = {
+      code: 'P2002',
+      meta: { target: ['attemptId'] },
+    };
+    const repository = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { create: jest.fn().mockRejectedValue(error) },
+    } as unknown as PrismaService);
+    const transaction = PaymentTransaction.create({
+      id: persistedRow.id,
+      attemptId: persistedRow.attemptId,
+      idempotencyKey: persistedRow.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: 1299,
+      currency: 'CAD',
+    });
 
-      await expect(repository.create(transaction)).rejects.toEqual(
-        new PaymentTransactionUniquenessError('attemptId'),
-      );
-    },
-  );
+    await expect(repository.create(transaction)).rejects.toEqual(
+      new PaymentTransactionUniquenessError('attemptId'),
+    );
+  });
 
-  it(
-    'maps provider external payment id uniqueness into the repository boundary error',
-    async () => {
-      const error = {
-        code: 'P2002',
-        meta: { target: ['provider', 'externalPaymentId'] },
-      };
-      const repository = new PrismaPaymentTransactionRepository({
-        paymentTransaction: { create: jest.fn().mockRejectedValue(error) },
-      } as unknown as PrismaService);
-      const transaction = PaymentTransaction.create({
-        id: persistedRow.id,
-        attemptId: persistedRow.attemptId,
-        idempotencyKey: persistedRow.idempotencyKey,
-        provider: 'CLOVER',
-        source: 'POS_TERMINAL',
-        paymentMethod: 'CARD',
-        operation: 'SALE',
-        amountCents: 1299,
-        currency: 'CAD',
-        externalPaymentId: 'external-1',
-      });
+  it('maps provider external payment id uniqueness into the repository boundary error', async () => {
+    const error = {
+      code: 'P2002',
+      meta: { target: ['provider', 'externalPaymentId'] },
+    };
+    const repository = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { create: jest.fn().mockRejectedValue(error) },
+    } as unknown as PrismaService);
+    const transaction = PaymentTransaction.create({
+      id: persistedRow.id,
+      attemptId: persistedRow.attemptId,
+      idempotencyKey: persistedRow.idempotencyKey,
+      provider: 'CLOVER',
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      operation: 'SALE',
+      amountCents: 1299,
+      currency: 'CAD',
+      externalPaymentId: 'external-1',
+    });
 
-      await expect(repository.create(transaction)).rejects.toEqual(
-        new PaymentTransactionUniquenessError('externalPaymentId'),
-      );
-    },
-  );
+    await expect(repository.create(transaction)).rejects.toEqual(
+      new PaymentTransactionUniquenessError('externalPaymentId'),
+    );
+  });
 
-  it(
-    'rejects unknown persisted classifications instead of leaking raw strings into domain',
-    async () => {
-      const findUnique = jest
-        .fn()
-        .mockResolvedValue({ ...persistedRow, provider: 'UNKNOWN_PROVIDER' });
-      const repository = new PrismaPaymentTransactionRepository({
-        paymentTransaction: { findUnique },
-      } as unknown as PrismaService);
+  it('rejects unknown persisted classifications instead of leaking raw strings into domain', async () => {
+    const findUnique = jest
+      .fn()
+      .mockResolvedValue({ ...persistedRow, provider: 'UNKNOWN_PROVIDER' });
+    const repository = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { findUnique },
+    } as unknown as PrismaService);
 
-      await expect(repository.findById(persistedRow.id)).rejects.toThrow(
-        'Unknown payment provider',
-      );
-    },
-  );
+    await expect(repository.findById(persistedRow.id)).rejects.toThrow(
+      'Unknown payment provider',
+    );
+  });
 });

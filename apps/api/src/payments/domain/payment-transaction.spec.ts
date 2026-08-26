@@ -36,26 +36,23 @@ describe('PaymentTransaction', () => {
     });
   });
 
-  it(
-    'supports the unknown -> reconciling recovery path before a final result',
-    () => {
-      const processingAt = new Date('2026-08-25T20:01:00.000Z');
-      const unknownAt = new Date('2026-08-25T20:02:00.000Z');
-      const reconcilingAt = new Date('2026-08-25T20:03:00.000Z');
-      const succeededAt = new Date('2026-08-25T20:04:00.000Z');
+  it('supports the unknown -> reconciling recovery path before a final result', () => {
+    const processingAt = new Date('2026-08-25T20:01:00.000Z');
+    const unknownAt = new Date('2026-08-25T20:02:00.000Z');
+    const reconcilingAt = new Date('2026-08-25T20:03:00.000Z');
+    const succeededAt = new Date('2026-08-25T20:04:00.000Z');
 
-      const succeeded = PaymentTransaction.create(baseInput)
-        .transitionTo('PROCESSING', processingAt)
-        .transitionTo('UNKNOWN', unknownAt)
-        .transitionTo('RECONCILING', reconcilingAt)
-        .transitionTo('SUCCEEDED', succeededAt)
-        .toSnapshot();
+    const succeeded = PaymentTransaction.create(baseInput)
+      .transitionTo('PROCESSING', processingAt)
+      .transitionTo('UNKNOWN', unknownAt)
+      .transitionTo('RECONCILING', reconcilingAt)
+      .transitionTo('SUCCEEDED', succeededAt)
+      .toSnapshot();
 
-      expect(succeeded.status).toBe('SUCCEEDED');
-      expect(succeeded.processedAt).toEqual(processingAt);
-      expect(succeeded.completedAt).toEqual(succeededAt);
-    },
-  );
+    expect(succeeded.status).toBe('SUCCEEDED');
+    expect(succeeded.processedAt).toEqual(processingAt);
+    expect(succeeded.completedAt).toEqual(succeededAt);
+  });
 
   it('rejects skipping directly from CREATED to SUCCEEDED', () => {
     const payment = PaymentTransaction.create(baseInput);
@@ -77,9 +74,8 @@ describe('PaymentTransaction', () => {
   });
 
   it('records only explicit provider facts on a provider outcome', () => {
-    const payment = PaymentTransaction.create(baseInput).transitionTo(
-      'PROCESSING',
-    );
+    const payment =
+      PaymentTransaction.create(baseInput).transitionTo('PROCESSING');
 
     const succeeded = payment.applyProviderOutcome({
       status: 'SUCCEEDED',
@@ -121,21 +117,18 @@ describe('PaymentTransaction', () => {
     ).toThrow('externalPaymentId cannot change once recorded');
   });
 
-  it(
-    'rejects invalid identifiers, money and currency at the domain boundary',
-    () => {
-      expect(() =>
-        PaymentTransaction.create({ ...baseInput, attemptId: '   ' }),
-      ).toThrow('payment attempt id');
-      expect(() =>
-        PaymentTransaction.create({ ...baseInput, idempotencyKey: '   ' }),
-      ).toThrow('payment idempotency key');
-      expect(() =>
-        PaymentTransaction.create({ ...baseInput, amountCents: -1 }),
-      ).toThrow('amountCents');
-      expect(() =>
-        PaymentTransaction.create({ ...baseInput, currency: 'cad' }),
-      ).toThrow('currency');
-    },
-  );
+  it('rejects invalid identifiers, money and currency at the domain boundary', () => {
+    expect(() =>
+      PaymentTransaction.create({ ...baseInput, attemptId: '   ' }),
+    ).toThrow('payment attempt id');
+    expect(() =>
+      PaymentTransaction.create({ ...baseInput, idempotencyKey: '   ' }),
+    ).toThrow('payment idempotency key');
+    expect(() =>
+      PaymentTransaction.create({ ...baseInput, amountCents: -1 }),
+    ).toThrow('amountCents');
+    expect(() =>
+      PaymentTransaction.create({ ...baseInput, currency: 'cad' }),
+    ).toThrow('currency');
+  });
 });

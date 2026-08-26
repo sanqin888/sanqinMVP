@@ -32,8 +32,9 @@ export class CreatePaymentAttemptUseCase {
       return this.requireSameAttempt(existingByAttempt, input);
     }
 
-    const existingByIdempotency =
-      await this.transactions.findByIdempotencyKey(input.idempotencyKey);
+    const existingByIdempotency = await this.transactions.findByIdempotencyKey(
+      input.idempotencyKey,
+    );
     if (existingByIdempotency) {
       return this.requireSameAttempt(existingByIdempotency, input);
     }

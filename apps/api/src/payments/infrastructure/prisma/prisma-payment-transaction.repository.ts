@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  PaymentTransaction as PrismaPaymentTransactionRecord,
-} from '@prisma/client';
+import type { PaymentTransaction as PrismaPaymentTransactionRecord } from '@prisma/client';
 
 import {
   PaymentTransactionUniquenessError,
@@ -17,9 +15,7 @@ import {
 } from '../../domain/payment.types';
 import { PrismaService } from '../../../prisma/prisma.service';
 
-const toDomain = (
-  row: PrismaPaymentTransactionRecord,
-): PaymentTransaction =>
+const toDomain = (row: PrismaPaymentTransactionRecord): PaymentTransaction =>
   PaymentTransaction.restore({
     id: row.id,
     attemptId: row.attemptId,
@@ -83,9 +79,7 @@ const uniqueField = (
 };
 
 @Injectable()
-export class PrismaPaymentTransactionRepository
-  implements PaymentTransactionRepository
-{
+export class PrismaPaymentTransactionRepository implements PaymentTransactionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(id: string): Promise<PaymentTransaction | null> {
@@ -95,9 +89,7 @@ export class PrismaPaymentTransactionRepository
     return row ? toDomain(row) : null;
   }
 
-  async findByAttemptId(
-    attemptId: string,
-  ): Promise<PaymentTransaction | null> {
+  async findByAttemptId(attemptId: string): Promise<PaymentTransaction | null> {
     const row = await this.prisma.paymentTransaction.findUnique({
       where: { attemptId },
     });
@@ -113,9 +105,7 @@ export class PrismaPaymentTransactionRepository
     return row ? toDomain(row) : null;
   }
 
-  async create(
-    transaction: PaymentTransaction,
-  ): Promise<PaymentTransaction> {
+  async create(transaction: PaymentTransaction): Promise<PaymentTransaction> {
     const snapshot = transaction.toSnapshot();
     try {
       const row = await this.prisma.paymentTransaction.create({

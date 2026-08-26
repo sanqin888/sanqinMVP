@@ -9,9 +9,7 @@ import {
   type PaymentTransactionRepository,
 } from './payment-transaction.repository';
 
-class InMemoryPaymentTransactionRepository
-  implements PaymentTransactionRepository
-{
+class InMemoryPaymentTransactionRepository implements PaymentTransactionRepository {
   readonly rows: PaymentTransaction[] = [];
 
   findById(id: string): Promise<PaymentTransaction | null> {
@@ -34,9 +32,7 @@ class InMemoryPaymentTransactionRepository
 
   create(transaction: PaymentTransaction): Promise<PaymentTransaction> {
     if (this.rows.some((row) => row.attemptId === transaction.attemptId)) {
-      return Promise.reject(
-        new PaymentTransactionUniquenessError('attemptId'),
-      );
+      return Promise.reject(new PaymentTransactionUniquenessError('attemptId'));
     }
     if (
       this.rows.some(
@@ -81,19 +77,16 @@ describe('CreatePaymentAttemptUseCase', () => {
     expect(repository.rows).toHaveLength(1);
   });
 
-  it(
-    'returns the existing attempt when an identical request is retried',
-    async () => {
-      const repository = new InMemoryPaymentTransactionRepository();
-      const useCase = new CreatePaymentAttemptUseCase(repository);
+  it('returns the existing attempt when an identical request is retried', async () => {
+    const repository = new InMemoryPaymentTransactionRepository();
+    const useCase = new CreatePaymentAttemptUseCase(repository);
 
-      const first = await useCase.execute(baseInput);
-      const retried = await useCase.execute(baseInput);
+    const first = await useCase.execute(baseInput);
+    const retried = await useCase.execute(baseInput);
 
-      expect(retried.id).toBe(first.id);
-      expect(repository.rows).toHaveLength(1);
-    },
-  );
+    expect(retried.id).toBe(first.id);
+    expect(repository.rows).toHaveLength(1);
+  });
 
   it('still recognizes the attempt after provider facts are added', async () => {
     const repository = new InMemoryPaymentTransactionRepository();
@@ -136,51 +129,43 @@ describe('CreatePaymentAttemptUseCase', () => {
     expect(repository.rows).toHaveLength(1);
   });
 
-  it(
-    'rejects reusing an idempotency key for a different logical attempt',
-    async () => {
-      const repository = new InMemoryPaymentTransactionRepository();
-      const useCase = new CreatePaymentAttemptUseCase(repository);
-      await useCase.execute(baseInput);
+  it('rejects reusing an idempotency key for a different logical attempt', async () => {
+    const repository = new InMemoryPaymentTransactionRepository();
+    const useCase = new CreatePaymentAttemptUseCase(repository);
+    await useCase.execute(baseInput);
 
-      await expect(
-        useCase.execute({ ...baseInput, attemptId: 'different-attempt' }),
-      ).rejects.toBeInstanceOf(PaymentAttemptConflictError);
-      expect(repository.rows).toHaveLength(1);
-    },
-  );
+    await expect(
+      useCase.execute({ ...baseInput, attemptId: 'different-attempt' }),
+    ).rejects.toBeInstanceOf(PaymentAttemptConflictError);
+    expect(repository.rows).toHaveLength(1);
+  });
 
-  it(
-    'enforces both attempt and idempotency uniqueness at the repository boundary',
-    async () => {
-      const repository = new InMemoryPaymentTransactionRepository();
-      const first = PaymentTransaction.create({
-        ...baseInput,
-        id: '7ba31c69-9d10-469b-a2bf-508f1986c2bf',
-      });
-      await repository.create(first);
+  it('enforces both attempt and idempotency uniqueness at the repository boundary', async () => {
+    const repository = new InMemoryPaymentTransactionRepository();
+    const first = PaymentTransaction.create({
+      ...baseInput,
+      id: '7ba31c69-9d10-469b-a2bf-508f1986c2bf',
+    });
+    await repository.create(first);
 
-      await expect(
-        repository.create(
-          PaymentTransaction.create({
-            ...baseInput,
-            id: 'b0dd5d50-04fc-4d82-a36d-4e4e56e06c64',
-            idempotencyKey: 'different-key',
-          }),
-        ),
-      ).rejects.toEqual(new PaymentTransactionUniquenessError('attemptId'));
+    await expect(
+      repository.create(
+        PaymentTransaction.create({
+          ...baseInput,
+          id: 'b0dd5d50-04fc-4d82-a36d-4e4e56e06c64',
+          idempotencyKey: 'different-key',
+        }),
+      ),
+    ).rejects.toEqual(new PaymentTransactionUniquenessError('attemptId'));
 
-      await expect(
-        repository.create(
-          PaymentTransaction.create({
-            ...baseInput,
-            id: 'bf93e401-d58e-45e5-9a29-a41a2a033928',
-            attemptId: 'different-attempt',
-          }),
-        ),
-      ).rejects.toEqual(
-        new PaymentTransactionUniquenessError('idempotencyKey'),
-      );
-    },
-  );
+    await expect(
+      repository.create(
+        PaymentTransaction.create({
+          ...baseInput,
+          id: 'bf93e401-d58e-45e5-9a29-a41a2a033928',
+          attemptId: 'different-attempt',
+        }),
+      ),
+    ).rejects.toEqual(new PaymentTransactionUniquenessError('idempotencyKey'));
+  });
 });
