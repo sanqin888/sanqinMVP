@@ -72,7 +72,9 @@ describe('UberEatsWebhookController durable acknowledgement boundary', () => {
     } as never);
     const res = response();
 
-    await expect(controller.webhook(request(), res as never)).rejects.toBe(failure);
+    await expect(controller.webhook(request(), res as never)).rejects.toBe(
+      failure,
+    );
     expect(res.status).not.toHaveBeenCalled();
     expect(res.end).not.toHaveBeenCalled();
   });
