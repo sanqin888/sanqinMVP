@@ -28,7 +28,7 @@ RUN pnpm --filter api build
 
 # 6. 生成仅包含 API workspace 依赖的便携运行目录。
 # 不使用 --prod，以保留 Prisma CLI / Studio 的现有运行时诊断能力。
-RUN pnpm --filter api deploy --legacy /app/api-runtime
+RUN pnpm --filter api deploy /app/api-runtime
 
 # deploy 会重组 node_modules；在目标目录内重新生成 Prisma Client，
 # 确保 runner 使用的自包含依赖目录拥有与当前 schema 匹配的 client。
