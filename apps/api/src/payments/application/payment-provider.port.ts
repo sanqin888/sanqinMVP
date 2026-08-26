@@ -12,10 +12,13 @@ export type StartPaymentRequest = {
   source: PaymentSource;
   idempotencyKey: string;
   externalPaymentId?: string | null;
+  paymentInstrumentToken?: string | null;
+  description?: string | null;
 };
 
 export type GetPaymentStatusRequest = {
   paymentId: string;
+  source: PaymentSource;
   idempotencyKey: string;
   externalPaymentId?: string | null;
   providerPaymentId?: string | null;
