@@ -266,10 +266,7 @@ export class ProvisionUberStoreUseCase {
     private readonly connections: UberMerchantConnectionRepositoryPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
-  async provisionStore(
-    storeId: string,
-    payload: Record<string, unknown> = {},
-  ) {
+  async provisionStore(storeId: string, payload: Record<string, unknown> = {}) {
     const id = storeId.trim();
     if (!id)
       throw new UberValidationError({
@@ -405,9 +402,7 @@ export class DeprovisionUberStoreUseCase {
       this.mappings,
     );
     const businessVersion = createHash('sha256')
-      .update(
-        mapping.provisionedAt?.toISOString() ?? 'not-provisioned',
-      )
+      .update(mapping.provisionedAt?.toISOString() ?? 'not-provisioned')
       .digest('hex');
     await this.api.removeIntegration(
       { connectionId: connection.connectionId },

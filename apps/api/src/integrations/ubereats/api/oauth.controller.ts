@@ -126,9 +126,7 @@ export class UberEatsOAuthController {
     if (result.ok) {
       try {
         const discovery = await this.storeDiscovery.getMerchantStores();
-        this.logger.log(
-          `[merchant.store-discovery] count=${discovery.count}`,
-        );
+        this.logger.log(`[merchant.store-discovery] count=${discovery.count}`);
       } catch (error) {
         this.logger.warn(
           `[merchant.store-discovery] outcome=failed error=${error instanceof Error ? error.name : 'unknown'}`,
@@ -216,9 +214,7 @@ export class UberEatsOAuthController {
 
   @Get('oauth/stores/:storeId/status')
   @UberReadOnlyAdmin()
-  async retrieveStoreStatus(
-    @Param('storeId', ResourceIdPipe) storeId: string,
-  ) {
+  async retrieveStoreStatus(@Param('storeId', ResourceIdPipe) storeId: string) {
     return presentStoreStatus(await this.storeStatusRead.retrieve(storeId));
   }
 

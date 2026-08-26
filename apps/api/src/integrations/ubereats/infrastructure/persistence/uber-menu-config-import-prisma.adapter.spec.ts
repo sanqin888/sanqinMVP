@@ -129,7 +129,8 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       [{ data: { eventName: string; payload: Record<string, unknown> } }]
     >;
     const appliedEvent = events.find(
-      ([input]) => input.data.eventName === 'ubereats_menu_config_import_applied',
+      ([input]) =>
+        input.data.eventName === 'ubereats_menu_config_import_applied',
     );
     expect(appliedEvent?.[0].data.payload).toMatchObject({
       administratorStableId: 'admin-1',

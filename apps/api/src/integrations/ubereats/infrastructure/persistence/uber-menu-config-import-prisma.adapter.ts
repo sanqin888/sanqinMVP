@@ -119,7 +119,15 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
             message: '来源或目标配置在 Preview 后已变化，请重新 Preview。',
             operation: 'uber.menu.config.import',
           });
-        return this.plan(tx, source, target, mode, true, true, administratorStableId);
+        return this.plan(
+          tx,
+          source,
+          target,
+          mode,
+          true,
+          true,
+          administratorStableId,
+        );
       },
       { isolationLevel: 'Serializable' },
     );
