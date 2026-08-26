@@ -328,6 +328,54 @@ export type OrderPricingQuote = {
   totalCents: number;
 };
 
+export type PaymentTenderAllocation = {
+  pointsCents: number;
+  balanceCents: number;
+  couponDiscountCents: number;
+  orderTotalCents: number;
+  externalCents: number;
+};
+
+export type PreparedPaymentOrderItemSnapshot = {
+  id: string;
+  productStableId: string;
+  qty: number;
+  displayName: string | null;
+  nameEn: string | null;
+  nameZh: string | null;
+  unitPriceCents: number;
+  baseUnitPriceCents: number;
+  optionsUnitPriceCents: number;
+  isDailySpecialApplied: boolean;
+  dailySpecialStableId: string | null;
+  optionsJson: unknown;
+};
+
+export type PreparedPaymentOrderSnapshot = {
+  version: 1;
+  order: CreateOrderInput;
+  userId: string | null;
+  storeId: string;
+  pricing: OrderPricingQuote;
+  tender: PaymentTenderAllocation;
+  items: PreparedPaymentOrderItemSnapshot[];
+  promotionSnapshot: unknown;
+  coupon: {
+    id: string;
+    couponStableId: string;
+    code: string;
+    title: string;
+    minSpendCents: number | null;
+    expiresAt: string | null;
+  } | null;
+  preparedAt: string;
+};
+
+export type ConfirmedPaymentOrderResult = {
+  order: OrderDto;
+  internalOrderId: string;
+};
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
@@ -379,7 +427,10 @@ export class OrdersService {
     };
   }
 
-  async quoteOrderPricing(dto: CreateOrderInput): Promise<OrderPricingQuote> {
+  async quoteOrderPricing(
+    dto: CreateOrderInput,
+    options?: { allowCustomUnitPrice?: boolean },
+  ): Promise<OrderPricingQuote> {
     const rawUserStableId =
       typeof dto.userStableId === 'string' ? dto.userStableId.trim() : '';
     const normalizedUserStableId = rawUserStableId
@@ -404,7 +455,9 @@ export class OrdersService {
 
     const items = dto.items ?? [];
     const { calculatedItems, calculatedSubtotal, promotionLines } =
-      await this.calculateLineItems(items);
+      await this.calculateLineItems(items, {
+        allowCustomUnitPrice: options?.allowCustomUnitPrice === true,
+      });
 
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
@@ -609,13 +662,11 @@ export class OrdersService {
 
     let loyaltyRedeemCents = 0;
     if (userId && typeof requestedPoints === 'number' && requestedPoints > 0) {
-      const account = await this.prisma.loyaltyAccount.findUnique({
-        where: { userId },
-        select: { pointsMicro: true },
-      });
+      const availableTender =
+        await this.loyalty.getAvailablePaymentTender(userId);
       const maxRedeemableCents =
         await this.loyalty.maxRedeemableCentsFromBalance(
-          account?.pointsMicro ?? 0n,
+          availableTender.pointsMicro,
         );
       const requestedRedeemCents = Math.max(
         0,
@@ -2120,6 +2171,401 @@ export class OrdersService {
     };
   }
 
+  async preparePaymentOrder(
+    dto: CreateOrderInput,
+    storeIdRaw: string,
+  ): Promise<PreparedPaymentOrderSnapshot> {
+    if (dto.channel !== Channel.in_store) {
+      throw new BadRequestException(
+        'Phase D payment preparation currently accepts in-store orders only',
+      );
+    }
+    const storeId = storeIdRaw.trim();
+    if (!storeId) throw new BadRequestException('storeId is required');
+
+    const pricing = await this.quoteOrderPricing(dto, {
+      allowCustomUnitPrice: true,
+    });
+    const { calculatedItems, promotionLines } = await this.calculateLineItems(
+      dto.items ?? [],
+      { allowCustomUnitPrice: true },
+    );
+
+    const normalizedUserStableId = dto.userStableId
+      ? normalizeStableId(dto.userStableId)
+      : null;
+    if (dto.userStableId && !normalizedUserStableId) {
+      throw new BadRequestException('userStableId must be a cuid');
+    }
+    const userId = normalizedUserStableId
+      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
+      : null;
+
+    const couponInfo = await this.membership.validateCouponForOrder({
+      userId: userId ?? undefined,
+      couponStableId: dto.couponStableId,
+    });
+
+    let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
+      null;
+    const productStableIds = calculatedItems.map(
+      (item) => item.productStableId,
+    );
+    const hiddenItems = await this.prisma.menuItem.findMany({
+      where: {
+        stableId: { in: productStableIds },
+        deletedAt: null,
+        visibility: 'HIDDEN',
+      },
+      select: { stableId: true },
+    });
+    if (hiddenItems.length > 0) {
+      if (!normalizedUserStableId || !dto.selectedUserCouponId) {
+        throw new BadRequestException(
+          'selectedUserCouponId is required for hidden items',
+        );
+      }
+      const userCoupon = await this.prisma.userCoupon.findFirst({
+        where: {
+          id: dto.selectedUserCouponId,
+          userStableId: normalizedUserStableId,
+          status: 'AVAILABLE',
+          AND: [
+            { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+            {
+              coupon: {
+                isActive: true,
+                AND: [
+                  {
+                    OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }],
+                  },
+                  { OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+                ],
+              },
+            },
+          ],
+        },
+        include: { coupon: true },
+      });
+      if (!userCoupon) {
+        throw new BadRequestException('coupon is not available');
+      }
+      const unlocked = new Set(userCoupon.coupon.unlockedItemStableIds);
+      if (hiddenItems.some((item) => !unlocked.has(item.stableId))) {
+        throw new BadRequestException(
+          'hidden items are not unlocked by this coupon',
+        );
+      }
+      entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
+        userCoupon.coupon,
+      );
+    }
+
+    const promotionContext = await this.promotions.getOrderPromotionContext(
+      dto.channel,
+    );
+    const promotionEvaluation = evaluateOrderPromotions({
+      lines: promotionLines,
+      entitlementCoupon: entitlementCouponForPromotion,
+      coupon: couponInfo?.coupon
+        ? toCouponPromotionLike(couponInfo.coupon)
+        : null,
+      promotionContext,
+      posDiscountCents: dto.discountCents,
+    });
+    assertCouponPromotionAccepted(
+      promotionEvaluation,
+      couponInfo?.coupon?.couponStableId,
+    );
+
+    const snapshotCouponDiscountCents =
+      resolveCouponPromotionDiscountCents(promotionEvaluation);
+    const snapshotAutomaticPromotionDiscountCents =
+      resolvePromotionDiscountCentsBySource(
+        promotionEvaluation,
+        'AUTOMATIC_PROMOTION',
+      );
+    const snapshotPosManualDiscountCents =
+      resolvePromotionDiscountCentsBySource(
+        promotionEvaluation,
+        'POS_MANUAL_DISCOUNT',
+      );
+    if (
+      snapshotCouponDiscountCents !== pricing.couponDiscountCents ||
+      snapshotAutomaticPromotionDiscountCents !==
+        pricing.automaticPromotionDiscountCents ||
+      snapshotPosManualDiscountCents !== pricing.posManualDiscountCents
+    ) {
+      throw new ConflictException({
+        code: 'PAYMENT_PREPARATION_PRICING_CHANGED',
+        message: 'Order pricing changed while preparing payment. Please retry.',
+      });
+    }
+
+    const snapshotSubtotalCents = calculatedItems.reduce(
+      (sum, item) => sum + (item.unitPriceCents ?? 0) * item.qty,
+      0,
+    );
+    if (snapshotSubtotalCents !== pricing.subtotalCents) {
+      throw new ConflictException({
+        code: 'PAYMENT_PREPARATION_PRICING_CHANGED',
+        message: 'Item pricing changed while preparing payment. Please retry.',
+      });
+    }
+
+    const requestedBalanceCents = Math.max(
+      0,
+      Math.round(dto.balanceUsedCents ?? 0),
+    );
+    const balanceCents = Math.min(requestedBalanceCents, pricing.totalCents);
+    const tender: PaymentTenderAllocation = {
+      pointsCents: pricing.loyaltyRedeemCents,
+      balanceCents,
+      couponDiscountCents: pricing.couponDiscountCents,
+      orderTotalCents: pricing.totalCents,
+      externalCents: Math.max(0, pricing.totalCents - balanceCents),
+    };
+    if (
+      dto.paymentMethod === PaymentMethod.CARD &&
+      typeof dto.totalCents === 'number' &&
+      Number.isFinite(dto.totalCents) &&
+      Math.round(dto.totalCents) !== tender.externalCents
+    ) {
+      throw new ConflictException({
+        code: 'PAYMENT_DISPLAYED_TOTAL_CHANGED',
+        message:
+          'The server-calculated card amount no longer matches the amount shown on the POS. Refresh the payment screen before charging.',
+        displayedExternalCents: Math.round(dto.totalCents),
+        approvedExternalCents: tender.externalCents,
+      });
+    }
+
+    return {
+      version: 1,
+      order: {
+        ...dto,
+        userStableId: normalizedUserStableId ?? undefined,
+        redeemValueCents:
+          pricing.loyaltyRedeemCents > 0
+            ? pricing.loyaltyRedeemCents
+            : undefined,
+        balanceUsedCents: balanceCents > 0 ? balanceCents : undefined,
+      },
+      userId,
+      storeId,
+      pricing,
+      tender,
+      items: calculatedItems.map((item) => ({
+        id: item.id ?? crypto.randomUUID(),
+        productStableId: item.productStableId,
+        qty: item.qty,
+        displayName: item.displayName ?? null,
+        nameEn: item.nameEn ?? null,
+        nameZh: item.nameZh ?? null,
+        unitPriceCents: item.unitPriceCents ?? 0,
+        baseUnitPriceCents: item.baseUnitPriceCents ?? 0,
+        optionsUnitPriceCents: item.optionsUnitPriceCents ?? 0,
+        isDailySpecialApplied: item.isDailySpecialApplied ?? false,
+        dailySpecialStableId: item.dailySpecialStableId ?? null,
+        optionsJson: item.optionsJson ?? null,
+      })),
+      promotionSnapshot: promotionEvaluation.snapshot,
+      coupon: couponInfo?.coupon
+        ? {
+            id: couponInfo.coupon.id,
+            couponStableId: couponInfo.coupon.couponStableId,
+            code: couponInfo.coupon.code,
+            title: couponInfo.coupon.title,
+            minSpendCents: couponInfo.coupon.minSpendCents,
+            expiresAt: couponInfo.coupon.expiresAt?.toISOString() ?? null,
+          }
+        : null,
+      preparedAt: new Date().toISOString(),
+    };
+  }
+
+  async createFromConfirmedPaymentSnapshot(
+    snapshot: PreparedPaymentOrderSnapshot,
+    input: {
+      attemptId: string;
+      internalOrderId: string;
+      orderStableId: string;
+      cardSurchargeCents: number;
+      chargedTotalCents: number;
+    },
+  ): Promise<ConfirmedPaymentOrderResult> {
+    if (snapshot.version !== 1 || snapshot.order.channel !== Channel.in_store) {
+      throw new BadRequestException('Unsupported payment order snapshot');
+    }
+    if (!input.attemptId.trim()) {
+      throw new BadRequestException('payment attemptId is required');
+    }
+    if (
+      !Number.isSafeInteger(input.cardSurchargeCents) ||
+      input.cardSurchargeCents < 0
+    ) {
+      throw new BadRequestException(
+        'cardSurchargeCents must be a non-negative integer',
+      );
+    }
+    const expectedChargedTotalCents =
+      snapshot.tender.externalCents + input.cardSurchargeCents;
+    if (input.chargedTotalCents !== expectedChargedTotalCents) {
+      throw new ConflictException({
+        code: 'PAYMENT_CHARGED_TOTAL_MISMATCH',
+        message: 'Confirmed payment total does not match the prepared tender.',
+      });
+    }
+
+    const existing = await this.prisma.order.findUnique({
+      where: { orderStableId: input.orderStableId },
+      include: { items: true },
+    });
+    if (existing) {
+      return {
+        order: this.toOrderDto(existing as OrderWithItems),
+        internalOrderId: existing.id,
+      };
+    }
+
+    const paidAt = new Date();
+    try {
+      const created = await this.prisma.$transaction(async (tx) => {
+        const committedTender = await this.loyalty.commitPaymentTenderForOrder({
+          tx,
+          attemptId: input.attemptId,
+          orderId: input.internalOrderId,
+        });
+        if (
+          committedTender.pointsValueCents !== snapshot.tender.pointsCents ||
+          committedTender.balanceCents !== snapshot.tender.balanceCents
+        ) {
+          throw new ConflictException({
+            code: 'PAYMENT_TENDER_RESERVATION_MISMATCH',
+            message:
+              'Committed internal tender does not match prepared payment.',
+          });
+        }
+        await this.membership.commitPaymentCouponsForOrder({
+          tx,
+          attemptId: input.attemptId,
+          orderId: input.internalOrderId,
+          orderStableId: input.orderStableId,
+        });
+
+        const clientRequestId = await this.allocateClientRequestIdTx(tx);
+        const pickupCode =
+          this.derivePickupCode(clientRequestId) ||
+          (1000 + Math.floor(Math.random() * 9000)).toString();
+        const subtotalAfterDiscountCents = Math.max(
+          0,
+          snapshot.pricing.subtotalCents -
+            snapshot.pricing.posManualDiscountCents -
+            snapshot.pricing.couponDiscountCents -
+            snapshot.pricing.automaticPromotionDiscountCents -
+            snapshot.pricing.loyaltyRedeemCents,
+        );
+        const paymentMethod =
+          snapshot.tender.externalCents > 0
+            ? PaymentMethod.CARD
+            : PaymentMethod.STORE_BALANCE;
+
+        return (await tx.order.create({
+          data: {
+            id: input.internalOrderId,
+            status: 'paid',
+            paidAt,
+            paymentMethod,
+            userId: snapshot.userId,
+            orderStableId: input.orderStableId,
+            clientRequestId,
+            channel: snapshot.order.channel,
+            storeId: snapshot.storeId,
+            fulfillmentType: snapshot.order.fulfillmentType,
+            contactName: snapshot.order.contactName ?? null,
+            contactEmail: snapshot.order.contactEmail ?? null,
+            contactPhone: snapshot.order.contactPhone ?? null,
+            subtotalCents: snapshot.pricing.subtotalCents,
+            taxCents: snapshot.pricing.taxCents,
+            totalCents: snapshot.pricing.totalCents,
+            paymentTotalCents:
+              snapshot.pricing.totalCents + input.cardSurchargeCents,
+            creditCardSurchargeCents: input.cardSurchargeCents,
+            paymentBreakdownJson: {
+              ...snapshot.tender,
+              cardCents: snapshot.tender.externalCents,
+              cardSurchargeCents: input.cardSurchargeCents,
+              externalChargedCents: input.chargedTotalCents,
+            } as Prisma.InputJsonValue,
+            deliveryFeeCents: snapshot.pricing.deliveryFeeCents,
+            deliveryCostCents: 0,
+            deliverySubsidyCents: 0,
+            pickupCode,
+            couponId: snapshot.coupon?.id ?? null,
+            couponDiscountCents: snapshot.pricing.couponDiscountCents,
+            couponCodeSnapshot: snapshot.coupon?.code,
+            couponTitleSnapshot: snapshot.coupon?.title,
+            couponMinSpendCents: snapshot.coupon?.minSpendCents,
+            couponExpiresAt: snapshot.coupon?.expiresAt
+              ? new Date(snapshot.coupon.expiresAt)
+              : null,
+            promotionSnapshot:
+              snapshot.promotionSnapshot as Prisma.InputJsonValue,
+            loyaltyRedeemCents: snapshot.pricing.loyaltyRedeemCents,
+            subtotalAfterDiscountCents,
+            items: {
+              create: snapshot.items.map((item) => ({
+                id: item.id,
+                productStableId: item.productStableId,
+                qty: item.qty,
+                displayName: item.displayName,
+                nameEn: item.nameEn,
+                nameZh: item.nameZh,
+                unitPriceCents: item.unitPriceCents,
+                baseUnitPriceCents: item.baseUnitPriceCents,
+                optionsUnitPriceCents: item.optionsUnitPriceCents,
+                isDailySpecialApplied: item.isDailySpecialApplied,
+                dailySpecialStableId: item.dailySpecialStableId,
+                ...(item.optionsJson !== null
+                  ? {
+                      optionsJson: item.optionsJson as Prisma.InputJsonValue,
+                    }
+                  : {}),
+              })),
+            },
+          },
+          include: { items: true },
+        })) as OrderWithItems;
+      });
+
+      this.logger.log(
+        `${this.formatOrderLogContext({
+          orderId: created.id,
+          orderStableId: created.orderStableId,
+        })}Order created from immutable payment snapshot.`,
+      );
+      void this.handleOrderPaidSideEffects(created);
+      return {
+        order: this.toOrderDto(created),
+        internalOrderId: created.id,
+      };
+    } catch (error) {
+      if (this.getUniqueViolationTargets(error)) {
+        const raced = await this.prisma.order.findUnique({
+          where: { orderStableId: input.orderStableId },
+          include: { items: true },
+        });
+        if (raced) {
+          return {
+            order: this.toOrderDto(raced as OrderWithItems),
+            internalOrderId: raced.id,
+          };
+        }
+      }
+      throw error;
+    }
+  }
+
   async create(
     dto: CreateOrderInput,
     idempotencyKey?: string,
@@ -2750,7 +3196,6 @@ export class OrdersService {
                 `Price mismatch. order=${totalCents}, paid=${verifiedCheckoutIntent.amountCents}`,
               );
             }
-
             const loyaltyRedeemCents = redeemValueCents;
             const subtotalAfterDiscountCents = Math.max(
               0,

@@ -149,6 +149,12 @@ enum LoyaltyTarget {
   BALANCE // 余额（充值本金）
 }
 
+enum LoyaltyTenderReservationStatus {
+  HELD
+  COMMITTED
+  RELEASED
+}
+
 enum UserRole {
   CUSTOMER
   STAFF
@@ -521,6 +527,7 @@ model Order {
   totalCents                 Int                     @default(0)
   paymentTotalCents          Int                     @default(0)
   creditCardSurchargeCents   Int                     @default(0)
+  paymentBreakdownJson       Json?
   pickupCode                 String?
   deliveryType               DeliveryType?
   deliveryProvider           DeliveryProvider?
@@ -612,6 +619,9 @@ model Coupon {
   expiresAt             DateTime?
   issuedAt              DateTime             @default(now())
   usedAt                DateTime?
+  reservedAt            DateTime?
+  reservationAttemptId  String?
+  reservationExpiresAt  DateTime?
   orderId               String?              @db.Uuid
   source                String?
   campaign              String?
@@ -625,6 +635,7 @@ model Coupon {
   userCoupons           UserCoupon[]
 
   @@index([userId, expiresAt])
+  @@index([reservationAttemptId])
 }
 
 model CouponTemplate {
@@ -694,11 +705,13 @@ model UserCoupon {
   id             String           @id @default(uuid()) @db.Uuid
   userStableId   String
   couponStableId String
-  status         UserCouponStatus @default(AVAILABLE)
-  expiresAt      DateTime?
-  reservedAt     DateTime?
-  redeemedAt     DateTime?
-  orderStableId  String?
+  status               UserCouponStatus @default(AVAILABLE)
+  expiresAt            DateTime?
+  reservedAt           DateTime?
+  reservationAttemptId String?
+  reservationExpiresAt DateTime?
+  redeemedAt           DateTime?
+  orderStableId        String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   user           User             @relation(fields: [userStableId], references: [userStableId], onDelete: Cascade)
@@ -707,6 +720,7 @@ model UserCoupon {
   @@unique([userStableId, couponStableId])
   @@index([userStableId, status, expiresAt])
   @@index([couponStableId])
+  @@index([reservationAttemptId])
 }
 
 model OrderItem {
@@ -896,8 +910,32 @@ model LoyaltyAccount {
   id                 String          @id @default(uuid()) @db.Uuid
   lifetimeSpendCents Int             @default(0)
   ledger             LoyaltyLedger[]
+  tenderReservations LoyaltyTenderReservation[]
 
   @@index([userId])
+}
+
+model LoyaltyTenderReservation {
+  id               String                           @id @default(uuid()) @db.Uuid
+  attemptId        String                           @unique
+  accountId        String                           @db.Uuid
+  userId           String
+  pointsMicro      BigInt                           @default(0)
+  pointsValueCents Int                              @default(0)
+  balanceMicro     BigInt                           @default(0)
+  balanceCents     Int                              @default(0)
+  status           LoyaltyTenderReservationStatus   @default(HELD)
+  expiresAt        DateTime
+  orderId          String?                          @db.Uuid
+  committedAt      DateTime?
+  releasedAt       DateTime?
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+  account          LoyaltyAccount                   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
 }
 
 model LoyaltyLedger {
@@ -937,6 +975,129 @@ model CheckoutIntent {
   id                 String    @id @default(uuid()) @db.Uuid
 
   @@index([referenceId, createdAt])
+}
+
+// PaymentTransaction is the provider-independent money fact / logical attempt.
+// orderId and checkoutIntentId intentionally remain scalar references here so
+// the Payments bounded context does not acquire ownership of Order/checkout data.
+model PaymentTransaction {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  attemptId             String                   @unique
+  idempotencyKey        String                   @unique
+  orderId               String?                  @db.Uuid
+  checkoutIntentId      String?                  @db.Uuid
+  provider              PaymentProvider
+  source                PaymentSource
+  paymentMethod         PaymentTransactionMethod
+  operation             PaymentOperation
+  amountCents           Int
+  surchargeCents        Int?
+  chargedTotalCents     Int?
+  refundedAmountCents   Int                      @default(0)
+  currency              String
+  status                PaymentTransactionStatus @default(CREATED)
+  externalPaymentId     String?
+  providerPaymentId     String?
+  providerRefundId      String?
+  providerOrderId       String?
+  resultCode            String?
+  failureCode           String?
+  failureMessage        String?
+  terminalId            String?
+  cardBrand             String?
+  cardLast4             String?
+  processedAt           DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  @@unique([provider, externalPaymentId])
+  @@index([orderId])
+  @@index([checkoutIntentId])
+  @@index([provider, providerPaymentId])
+  @@index([provider, providerRefundId])
+  @@index([status, updatedAt])
+}
+
+// Channel-neutral checkout/payment preparation record. It freezes the server-
+// approved order/pricing/tender facts before any external provider action.
+model PaymentCheckoutAttempt {
+  id                     String                       @id @default(uuid()) @db.Uuid
+  attemptId              String                       @unique
+  idempotencyKey         String                       @unique
+  source                 PaymentSource
+  storeId                String
+  paymentMethod          PaymentTransactionMethod
+  currency               String
+  orderDraftJson         Json
+  pricingSnapshotJson    Json
+  tenderAllocationJson   Json
+  externalAmountCents    Int
+  status                 PaymentCheckoutAttemptStatus @default(PREPARING)
+  paymentTransactionId   String?                      @unique @db.Uuid
+  plannedOrderId         String                       @unique @db.Uuid
+  orderId                String?                      @db.Uuid
+  orderStableId          String                       @unique
+  expiresAt              DateTime
+  finalizedAt            DateTime?
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+
+  @@index([storeId, status])
+  @@index([status, expiresAt])
+  @@index([orderId])
+}
+
+enum PaymentCheckoutAttemptStatus {
+  PREPARING
+  PREPARED
+  PROCESSING
+  SUCCEEDED
+  DECLINED
+  CANCELLED
+  UNKNOWN
+  RECONCILING
+  FINALIZING
+  COMPLETED
+  FAILED
+}
+
+enum PaymentOperation {
+  SALE
+  REFUND
+  VOID
+}
+
+enum PaymentTransactionStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  DECLINED
+  CANCELLED
+  UNKNOWN
+  RECONCILING
+  FAILED
+}
+
+enum PaymentProvider {
+  CLOVER
+  MANUAL
+}
+
+enum PaymentSource {
+  POS_TERMINAL
+  WEB_ECOMMERCE
+  ADMIN
+  PROVIDER_WEBHOOK
+  RECONCILIATION
+}
+
+enum PaymentTransactionMethod {
+  CASH
+  CARD
+  WECHAT_ALIPAY
+  STORE_BALANCE
+  UBEREATS
 }
 
 // =======================

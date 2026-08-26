@@ -1,8 +1,11 @@
+import { ConflictException } from '@nestjs/common';
+
 import { PosOrdersController } from './pos-orders.controller';
 
 describe('PosOrdersController Uber orders', () => {
   const orders = {
     board: jest.fn(),
+    create: jest.fn(),
   };
   const posOrders = {
     cancelUberOrder: jest.fn(),
@@ -14,6 +17,9 @@ describe('PosOrdersController Uber orders', () => {
     listUpcomingForDeviceStore: jest.fn(),
     findTimingsByStableIds: jest.fn(),
   };
+  const posCardPaymentFeature = {
+    isEnabled: jest.fn(() => false),
+  };
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
@@ -21,9 +27,43 @@ describe('PosOrdersController Uber orders', () => {
     {} as never,
     posOrders as never,
     schedulingQuery as never,
+    posCardPaymentFeature as never,
   );
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    posCardPaymentFeature.isEnabled.mockReturnValue(false);
+  });
+
+  it('feature flag=false 时保留 legacy POS CARD 创建路径', async () => {
+    const dto = {
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      paymentMethod: 'CARD',
+      items: [],
+    } as const;
+    orders.create.mockResolvedValue({ orderStableId: 'legacy-card-order' });
+
+    await expect(controller.create(dto as never)).resolves.toEqual({
+      orderStableId: 'legacy-card-order',
+    });
+    expect(orders.create).toHaveBeenCalledWith(dto);
+  });
+
+  it('feature flag=true 时服务端拒绝绕过 Clover 的 legacy CARD 创建', async () => {
+    posCardPaymentFeature.isEnabled.mockReturnValue(true);
+    const dto = {
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      paymentMethod: 'CARD',
+      items: [],
+    } as const;
+
+    await expect(controller.create(dto as never)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(orders.create).not.toHaveBeenCalled();
+  });
 
   it('POS 普通看板排除尚未激活的预约单', async () => {
     orders.board.mockResolvedValue([

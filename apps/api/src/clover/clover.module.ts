@@ -1,24 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { CloverService } from './clover.service';
+
+import { CloverProviderInfrastructureModule } from '../payments/infrastructure/clover/clover-provider-infrastructure.module';
 import { CloverController } from './clover.controller';
-import { CloverPayController } from './clover-pay.controller';
-import { OrdersModule } from '../orders/orders.module';
-import { CheckoutIntentsModule } from './checkout-intents.module';
-import { PricingTokenService } from './pricing-token.service';
-import { EmailModule } from '../email/email.module';
-import { PhoneVerificationModule } from '../phone-verification/phone-verification.module';
+import { CloverService } from './clover.service';
 
 @Module({
-  imports: [
-    ConfigModule,
-    OrdersModule,
-    CheckoutIntentsModule,
-    EmailModule,
-    PhoneVerificationModule,
-  ],
-  providers: [CloverService, PricingTokenService],
-  controllers: [CloverController, CloverPayController],
+  imports: [CloverProviderInfrastructureModule],
+  providers: [CloverService],
+  controllers: [CloverController],
   exports: [CloverService],
 })
 export class CloverModule {}

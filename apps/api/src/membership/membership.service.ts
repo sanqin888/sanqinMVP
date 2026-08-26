@@ -1344,11 +1344,246 @@ export class MembershipService {
       expiresAt: coupon.expiresAt,
       usedAt: coupon.usedAt,
     });
-    if (status !== 'active') {
+    if (status !== 'active' || coupon.reservationAttemptId) {
       throw new BadRequestException('coupon is not available');
     }
 
     return { coupon };
+  }
+
+  async holdPaymentCoupons(params: {
+    attemptId: string;
+    userId?: string;
+    userStableId?: string;
+    couponStableId?: string;
+    selectedUserCouponId?: string;
+    expiresAt: Date;
+  }): Promise<{
+    couponId: string | null;
+    selectedUserCouponId: string | null;
+  }> {
+    const attemptId = params.attemptId.trim();
+    if (!attemptId) {
+      throw new BadRequestException('payment attemptId is required');
+    }
+    if (!params.couponStableId && !params.selectedUserCouponId) {
+      return { couponId: null, selectedUserCouponId: null };
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      let couponId: string | null = null;
+      if (params.couponStableId) {
+        if (!params.userId) {
+          throw new BadRequestException(
+            'userId is required when holding a coupon',
+          );
+        }
+        const coupon = await tx.coupon.findUnique({
+          where: { couponStableId: params.couponStableId },
+        });
+        if (!coupon || coupon.userId !== params.userId) {
+          throw new BadRequestException('coupon not found for user');
+        }
+        const status = this.couponStatus({
+          expiresAt: coupon.expiresAt,
+          usedAt: coupon.usedAt,
+        });
+        if (
+          status !== 'active' ||
+          (coupon.reservationAttemptId &&
+            coupon.reservationAttemptId !== attemptId)
+        ) {
+          throw new BadRequestException('coupon is not available');
+        }
+        if (coupon.reservationAttemptId !== attemptId) {
+          const held = await tx.coupon.updateMany({
+            where: {
+              id: coupon.id,
+              usedAt: null,
+              OR: [
+                { reservationAttemptId: null },
+                { reservationAttemptId: attemptId },
+              ],
+            },
+            data: {
+              reservedAt: new Date(),
+              reservationAttemptId: attemptId,
+              reservationExpiresAt: params.expiresAt,
+            },
+          });
+          if (held.count === 0) {
+            throw new BadRequestException('coupon is not available');
+          }
+        }
+        couponId = coupon.id;
+      }
+
+      let selectedUserCouponId: string | null = null;
+      if (params.selectedUserCouponId) {
+        if (!params.userStableId) {
+          throw new BadRequestException(
+            'userStableId is required when holding a user coupon',
+          );
+        }
+        const userCoupon = await tx.userCoupon.findFirst({
+          where: {
+            id: params.selectedUserCouponId,
+            userStableId: params.userStableId,
+          },
+          include: { coupon: true },
+        });
+        const now = new Date();
+        const underlyingCouponAvailable =
+          !!userCoupon?.coupon.isActive &&
+          (!userCoupon.coupon.startsAt || userCoupon.coupon.startsAt <= now) &&
+          (!userCoupon.coupon.endsAt || userCoupon.coupon.endsAt > now);
+        const userCouponAvailable =
+          !!userCoupon &&
+          (!userCoupon.expiresAt || userCoupon.expiresAt > now) &&
+          underlyingCouponAvailable &&
+          (userCoupon.status === 'AVAILABLE' ||
+            (userCoupon.status === 'RESERVED' &&
+              userCoupon.reservationAttemptId === attemptId));
+        if (!userCouponAvailable || !userCoupon) {
+          throw new BadRequestException('coupon is not available');
+        }
+        if (
+          userCoupon.status !== 'RESERVED' ||
+          userCoupon.reservationAttemptId !== attemptId
+        ) {
+          const held = await tx.userCoupon.updateMany({
+            where: {
+              id: userCoupon.id,
+              userStableId: params.userStableId,
+              status: 'AVAILABLE',
+            },
+            data: {
+              status: 'RESERVED',
+              reservedAt: now,
+              reservationAttemptId: attemptId,
+              reservationExpiresAt: params.expiresAt,
+            },
+          });
+          if (held.count === 0) {
+            throw new BadRequestException('coupon is not available');
+          }
+        }
+        selectedUserCouponId = userCoupon.id;
+      }
+
+      return { couponId, selectedUserCouponId };
+    });
+  }
+
+  async commitPaymentCouponsForOrder(params: {
+    tx: Prisma.TransactionClient;
+    attemptId: string;
+    orderId: string;
+    orderStableId: string;
+  }): Promise<void> {
+    const attemptId = params.attemptId.trim();
+    if (!attemptId) {
+      throw new BadRequestException('payment attemptId is required');
+    }
+    const now = new Date();
+
+    const coupon = await params.tx.coupon.findFirst({
+      where: { reservationAttemptId: attemptId },
+      select: { id: true, usedAt: true, orderId: true },
+    });
+    if (coupon) {
+      if (coupon.usedAt && coupon.orderId !== params.orderId) {
+        throw new BadRequestException(
+          'payment coupon is already committed to another order',
+        );
+      }
+      if (!coupon.usedAt) {
+        const committed = await params.tx.coupon.updateMany({
+          where: {
+            id: coupon.id,
+            reservationAttemptId: attemptId,
+            usedAt: null,
+          },
+          data: {
+            usedAt: now,
+            orderId: params.orderId,
+            reservationExpiresAt: null,
+          },
+        });
+        if (committed.count === 0) {
+          throw new BadRequestException('payment coupon hold was lost');
+        }
+      }
+    }
+
+    const userCoupon = await params.tx.userCoupon.findFirst({
+      where: { reservationAttemptId: attemptId },
+      select: {
+        id: true,
+        status: true,
+        orderStableId: true,
+      },
+    });
+    if (userCoupon) {
+      if (
+        userCoupon.status === 'REDEEMED' &&
+        userCoupon.orderStableId !== params.orderStableId
+      ) {
+        throw new BadRequestException(
+          'payment user coupon is already committed to another order',
+        );
+      }
+      if (userCoupon.status === 'RESERVED') {
+        const committed = await params.tx.userCoupon.updateMany({
+          where: {
+            id: userCoupon.id,
+            reservationAttemptId: attemptId,
+            status: 'RESERVED',
+          },
+          data: {
+            status: 'REDEEMED',
+            redeemedAt: now,
+            orderStableId: params.orderStableId,
+            reservationExpiresAt: null,
+          },
+        });
+        if (committed.count === 0) {
+          throw new BadRequestException('payment user coupon hold was lost');
+        }
+      } else if (userCoupon.status !== 'REDEEMED') {
+        throw new BadRequestException('payment user coupon hold was released');
+      }
+    }
+  }
+
+  async releasePaymentCoupons(attemptIdRaw: string): Promise<void> {
+    const attemptId = attemptIdRaw.trim();
+    if (!attemptId) return;
+    await this.prisma.$transaction([
+      this.prisma.coupon.updateMany({
+        where: {
+          reservationAttemptId: attemptId,
+          usedAt: null,
+        },
+        data: {
+          reservedAt: null,
+          reservationAttemptId: null,
+          reservationExpiresAt: null,
+        },
+      }),
+      this.prisma.userCoupon.updateMany({
+        where: {
+          reservationAttemptId: attemptId,
+          status: 'RESERVED',
+        },
+        data: {
+          status: 'AVAILABLE',
+          reservedAt: null,
+          reservationAttemptId: null,
+          reservationExpiresAt: null,
+        },
+      }),
+    ]);
   }
 
   async reserveCouponForOrder(params: {
