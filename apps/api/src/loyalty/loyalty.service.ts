@@ -648,8 +648,7 @@ export class LoyaltyService {
       );
     }
 
-    const newPointsMicro =
-      lockedAccount.pointsMicro - reservation.pointsMicro;
+    const newPointsMicro = lockedAccount.pointsMicro - reservation.pointsMicro;
     const newBalanceMicro =
       lockedAccount.balanceMicro - reservation.balanceMicro;
 
