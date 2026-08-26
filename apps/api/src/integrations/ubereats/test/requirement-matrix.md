@@ -312,6 +312,49 @@ external order 的 `orders.failure` 是该拒单的合法终态，按 no-op 成�
 上述 Sandbox 证据全部属于 Phase D 的部署后实测收尾；Phase E 才处理 Production App、白名单、正式 webhook、
 Tech Support verification 和 pilot-store production provisioning。
 
+## Verification Evidence Checklist
+
+最终送审证据必须按来源分组，自动化测试不能替代 Uber Sandbox/Test Store 或生产证据。
+
+### Automated Test PASS
+
+- POST webhook：durable enqueue 成功后 `HTTP 200` 且 body 严格为空；GET 仍返回 `{ "ok": true }`，HEAD 仍为 `200`。
+- raw body 缺失、HMAC 错误、durable inbox 写入失败不得进入成功 acknowledgement；重复 webhook 去重后仍可完成 receive。
+- Activate / Update Integration 请求必须保留 `allow_single_use_items_requests=true` 与 `allow_special_instruction_requests=true`，并验证 POST/PATCH 最终 JSON serialization。
+- Retrieve Integration Config 若 Uber 未返回 `allow_special_instruction_requests`，必须保持 `null` / `未返回`，不得伪装为 `true`。
+- Structured allergy parser/policy 必须覆盖 item、nested modifier、`RELAY_ALL`、`DENY_LIST`、`DENY_ALL`、未知/损坏请求 fail-safe Deny，以及 POS/打印传递。
+- `orders.customer_order_edit` 不得进入普通新单 import；当前保持 unsupported quarantine，并记录 `CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED`。
+- Uber architecture tests、API lint/build/strict declaration、shared strict checks、API test suite 和受影响 Web checks 必须全绿。
+
+### Sandbox / Test Store PASS
+
+保留或重新核对：即时单 Accept、预约单 Accept、人工 Deny、POS Offline 自动 Deny、Ready、Cancel、`orders.failure`、duplicate/replay、订单级备注、商品级备注、single-use items、item availability、option availability、门店 pause/resume、prep time、Integration Activate/Retrieve/Update/Remove、`store.provisioned` / `store.deprovisioned`。
+
+Menu PUT → GET 继续使用现有管理端前端对比；最终保存零差异截图即可，**不要求数据库持久化**。
+
+Structured Allergy 若 Uber 尚未给 Test Store 开通 payload，必须记录：
+
+- `CODE READY`
+- `LIVE TEST BLOCKED BY UBER CAPABILITY`
+
+开通后至少实测：`RELAY_ALL`、nested modifier allergy、`DENY_LIST` 命中、`DENY_ALL` instructions-only，并保留 Uber order/event ID、POS/打印和 sanitized logs。
+
+### Uber Confirmation Required
+
+- Test Client / Production Client 是否启用 order-level special instructions、item-level special instructions、structured allergens/customer requests。
+- `orders.customer_order_edit` 是否向当前普通餐厅 / `webhooks_version=1.0.0` 门店下发，以及是否属于本次 Production Verification；在确认前不得 replay 为 `orders.notification`。
+- Uber joint E2E verification、Production Client scopes/whitelist、Production webhook configuration。
+- Production 应申请/确认已实现产品需要的 `eats.store`、`eats.order`、`eats.store.status.write`；不得为未实现产品能力额外申请 `eats.report`。`offline_access` 仅作为 merchant provisioning OAuth token 辅助 scope 处理。
+
+Special Instructions 支持请求可向 Uber Tech Support 说明：SanQ 在 POST/PATCH `/v1/eats/stores/{store_id}/pos_data` 都发送两个 boolean capability flags，但 Retrieve 当前只回显 single-use items；请确认 Test Client 和 Production Client 的 special instructions / structured allergens capability 是否已启用或需要 whitelist。
+
+### Production Pilot Required
+
+- Pilot Store 连续运行至少 3 天。
+- SanQ 内部 pilot injection gate `>= 98%`；不得把它表述成 Uber 的外部正式门槛。
+- 长期 injection success 目标 `99.9%`。
+- Production webhook delivery/retry/monitoring 与正式 merchant provisioning 的真实证据。
+
 ## Legacy Order API 退役门禁
 
 Uber Order bounded-context 不得重新引入旧 Order detail/action API。architecture regression
