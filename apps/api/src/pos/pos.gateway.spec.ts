@@ -51,7 +51,10 @@ describe('PosGateway durable print delivery', () => {
         return Promise.resolve(job);
       }),
     };
-    const gateway = new PosGateway({ posPrintJob } as never);
+    const gateway = new PosGateway(
+      { posPrintJob } as never,
+      { verifyDevice: jest.fn() } as never,
+    );
     gateway.server = {
       in: jest.fn().mockReturnValue({
         fetchSockets: jest
@@ -140,12 +143,18 @@ describe('PosGateway durable print delivery', () => {
 
   it('单个打印机失败时只重试该目标，成功 ACK 才标记完成', async () => {
     const { gateway, posPrintJob, emit } = setup();
-    await gateway.handlePrintJobAck({} as never, {
+    const client = {
+      id: 'socket-1',
+      data: {
+        posDevice: { deviceStableId: 'device-1', storeId: 'store-1' },
+      },
+    } as never;
+    await gateway.handlePrintJobAck(client, {
       jobId: 'job-1',
       target: 'customer',
       success: true,
     });
-    await gateway.handlePrintJobAck({} as never, {
+    await gateway.handlePrintJobAck(client, {
       jobId: 'job-1',
       target: 'kitchen',
       success: false,

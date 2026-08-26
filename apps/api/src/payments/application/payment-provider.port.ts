@@ -6,6 +6,7 @@ import type {
 
 export type StartPaymentRequest = {
   paymentId: string;
+  attemptId: string;
   amountCents: number;
   currency: string;
   paymentMethod: PaymentMethod;
@@ -18,6 +19,7 @@ export type StartPaymentRequest = {
 
 export type GetPaymentStatusRequest = {
   paymentId: string;
+  attemptId: string;
   source: PaymentSource;
   idempotencyKey: string;
   externalPaymentId?: string | null;

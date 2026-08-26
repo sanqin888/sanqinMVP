@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 
-import { CloverPaymentProviderAdapter } from './clover-payment-provider.adapter';
+import {
+  CloverPaymentProviderAdapter,
+  CloverPlatformPaymentsGateway,
+} from './clover-payment-provider.adapter';
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
 import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
@@ -10,6 +13,7 @@ import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
     CloverProviderConfig,
     CloverEcommerceTransport,
     CloverTerminalTransport,
+    CloverPlatformPaymentsGateway,
     CloverPaymentProviderAdapter,
   ],
   exports: [CloverEcommerceTransport, CloverPaymentProviderAdapter],

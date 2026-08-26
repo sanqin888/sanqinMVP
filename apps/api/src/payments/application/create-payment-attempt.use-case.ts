@@ -4,7 +4,10 @@ import {
   PaymentTransaction,
   type CreatePaymentTransactionInput,
 } from '../domain/payment-transaction';
-import type { PaymentProviderOutcome } from '../domain/payment.types';
+import type {
+  PaymentProviderOutcome,
+  PaymentStatus,
+} from '../domain/payment.types';
 import type {
   PaymentProvider,
   PaymentTerminalAvailability,
@@ -121,6 +124,28 @@ export class InvalidTerminalPaymentError extends Error {
   }
 }
 
+export class PaymentProviderCorrelationConflictError extends Error {
+  constructor(paymentId: string, details: readonly string[]) {
+    super(
+      `Payment provider correlation conflict for ${paymentId}: ${details.join(', ')}`,
+    );
+    this.name = 'PaymentProviderCorrelationConflictError';
+  }
+}
+
+export class PaymentFinalStateConflictError extends Error {
+  constructor(
+    paymentId: string,
+    currentStatus: PaymentStatus,
+    incomingStatus: PaymentStatus,
+  ) {
+    super(
+      `Conflicting final payment result for ${paymentId}: existing=${currentStatus} incoming=${incomingStatus}`,
+    );
+    this.name = 'PaymentFinalStateConflictError';
+  }
+}
+
 const terminalExternalPaymentId = (attemptId: string): string =>
   `sq_${createHash('sha256').update(attemptId).digest('hex').slice(0, 29)}`;
 
@@ -185,6 +210,7 @@ export class TerminalPaymentService {
     try {
       outcome = await this.provider.startPayment({
         paymentId: snapshot.id,
+        attemptId: snapshot.attemptId,
         amountCents: snapshot.amountCents,
         currency: snapshot.currency,
         paymentMethod: snapshot.paymentMethod,
@@ -203,7 +229,7 @@ export class TerminalPaymentService {
       );
     }
 
-    return this.persistProcessingOutcome(claimed.transaction, outcome);
+    return this.mergeProviderOutcome(claimed.transaction.id, outcome);
   }
 
   async findById(paymentId: string): Promise<PaymentTransaction> {
@@ -229,6 +255,7 @@ export class TerminalPaymentService {
     try {
       outcome = await this.provider.cancelPayment({
         paymentId: snapshot.id,
+        attemptId: snapshot.attemptId,
         source: snapshot.source,
         idempotencyKey: snapshot.idempotencyKey,
         externalPaymentId: snapshot.externalPaymentId,
@@ -256,7 +283,7 @@ export class TerminalPaymentService {
         'Terminal cancel requires reconciliation before final payment truth',
     };
 
-    return this.persistProcessingOutcome(transaction, outcome);
+    return this.mergeProviderOutcome(transaction.id, outcome);
   }
 
   async reconcile(paymentId: string): Promise<PaymentTransaction> {
@@ -295,6 +322,7 @@ export class TerminalPaymentService {
     try {
       outcome = await this.provider.getPaymentStatus({
         paymentId: snapshot.id,
+        attemptId: snapshot.attemptId,
         source: snapshot.source,
         idempotencyKey: snapshot.idempotencyKey,
         externalPaymentId: snapshot.externalPaymentId,
@@ -309,33 +337,195 @@ export class TerminalPaymentService {
       );
     }
 
-    if (outcome.status === 'UNKNOWN' || outcome.status === 'PROCESSING') {
-      const observed = transaction.recordProviderObservation(outcome);
-      return (
-        await this.transactions.saveIfCurrentStatus(observed, 'RECONCILING')
-      ).transaction;
-    }
-
-    const resolved = transaction.applyProviderOutcome(outcome);
-    return (
-      await this.transactions.saveIfCurrentStatus(resolved, 'RECONCILING')
-    ).transaction;
+    return this.mergeProviderOutcome(transaction.id, outcome);
   }
 
-  private async persistProcessingOutcome(
-    transaction: PaymentTransaction,
+  private async mergeProviderOutcome(
+    paymentId: string,
     outcome: PaymentProviderOutcome,
   ): Promise<PaymentTransaction> {
-    if (outcome.status === 'PROCESSING') {
-      const observed = transaction.recordProviderObservation(outcome);
-      return (
-        await this.transactions.saveIfCurrentStatus(observed, 'PROCESSING')
-      ).transaction;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const current = await this.requireTerminalSale(paymentId);
+      const currentStatus = current.status;
+      const correlationProblems = this.correlationProblems(current, outcome);
+
+      if (this.isFinal(current)) {
+        const finalCanonicalProblems =
+          this.isFinalStatus(outcome.status) &&
+          (outcome.status === 'SUCCEEDED' || outcome.evidence === 'CANONICAL')
+            ? this.canonicalEvidenceProblems(current, outcome)
+            : [];
+        const finalProblems = [
+          ...new Set([...correlationProblems, ...finalCanonicalProblems]),
+        ];
+        if (finalProblems.length > 0) {
+          throw new PaymentProviderCorrelationConflictError(
+            paymentId,
+            finalProblems,
+          );
+        }
+        if (!this.isFinalStatus(outcome.status)) return current;
+        if (currentStatus === outcome.status) return current;
+        throw new PaymentFinalStateConflictError(
+          paymentId,
+          currentStatus,
+          outcome.status,
+        );
+      }
+
+      if (currentStatus === 'CREATED') {
+        throw new InvalidTerminalPaymentError(
+          `Cannot merge provider outcome while payment ${paymentId} is CREATED`,
+        );
+      }
+
+      const requiresCanonicalFinal =
+        this.isFinalStatus(outcome.status) &&
+        (outcome.status === 'SUCCEEDED' ||
+          currentStatus === 'UNKNOWN' ||
+          currentStatus === 'RECONCILING');
+      const canonicalProblems = requiresCanonicalFinal
+        ? this.canonicalEvidenceProblems(current, outcome)
+        : [];
+      const problems = [
+        ...new Set([...correlationProblems, ...canonicalProblems]),
+      ];
+
+      let next: PaymentTransaction;
+      if (problems.length > 0) {
+        next = this.correlationConflictObservation(current, problems);
+      } else if (
+        outcome.status === 'PROCESSING' ||
+        (outcome.status === 'UNKNOWN' &&
+          (currentStatus === 'UNKNOWN' || currentStatus === 'RECONCILING'))
+      ) {
+        next = current.recordProviderObservation(outcome);
+      } else {
+        next = current.applyProviderOutcome(outcome);
+      }
+
+      const saved = await this.transactions.saveIfCurrentStatus(
+        next,
+        currentStatus,
+      );
+      if (saved.updated) return saved.transaction;
     }
 
-    const settled = transaction.applyProviderOutcome(outcome);
-    return (await this.transactions.saveIfCurrentStatus(settled, 'PROCESSING'))
-      .transaction;
+    throw new PaymentAttemptConflictError(
+      `Payment outcome merge did not converge for ${paymentId}`,
+    );
+  }
+
+  private correlationProblems(
+    transaction: PaymentTransaction,
+    outcome: PaymentProviderOutcome,
+  ): string[] {
+    const snapshot = transaction.toSnapshot();
+    const problems: string[] = [];
+    if (outcome.paymentId !== undefined && outcome.paymentId !== snapshot.id) {
+      problems.push('internal payment id mismatch');
+    }
+    if (
+      outcome.attemptId !== undefined &&
+      outcome.attemptId !== snapshot.attemptId
+    ) {
+      problems.push('attemptId mismatch');
+    }
+    if (
+      outcome.idempotencyKey !== undefined &&
+      outcome.idempotencyKey !== snapshot.idempotencyKey
+    ) {
+      problems.push('idempotency identity mismatch');
+    }
+    if (
+      outcome.externalPaymentId !== undefined &&
+      outcome.externalPaymentId !== null &&
+      snapshot.externalPaymentId !== null &&
+      outcome.externalPaymentId !== snapshot.externalPaymentId
+    ) {
+      problems.push('externalPaymentId mismatch');
+    }
+    if (
+      outcome.providerPaymentId !== undefined &&
+      outcome.providerPaymentId !== null &&
+      snapshot.providerPaymentId !== null &&
+      outcome.providerPaymentId !== snapshot.providerPaymentId
+    ) {
+      problems.push('providerPaymentId mismatch');
+    }
+    if (
+      outcome.amountCents !== undefined &&
+      outcome.amountCents !== snapshot.amountCents
+    ) {
+      problems.push('amount mismatch');
+    }
+    if (
+      outcome.currency !== undefined &&
+      outcome.currency.toUpperCase() !== snapshot.currency
+    ) {
+      problems.push('currency mismatch');
+    }
+    return problems;
+  }
+
+  private canonicalEvidenceProblems(
+    transaction: PaymentTransaction,
+    outcome: PaymentProviderOutcome,
+  ): string[] {
+    const snapshot = transaction.toSnapshot();
+    const problems: string[] = [];
+    if (outcome.evidence !== 'CANONICAL') {
+      problems.push('canonical provider evidence missing');
+    }
+    if (outcome.paymentId !== snapshot.id) {
+      problems.push('canonical internal payment id missing or mismatched');
+    }
+    if (outcome.attemptId !== snapshot.attemptId) {
+      problems.push('canonical attemptId missing or mismatched');
+    }
+    if (outcome.idempotencyKey !== snapshot.idempotencyKey) {
+      problems.push('canonical idempotency identity missing or mismatched');
+    }
+    if (
+      !snapshot.externalPaymentId ||
+      outcome.externalPaymentId !== snapshot.externalPaymentId
+    ) {
+      problems.push('canonical externalPaymentId missing or mismatched');
+    }
+    if (!outcome.providerPaymentId) {
+      problems.push('canonical providerPaymentId missing');
+    } else if (
+      snapshot.providerPaymentId &&
+      outcome.providerPaymentId !== snapshot.providerPaymentId
+    ) {
+      problems.push('canonical providerPaymentId mismatched');
+    }
+    if (outcome.amountCents !== snapshot.amountCents) {
+      problems.push('canonical amount missing or mismatched');
+    }
+    if (outcome.currency?.toUpperCase() !== snapshot.currency) {
+      problems.push('canonical currency missing or mismatched');
+    }
+    return problems;
+  }
+
+  private correlationConflictObservation(
+    transaction: PaymentTransaction,
+    problems: readonly string[],
+  ): PaymentTransaction {
+    const outcome: PaymentProviderOutcome = {
+      status: 'UNKNOWN',
+      failureCode: 'PAYMENT_PROVIDER_CORRELATION_MISMATCH',
+      failureMessage: `Provider observation was not merged: ${problems.join(', ')}`,
+    };
+    if (transaction.status === 'PROCESSING') {
+      return transaction.applyProviderOutcome(outcome);
+    }
+    return transaction.recordProviderObservation(outcome);
+  }
+
+  private isFinalStatus(status: PaymentStatus): boolean {
+    return ['SUCCEEDED', 'DECLINED', 'CANCELLED', 'FAILED'].includes(status);
   }
 
   private async requireTransaction(

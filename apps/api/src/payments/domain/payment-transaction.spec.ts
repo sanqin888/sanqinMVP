@@ -54,6 +54,15 @@ describe('PaymentTransaction', () => {
     expect(succeeded.completedAt).toEqual(succeededAt);
   });
 
+  it('allows canonical recovery to settle UNKNOWN directly without forcing an intermediate write', () => {
+    const payment = PaymentTransaction.create(baseInput)
+      .transitionTo('PROCESSING')
+      .transitionTo('UNKNOWN');
+
+    expect(payment.transitionTo('SUCCEEDED').status).toBe('SUCCEEDED');
+    expect(canTransitionPaymentStatus('UNKNOWN', 'DECLINED')).toBe(true);
+  });
+
   it('rejects skipping directly from CREATED to SUCCEEDED', () => {
     const payment = PaymentTransaction.create(baseInput);
 

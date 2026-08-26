@@ -391,24 +391,43 @@ export class PosCardPaymentOrchestrationService {
     }
 
     const paymentSnapshot = payment?.toSnapshot();
-    const surchargeCents = paymentSnapshot?.surchargeCents ?? 0;
-    const chargedTotalCents =
-      checkout.externalAmountCents === 0
-        ? 0
-        : (paymentSnapshot?.chargedTotalCents ??
-          checkout.externalAmountCents + surchargeCents);
-    const expectedChargedTotalCents =
-      checkout.externalAmountCents + surchargeCents;
-    if (chargedTotalCents !== expectedChargedTotalCents) {
+    if (
+      checkout.externalAmountCents > 0 &&
+      paymentSnapshot?.amountCents !== checkout.externalAmountCents
+    ) {
       const view = this.toView(checkout, payment, undefined, {
         status: 'UNKNOWN',
-        failureCode: 'POS_CARD_CHARGED_TOTAL_MISMATCH',
+        failureCode: 'POS_CARD_PAYMENT_AMOUNT_MISMATCH',
         failureMessage:
-          'Clover confirmed a charged total that does not match the prepared external tender. Do not charge the card again.',
+          'The canonical payment base amount does not match the prepared external tender. Do not charge the card again.',
       });
       this.publish(storeId, view);
       return view;
     }
+    if (
+      checkout.externalAmountCents > 0 &&
+      (paymentSnapshot?.chargedTotalCents === null ||
+        paymentSnapshot?.chargedTotalCents === undefined ||
+        paymentSnapshot.surchargeCents === null ||
+        paymentSnapshot.surchargeCents === undefined)
+    ) {
+      const view = this.toView(checkout, payment, undefined, {
+        status: 'UNKNOWN',
+        failureCode: 'POS_CARD_CANONICAL_CHARGE_FACTS_MISSING',
+        failureMessage:
+          'The successful payment is missing canonical Clover charge facts. Do not charge the card again.',
+      });
+      this.publish(storeId, view);
+      return view;
+    }
+    const surchargeCents =
+      checkout.externalAmountCents === 0
+        ? 0
+        : (paymentSnapshot?.surchargeCents ?? 0);
+    const chargedTotalCents =
+      checkout.externalAmountCents === 0
+        ? 0
+        : (paymentSnapshot?.chargedTotalCents ?? 0);
 
     const created = await this.orders.createFromConfirmedPaymentSnapshot(
       checkout.snapshot,
