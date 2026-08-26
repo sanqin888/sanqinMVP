@@ -124,16 +124,20 @@ POS_KITCHEN_PRINTER (default: KC80)
 
 STORE_ID (optional consistency check only; store authorization comes from the authenticated POS device)
 
-For first-time cloud auto-print enrollment, create a dedicated POS device for the printer agent in Admin (do not reuse the browser POS device). Copy its one-time enrollment code, then on the Windows POS machine run the printer server with the code available only for that first start, for example in PowerShell:
+For first-time cloud auto-print enrollment, create a dedicated POS device for the printer agent in Admin (do not reuse the browser POS device). Copy its one-time enrollment code. If `printer-server.js` is already running from Windows startup, stop that running instance first so port 19191 is free. Then open Windows Command Prompt (`cmd.exe`) in `tools/printer-server` and run one manual enrollment start:
 
-```powershell
-$env:API_URL="https://<your-sanq-api-origin>"
-$env:POS_DEVICE_ENROLLMENT_CODE="<one-time-enrollment-code>"
+```bat
+set "POS_DEVICE_ENROLLMENT_CODE=<one-time-enrollment-code>"
 node printer-server.js
-Remove-Item Env:POS_DEVICE_ENROLLMENT_CODE
 ```
 
-The agent exchanges the enrollment code through the existing POS device claim endpoint, stores the resulting `posDeviceId` and `posDeviceKey` in `%USERPROFILE%\.sanq-printer-device.json`, and uses that local credential file for subsequent Socket.IO reconnects. A successful first enrollment logs the device id and credential-file path, but never the device key. The enrollment code is no longer needed after that first successful claim.
+If the normal startup environment does not already provide `API_URL`, set it in the same CMD window before starting:
+
+```bat
+set "API_URL=https://<your-sanq-api-origin>"
+```
+
+The agent exchanges the enrollment code through the existing POS device claim endpoint, stores the resulting `posDeviceId` and `posDeviceKey` in `%USERPROFILE%\.sanq-printer-device.json`, and uses that local credential file for all subsequent Socket.IO reconnects. A successful first enrollment logs the device id and credential-file path, but never the device key. After the first successful claim, close that CMD window (which also discards the temporary enrollment-code environment variable) and restart the normal auto-start printer-server process. Future Windows boots do not require the enrollment code.
 
 Alternatively, a managed installation may provide `POS_DEVICE_ID` and `POS_DEVICE_KEY` together. Do not place the device key in browser JavaScript, URLs, or logs. `POS_DEVICE_CREDENTIALS_FILE` may override the default local credential file path.
 
