@@ -304,10 +304,9 @@ describe('PosCardPaymentOrchestrationService', () => {
       storeStableId,
       expect.objectContaining({ status: 'SUCCEEDED' }),
     );
-    expect(harness.posGateway.publishCardPaymentStatus).not.toHaveBeenCalledWith(
-      storeDbId,
-      expect.anything(),
-    );
+    expect(
+      harness.posGateway.publishCardPaymentStatus,
+    ).not.toHaveBeenCalledWith(storeDbId, expect.anything());
     expect(result).toMatchObject({
       status: 'SUCCEEDED',
       externalAmountCents: 700,

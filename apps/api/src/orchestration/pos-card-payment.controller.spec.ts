@@ -39,36 +39,33 @@ const createHarness = () => {
 };
 
 describe('PosCardPaymentController store identity', () => {
-  it(
-    'uses Store.storeStableId for every Phase D boundary call, never PosDevice.storeId',
-    async () => {
-      const { controller, cardPayments } = createHarness();
-      const req = {
-        posDevice: {
-          storeId: storeDbId,
-          storeStableId,
-        },
-      } as never;
+  it('uses Store.storeStableId for every Phase D boundary call, never PosDevice.storeId', async () => {
+    const { controller, cardPayments } = createHarness();
+    const req = {
+      posDevice: {
+        storeId: storeDbId,
+        storeStableId,
+      },
+    } as never;
 
-      controller.getConfig(req);
-      await controller.getAvailability(req);
-      await controller.start(req, body);
-      await controller.recover(req, body);
-      await controller.cancel(req, body.attemptId, body);
+    controller.getConfig(req);
+    await controller.getAvailability(req);
+    await controller.start(req, body);
+    await controller.recover(req, body);
+    await controller.cancel(req, body.attemptId, body);
 
-      expect(cardPayments.getConfig).toHaveBeenCalledWith(storeStableId);
-      expect(cardPayments.getAvailability).toHaveBeenCalledWith(storeStableId);
-      expect(cardPayments.start).toHaveBeenCalledWith(storeStableId, body);
-      expect(cardPayments.recover).toHaveBeenCalledWith(storeStableId, body);
-      expect(cardPayments.cancel).toHaveBeenCalledWith(storeStableId, body);
+    expect(cardPayments.getConfig).toHaveBeenCalledWith(storeStableId);
+    expect(cardPayments.getAvailability).toHaveBeenCalledWith(storeStableId);
+    expect(cardPayments.start).toHaveBeenCalledWith(storeStableId, body);
+    expect(cardPayments.recover).toHaveBeenCalledWith(storeStableId, body);
+    expect(cardPayments.cancel).toHaveBeenCalledWith(storeStableId, body);
 
-      expect(cardPayments.getConfig).not.toHaveBeenCalledWith(storeDbId);
-      expect(cardPayments.getAvailability).not.toHaveBeenCalledWith(storeDbId);
-      expect(cardPayments.start).not.toHaveBeenCalledWith(storeDbId, body);
-      expect(cardPayments.recover).not.toHaveBeenCalledWith(storeDbId, body);
-      expect(cardPayments.cancel).not.toHaveBeenCalledWith(storeDbId, body);
-    },
-  );
+    expect(cardPayments.getConfig).not.toHaveBeenCalledWith(storeDbId);
+    expect(cardPayments.getAvailability).not.toHaveBeenCalledWith(storeDbId);
+    expect(cardPayments.start).not.toHaveBeenCalledWith(storeDbId, body);
+    expect(cardPayments.recover).not.toHaveBeenCalledWith(storeDbId, body);
+    expect(cardPayments.cancel).not.toHaveBeenCalledWith(storeDbId, body);
+  });
 
   it('does not fall back to the database UUID when storeStableId is unavailable', () => {
     const { controller, cardPayments } = createHarness();
