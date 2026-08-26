@@ -1026,6 +1026,7 @@ model PaymentCheckoutAttempt {
   attemptId              String                       @unique
   idempotencyKey         String                       @unique
   source                 PaymentSource
+  /// Stable business store identity (Store.storeStableId); never Store.id UUID.
   storeId                String
   paymentMethod          PaymentTransactionMethod
   currency               String

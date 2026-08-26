@@ -30,7 +30,7 @@ const PosCardPaymentStartSchema = z.object({
 type PosCardPaymentStartDto = z.infer<typeof PosCardPaymentStartSchema>;
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeId: string };
+  posDevice?: { storeId: string; storeStableId: string };
 };
 
 @Controller('pos/payments/card')
@@ -43,24 +43,24 @@ export class PosCardPaymentController {
 
   @Get('config')
   getConfig(@Req() req: PosDeviceRequest) {
-    return this.cardPayments.getConfig(this.requireStoreId(req));
+    return this.cardPayments.getConfig(this.requireStoreStableId(req));
   }
 
   @Get('availability')
   getAvailability(@Req() req: PosDeviceRequest) {
-    return this.cardPayments.getAvailability(this.requireStoreId(req));
+    return this.cardPayments.getAvailability(this.requireStoreStableId(req));
   }
 
   @Post('start')
   @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
   start(@Req() req: PosDeviceRequest, @Body() body: PosCardPaymentStartDto) {
-    return this.cardPayments.start(this.requireStoreId(req), body);
+    return this.cardPayments.start(this.requireStoreStableId(req), body);
   }
 
   @Post('recover')
   @UsePipes(new ZodValidationPipe(PosCardPaymentStartSchema))
   recover(@Req() req: PosDeviceRequest, @Body() body: PosCardPaymentStartDto) {
-    return this.cardPayments.recover(this.requireStoreId(req), body);
+    return this.cardPayments.recover(this.requireStoreStableId(req), body);
   }
 
   @Post(':attemptId/cancel')
@@ -76,14 +76,14 @@ export class PosCardPaymentController {
         message: 'Path attemptId must match the saved payment request.',
       });
     }
-    return this.cardPayments.cancel(this.requireStoreId(req), body);
+    return this.cardPayments.cancel(this.requireStoreStableId(req), body);
   }
 
-  private requireStoreId(req: PosDeviceRequest): string {
-    const storeId = req.posDevice?.storeId?.trim();
-    if (!storeId) {
+  private requireStoreStableId(req: PosDeviceRequest): string {
+    const storeStableId = req.posDevice?.storeStableId?.trim();
+    if (!storeStableId) {
       throw new UnauthorizedException('POS device store unavailable');
     }
-    return storeId;
+    return storeStableId;
   }
 }
