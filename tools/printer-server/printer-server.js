@@ -13,14 +13,14 @@ const http = require("http");
 const https = require("https");
 const os = require("os");
 const path = require("path");
-const { exec } = require("child_process");
+const { exec, execFile } = require("child_process");
 const iconv = require("iconv-lite");
 const { Jimp } = require("jimp");
 const io = require("socket.io-client");
 require("dotenv").config();
 // === 打印机配置 ===
-// 可以通过环境变量覆盖：POS_FRONT_PRINTER / POS_KITCHEN_PRINTER
-// 注意：这里的名字建议用“打印机共享名”，例如 POS80、KITCHEN 等
+// 可以通过环境变量覆盖：POS_FRONT_PRINTER / POS_KITCHEN_PRINTER / POS_LABEL_PRINTER
+// 注意：这里的名字建议用 Windows 打印机名或共享名，例如 POS80、KITCHEN、LABEL 等
 const FRONT_PRINTER = process.env.POS_FRONT_PRINTER || "POS80";
 const KITCHEN_PRINTER = process.env.POS_KITCHEN_PRINTER || "KC80";
 
@@ -1192,6 +1192,66 @@ async function resolvePosDeviceCredentials() {
   return claimedCredentials;
 }
 
+async function printLabelPlanWithWindowsDriver(orderNumber, labelPlan) {
+  const labels = Array.isArray(labelPlan?.labels) ? labelPlan.labels : [];
+  if (labels.length === 0) return;
+
+  const printerName = (process.env.POS_LABEL_PRINTER || "").trim();
+  if (!printerName) {
+    throw new Error("POS_LABEL_PRINTER_NOT_CONFIGURED");
+  }
+
+  const scriptPath = path.join(__dirname, "print-label.ps1");
+  if (!fs.existsSync(scriptPath)) {
+    throw new Error("POS_LABEL_PRINT_SCRIPT_MISSING");
+  }
+
+  const payloadPath = path.join(
+    os.tmpdir(),
+    `sanq-label-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+  );
+  const payload = {
+    orderNumber: String(orderNumber || ""),
+    labelWidthMm: Number(labelPlan?.labelWidthMm || 70),
+    labelHeightMm: Number(labelPlan?.labelHeightMm || 30),
+    labels,
+  };
+  await fs.promises.writeFile(payloadPath, JSON.stringify(payload), "utf8");
+
+  try {
+    await new Promise((resolve, reject) => {
+      execFile(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          scriptPath,
+          "-PrinterName",
+          printerName,
+          "-PayloadPath",
+          payloadPath,
+          "-FontName",
+          process.env.POS_LABEL_FONT || "Microsoft YaHei UI",
+        ],
+        { windowsHide: true, maxBuffer: 1024 * 1024 },
+        (error, stdout, stderr) => {
+          if (error) {
+            const detail = String(stderr || stdout || error.message || error).trim();
+            reject(new Error(`POS_LABEL_PRINT_FAILED${detail ? `: ${detail}` : ""}`));
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+  } finally {
+    await fs.promises.unlink(payloadPath).catch(() => undefined);
+  }
+}
+
 async function startCloudAutoPrint() {
   assertSecureDeviceTransport(API_URL);
   const credentials = await resolvePosDeviceCredentials();
@@ -1243,7 +1303,7 @@ async function startCloudAutoPrint() {
       });
     if (
       !jobId ||
-      !["customer", "kitchen"].includes(target) ||
+      !["customer", "kitchen", "label"].includes(target) ||
       !formattedPayload
     ) {
       console.error("[Cloud] Invalid PRINT_JOB envelope", job);
@@ -1255,6 +1315,7 @@ async function startCloudAutoPrint() {
     const orderId = formattedPayload.orderNumber || "Unknown";
     const targetCustomer = target === "customer";
     const targetKitchen = target === "kitchen";
+    const targetLabel = target === "label";
     console.log(`[Cloud] 收到打印任务: ${orderId}`);
 
     try {
@@ -1285,6 +1346,13 @@ async function startCloudAutoPrint() {
         } else {
           throw new Error("POS_KITCHEN_PRINTER_NOT_CONFIGURED");
         }
+      }
+
+      if (targetLabel) {
+        await printLabelPlanWithWindowsDriver(
+          orderId,
+          formattedPayload.labelPlan,
+        );
       }
 
       console.log(` [Cloud] Print workflow over`);

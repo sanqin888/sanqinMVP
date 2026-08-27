@@ -13,6 +13,21 @@ export type UberOrderMenuMapping = {
   expectedPriceCents: number;
 };
 
+export type UberOrderModifierSnapshotSource = {
+  stableId: string;
+  templateGroupStableId: string;
+  targetItemStableId: string | null;
+  nameEn: string;
+  nameZh: string | null;
+  templateNameEn: string;
+  templateNameZh: string | null;
+};
+
+export type UberOrderModifierSnapshotMapping =
+  UberOrderModifierSnapshotSource & {
+    externalItemId: string;
+  };
+
 export type UberStoreAllergyPolicy = {
   mode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
   unsupportedAllergens: string[];
@@ -54,6 +69,7 @@ export interface UberOrderImportRepositoryPort {
     uberStoreId: string,
     externalItemIds: string[],
   ): Promise<UberOrderMenuMapping[]>;
+  findModifierSnapshotSources?(): Promise<UberOrderModifierSnapshotSource[]>;
   findByExternalOrderId(externalOrderId: string): Promise<{
     orderId: string;
     status: UberOrderStatus;
@@ -81,6 +97,7 @@ export interface UberOrderImportRepositoryPort {
     eventType: string;
     cursor: UberOrderEventCursor;
     menuMappings: UberOrderMenuMapping[];
+    modifierSnapshotMappings?: UberOrderModifierSnapshotMapping[];
     cancellation: UberOrderCancellationDecision | null;
     actionIntent: UberOrderImportActionIntent | null;
     receivedAt: Date;

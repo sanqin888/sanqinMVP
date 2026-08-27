@@ -23,6 +23,10 @@ import {
 import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
 import { PrintPosPayloadService } from '../print-pos-payload.service';
+import {
+  OrderLabelPlanService,
+  type OrderLabelPlanDto,
+} from '../order-label-plan.service';
 import { resolveConfiguredStoreId } from '../../common/store-id';
 
 @Injectable()
@@ -121,6 +125,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly uberDirect: UberDirectService,
     private readonly posGateway: PosGateway,
     private readonly printPosPayloadService: PrintPosPayloadService,
+    private readonly orderLabelPlanService: OrderLabelPlanService,
   ) {}
 
   onModuleInit() {
@@ -196,14 +201,38 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
 
-    const targets = { customer: true, kitchen: true };
+    let labelPlan: OrderLabelPlanDto = {
+      labelWidthMm: 70,
+      labelHeightMm: 30,
+      labels: [],
+    };
+    try {
+      labelPlan = await this.orderLabelPlanService.getByStableId(
+        order.orderStableId,
+      );
+    } catch (error) {
+      // Label planning is supplemental. Never block the established receipt and
+      // kitchen print path because a label configuration is incomplete.
+      this.logger.error({
+        event: 'accepted_label_plan_failed',
+        orderStableId: order.orderStableId,
+        storeId,
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
+
+    const targets = {
+      customer: true,
+      kitchen: true,
+      label: labelPlan.labels.length > 0,
+    };
     try {
       const job = await this.posGateway.sendPrintJob({
         orderId: order.id,
         orderStableId: order.orderStableId,
         storeId,
         kind: 'AUTO',
-        data: { ...printPayload, targets },
+        data: { ...printPayload, labelPlan, targets },
       });
       this.logger.log({
         event: 'accepted_print_job_created',
@@ -229,7 +258,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   async handleOrderReprint(payload: {
     orderStableId: string;
     locale?: 'zh' | 'en';
-    targets?: { customer?: boolean; kitchen?: boolean };
+    targets?: { customer?: boolean; kitchen?: boolean; label?: boolean };
     cashReceivedCents?: number;
     cashChangeCents?: number;
   }) {
@@ -265,6 +294,25 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           : 'ORDER_STORE_ID_MISSING_USING_DEFAULT_STORE',
       });
     }
+    let labelPlan: OrderLabelPlanDto | undefined;
+    let targets = payload.targets;
+    if (targets?.label) {
+      try {
+        labelPlan = await this.orderLabelPlanService.getByStableId(
+          payload.orderStableId,
+        );
+        targets = { ...targets, label: labelPlan.labels.length > 0 };
+      } catch (error) {
+        this.logger.error({
+          event: 'reprint_label_plan_failed',
+          orderStableId: payload.orderStableId,
+          storeId,
+          errorType: error instanceof Error ? error.name : 'UnknownError',
+        });
+        targets = { ...targets, label: false };
+      }
+    }
+
     await this.posGateway.sendPrintJob({
       orderId: order.id,
       orderStableId: payload.orderStableId,
@@ -272,7 +320,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       kind: `REPRINT:${Date.now()}`,
       data: {
         ...printPayload,
-        ...(payload.targets ? { targets: payload.targets } : {}),
+        ...(labelPlan ? { labelPlan } : {}),
+        ...(targets ? { targets } : {}),
         ...(typeof payload.cashReceivedCents === 'number'
           ? { cashReceivedCents: payload.cashReceivedCents }
           : {}),

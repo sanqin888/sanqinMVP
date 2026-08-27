@@ -12,6 +12,7 @@ import type {
   AdminMenuCategoryDto,
   AdminMenuFullResponse,
   MenuItemWithBindingsDto,
+  MenuPackagingTypeDto,
   MenuTemplateLite,
 } from '@shared/menu';
 
@@ -32,12 +33,15 @@ type BindDraft = {
   maxSelect: string; // "" => null
   sortOrder: string;
   isRequired: boolean; // UI helper => minSelect>=1
+  /** Empty means this option affects every packaging used by the item. */
+  affectedPackagingTypeStableId: string;
 };
 
 type BindingEditDraft = {
   minSelect: string;
   maxSelect: string; // "" => null
   sortOrder: string;
+  affectedPackagingTypeStableId: string;
 };
 
 function createEmptyBindDraft(): BindDraft {
@@ -47,6 +51,7 @@ function createEmptyBindDraft(): BindDraft {
     maxSelect: '',
     sortOrder: '',
     isRequired: false,
+    affectedPackagingTypeStableId: '',
   };
 }
 
@@ -74,7 +79,6 @@ type CategoryEditDraft = {
   nameZh: string;
   sortOrder: string;
 };
-
 
 const BIND_ENDPOINT = (itemStableId: string) =>
   `/admin/menu/items/${encodeURIComponent(itemStableId)}/option-group-bindings`;
@@ -122,6 +126,9 @@ export default function AdminMenuPage() {
 
   const [categories, setCategories] = useState<AdminMenuCategoryDto[]>([]);
   const [templates, setTemplates] = useState<MenuTemplateLite[]>([]);
+  const [packagingTypes, setPackagingTypes] = useState<MenuPackagingTypeDto[]>([]);
+  const [newPackagingName, setNewPackagingName] = useState('');
+  const [creatingPackaging, setCreatingPackaging] = useState(false);
 
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<SavingState>({ itemStableId: null, error: null });
@@ -186,13 +193,20 @@ export default function AdminMenuPage() {
   function getBindingEditDraft(
     itemStableId: string,
     templateGroupStableId: string,
-    current: { minSelect: number; maxSelect: number | null; sortOrder: number },
+    current: {
+      minSelect: number;
+      maxSelect: number | null;
+      sortOrder: number;
+      affectedPackagingTypeStableIds: string[];
+    },
   ): BindingEditDraft {
     return (
       bindingEdits[itemStableId]?.[templateGroupStableId] ?? {
         minSelect: String(current.minSelect ?? 0),
         maxSelect: current.maxSelect == null ? '' : String(current.maxSelect),
         sortOrder: String(current.sortOrder ?? 0),
+        affectedPackagingTypeStableId:
+          current.affectedPackagingTypeStableIds[0] ?? '',
       }
     );
   }
@@ -201,7 +215,12 @@ export default function AdminMenuPage() {
     itemStableId: string,
     templateGroupStableId: string,
     patch: Partial<BindingEditDraft>,
-    current: { minSelect: number; maxSelect: number | null; sortOrder: number },
+    current: {
+      minSelect: number;
+      maxSelect: number | null;
+      sortOrder: number;
+      affectedPackagingTypeStableIds: string[];
+    },
   ) {
     setBindingEdits((prev) => ({
       ...prev,
@@ -312,6 +331,7 @@ export default function AdminMenuPage() {
       const data = await apiFetch<AdminMenuFullResponse>('/admin/menu/full');
       setCategories(data.categories ?? []);
       setTemplates(data.templatesLite ?? []);
+      setPackagingTypes(data.packagingTypes ?? []);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -427,6 +447,10 @@ export default function AdminMenuPage() {
         visibility: item.visibility,
         isVisibleOnMainMenu: item.isVisibleOnMainMenu,
         publishToUberEats: item.publishToUberEats,
+        labelStrategy: item.labelStrategy,
+        packagingTypeStableIds: item.packagings.map(
+          (packaging) => packaging.packagingType.stableId,
+        ),
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
         ingredientsEn: item.ingredientsEn ?? undefined,
@@ -518,6 +542,9 @@ export default function AdminMenuPage() {
           maxSelect,
           sortOrder,
           isEnabled: true,
+          affectedPackagingTypeStableIds: draft.affectedPackagingTypeStableId
+            ? [draft.affectedPackagingTypeStableId]
+            : [],
         }),
       });
 
@@ -555,6 +582,9 @@ export default function AdminMenuPage() {
           maxSelect,
           sortOrder,
           isEnabled: true,
+          affectedPackagingTypeStableIds: draft.affectedPackagingTypeStableId
+            ? [draft.affectedPackagingTypeStableId]
+            : [],
         }),
       });
 
@@ -589,6 +619,28 @@ export default function AdminMenuPage() {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
       setUnbindingId(null);
+    }
+  }
+
+  async function handleCreatePackaging(): Promise<void> {
+    const name = newPackagingName.trim();
+    if (!name) {
+      alert(isZh ? '请输入包装名称' : 'Packaging name is required.');
+      return;
+    }
+    setCreatingPackaging(true);
+    try {
+      await apiFetch('/admin/menu/packaging-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, isActive: true }),
+      });
+      setNewPackagingName('');
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreatingPackaging(false);
     }
   }
 
@@ -670,6 +722,63 @@ export default function AdminMenuPage() {
           {isZh ? '加载失败：' : 'Load failed: '} {loadError}
         </div>
       ) : null}
+
+      {/* Packaging management */}
+      <section className="rounded-xl border border-slate-200 p-4">
+        <div>
+          <h2 className="text-base font-semibold">
+            {isZh ? '包装单品' : 'Packaging'}
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh
+              ? '这里只维护店里实际使用的包装，例如小三明治袋、16oz、38oz；每个菜品使用哪些包装在菜品编辑中选择。'
+              : 'Maintain only the physical packaging used in store. Choose which packages each item uses in item editing.'}
+          </p>
+        </div>
+
+        <div className="mt-4">
+          <div className="rounded-lg border border-slate-200 p-3">
+            <div className="text-sm font-medium">
+              {isZh ? '新增包装' : 'Add packaging'}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={newPackagingName}
+                onChange={(e) => setNewPackagingName(e.target.value)}
+                className="min-w-0 flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm"
+                placeholder={isZh ? '例如：16oz、38oz、三明治袋' : 'e.g. 16oz, 38oz, sandwich bag'}
+              />
+              <button
+                type="button"
+                disabled={creatingPackaging}
+                onClick={() => void handleCreatePackaging()}
+                className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              >
+                {creatingPackaging
+                  ? isZh
+                    ? '添加中…'
+                    : 'Adding…'
+                  : isZh
+                    ? '添加'
+                    : 'Add'}
+              </button>
+            </div>
+            {packagingTypes.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {packagingTypes.map((type) => (
+                  <span
+                    key={type.stableId}
+                    className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700"
+                  >
+                    {type.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+        </div>
+      </section>
 
       {/* Create Category */}
       <section className="rounded-xl border border-slate-200 p-4">
@@ -1144,6 +1253,82 @@ export default function AdminMenuPage() {
                             </span>
                           </label>
 
+                          <label className="space-y-1 md:col-span-2">
+                            <div className="text-xs text-slate-600">Label Strategy</div>
+                            <select
+                              value={item.labelStrategy}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'labelStrategy',
+                                  e.target.value as MenuItemWithBindingsDto['labelStrategy'],
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                            >
+                              <option value="AUTO">AUTO</option>
+                              <option value="ALWAYS">ALWAYS</option>
+                              <option value="NEVER">NEVER</option>
+                            </select>
+                          </label>
+
+                          <div className="space-y-2 md:col-span-4">
+                            <div className="text-xs text-slate-600">
+                              {isZh
+                                ? `使用几个包装：${item.packagings.length}`
+                                : `Packages used: ${item.packagings.length}`}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {packagingTypes
+                                .filter((type) => type.isActive)
+                                .map((type) => {
+                                  const checked = item.packagings.some(
+                                    (packaging) =>
+                                      packaging.packagingType.stableId === type.stableId,
+                                  );
+                                  return (
+                                    <label
+                                      key={type.stableId}
+                                      className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          const nextPackagings = e.target.checked
+                                            ? [
+                                                ...item.packagings,
+                                                {
+                                                  sortOrder: item.packagings.length,
+                                                  packagingType: type,
+                                                },
+                                              ]
+                                            : item.packagings.filter(
+                                                (packaging) =>
+                                                  packaging.packagingType.stableId !==
+                                                  type.stableId,
+                                              );
+                                          updateItemField(
+                                            cat.stableId,
+                                            item.stableId,
+                                            'packagings',
+                                            nextPackagings,
+                                          );
+                                        }}
+                                      />
+                                      <span>{type.name}</span>
+                                    </label>
+                                  );
+                                })}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {isZh
+                                ? '例如：肉夹馍 = 1（小三明治袋）；酸辣粉 = 2（38oz、16oz）。'
+                                : 'Example: Roujiamo = 1 package; hot noodles = 2 packages.'}
+                            </div>
+                          </div>
+
                           <label className="space-y-1 md:col-span-6">
                             <div className="text-xs text-slate-600">
                               {isZh ? '图片管理' : 'Image management'}
@@ -1281,6 +1466,8 @@ export default function AdminMenuPage() {
                                       minSelect: g.minSelect,
                                       maxSelect: g.maxSelect ?? null,
                                       sortOrder: g.sortOrder,
+                                      affectedPackagingTypeStableIds:
+                                        g.affectedPackagingTypeStableIds ?? [],
                                     },
                                   );
                                   const bindingKey = `${item.stableId}:${tplStableId}`;
@@ -1313,6 +1500,8 @@ export default function AdminMenuPage() {
                                                   minSelect: g.minSelect,
                                                   maxSelect: g.maxSelect ?? null,
                                                   sortOrder: g.sortOrder,
+                                                  affectedPackagingTypeStableIds:
+                                                    g.affectedPackagingTypeStableIds ?? [],
                                                 })
                                               }
                                               className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs"
@@ -1330,6 +1519,8 @@ export default function AdminMenuPage() {
                                                   minSelect: g.minSelect,
                                                   maxSelect: g.maxSelect ?? null,
                                                   sortOrder: g.sortOrder,
+                                                  affectedPackagingTypeStableIds:
+                                                    g.affectedPackagingTypeStableIds ?? [],
                                                 })
                                               }
                                               className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs"
@@ -1348,12 +1539,58 @@ export default function AdminMenuPage() {
                                                   minSelect: g.minSelect,
                                                   maxSelect: g.maxSelect ?? null,
                                                   sortOrder: g.sortOrder,
+                                                  affectedPackagingTypeStableIds:
+                                                    g.affectedPackagingTypeStableIds ?? [],
                                                 })
                                               }
                                               className="w-16 rounded-md border border-slate-200 px-2 py-1 text-xs"
                                               inputMode="numeric"
                                             />
                                           </label>
+                                          {item.packagings.length > 1 ? (
+                                            <label className="flex items-center gap-1">
+                                              <span>{isZh ? '影响包装' : 'Affects'}</span>
+                                              <select
+                                                value={editDraft.affectedPackagingTypeStableId}
+                                                onChange={(e) =>
+                                                  updateBindingEditDraft(
+                                                    item.stableId,
+                                                    tplStableId,
+                                                    {
+                                                      affectedPackagingTypeStableId:
+                                                        e.target.value,
+                                                    },
+                                                    {
+                                                      minSelect: g.minSelect,
+                                                      maxSelect: g.maxSelect ?? null,
+                                                      sortOrder: g.sortOrder,
+                                                      affectedPackagingTypeStableIds:
+                                                        g.affectedPackagingTypeStableIds ?? [],
+                                                    },
+                                                  )
+                                                }
+                                                className="rounded-md border border-slate-200 px-2 py-1 text-xs"
+                                              >
+                                                <option value="">
+                                                  {isZh ? '全部包装' : 'All packages'}
+                                                </option>
+                                                {item.packagings.map((packaging) => (
+                                                  <option
+                                                    key={packaging.packagingType.stableId}
+                                                    value={packaging.packagingType.stableId}
+                                                  >
+                                                    {packaging.packagingType.name}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </label>
+                                          ) : item.packagings.length === 1 ? (
+                                            <span className="text-xs text-slate-500">
+                                              {isZh
+                                                ? `默认影响 ${item.packagings[0].packagingType.name}`
+                                                : `Affects ${item.packagings[0].packagingType.name} by default`}
+                                            </span>
+                                          ) : null}
                                         </div>
                                       </div>
 
@@ -1411,7 +1648,7 @@ export default function AdminMenuPage() {
 
                           {/* Bind new */}
                           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
-                            <label className="space-y-1 md:col-span-5">
+                            <label className="space-y-1 md:col-span-3">
                               <div className="text-xs text-slate-600">{isZh ? '模板组选项组' : 'Template group'}</div>
                               <select
                                 value={getBindDraft(item.stableId).templateGroupStableId}
@@ -1482,6 +1719,53 @@ export default function AdminMenuPage() {
                                 inputMode="numeric"
                               />
                             </label>
+
+                            {item.packagings.length > 1 ? (
+                              <label className="space-y-1 md:col-span-2">
+                                <div className="text-xs text-slate-600">
+                                  {isZh ? '影响包装' : 'Affects'}
+                                </div>
+                                <select
+                                  value={
+                                    getBindDraft(item.stableId)
+                                      .affectedPackagingTypeStableId
+                                  }
+                                  onChange={(e) =>
+                                    setBindDrafts((prev) => ({
+                                      ...prev,
+                                      [item.stableId]: {
+                                        ...getBindDraft(item.stableId),
+                                        affectedPackagingTypeStableId:
+                                          e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                                >
+                                  <option value="">
+                                    {isZh ? '全部包装' : 'All packages'}
+                                  </option>
+                                  {item.packagings.map((packaging) => (
+                                    <option
+                                      key={packaging.packagingType.stableId}
+                                      value={packaging.packagingType.stableId}
+                                    >
+                                      {packaging.packagingType.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : item.packagings.length === 1 ? (
+                              <div className="flex items-end md:col-span-2">
+                                <span className="pb-2 text-xs text-slate-500">
+                                  {isZh
+                                    ? `默认影响 ${item.packagings[0].packagingType.name}`
+                                    : `Affects ${item.packagings[0].packagingType.name} by default`}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="md:col-span-2" />
+                            )}
 
                             <div className="flex items-end md:col-span-1">
                               <button

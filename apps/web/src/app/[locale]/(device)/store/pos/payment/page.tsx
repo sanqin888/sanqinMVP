@@ -972,7 +972,7 @@ const loyaltyRedeemCents = redeemCents;
         if (orderChannel === "in_store") {
           try {
             await printOrderCloud(order.orderStableId, {
-              targets: { customer: true, kitchen: true },
+              targets: { customer: true, kitchen: true, label: true },
               ...(cashMeta
                 ? {
                     cashReceivedCents: cashMeta.cashReceivedCents,

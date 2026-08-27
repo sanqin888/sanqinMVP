@@ -372,7 +372,7 @@ export async function printOrderCloud<T = unknown>(
   stableId: string,
   payload?: {
     locale?: "zh" | "en";
-    targets?: { customer?: boolean; kitchen?: boolean };
+    targets?: { customer?: boolean; kitchen?: boolean; label?: boolean };
     cashReceivedCents?: number;
     cashChangeCents?: number;
   },

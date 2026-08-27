@@ -1,3 +1,5 @@
+import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
+import type { ParsedUberOrder } from '../../domain/orders/uber-order.types';
 import type {
   UberOrderCancelEventV1,
   UberOrderNotificationEventV1,
@@ -9,6 +11,7 @@ import {
   type UberOrderEventCursor,
   type UberOrderImportActionIntent,
   type UberOrderImportRepositoryPort,
+  type UberOrderModifierSnapshotMapping,
 } from './uber-order.ports';
 import { type UberOrderDetailQueryPort } from './uber-order-query.ports';
 import type { UberOrderAdmissionDecision } from '../../domain/orders/uber-order-admission.policy';
@@ -131,6 +134,10 @@ export class ImportUberOrderUseCase {
         eventType: normalizedEventType,
         cursor,
         menuMappings: admission.menuMappings,
+        modifierSnapshotMappings: await this.buildModifierSnapshotMappings(
+          detail.order,
+          admission.posStoreId,
+        ),
         cancellation: null,
         actionIntent: null,
         receivedAt: new Date(),
@@ -168,6 +175,10 @@ export class ImportUberOrderUseCase {
       eventType: normalizedEventType,
       cursor,
       menuMappings: admission.menuMappings,
+      modifierSnapshotMappings: await this.buildModifierSnapshotMappings(
+        order,
+        admission.posStoreId,
+      ),
       cancellation: null,
       actionIntent: await this.buildAdmissionIntent(
         order.externalOrderId,
@@ -186,6 +197,20 @@ export class ImportUberOrderUseCase {
     ordering?: UberEventOrdering,
   ) {
     return this.execute(eventType, eventId, payload, ordering);
+  }
+
+  private async buildModifierSnapshotMappings(
+    order: ParsedUberOrder,
+    posStoreId: string,
+  ): Promise<UberOrderModifierSnapshotMapping[]> {
+    if (!order.items.some((item) => item.modifiers.length > 0)) return [];
+    const sources = this.repository.findModifierSnapshotSources
+      ? await this.repository.findModifierSnapshotSources()
+      : [];
+    return sources.map((source) => ({
+      ...source,
+      externalItemId: buildUberNodeId('item', posStoreId, source.stableId),
+    }));
   }
 
   private async buildAdmissionIntent(
