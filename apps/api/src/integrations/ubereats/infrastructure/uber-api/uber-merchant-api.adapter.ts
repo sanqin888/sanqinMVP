@@ -103,7 +103,7 @@ export class UberMerchantApiAdapter
 
   async discoverStores(identity: UberMerchantIdentity) {
     const accessToken = await this.accessTokenFor(identity);
-    const raw = await this.request('/v1/eats/stores', 'GET', accessToken);
+    const raw = await this.request('/v1/delivery/stores', 'GET', accessToken);
     await this.auditResponse({
       operation: 'merchant.discover-stores',
       connectionId: identity.connectionId,

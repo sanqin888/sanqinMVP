@@ -29,6 +29,12 @@ export interface UberStoreStatusChangedEventV1 extends UberWebhookEventV1 {
   eventType: 'store.status.changed';
   storeId: string;
 }
+export interface UberMenuRefreshRequestEventV1 extends UberWebhookEventV1 {
+  family: 'menu-refresh';
+  eventType: 'store.menu_refresh_request';
+  storeId: string;
+  partnerStoreId: string | null;
+}
 export interface UberMenuNotificationEventV1 {
   version: 1;
   family: 'menu';
@@ -95,6 +101,19 @@ export function parseUberStoreStatusChangedV1(payload: unknown) {
     : null;
 }
 
+export function parseUberMenuRefreshRequestV1(payload: unknown) {
+  const event = parseUberWebhookEnvelopeV1(payload);
+  if (event?.eventType !== 'store.menu_refresh_request') return null;
+  const root = webhookObject(payload);
+  return {
+    ...event,
+    family: 'menu-refresh',
+    eventType: 'store.menu_refresh_request',
+    storeId: event.resourceId,
+    partnerStoreId: webhookText(root?.partner_store_id),
+  } satisfies UberMenuRefreshRequestEventV1;
+}
+
 export function parseUberMenuNotificationV1(payload: unknown) {
   const root = webhookObject(payload);
   const data = webhookObject(root?.data);
@@ -140,7 +159,9 @@ export type UberWebhookDispatchResult =
       ordering: UberEventOrdering;
     }
   | { kind: 'menu'; event: UberMenuNotificationEventV1 }
+  | { kind: 'menu-refresh'; event: UberMenuRefreshRequestEventV1 }
   | { kind: 'store-provisioning'; event: UberStoreProvisioningEventV1 }
+  | { kind: 'store-status'; event: UberStoreStatusChangedEventV1 }
   | { kind: 'unsupported'; reason: 'event' | 'version' }
   | { kind: 'invalid' };
 
@@ -154,9 +175,12 @@ export function dispatchUberWebhookV1(input: {
     return { kind: 'unsupported', reason: 'version' };
   const eventType = normalizeUberEventType(input.eventType);
   if (eventType === 'store.status.changed') {
-    return parseUberStoreStatusChangedV1(input.payload)
-      ? { kind: 'unsupported', reason: 'event' }
-      : { kind: 'invalid' };
+    const event = parseUberStoreStatusChangedV1(input.payload);
+    return event ? { kind: 'store-status', event } : { kind: 'invalid' };
+  }
+  if (eventType === 'store.menu_refresh_request') {
+    const event = parseUberMenuRefreshRequestV1(input.payload);
+    return event ? { kind: 'menu-refresh', event } : { kind: 'invalid' };
   }
   const parser =
     eventType === 'orders.notification' ||

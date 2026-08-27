@@ -415,6 +415,43 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
   });
 
+  it('activates an existing integration through PATCH with integration_enabled=true', async () => {
+    const api = {
+      updateIntegrationConfig: jest.fn().mockResolvedValue(undefined),
+    };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'merchant-1',
+        uberStoreId: 'uber-store-1',
+        posExternalStoreId: 'sanq-store-1',
+      }),
+    };
+    const useCase = new UpdateUberStoreIntegrationConfigUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(useCase.activate('uber-store-1')).resolves.toMatchObject({
+      ok: true,
+      storeId: 'uber-store-1',
+    });
+    expect(api.updateIntegrationConfig).toHaveBeenCalledWith(
+      'uber-store-1',
+      expect.objectContaining({
+        integrator_store_id: 'sanq-store-1',
+        integration_enabled: true,
+        is_order_manager: true,
+        require_manual_acceptance: false,
+        webhooks_config: expect.objectContaining({
+          schedule_order_webhooks: { is_enabled: true },
+          webhooks_version: '1.0.0',
+        }),
+      }),
+      expect.stringMatching(/^sanqin-uber-/),
+    );
+  });
+
   it('requires a valid local Store ID mapping before Config sync', async () => {
     const api = { updateIntegrationConfig: jest.fn() };
     const mappings = {

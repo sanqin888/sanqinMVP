@@ -243,9 +243,12 @@ export function createMerchantWiring(): Provider[] {
     },
     {
       provide: HandleUberMerchantWebhookHandler,
-      inject: [UBER_WEBHOOK_INBOX_PORT, UBER_TELEMETRY_PORT],
-      useFactory: (inbox: UberWebhookInboxPort, telemetry: UberTelemetryPort) =>
-        new HandleUberMerchantWebhookHandler(inbox, telemetry),
+      inject: [UBER_WEBHOOK_INBOX_PORT, UBER_STORE_API, UBER_TELEMETRY_PORT],
+      useFactory: (
+        inbox: UberWebhookInboxPort,
+        storeApi: UberStoreApiPort,
+        telemetry: UberTelemetryPort,
+      ) => new HandleUberMerchantWebhookHandler(inbox, storeApi, telemetry),
     },
   ];
 }

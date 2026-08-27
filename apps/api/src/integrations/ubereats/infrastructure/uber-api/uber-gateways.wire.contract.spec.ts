@@ -140,7 +140,20 @@ describe('Uber gateways wire contract v1', () => {
     };
     const transport = createUberTransportFake();
     transport.request
-      .mockResolvedValueOnce(fixture('stores/discovery.json'))
+      .mockResolvedValueOnce({
+        stores: [
+          {
+            id: 'fixture-store-001',
+            name: 'Contract Test Store',
+            timezone: 'Etc/UTC',
+            location: {
+              street_address_line_one: '100 Fixture Street',
+              city: 'Test City',
+              country: 'CA',
+            },
+          },
+        ],
+      })
       .mockResolvedValueOnce(fixture('stores/provision-response.json'))
       .mockResolvedValueOnce(integrationConfig)
       .mockResolvedValueOnce({})
@@ -199,9 +212,9 @@ describe('Uber gateways wire contract v1', () => {
 
     expect(transport.request.mock.calls.map(([request]) => request)).toEqual([
       {
-        path: '/v1/eats/stores',
+        path: '/v1/delivery/stores',
         method: 'GET',
-        operation: 'GET /v1/eats/stores',
+        operation: 'GET /v1/delivery/stores',
         scope: 'eats.pos_provisioning',
         accessToken: 'fixture-merchant-token',
         json: undefined,

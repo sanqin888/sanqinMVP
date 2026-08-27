@@ -87,17 +87,18 @@ const mappingFailure = (
   });
 
 /**
- * Discovery wire policy: `stores` and every member's `store_id` are required.
- * Optional name/location/timezone/POS fields default to null, while
- * `integrationEnabled` defaults to false. All other upstream fields are ignored.
+ * Store API 1.0.0 discovery wire policy: `stores` and every member's `id` are
+ * required. Optional name/location/timezone fields default to null. Unknown
+ * upstream fields are deliberately ignored.
  */
 export function mapUberStoreDiscoveryWire(
   value: unknown,
 ): UberStoreDiscoveryResult {
+  const operation = 'merchant.discover-stores' as const;
   const root = asObject(value);
   if (!root || !Array.isArray(root.stores))
     throw mappingFailure(
-      'merchant.discover-stores',
+      operation,
       'UBER_STORE_DISCOVERY_MAPPING_FAILED',
       'Uber 门店列表响应缺少 stores 数组',
     );
@@ -106,41 +107,37 @@ export function mapUberStoreDiscoveryWire(
     const store = asObject(candidate);
     if (!store)
       throw mappingFailure(
-        'merchant.discover-stores',
+        operation,
         'UBER_STORE_DISCOVERY_MAPPING_FAILED',
         `Uber 门店列表第 ${index} 项不是 object`,
       );
-    const storeId = readString(store.store_id);
+    const storeId = readString(store.id);
     if (!storeId)
       throw mappingFailure(
-        'merchant.discover-stores',
+        operation,
         'UBER_STORE_DISCOVERY_MAPPING_FAILED',
-        `Uber 门店列表第 ${index} 项缺少 store_id`,
+        `Uber 门店列表第 ${index} 项缺少 id`,
       );
 
-    const location = asObject(store.location) ?? asObject(store.address);
-    const pos = asObject(store.pos_data);
+    const location = asObject(store.location);
     return {
       storeId,
-      storeName: readString(store.name, store.store_name),
+      storeName: readString(store.name),
       locationSummary: readString(
-        store.location_summary,
-        location?.formatted_address,
-        [location?.address_line_one, location?.city, location?.country]
+        [
+          location?.street_address_line_one,
+          location?.city,
+          location?.country,
+        ]
           .filter(
             (part): part is string =>
               typeof part === 'string' && Boolean(part.trim()),
           )
           .join(', '),
       ),
-      integrationEnabled: pos?.integration_enabled === true,
-      posExternalStoreId: readString(pos?.integrator_store_id),
-      timezone: readString(
-        store.timezone,
-        store.time_zone,
-        location?.timezone,
-        location?.time_zone,
-      ),
+      integrationEnabled: false,
+      posExternalStoreId: null,
+      timezone: readString(store.timezone, location?.timezone),
     };
   });
 

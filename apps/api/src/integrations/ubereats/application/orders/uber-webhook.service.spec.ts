@@ -62,6 +62,7 @@ describe('Uber webhook use cases', () => {
       };
       const handler = new HandleUberMerchantWebhookHandler(
         inboxPort as never,
+        { retrieveStatus: jest.fn() } as never,
         telemetry,
       );
 
@@ -83,6 +84,48 @@ describe('Uber webhook use cases', () => {
       );
     },
   );
+
+  it('store.status.changed 会读取 Uber 当前状态并记录审计遥测', async () => {
+    const storeApi = {
+      retrieveStatus: jest.fn().mockResolvedValue({
+        storeId: 'store-1',
+        status: 'OFFLINE',
+        offlineReason: 'PAUSED_BY_RESTAURANT',
+        offlineReasonMetadata: 'UNFULFILL_RATE',
+        isOfflineUntil: '2026-08-27T14:00:00.000Z',
+      }),
+    };
+    const telemetry = {
+      captureEvent: jest.fn().mockResolvedValue(undefined),
+      workflowLog: jest.fn(),
+    };
+    const handler = new HandleUberMerchantWebhookHandler(
+      { setStoreProvisioned: jest.fn() } as never,
+      storeApi as never,
+      telemetry,
+    );
+
+    await handler.executeStatusChanged('evt-status', {
+      version: 1,
+      family: 'store-status',
+      eventType: 'store.status.changed',
+      eventId: 'evt-status',
+      resourceHref: 'https://api.uber.com/v1/delivery/store/store-1/status',
+      resourceId: 'store-1',
+      userId: null,
+      storeId: 'store-1',
+    });
+
+    expect(storeApi.retrieveStatus).toHaveBeenCalledWith('store-1');
+    expect(telemetry.captureEvent).toHaveBeenCalledWith(
+      'ubereats_store_status_changed',
+      expect.objectContaining({
+        eventId: 'evt-status',
+        uberStoreId: 'store-1',
+        status: 'OFFLINE',
+      }),
+    );
+  });
 
   it('routes Uber ordering metadata to the order use case', async () => {
     const item = {
@@ -116,6 +159,7 @@ describe('Uber webhook use cases', () => {
       orders as never,
       {} as never,
       { execute: jest.fn() } as never,
+      { execute: jest.fn(), executeStatusChanged: jest.fn() } as never,
       { captureEvent: jest.fn(), workflowLog: jest.fn() },
     );
 
@@ -168,6 +212,7 @@ describe('Uber webhook use cases', () => {
         { execute: jest.fn() } as never,
         { handle: jest.fn() } as never,
         { execute: jest.fn() } as never,
+        { execute: jest.fn(), executeStatusChanged: jest.fn() } as never,
         telemetry,
       );
 
@@ -233,6 +278,7 @@ describe('Uber webhook use cases', () => {
       orders as never,
       { handle: jest.fn() } as never,
       { execute: jest.fn() } as never,
+      { execute: jest.fn(), executeStatusChanged: jest.fn() } as never,
       telemetry,
     );
 
@@ -288,6 +334,7 @@ describe('Uber webhook use cases', () => {
       inboxPort,
       {} as never,
       {} as never,
+      { execute: jest.fn() } as never,
       merchant as never,
       { captureEvent: jest.fn(), workflowLog: jest.fn() },
     );
@@ -302,14 +349,15 @@ describe('Uber webhook use cases', () => {
     expect(inboxPort.markUnsupported).not.toHaveBeenCalled();
   });
 
-  it('明确隔离 store.status.changed，既不调用 merchant 也不标记成功', async () => {
+  it('处理 store.status.changed，并在成功读取 Uber 当前状态后完成 inbox', async () => {
     const item = {
       eventId: 'evt-status',
       eventType: 'store.status.changed',
       payload: {
         event_type: 'store.status.changed',
-        resource_href: 'https://api.uber.com/v1/eats/stores/store-1/status',
-        meta: { resource_id: 'store-1', user_id: 'org-1' },
+        store_id: 'store-1',
+        resource_href: 'https://api.uber.com/v1/delivery/store/store-1/status',
+        webhook_meta: { webhook_msg_uuid: 'evt-status' },
         status: 'ONLINE',
       },
       leaseToken: 'lease',
@@ -318,30 +366,81 @@ describe('Uber webhook use cases', () => {
     };
     const inboxPort = {
       claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
-      markSucceeded: jest.fn(),
-      markUnsupported: jest.fn().mockResolvedValue(true),
+      markSucceeded: jest.fn().mockResolvedValue(true),
+      markUnsupported: jest.fn(),
       requeueUnsupported: jest.fn().mockResolvedValue(0),
       markFailed: jest.fn(),
       enqueue: jest.fn(),
       setStoreProvisioned: jest.fn(),
     };
-    const merchant = { execute: jest.fn() };
+    const merchant = {
+      execute: jest.fn(),
+      executeStatusChanged: jest.fn().mockResolvedValue(undefined),
+    };
     const worker = new ProcessUberWebhookInboxUseCase(
       inboxPort,
       {} as never,
       {} as never,
+      { execute: jest.fn() } as never,
       merchant as never,
       { captureEvent: jest.fn(), workflowLog: jest.fn() },
     );
 
     await worker.execute();
 
-    expect(inboxPort.markUnsupported).toHaveBeenCalledWith(
-      item,
-      expect.objectContaining({ code: 'UBER_WEBHOOK_EVENT_UNSUPPORTED' }),
+    expect(merchant.executeStatusChanged).toHaveBeenCalledWith(
+      item.eventId,
+      expect.objectContaining({ storeId: 'store-1' }),
     );
-    expect(merchant.execute).not.toHaveBeenCalled();
-    expect(inboxPort.markSucceeded).not.toHaveBeenCalled();
+    expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
+    expect(inboxPort.markUnsupported).not.toHaveBeenCalled();
+  });
+
+  it('处理 store.menu_refresh_request，并在菜单重传完成后标记成功', async () => {
+    const item = {
+      eventId: 'evt-menu-refresh',
+      eventType: 'store.menu_refresh_request',
+      payload: {
+        event_type: 'store.menu_refresh_request',
+        store_id: 'store-1',
+        partner_store_id: '4750_Yonge_Street',
+        resource_href: 'https://api.uber.com/v1/eats/stores/store-1',
+        webhook_meta: { webhook_msg_uuid: 'evt-menu-refresh' },
+      },
+      leaseToken: 'lease',
+      idempotencyKey: 'key',
+      businessVersion: 'v1',
+    };
+    const inboxPort = {
+      claimDue: jest.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),
+      markSucceeded: jest.fn().mockResolvedValue(true),
+      markUnsupported: jest.fn(),
+      requeueUnsupported: jest.fn().mockResolvedValue(0),
+      markFailed: jest.fn(),
+      enqueue: jest.fn(),
+      setStoreProvisioned: jest.fn(),
+    };
+    const menuRefresh = { execute: jest.fn().mockResolvedValue(undefined) };
+    const worker = new ProcessUberWebhookInboxUseCase(
+      inboxPort,
+      {} as never,
+      {} as never,
+      menuRefresh as never,
+      { execute: jest.fn(), executeStatusChanged: jest.fn() } as never,
+      { captureEvent: jest.fn(), workflowLog: jest.fn() },
+    );
+
+    await worker.execute();
+
+    expect(menuRefresh.execute).toHaveBeenCalledWith(
+      item.eventId,
+      expect.objectContaining({
+        storeId: 'store-1',
+        partnerStoreId: '4750_Yonge_Street',
+      }),
+    );
+    expect(inboxPort.markSucceeded).toHaveBeenCalledWith(item);
+    expect(inboxPort.markUnsupported).not.toHaveBeenCalled();
   });
 
   it('HTTP 阶段校验签名并持久化 inbox，但不执行业务用例', async () => {
