@@ -38,7 +38,7 @@ describe('Uber store wire mapper', () => {
     );
   });
 
-  it('discovery 门店缺少 store_id 时映射失败而非生成 unknown', () => {
+  it('discovery 门店缺少 Store API id 时映射失败而非生成 unknown', () => {
     expectMappingFailure(
       () => mapUberStoreDiscoveryWire(fixture('discovery-missing-store-id')),
       'UBER_STORE_DISCOVERY_MAPPING_FAILED',
@@ -58,22 +58,17 @@ describe('Uber store wire mapper', () => {
     },
   );
 
-  it('只把 integrator_store_id 映射为 SanQ external store identity', () => {
-    expect(
-      mapUberStoreDiscoveryWire({
-        stores: [
-          {
-            store_id: 'store-1',
-            pos_data: {
-              integrator_store_id: '4750_Yonge_Street',
-              order_manager_client_id: 'must-not-be-used-as-store-id',
-            },
-          },
-        ],
-      }),
-    ).toMatchObject({
-      stores: [{ posExternalStoreId: '4750_Yonge_Street' }],
-    });
+  it('不再接受旧 List All Stores 的 store_id wire shape', () => {
+    expectMappingFailure(
+      () =>
+        mapUberStoreDiscoveryWire({
+          stores: [{ store_id: 'legacy-store-1' }],
+        }),
+      'UBER_STORE_DISCOVERY_MAPPING_FAILED',
+    );
+  });
+
+  it('provision response 只把 integrator_store_id 映射为 SanQ external store identity', () => {
     expect(
       mapUberStoreProvisionWire(
         {
@@ -90,7 +85,7 @@ describe('Uber store wire mapper', () => {
   it('明确应用可选字段默认值并忽略未知字段', () => {
     expect(
       mapUberStoreDiscoveryWire({
-        stores: [{ store_id: ' store-1 ', ignored: 'value' }],
+        stores: [{ id: ' store-1 ', ignored: 'value' }],
       }),
     ).toEqual({
       stores: [

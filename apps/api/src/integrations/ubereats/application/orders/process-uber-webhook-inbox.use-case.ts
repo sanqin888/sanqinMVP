@@ -2,7 +2,10 @@ import { type UberTelemetryPort } from '../shared/uber-telemetry.port';
 import { createHash } from 'crypto';
 import { dispatchUberWebhookV1 } from '../../domain/webhook/uber-webhook-event.parser';
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
-import { UberMenuNotificationHandler } from '../menu/uber-menu-notification.handler';
+import {
+  UberMenuNotificationHandler,
+  UberMenuRefreshRequestHandler,
+} from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 import {
   type UberWebhookInboxItem,
@@ -23,6 +26,7 @@ export class ProcessUberWebhookInboxUseCase {
     private readonly inbox: UberWebhookInboxPort,
     private readonly orders: ImportUberOrderUseCase,
     private readonly menu: UberMenuNotificationHandler,
+    private readonly menuRefresh: UberMenuRefreshRequestHandler,
     private readonly merchant: HandleUberMerchantWebhookHandler,
     private readonly telemetry: UberTelemetryPort,
   ) {}
@@ -77,8 +81,16 @@ export class ProcessUberWebhookInboxUseCase {
           });
           break;
         }
+        case 'menu-refresh': {
+          await this.menuRefresh.execute(eventId, dispatched.event);
+          break;
+        }
         case 'store-provisioning': {
           await this.merchant.execute(eventId, dispatched.event);
+          break;
+        }
+        case 'store-status': {
+          await this.merchant.executeStatusChanged(eventId, dispatched.event);
           break;
         }
         case 'unsupported': {

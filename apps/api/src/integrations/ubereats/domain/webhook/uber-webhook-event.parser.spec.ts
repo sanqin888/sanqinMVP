@@ -3,6 +3,7 @@ import { join } from 'path';
 import {
   dispatchUberWebhookV1,
   parseUberMenuNotificationV1,
+  parseUberMenuRefreshRequestV1,
   parseUberOrderCancelV1,
   parseUberOrderNotificationV1,
   parseUberStoreProvisioningV1,
@@ -137,7 +138,7 @@ describe('Uber webhook event domain parser', () => {
     );
   });
 
-  it('parses store status independently from provisioning', () => {
+  it('parses and dispatches store status independently from provisioning', () => {
     const payload = fixture('store.status.changed');
     expect(parseUberStoreStatusChangedV1(payload)).toMatchObject({
       version: 1,
@@ -145,6 +146,47 @@ describe('Uber webhook event domain parser', () => {
       storeId: 'store-redacted',
     });
     expect(parseUberStoreProvisioningV1(payload)).toBeNull();
+    expect(
+      dispatchUberWebhookV1({
+        eventType: 'store.status.changed',
+        businessVersion: 'v1',
+        payload,
+      }),
+    ).toMatchObject({
+      kind: 'store-status',
+      event: { storeId: 'store-redacted' },
+    });
+  });
+
+  it('parses and dispatches the menu refresh request contract', () => {
+    const payload = {
+      event_type: 'store.menu_refresh_request',
+      partner_store_id: '',
+      resource_href: 'https://api.uber.com/v1/eats/stores/store-redacted',
+      store_id: 'store-redacted',
+      webhook_meta: { webhook_msg_uuid: 'fixture-menu-refresh-v1' },
+    };
+    expect(parseUberMenuRefreshRequestV1(payload)).toMatchObject({
+      version: 1,
+      family: 'menu-refresh',
+      eventType: 'store.menu_refresh_request',
+      storeId: 'store-redacted',
+      partnerStoreId: null,
+      eventId: 'fixture-menu-refresh-v1',
+    });
+    expect(
+      dispatchUberWebhookV1({
+        eventType: 'store.menu_refresh_request',
+        businessVersion: 'v1',
+        payload,
+      }),
+    ).toMatchObject({
+      kind: 'menu-refresh',
+      event: {
+        storeId: 'store-redacted',
+        partnerStoreId: null,
+      },
+    });
   });
 
   it('accepts both 1.0.0 new-order webhook families', () => {

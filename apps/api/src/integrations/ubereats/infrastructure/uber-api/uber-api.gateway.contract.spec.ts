@@ -102,7 +102,7 @@ describe('Uber API gateway contract', () => {
       limiter,
     );
     const result = gateway.inspect({
-      path: '/v1/eats/stores',
+      path: '/v1/delivery/stores',
       operation: 'uber.store.list',
       scope: 'eats.store',
     });
@@ -143,7 +143,7 @@ describe('Uber API gateway contract', () => {
     );
     await expect(
       gateway.request({
-        path: '/v1/eats/stores',
+        path: '/v1/delivery/stores',
         operation: 'uber.store.list',
         scope: 'eats.store',
       }),
@@ -201,8 +201,8 @@ describe('Uber API gateway contract', () => {
   );
 
   it.each([
-    ['http://api.uber.com', '/v1/eats/stores'],
-    ['https://user:secret@api.uber.com', '/v1/eats/stores'],
+    ['http://api.uber.com', '/v1/delivery/stores'],
+    ['https://user:secret@api.uber.com', '/v1/delivery/stores'],
     ['https://api.uber.com', '//attacker.invalid/path'],
   ])('rejects unsafe base URL/path (%s, %s)', async (apiBaseUrl, path) => {
     const gateway = new UberApiGatewayTransport(
@@ -230,7 +230,7 @@ describe('Uber API gateway contract', () => {
     });
     await expect(
       gateway.request({
-        path: '/v1/eats/stores',
+        path: '/v1/delivery/stores',
         operation: 'uber.store.list',
         scope: 'eats.store',
       }),

@@ -52,7 +52,10 @@ import { UberOrderSyncPrismaRepository } from '../../infrastructure/persistence/
 import { UberOrderActionGatewayAdapter } from '../../infrastructure/uber-api/uber-order-action.gateway';
 import { UberOrderDetailGatewayAdapter } from '../../infrastructure/uber-api/uber-order-detail.gateway';
 import { UberOrderGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
-import { UberMenuNotificationHandler } from '../../application/menu/uber-menu-notification.handler';
+import {
+  UberMenuNotificationHandler,
+  UberMenuRefreshRequestHandler,
+} from '../../application/menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../../application/merchant/uber-merchant-webhook.handler';
 import {
   UBER_EATS_ORDER_ACTIONS,
@@ -235,6 +238,7 @@ export function createOrdersWiring(): Provider[] {
         UBER_WEBHOOK_INBOX_PORT,
         ImportUberOrderUseCase,
         UberMenuNotificationHandler,
+        UberMenuRefreshRequestHandler,
         HandleUberMerchantWebhookHandler,
         UBER_TELEMETRY_PORT,
       ],
@@ -242,6 +246,7 @@ export function createOrdersWiring(): Provider[] {
         inbox: UberWebhookInboxPort,
         orders: ImportUberOrderUseCase,
         menu: UberMenuNotificationHandler,
+        menuRefresh: UberMenuRefreshRequestHandler,
         merchant: HandleUberMerchantWebhookHandler,
         telemetry: UberTelemetryPort,
       ) =>
@@ -249,6 +254,7 @@ export function createOrdersWiring(): Provider[] {
           inbox,
           orders,
           menu,
+          menuRefresh,
           merchant,
           telemetry,
         ),

@@ -350,6 +350,10 @@ export class UpdateUberStoreIntegrationConfigUseCase {
     private readonly mappings: UberStoreMappingRepositoryPort,
   ) {}
 
+  async activate(storeId: string) {
+    return this.update(storeId, { integration_enabled: true });
+  }
+
   async update(storeId: string, payload: Record<string, unknown>) {
     const { id, mapping } = await requireMappedStore(
       storeId,

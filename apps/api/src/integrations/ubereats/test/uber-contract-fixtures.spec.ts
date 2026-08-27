@@ -47,7 +47,6 @@ describe('versioned Uber wire fixtures', () => {
       'orders/detail.json',
       'orders/notification.json',
       'orders/ready-request.json',
-      'stores/discovery.json',
       'stores/provision-request.json',
       'stores/provision-response.json',
       'webhooks/menus.notification.json',
