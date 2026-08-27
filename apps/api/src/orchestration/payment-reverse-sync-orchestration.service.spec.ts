@@ -151,12 +151,12 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       outcome: 'refunded',
     });
 
-    await expect(
-      harness.service.apply(result('FULL_REFUND')),
-    ).resolves.toEqual({
-      action: 'ORDER_REFUNDED',
-      orderStableId: 'order_stable_1',
-    });
+    await expect(harness.service.apply(result('FULL_REFUND'))).resolves.toEqual(
+      {
+        action: 'ORDER_REFUNDED',
+        orderStableId: 'order_stable_1',
+      },
+    );
     expect(harness.orders.createFullRefund).toHaveBeenCalledWith(
       expect.objectContaining({
         orderStableId: 'order_stable_1',
@@ -226,12 +226,12 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       checkout({ status: 'CANCELLED', orderId: null }),
     );
 
-    await expect(
-      harness.service.apply(result('FULL_REFUND')),
-    ).resolves.toEqual({
-      action: 'CHECKOUT_CANCELLED',
-      orderStableId: 'order_stable_1',
-    });
+    await expect(harness.service.apply(result('FULL_REFUND'))).resolves.toEqual(
+      {
+        action: 'CHECKOUT_CANCELLED',
+        orderStableId: 'order_stable_1',
+      },
+    );
     expect(
       harness.checkouts.markExternallyReversedAndRelease,
     ).toHaveBeenCalledWith('sale-attempt-1');
