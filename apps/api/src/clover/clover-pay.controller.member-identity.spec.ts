@@ -44,9 +44,13 @@ function createDto(): CreatePaymentSessionDto {
 }
 
 function createHarness() {
-  const checkoutIntents = {
-    recordIntent: jest.fn().mockResolvedValue(undefined),
-  };
+  type RecordIntentParams = Parameters<
+    CheckoutIntentsService['recordIntent']
+  >[0];
+  const recordIntent = jest
+    .fn<Promise<void>, [RecordIntentParams]>()
+    .mockResolvedValue(undefined);
+  const checkoutIntents = { recordIntent };
   const orders = {
     quoteOrderPricing: jest.fn().mockResolvedValue({ totalCents: 1130 }),
   };
@@ -79,11 +83,8 @@ describe('CloverPayController member identity boundary', () => {
       expect.objectContaining({ userStableId: undefined }),
     );
     expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
-    const recordedIntent =
-      checkoutIntents.recordIntent.mock.calls[0]?.[0] as unknown as {
-        metadata: { loyaltyUserStableId?: string };
-      };
-    expect(recordedIntent.metadata.loyaltyUserStableId).toBeUndefined();
+    const recordedIntent = checkoutIntents.recordIntent.mock.calls[0]?.[0];
+    expect(recordedIntent?.metadata.loyaltyUserStableId).toBeUndefined();
   });
 
   it('uses the authenticated session member identity for a payment session', async () => {
@@ -98,11 +99,8 @@ describe('CloverPayController member identity boundary', () => {
       expect.objectContaining({ userStableId: sessionUserStableId }),
     );
     expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
-    const recordedIntent =
-      checkoutIntents.recordIntent.mock.calls[0]?.[0] as unknown as {
-        metadata: { loyaltyUserStableId?: string };
-      };
-    expect(recordedIntent.metadata.loyaltyUserStableId).toBe(
+    const recordedIntent = checkoutIntents.recordIntent.mock.calls[0]?.[0];
+    expect(recordedIntent?.metadata.loyaltyUserStableId).toBe(
       sessionUserStableId,
     );
   });
