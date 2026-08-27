@@ -5,7 +5,6 @@ import type {
   ActiveSpecialDto,
   AdminMenuCategoryDto,
   DailySpecialDto,
-  MenuEntitlementItemDto,
   MenuOptionGroupWithOptionsDto,
   PublicMenuCategoryDto,
   TemplateGroupFullDto,
@@ -53,50 +52,6 @@ export type LocalizedDailySpecial = {
   disallowCoupons: boolean;
   sortOrder: number;
 };
-
-export function buildLocalizedEntitlementItems(
-  unlockedItems: MenuEntitlementItemDto[],
-  locale: Locale,
-): LocalizedMenuItem[] {
-  const isZh = locale === "zh";
-
-  return (unlockedItems ?? []).map<LocalizedMenuItem>((item) => {
-    const name = isZh && item.nameZh ? item.nameZh : item.nameEn;
-    const ingredientsText =
-      (isZh && item.ingredientsZh ? item.ingredientsZh : item.ingredientsEn) ?? "";
-    const ingredients = ingredientsText.trim() ? ingredientsText : undefined;
-
-    const optionGroups = (item.optionGroups ?? [])
-      .filter((group) => group.isEnabled)
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((group) => {
-        const options = (group.options ?? [])
-          .filter((opt) => opt.isAvailable)
-          .sort((a, b) => a.sortOrder - b.sortOrder);
-
-        return {
-          ...group,
-          options,
-        };
-      });
-
-    return {
-      stableId: item.stableId,
-      name,
-      nameEn: item.nameEn,
-      nameZh: item.nameZh ?? undefined,
-      price: item.basePriceCents / 100,
-      basePriceCents: item.basePriceCents,
-      effectivePriceCents: item.basePriceCents,
-      imageUrl: item.imageUrl ?? undefined,
-      ingredients,
-      isAvailable: item.isAvailable,
-      tempUnavailableUntil: item.tempUnavailableUntil ?? null,
-      isVisibleOnMainMenu: true,
-      optionGroups,
-    };
-  });
-}
 
 /**
  * 真正用于前台展示的菜单类型（与 LocalizedCategory 相同）

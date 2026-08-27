@@ -47,6 +47,7 @@ type Draft = {
   stackingPolicy: StackingPolicy;
   excludesCoupons: boolean;
   excludesItemPromotions: boolean;
+  membersOnly: boolean;
   channels: PromotionChannel[];
   validFrom: string;
   validTo: string;
@@ -97,6 +98,7 @@ function emptyDraft(): Draft {
     stackingPolicy: 'EXCLUSIVE',
     excludesCoupons: false,
     excludesItemPromotions: false,
+    membersOnly: false,
     channels: ['web', 'in_store'],
     validFrom: '',
     validTo: '',
@@ -172,6 +174,7 @@ function draftFromRule(rule: RuleDto): Draft {
     stackingPolicy: rule.stackingPolicy,
     excludesCoupons: rule.excludesCoupons,
     excludesItemPromotions: rule.excludesItemPromotions,
+    membersOnly: config.membersOnly === true,
     channels: rule.channels,
     validFrom: isoToDate(rule.validFrom),
     validTo: isoToDate(rule.validTo),
@@ -200,22 +203,24 @@ function positiveNumber(value: string, fallback: number): number {
 
 function buildConfig(draft: Draft): Record<string, unknown> {
   const minSpendCents = moneyToCents(draft.minSpend);
-  const withMinSpend = (base: Record<string, unknown>) =>
-    minSpendCents === null ? base : { ...base, minSpendCents };
+  const withCommonConfig = (base: Record<string, unknown>) => {
+    const config = { ...base, membersOnly: draft.membersOnly };
+    return minSpendCents === null ? config : { ...config, minSpendCents };
+  };
 
   switch (draft.type) {
     case 'PERCENTAGE_OFF':
-      return withMinSpend({
+      return withCommonConfig({
         discountPercent: positiveNumber(draft.discountPercent, 10),
         targetItemStableIds: draft.targetItemStableIds,
       });
     case 'FIXED_AMOUNT_OFF':
-      return withMinSpend({
+      return withCommonConfig({
         discountCents: moneyToCents(draft.discountAmount) ?? 0,
         targetItemStableIds: draft.targetItemStableIds,
       });
     case 'BUY_X_GET_Y':
-      return withMinSpend({
+      return withCommonConfig({
         buyItemStableIds: draft.buyItemStableIds,
         buyQuantity: Math.max(1, Math.round(positiveNumber(draft.buyQuantity, 1))),
         getItemStableIds: draft.getItemStableIds,
@@ -223,12 +228,12 @@ function buildConfig(draft: Draft): Record<string, unknown> {
         discountPercent: positiveNumber(draft.rewardPercent, 100),
       });
     case 'FREE_ITEM':
-      return withMinSpend({
+      return withCommonConfig({
         itemStableIds: draft.freeItemStableIds,
         quantity: Math.max(1, Math.round(positiveNumber(draft.freeQuantity, 1))),
       });
     case 'LOYALTY_MULTIPLIER':
-      return withMinSpend({ multiplier: positiveNumber(draft.multiplier, 2) });
+      return withCommonConfig({ multiplier: positiveNumber(draft.multiplier, 2) });
   }
 }
 
@@ -490,9 +495,14 @@ export default function AutomaticPromotionsPage() {
           {draft.channels.includes('ubereats') ? <p className="mt-2 text-xs font-medium text-amber-700">{isZh ? 'Uber Eats 已使用平台订单价格；只有明确需要 SanQ 二次优惠时才启用此渠道。' : 'Uber Eats already supplies platform order prices. Enable this only when a SanQ-side additional promotion is intentional.'}</p> : null}
         </div>
 
-        <div className="flex flex-wrap gap-4 rounded-xl border border-slate-200 p-4">
-          <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.excludesCoupons} onChange={(e) => patch({ excludesCoupons: e.target.checked })} />{isZh ? '应用后排除优惠券' : 'Exclude coupons when applied'}</label>
-          <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.excludesItemPromotions} onChange={(e) => patch({ excludesItemPromotions: e.target.checked })} />{isZh ? '与商品特价互斥' : 'Conflict with item specials'}</label>
+        <div className="rounded-xl border border-slate-200 p-4">
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.membersOnly} onChange={(e) => patch({ membersOnly: e.target.checked })} />{isZh ? '仅限会员' : 'Members only'}</label>
+            <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.excludesCoupons} onChange={(e) => patch({ excludesCoupons: e.target.checked })} />{isZh ? '应用后排除优惠券' : 'Exclude coupons when applied'}</label>
+            <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.excludesItemPromotions} onChange={(e) => patch({ excludesItemPromotions: e.target.checked })} />{isZh ? '与商品特价互斥' : 'Conflict with item specials'}</label>
+          </div>
+          {draft.membersOnly ? <p className="mt-2 text-xs text-slate-500">{isZh ? '仅已识别的 SanQ 会员可享此活动；可与任意现有活动类型组合。' : 'Only recognized SanQ members receive this promotion; it can be combined with any existing promotion type.'}</p> : null}
+          {draft.membersOnly && draft.channels.includes('ubereats') ? <p className="mt-1 text-xs font-medium text-amber-700">{isZh ? 'Uber Eats 订单无法识别 SanQ 会员身份，因此该渠道不会触发仅会员活动。' : 'Uber Eats orders do not carry SanQ member identity, so member-only promotions will not apply on that channel.'}</p> : null}
         </div>
 
         {error ? <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}

@@ -63,10 +63,7 @@ import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import { resolveConfiguredStoreId } from '../common/store-id';
-import type {
-  CouponEntitlementPromotionLike,
-  CouponPromotionLike,
-} from '../promotions/coupon-promotion.adapter';
+import type { CouponPromotionLike } from '../promotions/coupon-promotion.adapter';
 import {
   evaluateOrderPromotions,
   type PromotionOrderEvaluation,
@@ -181,20 +178,6 @@ function toCouponPromotionLike(
     discountPercent: coupon.discountPercent,
     minSpendCents: coupon.minSpendCents,
     unlockedItemStableIds: coupon.unlockedItemStableIds,
-    stackingPolicy: coupon.stackingPolicy,
-  };
-}
-
-function toCouponEntitlementPromotionLike(
-  coupon: Pick<
-    CouponForPromotion,
-    'couponStableId' | 'code' | 'title' | 'stackingPolicy'
-  >,
-): CouponEntitlementPromotionLike {
-  return {
-    couponStableId: coupon.couponStableId,
-    code: coupon.code,
-    title: coupon.title,
     stackingPolicy: coupon.stackingPolicy,
   };
 }
@@ -539,13 +522,6 @@ export class OrdersService {
       }
     }
 
-    const rawSelectedUserCouponId =
-      typeof dto.selectedUserCouponId === 'string'
-        ? dto.selectedUserCouponId.trim()
-        : '';
-    const selectedUserCouponId =
-      rawSelectedUserCouponId.length > 0 ? rawSelectedUserCouponId : null;
-
     const hiddenItems = await this.prisma.menuItem.findMany({
       where: {
         stableId: { in: productStableIds },
@@ -554,69 +530,9 @@ export class OrdersService {
       },
       select: { stableId: true },
     });
-    const hiddenItemStableIds = hiddenItems.map((item) => item.stableId);
-    let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
-      null;
-
-    if (hiddenItemStableIds.length > 0) {
-      if (!normalizedUserStableId) {
-        throw new BadRequestException(
-          'userStableId is required for hidden items',
-        );
-      }
-      if (!selectedUserCouponId) {
-        throw new BadRequestException(
-          'selectedUserCouponId is required for hidden items',
-        );
-      }
-
-      const now = new Date();
-      const userCoupon = await this.prisma.userCoupon.findFirst({
-        where: {
-          id: selectedUserCouponId,
-          userStableId: normalizedUserStableId,
-          status: 'AVAILABLE',
-          AND: [
-            {
-              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-            },
-            {
-              coupon: {
-                isActive: true,
-                AND: [
-                  {
-                    OR: [{ startsAt: null }, { startsAt: { lte: now } }],
-                  },
-                  {
-                    OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-                  },
-                ],
-              },
-            },
-          ],
-        },
-        include: { coupon: true },
-      });
-      if (!userCoupon) {
-        throw new BadRequestException('coupon is not available');
-      }
-
-      const unlockedSet = new Set(
-        (userCoupon.coupon.unlockedItemStableIds ?? []).map((value) =>
-          value.trim(),
-        ),
-      );
-      const missing = hiddenItemStableIds.filter(
-        (stableId) => !unlockedSet.has(stableId),
-      );
-      if (missing.length > 0) {
-        throw new BadRequestException(
-          'hidden items are not unlocked by this coupon',
-        );
-      }
-
-      entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
-        userCoupon.coupon,
+    if (dto.channel === Channel.web && hiddenItems.length > 0) {
+      throw new BadRequestException(
+        'hidden menu items are not available for customer ordering',
       );
     }
 
@@ -629,11 +545,11 @@ export class OrdersService {
     );
     const promotionEvaluation = evaluateOrderPromotions({
       lines: promotionLines,
-      entitlementCoupon: entitlementCouponForPromotion,
       coupon: couponInfo?.coupon
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
       promotionContext,
+      customer: { isMember: Boolean(userId) },
       posDiscountCents:
         dto.channel === Channel.in_store ? dto.discountCents : undefined,
     });
@@ -2207,8 +2123,6 @@ export class OrdersService {
       couponStableId: dto.couponStableId,
     });
 
-    let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
-      null;
     const productStableIds = calculatedItems.map(
       (item) => item.productStableId,
     );
@@ -2220,45 +2134,9 @@ export class OrdersService {
       },
       select: { stableId: true },
     });
-    if (hiddenItems.length > 0) {
-      if (!normalizedUserStableId || !dto.selectedUserCouponId) {
-        throw new BadRequestException(
-          'selectedUserCouponId is required for hidden items',
-        );
-      }
-      const userCoupon = await this.prisma.userCoupon.findFirst({
-        where: {
-          id: dto.selectedUserCouponId,
-          userStableId: normalizedUserStableId,
-          status: 'AVAILABLE',
-          AND: [
-            { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-            {
-              coupon: {
-                isActive: true,
-                AND: [
-                  {
-                    OR: [{ startsAt: null }, { startsAt: { lte: new Date() } }],
-                  },
-                  { OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
-                ],
-              },
-            },
-          ],
-        },
-        include: { coupon: true },
-      });
-      if (!userCoupon) {
-        throw new BadRequestException('coupon is not available');
-      }
-      const unlocked = new Set(userCoupon.coupon.unlockedItemStableIds);
-      if (hiddenItems.some((item) => !unlocked.has(item.stableId))) {
-        throw new BadRequestException(
-          'hidden items are not unlocked by this coupon',
-        );
-      }
-      entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
-        userCoupon.coupon,
+    if (dto.channel === Channel.web && hiddenItems.length > 0) {
+      throw new BadRequestException(
+        'hidden menu items are not available for customer ordering',
       );
     }
 
@@ -2267,11 +2145,11 @@ export class OrdersService {
     );
     const promotionEvaluation = evaluateOrderPromotions({
       lines: promotionLines,
-      entitlementCoupon: entitlementCouponForPromotion,
       coupon: couponInfo?.coupon
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
       promotionContext,
+      customer: { isMember: Boolean(userId) },
       posDiscountCents: dto.discountCents,
     });
     assertCouponPromotionAccepted(
@@ -2987,12 +2865,6 @@ export class OrdersService {
       null;
 
     const orderId = crypto.randomUUID();
-    const rawSelectedUserCouponId =
-      typeof dto.selectedUserCouponId === 'string'
-        ? dto.selectedUserCouponId.trim()
-        : '';
-    const selectedUserCouponId =
-      rawSelectedUserCouponId.length > 0 ? rawSelectedUserCouponId : null;
     const promotionContext = await this.promotions.getOrderPromotionContext(
       dto.channel,
     );
@@ -3019,86 +2891,10 @@ export class OrdersService {
               },
               select: { stableId: true },
             });
-            const hiddenItemStableIds = hiddenItems.map(
-              (item) => item.stableId,
-            );
-            let userCouponToRedeem: {
-              id: string;
-              couponStableId: string;
-              stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
-              unlockedItemStableIds: string[];
-            } | null = null;
-            let entitlementCouponForPromotion: CouponEntitlementPromotionLike | null =
-              null;
-
-            if (hiddenItemStableIds.length > 0) {
-              if (!normalizedUserStableId) {
-                throw new BadRequestException(
-                  'userStableId is required for hidden items',
-                );
-              }
-              if (!selectedUserCouponId) {
-                throw new BadRequestException(
-                  'selectedUserCouponId is required for hidden items',
-                );
-              }
-              const userCoupon = await tx.userCoupon.findFirst({
-                where: {
-                  id: selectedUserCouponId,
-                  userStableId: normalizedUserStableId,
-                  status: 'AVAILABLE',
-                  AND: [
-                    {
-                      OR: [{ expiresAt: null }, { expiresAt: { gt: paidAt } }],
-                    },
-                    {
-                      coupon: {
-                        isActive: true,
-                        AND: [
-                          {
-                            OR: [
-                              { startsAt: null },
-                              { startsAt: { lte: paidAt } },
-                            ],
-                          },
-                          {
-                            OR: [{ endsAt: null }, { endsAt: { gt: paidAt } }],
-                          },
-                        ],
-                      },
-                    },
-                  ],
-                },
-                include: { coupon: true },
-              });
-              if (!userCoupon) {
-                throw new BadRequestException('coupon is not available');
-              }
-
-              const unlockedSet = new Set(
-                (userCoupon.coupon.unlockedItemStableIds ?? []).map((value) =>
-                  value.trim(),
-                ),
+            if (dto.channel === Channel.web && hiddenItems.length > 0) {
+              throw new BadRequestException(
+                'hidden menu items are not available for customer ordering',
               );
-              const missing = hiddenItemStableIds.filter(
-                (stableId) => !unlockedSet.has(stableId),
-              );
-              if (missing.length > 0) {
-                throw new BadRequestException(
-                  'hidden items are not unlocked by this coupon',
-                );
-              }
-
-              entitlementCouponForPromotion = toCouponEntitlementPromotionLike(
-                userCoupon.coupon,
-              );
-              userCouponToRedeem = {
-                id: userCoupon.id,
-                couponStableId: userCoupon.couponStableId,
-                stackingPolicy: userCoupon.coupon.stackingPolicy,
-                unlockedItemStableIds:
-                  userCoupon.coupon.unlockedItemStableIds ?? [],
-              };
             }
 
             const couponInfo = await this.membership.validateCouponForOrder(
@@ -3110,11 +2906,11 @@ export class OrdersService {
             );
             const promotionEvaluation = evaluateOrderPromotions({
               lines: promotionLines,
-              entitlementCoupon: entitlementCouponForPromotion,
               coupon: couponInfo?.coupon
                 ? toCouponPromotionLike(couponInfo.coupon)
                 : null,
               promotionContext,
+              customer: { isMember: Boolean(userId) },
               posDiscountCents:
                 dto.channel === Channel.in_store
                   ? dto.discountCents
@@ -3285,26 +3081,6 @@ export class OrdersService {
               },
               include: { items: true },
             })) as OrderWithItems;
-
-            if (userCouponToRedeem) {
-              const updatedCoupon = await tx.userCoupon.updateMany({
-                where: {
-                  id: userCouponToRedeem.id,
-                  status: 'AVAILABLE',
-                },
-                data: {
-                  status: 'REDEEMED',
-                  redeemedAt: paidAt,
-                  orderStableId: created.orderStableId,
-                },
-              });
-              if (updatedCoupon.count === 0) {
-                throw new BadRequestException('coupon is not available');
-              }
-              this.logger.log(
-                `UserCoupon redeemed: userCouponId=${userCouponToRedeem.id} couponStableId=${userCouponToRedeem.couponStableId} orderStableId=${created.orderStableId}`,
-              );
-            }
 
             if (couponInfo?.coupon?.id) {
               await this.membership.reserveCouponForOrder({

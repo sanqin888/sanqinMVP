@@ -12,8 +12,11 @@ import {
   OnModuleInit,
   Post,
   Query,
+  Req,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AppLogger } from '../common/app-logger';
 import { CloverService, type CloverChargeStatusResult } from './clover.service';
 import {
@@ -29,6 +32,7 @@ import {
 import { OrdersService } from '../orders/orders.service';
 import { generateStableId } from '../common/utils/stable-id';
 import { buildClientRequestId } from '../common/utils/client-request-id';
+import { OptionalSessionAuthGuard } from '../auth/optional-session-auth.guard';
 import { CreateOnlinePricingQuoteDto } from './dto/create-online-pricing-quote.dto';
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 import { PricingTokenService } from './pricing-token.service';
@@ -40,6 +44,10 @@ import {
   type ChargeAmountReconcileResult,
   reconcileChargeAmount,
 } from './reconcile-charge';
+
+type AuthedRequest = Request & {
+  user?: { userStableId?: string };
+};
 
 type ApplePayClientEventDto = {
   eventName?: unknown;
@@ -92,6 +100,17 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     private readonly phoneVerification: PhoneVerificationService,
   ) {}
 
+  private bindAuthenticatedMember(
+    metadata: CheckoutMetadata,
+    req: AuthedRequest,
+  ): CheckoutMetadata {
+    const userStableId = req.user?.userStableId?.trim();
+    return {
+      ...metadata,
+      loyaltyUserStableId: userStableId || undefined,
+    };
+  }
+
   private async resolveVerifiedCheckoutContacts(
     metadata: CheckoutMetadata,
   ): Promise<CheckoutMetadata['verifiedContacts']> {
@@ -141,7 +160,11 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
   }
 
   @Post('pay/online/session')
-  async createPaymentSession(@Body() dto: CreatePaymentSessionDto) {
+  @UseGuards(OptionalSessionAuthGuard)
+  async createPaymentSession(
+    @Req() req: AuthedRequest,
+    @Body() dto: CreatePaymentSessionDto,
+  ) {
     let metadata: CheckoutMetadata;
     try {
       metadata = parseCheckoutMetadata(dto.metadata);
@@ -155,6 +178,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    metadata = this.bindAuthenticatedMember(metadata, req);
     const verifiedContacts =
       await this.resolveVerifiedCheckoutContacts(metadata);
 
@@ -330,7 +354,11 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
   }
 
   @Post('pay/online/quote')
-  async createOnlinePricingQuote(@Body() dto: CreateOnlinePricingQuoteDto) {
+  @UseGuards(OptionalSessionAuthGuard)
+  async createOnlinePricingQuote(
+    @Req() req: AuthedRequest,
+    @Body() dto: CreateOnlinePricingQuoteDto,
+  ) {
     let metadata: CheckoutMetadata;
     try {
       metadata = parseCheckoutMetadata(dto.metadata);
@@ -344,6 +372,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    metadata = this.bindAuthenticatedMember(metadata, req);
     await this.resolveVerifiedCheckoutContacts(metadata);
 
     const checkoutIntentId =
@@ -706,7 +735,9 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
   }
 
   @Post('pay/online/card-token')
+  @UseGuards(OptionalSessionAuthGuard)
   async payWithCardToken(
+    @Req() req: AuthedRequest,
     @Body() dto: CreateCardTokenPaymentDto,
     @Headers('cf-connecting-ip') cfConnectingIp: string | string[] | undefined,
     @Ip() rawIp: string,
@@ -735,6 +766,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    metadata = this.bindAuthenticatedMember(metadata, req);
     const isPlainObject = (v: unknown): v is Record<string, unknown> =>
       !!v && typeof v === 'object' && !Array.isArray(v);
 

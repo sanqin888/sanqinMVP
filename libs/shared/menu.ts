@@ -144,31 +144,6 @@ export type PublicMenuResponse = {
   dailySpecials: DailySpecialDto[];
 };
 
-export type MenuEntitlementItemDto = LocalizedName &
-  Availability & {
-    stableId: string;
-    basePriceCents: number;
-    imageUrl: string | null;
-    ingredientsEn: string | null;
-    ingredientsZh: string | null;
-    optionGroups: MenuOptionGroupWithOptionsDto[];
-    couponStableId: string;
-    userCouponId: string;
-  };
-
-export type MenuEntitlementDto = {
-  userCouponId: string;
-  couponStableId: string;
-  unlockedItemStableIds: string[];
-  stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
-};
-
-export type MenuEntitlementsResponse = {
-  unlockedItemStableIds: string[];
-  unlockedItems: MenuEntitlementItemDto[];
-  entitlements: MenuEntitlementDto[];
-};
-
 export type AdminMenuFull = AdminMenuFullResponse;
 
 // Shared availability helper (front/back use the same logic)
