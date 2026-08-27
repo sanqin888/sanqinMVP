@@ -657,9 +657,14 @@ export class CloverPlatformPaymentsGateway {
     const normalizedResult = normalizePlatformResult(resultCode);
     if (request.operation === 'VOID' && normalizedResult === 'CANCELLED') {
       const additionalCharges = elementRecords(payment, 'additionalCharges');
-      const additionalChargeCents = additionalCharges
-        ? sumMoney(additionalCharges)
-        : null;
+      if (!additionalCharges) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_ADDITIONAL_CHARGE_MISMATCH',
+          'Clover Platform void facts do not match the original additional charges',
+        );
+      }
+      const additionalChargeCents = sumMoney(additionalCharges);
       if (
         additionalChargeCents === null ||
         additionalChargeCents !== request.expectedAdditionalChargeRefundCents
