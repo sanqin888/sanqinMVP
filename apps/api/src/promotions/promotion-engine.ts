@@ -8,7 +8,6 @@ export type PromotionSource =
 export type PromotionStackingGroup =
   | 'ITEM_PRICE'
   | 'COUPON'
-  | 'COUPON_ENTITLEMENT'
   | 'AUTOMATIC_DISCOUNT'
   | 'POS_MANUAL_DISCOUNT'
   | 'LOYALTY_BONUS';
@@ -17,6 +16,7 @@ export type PromotionStackingMode = 'EXCLUSIVE' | 'STACKABLE';
 export type PromotionEligibilityCode =
   | 'ELIGIBLE'
   | 'INACTIVE'
+  | 'MEMBER_REQUIRED'
   | 'MIN_SPEND_NOT_MET'
   | 'NO_APPLICABLE_SUBTOTAL'
   | 'STACKING_CONFLICT';

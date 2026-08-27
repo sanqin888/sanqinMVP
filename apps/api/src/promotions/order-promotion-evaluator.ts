@@ -1,8 +1,6 @@
 import type { DateTime } from 'luxon';
 import {
   evaluateCouponPromotion,
-  toCouponEntitlementPromotionCandidate,
-  type CouponEntitlementPromotionLike,
   type CouponPromotionLike,
 } from './coupon-promotion.adapter';
 import {
@@ -45,10 +43,12 @@ function normalizeCents(value: number): number {
 export function evaluateOrderPromotions(params: {
   lines: readonly PromotionOrderLine[];
   coupon?: CouponPromotionLike | null;
-  entitlementCoupon?: CouponEntitlementPromotionLike | null;
   promotionContext?: {
     rules: readonly PromotionRuleLike[];
     now: DateTime;
+  };
+  customer?: {
+    isMember: boolean;
   };
   posDiscountCents?: number;
 }): PromotionOrderEvaluation {
@@ -83,6 +83,7 @@ export function evaluateOrderPromotions(params: {
           rule,
           lines: params.lines,
           now: promotionContext.now,
+          isMember: params.customer?.isMember === true,
         }),
       )
     : [];
@@ -107,9 +108,6 @@ export function evaluateOrderPromotions(params: {
     0,
   );
 
-  const entitlementCouponCandidate = params.entitlementCoupon
-    ? toCouponEntitlementPromotionCandidate(params.entitlementCoupon)
-    : null;
   const couponCandidate = params.coupon
     ? evaluateCouponPromotion({
         coupon: params.coupon,
@@ -132,7 +130,6 @@ export function evaluateOrderPromotions(params: {
   const resolution = resolvePromotionCandidates([
     ...dailySpecialCandidates,
     ...ruleCandidates,
-    ...(entitlementCouponCandidate ? [entitlementCouponCandidate] : []),
     ...(couponCandidate ? [couponCandidate] : []),
     ...(posDiscountCandidate ? [posDiscountCandidate] : []),
   ]);

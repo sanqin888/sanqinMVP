@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { SessionAuthGuard } from './session-auth.guard';
+import { OptionalSessionAuthGuard } from './optional-session-auth.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import { GoogleStrategy } from './oauth/google.strategy';
 import { GoogleStartGuard } from './oauth/google.guard';
@@ -31,6 +32,7 @@ import { NotificationModule } from '../notifications/notification.module';
     AuthService,
     PrismaService,
     SessionAuthGuard,
+    OptionalSessionAuthGuard,
     AdminMfaGuard,
     MfaGuard,
     OauthStateService,
@@ -39,6 +41,13 @@ import { NotificationModule } from '../notifications/notification.module';
     RolesGuard,
   ],
   controllers: [AuthController],
-  exports: [AuthService, SessionAuthGuard, AdminMfaGuard, MfaGuard, RolesGuard],
+  exports: [
+    AuthService,
+    SessionAuthGuard,
+    OptionalSessionAuthGuard,
+    AdminMfaGuard,
+    MfaGuard,
+    RolesGuard,
+  ],
 })
 export class AuthModule {}

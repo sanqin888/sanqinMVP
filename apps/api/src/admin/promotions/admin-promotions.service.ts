@@ -92,6 +92,15 @@ function optionalNumber(
   return requireNumber(record, key, options);
 }
 
+function optionalBoolean(record: JsonObject, key: string): boolean {
+  const value = record[key];
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') {
+    throw new BadRequestException(`config.${key} must be a boolean`);
+  }
+  return value;
+}
+
 function requireStringArray(
   record: JsonObject,
   key: string,
@@ -140,9 +149,12 @@ function normalizeConfig(
     throw new BadRequestException('config must be an object');
   }
 
+  const membersOnly = optionalBoolean(value, 'membersOnly');
+
   switch (type) {
     case PromotionRuleType.PERCENTAGE_OFF: {
       const config: Record<string, Prisma.InputJsonValue> = {
+        membersOnly,
         discountPercent: requireNumber(value, 'discountPercent', {
           min: 1,
           max: 100,
@@ -155,6 +167,7 @@ function normalizeConfig(
     }
     case PromotionRuleType.FIXED_AMOUNT_OFF: {
       const config: Record<string, Prisma.InputJsonValue> = {
+        membersOnly,
         discountCents: requireNumber(value, 'discountCents', {
           min: 1,
           integer: true,
@@ -181,6 +194,7 @@ function normalizeConfig(
       }
 
       const config: Record<string, Prisma.InputJsonValue> = {
+        membersOnly,
         buyItemStableIds,
         buyQuantity: requireNumber(value, 'buyQuantity', {
           min: 1,
@@ -203,6 +217,7 @@ function normalizeConfig(
     }
     case PromotionRuleType.FREE_ITEM: {
       const config: Record<string, Prisma.InputJsonValue> = {
+        membersOnly,
         itemStableIds: requireStringArray(value, 'itemStableIds'),
         quantity:
           optionalNumber(value, 'quantity', { min: 1, integer: true }) ?? 1,
@@ -212,6 +227,7 @@ function normalizeConfig(
     }
     case PromotionRuleType.LOYALTY_MULTIPLIER: {
       const config: Record<string, Prisma.InputJsonValue> = {
+        membersOnly,
         multiplier: requireNumber(value, 'multiplier', { min: 1, max: 10 }),
       };
       addOptionalMinSpend(config, value);

@@ -13,8 +13,6 @@ import {
 import type { Request } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { CouponProgramClaimService } from '../coupons/coupon-program-claim.service';
-import { PromotionsService } from './promotions.service';
-import { MenuEntitlementsResponse } from '@shared/menu';
 
 type AuthedRequest = Request & {
   user?: { userStableId?: string };
@@ -23,18 +21,7 @@ type AuthedRequest = Request & {
 @UseGuards(SessionAuthGuard)
 @Controller('promotions')
 export class PromotionsController {
-  constructor(
-    private readonly promotions: PromotionsService,
-    private readonly couponClaims: CouponProgramClaimService,
-  ) {}
-
-  @Get('entitlements')
-  @Header('Cache-Control', 'no-store')
-  async getEntitlements(
-    @Req() req: AuthedRequest,
-  ): Promise<MenuEntitlementsResponse> {
-    return this.promotions.getMenuEntitlements(this.requireUserStableId(req));
-  }
+  constructor(private readonly couponClaims: CouponProgramClaimService) {}
 
   @Get('claimable')
   @Header('Cache-Control', 'no-store')

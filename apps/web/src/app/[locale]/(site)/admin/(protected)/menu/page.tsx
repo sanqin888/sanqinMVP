@@ -1068,20 +1068,27 @@ export default function AdminMenuPage() {
                             />
                           </label>
 
-                          <label className="flex items-center gap-2 md:col-span-3">
-                            <input
-                              type="checkbox"
-                              checked={item.visibility === "PUBLIC"}
-                              onChange={(e) =>
-                                updateItemField(
-                                  cat.stableId,
-                                  item.stableId,
-                                  "visibility",
-                                  e.target.checked ? "PUBLIC" : "HIDDEN",
-                                )
-                              }
-                            />
-                            <span className="text-sm">{isZh ? "对顾客可见" : "Visible to customers"}</span>
+                          <label className="space-y-1 md:col-span-3">
+                            <span className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={item.visibility === "PUBLIC"}
+                                onChange={(e) =>
+                                  updateItemField(
+                                    cat.stableId,
+                                    item.stableId,
+                                    "visibility",
+                                    e.target.checked ? "PUBLIC" : "HIDDEN",
+                                  )
+                                }
+                              />
+                              <span className="text-sm">{isZh ? "顾客渠道启用" : "Enabled for customer channels"}</span>
+                            </span>
+                            <span className="block text-xs text-slate-500">
+                              {isZh
+                                ? "关闭后顾客无法购买此菜品；会员专享请在「营销活动」中配置。"
+                                : "Turn this off to block customer ordering. Configure member-only offers under Promotions."}
+                            </span>
                           </label>
 
 

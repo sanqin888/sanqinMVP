@@ -212,6 +212,57 @@ describe('promotion rule adapter', () => {
     ]);
   });
 
+  it.each<{
+    type: PromotionRuleLike['type'];
+    config: Record<string, unknown>;
+  }>([
+    { type: 'PERCENTAGE_OFF', config: { discountPercent: 10 } },
+    { type: 'FIXED_AMOUNT_OFF', config: { discountCents: 100 } },
+    {
+      type: 'BUY_X_GET_Y',
+      config: {
+        buyItemStableIds: ['item-a'],
+        buyQuantity: 2,
+        getItemStableIds: ['item-b'],
+        getQuantity: 1,
+        discountPercent: 100,
+      },
+    },
+    {
+      type: 'FREE_ITEM',
+      config: { itemStableIds: ['item-b'], quantity: 1 },
+    },
+    { type: 'LOYALTY_MULTIPLIER', config: { multiplier: 2 } },
+  ])(
+    'gates $type behind the member-only eligibility flag',
+    ({ type, config }) => {
+      const rule = baseRule({
+        type,
+        config: { ...config, membersOnly: true },
+      });
+
+      const guestCandidate = toPromotionRuleCandidate({
+        rule,
+        lines,
+        now,
+        isMember: false,
+      });
+      expect(guestCandidate.eligibility).toEqual(
+        expect.objectContaining({ eligible: false, code: 'MEMBER_REQUIRED' }),
+      );
+
+      const memberCandidate = toPromotionRuleCandidate({
+        rule,
+        lines,
+        now,
+        isMember: true,
+      });
+      expect(memberCandidate.eligibility).toEqual(
+        expect.objectContaining({ eligible: true, code: 'ELIGIBLE' }),
+      );
+    },
+  );
+
   it('never lets persisted rules outrank a materialized Daily Special price', () => {
     const candidate = toPromotionRuleCandidate({
       rule: baseRule({ priority: 0 }),
