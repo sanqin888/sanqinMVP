@@ -2123,23 +2123,6 @@ export class OrdersService {
       couponStableId: dto.couponStableId,
     });
 
-    const productStableIds = calculatedItems.map(
-      (item) => item.productStableId,
-    );
-    const hiddenItems = await this.prisma.menuItem.findMany({
-      where: {
-        stableId: { in: productStableIds },
-        deletedAt: null,
-        visibility: 'HIDDEN',
-      },
-      select: { stableId: true },
-    });
-    if (dto.channel === Channel.web && hiddenItems.length > 0) {
-      throw new BadRequestException(
-        'hidden menu items are not available for customer ordering',
-      );
-    }
-
     const promotionContext = await this.promotions.getOrderPromotionContext(
       dto.channel,
     );
