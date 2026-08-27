@@ -27,13 +27,11 @@ import {
 import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS, type ScheduleSlot } from "@/lib/i18n/dictionaries";
 import {
-  buildLocalizedEntitlementItems,
   buildLocalizedMenuFromDb,
   type LocalizedMenuItem,
 } from "@/lib/menu/menu-transformer";
 import type {
   DailySpecialDto,
-  MenuEntitlementsResponse,
   PublicMenuResponse as PublicMenuApiResponse,
 } from "@shared/menu";
 import { useSession } from "@/lib/auth-session";
@@ -485,11 +483,6 @@ export default function CheckoutPage() {
   >(new Map());
   const [menuError, setMenuError] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
-  const [entitlements, setEntitlements] =
-    useState<MenuEntitlementsResponse | null>(null);
-  const [entitlementsError, setEntitlementsError] = useState<string | null>(
-    null,
-  );
 
   const membershipHref =
     authStatus === "authenticated"
@@ -574,57 +567,7 @@ export default function CheckoutPage() {
     }
   }, []);
 
-  const entitlementItems = useMemo(
-    () =>
-      buildLocalizedEntitlementItems(entitlements?.unlockedItems ?? [], locale),
-    [entitlements, locale],
-  );
-
-  const entitlementItemCouponMap = useMemo(() => {
-    const map = new Map<
-      string,
-      { userCouponId: string; couponStableId: string }
-    >();
-    for (const item of entitlements?.unlockedItems ?? []) {
-      if (!map.has(item.stableId)) {
-        map.set(item.stableId, {
-          userCouponId: item.userCouponId,
-          couponStableId: item.couponStableId,
-        });
-      }
-    }
-    return map;
-  }, [entitlements]);
-
-  const menuLookup = useMemo(() => {
-    const merged = new Map<string, LocalizedMenuItem>();
-
-    if (publicMenuLookup) {
-      publicMenuLookup.forEach((value, key) => merged.set(key, value));
-    }
-
-    entitlementItems.forEach((ent) => {
-      const existing = merged.get(ent.stableId);
-
-      if (!existing) {
-        merged.set(ent.stableId, ent);
-        return;
-      }
-
-      merged.set(ent.stableId, {
-        ...existing,
-        ...ent,
-
-        // ✅ entitlement 没有 optionGroups 时，保留菜单版本的 optionGroups
-        optionGroups:
-          ent.optionGroups && ent.optionGroups.length > 0
-            ? ent.optionGroups
-            : existing.optionGroups,
-      });
-    });
-
-    return merged.size ? merged : null;
-  }, [entitlementItems, publicMenuLookup]);
+  const menuLookup = publicMenuLookup;
 
   useEffect(() => {
     if (!menuLookup || !publicMenuLookup || menuLoading || items.length === 0) {
@@ -636,8 +579,8 @@ export default function CheckoutPage() {
     removeItemsByStableId(invalid.map((item) => item.productStableId));
     setCartNotice(
       locale === "zh"
-        ? "部分需持券餐品已从购物车移除。"
-        : "Some coupon-only items were removed from your cart.",
+        ? "部分已下架或不可用餐品已从购物车移除。"
+        : "Some unavailable items were removed from your cart.",
     );
   }, [
     items,
@@ -736,40 +679,6 @@ export default function CheckoutPage() {
       };
     });
   }, [dailySpecialLookup, localizedCartItems, locale]);
-
-  const requiredEntitlementItemStableIds = useMemo(() => {
-    if (!publicMenuLookup) {
-      return new Set<string>();
-    }
-
-    const required = new Set<string>();
-    for (const cartItem of cartItemsWithPricing) {
-      const isPublicMenuItem = publicMenuLookup.has(cartItem.productStableId);
-      if (
-        !isPublicMenuItem &&
-        entitlementItemCouponMap.has(cartItem.productStableId)
-      ) {
-        required.add(cartItem.productStableId);
-      }
-    }
-    return required;
-  }, [cartItemsWithPricing, entitlementItemCouponMap, publicMenuLookup]);
-
-  const selectedEntitlement = useMemo(() => {
-    if (!entitlements || requiredEntitlementItemStableIds.size === 0) {
-      return null;
-    }
-    const requiredIds = Array.from(requiredEntitlementItemStableIds);
-    return (
-      entitlements.entitlements.find((entitlement) =>
-        requiredIds.every((id) =>
-          entitlement.unlockedItemStableIds.includes(id),
-        ),
-      ) ?? null
-    );
-  }, [entitlements, requiredEntitlementItemStableIds]);
-
-  const selectedUserCouponId = selectedEntitlement?.userCouponId ?? null;
 
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">(
     "pickup",
@@ -888,25 +797,6 @@ export default function CheckoutPage() {
     null,
   );
   const [couponModalOpen, setCouponModalOpen] = useState(false);
-  const entitlementBlockingMessage = useMemo(() => {
-    if (requiredEntitlementItemStableIds.size === 0) return null;
-    if (!selectedEntitlement) {
-      return locale === "zh"
-        ? "该订单包含需持券套餐，请先确认优惠券可用。"
-        : "This order contains coupon-only items. Please ensure an eligible coupon is available.";
-    }
-    if (selectedEntitlement.stackingPolicy === "EXCLUSIVE" && appliedCoupon) {
-      return locale === "zh"
-        ? "需持券套餐不可与其他优惠券叠加，请移除折扣券。"
-        : "Coupon-only items cannot be combined with other discounts. Please remove the discount coupon.";
-    }
-    return null;
-  }, [
-    appliedCoupon,
-    locale,
-    requiredEntitlementItemStableIds,
-    selectedEntitlement,
-  ]);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [pricingPreview, setPricingPreview] = useState<OrderPricingPreview | null>(
@@ -993,42 +883,6 @@ export default function CheckoutPage() {
   }, [locale]);
 
   const isMemberLoggedIn = Boolean(session?.user?.userStableId);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadEntitlements() {
-      if (!isMemberLoggedIn) {
-        setEntitlements(null);
-        setEntitlementsError(null);
-        return;
-      }
-      try {
-        const data = await apiFetch<MenuEntitlementsResponse>(
-          "/promotions/entitlements",
-          { cache: "no-store" },
-        );
-        if (cancelled) return;
-        setEntitlements(data);
-        setEntitlementsError(null);
-      } catch (error) {
-        console.error("Failed to load entitlements", toSafeErrorLog(error));
-        if (cancelled) return;
-        setEntitlements(null);
-        setEntitlementsError(
-          locale === "zh"
-            ? "专享套餐加载失败，请稍后重试。"
-            : "Failed to load member exclusives. Please try again later.",
-        );
-      }
-    }
-
-    void loadEntitlements();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMemberLoggedIn, locale]);
 
   // 加载门店营业状态
   useEffect(() => {
@@ -1305,9 +1159,6 @@ export default function CheckoutPage() {
           ...(appliedCoupon?.couponStableId
             ? { couponStableId: appliedCoupon.couponStableId }
             : {}),
-          ...(selectedUserCouponId
-            ? { selectedUserCouponId }
-            : {}),
           ...(loyaltyRedeemCents > 0
             ? { redeemValueCents: loyaltyRedeemCents }
             : {}),
@@ -1339,7 +1190,6 @@ export default function CheckoutPage() {
     loyaltyInfo?.userStableId,
     loyaltyRedeemCents,
     menuLoading,
-    selectedUserCouponId,
   ]);
 
   const previewCouponDiscountCents =
@@ -1548,8 +1398,7 @@ export default function CheckoutPage() {
     customer.lastName.trim().length > 0 &&
     hasRequiredContact &&
     (fulfillment === "pickup" || deliveryAddressReady) &&
-    isStoreOpen &&
-    !entitlementBlockingMessage;
+    isStoreOpen;
 
   const requiresPayment = totalCents > 0;
 
@@ -1590,7 +1439,6 @@ export default function CheckoutPage() {
             : "Online ordering is currently unavailable.")
         );
       }
-      if (entitlementBlockingMessage) return entitlementBlockingMessage;
     }
 
     return null;
@@ -1598,7 +1446,6 @@ export default function CheckoutPage() {
     canPlaceOrder,
     deliveryPhoneLookupPending,
     deliveryAddressReady,
-    entitlementBlockingMessage,
     fulfillment,
     hasDeliveryPhone,
     isStoreOpen,
@@ -1712,7 +1559,6 @@ export default function CheckoutPage() {
             minSpendCents: appliedCoupon.minSpendCents,
           }
         : undefined,
-      selectedUserCouponId: selectedUserCouponId ?? undefined,
       items: cartItemsWithPricing.map((cartItem) => ({
         productStableId: cartItem.productStableId,
         nameEn: cartItem.item.nameEn ?? cartItem.item.name,
@@ -1737,7 +1583,6 @@ export default function CheckoutPage() {
     loyaltyRedeemCents,
     schedule,
     selectedAddressStableId,
-    selectedUserCouponId,
     selectedPlaceId,
     serviceFeeCents,
     subtotalCents,
@@ -3138,29 +2983,16 @@ export default function CheckoutPage() {
             )}
           </div>
         )}
-        {(menuError ||
-          entitlementsError ||
-          cartNotice ||
-          entitlementBlockingMessage) && (
+        {(menuError || cartNotice) && (
           <div className="mb-4 space-y-2">
             {menuError && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
                 {menuError}
               </div>
             )}
-            {entitlementsError && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                {entitlementsError}
-              </div>
-            )}
             {cartNotice && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
                 {cartNotice}
-              </div>
-            )}
-            {entitlementBlockingMessage && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                {entitlementBlockingMessage}
               </div>
             )}
           </div>

@@ -50,6 +50,7 @@ import type { OrderStatus } from './order-status';
 import type { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { OptionalSessionAuthGuard } from '../auth/optional-session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
@@ -302,12 +303,19 @@ export class OrdersController {
    */
   @Post()
   @HttpCode(201)
+  @UseGuards(OptionalSessionAuthGuard)
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
-  create(@Body() dto: CreateOrderInput): Promise<OrderDto> {
+  create(
+    @Req() req: AuthedRequest,
+    @Body() dto: CreateOrderInput,
+  ): Promise<OrderDto> {
     if (dto.channel !== 'web') {
       throw new BadRequestException('Public create only allows channel=web');
     }
-    return this.ordersService.create(dto);
+    return this.ordersService.create({
+      ...dto,
+      userStableId: req.user?.userStableId?.trim() || undefined,
+    });
   }
 
   /**
@@ -316,8 +324,9 @@ export class OrdersController {
    */
   @Post('pricing/quote')
   @HttpCode(200)
+  @UseGuards(OptionalSessionAuthGuard)
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
-  quotePricing(@Body() dto: CreateOrderInput) {
+  quotePricing(@Req() req: AuthedRequest, @Body() dto: CreateOrderInput) {
     if (dto.channel !== 'web') {
       throw new BadRequestException(
         'Public pricing quote only allows channel=web',
@@ -325,6 +334,7 @@ export class OrdersController {
     }
     return this.ordersService.quoteOrderPricing({
       ...dto,
+      userStableId: req.user?.userStableId?.trim() || undefined,
       discountCents: undefined,
     });
   }

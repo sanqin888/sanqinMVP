@@ -287,10 +287,9 @@ describe('OrdersService', () => {
     });
   });
 
-  it('routes hidden-item entitlement coupon conflicts through Promotion Engine', async () => {
+  it('rejects hidden menu items instead of unlocking them through coupons', async () => {
     const productStableId = 'c1234567890abcdefghijklmn';
     const userStableId = 'c2234567890abcdefghijklmn';
-    const couponStableId = 'c3234567890abcdefghijklmn';
     loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
     prisma.menuItem.findMany
       .mockResolvedValueOnce([
@@ -307,50 +306,23 @@ describe('OrdersService', () => {
         },
       ])
       .mockResolvedValueOnce([{ stableId: productStableId }]);
-    prisma.userCoupon.findFirst.mockResolvedValue({
-      id: '22222222-2222-2222-2222-222222222222',
-      couponStableId: 'c4234567890abcdefghijklmn',
-      coupon: {
-        couponStableId: 'c4234567890abcdefghijklmn',
-        code: 'UNLOCK',
-        title: 'Unlock hidden item',
-        stackingPolicy: 'EXCLUSIVE',
-        unlockedItemStableIds: [productStableId],
-      },
-    });
-    membership.validateCouponForOrder.mockResolvedValue({
-      coupon: {
-        id: '11111111-1111-1111-1111-111111111111',
-        couponStableId,
-        code: 'SAVE10',
-        title: 'Save 10%',
-        discountCents: 0,
-        discountPercent: 10,
-        minSpendCents: null,
-        unlockedItemStableIds: [],
-        stackingPolicy: 'STACKABLE',
-      },
-    });
 
     await expect(
       service.quoteOrderPricing({
         channel: 'web',
         fulfillmentType: 'pickup',
         userStableId,
-        couponStableId,
-        selectedUserCouponId: '22222222-2222-2222-2222-222222222222',
         items: [{ productStableId, qty: 1 }],
       }),
-    ).rejects.toThrow('coupon cannot be stacked with other coupons');
+    ).rejects.toThrow(
+      'hidden menu items are not available for customer ordering',
+    );
 
-    expect(membership.validateCouponForOrder).toHaveBeenCalledTimes(1);
+    expect(prisma.userCoupon.findFirst).not.toHaveBeenCalled();
   });
 
-  it('keeps the ordinary coupon discount when entitlement and coupon are both stackable', async () => {
+  it('keeps hidden menu items available to the in-store POS channel', async () => {
     const productStableId = 'c1234567890abcdefghijklmn';
-    const userStableId = 'c2234567890abcdefghijklmn';
-    const couponStableId = 'c3234567890abcdefghijklmn';
-    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
     prisma.menuItem.findMany
       .mockResolvedValueOnce([
         {
@@ -366,41 +338,15 @@ describe('OrdersService', () => {
         },
       ])
       .mockResolvedValueOnce([{ stableId: productStableId }]);
-    prisma.userCoupon.findFirst.mockResolvedValue({
-      id: '22222222-2222-2222-2222-222222222222',
-      couponStableId: 'c4234567890abcdefghijklmn',
-      coupon: {
-        couponStableId: 'c4234567890abcdefghijklmn',
-        code: 'UNLOCK',
-        title: 'Unlock hidden item',
-        stackingPolicy: 'STACKABLE',
-        unlockedItemStableIds: [productStableId],
-      },
-    });
-    membership.validateCouponForOrder.mockResolvedValue({
-      coupon: {
-        id: '11111111-1111-1111-1111-111111111111',
-        couponStableId,
-        code: 'SAVE10',
-        title: 'Save 10%',
-        discountCents: 0,
-        discountPercent: 10,
-        minSpendCents: null,
-        unlockedItemStableIds: [],
-        stackingPolicy: 'STACKABLE',
-      },
-    });
 
     const quote = await service.quoteOrderPricing({
-      channel: 'web',
+      channel: 'in_store',
       fulfillmentType: 'pickup',
-      userStableId,
-      couponStableId,
-      selectedUserCouponId: '22222222-2222-2222-2222-222222222222',
       items: [{ productStableId, qty: 1 }],
     });
 
-    expect(quote.couponDiscountCents).toBe(100);
+    expect(quote.subtotalCents).toBe(1000);
+    expect(quote.totalCents).toBe(1130);
   });
 
   it('applies automatic promotions and keeps POS manual discount in server pricing', async () => {

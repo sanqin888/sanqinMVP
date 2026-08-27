@@ -73,6 +73,10 @@ function readStringArray(record: JsonObject, key: string): string[] {
     .filter(Boolean);
 }
 
+function readBoolean(record: JsonObject, key: string): boolean {
+  return record[key] === true;
+}
+
 function normalizeCents(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.round(value));
@@ -216,6 +220,9 @@ function baseCandidate(params: {
       titleZh: params.rule.titleZh,
       titleEn: params.rule.titleEn,
       stackingPolicy: params.rule.stackingPolicy,
+      membersOnly:
+        isRecord(params.rule.config) &&
+        readBoolean(params.rule.config, 'membersOnly'),
     },
   };
 }
@@ -485,50 +492,71 @@ export function toPromotionRuleCandidate(params: {
   rule: PromotionRuleLike;
   lines: readonly PromotionRuleOrderLine[];
   now: DateTime;
+  isMember?: boolean;
 }): PromotionCandidate {
   const config = isRecord(params.rule.config) ? params.rule.config : {};
   const orderSubtotalCents = sumLineTotals(params.lines);
   const active = isPromotionRuleActiveNow(params.rule, params.now);
+  const membersOnly = readBoolean(config, 'membersOnly');
 
+  let candidate: PromotionCandidate;
   switch (params.rule.type) {
     case 'PERCENTAGE_OFF':
-      return buildPercentageCandidate({
+      candidate = buildPercentageCandidate({
         rule: params.rule,
         config,
         lines: params.lines,
         orderSubtotalCents,
         active,
       });
+      break;
     case 'FIXED_AMOUNT_OFF':
-      return buildFixedCandidate({
+      candidate = buildFixedCandidate({
         rule: params.rule,
         config,
         lines: params.lines,
         orderSubtotalCents,
         active,
       });
+      break;
     case 'BUY_X_GET_Y':
-      return buildBuyXGetYCandidate({
+      candidate = buildBuyXGetYCandidate({
         rule: params.rule,
         config,
         lines: params.lines,
         orderSubtotalCents,
         active,
       });
+      break;
     case 'FREE_ITEM':
-      return buildFreeItemCandidate({
+      candidate = buildFreeItemCandidate({
         rule: params.rule,
         config,
         lines: params.lines,
         orderSubtotalCents,
         active,
       });
+      break;
     case 'LOYALTY_MULTIPLIER':
-      return buildLoyaltyMultiplierCandidate({
+      candidate = buildLoyaltyMultiplierCandidate({
         rule: params.rule,
         config,
         orderSubtotalCents,
         active,
       });
+      break;
   }
+
+  if (membersOnly && params.isMember !== true) {
+    return {
+      ...candidate,
+      eligibility: {
+        eligible: false,
+        code: 'MEMBER_REQUIRED',
+        reason: 'promotion is available to members only',
+      },
+    };
+  }
+
+  return candidate;
 }

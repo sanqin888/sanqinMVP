@@ -107,26 +107,5 @@ export type PublicMenuResponse = {
     categories: PublicMenuCategoryDto[];
     dailySpecials: DailySpecialDto[];
 };
-export type MenuEntitlementItemDto = LocalizedName & Availability & {
-    stableId: string;
-    basePriceCents: number;
-    imageUrl: string | null;
-    ingredientsEn: string | null;
-    ingredientsZh: string | null;
-    optionGroups: MenuOptionGroupWithOptionsDto[];
-    couponStableId: string;
-    userCouponId: string;
-};
-export type MenuEntitlementDto = {
-    userCouponId: string;
-    couponStableId: string;
-    unlockedItemStableIds: string[];
-    stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
-};
-export type MenuEntitlementsResponse = {
-    unlockedItemStableIds: string[];
-    unlockedItems: MenuEntitlementItemDto[];
-    entitlements: MenuEntitlementDto[];
-};
 export type AdminMenuFull = AdminMenuFullResponse;
 export declare function isAvailableNow(availability: Availability, now?: number): boolean;

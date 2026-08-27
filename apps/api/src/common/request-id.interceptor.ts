@@ -24,7 +24,6 @@ export class RequestIdInterceptor implements NestInterceptor {
   private readonly debugPaths = [
     '/api/v1/auth/me',
     '/api/v1/menu/public',
-    '/api/v1/promotions/entitlements',
     '/api/v1/membership/summary',
     '/api/v1/membership/addresses',
     '/api/v1/membership/coupons',

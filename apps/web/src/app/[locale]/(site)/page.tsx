@@ -13,14 +13,12 @@ import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS } from "@/lib/i18n/dictionaries";
 import {
   buildLocalizedDailySpecials,
-  buildLocalizedEntitlementItems,
   buildLocalizedMenuFromDb,
   type LocalizedDailySpecial,
   type LocalizedMenuItem,
   type PublicMenuCategory,
 } from "@/lib/menu/menu-transformer";
 import type {
-  MenuEntitlementsResponse,
   PublicMenuResponse as PublicMenuApiResponse,
   MenuOptionGroupWithOptionsDto,
   OptionChoiceDto,
@@ -79,11 +77,6 @@ export default function LocalOrderPage() {
     [],
   );
   const [cartNotice] = useState<string | null>(null);
-  const [entitlements, setEntitlements] =
-    useState<MenuEntitlementsResponse | null>(null);
-  const [entitlementsError, setEntitlementsError] = useState<string | null>(
-    null,
-  );
   const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null);
   const [storeStatusLoading, setStoreStatusLoading] = useState(true);
   const [storeStatusError, setStoreStatusError] = useState<string | null>(null);
@@ -233,45 +226,6 @@ export default function LocalOrderPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadEntitlements() {
-      if (!isMemberLoggedIn) {
-        setEntitlements(null);
-        setEntitlementsError(null);
-        return;
-      }
-
-      try {
-        const data = await apiFetch<MenuEntitlementsResponse>(
-          "/promotions/entitlements",
-          {
-            cache: "no-store",
-          },
-        );
-        if (cancelled) return;
-        setEntitlements(data);
-        setEntitlementsError(null);
-      } catch (err) {
-        console.error(err);
-        if (cancelled) return;
-        setEntitlements(null);
-        setEntitlementsError(
-          locale === "zh"
-            ? "专享优惠加载失败，请稍后重试。"
-            : "Failed to load member exclusives. Please try again later.",
-        );
-      }
-    }
-
-    void loadEntitlements();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMemberLoggedIn, locale]);
-
-  useEffect(() => {
-    let cancelled = false;
-
     async function loadStoreStatus() {
       setStoreStatusLoading(true);
       setStoreStatusError(null);
@@ -329,53 +283,32 @@ export default function LocalOrderPage() {
     Record<string, boolean>
   >({});
 
-  const entitlementItems = useMemo(
-    () =>
-      buildLocalizedEntitlementItems(
-        entitlements?.unlockedItems ?? [],
-        locale,
-      ),
-    [entitlements, locale],
-  );
-
-  const mergedMenu = useMemo(() => {
-    if (entitlementItems.length === 0) return menu;
-    return [
-      {
-        stableId: "exclusive-combos",
-        name: locale === "zh" ? "专享优惠" : "Exclusive offers",
-        items: entitlementItems,
-      },
-      ...menu,
-    ];
-  }, [entitlementItems, locale, menu]);
-
   const displayedMenu = useMemo(
     () =>
-      mergedMenu
+      menu
         .map((category) => ({
           ...category,
           items: category.items.filter((item) => item.isVisibleOnMainMenu),
         }))
         .filter((category) => category.items.length > 0),
-    [mergedMenu],
+    [menu],
   );
 
   // Map: ID -> Item
   const menuItemMap = useMemo(
     () =>
       new Map(
-        mergedMenu.flatMap((category) =>
+        menu.flatMap((category) =>
           category.items.map((item) => [item.stableId, item]),
         ),
       ),
-    [mergedMenu],
+    [menu],
   );
 
   // Map: Name -> Item (Fallback)
   const menuItemMapByName = useMemo(() => {
     const map = new Map<string, LocalizedMenuItem>();
-    mergedMenu.forEach((category) => {
+    menu.forEach((category) => {
       category.items.forEach((item) => {
         if (item.name) map.set(item.name.trim(), item);
         // 同时建立中英文映射，增加匹配几率
@@ -384,7 +317,7 @@ export default function LocalOrderPage() {
       });
     });
     return map;
-  }, [mergedMenu]);
+  }, [menu]);
 
   // ✅ 核心辅助函数：查找选项关联的餐品
   // 优先级 1: targetItemStableId (最准确)
@@ -432,13 +365,11 @@ export default function LocalOrderPage() {
   useEffect(() => {
     if (cartItems.length === 0) return;
     if (menuLoading || menu.length === 0 || menuError) return;
-    if (isMemberLoggedIn && !entitlements && !entitlementsError) return;
     const allowedStableIds = new Set(
       menu.flatMap((category) =>
         category.items.map((item) => item.stableId),
       ),
     );
-    entitlementItems.forEach((item) => allowedStableIds.add(item.stableId));
 
     const invalidItems = cartItems.filter(
       (item) => !allowedStableIds.has(item.productStableId),
@@ -448,17 +379,7 @@ export default function LocalOrderPage() {
     removeItemsByStableId(
       invalidItems.map((item) => item.productStableId),
     );
-  }, [
-    cartItems,
-    entitlements,
-    entitlementsError,
-    entitlementItems,
-    isMemberLoggedIn,
-    menu,
-    menuError,
-    menuLoading,
-    removeItemsByStableId,
-  ]);
+  }, [cartItems, menu, menuError, menuLoading, removeItemsByStableId]);
 
   const closeOptionsModal = () => {
     setActiveItem(null);
@@ -1056,7 +977,6 @@ export default function LocalOrderPage() {
         ) : (
           <>
             {menuError && <p className="text-xs text-amber-600">{menuError}</p>}
-            {entitlementsError && <p className="text-xs text-amber-600">{entitlementsError}</p>}
             {cartNotice && <p className="text-xs text-amber-600">{cartNotice}</p>}
 
             {displayedMenu.length === 0 ? (
