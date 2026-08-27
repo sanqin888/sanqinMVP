@@ -80,7 +80,7 @@ describe('CloverPayController member identity boundary', () => {
     await controller.createPaymentSession({} as AuthedRequest, createDto());
 
     expect(orders.quoteOrderPricing).toHaveBeenCalledWith(
-      expect.objectContaining({ userStableId: undefined }),
+      expect.not.objectContaining({ userStableId: expect.anything() }),
     );
     expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
     const recordedIntent = checkoutIntents.recordIntent.mock.calls[0]?.[0];
