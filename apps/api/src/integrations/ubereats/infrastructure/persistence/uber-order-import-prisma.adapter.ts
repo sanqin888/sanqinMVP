@@ -443,7 +443,9 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return (status && map[status]) || OrderStatus.pending;
   }
 
-  async findModifierSnapshotSources(): Promise<UberOrderModifierSnapshotSource[]> {
+  async findModifierSnapshotSources(): Promise<
+    UberOrderModifierSnapshotSource[]
+  > {
     const rows = await this.prisma.menuOptionTemplateChoice.findMany({
       where: {
         deletedAt: null,
