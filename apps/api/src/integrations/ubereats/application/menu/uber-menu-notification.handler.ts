@@ -1,7 +1,5 @@
 import { createHash } from 'crypto';
-import type {
-  UberMenuRefreshRequestEventV1,
-} from '../../domain/webhook/uber-webhook-event.parser';
+import type { UberMenuRefreshRequestEventV1 } from '../../domain/webhook/uber-webhook-event.parser';
 import type { ProvisionedUberStoreQueryPort } from './uber-menu-draft.ports';
 import type {
   UberMenuGatewayPort,
@@ -59,24 +57,28 @@ export class UberMenuRefreshRequestHandler {
     eventId: string,
     event: UberMenuRefreshRequestEventV1,
   ): Promise<void> {
-    const mapping =
-      await this.provisionedStores.resolveProvisionedUberStoreId(event.storeId);
+    const mapping = await this.provisionedStores.resolveProvisionedUberStoreId(
+      event.storeId,
+    );
     const posStoreId = mapping?.posExternalStoreId?.trim() || null;
     if (!mapping || !posStoreId)
       throw new UberValidationError({
         code: 'UBER_MENU_REFRESH_STORE_NOT_MAPPED',
-        message: 'Uber menu refresh 对应门店未完成 provision 或缺少稳定 POS Store ID',
+        message:
+          'Uber menu refresh 对应门店未完成 provision 或缺少稳定 POS Store ID',
         operation: 'webhook.menu-refresh',
       });
 
     if (event.partnerStoreId && event.partnerStoreId !== posStoreId)
       throw new UberValidationError({
         code: 'UBER_MENU_REFRESH_STORE_MAPPING_MISMATCH',
-        message: 'Uber menu refresh 的 partner_store_id 与本地稳定门店 ID 不一致',
+        message:
+          'Uber menu refresh 的 partner_store_id 与本地稳定门店 ID 不一致',
         operation: 'webhook.menu-refresh',
       });
 
-    const payload = await this.publications.findLastSucceededPayload(posStoreId);
+    const payload =
+      await this.publications.findLastSucceededPayload(posStoreId);
     if (!payload)
       throw new UberValidationError({
         code: 'UBER_MENU_REFRESH_CONFIRMED_MENU_MISSING',

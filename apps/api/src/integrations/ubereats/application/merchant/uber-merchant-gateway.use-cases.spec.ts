@@ -2,6 +2,7 @@ import {
   DiscoverUberStoresUseCase,
   MapUberStoreUseCase,
 } from './uber-merchant-store-mapping.service';
+import type { UberStoreApiPort } from './uber-merchant-api.ports';
 import {
   DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
@@ -416,9 +417,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
   });
 
   it('activates an existing integration through PATCH with integration_enabled=true', async () => {
-    const api = {
-      updateIntegrationConfig: jest.fn().mockResolvedValue(undefined),
-    };
+    const updateIntegrationConfig = jest
+      .fn<UberStoreApiPort['updateIntegrationConfig']>()
+      .mockResolvedValue(undefined);
+    const api = { updateIntegrationConfig };
     const mappings = {
       findMapping: jest.fn().mockResolvedValue({
         connectionId: 'merchant-1',
@@ -436,20 +438,21 @@ describe('Uber merchant gateway use-case boundaries', () => {
       ok: true,
       storeId: 'uber-store-1',
     });
-    expect(api.updateIntegrationConfig).toHaveBeenCalledWith(
-      'uber-store-1',
-      expect.objectContaining({
-        integrator_store_id: 'sanq-store-1',
-        integration_enabled: true,
-        is_order_manager: true,
-        require_manual_acceptance: false,
-        webhooks_config: expect.objectContaining({
-          schedule_order_webhooks: { is_enabled: true },
-          webhooks_version: '1.0.0',
-        }),
-      }),
-      expect.stringMatching(/^sanqin-uber-/),
-    );
+    expect(updateIntegrationConfig).toHaveBeenCalledTimes(1);
+    const updateCall = updateIntegrationConfig.mock.calls[0];
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.[0]).toBe('uber-store-1');
+    expect(updateCall?.[1]).toMatchObject({
+      integrator_store_id: 'sanq-store-1',
+      integration_enabled: true,
+      is_order_manager: true,
+      require_manual_acceptance: false,
+      webhooks_config: {
+        schedule_order_webhooks: { is_enabled: true },
+        webhooks_version: '1.0.0',
+      },
+    });
+    expect(updateCall?.[2]).toMatch(/^sanqin-uber-/);
   });
 
   it('requires a valid local Store ID mapping before Config sync', async () => {

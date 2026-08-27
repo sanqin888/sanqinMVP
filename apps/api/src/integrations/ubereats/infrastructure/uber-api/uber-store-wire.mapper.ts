@@ -120,21 +120,20 @@ export function mapUberStoreDiscoveryWire(
       );
 
     const location = asObject(store.location);
+    const locationSummary = [
+      location?.street_address_line_one,
+      location?.city,
+      location?.country,
+    ]
+      .filter(
+        (part): part is string =>
+          typeof part === 'string' && Boolean(part.trim()),
+      )
+      .join(', ');
     return {
       storeId,
       storeName: readString(store.name),
-      locationSummary: readString(
-        [
-          location?.street_address_line_one,
-          location?.city,
-          location?.country,
-        ]
-          .filter(
-            (part): part is string =>
-              typeof part === 'string' && Boolean(part.trim()),
-          )
-          .join(', '),
-      ),
+      locationSummary: readString(locationSummary),
       integrationEnabled: false,
       posExternalStoreId: null,
       timezone: readString(store.timezone, location?.timezone),

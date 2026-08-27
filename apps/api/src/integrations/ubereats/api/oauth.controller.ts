@@ -185,9 +185,7 @@ export class UberEatsOAuthController {
 
   @Patch('oauth/stores/:storeId/activate')
   @UberMfaAdminWrite()
-  async activateIntegration(
-    @Param('storeId', ResourceIdPipe) storeId: string,
-  ) {
+  async activateIntegration(@Param('storeId', ResourceIdPipe) storeId: string) {
     await this.storeIntegrationUpdate.activate(storeId);
     return presentMerchantMutation();
   }

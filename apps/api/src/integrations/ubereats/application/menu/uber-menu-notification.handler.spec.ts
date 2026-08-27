@@ -2,6 +2,7 @@ import {
   UberMenuNotificationHandler,
   UberMenuRefreshRequestHandler,
 } from './uber-menu-notification.handler';
+import type { UberMenuGatewayPort } from './uber-menu-publication.ports';
 
 describe('UberMenuNotificationHandler', () => {
   it('未知 correlation 安全忽略', async () => {
@@ -66,7 +67,10 @@ describe('UberMenuRefreshRequestHandler', () => {
     const publications = {
       findLastSucceededPayload: jest.fn().mockResolvedValue(payload),
     };
-    const gateway = { uploadMenu: jest.fn().mockResolvedValue(undefined) };
+    const uploadMenu = jest
+      .fn<UberMenuGatewayPort['uploadMenu']>()
+      .mockResolvedValue(undefined);
+    const gateway = { uploadMenu };
     const telemetry = {
       captureEvent: jest.fn().mockResolvedValue(undefined),
       workflowLog: jest.fn(),
@@ -83,13 +87,12 @@ describe('UberMenuRefreshRequestHandler', () => {
     expect(publications.findLastSucceededPayload).toHaveBeenCalledWith(
       '4750_Yonge_Street',
     );
-    expect(gateway.uploadMenu).toHaveBeenCalledWith(
-      expect.objectContaining({
-        storeId: 'uber-store-1',
-        payload,
-        idempotencyKey: expect.stringMatching(/^sanqin-uber-[a-f0-9]{64}$/),
-      }),
-    );
+    expect(uploadMenu).toHaveBeenCalledTimes(1);
+    const upload = uploadMenu.mock.calls[0]?.[0];
+    expect(upload).toBeDefined();
+    expect(upload?.storeId).toBe('uber-store-1');
+    expect(upload?.payload).toBe(payload);
+    expect(upload?.idempotencyKey).toMatch(/^sanqin-uber-[a-f0-9]{64}$/);
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_store_menu_refresh_processed',
       expect.objectContaining({
