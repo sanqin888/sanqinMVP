@@ -39,5 +39,6 @@ import { PosExchangeRateController } from './pos-exchange-rate.controller';
     PosConnectivityWatchdogService,
     RolesGuard,
   ],
+  exports: [PosOrdersService],
 })
 export class PosModule {}

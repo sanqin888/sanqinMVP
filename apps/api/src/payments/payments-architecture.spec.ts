@@ -189,6 +189,7 @@ describe('Payments bounded-context architecture', () => {
       'orchestration/payment-checkout-attempt.service.ts',
       'orchestration/pos-card-payment-orchestration.module.ts',
       'orchestration/pos-card-payment-orchestration.service.ts',
+      'orchestration/pos-card-refund-orchestration.service.ts',
     ]);
   });
 

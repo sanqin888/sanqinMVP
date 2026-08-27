@@ -5,6 +5,7 @@ import {
   CreatePaymentAttemptUseCase,
   TerminalPaymentService,
 } from './application/create-payment-attempt.use-case';
+import { RefundPaymentService } from './application/refund-payment.service';
 import {
   PAYMENT_PROVIDER,
   PAYMENT_TERMINAL_PROVIDER,
@@ -67,12 +68,26 @@ import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/pris
         PAYMENT_TERMINAL_PROVIDER,
       ],
     },
+    {
+      provide: RefundPaymentService,
+      useFactory: (
+        createAttempt: CreatePaymentAttemptUseCase,
+        transactions: PaymentTransactionRepository,
+        provider: PaymentProvider,
+      ) => new RefundPaymentService(createAttempt, transactions, provider),
+      inject: [
+        CreatePaymentAttemptUseCase,
+        PAYMENT_TRANSACTION_REPOSITORY,
+        PAYMENT_PROVIDER,
+      ],
+    },
   ],
   exports: [
     PAYMENT_TRANSACTION_REPOSITORY,
     PAYMENT_PROVIDER,
     CreatePaymentAttemptUseCase,
     TerminalPaymentService,
+    RefundPaymentService,
   ],
 })
 export class PaymentsModule {}

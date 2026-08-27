@@ -64,25 +64,6 @@ type PosBoardOrderDto = OrderDto & {
   fulfillmentTiming: OrderFulfillmentTiming;
 };
 
-class CreateFullRefundDto {
-  @IsString()
-  reason!: string;
-
-  @IsString()
-  operatorName!: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  refundAmountCents!: number;
-
-  @IsEnum(PaymentMethod)
-  originalPaymentMethod!: PaymentMethod;
-
-  @IsEnum(PaymentMethod)
-  refundMethod!: PaymentMethod;
-}
-
 class CancelUberOrderDto {
   @IsString()
   @IsIn([
@@ -455,14 +436,5 @@ export class PosOrdersController {
     }
 
     return updated;
-  }
-
-  @Post(':orderStableId/full-refund')
-  @HttpCode(201)
-  fullRefund(
-    @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body() body: CreateFullRefundDto,
-  ) {
-    return this.posOrders.createFullRefund(orderStableId, body);
   }
 }

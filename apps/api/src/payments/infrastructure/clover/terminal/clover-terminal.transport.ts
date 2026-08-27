@@ -299,6 +299,63 @@ export const mapTerminalPaymentResponse = (
   };
 };
 
+const mapTerminalReversalResponse = (
+  result: CloverTerminalHttpResult,
+  request: RefundPaymentRequest | VoidPaymentRequest,
+  terminalId: string,
+  operation: 'REFUND' | 'VOID',
+): PaymentProviderOutcome => {
+  if (result.httpStatus === 209) {
+    return {
+      status: 'CANCELLED',
+      providerPaymentId: request.providerPaymentId ?? undefined,
+      terminalId,
+      resultCode: `CLOVER_${operation}_CANCELLED`,
+      failureCode: null,
+      failureMessage: null,
+    };
+  }
+
+  if (!result.ok) {
+    const message =
+      errorText(result.body) || `Clover returned HTTP ${result.httpStatus}`;
+    const code =
+      stringValue(result.body, 'code') ??
+      stringValue(asRecord(result.body?.error), 'code') ??
+      `CLOVER_${operation}_HTTP_${result.httpStatus}`;
+    const uncertainStatus = [500, 503, 504].includes(result.httpStatus);
+    return {
+      status: uncertainStatus ? 'UNKNOWN' : 'FAILED',
+      providerPaymentId: request.providerPaymentId ?? undefined,
+      terminalId,
+      failureCode: code,
+      failureMessage: message,
+    };
+  }
+
+  const refund = asRecord(result.body?.refund) ??
+    (operation === 'REFUND' ? asRecord(result.body) : null);
+  const responsePayment = asRecord(result.body?.payment);
+  const providerPaymentId =
+    stringValue(asRecord(refund?.payment), 'id') ??
+    stringValue(responsePayment, 'id') ??
+    stringValue(result.body, 'paymentId') ??
+    request.providerPaymentId ??
+    undefined;
+  const providerRefundId = stringValue(refund, 'id');
+
+  return {
+    status: 'SUCCEEDED',
+    evidence: 'EXECUTION',
+    providerPaymentId,
+    providerRefundId,
+    terminalId,
+    resultCode: `CLOVER_${operation}_ACKNOWLEDGED`,
+    failureCode: null,
+    failureMessage: null,
+  };
+};
+
 export const mapTerminalAvailabilityResponse = (
   result: CloverTerminalHttpResult,
   terminalId: string,
@@ -541,24 +598,75 @@ export class CloverTerminalTransport {
     );
   }
 
-  voidPayment(request: VoidPaymentRequest): Promise<PaymentProviderOutcome> {
-    void request;
-    return Promise.resolve({
-      status: 'FAILED',
-      failureCode: 'CLOVER_VOID_NOT_IMPLEMENTED',
-      failureMessage: 'Clover Terminal void is deferred to Payment Phase E',
-    });
+  async voidPayment(
+    request: VoidPaymentRequest,
+  ): Promise<PaymentProviderOutcome> {
+    const terminalId = this.config.terminalDeviceId;
+    if (!this.isConfigured() || !terminalId) return missingTerminalConfiguration();
+    const providerPaymentId = request.providerPaymentId?.trim();
+    if (!providerPaymentId) {
+      return {
+        status: 'FAILED',
+        failureCode: 'CLOVER_VOID_PAYMENT_ID_REQUIRED',
+        failureMessage: 'Clover Terminal void requires the original payment id',
+      };
+    }
+
+    const result = await this.request(
+      `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/void`,
+      {
+        method: 'POST',
+        idempotencyKey: request.idempotencyKey,
+        body: { voidReason: 'USER_CANCEL' },
+      },
+    );
+    if (!result) {
+      return uncertain(
+        'CLOVER_VOID_REQUEST_UNCERTAIN',
+        'Clover Terminal void request did not receive a response',
+        terminalId,
+      );
+    }
+    return mapTerminalReversalResponse(result, request, terminalId, 'VOID');
   }
 
-  refundPayment(
+  async refundPayment(
     request: RefundPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
-    void request;
-    return Promise.resolve({
-      status: 'FAILED',
-      failureCode: 'CLOVER_REFUND_NOT_IMPLEMENTED',
-      failureMessage: 'Clover Terminal refund is deferred to Payment Phase E',
-    });
+    const terminalId = this.config.terminalDeviceId;
+    if (!this.isConfigured() || !terminalId) return missingTerminalConfiguration();
+    const providerPaymentId = request.providerPaymentId?.trim();
+    if (!providerPaymentId) {
+      return {
+        status: 'FAILED',
+        failureCode: 'CLOVER_REFUND_PAYMENT_ID_REQUIRED',
+        failureMessage: 'Clover Terminal refund requires the original payment id',
+      };
+    }
+    if (!Number.isSafeInteger(request.amountCents) || request.amountCents <= 0) {
+      return {
+        status: 'FAILED',
+        failureCode: 'CLOVER_REFUND_AMOUNT_INVALID',
+        failureMessage: 'Clover Terminal refund requires a positive amount',
+      };
+    }
+
+    const result = await this.request(
+      `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/refunds`,
+      {
+        method: 'POST',
+        idempotencyKey: request.idempotencyKey,
+        body: { fullRefund: true },
+      },
+    );
+    if (!result) {
+      return uncertain(
+        'CLOVER_REFUND_REQUEST_UNCERTAIN',
+        'Clover Terminal refund request did not receive a response',
+        terminalId,
+      );
+    }
+    return mapTerminalReversalResponse(result, request, terminalId, 'REFUND');
   }
 
   private async request(
