@@ -138,6 +138,7 @@ const createHarness = () => {
   const checkouts = {
     prepare: jest.fn().mockImplementation(async () => checkout),
     requireForInput: jest.fn().mockImplementation(async () => checkout),
+    findByAttemptId: jest.fn().mockImplementation(async () => checkout),
     claimProviderStart: jest.fn().mockImplementation(async () => {
       checkout = { ...checkout, status: 'PROCESSING' };
       return { checkout, claimed: true };
@@ -502,6 +503,48 @@ describe('PosCardPaymentOrchestrationService', () => {
     ).not.toHaveBeenCalled();
     expect(harness.terminalPayments.cancel).not.toHaveBeenCalled();
     expect(result.status).toBe('PROCESSING');
+  });
+
+  it('does not create an Order if reverse sync wins the SUCCEEDED -> FINALIZING checkout CAS', async () => {
+    const harness = createHarness();
+    jest.mocked(harness.checkouts.markFinalizing).mockResolvedValue(
+      checkoutFixture({
+        status: 'CANCELLED',
+        paymentTransactionId: '33333333-3333-4333-8333-333333333333',
+      }),
+    );
+
+    const result = await harness.service.start(storeStableId, {
+      attemptId: 'attempt-1',
+      idempotencyKey: 'client-idem-1',
+      order: orderInput,
+    });
+
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(result.status).toBe('CANCELLED');
+  });
+
+  it('allows provider reverse sync to finish an already-started payment even after the feature flag is disabled', async () => {
+    const harness = createHarness();
+    jest.mocked(harness.featureConfig.isEnabled).mockReturnValue(false);
+    harness.setCheckout(
+      checkoutFixture({
+        status: 'PROCESSING',
+        paymentTransactionId: '33333333-3333-4333-8333-333333333333',
+      }),
+    );
+
+    const result = await harness.service.applyReverseSyncedPayment(
+      paymentFixture('SUCCEEDED'),
+    );
+
+    expect(result?.status).toBe('SUCCEEDED');
+    expect(
+      harness.orders.createFromConfirmedPaymentSnapshot,
+    ).toHaveBeenCalledTimes(1);
+    expect(harness.featureConfig.isEnabled).not.toHaveBeenCalled();
   });
 
   it('uses one deterministic print business key across duplicate finalization', async () => {

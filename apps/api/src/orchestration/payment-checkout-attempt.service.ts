@@ -253,6 +253,22 @@ export class PaymentCheckoutAttemptService {
     };
   }
 
+  async markExternallyReversedAndRelease(
+    attemptId: string,
+  ): Promise<PreparedPaymentCheckout> {
+    const reversed = await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: {
+        attemptId,
+        status: { in: ['PROCESSING', 'SUCCEEDED', 'UNKNOWN', 'RECONCILING'] },
+      },
+      data: { status: 'CANCELLED' },
+    });
+    if (reversed.count === 1) {
+      await this.releaseReservations(attemptId);
+    }
+    return this.findByAttemptId(attemptId);
+  }
+
   async markSucceededWithoutExternalPayment(
     attemptId: string,
   ): Promise<PreparedPaymentCheckout> {

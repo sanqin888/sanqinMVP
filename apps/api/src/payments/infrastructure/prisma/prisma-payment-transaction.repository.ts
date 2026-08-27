@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import type { PaymentTransaction as PrismaPaymentTransactionRecord } from '@prisma/client';
 
 import {
+  PaymentProviderTransactionIdentityConflictError,
+  type PaymentProviderTransactionLookup,
+} from '../../application/payment-provider-transaction-lookup.port';
+import type { PaymentReverseSyncPersistence } from '../../application/payment-reverse-sync-persistence.port';
+import {
   PaymentTransactionUniquenessError,
   type PaymentTransactionRepository,
 } from '../../application/payment-transaction.repository';
@@ -12,6 +17,7 @@ import {
   parsePaymentProviderName,
   parsePaymentSource,
   parsePaymentStatus,
+  type PaymentProviderName,
   type PaymentStatus,
 } from '../../domain/payment.types';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -80,7 +86,12 @@ const uniqueField = (
 };
 
 @Injectable()
-export class PrismaPaymentTransactionRepository implements PaymentTransactionRepository {
+export class PrismaPaymentTransactionRepository
+  implements
+    PaymentTransactionRepository,
+    PaymentProviderTransactionLookup,
+    PaymentReverseSyncPersistence
+{
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(id: string): Promise<PaymentTransaction | null> {
@@ -104,6 +115,30 @@ export class PrismaPaymentTransactionRepository implements PaymentTransactionRep
       where: { idempotencyKey },
     });
     return row ? toDomain(row) : null;
+  }
+
+  async findSaleByProviderPaymentId(
+    provider: PaymentProviderName,
+    providerPaymentId: string,
+  ): Promise<PaymentTransaction | null> {
+    const normalizedProviderPaymentId = providerPaymentId.trim();
+    if (!normalizedProviderPaymentId) return null;
+    const rows = await this.prisma.paymentTransaction.findMany({
+      where: {
+        provider,
+        providerPaymentId: normalizedProviderPaymentId,
+        operation: 'SALE',
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 2,
+    });
+    if (rows.length > 1) {
+      throw new PaymentProviderTransactionIdentityConflictError(
+        provider,
+        normalizedProviderPaymentId,
+      );
+    }
+    return rows[0] ? toDomain(rows[0]) : null;
   }
 
   async create(transaction: PaymentTransaction): Promise<PaymentTransaction> {
@@ -178,6 +213,39 @@ export class PrismaPaymentTransactionRepository implements PaymentTransactionRep
       if (!current) {
         throw new Error(
           `Payment transaction ${snapshot.id} disappeared during save`,
+        );
+      }
+      return { updated: result.count === 1, transaction: current };
+    } catch (error) {
+      const field = uniqueField(error);
+      if (field) throw new PaymentTransactionUniquenessError(field);
+      throw error;
+    }
+  }
+
+  async saveSuccessfulSaleObservation(
+    transaction: PaymentTransaction,
+  ): Promise<{ updated: boolean; transaction: PaymentTransaction }> {
+    const snapshot = transaction.toSnapshot();
+    if (snapshot.status !== 'SUCCEEDED' || snapshot.operation !== 'SALE') {
+      throw new Error(
+        'Reverse-sync monotonic observation save requires a successful SALE transaction',
+      );
+    }
+
+    try {
+      const result = await this.prisma.paymentTransaction.updateMany({
+        where: {
+          id: snapshot.id,
+          status: 'SUCCEEDED',
+          refundedAmountCents: { lte: snapshot.refundedAmountCents },
+        },
+        data: this.mutableData(transaction),
+      });
+      const current = await this.findById(snapshot.id);
+      if (!current) {
+        throw new Error(
+          `Payment transaction ${snapshot.id} disappeared during reverse-sync save`,
         );
       }
       return { updated: result.count === 1, transaction: current };

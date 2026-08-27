@@ -7,6 +7,7 @@ import {
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
 import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
+import { CloverPaymentWebhookIngressAdapter } from './webhook/clover-payment-webhook-ingress.adapter';
 
 @Module({
   providers: [
@@ -15,7 +16,12 @@ import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
     CloverTerminalTransport,
     CloverPlatformPaymentsGateway,
     CloverPaymentProviderAdapter,
+    CloverPaymentWebhookIngressAdapter,
   ],
-  exports: [CloverEcommerceTransport, CloverPaymentProviderAdapter],
+  exports: [
+    CloverEcommerceTransport,
+    CloverPaymentProviderAdapter,
+    CloverPaymentWebhookIngressAdapter,
+  ],
 })
 export class CloverProviderInfrastructureModule {}

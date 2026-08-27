@@ -124,6 +124,38 @@ export class PosCardPaymentOrchestrationService {
     return this.continueCheckout(storeStableId, checkout, 'RECOVER');
   }
 
+  async applyReverseSyncedPayment(
+    payment: PaymentTransaction,
+  ): Promise<PosCardPaymentView | null> {
+    const snapshot = payment.toSnapshot();
+    if (snapshot.source !== 'POS_TERMINAL' || snapshot.operation !== 'SALE') {
+      return null;
+    }
+
+    let checkout: PreparedPaymentCheckout;
+    try {
+      checkout = await this.checkouts.findByAttemptId(snapshot.attemptId);
+    } catch {
+      return null;
+    }
+
+    if (
+      checkout.source !== snapshot.source ||
+      checkout.paymentMethod !== snapshot.paymentMethod ||
+      checkout.externalAmountCents !== snapshot.amountCents ||
+      (checkout.paymentTransactionId !== null &&
+        checkout.paymentTransactionId !== snapshot.id)
+    ) {
+      throw new ConflictException({
+        code: 'PAYMENT_REVERSE_SYNC_CHECKOUT_MISMATCH',
+        message:
+          'The reverse-synced payment does not match its persisted checkout attempt.',
+      });
+    }
+
+    return this.handlePayment(checkout.storeId, checkout, payment);
+  }
+
   async cancel(
     storeStableId: string,
     input: PosCardPaymentStartInput,
@@ -374,6 +406,14 @@ export class PosCardPaymentOrchestrationService {
     }
 
     checkout = await this.checkouts.markFinalizing(checkout.attemptId);
+    if (checkout.status !== 'FINALIZING') {
+      const currentPayment =
+        (await this.findPaymentForCheckout(checkout)) ?? knownPayment;
+      const view = this.toView(checkout, currentPayment ?? undefined);
+      this.publish(storeId, view);
+      return view;
+    }
+
     let payment = knownPayment;
     if (checkout.externalAmountCents > 0) {
       payment =

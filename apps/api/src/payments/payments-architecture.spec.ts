@@ -112,7 +112,7 @@ describe('Payments bounded-context architecture', () => {
 
     expect(
       importViolations(sourceFiles, SOURCE_ROOT, (specifier) =>
-        /(?:payments\/)?infrastructure\/clover\/(?:terminal|platform)|clover-terminal\.(?:transport|contracts|mapper)|clover-platform-payments\.(?:gateway|contracts|mapper)|clover-ecommerce\.(?:contracts|mapper)/.test(
+        /(?:payments\/)?infrastructure\/clover\/(?:terminal|platform|webhook)|clover-terminal\.(?:transport|contracts|mapper)|clover-platform-payments\.(?:gateway|contracts|mapper)|clover-payment-webhook|clover-ecommerce\.(?:contracts|mapper)/.test(
           specifier,
         ),
       ),
@@ -187,6 +187,7 @@ describe('Payments bounded-context architecture', () => {
     expect(composers).toEqual([
       'app.module.ts',
       'orchestration/payment-checkout-attempt.service.ts',
+      'orchestration/payment-reverse-sync-orchestration.service.ts',
       'orchestration/pos-card-payment-orchestration.module.ts',
       'orchestration/pos-card-payment-orchestration.service.ts',
       'orchestration/pos-card-refund-orchestration.service.ts',

@@ -250,6 +250,31 @@ describe('PaymentCheckoutAttemptService', () => {
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
+  it('releases payment holds exactly once when an external reversal cancels an in-flight checkout', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+    await harness.service.claimProviderStart('attempt-1');
+
+    const first = await harness.service.markExternallyReversedAndRelease(
+      'attempt-1',
+    );
+    const second = await harness.service.markExternallyReversedAndRelease(
+      'attempt-1',
+    );
+
+    expect(first.status).toBe('CANCELLED');
+    expect(second.status).toBe('CANCELLED');
+    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledTimes(1);
+    expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledTimes(1);
+  });
+
   it('reuses the persisted immutable snapshot without requoting on duplicate start', async () => {
     const harness = createHarness();
     const input = {
