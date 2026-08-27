@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { PAYMENT_PROVIDER_WEBHOOK_INGRESS } from '../../application/payment-provider-webhook.port';
 import {
   CloverPaymentProviderAdapter,
   CloverPlatformPaymentsGateway,
@@ -17,11 +18,15 @@ import { CloverPaymentWebhookIngressAdapter } from './webhook/clover-payment-web
     CloverPlatformPaymentsGateway,
     CloverPaymentProviderAdapter,
     CloverPaymentWebhookIngressAdapter,
+    {
+      provide: PAYMENT_PROVIDER_WEBHOOK_INGRESS,
+      useExisting: CloverPaymentWebhookIngressAdapter,
+    },
   ],
   exports: [
     CloverEcommerceTransport,
     CloverPaymentProviderAdapter,
-    CloverPaymentWebhookIngressAdapter,
+    PAYMENT_PROVIDER_WEBHOOK_INGRESS,
   ],
 })
 export class CloverProviderInfrastructureModule {}

@@ -11,10 +11,6 @@ import {
   type PaymentProviderTransactionLookup,
 } from './application/payment-provider-transaction-lookup.port';
 import {
-  PAYMENT_PROVIDER_WEBHOOK_INGRESS,
-  type PaymentProviderWebhookIngress,
-} from './application/payment-provider-webhook.port';
-import {
   PAYMENT_REVERSE_SYNC_PERSISTENCE,
   type PaymentReverseSyncPersistence,
 } from './application/payment-reverse-sync-persistence.port';
@@ -34,7 +30,6 @@ import {
   type PaymentTransactionRepository,
 } from './application/payment-transaction.repository';
 import { CloverPaymentProviderAdapter } from './infrastructure/clover/clover-payment-provider.adapter';
-import { CloverPaymentWebhookIngressAdapter } from './infrastructure/clover/webhook/clover-payment-webhook-ingress.adapter';
 import { CloverProviderInfrastructureModule } from './infrastructure/clover/clover-provider-infrastructure.module';
 import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/prisma-payment-transaction.repository';
 import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/prisma-payment-webhook-event.repository';
@@ -68,13 +63,6 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
         persistence: PrismaPaymentTransactionRepository,
       ): PaymentReverseSyncPersistence => persistence,
       inject: [PrismaPaymentTransactionRepository],
-    },
-    {
-      provide: PAYMENT_PROVIDER_WEBHOOK_INGRESS,
-      useFactory: (
-        ingress: CloverPaymentWebhookIngressAdapter,
-      ): PaymentProviderWebhookIngress => ingress,
-      inject: [CloverPaymentWebhookIngressAdapter],
     },
     {
       provide: PAYMENT_PROVIDER,
@@ -155,9 +143,9 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
     },
   ],
   exports: [
+    CloverProviderInfrastructureModule,
     PAYMENT_TRANSACTION_REPOSITORY,
     PAYMENT_PROVIDER,
-    PAYMENT_PROVIDER_WEBHOOK_INGRESS,
     PAYMENT_WEBHOOK_EVENT_REPOSITORY,
     CreatePaymentAttemptUseCase,
     TerminalPaymentService,
