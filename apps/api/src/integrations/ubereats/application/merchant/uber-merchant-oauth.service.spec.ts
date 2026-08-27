@@ -188,12 +188,12 @@ describe('CompleteUberOAuthUseCase OAuth 状态机', () => {
         'session-1',
       ),
     ).toMatchObject({ ok: true });
-    expect(
-      await x.useCase.exchangeAuthorizationCode(
-        { code: 'code', state: stateValue },
-        'session-1',
-      ),
-    ).toMatchObject({ ok: true, value: { connectionId: x.row.connectionId } });
+    const replay = await x.useCase.exchangeAuthorizationCode(
+      { code: 'code', state: stateValue },
+      'session-1',
+    );
+    expect(replay).toMatchObject({ ok: true });
+    if (replay.ok) expect(replay.value).not.toHaveProperty('connectionId');
     expect(x.exchangeAuthorizationCode).toHaveBeenCalledTimes(1);
     expect(x.upsertConnectionByConnectionId).toHaveBeenCalledTimes(1);
   });

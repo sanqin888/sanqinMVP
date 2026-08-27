@@ -15,18 +15,20 @@ describe('UberMenuNotificationHandler', () => {
 
   it('重复 webhook 始终按同一不可变 resourceId 关联，由 repository 幂等应用', async () => {
     const repository = {
-      findByCorrelation: jest.fn().mockResolvedValue({ id: 'version-1' }),
+      findByCorrelation: jest
+        .fn()
+        .mockResolvedValue({ versionStableId: 'publish-version-1' }),
       apply: jest.fn(),
     };
     const handler = new UberMenuNotificationHandler(repository);
     const event = { resourceId: 'resource-1', status: 'SUCCEEDED' };
-    await handler.handle(event);
-    await handler.handle(event);
+    await expect(handler.handle(event)).resolves.toEqual({ kind: 'handled' });
+    await expect(handler.handle(event)).resolves.toEqual({ kind: 'handled' });
     expect(repository.findByCorrelation).toHaveBeenNthCalledWith(1, {
       publishVersion: null,
       resourceId: 'resource-1',
     });
     expect(repository.apply).toHaveBeenCalledTimes(2);
-    expect(repository.apply).toHaveBeenCalledWith('version-1', event);
+    expect(repository.apply).toHaveBeenCalledWith('publish-version-1', event);
   });
 });

@@ -58,7 +58,6 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
       orderBy: { publishedAt: 'desc' },
       take: 1000,
       select: {
-        publishVersionId: true,
         uberStoreId: true,
         uberItemId: true,
         menuItemStableId: true,
@@ -70,7 +69,15 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
       },
     });
 
-    return { storeId: normalizedStoreId, count: items.length, items };
+    return {
+      storeId: normalizedStoreId,
+      count: items.length,
+      items: items.map(({ publishVersion, ...item }) => ({
+        ...item,
+        publishVersionStableId: publishVersion.versionStableId,
+        publishVersion,
+      })),
+    };
   }
 
   async listUberOptionItemConfigs(storeId?: string) {

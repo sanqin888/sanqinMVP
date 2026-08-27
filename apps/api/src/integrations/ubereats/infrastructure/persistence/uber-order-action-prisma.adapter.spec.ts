@@ -223,13 +223,10 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     );
     expect(lifecycleAppend).toHaveBeenCalledWith({
       data: {
-        idempotencyKey: 'order.accepted:order-db-1',
+        idempotencyKey: 'order.accepted:stable-1',
         eventName: 'order.accepted',
         source: 'orders.lifecycle',
-        payload: {
-          orderId: 'order-db-1',
-          orderStableId: 'stable-1',
-        },
+        payload: { orderStableId: 'stable-1' },
       },
       skipDuplicates: true,
     });
@@ -304,7 +301,7 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     expect(lifecycleAppend).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          idempotencyKey: 'order.accepted:order-db-1',
+          idempotencyKey: 'order.accepted:stable-1',
         }) as unknown,
         skipDuplicates: true,
       }),

@@ -155,7 +155,20 @@ export class UberMenuDraftMutationPrismaAdapter
       ok: true,
       storeId: normalizedStoreId,
       groupId,
-      config: row,
+      config: {
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        isActive: row.isActive,
+        storeId: row.storeId,
+        templateGroupStableId: row.templateGroupStableId,
+        minSelect: row.minSelect,
+        maxSelect: row.maxSelect,
+        displayName: row.displayName,
+        uberStoreId: row.uberStoreId,
+        lastPublishedAt: row.lastPublishedAt,
+        lastPublishError: row.lastPublishError,
+        externalModifierGroupId: row.externalModifierGroupId,
+      },
       warnings:
         input.sortOrder !== undefined
           ? ['当前没有 Uber group 独立 sortOrder 字段，已忽略 sortOrder 更新。']

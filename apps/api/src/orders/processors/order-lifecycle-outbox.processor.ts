@@ -105,11 +105,9 @@ export class OrderLifecycleOutboxProcessor
           orders."orderStableId" AS "orderStableId"
         FROM "OpsEvent" event
         JOIN "Order" orders
-          ON orders.id::text = event.payload->>'orderId'
-          AND orders."orderStableId" = event.payload->>'orderStableId'
+          ON orders."orderStableId" = event.payload->>'orderStableId'
         WHERE event.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
           AND event."eventName" = ${ORDER_PREP_STARTED_LIFECYCLE_EVENT}
-          AND event.payload->>'orderId' IS NOT NULL
           AND event.payload->>'orderStableId' IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM "PosPrintJob" job
@@ -138,8 +136,7 @@ export class OrderLifecycleOutboxProcessor
           orders."orderStableId" AS "orderStableId"
         FROM "OpsEvent" event
         JOIN "Order" orders
-          ON orders.id::text = event.payload->>'orderId'
-          AND orders."orderStableId" = event.payload->>'orderStableId'
+          ON orders."orderStableId" = event.payload->>'orderStableId'
         WHERE event.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
           AND event."eventName" = ${ORDER_ACCEPTED_LIFECYCLE_EVENT}
           AND orders."fulfillmentTiming" = 'IMMEDIATE'::"OrderFulfillmentTiming"
@@ -148,7 +145,7 @@ export class OrderLifecycleOutboxProcessor
             SELECT 1 FROM "OpsEvent" prep
             WHERE prep.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
               AND prep."eventName" = ${ORDER_PREP_STARTED_LIFECYCLE_EVENT}
-              AND prep.payload->>'orderId' = orders.id::text
+              AND prep.payload->>'orderStableId' = orders."orderStableId"
           )
         ORDER BY event."createdAt" ASC, event.id ASC
         FOR UPDATE OF event SKIP LOCKED

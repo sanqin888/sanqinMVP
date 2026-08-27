@@ -273,9 +273,8 @@ export class RequestUberOrderActionUseCase {
     return this.present(await this.actions.request(id, 'READY_FOR_PICKUP'));
   }
 
-  private present(intent: { taskId: string; created: boolean }): {
+  private present(intent: { actionReference: string; created: boolean }): {
     ok: boolean;
-    id: string;
     actionId: string;
     status: string;
     retryable: boolean;
@@ -284,8 +283,7 @@ export class RequestUberOrderActionUseCase {
   } {
     return {
       ok: false,
-      id: intent.taskId,
-      actionId: intent.taskId,
+      actionId: intent.actionReference,
       status: 'PENDING',
       retryable: true,
       duplicate: !intent.created,

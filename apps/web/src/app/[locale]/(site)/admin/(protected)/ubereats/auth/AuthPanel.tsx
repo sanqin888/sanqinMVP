@@ -17,30 +17,26 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
   const [storeStatuses, setStoreStatuses] = useState<Record<string, UberStoreStatusResponse>>({});
   const [prepTimeDrafts, setPrepTimeDrafts] = useState<Record<string, string>>({});
   const [prepTimes, setPrepTimes] = useState<Record<string, UberStorePrepTimeResponse>>({});
-  const connectionId = connection?.connectionId ?? '';
   const integrationPath = (storeId: string) => `/integrations/ubereats/oauth/stores/${encodeURIComponent(storeId)}/integration-config`;
   const storeStatusPath = (storeId: string) => `/integrations/ubereats/oauth/stores/${encodeURIComponent(storeId)}/status`;
   const storePrepTimePath = (storeId: string) => `/integrations/ubereats/oauth/stores/${encodeURIComponent(storeId)}/prep-time`;
   const readIntegration = (store: UberStore) => {
-    if (!connectionId) return setActionError('缺少 Uber connectionId');
-    void runAction(`integration-get-${store.storeId}`, () => uberApiFetch<UberIntegrationConfigResponse>(`${integrationPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`).then((config) => {
+    void runAction(`integration-get-${store.storeId}`, () => uberApiFetch<UberIntegrationConfigResponse>(integrationPath(store.storeId)).then((config) => {
       setIntegrationConfigs((current) => ({ ...current, [store.storeId]: config }));
       return config;
     }), `已读取 ${store.storeName ?? store.storeId} 的 Integration Config`, false);
   };
   const updateIntegration = (store: UberStore) => {
-    if (!connectionId) return setActionError('缺少 Uber connectionId');
     void runAction(`integration-update-${store.storeId}`, () => uberApiFetch(integrationPath(store.storeId), {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId, payload: {} }),
-    }).then(() => uberApiFetch<UberIntegrationConfigResponse>(`${integrationPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`)).then((config) => {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }),
+    }).then(() => uberApiFetch<UberIntegrationConfigResponse>(integrationPath(store.storeId))).then((config) => {
       setIntegrationConfigs((current) => ({ ...current, [store.storeId]: config }));
       return config;
     }), `已更新并核验 ${store.storeName ?? store.storeId} 的 Integration Config`);
   };
   const removeIntegration = (store: UberStore) => {
-    if (!connectionId) return setActionError('缺少 Uber connectionId');
     if (!window.confirm(`确定从 Uber 永久移除「${store.storeName ?? store.storeId}」的 Integration 吗？这是永久解除操作；Uber 之后可能不再在 Store Discovery 返回该门店，恢复通常需要重新走 onboarding，Test Store 还可能需要 Uber Support 重新 whitelist。仅在确实要永久解除集成时继续。`)) return;
-    void runAction(`integration-remove-${store.storeId}`, () => uberApiFetch(`${integrationPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE' }).then((result) => {
+    void runAction(`integration-remove-${store.storeId}`, () => uberApiFetch(integrationPath(store.storeId), { method: 'DELETE' }).then((result) => {
       setIntegrationConfigs((current) => { const next = { ...current }; delete next[store.storeId]; return next; });
       setStoreStatuses((current) => { const next = { ...current }; delete next[store.storeId]; return next; });
       setPrepTimes((current) => { const next = { ...current }; delete next[store.storeId]; return next; });
@@ -48,25 +44,22 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
     }), `已移除 ${store.storeName ?? store.storeId} 的 Uber Integration`);
   };
   const readStoreStatus = (store: UberStore) => {
-    if (!connectionId) return setActionError('缺少 Uber connectionId');
-    void runAction(`store-status-get-${store.storeId}`, () => uberApiFetch<UberStoreStatusResponse>(`${storeStatusPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`).then((status) => {
+    void runAction(`store-status-get-${store.storeId}`, () => uberApiFetch<UberStoreStatusResponse>(storeStatusPath(store.storeId)).then((status) => {
       setStoreStatuses((current) => ({ ...current, [store.storeId]: status }));
       return status;
     }), `已读取 ${store.storeName ?? store.storeId} 的 Uber Store Status`, false);
   };
   const updateStorePrepTime = (store: UberStore) => {
-    if (!connectionId) return setActionError('缺少 Uber connectionId');
     const seconds = Number(prepTimeDrafts[store.storeId]);
     if (!Number.isInteger(seconds) || seconds < 1 || seconds > 10800) return setActionError('Prep Time 必须是 1 到 10800 的整数秒数');
     void runAction(`store-prep-time-${store.storeId}`, () => uberApiFetch<UberStorePrepTimeResponse>(storePrepTimePath(store.storeId), {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId, defaultPrepTimeSeconds: seconds }),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultPrepTimeSeconds: seconds }),
     }).then((prepTime) => {
       setPrepTimes((current) => ({ ...current, [store.storeId]: prepTime }));
       return prepTime;
     }), `已更新 ${store.storeName ?? store.storeId} 的 Uber 默认 Prep Time`);
   };
   const syncStoreStatus = () => {
-    if (!connectionId) return setActionError('缺少 Uber connectionId');
     const provisionedStores = stores.filter((store) => store.isProvisioned);
     if (!provisionedStores.length) return setActionError('当前没有已 provision 的 Uber 门店');
     void runAction('store-status-sync', async () => {
@@ -74,7 +67,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
       const entries = await Promise.all(
         provisionedStores.map(async (store) => [
           store.storeId,
-          await uberApiFetch<UberStoreStatusResponse>(`${storeStatusPath(store.storeId)}?connectionId=${encodeURIComponent(connectionId)}`),
+          await uberApiFetch<UberStoreStatusResponse>(storeStatusPath(store.storeId)),
         ] as const),
       );
       setStoreStatuses((current) => ({ ...current, ...Object.fromEntries(entries) }));
@@ -94,7 +87,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                 <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => void retry()}>刷新授权状态</button>
               </div>
               <div className="mt-2 grid gap-2 text-sm md:grid-cols-2">
-                <p className="break-all whitespace-pre-wrap">connectionId：{connection?.connectionId ?? '-'}</p>
+                <p>授权状态：{connection?.connected ? '已连接' : '未连接'}</p>
                 <p className="break-all whitespace-pre-wrap">scope：{connection?.scope ?? '-'}</p>
                 <p className="break-all whitespace-pre-wrap">tokenType：{connection?.tokenType ?? '-'}</p>
                 <p>expiresAt：{safeTime(connection?.expiresAt)}</p>
@@ -110,7 +103,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                 <button
                   type="button"
                   className="rounded border bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={!connectionId || !stores.some((store) => store.isProvisioned) || actionLoading['store-status-sync']}
+                  disabled={!connection?.connected || !stores.some((store) => store.isProvisioned) || actionLoading['store-status-sync']}
                   onClick={syncStoreStatus}
                 >
                   {actionLoading['store-status-sync'] ? '同步中...' : '同步 SanQ 营业状态到 Uber'}
@@ -139,7 +132,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                               type="button"
                               className="rounded border px-2 py-1 text-xs"
                               onClick={() => void runAction(`select-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/stores/select', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId: connection?.connectionId, storeId: s.storeId, storeName: s.storeName, locationSummary: s.locationSummary, reconnectFromConnectionId: s.requiresReconnect ? s.mappedConnectionId : undefined }),
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: s.storeId, storeName: s.storeName, locationSummary: s.locationSummary }),
                               }).then(() => retry()), `已选择 ${s.storeName ?? s.storeId}`)}
                             >{s.requiresReconnect ? '确认重新连接' : '选择此门店'}</button>}
                             <button
@@ -147,9 +140,8 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                               className="rounded border px-2 py-1 text-xs disabled:opacity-40"
                               disabled={!s.isMapped || !s.posExternalStoreId || actionLoading[`provision-${s.storeId}`]}
                               onClick={() => {
-                                if (!connectionId) return;
                                 void runAction(`provision-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/provision', {
-                                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ connectionId, storeId: s.storeId, payload: {} }),
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: s.storeId, payload: {} }),
                                 }), `已提交 ${s.storeId} 的 Activate`);
                               }}
                             >

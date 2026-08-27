@@ -223,14 +223,14 @@ export class UberEatsMenuController {
   @UberMfaAdminWrite()
   async applyConfigImport(
     @Body() dto: UberMenuConfigImportDto,
-    @Req() req: { user?: { id?: string } },
+    @Req() req: { user?: { userStableId?: string } },
   ) {
     const result = await this.configImports.apply(
       dto.sourceStoreId,
       dto.targetStoreId,
       dto.mode ?? 'SKIP_EXISTING',
       dto.previewFingerprint ?? '',
-      req.user!.id!,
+      req.user!.userStableId!,
     );
     return presentMenuOperation(result);
   }
@@ -240,12 +240,12 @@ export class UberEatsMenuController {
   async restoreSourcePrice(
     @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: { storeId: string },
-    @Req() req: { user?: { id?: string } },
+    @Req() req: { user?: { userStableId?: string } },
   ) {
     const result = await this.configImports.restoreItemPrice(
       dto.storeId,
       stableId,
-      req.user!.id!,
+      req.user!.userStableId!,
     );
     return presentMenuOperation(result);
   }
@@ -255,12 +255,12 @@ export class UberEatsMenuController {
   async restoreOptionSourcePrice(
     @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: { storeId: string },
-    @Req() req: { user?: { id?: string } },
+    @Req() req: { user?: { userStableId?: string } },
   ) {
     const result = await this.configImports.restoreOptionPrice(
       dto.storeId,
       stableId,
-      req.user!.id!,
+      req.user!.userStableId!,
     );
     return presentMenuOperation(result);
   }

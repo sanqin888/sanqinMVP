@@ -325,13 +325,10 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
           // start preparation and will append order.prep_started transactionally.
           await tx.opsEvent.createMany({
             data: {
-              idempotencyKey: orderAcceptedIdempotencyKey(order.id),
+              idempotencyKey: orderAcceptedIdempotencyKey(order.orderStableId),
               eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
               source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
-              payload: {
-                orderId: order.id,
-                orderStableId: order.orderStableId,
-              },
+              payload: { orderStableId: order.orderStableId },
             },
             skipDuplicates: true,
           });

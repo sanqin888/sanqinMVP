@@ -5,7 +5,6 @@ import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   ORDER_PREP_STARTED_LIFECYCLE_EVENT,
-  orderAcceptedIdempotencyKey,
   orderPrepStartedIdempotencyKey,
 } from './order-lifecycle';
 
@@ -145,7 +144,7 @@ export class OrderPreparationService {
               FROM "OpsEvent" accepted
               WHERE accepted.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
                 AND accepted."eventName" = ${ORDER_ACCEPTED_LIFECYCLE_EVENT}
-                AND accepted.payload->>'orderId' = orders.id::text
+                AND accepted.payload->>'orderStableId' = orders."orderStableId"
             )
           ORDER BY orders."prepStartAt" ASC, orders."createdAt" ASC
           FOR UPDATE OF orders SKIP LOCKED
@@ -223,7 +222,7 @@ export class OrderPreparationService {
       return this.skippedResult(order);
     }
 
-    if (!(await this.hasAcceptedLifecycle(tx, order.id))) {
+    if (!(await this.hasAcceptedLifecycle(tx, order.orderStableId))) {
       this.logSkipped(order, 'NOT_ACCEPTED');
       return this.skippedResult(order);
     }
@@ -262,13 +261,10 @@ export class OrderPreparationService {
 
     await tx.opsEvent.createMany({
       data: {
-        idempotencyKey: orderPrepStartedIdempotencyKey(order.id),
+        idempotencyKey: orderPrepStartedIdempotencyKey(order.orderStableId),
         eventName: ORDER_PREP_STARTED_LIFECYCLE_EVENT,
         source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
-        payload: {
-          orderId: order.id,
-          orderStableId: order.orderStableId,
-        },
+        payload: { orderStableId: order.orderStableId },
       },
       skipDuplicates: true,
     });
@@ -291,13 +287,13 @@ export class OrderPreparationService {
 
   private async hasAcceptedLifecycle(
     tx: Prisma.TransactionClient,
-    orderId: string,
+    orderStableId: string,
   ): Promise<boolean> {
     const accepted = await tx.opsEvent.findFirst({
       where: {
-        idempotencyKey: orderAcceptedIdempotencyKey(orderId),
         source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
         eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
+        payload: { path: ['orderStableId'], equals: orderStableId },
       },
       select: { id: true },
     });

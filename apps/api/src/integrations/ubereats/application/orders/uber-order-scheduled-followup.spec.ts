@@ -104,7 +104,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
     const fetchOrderDetail = jest.fn().mockResolvedValue(scheduledDetail);
     const requestScheduledFinalizeAccept = jest
       .fn()
-      .mockResolvedValue({ taskId: 'accept-1', created: true });
+      .mockResolvedValue({ actionReference: 'accept-1', created: true });
     const request = jest.fn();
     const buildIntent = jest.fn();
     const useCase = new ImportUberOrderUseCase(
