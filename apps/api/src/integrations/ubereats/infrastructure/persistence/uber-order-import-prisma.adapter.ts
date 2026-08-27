@@ -23,21 +23,12 @@ import type {
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
   UberOrderMenuMapping,
+  UberOrderModifierSnapshotMapping,
+  UberOrderModifierSnapshotSource,
 } from '../../application/orders/uber-order.ports';
-import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { ParsedUberModifier } from '../../domain/orders/uber-order.types';
 import { toUberOrderStatus } from './uber-order-status.mapper';
-
-type LocalModifierSnapshotMeta = {
-  stableId: string;
-  templateGroupStableId: string;
-  targetItemStableId: string | null;
-  nameEn: string;
-  nameZh: string | null;
-  templateNameEn: string;
-  templateNameZh: string | null;
-};
 
 /** Prisma implementation of the complete order-import persistence boundary. */
 @Injectable()
@@ -220,11 +211,15 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     const mapping = new Map(
       input.menuMappings.map((item) => [item.externalItemId, item]),
     );
-    const modifierSnapshotMeta = input.order.items.some(
-      (item) => item.modifiers.length > 0,
-    )
-      ? await this.loadModifierSnapshotMeta(input.posStoreId)
-      : new Map<string, LocalModifierSnapshotMeta>();
+    const modifierSnapshotMeta = new Map<
+      string,
+      UberOrderModifierSnapshotMapping
+    >(
+      (input.modifierSnapshotMappings ?? []).map((item) => [
+        item.externalItemId,
+        item,
+      ]),
+    );
     const items: NormalizedOrderItem[] = input.order.items.map((item) => ({
       productStableId: mapping.get(item.externalItemId ?? '')!.menuItemStableId,
       quantity: item.quantity,
@@ -448,9 +443,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return (status && map[status]) || OrderStatus.pending;
   }
 
-  private async loadModifierSnapshotMeta(
-    storeId: string,
-  ): Promise<Map<string, LocalModifierSnapshotMeta>> {
+  async findModifierSnapshotSources(): Promise<UberOrderModifierSnapshotSource[]> {
     const rows = await this.prisma.menuOptionTemplateChoice.findMany({
       where: {
         deletedAt: null,
@@ -471,25 +464,20 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       },
     });
 
-    return new Map(
-      rows.map((row) => [
-        buildUberNodeId('item', storeId, row.stableId),
-        {
-          stableId: row.stableId,
-          templateGroupStableId: row.templateGroup.stableId,
-          targetItemStableId: row.targetItemStableId?.trim() || null,
-          nameEn: row.nameEn,
-          nameZh: row.nameZh ?? null,
-          templateNameEn: row.templateGroup.nameEn,
-          templateNameZh: row.templateGroup.nameZh ?? null,
-        },
-      ]),
-    );
+    return rows.map((row) => ({
+      stableId: row.stableId,
+      templateGroupStableId: row.templateGroup.stableId,
+      targetItemStableId: row.targetItemStableId?.trim() || null,
+      nameEn: row.nameEn,
+      nameZh: row.nameZh ?? null,
+      templateNameEn: row.templateGroup.nameEn,
+      templateNameZh: row.templateGroup.nameZh ?? null,
+    }));
   }
 
   private modifierSnapshots(
     values: ParsedUberModifier[],
-    metadata: Map<string, LocalModifierSnapshotMeta>,
+    metadata: Map<string, UberOrderModifierSnapshotMapping>,
   ): Prisma.InputJsonValue {
     const snapshots: Array<Record<string, unknown>> = [];
     let sortOrder = 0;
