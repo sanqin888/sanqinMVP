@@ -67,10 +67,16 @@ describe('UberMenuRefreshRequestHandler', () => {
     const publications = {
       findLastSucceededPayload: jest.fn().mockResolvedValue(payload),
     };
-    const uploadMenu = jest
-      .fn<UberMenuGatewayPort['uploadMenu']>()
-      .mockResolvedValue(undefined);
-    const gateway = { uploadMenu };
+    const uploads: Array<
+      Parameters<UberMenuGatewayPort['uploadMenu']>[0]
+    > = [];
+    const gateway = {
+      uploadMenu: async (
+        input: Parameters<UberMenuGatewayPort['uploadMenu']>[0],
+      ) => {
+        uploads.push(input);
+      },
+    };
     const telemetry = {
       captureEvent: jest.fn().mockResolvedValue(undefined),
       workflowLog: jest.fn(),
@@ -87,12 +93,12 @@ describe('UberMenuRefreshRequestHandler', () => {
     expect(publications.findLastSucceededPayload).toHaveBeenCalledWith(
       '4750_Yonge_Street',
     );
-    expect(uploadMenu).toHaveBeenCalledTimes(1);
-    const upload = uploadMenu.mock.calls[0]?.[0];
-    expect(upload).toBeDefined();
-    expect(upload?.storeId).toBe('uber-store-1');
-    expect(upload?.payload).toBe(payload);
-    expect(upload?.idempotencyKey).toMatch(/^sanqin-uber-[a-f0-9]{64}$/);
+    expect(uploads).toHaveLength(1);
+    const upload = uploads[0];
+    if (!upload) throw new Error('Expected one Uber menu upload');
+    expect(upload.storeId).toBe('uber-store-1');
+    expect(upload.payload).toBe(payload);
+    expect(upload.idempotencyKey).toMatch(/^sanqin-uber-[a-f0-9]{64}$/);
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_store_menu_refresh_processed',
       expect.objectContaining({

@@ -417,10 +417,16 @@ describe('Uber merchant gateway use-case boundaries', () => {
   });
 
   it('activates an existing integration through PATCH with integration_enabled=true', async () => {
-    const updateIntegrationConfig = jest
-      .fn<UberStoreApiPort['updateIntegrationConfig']>()
-      .mockResolvedValue(undefined);
-    const api = { updateIntegrationConfig };
+    const updateCalls: Array<
+      Parameters<UberStoreApiPort['updateIntegrationConfig']>
+    > = [];
+    const api = {
+      updateIntegrationConfig: async (
+        ...args: Parameters<UberStoreApiPort['updateIntegrationConfig']>
+      ) => {
+        updateCalls.push(args);
+      },
+    };
     const mappings = {
       findMapping: jest.fn().mockResolvedValue({
         connectionId: 'merchant-1',
@@ -438,11 +444,11 @@ describe('Uber merchant gateway use-case boundaries', () => {
       ok: true,
       storeId: 'uber-store-1',
     });
-    expect(updateIntegrationConfig).toHaveBeenCalledTimes(1);
-    const updateCall = updateIntegrationConfig.mock.calls[0];
-    expect(updateCall).toBeDefined();
-    expect(updateCall?.[0]).toBe('uber-store-1');
-    expect(updateCall?.[1]).toMatchObject({
+    expect(updateCalls).toHaveLength(1);
+    const updateCall = updateCalls[0];
+    if (!updateCall) throw new Error('Expected one Uber integration update');
+    expect(updateCall[0]).toBe('uber-store-1');
+    expect(updateCall[1]).toMatchObject({
       integrator_store_id: 'sanq-store-1',
       integration_enabled: true,
       is_order_manager: true,
@@ -452,7 +458,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
         webhooks_version: '1.0.0',
       },
     });
-    expect(updateCall?.[2]).toMatch(/^sanqin-uber-/);
+    expect(updateCall[2]).toMatch(/^sanqin-uber-/);
   });
 
   it('requires a valid local Store ID mapping before Config sync', async () => {
