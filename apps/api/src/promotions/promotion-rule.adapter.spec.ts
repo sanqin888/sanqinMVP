@@ -228,34 +228,40 @@ describe('promotion rule adapter', () => {
         discountPercent: 100,
       },
     },
-    { type: 'FREE_ITEM', config: { itemStableIds: ['item-b'], quantity: 1 } },
+    {
+      type: 'FREE_ITEM',
+      config: { itemStableIds: ['item-b'], quantity: 1 },
+    },
     { type: 'LOYALTY_MULTIPLIER', config: { multiplier: 2 } },
-  ])('gates $type behind the member-only eligibility flag', ({ type, config }) => {
-    const rule = baseRule({
-      type,
-      config: { ...config, membersOnly: true },
-    });
+  ])(
+    'gates $type behind the member-only eligibility flag',
+    ({ type, config }) => {
+      const rule = baseRule({
+        type,
+        config: { ...config, membersOnly: true },
+      });
 
-    const guestCandidate = toPromotionRuleCandidate({
-      rule,
-      lines,
-      now,
-      isMember: false,
-    });
-    expect(guestCandidate.eligibility).toEqual(
-      expect.objectContaining({ eligible: false, code: 'MEMBER_REQUIRED' }),
-    );
+      const guestCandidate = toPromotionRuleCandidate({
+        rule,
+        lines,
+        now,
+        isMember: false,
+      });
+      expect(guestCandidate.eligibility).toEqual(
+        expect.objectContaining({ eligible: false, code: 'MEMBER_REQUIRED' }),
+      );
 
-    const memberCandidate = toPromotionRuleCandidate({
-      rule,
-      lines,
-      now,
-      isMember: true,
-    });
-    expect(memberCandidate.eligibility).toEqual(
-      expect.objectContaining({ eligible: true, code: 'ELIGIBLE' }),
-    );
-  });
+      const memberCandidate = toPromotionRuleCandidate({
+        rule,
+        lines,
+        now,
+        isMember: true,
+      });
+      expect(memberCandidate.eligibility).toEqual(
+        expect.objectContaining({ eligible: true, code: 'ELIGIBLE' }),
+      );
+    },
+  );
 
   it('never lets persisted rules outrank a materialized Daily Special price', () => {
     const candidate = toPromotionRuleCandidate({

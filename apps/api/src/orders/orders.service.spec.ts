@@ -314,7 +314,9 @@ describe('OrdersService', () => {
         userStableId,
         items: [{ productStableId, qty: 1 }],
       }),
-    ).rejects.toThrow('hidden menu items are not available for customer ordering');
+    ).rejects.toThrow(
+      'hidden menu items are not available for customer ordering',
+    );
 
     expect(prisma.userCoupon.findFirst).not.toHaveBeenCalled();
   });

@@ -221,7 +221,8 @@ function baseCandidate(params: {
       titleEn: params.rule.titleEn,
       stackingPolicy: params.rule.stackingPolicy,
       membersOnly:
-        isRecord(params.rule.config) && readBoolean(params.rule.config, 'membersOnly'),
+        isRecord(params.rule.config) &&
+        readBoolean(params.rule.config, 'membersOnly'),
     },
   };
 }

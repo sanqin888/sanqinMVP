@@ -305,7 +305,10 @@ export class OrdersController {
   @HttpCode(201)
   @UseGuards(OptionalSessionAuthGuard)
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
-  create(@Req() req: AuthedRequest, @Body() dto: CreateOrderInput): Promise<OrderDto> {
+  create(
+    @Req() req: AuthedRequest,
+    @Body() dto: CreateOrderInput,
+  ): Promise<OrderDto> {
     if (dto.channel !== 'web') {
       throw new BadRequestException('Public create only allows channel=web');
     }

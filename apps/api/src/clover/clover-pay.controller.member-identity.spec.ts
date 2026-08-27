@@ -78,11 +78,12 @@ describe('CloverPayController member identity boundary', () => {
     expect(orders.quoteOrderPricing).toHaveBeenCalledWith(
       expect.objectContaining({ userStableId: undefined }),
     );
-    expect(checkoutIntents.recordIntent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ loyaltyUserStableId: undefined }),
-      }),
-    );
+    expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
+    const recordedIntent =
+      checkoutIntents.recordIntent.mock.calls[0]?.[0] as unknown as {
+        metadata: { loyaltyUserStableId?: string };
+      };
+    expect(recordedIntent.metadata.loyaltyUserStableId).toBeUndefined();
   });
 
   it('uses the authenticated session member identity for a payment session', async () => {
@@ -96,12 +97,13 @@ describe('CloverPayController member identity boundary', () => {
     expect(orders.quoteOrderPricing).toHaveBeenCalledWith(
       expect.objectContaining({ userStableId: sessionUserStableId }),
     );
-    expect(checkoutIntents.recordIntent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          loyaltyUserStableId: sessionUserStableId,
-        }),
-      }),
+    expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
+    const recordedIntent =
+      checkoutIntents.recordIntent.mock.calls[0]?.[0] as unknown as {
+        metadata: { loyaltyUserStableId?: string };
+      };
+    expect(recordedIntent.metadata.loyaltyUserStableId).toBe(
+      sessionUserStableId,
     );
   });
 });
