@@ -51,9 +51,11 @@ function createHarness() {
     .fn<Promise<void>, [RecordIntentParams]>()
     .mockResolvedValue(undefined);
   const checkoutIntents = { recordIntent };
-  const orders = {
-    quoteOrderPricing: jest.fn().mockResolvedValue({ totalCents: 1130 }),
-  };
+  type QuoteOrderInput = Parameters<OrdersService['quoteOrderPricing']>[0];
+  const quoteOrderPricing = jest
+    .fn<Promise<{ totalCents: number }>, [QuoteOrderInput]>()
+    .mockResolvedValue({ totalCents: 1130 });
+  const orders = { quoteOrderPricing };
   const pricingTokens = {
     issue: jest.fn().mockReturnValue({
       pricingToken: 'pricing-token',
@@ -79,9 +81,9 @@ describe('CloverPayController member identity boundary', () => {
 
     await controller.createPaymentSession({} as AuthedRequest, createDto());
 
-    expect(orders.quoteOrderPricing).toHaveBeenCalledWith(
-      expect.not.objectContaining({ userStableId: expect.anything() }),
-    );
+    expect(orders.quoteOrderPricing).toHaveBeenCalledTimes(1);
+    const quotedOrder = orders.quoteOrderPricing.mock.calls[0]?.[0];
+    expect(quotedOrder?.userStableId).toBeUndefined();
     expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
     const recordedIntent = checkoutIntents.recordIntent.mock.calls[0]?.[0];
     expect(recordedIntent?.metadata.loyaltyUserStableId).toBeUndefined();
