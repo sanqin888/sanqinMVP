@@ -17,6 +17,7 @@ import {
   advanceOrder,
   retryUberOrderSync,
   createFullRefund,
+  createManagedCardRefund,
   createOrderAmendment,
   fetchRecentOrders,
   printOrderCloud,
@@ -103,6 +104,10 @@ const COPY = {
       "退款申请已记录，等待平台处理；订单尚未标记为已退款。",
     refundPendingManual:
       "退款申请已记录，等待原支付渠道确认；订单尚未标记为已退款。",
+    refundReconciling:
+      "Clover 退款结果尚未确认，系统正在按原交易对账；请勿重复退款或改用其他退款方式。",
+    managedCardRequiresCard:
+      "这笔订单使用新版 Clover 银行卡支付，必须原路退回银行卡。请选择“银行卡”后重试。",
     refundSuccess: "退款成功。",
     advanceStatus: "推进状态",
     advanceProcessing: "推进中...",
@@ -257,6 +262,10 @@ const COPY = {
       "Refund request recorded and pending platform processing; the order is not marked refunded.",
     refundPendingManual:
       "Refund request recorded and awaiting confirmation from the original payment channel; the order is not marked refunded.",
+    refundReconciling:
+      "Clover refund truth is not confirmed yet. The original payment is being reconciled; do not issue another refund or use another refund method.",
+    managedCardRequiresCard:
+      "This order used the new Clover card flow and must be refunded back to the original card. Select Card and retry.",
     refundSuccess: "Refund completed.",
     advanceStatus: "Advance status",
     advanceProcessing: "Advancing...",
@@ -1657,6 +1666,49 @@ export default function PosOrdersPage() {
                 : selectedOrder.paymentMethod === "store_balance"
                   ? "STORE_BALANCE"
                   : "CARD";
+          if (originalPaymentMethod === "CARD") {
+            const managed = await createManagedCardRefund<BackendOrder>(
+              selectedOrder.stableId,
+              {
+                reason: reason.trim(),
+                operatorName: confirmedOperatorName,
+                refundMethod: selectedPaymentMethod!,
+              },
+            );
+            if (managed.mode === "MANAGED") {
+              const mapped = mapOrder(managed.order, storeTimezone);
+              setOrders((prev) =>
+                prev.map((order) =>
+                  order.stableId === mapped.stableId ? mapped : order,
+                ),
+              );
+              setSelectedId(mapped.stableId);
+              setOperatorDialogOpen(false);
+              setOperatorName("");
+
+              if (managed.status === "SUCCEEDED") {
+                showToast(copy.refundSuccess, "success");
+                return;
+              }
+              if (
+                managed.failureCode === "POS_MANAGED_CARD_REFUND_REQUIRES_CARD"
+              ) {
+                showToast(copy.managedCardRequiresCard, "error");
+                return;
+              }
+              if (
+                managed.status === "PROCESSING" ||
+                managed.status === "UNKNOWN" ||
+                managed.status === "RECONCILING"
+              ) {
+                showToast(copy.refundReconciling, "error");
+                return;
+              }
+              showToast(managed.failureMessage || copy.refundFailed, "error");
+              return;
+            }
+          }
+
           const result = await createFullRefund<BackendOrder>(
             selectedOrder.stableId,
             {

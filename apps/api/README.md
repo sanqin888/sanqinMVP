@@ -41,6 +41,14 @@ exercise the Clover POS proof-of-concept endpoints:
 | `CLOVER_API_BASE_URL` | Optional. Defaults to the Clover sandbox (`https://sandbox.dev.clover.com/v3`). |
 | `CLOVER_MERCHANT_ID` | Required. Merchant identifier issued by Clover. |
 | `CLOVER_ACCESS_TOKEN` | Required. OAuth access token with permissions to read the merchant profile and orders. |
+| `CLOVER_V3_ACCESS_TOKEN` | Required for canonical Platform v3 payment/reversal reads used by the Unified Payment Core. |
+| `CLOVER_WEBHOOK_AUTH_CODE` | Required after Clover callback verification. Event deliveries must present this value in `X-Clover-Auth`. |
+
+Phase F reverse sync receives Clover callbacks at
+`/api/v1/payments/webhooks/clover`. The initial Clover verification challenge is
+accepted before `CLOVER_WEBHOOK_AUTH_CODE` is configured; subsequent event
+deliveries require the auth code and are reconciled against Platform v3 before
+payment/order state is changed.
 
 With the variables defined you can call `/clover/merchant` and `/clover/orders`
 to proxy requests to Clover.

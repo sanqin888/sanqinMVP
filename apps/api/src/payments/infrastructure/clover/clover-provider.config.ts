@@ -12,6 +12,7 @@ export class CloverProviderConfig {
   readonly terminalDeviceId: string | undefined;
   readonly terminalPosId: string | undefined;
   readonly terminalTimeoutSeconds: number;
+  readonly webhookAuthCode: string | undefined;
 
   constructor() {
     this.ecommerceApiBase =
@@ -31,6 +32,7 @@ export class CloverProviderConfig {
     this.terminalTimeoutSeconds = this.parseTerminalTimeout(
       process.env.CLOVER_TERMINAL_TIMEOUT_SECONDS,
     );
+    this.webhookAuthCode = process.env.CLOVER_WEBHOOK_AUTH_CODE?.trim();
   }
 
   private parseTerminalTimeout(raw: string | undefined): number {

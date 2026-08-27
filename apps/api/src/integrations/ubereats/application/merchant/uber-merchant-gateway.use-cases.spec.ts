@@ -2,6 +2,7 @@ import {
   DiscoverUberStoresUseCase,
   MapUberStoreUseCase,
 } from './uber-merchant-store-mapping.service';
+import type { UberStoreApiPort } from './uber-merchant-api.ports';
 import {
   DeprovisionUberStoreUseCase,
   ProvisionUberStoreUseCase,
@@ -413,6 +414,52 @@ describe('Uber merchant gateway use-case boundaries', () => {
       },
       expect.stringMatching(/^sanqin-uber-/),
     );
+  });
+
+  it('activates an existing integration through PATCH with integration_enabled=true', async () => {
+    const updateCalls: Array<
+      Parameters<UberStoreApiPort['updateIntegrationConfig']>
+    > = [];
+    const api = {
+      updateIntegrationConfig: (
+        ...args: Parameters<UberStoreApiPort['updateIntegrationConfig']>
+      ) => {
+        updateCalls.push(args);
+        return Promise.resolve();
+      },
+    };
+    const mappings = {
+      findMapping: jest.fn().mockResolvedValue({
+        connectionId: 'merchant-1',
+        uberStoreId: 'uber-store-1',
+        posExternalStoreId: 'sanq-store-1',
+      }),
+    };
+    const useCase = new UpdateUberStoreIntegrationConfigUseCase(
+      api as never,
+      { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      mappings as never,
+    );
+
+    await expect(useCase.activate('uber-store-1')).resolves.toMatchObject({
+      ok: true,
+      storeId: 'uber-store-1',
+    });
+    expect(updateCalls).toHaveLength(1);
+    const updateCall = updateCalls[0];
+    if (!updateCall) throw new Error('Expected one Uber integration update');
+    expect(updateCall[0]).toBe('uber-store-1');
+    expect(updateCall[1]).toMatchObject({
+      integrator_store_id: 'sanq-store-1',
+      integration_enabled: true,
+      is_order_manager: true,
+      require_manual_acceptance: false,
+      webhooks_config: {
+        schedule_order_webhooks: { is_enabled: true },
+        webhooks_version: '1.0.0',
+      },
+    });
+    expect(updateCall[2]).toMatch(/^sanqin-uber-/);
   });
 
   it('requires a valid local Store ID mapping before Config sync', async () => {

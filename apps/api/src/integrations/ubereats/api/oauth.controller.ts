@@ -183,6 +183,13 @@ export class UberEatsOAuthController {
     return presentMerchantMutation();
   }
 
+  @Patch('oauth/stores/:storeId/activate')
+  @UberMfaAdminWrite()
+  async activateIntegration(@Param('storeId', ResourceIdPipe) storeId: string) {
+    await this.storeIntegrationUpdate.activate(storeId);
+    return presentMerchantMutation();
+  }
+
   @Get('oauth/stores/:storeId/integration-config')
   @UberReadOnlyAdmin()
   async retrieveIntegrationConfig(

@@ -36,6 +36,13 @@ type CloverPlatformCanonicalPaymentRequest = {
   currency: string;
 };
 
+type CloverPlatformCanonicalReversalRequest =
+  CloverPlatformCanonicalPaymentRequest & {
+    operation: 'REFUND' | 'VOID';
+    providerRefundId?: string | null;
+    expectedAdditionalChargeRefundCents: number;
+  };
+
 const PAYMENT_EXPAND = 'additionalCharges,cardTransaction,refunds,order';
 const PLATFORM_TIMEOUT_MS = 10_000;
 
@@ -107,6 +114,7 @@ const platformPaymentUnknown = (
   failureMessage: string,
   identifiers: {
     providerPaymentId?: string | null;
+    providerRefundId?: string | null;
     externalPaymentId?: string | null;
     amountCents?: number;
     currency?: string;
@@ -116,6 +124,7 @@ const platformPaymentUnknown = (
   status: 'UNKNOWN',
   providerPaymentId:
     identifiers.providerPaymentId ?? request.providerPaymentId ?? undefined,
+  providerRefundId: identifiers.providerRefundId ?? undefined,
   externalPaymentId:
     identifiers.externalPaymentId ?? request.externalPaymentId ?? undefined,
   amountCents: identifiers.amountCents,
@@ -370,6 +379,132 @@ const mapPlatformPaymentCollection = (
   return mapPlatformPayment(elements[0], request);
 };
 
+const reversalUnknown = (
+  request: CloverPlatformCanonicalReversalRequest,
+  failureCode: string,
+  failureMessage: string,
+  providerRefundId?: string | null,
+): PaymentProviderOutcome =>
+  platformPaymentUnknown(request, failureCode, failureMessage, {
+    providerPaymentId: request.providerPaymentId,
+    providerRefundId,
+    amountCents: request.amountCents,
+    currency: request.currency,
+  });
+
+const mapPlatformRefund = (
+  refundValue: unknown,
+  request: CloverPlatformCanonicalReversalRequest,
+  resultCode = 'CLOVER_REFUND_CONFIRMED',
+): PaymentProviderOutcome => {
+  const refund = asRecord(refundValue);
+  if (!refund) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_INVALID',
+      'Clover Platform returned an invalid refund payload',
+    );
+  }
+
+  const providerRefundId = stringValue(refund, 'id');
+  const amountCents = integerValue(refund, 'amount');
+  const payment = asRecord(refund.payment);
+  const providerPaymentId = stringValue(payment, 'id');
+  if (!providerRefundId) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_ID_MISSING',
+      'Clover Platform refund is missing its refund id',
+    );
+  }
+  if (
+    request.providerRefundId &&
+    providerRefundId !== request.providerRefundId
+  ) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_ID_MISMATCH',
+      'Clover Platform returned a different refund id',
+      providerRefundId,
+    );
+  }
+  if (!providerPaymentId || providerPaymentId !== request.providerPaymentId) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_PAYMENT_ID_MISMATCH',
+      'Clover Platform refund does not reference the expected payment',
+      providerRefundId,
+    );
+  }
+  if (amountCents !== request.amountCents) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_AMOUNT_MISMATCH',
+      'Clover Platform refund amount does not match the requested full refund',
+      providerRefundId,
+    );
+  }
+
+  const additionalCharges = elementRecords(refund, 'additionalCharges');
+  if (!additionalCharges) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_ADDITIONAL_CHARGES_INVALID',
+      'Clover Platform returned invalid refund additional charges',
+      providerRefundId,
+    );
+  }
+  const additionalChargeRefundCents = sumMoney(additionalCharges);
+  if (
+    additionalChargeRefundCents === null ||
+    additionalChargeRefundCents !== request.expectedAdditionalChargeRefundCents
+  ) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_ADDITIONAL_CHARGE_MISMATCH',
+      'Clover Platform refund additional charges do not match the original canonical charge facts',
+      providerRefundId,
+    );
+  }
+  const surchargeRows = additionalCharges.filter(
+    (charge) =>
+      stringValue(charge, 'type')?.trim().toUpperCase() === 'CREDIT_SURCHARGE',
+  );
+  const surchargeCents = sumMoney(surchargeRows);
+  if (surchargeCents === null) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_SURCHARGE_INVALID',
+      'Clover Platform returned an invalid refunded surcharge amount',
+      providerRefundId,
+    );
+  }
+  const refundedCustomerTotalCents = amountCents + additionalChargeRefundCents;
+  if (!Number.isSafeInteger(refundedCustomerTotalCents)) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_TOTAL_INVALID',
+      'Clover Platform refund total is outside the supported money range',
+      providerRefundId,
+    );
+  }
+
+  return {
+    ...canonicalBase(request),
+    status: 'SUCCEEDED',
+    providerPaymentId,
+    providerRefundId,
+    amountCents,
+    currency: request.currency,
+    surchargeCents,
+    chargedTotalCents: refundedCustomerTotalCents,
+    refundedAmountCents: amountCents,
+    resultCode,
+    failureCode: null,
+    failureMessage: null,
+  };
+};
+
 @Injectable()
 export class CloverPlatformPaymentsGateway {
   private readonly logger = new AppLogger(CloverPlatformPaymentsGateway.name);
@@ -445,6 +580,220 @@ export class CloverPlatformPaymentsGateway {
     }
     if (!collection.ok) return this.httpUnknown(request, collection);
     return mapPlatformPaymentCollection(collection.body, request);
+  }
+
+  async getCanonicalReversal(
+    request: CloverPlatformCanonicalReversalRequest,
+  ): Promise<PaymentProviderOutcome> {
+    const merchantId = this.config.merchantId;
+    if (!merchantId || !this.config.platformAccessToken) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_MISCONFIGURED',
+        'Clover Platform reversal read requires merchant id and Platform v3 access token',
+      );
+    }
+    const providerPaymentId = request.providerPaymentId?.trim();
+    if (!providerPaymentId) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_PAYMENT_ID_MISSING',
+        'Canonical Clover reversal read requires the original payment id',
+      );
+    }
+
+    const knownRefundId = request.providerRefundId?.trim();
+    if (knownRefundId) {
+      return this.getCanonicalRefundById(
+        request,
+        knownRefundId,
+        request.operation === 'VOID'
+          ? 'CLOVER_VOID_CONVERTED_TO_REFUND'
+          : 'CLOVER_REFUND_CONFIRMED',
+      );
+    }
+
+    const paymentResult = await this.request(
+      `/v3/merchants/${encodeURIComponent(merchantId)}/payments/${encodeURIComponent(providerPaymentId)}?expand=${encodeURIComponent(PAYMENT_EXPAND)}`,
+    );
+    if (!paymentResult) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_QUERY_UNCERTAIN',
+        'Clover Platform reversal reconciliation did not receive a response',
+      );
+    }
+    if (!paymentResult.ok) {
+      return reversalUnknown(
+        request,
+        paymentResult.httpStatus === 404
+          ? 'CLOVER_PLATFORM_REVERSAL_PAYMENT_NOT_FOUND'
+          : `CLOVER_PLATFORM_REVERSAL_HTTP_${paymentResult.httpStatus}`,
+        `Clover Platform returned HTTP ${paymentResult.httpStatus} while reading reversal truth`,
+      );
+    }
+
+    const payment = asRecord(paymentResult.body?.payment ?? paymentResult.body);
+    const canonicalPaymentId = stringValue(payment, 'id');
+    const paymentAmount = integerValue(payment, 'amount');
+    const order = asRecord(payment?.order);
+    const currency = (
+      stringValue(payment, 'currency') ?? stringValue(order, 'currency')
+    )?.toUpperCase();
+    if (
+      canonicalPaymentId !== providerPaymentId ||
+      paymentAmount !== request.amountCents ||
+      !currency ||
+      currency !== request.currency.toUpperCase()
+    ) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_PAYMENT_FACT_MISMATCH',
+        'Clover Platform payment facts do not match the original canonical payment',
+      );
+    }
+
+    const resultCode = stringValue(payment, 'result');
+    const normalizedResult = normalizePlatformResult(resultCode);
+    if (request.operation === 'VOID' && normalizedResult === 'CANCELLED') {
+      const additionalCharges = elementRecords(payment, 'additionalCharges');
+      if (!additionalCharges) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_ADDITIONAL_CHARGE_MISMATCH',
+          'Clover Platform void facts do not match the original additional charges',
+        );
+      }
+      const additionalChargeCents = sumMoney(additionalCharges);
+      if (
+        additionalChargeCents === null ||
+        additionalChargeCents !== request.expectedAdditionalChargeRefundCents
+      ) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_ADDITIONAL_CHARGE_MISMATCH',
+          'Clover Platform void facts do not match the original additional charges',
+        );
+      }
+      const surchargeRows = additionalCharges.filter(
+        (charge) =>
+          stringValue(charge, 'type')?.trim().toUpperCase() ===
+          'CREDIT_SURCHARGE',
+      );
+      const surchargeCents = sumMoney(surchargeRows);
+      if (surchargeCents === null) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_SURCHARGE_INVALID',
+          'Clover Platform returned an invalid surcharge on the voided payment',
+        );
+      }
+      return {
+        ...canonicalBase(request),
+        status: 'SUCCEEDED',
+        providerPaymentId,
+        amountCents: request.amountCents,
+        currency: request.currency,
+        refundedAmountCents: request.amountCents,
+        surchargeCents,
+        chargedTotalCents: request.amountCents + additionalChargeCents,
+        resultCode: 'CLOVER_VOID_CONFIRMED',
+        failureCode: null,
+        failureMessage: null,
+      };
+    }
+
+    const refunds = elementRecords(payment, 'refunds');
+    if (!refunds) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_REFUNDS_INVALID',
+        'Clover Platform returned invalid reversal refund facts',
+      );
+    }
+    if (refunds.length === 0) {
+      if (normalizedResult === 'FAILED') {
+        return {
+          ...canonicalBase(request),
+          status: 'FAILED',
+          providerPaymentId,
+          amountCents: request.amountCents,
+          currency: request.currency,
+          resultCode: resultCode ?? 'CLOVER_REVERSAL_FAILED',
+          failureCode: 'CLOVER_PLATFORM_REVERSAL_FAILED',
+          failureMessage: 'Clover Platform reports that the reversal failed',
+        };
+      }
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+        'Clover Platform has not exposed a canonical void or refund yet',
+      );
+    }
+    if (refunds.length !== 1) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_REFUND_IDENTITY_CONFLICT',
+        'Clover Platform exposed multiple refunds for a managed full refund',
+      );
+    }
+    const discoveredRefundId = stringValue(refunds[0], 'id');
+    if (!discoveredRefundId) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REVERSAL_REFUND_ID_MISSING',
+        'Clover Platform refund relation is missing its refund id',
+      );
+    }
+    return this.getCanonicalRefundById(
+      request,
+      discoveredRefundId,
+      request.operation === 'VOID'
+        ? 'CLOVER_VOID_CONVERTED_TO_REFUND'
+        : 'CLOVER_REFUND_CONFIRMED',
+    );
+  }
+
+  private async getCanonicalRefundById(
+    request: CloverPlatformCanonicalReversalRequest,
+    providerRefundId: string,
+    resultCode = 'CLOVER_REFUND_CONFIRMED',
+  ): Promise<PaymentProviderOutcome> {
+    const merchantId = this.config.merchantId;
+    if (!merchantId) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_MERCHANT_ID_MISSING',
+        'Clover merchant id is unavailable for refund reconciliation',
+        providerRefundId,
+      );
+    }
+    const refundResult = await this.request(
+      `/v3/merchants/${encodeURIComponent(merchantId)}/refunds/${encodeURIComponent(providerRefundId)}?expand=${encodeURIComponent('additionalCharges,payment')}`,
+    );
+    if (!refundResult) {
+      return reversalUnknown(
+        request,
+        'CLOVER_PLATFORM_REFUND_QUERY_UNCERTAIN',
+        'Clover Platform refund query did not receive a response',
+        providerRefundId,
+      );
+    }
+    if (!refundResult.ok) {
+      return reversalUnknown(
+        request,
+        refundResult.httpStatus === 404
+          ? 'CLOVER_PLATFORM_REFUND_NOT_FOUND'
+          : `CLOVER_PLATFORM_REFUND_HTTP_${refundResult.httpStatus}`,
+        `Clover Platform returned HTTP ${refundResult.httpStatus} while reading refund truth`,
+        providerRefundId,
+      );
+    }
+    return mapPlatformRefund(
+      refundResult.body?.refund ?? refundResult.body,
+      request,
+      resultCode,
+    );
   }
 
   private httpUnknown(
@@ -623,10 +972,45 @@ export class CloverPaymentProviderAdapter
           idempotencyKey: request.idempotencyKey,
           externalPaymentId: request.externalPaymentId,
           providerPaymentId: request.providerPaymentId,
+          providerRefundId: request.providerRefundId,
           failureCode: 'CLOVER_PLATFORM_EXPECTED_PAYMENT_FACTS_MISSING',
           failureMessage:
             'Canonical Clover reconciliation requires expected amount and currency',
         };
+      }
+      if (request.operation === 'REFUND' || request.operation === 'VOID') {
+        if (
+          request.expectedAdditionalChargeRefundCents === undefined ||
+          request.expectedAdditionalChargeRefundCents < 0
+        ) {
+          return {
+            status: 'UNKNOWN',
+            evidence: 'CANONICAL',
+            paymentId: request.paymentId,
+            attemptId: request.attemptId,
+            idempotencyKey: request.idempotencyKey,
+            providerPaymentId: request.providerPaymentId,
+            providerRefundId: request.providerRefundId,
+            amountCents: request.amountCents,
+            currency: request.currency,
+            failureCode:
+              'CLOVER_PLATFORM_EXPECTED_REVERSAL_CHARGE_FACTS_MISSING',
+            failureMessage:
+              'Canonical Clover reversal reconciliation requires expected additional-charge refund facts',
+          };
+        }
+        return this.platform.getCanonicalReversal({
+          paymentId: request.paymentId,
+          attemptId: request.attemptId,
+          idempotencyKey: request.idempotencyKey,
+          providerPaymentId: request.providerPaymentId,
+          providerRefundId: request.providerRefundId,
+          amountCents: request.amountCents,
+          currency: request.currency,
+          operation: request.operation,
+          expectedAdditionalChargeRefundCents:
+            request.expectedAdditionalChargeRefundCents,
+        });
       }
       return this.platform.getCanonicalPayment({
         paymentId: request.paymentId,
@@ -663,27 +1047,108 @@ export class CloverPaymentProviderAdapter
     });
   }
 
-  voidPayment(request: VoidPaymentRequest): Promise<PaymentProviderOutcome> {
+  async voidPayment(
+    request: VoidPaymentRequest,
+  ): Promise<PaymentProviderOutcome> {
     if (request.source === 'POS_TERMINAL') {
-      return this.terminal.voidPayment(request);
+      if (!this.platform.isConfigured()) {
+        return {
+          status: 'FAILED',
+          paymentId: request.paymentId,
+          attemptId: request.attemptId,
+          idempotencyKey: request.idempotencyKey,
+          providerPaymentId: request.providerPaymentId,
+          failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
+          failureMessage:
+            'Terminal void was not sent because Platform v3 canonical reversal read is not configured',
+        };
+      }
+      const execution = await this.terminal.voidPayment(request);
+      if (
+        execution.status === 'FAILED' ||
+        execution.status === 'CANCELLED' ||
+        request.amountCents === undefined ||
+        !request.currency ||
+        request.expectedAdditionalChargeRefundCents === undefined
+      ) {
+        return execution;
+      }
+      const canonical = await this.platform.getCanonicalReversal({
+        paymentId: request.paymentId,
+        attemptId: request.attemptId,
+        idempotencyKey: request.idempotencyKey,
+        providerPaymentId:
+          execution.providerPaymentId ?? request.providerPaymentId,
+        providerRefundId: execution.providerRefundId,
+        amountCents: request.amountCents,
+        currency: request.currency,
+        operation: 'VOID',
+        expectedAdditionalChargeRefundCents:
+          request.expectedAdditionalChargeRefundCents,
+      });
+      return this.mergeTerminalObservation(execution, canonical);
     }
     return Promise.resolve({
       status: 'FAILED',
       failureCode: 'CLOVER_VOID_NOT_IMPLEMENTED',
-      failureMessage: 'Clover Ecommerce void is deferred to Payment Phase E',
+      failureMessage: 'Clover Ecommerce void remains on the legacy Web flow',
     });
   }
 
-  refundPayment(
+  async refundPayment(
     request: RefundPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     if (request.source === 'POS_TERMINAL') {
-      return this.terminal.refundPayment(request);
+      if (!this.platform.isConfigured()) {
+        return {
+          status: 'FAILED',
+          paymentId: request.paymentId,
+          attemptId: request.attemptId,
+          idempotencyKey: request.idempotencyKey,
+          providerPaymentId: request.providerPaymentId,
+          failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
+          failureMessage:
+            'Terminal refund was not sent because Platform v3 canonical reversal read is not configured',
+        };
+      }
+      if (
+        !request.currency ||
+        request.expectedAdditionalChargeRefundCents === undefined
+      ) {
+        return {
+          status: 'FAILED',
+          paymentId: request.paymentId,
+          attemptId: request.attemptId,
+          idempotencyKey: request.idempotencyKey,
+          providerPaymentId: request.providerPaymentId,
+          failureCode: 'CLOVER_REFUND_EXPECTED_FACTS_MISSING',
+          failureMessage:
+            'Terminal refund requires original currency and additional-charge facts',
+        };
+      }
+      const execution = await this.terminal.refundPayment(request);
+      if (execution.status === 'FAILED' || execution.status === 'CANCELLED') {
+        return execution;
+      }
+      const canonical = await this.platform.getCanonicalReversal({
+        paymentId: request.paymentId,
+        attemptId: request.attemptId,
+        idempotencyKey: request.idempotencyKey,
+        providerPaymentId:
+          execution.providerPaymentId ?? request.providerPaymentId,
+        providerRefundId: execution.providerRefundId,
+        amountCents: request.amountCents,
+        currency: request.currency,
+        operation: 'REFUND',
+        expectedAdditionalChargeRefundCents:
+          request.expectedAdditionalChargeRefundCents,
+      });
+      return this.mergeTerminalObservation(execution, canonical);
     }
     return Promise.resolve({
       status: 'FAILED',
       failureCode: 'CLOVER_REFUND_NOT_IMPLEMENTED',
-      failureMessage: 'Clover Ecommerce refund is deferred to Payment Phase E',
+      failureMessage: 'Clover Ecommerce refund remains on the legacy Web flow',
     });
   }
 
@@ -708,6 +1173,8 @@ export class CloverPaymentProviderAdapter
         canonical.externalPaymentId ?? execution.externalPaymentId,
       providerPaymentId:
         canonical.providerPaymentId ?? execution.providerPaymentId,
+      providerRefundId:
+        canonical.providerRefundId ?? execution.providerRefundId,
       providerOrderId: canonical.providerOrderId ?? execution.providerOrderId,
       terminalId: canonical.terminalId ?? execution.terminalId,
       cardBrand: canonical.cardBrand ?? execution.cardBrand,

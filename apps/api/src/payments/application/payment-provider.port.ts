@@ -1,5 +1,6 @@
 import type {
   PaymentMethod,
+  PaymentOperation,
   PaymentProviderOutcome,
   PaymentSource,
 } from '../domain/payment.types';
@@ -22,10 +23,13 @@ export type GetPaymentStatusRequest = {
   attemptId: string;
   source: PaymentSource;
   idempotencyKey: string;
+  operation?: PaymentOperation;
   externalPaymentId?: string | null;
   providerPaymentId?: string | null;
+  providerRefundId?: string | null;
   amountCents?: number;
   currency?: string;
+  expectedAdditionalChargeRefundCents?: number;
 };
 
 export type CancelPaymentRequest = GetPaymentStatusRequest;

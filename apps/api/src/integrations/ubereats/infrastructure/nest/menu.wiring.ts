@@ -17,6 +17,7 @@ import {
   type MenuNotificationRepository,
   MENU_NOTIFICATION_REPOSITORY,
   UberMenuNotificationHandler,
+  UberMenuRefreshRequestHandler,
 } from '../../application/menu/uber-menu-notification.handler';
 import {
   type UberMenuConfigQueryPort,
@@ -339,6 +340,27 @@ export function createMenuWiring(): Provider[] {
       inject: [MENU_NOTIFICATION_REPOSITORY],
       useFactory: (repository: MenuNotificationRepository) =>
         new UberMenuNotificationHandler(repository),
+    },
+    {
+      provide: UberMenuRefreshRequestHandler,
+      inject: [
+        PROVISIONED_UBER_STORE_QUERY_PORT,
+        UBER_MENU_PUBLICATION_REPOSITORY,
+        UBER_MENU_GATEWAY,
+        UBER_TELEMETRY_PORT,
+      ],
+      useFactory: (
+        provisionedStores: ProvisionedUberStoreQueryPort,
+        publications: UberMenuPublicationRepositoryPort,
+        gateway: UberMenuGatewayPort,
+        telemetry: UberTelemetryPort,
+      ) =>
+        new UberMenuRefreshRequestHandler(
+          provisionedStores,
+          publications,
+          gateway,
+          telemetry,
+        ),
     },
     {
       provide: UberMenuAvailabilityUseCase,

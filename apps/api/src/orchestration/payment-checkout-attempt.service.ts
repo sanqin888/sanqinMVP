@@ -174,6 +174,17 @@ export class PaymentCheckoutAttemptService {
     return this.mapRecord(record);
   }
 
+  async findByOrderStableId(
+    orderStableIdRaw: string,
+  ): Promise<PreparedPaymentCheckout | null> {
+    const orderStableId = orderStableIdRaw.trim();
+    if (!orderStableId) return null;
+    const record = await this.prisma.paymentCheckoutAttempt.findUnique({
+      where: { orderStableId },
+    });
+    return record ? this.mapRecord(record) : null;
+  }
+
   async claimProviderStart(attemptId: string): Promise<{
     checkout: PreparedPaymentCheckout;
     claimed: boolean;
@@ -240,6 +251,22 @@ export class PaymentCheckoutAttemptService {
       checkout: await this.findByAttemptId(attemptId),
       cancelled: cancelled.count === 1,
     };
+  }
+
+  async markExternallyReversedAndRelease(
+    attemptId: string,
+  ): Promise<PreparedPaymentCheckout> {
+    const reversed = await this.prisma.paymentCheckoutAttempt.updateMany({
+      where: {
+        attemptId,
+        status: { in: ['PROCESSING', 'SUCCEEDED', 'UNKNOWN', 'RECONCILING'] },
+      },
+      data: { status: 'CANCELLED' },
+    });
+    if (reversed.count === 1) {
+      await this.releaseReservations(attemptId);
+    }
+    return this.findByAttemptId(attemptId);
   }
 
   async markSucceededWithoutExternalPayment(

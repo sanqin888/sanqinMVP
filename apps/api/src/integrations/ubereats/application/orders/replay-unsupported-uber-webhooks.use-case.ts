@@ -8,8 +8,10 @@ export class ReplayUnsupportedUberWebhooksUseCase {
     'orders.scheduled.notification',
     'orders.failure',
     'menus.notification',
+    'store.menu_refresh_request',
     'store.provisioned',
     'store.deprovisioned',
+    'store.status.changed',
   ];
 
   constructor(private readonly inbox: UberWebhookInboxPort) {}
