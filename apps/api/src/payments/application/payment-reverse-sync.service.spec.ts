@@ -63,9 +63,8 @@ type Reconcile = TerminalPaymentService['reconcile'];
 const createHarness = () => {
   const findSaleByProviderPaymentId: jest.MockedFunction<Lookup> = jest.fn();
   const findById: jest.MockedFunction<FindById> = jest.fn();
-  const saveSuccessfulSaleObservation: jest.MockedFunction<
-    SaveSuccessfulSaleObservation
-  > = jest.fn();
+  const saveSuccessfulSaleObservation: jest.MockedFunction<SaveSuccessfulSaleObservation> =
+    jest.fn();
   const getPaymentStatus: jest.MockedFunction<GetPaymentStatus> = jest.fn();
   const reconcile: jest.MockedFunction<Reconcile> = jest.fn();
 
@@ -127,7 +126,9 @@ describe('PaymentReverseSyncService', () => {
     const harness = createHarness();
     harness.findSaleByProviderPaymentId.mockResolvedValue(null);
 
-    await expect(harness.service.reconcileNotification(notification)).resolves.toEqual(
+    await expect(
+      harness.service.reconcileNotification(notification),
+    ).resolves.toEqual(
       expect.objectContaining({
         processingResult: 'UNKNOWN_PAYMENT',
         payment: null,
@@ -175,7 +176,8 @@ describe('PaymentReverseSyncService', () => {
       transaction: newer,
     });
 
-    const syncResult = await harness.service.reconcileNotification(notification);
+    const syncResult =
+      await harness.service.reconcileNotification(notification);
 
     expect(syncResult.processingResult).toBe('APPLIED');
     expect(syncResult.externalReversal).toBe('FULL_REFUND');
@@ -257,7 +259,8 @@ describe('PaymentReverseSyncService', () => {
       }),
     );
 
-    const syncResult = await harness.service.reconcileNotification(notification);
+    const syncResult =
+      await harness.service.reconcileNotification(notification);
 
     expect(syncResult.processingResult).toBe('DEFERRED');
     expect(syncResult.failureCode).toBe(

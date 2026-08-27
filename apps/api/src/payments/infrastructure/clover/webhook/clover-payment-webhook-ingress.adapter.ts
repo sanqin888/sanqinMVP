@@ -58,9 +58,7 @@ const eventId = (parts: {
 };
 
 @Injectable()
-export class CloverPaymentWebhookIngressAdapter
-  implements PaymentProviderWebhookIngress
-{
+export class CloverPaymentWebhookIngressAdapter implements PaymentProviderWebhookIngress {
   constructor(private readonly config: CloverProviderConfig) {}
 
   parseAndAuthenticate(
@@ -85,7 +83,10 @@ export class CloverPaymentWebhookIngressAdapter
       );
     }
     const suppliedAuthCode = input.authHeader?.trim();
-    if (!suppliedAuthCode || !secureEquals(suppliedAuthCode, expectedAuthCode)) {
+    if (
+      !suppliedAuthCode ||
+      !secureEquals(suppliedAuthCode, expectedAuthCode)
+    ) {
       throw new PaymentWebhookAuthenticationError();
     }
 

@@ -151,7 +151,9 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       outcome: 'refunded',
     });
 
-    await expect(harness.service.apply(result('FULL_REFUND'))).resolves.toEqual({
+    await expect(
+      harness.service.apply(result('FULL_REFUND')),
+    ).resolves.toEqual({
       action: 'ORDER_REFUNDED',
       orderStableId: 'order_stable_1',
     });
@@ -163,7 +165,9 @@ describe('PaymentReverseSyncOrchestrationService', () => {
         refundMethod: PaymentMethod.CARD,
       }),
     );
-    expect(harness.posGateway.publishCardPaymentReverseSync).toHaveBeenCalledWith(
+    expect(
+      harness.posGateway.publishCardPaymentReverseSync,
+    ).toHaveBeenCalledWith(
       '4750_Yonge_Street',
       expect.objectContaining({
         externalReversal: 'FULL_REFUND',
@@ -178,7 +182,9 @@ describe('PaymentReverseSyncOrchestrationService', () => {
     const completed = checkout();
     harness.checkouts.findByAttemptId.mockResolvedValue(completed);
     harness.checkouts.findByOrderStableId.mockResolvedValue(completed);
-    harness.orders.getByStableId.mockResolvedValue(order({ status: 'refunded' }));
+    harness.orders.getByStableId.mockResolvedValue(
+      order({ status: 'refunded' }),
+    );
 
     await expect(harness.service.apply(result('VOID'))).resolves.toEqual({
       action: 'ORDER_ALREADY_REFUNDED',
@@ -199,7 +205,9 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       orderStableId: 'order_stable_1',
     });
     expect(harness.orders.createFullRefund).not.toHaveBeenCalled();
-    expect(harness.posGateway.publishCardPaymentReverseSync).toHaveBeenCalledWith(
+    expect(
+      harness.posGateway.publishCardPaymentReverseSync,
+    ).toHaveBeenCalledWith(
       '4750_Yonge_Street',
       expect.objectContaining({
         externalReversal: 'PARTIAL_REFUND',
@@ -218,7 +226,9 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       checkout({ status: 'CANCELLED', orderId: null }),
     );
 
-    await expect(harness.service.apply(result('FULL_REFUND'))).resolves.toEqual({
+    await expect(
+      harness.service.apply(result('FULL_REFUND')),
+    ).resolves.toEqual({
       action: 'CHECKOUT_CANCELLED',
       orderStableId: 'order_stable_1',
     });
@@ -241,9 +251,9 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       checkout({ status: 'FINALIZING' }),
     );
 
-    await expect(harness.service.apply(result('FULL_REFUND'))).rejects.toBeInstanceOf(
-      PaymentReverseSyncRetryableError,
-    );
+    await expect(
+      harness.service.apply(result('FULL_REFUND')),
+    ).rejects.toBeInstanceOf(PaymentReverseSyncRetryableError);
     expect(harness.orders.createFullRefund).not.toHaveBeenCalled();
   });
 

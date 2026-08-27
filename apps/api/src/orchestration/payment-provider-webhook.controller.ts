@@ -30,7 +30,9 @@ import {
 
 @Controller('payments/webhooks')
 export class PaymentProviderWebhookController {
-  private readonly logger = new AppLogger(PaymentProviderWebhookController.name);
+  private readonly logger = new AppLogger(
+    PaymentProviderWebhookController.name,
+  );
 
   constructor(
     @Inject(PAYMENT_PROVIDER_WEBHOOK_INGRESS)
@@ -57,7 +59,10 @@ export class PaymentProviderWebhookController {
       PaymentProviderWebhookIngress['parseAndAuthenticate']
     >;
     try {
-      ingressResult = this.ingress.parseAndAuthenticate({ authHeader, payload });
+      ingressResult = this.ingress.parseAndAuthenticate({
+        authHeader,
+        payload,
+      });
     } catch (error) {
       if (error instanceof PaymentWebhookAuthenticationError) {
         throw new UnauthorizedException({
@@ -96,7 +101,8 @@ export class PaymentProviderWebhookController {
       }
 
       try {
-        const result = await this.reverseSync.reconcileNotification(notification);
+        const result =
+          await this.reverseSync.reconcileNotification(notification);
         if (result.processingResult === 'DEFERRED') {
           throw new PaymentReverseSyncRetryableError(
             result.failureMessage ??

@@ -88,7 +88,12 @@ export class PaymentReverseSyncOrchestrationService {
       }
 
       this.publishCheckoutReversalStatus(result, checkout);
-      this.publishReverseSync(result, checkout.storeId, checkout.orderStableId, null);
+      this.publishReverseSync(
+        result,
+        checkout.storeId,
+        checkout.orderStableId,
+        null,
+      );
       return {
         action:
           result.externalReversal === 'PARTIAL_REFUND'

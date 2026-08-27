@@ -13,15 +13,13 @@ const idempotencyKey = (eventId: string) => `payment-webhook:${eventId}`;
 const isUniqueConflict = (error: unknown): boolean =>
   Boolean(
     error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === 'P2002',
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'P2002',
   );
 
 @Injectable()
-export class PrismaPaymentWebhookEventRepository
-  implements PaymentWebhookEventRepository
-{
+export class PrismaPaymentWebhookEventRepository implements PaymentWebhookEventRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async isCompleted(eventId: string): Promise<boolean> {
@@ -32,7 +30,9 @@ export class PrismaPaymentWebhookEventRepository
     return Boolean(existing);
   }
 
-  async markCompleted(input: CompletePaymentWebhookEventInput): Promise<boolean> {
+  async markCompleted(
+    input: CompletePaymentWebhookEventInput,
+  ): Promise<boolean> {
     try {
       await this.prisma.opsEvent.create({
         data: {

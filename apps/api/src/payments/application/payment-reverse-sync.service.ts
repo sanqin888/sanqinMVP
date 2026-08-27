@@ -152,11 +152,21 @@ export class PaymentReverseSyncService {
       );
     }
 
-    const normalized = this.normalizeSuccessfulSaleObservation(payment, canonical);
+    const normalized = this.normalizeSuccessfulSaleObservation(
+      payment,
+      canonical,
+    );
     if ('processingResult' in normalized) return normalized;
 
-    const updated = await this.saveSuccessfulObservation(payment.id, normalized);
-    return this.fromSnapshots(before, updated, canonical.status === 'CANCELLED');
+    const updated = await this.saveSuccessfulObservation(
+      payment.id,
+      normalized,
+    );
+    return this.fromSnapshots(
+      before,
+      updated,
+      canonical.status === 'CANCELLED',
+    );
   }
 
   private async queryCanonical(
@@ -303,7 +313,11 @@ export class PaymentReverseSyncService {
       return this.result(
         'NO_CHANGE',
         payment,
-        this.reversalKind(snapshot.refundedAmountCents, snapshot.amountCents, false),
+        this.reversalKind(
+          snapshot.refundedAmountCents,
+          snapshot.amountCents,
+          false,
+        ),
         snapshot.refundedAmountCents,
         'PAYMENT_WEBHOOK_STALE_REFUND_OBSERVATION_IGNORED',
         'A stale/out-of-order Clover observation reported less refunded value than already recorded.',
@@ -318,7 +332,8 @@ export class PaymentReverseSyncService {
       status: 'SUCCEEDED',
       refundedAmountCents,
       resultCode:
-        outcome.resultCode ?? (isVoid ? 'CLOVER_EXTERNAL_VOID' : snapshot.resultCode),
+        outcome.resultCode ??
+        (isVoid ? 'CLOVER_EXTERNAL_VOID' : snapshot.resultCode),
       failureCode: null,
       failureMessage: null,
     };
@@ -331,12 +346,15 @@ export class PaymentReverseSyncService {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const current = await this.transactions.findById(paymentId);
       if (!current) {
-        throw new Error(`Payment transaction ${paymentId} disappeared during reverse sync`);
+        throw new Error(
+          `Payment transaction ${paymentId} disappeared during reverse sync`,
+        );
       }
       const snapshot = current.toSnapshot();
       if (snapshot.status !== 'SUCCEEDED') return current;
 
-      const nextRefunded = outcome.refundedAmountCents ?? snapshot.refundedAmountCents;
+      const nextRefunded =
+        outcome.refundedAmountCents ?? snapshot.refundedAmountCents;
       if (nextRefunded < snapshot.refundedAmountCents) return current;
 
       const next = current.recordProviderObservation(outcome);

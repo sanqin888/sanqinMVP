@@ -262,12 +262,10 @@ describe('PaymentCheckoutAttemptService', () => {
     });
     await harness.service.claimProviderStart('attempt-1');
 
-    const first = await harness.service.markExternallyReversedAndRelease(
-      'attempt-1',
-    );
-    const second = await harness.service.markExternallyReversedAndRelease(
-      'attempt-1',
-    );
+    const first =
+      await harness.service.markExternallyReversedAndRelease('attempt-1');
+    const second =
+      await harness.service.markExternallyReversedAndRelease('attempt-1');
 
     expect(first.status).toBe('CANCELLED');
     expect(second.status).toBe('CANCELLED');
