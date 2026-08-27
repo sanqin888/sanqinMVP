@@ -425,8 +425,7 @@ export class OrderLabelPlanService {
       packageTypes.add(packagingTypeStableId);
       ambiguousPackageTypesByProduct.set(productStableId, packageTypes);
       const productIdentities =
-        ambiguousIdentitiesByProduct.get(productStableId) ??
-        new Set<string>();
+        ambiguousIdentitiesByProduct.get(productStableId) ?? new Set<string>();
       identities.forEach((identity) => productIdentities.add(identity));
       ambiguousIdentitiesByProduct.set(productStableId, productIdentities);
     }
@@ -562,10 +561,10 @@ export class OrderLabelPlanService {
     return value.filter((group): group is OrderItemOptionGroupSnapshot =>
       Boolean(
         group &&
-          typeof group === 'object' &&
-          typeof (group as { templateGroupStableId?: unknown })
-            .templateGroupStableId === 'string' &&
-          Array.isArray((group as { choices?: unknown }).choices),
+        typeof group === 'object' &&
+        typeof (group as { templateGroupStableId?: unknown })
+          .templateGroupStableId === 'string' &&
+        Array.isArray((group as { choices?: unknown }).choices),
       ),
     );
   }
