@@ -6,9 +6,14 @@ import { MembershipModule } from '../membership/membership.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
+import { PosModule } from '../pos/pos.module';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 import { PosCardPaymentController } from './pos-card-payment.controller';
 import { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
+import { PosCardRefundController } from './pos-card-refund.controller';
+import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
+import { PosFullRefundController } from './pos-full-refund.controller';
+import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestration.service';
 
 /**
  * Explicit composition layer for the Unified Payment Core's first consumer.
@@ -26,11 +31,18 @@ import { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestra
     LoyaltyModule,
     MembershipModule,
     PosDeviceModule,
+    PosModule,
   ],
-  controllers: [PosCardPaymentController],
+  controllers: [
+    PosCardPaymentController,
+    PosCardRefundController,
+    PosFullRefundController,
+  ],
   providers: [
     PaymentCheckoutAttemptService,
     PosCardPaymentOrchestrationService,
+    PosCardRefundOrchestrationService,
+    PosFullRefundOrchestrationService,
   ],
 })
 export class PosCardPaymentOrchestrationModule {}

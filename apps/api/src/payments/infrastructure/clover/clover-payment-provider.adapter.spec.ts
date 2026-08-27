@@ -270,6 +270,145 @@ describe('CloverPaymentProviderAdapter', () => {
     expect(terminalStatus).not.toHaveBeenCalled();
   });
 
+  it('treats Terminal refund execution as provisional until Platform v3 confirms canonical refund facts', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    const terminalRefund = jest
+      .spyOn(terminal, 'refundPayment')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        terminalId: 'device-1',
+      });
+    const canonicalRead = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        paymentId: 'refund-payment-internal',
+        attemptId: 'refund-attempt',
+        idempotencyKey: 'refund-idempotency',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        amountCents: 2000,
+        currency: 'CAD',
+        refundedAmountCents: 2000,
+        surchargeCents: 48,
+        chargedTotalCents: 2048,
+      });
+
+    await expect(
+      adapter.refundPayment({
+        paymentId: 'refund-payment-internal',
+        attemptId: 'refund-attempt',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency',
+        operation: 'REFUND',
+        providerPaymentId: 'terminal-payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'CANONICAL',
+      providerRefundId: 'terminal-refund-1',
+      terminalId: 'device-1',
+      chargedTotalCents: 2048,
+    });
+    expect(terminalRefund).toHaveBeenCalledTimes(1);
+    expect(canonicalRead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'REFUND',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    );
+  });
+
+  it('keeps an Interac-style device refund unresolved until Platform v3 exposes canonical truth', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
+      status: 'SUCCEEDED',
+      evidence: 'EXECUTION',
+      providerPaymentId: 'interac-payment-1',
+      providerRefundId: 'interac-refund-1',
+      terminalId: 'device-1',
+    });
+    jest.spyOn(platform, 'getCanonicalReversal').mockResolvedValue({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      paymentId: 'interac-refund-internal',
+      attemptId: 'interac-refund-attempt',
+      idempotencyKey: 'interac-refund-idempotency',
+      providerPaymentId: 'interac-payment-1',
+      amountCents: 2000,
+      currency: 'CAD',
+      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+      failureMessage: 'refund is not visible yet',
+    });
+
+    await expect(
+      adapter.refundPayment({
+        paymentId: 'interac-refund-internal',
+        attemptId: 'interac-refund-attempt',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'interac-refund-idempotency',
+        operation: 'REFUND',
+        providerPaymentId: 'interac-payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+        expectedAdditionalChargeRefundCents: 0,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      evidence: 'CANONICAL',
+      providerPaymentId: 'interac-payment-1',
+      providerRefundId: 'interac-refund-1',
+      terminalId: 'device-1',
+      failureCode: 'CLOVER_PLATFORM_REVERSAL_NOT_YET_VISIBLE',
+    });
+  });
+
+  it('uses Platform v3 reversal truth instead of REST Pay for refund reconciliation', async () => {
+    const { adapter, terminal, platform } = createAdapter();
+    const terminalStatus = jest.spyOn(terminal, 'getPaymentStatus');
+    const canonicalRead = jest
+      .spyOn(platform, 'getCanonicalReversal')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'CANONICAL',
+        paymentId: 'refund-payment-internal',
+        attemptId: 'refund-attempt',
+        idempotencyKey: 'refund-idempotency',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        amountCents: 2000,
+        currency: 'CAD',
+        refundedAmountCents: 2000,
+        chargedTotalCents: 2048,
+      });
+
+    await expect(
+      adapter.getPaymentStatus({
+        paymentId: 'refund-payment-internal',
+        attemptId: 'refund-attempt',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency',
+        operation: 'REFUND',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        amountCents: 2000,
+        currency: 'CAD',
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({ status: 'SUCCEEDED', evidence: 'CANONICAL' });
+    expect(canonicalRead).toHaveBeenCalledTimes(1);
+    expect(terminalStatus).not.toHaveBeenCalled();
+  });
+
   it('blocks Terminal availability and sale before execution when Platform v3 is not configured', async () => {
     const { adapter, terminal, platformConfigured } = createAdapter();
     platformConfigured.mockReturnValue(false);
@@ -413,6 +552,91 @@ describe('CloverTerminalTransport', () => {
       amount: 2000,
       externalPaymentId: 'external-1',
     });
+  });
+
+  it('sends full refund to the original Clover payment with the saved idempotency key', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          refund: {
+            id: 'refund-1',
+            payment: { id: 'payment-1' },
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const transport = new CloverTerminalTransport(new CloverProviderConfig());
+
+    await expect(
+      transport.refundPayment({
+        paymentId: 'refund-internal-1',
+        attemptId: 'refund-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'refund-idempotency-1',
+        operation: 'REFUND',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'EXECUTION',
+      providerPaymentId: 'payment-1',
+      providerRefundId: 'refund-1',
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe(
+      'https://clover.example.test/connect/v1/payments/payment-1/refunds',
+    );
+    expect(init?.headers).toMatchObject({
+      'Idempotency-Key': 'refund-idempotency-1',
+    });
+    if (typeof init?.body !== 'string') {
+      throw new Error('Expected Clover refund request body to be JSON text');
+    }
+    expect(JSON.parse(init.body)).toEqual({ fullRefund: true });
+  });
+
+  it('sends USER_CANCEL void to the original Clover payment', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          payment: { id: 'payment-1' },
+          paymentId: 'payment-1',
+          voidStatus: 'SENT_TO_SERVER',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const transport = new CloverTerminalTransport(new CloverProviderConfig());
+
+    await expect(
+      transport.voidPayment({
+        paymentId: 'void-internal-1',
+        attemptId: 'void-attempt-1',
+        source: 'POS_TERMINAL',
+        idempotencyKey: 'void-idempotency-1',
+        operation: 'VOID',
+        providerPaymentId: 'payment-1',
+        amountCents: 2000,
+        currency: 'CAD',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'EXECUTION',
+      providerPaymentId: 'payment-1',
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe(
+      'https://clover.example.test/connect/v1/payments/payment-1/void',
+    );
+    if (typeof init?.body !== 'string') {
+      throw new Error('Expected Clover void request body to be JSON text');
+    }
+    expect(JSON.parse(init.body)).toEqual({ voidReason: 'USER_CANCEL' });
   });
 
   it('maps a lost payment response to UNKNOWN', async () => {
@@ -758,6 +982,151 @@ describe('Clover Platform Payments Gateway', () => {
       status: 'SUCCEEDED',
       surchargeCents: 48,
       chargedTotalCents: 2063,
+    });
+  });
+
+  it('confirms a canonical full refund from the refund resource including refunded surcharge facts', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'clover-refund-1',
+          amount: 2000,
+          payment: { id: 'clover-payment-1' },
+          additionalCharges: {
+            elements: [{ type: 'CREDIT_SURCHARGE', amount: 48 }],
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
+    );
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'CANONICAL',
+      providerPaymentId: 'clover-payment-1',
+      providerRefundId: 'clover-refund-1',
+      refundedAmountCents: 2000,
+      surchargeCents: 48,
+      chargedTotalCents: 2048,
+      resultCode: 'CLOVER_REFUND_CONFIRMED',
+    });
+    const url = fetchSpy.mock.calls[0]?.[0];
+    if (typeof url !== 'string') {
+      throw new Error('Expected Platform refund URL to be a string');
+    }
+    expect(url).toContain('/v3/merchants/merchant-1/refunds/clover-refund-1');
+    expect(url).toContain('expand=');
+  });
+
+  it('confirms a canonical void from the payment result without requiring a refund row', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(platformPayment({ result: 'voided' })), {
+        status: 200,
+      }),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
+    );
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      evidence: 'CANONICAL',
+      providerPaymentId: 'clover-payment-1',
+      refundedAmountCents: 2000,
+      surchargeCents: 48,
+      chargedTotalCents: 2048,
+      resultCode: 'CLOVER_VOID_CONFIRMED',
+    });
+  });
+
+  it('accepts a void that Clover converted into a canonical refund', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            platformPayment({
+              refunds: { elements: [{ id: 'clover-refund-1' }] },
+            }),
+          ),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'clover-refund-1',
+            amount: 2000,
+            payment: { id: 'clover-payment-1' },
+            additionalCharges: {
+              elements: [{ type: 'CREDIT_SURCHARGE', amount: 48 }],
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
+    );
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'VOID',
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+      providerRefundId: 'clover-refund-1',
+      refundedAmountCents: 2000,
+      chargedTotalCents: 2048,
+      resultCode: 'CLOVER_VOID_CONVERTED_TO_REFUND',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps managed full refund truth UNKNOWN when multiple canonical refund rows exist', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          platformPayment({
+            refunds: {
+              elements: [{ id: 'refund-1' }, { id: 'refund-2' }],
+            },
+          }),
+        ),
+        { status: 200 },
+      ),
+    );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
+    );
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        expectedAdditionalChargeRefundCents: 48,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_REVERSAL_REFUND_IDENTITY_CONFLICT',
     });
   });
 

@@ -269,6 +269,41 @@ export type FullRefundResult<T> = {
   outcome: "pending_platform" | "pending_manual" | "refunded";
 };
 
+export type ManagedCardRefundResult<T> = {
+  mode: "MANAGED" | "LEGACY_MANUAL_REQUIRED";
+  status:
+    | "CREATED"
+    | "PROCESSING"
+    | "SUCCEEDED"
+    | "DECLINED"
+    | "CANCELLED"
+    | "UNKNOWN"
+    | "RECONCILING"
+    | "FAILED"
+    | null;
+  operation: "REFUND" | "VOID" | null;
+  order: T;
+  refundedCardBaseCents: number | null;
+  refundedAdditionalChargeCents: number | null;
+  refundedCustomerTotalCents: number | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+};
+
+export async function createManagedCardRefund<T = unknown>(
+  orderStableId: string,
+  payload: Pick<CreateFullRefundInput, "reason" | "operatorName" | "refundMethod">,
+) {
+  return apiFetch<ManagedCardRefundResult<T>>(
+    `/pos/payments/card/orders/${enc(orderStableId)}/full-refund`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function createFullRefund<T = unknown>(
   orderStableId: string,
   payload: CreateFullRefundInput,

@@ -174,6 +174,17 @@ export class PaymentCheckoutAttemptService {
     return this.mapRecord(record);
   }
 
+  async findByOrderStableId(
+    orderStableIdRaw: string,
+  ): Promise<PreparedPaymentCheckout | null> {
+    const orderStableId = orderStableIdRaw.trim();
+    if (!orderStableId) return null;
+    const record = await this.prisma.paymentCheckoutAttempt.findUnique({
+      where: { orderStableId },
+    });
+    return record ? this.mapRecord(record) : null;
+  }
+
   async claimProviderStart(attemptId: string): Promise<{
     checkout: PreparedPaymentCheckout;
     claimed: boolean;
