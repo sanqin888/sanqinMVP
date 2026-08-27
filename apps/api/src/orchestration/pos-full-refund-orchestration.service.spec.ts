@@ -141,7 +141,9 @@ describe('PosFullRefundOrchestrationService', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ConflictException);
       const conflict = error as ConflictException;
-      expect(conflict.getResponse()).toMatchObject({ code: 'CLOVER_REFUND_FAILED' });
+      expect(conflict.getResponse()).toMatchObject({
+        code: 'CLOVER_REFUND_FAILED',
+      });
     }
     expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
   });

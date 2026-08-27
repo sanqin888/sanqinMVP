@@ -143,9 +143,10 @@ const createHarness = () => {
   const checkouts = {
     findByOrderStableId: jest.fn(),
   };
-  const refunds = {
-    startOrRecover: jest.fn(),
-  };
+  const startOrRecover: jest.MockedFunction<
+    RefundPaymentService['startOrRecover']
+  > = jest.fn();
+  const refunds = { startOrRecover };
   const transactions = {
     findById: jest.fn(),
     findByAttemptId: jest.fn(),
@@ -180,11 +181,11 @@ describe('PosCardRefundOrchestrationService', () => {
 
     await expect(
       harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
-          reason: 'Customer cancellation',
-          operatorName: 'Staff',
-          refundMethod: PaymentMethod.CARD,
-          originalPaymentMethod: PaymentMethod.CARD,
-          refundAmountCents: 2000,
+        reason: 'Customer cancellation',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CARD,
+        originalPaymentMethod: PaymentMethod.CARD,
+        refundAmountCents: 2000,
       }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
@@ -233,11 +234,11 @@ describe('PosCardRefundOrchestrationService', () => {
 
     await expect(
       harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
-          reason: 'Customer cancellation',
-          operatorName: 'Staff',
-          refundMethod: PaymentMethod.CARD,
-          originalPaymentMethod: PaymentMethod.CARD,
-          refundAmountCents: 2000,
+        reason: 'Customer cancellation',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CARD,
+        originalPaymentMethod: PaymentMethod.CARD,
+        refundAmountCents: 2000,
       }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
@@ -332,9 +333,9 @@ describe('PosCardRefundOrchestrationService', () => {
 
     await expect(
       harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
-          reason: 'Customer cancellation',
-          operatorName: 'Staff',
-          refundMethod: PaymentMethod.CARD,
+        reason: 'Customer cancellation',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CARD,
       }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
@@ -354,9 +355,9 @@ describe('PosCardRefundOrchestrationService', () => {
 
     await expect(
       harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
-          reason: 'Customer cancellation',
-          operatorName: 'Staff',
-          refundMethod: PaymentMethod.CARD,
+        reason: 'Customer cancellation',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CARD,
       }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
@@ -376,9 +377,9 @@ describe('PosCardRefundOrchestrationService', () => {
 
     await expect(
       harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
-          reason: 'Customer cancellation',
-          operatorName: 'Staff',
-          refundMethod: PaymentMethod.CARD,
+        reason: 'Customer cancellation',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CARD,
       }),
     ).resolves.toMatchObject({
       mode: 'LEGACY_MANUAL_REQUIRED',
@@ -394,9 +395,9 @@ describe('PosCardRefundOrchestrationService', () => {
 
     await expect(
       harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
-          reason: 'Customer cancellation',
-          operatorName: 'Staff',
-          refundMethod: PaymentMethod.CASH,
+        reason: 'Customer cancellation',
+        operatorName: 'Staff',
+        refundMethod: PaymentMethod.CASH,
       }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',

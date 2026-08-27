@@ -1029,13 +1029,11 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('confirms a canonical void from the payment result without requiring a refund row', async () => {
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify(platformPayment({ result: 'voided' })), {
-          status: 200,
-        }),
-      );
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(platformPayment({ result: 'voided' })), {
+        status: 200,
+      }),
+    );
     const gateway = new CloverPlatformPaymentsGateway(
       new CloverProviderConfig(),
     );
