@@ -272,13 +272,15 @@ describe('CloverPaymentProviderAdapter', () => {
 
   it('treats Terminal refund execution as provisional until Platform v3 confirms canonical refund facts', async () => {
     const { adapter, terminal, platform } = createAdapter();
-    const terminalRefund = jest.spyOn(terminal, 'refundPayment').mockResolvedValue({
-      status: 'SUCCEEDED',
-      evidence: 'EXECUTION',
-      providerPaymentId: 'terminal-payment-1',
-      providerRefundId: 'terminal-refund-1',
-      terminalId: 'device-1',
-    });
+    const terminalRefund = jest
+      .spyOn(terminal, 'refundPayment')
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        evidence: 'EXECUTION',
+        providerPaymentId: 'terminal-payment-1',
+        providerRefundId: 'terminal-refund-1',
+        terminalId: 'device-1',
+      });
     const canonicalRead = jest
       .spyOn(platform, 'getCanonicalReversal')
       .mockResolvedValue({
@@ -1022,19 +1024,18 @@ describe('Clover Platform Payments Gateway', () => {
     if (typeof url !== 'string') {
       throw new Error('Expected Platform refund URL to be a string');
     }
-    expect(url).toContain(
-      '/v3/merchants/merchant-1/refunds/clover-refund-1',
-    );
+    expect(url).toContain('/v3/merchants/merchant-1/refunds/clover-refund-1');
     expect(url).toContain('expand=');
   });
 
   it('confirms a canonical void from the payment result without requiring a refund row', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify(platformPayment({ result: 'voided' })),
-        { status: 200 },
-      ),
-    );
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(platformPayment({ result: 'voided' })), {
+          status: 200,
+        }),
+      );
     const gateway = new CloverPlatformPaymentsGateway(
       new CloverProviderConfig(),
     );

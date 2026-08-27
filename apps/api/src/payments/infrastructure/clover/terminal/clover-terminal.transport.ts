@@ -333,7 +333,8 @@ const mapTerminalReversalResponse = (
     };
   }
 
-  const refund = asRecord(result.body?.refund) ??
+  const refund =
+    asRecord(result.body?.refund) ??
     (operation === 'REFUND' ? asRecord(result.body) : null);
   const responsePayment = asRecord(result.body?.payment);
   const providerPaymentId =
@@ -602,7 +603,9 @@ export class CloverTerminalTransport {
     request: VoidPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     const terminalId = this.config.terminalDeviceId;
-    if (!this.isConfigured() || !terminalId) return missingTerminalConfiguration();
+    if (!this.isConfigured() || !terminalId) {
+      return missingTerminalConfiguration();
+    }
     const providerPaymentId = request.providerPaymentId?.trim();
     if (!providerPaymentId) {
       return {
@@ -634,16 +637,22 @@ export class CloverTerminalTransport {
     request: RefundPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     const terminalId = this.config.terminalDeviceId;
-    if (!this.isConfigured() || !terminalId) return missingTerminalConfiguration();
+    if (!this.isConfigured() || !terminalId) {
+      return missingTerminalConfiguration();
+    }
     const providerPaymentId = request.providerPaymentId?.trim();
     if (!providerPaymentId) {
       return {
         status: 'FAILED',
         failureCode: 'CLOVER_REFUND_PAYMENT_ID_REQUIRED',
-        failureMessage: 'Clover Terminal refund requires the original payment id',
+        failureMessage:
+          'Clover Terminal refund requires the original payment id',
       };
     }
-    if (!Number.isSafeInteger(request.amountCents) || request.amountCents <= 0) {
+    if (
+      !Number.isSafeInteger(request.amountCents) ||
+      request.amountCents <= 0
+    ) {
       return {
         status: 'FAILED',
         failureCode: 'CLOVER_REFUND_AMOUNT_INVALID',

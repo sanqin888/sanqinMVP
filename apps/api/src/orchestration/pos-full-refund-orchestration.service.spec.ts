@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 
 import type { PosOrdersService } from '../pos/pos-orders.service';
@@ -130,17 +131,18 @@ describe('PosFullRefundOrchestrationService', () => {
       failureMessage: 'refund failed',
     });
 
-    await expect(
-      harness.service.refundFullOrder(
+    try {
+      await harness.service.refundFullOrder(
         '4750_Yonge_Street',
         'order_stable_1',
         input,
-      ),
-    ).rejects.toMatchObject({
-      response: expect.objectContaining({
-        code: 'CLOVER_REFUND_FAILED',
-      }),
-    });
+      );
+      throw new Error('Expected managed refund failure');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      const conflict = error as ConflictException;
+      expect(conflict.getResponse()).toMatchObject({ code: 'CLOVER_REFUND_FAILED' });
+    }
     expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
   });
 });

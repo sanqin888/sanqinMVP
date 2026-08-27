@@ -106,13 +106,17 @@ export class PosCardRefundOrchestrationService {
       input.originalPaymentMethod !== undefined &&
       input.originalPaymentMethod !== PaymentMethod.CARD
     ) {
-      throw new BadRequestException('originalPaymentMethod does not match order');
+      throw new BadRequestException(
+        'originalPaymentMethod does not match order',
+      );
     }
     if (
       input.refundAmountCents !== undefined &&
       input.refundAmountCents !== order.totalCents
     ) {
-      throw new BadRequestException('full refund amount must equal order total');
+      throw new BadRequestException(
+        'full refund amount must equal order total',
+      );
     }
 
     const reason = input.reason.trim();
@@ -196,9 +200,8 @@ export class PosCardRefundOrchestrationService {
       });
     }
 
-    const { identity, existing } = await this.resolveRefundIdentity(
-      orderStableId,
-    );
+    const { identity, existing } =
+      await this.resolveRefundIdentity(orderStableId);
     const operation = existing
       ? this.requireExistingOperation(existing.toSnapshot().operation)
       : this.chooseOperation(originalSnapshot.completedAt);

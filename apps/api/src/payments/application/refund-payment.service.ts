@@ -223,7 +223,9 @@ export class RefundPaymentService {
           currentStatus === 'UNKNOWN' ||
           currentStatus === 'RECONCILING')
       ) {
-        problems.push(...this.canonicalEvidenceProblems(current, input, outcome));
+        problems.push(
+          ...this.canonicalEvidenceProblems(current, input, outcome),
+        );
       }
       const uniqueProblems = [...new Set(problems)];
 
@@ -345,7 +347,9 @@ export class RefundPaymentService {
       problems.push('canonical idempotency identity missing or mismatched');
     }
     if (outcome.providerPaymentId !== input.originalProviderPaymentId) {
-      problems.push('canonical original provider payment id missing or mismatched');
+      problems.push(
+        'canonical original provider payment id missing or mismatched',
+      );
     }
     if (outcome.amountCents !== snapshot.amountCents) {
       problems.push('canonical refund amount missing or mismatched');

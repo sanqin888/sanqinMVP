@@ -2,18 +2,14 @@ import { PaymentMethod } from '@prisma/client';
 
 import type { OrderDto } from '../orders/dto/order.dto';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
-import type {
-  PaymentTransactionRepository,
-} from '../payments/application/payment-transaction.repository';
+import type { PaymentTransactionRepository } from '../payments/application/payment-transaction.repository';
 import type { RefundPaymentService } from '../payments/application/refund-payment.service';
 import type { OrdersService } from '../orders/orders.service';
 import type {
   PaymentCheckoutAttemptService,
   PreparedPaymentCheckout,
 } from './payment-checkout-attempt.service';
-import {
-  PosCardRefundOrchestrationService,
-} from './pos-card-refund-orchestration.service';
+import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 
 const order = (overrides: Partial<OrderDto> = {}): OrderDto => ({
   orderStableId: 'order_stable_1',
@@ -183,17 +179,13 @@ describe('PosCardRefundOrchestrationService', () => {
     });
 
     await expect(
-      harness.service.refundFullOrder(
-        '4750_Yonge_Street',
-        'order_stable_1',
-        {
+      harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
           reason: 'Customer cancellation',
           operatorName: 'Staff',
           refundMethod: PaymentMethod.CARD,
           originalPaymentMethod: PaymentMethod.CARD,
           refundAmountCents: 2000,
-        },
-      ),
+      }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
       status: 'SUCCEEDED',
@@ -240,17 +232,13 @@ describe('PosCardRefundOrchestrationService', () => {
     });
 
     await expect(
-      harness.service.refundFullOrder(
-        '4750_Yonge_Street',
-        'order_stable_1',
-        {
+      harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
           reason: 'Customer cancellation',
           operatorName: 'Staff',
           refundMethod: PaymentMethod.CARD,
           originalPaymentMethod: PaymentMethod.CARD,
           refundAmountCents: 2000,
-        },
-      ),
+      }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
       status: 'SUCCEEDED',
@@ -291,12 +279,12 @@ describe('PosCardRefundOrchestrationService', () => {
     );
 
     expect(harness.transactions.findByAttemptId).toHaveBeenCalledTimes(2);
-    expect(harness.refunds.startOrRecover).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attemptId: expect.not.stringMatching(previous.attemptId),
-        idempotencyKey: expect.not.stringMatching(previous.idempotencyKey),
-      }),
-    );
+    const retryInput = harness.refunds.startOrRecover.mock.calls[0]?.[0] as
+      | { attemptId: string; idempotencyKey: string }
+      | undefined;
+    expect(retryInput).toBeDefined();
+    expect(retryInput?.attemptId).not.toBe(previous.attemptId);
+    expect(retryInput?.idempotencyKey).not.toBe(previous.idempotencyKey);
   });
 
   it('finalizes Order refund side effects only once across duplicate managed success requests', async () => {
@@ -343,15 +331,11 @@ describe('PosCardRefundOrchestrationService', () => {
     harness.refunds.startOrRecover.mockResolvedValue(reversal('UNKNOWN'));
 
     await expect(
-      harness.service.refundFullOrder(
-        '4750_Yonge_Street',
-        'order_stable_1',
-        {
+      harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
           reason: 'Customer cancellation',
           operatorName: 'Staff',
           refundMethod: PaymentMethod.CARD,
-        },
-      ),
+      }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
       status: 'UNKNOWN',
@@ -369,15 +353,11 @@ describe('PosCardRefundOrchestrationService', () => {
     });
 
     await expect(
-      harness.service.refundFullOrder(
-        '4750_Yonge_Street',
-        'order_stable_1',
-        {
+      harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
           reason: 'Customer cancellation',
           operatorName: 'Staff',
           refundMethod: PaymentMethod.CARD,
-        },
-      ),
+      }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
       status: 'UNKNOWN',
@@ -395,15 +375,11 @@ describe('PosCardRefundOrchestrationService', () => {
     harness.checkouts.findByOrderStableId.mockResolvedValue(null);
 
     await expect(
-      harness.service.refundFullOrder(
-        '4750_Yonge_Street',
-        'order_stable_1',
-        {
+      harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
           reason: 'Customer cancellation',
           operatorName: 'Staff',
           refundMethod: PaymentMethod.CARD,
-        },
-      ),
+      }),
     ).resolves.toMatchObject({
       mode: 'LEGACY_MANUAL_REQUIRED',
       status: null,
@@ -417,15 +393,11 @@ describe('PosCardRefundOrchestrationService', () => {
     harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
 
     await expect(
-      harness.service.refundFullOrder(
-        '4750_Yonge_Street',
-        'order_stable_1',
-        {
+      harness.service.refundFullOrder('4750_Yonge_Street', 'order_stable_1', {
           reason: 'Customer cancellation',
           operatorName: 'Staff',
           refundMethod: PaymentMethod.CASH,
-        },
-      ),
+      }),
     ).resolves.toMatchObject({
       mode: 'MANAGED',
       status: 'FAILED',

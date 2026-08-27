@@ -1,5 +1,8 @@
 import { PaymentTransaction } from '../domain/payment-transaction';
-import type { PaymentProviderOutcome, PaymentStatus } from '../domain/payment.types';
+import type {
+  PaymentProviderOutcome,
+  PaymentStatus,
+} from '../domain/payment.types';
 import { CreatePaymentAttemptUseCase } from './create-payment-attempt.use-case';
 import type { PaymentProvider } from './payment-provider.port';
 import {
@@ -165,7 +168,8 @@ const createHarness = async () => {
 
 describe('RefundPaymentService', () => {
   it('requires canonical preflight, executes void once, and records canonical reversal truth', async () => {
-    const { transactions, sale, provider, service, input } = await createHarness();
+    const { transactions, sale, provider, service, input } =
+      await createHarness();
     provider.getPaymentStatus.mockResolvedValue(saleCanonical(sale));
     provider.voidPayment.mockImplementation((request) =>
       Promise.resolve(reversalCanonical(input, request.paymentId)),
@@ -181,8 +185,8 @@ describe('RefundPaymentService', () => {
       refundedAmountCents: 2000,
       chargedTotalCents: 2048,
     });
-    expect(provider.voidPayment).toHaveBeenCalledTimes(1);
-    expect(provider.refundPayment).not.toHaveBeenCalled();
+    expect(provider.voidPayment.mock.calls).toHaveLength(1);
+    expect(provider.refundPayment.mock.calls).toHaveLength(0);
     const refreshedSale = await transactions.findById(sale.id);
     expect(refreshedSale?.toSnapshot()).toMatchObject({
       status: 'SUCCEEDED',
@@ -210,8 +214,8 @@ describe('RefundPaymentService', () => {
     const recovered = await service.startOrRecover(input);
 
     expect(recovered.status).toBe('SUCCEEDED');
-    expect(provider.voidPayment).toHaveBeenCalledTimes(1);
-    expect(provider.getPaymentStatus).toHaveBeenCalledTimes(2);
+    expect(provider.voidPayment.mock.calls).toHaveLength(1);
+    expect(provider.getPaymentStatus.mock.calls).toHaveLength(2);
   });
 
   it('blocks a new managed reversal when Clover already reports refund activity', async () => {
@@ -224,8 +228,8 @@ describe('RefundPaymentService', () => {
       name: 'PaymentReversalPreflightError',
       failureCode: 'PAYMENT_ORIGINAL_ALREADY_REFUNDED',
     } satisfies Partial<PaymentReversalPreflightError>);
-    expect(provider.voidPayment).not.toHaveBeenCalled();
-    expect(provider.refundPayment).not.toHaveBeenCalled();
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.refundPayment.mock.calls).toHaveLength(0);
   });
 
   it('does not accept an execution-only success as final reversal truth', async () => {
@@ -259,6 +263,6 @@ describe('RefundPaymentService', () => {
 
     expect(second.id).toBe(first.id);
     expect(second.status).toBe('SUCCEEDED');
-    expect(provider.voidPayment).toHaveBeenCalledTimes(1);
+    expect(provider.voidPayment.mock.calls).toHaveLength(1);
   });
 });

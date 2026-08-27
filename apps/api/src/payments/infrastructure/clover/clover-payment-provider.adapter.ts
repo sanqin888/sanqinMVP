@@ -479,8 +479,7 @@ const mapPlatformRefund = (
       providerRefundId,
     );
   }
-  const refundedCustomerTotalCents =
-    amountCents + additionalChargeRefundCents;
+  const refundedCustomerTotalCents = amountCents + additionalChargeRefundCents;
   if (!Number.isSafeInteger(refundedCustomerTotalCents)) {
     return reversalUnknown(
       request,
