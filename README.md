@@ -122,6 +122,12 @@ POS_FRONT_PRINTER (default: POS80)
 
 POS_KITCHEN_PRINTER (default: KC80)
 
+POS_LABEL_PRINTER (Windows printer name for the 70x30mm food label printer; required only when label printing is enabled)
+
+POS_LABEL_FONT (optional Windows font name; default: Microsoft YaHei UI)
+
+The label path uses the installed Windows printer driver through `tools/printer-server/print-label.ps1`, so it does not depend on a specific TSPL/ZPL command language. The label printer/driver should have a usable 70x30mm stock configured; the script also requests a 70x30mm custom paper size for each label job.
+
 STORE_ID (optional consistency check only; store authorization comes from the authenticated POS device)
 
 For first-time cloud auto-print enrollment, create a dedicated POS device for the printer agent in Admin (do not reuse the browser POS device). Copy its one-time enrollment code. If `printer-server.js` is already running from Windows startup, stop that running instance first so port 19191 is free. Then open Windows Command Prompt (`cmd.exe`) in `tools/printer-server` and run one manual enrollment start:

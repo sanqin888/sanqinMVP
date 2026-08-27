@@ -100,6 +100,31 @@ export class AdminMenuController {
     return this.service.updateCategory(categoryStableId, body);
   }
 
+  @Post('packaging-types')
+  async createPackagingType(
+    @Body()
+    body: {
+      name: string;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+  ) {
+    return this.service.createPackagingType(body);
+  }
+
+  @Put('packaging-types/:packagingTypeStableId')
+  async updatePackagingType(
+    @Param('packagingTypeStableId') packagingTypeStableId: string,
+    @Body()
+    body: {
+      name?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+  ) {
+    return this.service.updatePackagingType(packagingTypeStableId, body);
+  }
+
   @Post('items')
   async createItem(
     @Body()
@@ -123,6 +148,8 @@ export class AdminMenuController {
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
+      labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+      packagingTypeStableIds?: string[];
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -151,6 +178,8 @@ export class AdminMenuController {
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
+      labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+      packagingTypeStableIds?: string[];
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -259,6 +288,8 @@ export class AdminMenuController {
       maxSelect: number | null;
       sortOrder: number;
       isEnabled: boolean;
+      /** Empty means the option affects every packaging used by the item. */
+      affectedPackagingTypeStableIds?: string[];
     },
   ) {
     return this.service.bindTemplateGroupToItem(itemStableId, body);

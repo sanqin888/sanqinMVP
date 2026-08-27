@@ -36,6 +36,13 @@ describe('FulfillmentProcessor reprint store routing', () => {
       {
         getByStableId: jest.fn().mockResolvedValue({ orderNumber: '1001' }),
       } as never,
+      {
+        getByStableId: jest.fn().mockResolvedValue({
+          labelWidthMm: 70,
+          labelHeightMm: 30,
+          labels: [],
+        }),
+      } as never,
     );
     return { processor, sendPrintJob };
   }
@@ -113,6 +120,13 @@ describe('FulfillmentProcessor accepted web order printing', () => {
       {} as never,
       { sendPrintJob } as never,
       { getByStableId } as never,
+      {
+        getByStableId: jest.fn().mockResolvedValue({
+          labelWidthMm: 70,
+          labelHeightMm: 30,
+          labels: [],
+        }),
+      } as never,
     );
     processor.onModuleInit();
 
@@ -141,7 +155,12 @@ describe('FulfillmentProcessor accepted web order printing', () => {
       kind: 'AUTO',
       data: {
         orderNumber: 'SQ2608110001',
-        targets: { customer: true, kitchen: true },
+        labelPlan: {
+          labelWidthMm: 70,
+          labelHeightMm: 30,
+          labels: [],
+        },
+        targets: { customer: true, kitchen: true, label: false },
       },
     });
   });

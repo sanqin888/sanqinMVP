@@ -121,3 +121,78 @@ describe('AdminMenuService daily specials weekdays', () => {
     );
   });
 });
+
+describe('AdminMenuService packaging option scope', () => {
+  it('single-package items always store option scope as all packaging', async () => {
+    const upsert = jest.fn().mockResolvedValue({});
+    const service = new AdminMenuService(
+      {
+        menuItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            packagings: [
+              { packagingType: { stableId: 'packaging-16oz' } },
+            ],
+          }),
+        },
+        menuOptionGroupTemplate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'template-1' }),
+        },
+        menuItemOptionGroup: { upsert },
+      } as never,
+      {} as never,
+    );
+
+    await service.bindTemplateGroupToItem('item-1', {
+      templateGroupStableId: 'spice',
+      minSelect: 0,
+      maxSelect: 1,
+      sortOrder: 0,
+      isEnabled: true,
+      affectedPackagingTypeStableIds: ['packaging-16oz'],
+    });
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          affectedPackagingTypeStableIds: [],
+        }),
+        update: expect.objectContaining({
+          affectedPackagingTypeStableIds: [],
+        }),
+      }),
+    );
+  });
+
+  it('multi-package items reject an option scope outside the item packaging list', async () => {
+    const upsert = jest.fn();
+    const service = new AdminMenuService(
+      {
+        menuItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            packagings: [
+              { packagingType: { stableId: 'packaging-38oz' } },
+              { packagingType: { stableId: 'packaging-16oz' } },
+            ],
+          }),
+        },
+        menuOptionGroupTemplate: { findFirst: jest.fn() },
+        menuItemOptionGroup: { upsert },
+      } as never,
+      {} as never,
+    );
+
+    await expect(
+      service.bindTemplateGroupToItem('item-1', {
+        templateGroupStableId: 'spice',
+        minSelect: 0,
+        maxSelect: 1,
+        sortOrder: 0,
+        isEnabled: true,
+        affectedPackagingTypeStableIds: ['packaging-not-used'],
+      }),
+    ).rejects.toThrow('Packaging type not available for item');
+    expect(upsert).not.toHaveBeenCalled();
+  });
+});

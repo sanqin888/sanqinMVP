@@ -11,8 +11,8 @@ import {
   DailySpecialDto,
   AdminMenuCategoryDto,
   AdminMenuFullResponse,
+  AdminMenuOptionGroupBindingDto,
   isAvailableNow,
-  MenuOptionGroupBindingDto,
   TemplateGroupFullDto,
   TemplateGroupLiteDto,
 } from '@shared/menu';
@@ -159,7 +159,7 @@ export class AdminMenuService {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
 
-    const [categories, templateGroups] = await Promise.all([
+    const [categories, templateGroups, packagingTypes] = await Promise.all([
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null },
         orderBy: { sortOrder: 'asc' },
@@ -169,6 +169,10 @@ export class AdminMenuService {
             orderBy: { sortOrder: 'asc' },
             include: {
               category: { select: { stableId: true } },
+              packagings: {
+                orderBy: { sortOrder: 'asc' },
+                include: { packagingType: true },
+              },
               optionGroups: {
                 where: {
                   templateGroup: { deletedAt: null },
@@ -198,6 +202,10 @@ export class AdminMenuService {
         where: { deletedAt: null },
         orderBy: { sortOrder: 'asc' },
       }),
+      this.prisma.menuPackagingType.findMany({
+        where: { deletedAt: null },
+        orderBy: { sortOrder: 'asc' },
+      }),
     ]);
 
     const templatesLite: TemplateGroupLiteDto[] = (templateGroups ?? []).map(
@@ -213,6 +221,12 @@ export class AdminMenuService {
       }),
     );
 
+    const packagingTypeDtos = packagingTypes.map((type) => ({
+      stableId: type.stableId,
+      name: type.name,
+      isActive: type.isActive,
+      sortOrder: type.sortOrder,
+    }));
     const categoryDtos: AdminMenuCategoryDto[] = (categories ?? []).map(
       (cat) => {
         const categoryStableId = cat.stableId;
@@ -228,7 +242,7 @@ export class AdminMenuService {
             ? resolveEffectivePriceCents(it.basePriceCents, activeSpecial)
             : undefined;
 
-          const optionGroups: MenuOptionGroupBindingDto[] = (
+          const optionGroups: AdminMenuOptionGroupBindingDto[] = (
             it.optionGroups ?? []
           )
             .filter(
@@ -256,6 +270,8 @@ export class AdminMenuService {
                 maxSelect: link.maxSelect,
                 sortOrder: link.sortOrder,
                 isEnabled: link.isEnabled,
+                affectedPackagingTypeStableIds:
+                  link.affectedPackagingTypeStableIds,
                 template,
               };
             });
@@ -279,6 +295,16 @@ export class AdminMenuService {
             visibility: it.visibility,
             isVisibleOnMainMenu: it.isVisibleOnMainMenu,
             publishToUberEats: it.publishToUberEats,
+            labelStrategy: it.labelStrategy,
+            packagings: it.packagings.map((packaging) => ({
+              sortOrder: packaging.sortOrder,
+              packagingType: {
+                stableId: packaging.packagingType.stableId,
+                name: packaging.packagingType.name,
+                isActive: packaging.packagingType.isActive,
+                sortOrder: packaging.packagingType.sortOrder,
+              },
+            })),
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
             imageUrl: it.imageUrl ?? null,
@@ -344,7 +370,12 @@ export class AdminMenuService {
         (b as { sortOrder: number }).sortOrder,
     );
 
-    return { categories: categoryDtos, templatesLite, dailySpecials };
+    return {
+      categories: categoryDtos,
+      templatesLite,
+      dailySpecials,
+      packagingTypes: packagingTypeDtos,
+    };
   }
 
   // ========= Category =========
@@ -373,6 +404,58 @@ export class AdminMenuService {
     return { stableId: created.stableId };
   }
 
+  // ========= Packaging =========
+  async createPackagingType(body: {
+    name: string;
+    sortOrder?: number;
+    isActive?: boolean;
+  }) {
+    const name = body.name?.trim();
+    if (!name) throw new BadRequestException('Packaging type name is required');
+    const existing = await this.prisma.menuPackagingType.findFirst({
+      where: { name },
+      select: { stableId: true },
+    });
+    if (existing) {
+      throw new BadRequestException(`Packaging already exists: ${name}`);
+    }
+    const created = await this.prisma.menuPackagingType.create({
+      data: {
+        name,
+        sortOrder: Number.isFinite(body.sortOrder) ? Math.trunc(body.sortOrder!) : 0,
+        isActive: body.isActive ?? true,
+        deletedAt: null,
+      },
+      select: { stableId: true },
+    });
+    return { stableId: created.stableId };
+  }
+
+  async updatePackagingType(
+    packagingTypeStableId: string,
+    body: { name?: string; sortOrder?: number; isActive?: boolean },
+  ) {
+    const stableId = packagingTypeStableId.trim();
+    const existing = await this.prisma.menuPackagingType.findFirst({
+      where: { stableId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Packaging type not found');
+    if (body.name !== undefined && !body.name.trim()) {
+      throw new BadRequestException('Packaging type name is required');
+    }
+    await this.prisma.menuPackagingType.update({
+      where: { stableId },
+      data: {
+        name: body.name === undefined ? undefined : body.name.trim(),
+        sortOrder:
+          body.sortOrder === undefined ? undefined : Math.trunc(body.sortOrder),
+        isActive: body.isActive,
+      },
+    });
+    return { ok: true };
+  }
+
   // ========= Item =========
   async createItem(body: {
     categoryStableId: string;
@@ -392,6 +475,8 @@ export class AdminMenuService {
     visibility?: 'PUBLIC' | 'HIDDEN';
     isVisibleOnMainMenu?: boolean;
     publishToUberEats?: boolean;
+    labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+    packagingTypeStableIds?: string[];
     tempUnavailableUntil?: string | null;
   }) {
     const categoryStableId = (body.categoryStableId ?? '').trim();
@@ -404,6 +489,10 @@ export class AdminMenuService {
     });
     if (!category)
       throw new NotFoundException(`Category not found: ${categoryStableId}`);
+
+    const packagingTypes = await this.resolvePackagingTypes(
+      body.packagingTypeStableIds ?? [],
+    );
 
     // ✅ stableId：允许不传；不传则走 schema 的 @default(cuid())
     const stableIdRaw =
@@ -444,6 +533,13 @@ export class AdminMenuService {
           typeof body.publishToUberEats === 'boolean'
             ? body.publishToUberEats
             : false,
+        labelStrategy: body.labelStrategy ?? 'AUTO',
+        packagings: {
+          create: packagingTypes.map((packagingType, index) => ({
+            packagingTypeId: packagingType.id,
+            sortOrder: index,
+          })),
+        },
         tempUnavailableUntil: parseIsoOrNull(body.tempUnavailableUntil),
 
         deletedAt: null,
@@ -473,6 +569,8 @@ export class AdminMenuService {
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
+      labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+      packagingTypeStableIds?: string[];
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -482,7 +580,12 @@ export class AdminMenuService {
     // ✅ 软删除后视为不存在
     const existing = await this.prisma.menuItem.findFirst({
       where: { stableId, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        optionGroups: {
+          select: { affectedPackagingTypeStableIds: true },
+        },
+      },
     });
     if (!existing) throw new NotFoundException(`Item not found: ${stableId}`);
 
@@ -497,6 +600,33 @@ export class AdminMenuService {
           `Category not found: ${body.categoryStableId}`,
         );
       categoryId = cat.id;
+    }
+
+    let packagingTypesForUpdate:
+      | Array<{ id: string; stableId: string }>
+      | undefined;
+    if (body.packagingTypeStableIds !== undefined) {
+      packagingTypesForUpdate = await this.resolvePackagingTypes(
+        body.packagingTypeStableIds,
+      );
+      if (packagingTypesForUpdate.length > 1) {
+        const nextPackagingTypeStableIds = new Set(
+          packagingTypesForUpdate.map((packagingType) => packagingType.stableId),
+        );
+        const referencedPackagingTypeStableIds = new Set(
+          existing.optionGroups.flatMap(
+            (group) => group.affectedPackagingTypeStableIds,
+          ),
+        );
+        const removedReferencedPackagingTypes = [
+          ...referencedPackagingTypeStableIds,
+        ].filter((stableId) => !nextPackagingTypeStableIds.has(stableId));
+        if (removedReferencedPackagingTypes.length > 0) {
+          throw new BadRequestException(
+            `Packaging types still used by menu options: ${removedReferencedPackagingTypes.join(', ')}`,
+          );
+        }
+      }
     }
 
     // ✅ 标准 2：只允许创建时写入 stableId（这里不更新 stableId）
@@ -537,6 +667,19 @@ export class AdminMenuService {
           body.publishToUberEats === undefined
             ? undefined
             : body.publishToUberEats,
+        labelStrategy:
+          body.labelStrategy === undefined ? undefined : body.labelStrategy,
+        ...(packagingTypesForUpdate
+          ? {
+              packagings: {
+                deleteMany: {},
+                create: packagingTypesForUpdate.map((packagingType, index) => ({
+                  packagingTypeId: packagingType.id,
+                  sortOrder: index,
+                })),
+              },
+            }
+          : {}),
         tempUnavailableUntil:
           body.tempUnavailableUntil === undefined
             ? undefined
@@ -1126,13 +1269,46 @@ export class AdminMenuService {
       maxSelect: number | null;
       sortOrder: number;
       isEnabled: boolean;
+      /** Empty means the option affects every packaging used by the item. */
+      affectedPackagingTypeStableIds?: string[];
     },
   ) {
     const item = await this.prisma.menuItem.findFirst({
       where: { stableId: itemStableId.trim(), deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        packagings: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            packagingType: { select: { stableId: true } },
+          },
+        },
+      },
     });
     if (!item) throw new NotFoundException(`Item not found: ${itemStableId}`);
+
+    const requestedPackagingTypeStableIds = [
+      ...new Set(
+        (body.affectedPackagingTypeStableIds ?? [])
+          .map((stableId) => stableId.trim())
+          .filter(Boolean),
+      ),
+    ];
+    const affectedPackagingTypeStableIds =
+      item.packagings.length <= 1 ? [] : requestedPackagingTypeStableIds;
+    if (affectedPackagingTypeStableIds.length > 0) {
+      const availablePackagingTypeStableIds = new Set(
+        item.packagings.map((packaging) => packaging.packagingType.stableId),
+      );
+      const invalidStableIds = affectedPackagingTypeStableIds.filter(
+        (stableId) => !availablePackagingTypeStableIds.has(stableId),
+      );
+      if (invalidStableIds.length > 0) {
+        throw new BadRequestException(
+          `Packaging type not available for item: ${invalidStableIds.join(', ')}`,
+        );
+      }
+    }
 
     const tg = await this.prisma.menuOptionGroupTemplate.findFirst({
       where: { stableId: body.templateGroupStableId.trim(), deletedAt: null },
@@ -1162,6 +1338,7 @@ export class AdminMenuService {
           ? Math.floor(body.sortOrder)
           : 0,
         isEnabled: !!body.isEnabled,
+        affectedPackagingTypeStableIds,
       },
       update: {
         minSelect: Math.max(0, Math.floor(body.minSelect ?? 0)),
@@ -1173,6 +1350,7 @@ export class AdminMenuService {
           ? Math.floor(body.sortOrder)
           : 0,
         isEnabled: !!body.isEnabled,
+        affectedPackagingTypeStableIds,
       },
     });
 
@@ -1497,6 +1675,42 @@ export class AdminMenuService {
     });
 
     return this.getDailySpecials();
+  }
+
+  private async resolvePackagingTypes(
+    input: string[],
+  ): Promise<Array<{ id: string; stableId: string }>> {
+    const stableIds = [
+      ...new Set(
+        (Array.isArray(input) ? input : [])
+          .map((stableId) => stableId.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (stableIds.length === 0) return [];
+
+    const packagingTypes = await this.prisma.menuPackagingType.findMany({
+      where: {
+        stableId: { in: stableIds },
+        deletedAt: null,
+        isActive: true,
+      },
+      select: { id: true, stableId: true },
+    });
+    const packagingTypeByStableId = new Map(
+      packagingTypes.map((packagingType) => [
+        packagingType.stableId,
+        packagingType,
+      ]),
+    );
+    const missing = stableIds.filter(
+      (stableId) => !packagingTypeByStableId.has(stableId),
+    );
+    if (missing.length > 0) {
+      throw new NotFoundException(`Packaging type not found: ${missing.join(', ')}`);
+    }
+
+    return stableIds.map((stableId) => packagingTypeByStableId.get(stableId)!);
   }
 
   private async ensureBusinessConfig() {

@@ -229,6 +229,12 @@ enum MenuItemVisibility {
   HIDDEN
 }
 
+enum MenuLabelStrategy {
+  AUTO
+  ALWAYS
+  NEVER
+}
+
 enum CouponStackingPolicy {
   EXCLUSIVE
   STACKABLE
@@ -590,20 +596,25 @@ model PosPrintJob {
   payload               Json
   customerRequested     Boolean   @default(true)
   kitchenRequested      Boolean   @default(true)
+  labelRequested        Boolean   @default(false)
   customerStatus        String    @default("PENDING")
   kitchenStatus         String    @default("PENDING")
+  labelStatus           String    @default("PENDING")
   customerAttempts      Int       @default(0)
   kitchenAttempts       Int       @default(0)
+  labelAttempts         Int       @default(0)
   customerFailureReason String?
   kitchenFailureReason  String?
+  labelFailureReason    String?
   customerCompletedAt   DateTime?
   kitchenCompletedAt    DateTime?
+  labelCompletedAt      DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   order                 Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@unique([orderStableId, kind])
-  @@index([storeId, customerStatus, kitchenStatus])
+  @@index([storeId, customerStatus, kitchenStatus, labelStatus])
   @@index([orderStableId, createdAt])
 }
 
@@ -1314,6 +1325,7 @@ model MenuItem {
   visibility           MenuItemVisibility    @default(PUBLIC)
   isVisibleOnMainMenu  Boolean               @default(true)
   publishToUberEats    Boolean               @default(false)
+  labelStrategy        MenuLabelStrategy     @default(AUTO)
   tempUnavailableUntil DateTime?
   sortOrder            Int                   @default(0)
   imageUrl             String?
@@ -1321,11 +1333,38 @@ model MenuItem {
   ingredientsZh        String?
   deletedAt            DateTime?
   category             MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  packagings           MenuItemPackaging[]
   optionGroups         MenuItemOptionGroup[]
   dailySpecials        MenuDailySpecial[]    @relation("MenuItemDailySpecials")
 
   @@index([categoryId, sortOrder])
   @@index([deletedAt])
+}
+
+model MenuPackagingType {
+  id             String              @id @default(uuid())
+  stableId       String              @unique @default(cuid())
+  name           String              @unique
+  isActive       Boolean             @default(true)
+  sortOrder      Int                 @default(0)
+  deletedAt      DateTime?
+  itemPackagings MenuItemPackaging[]
+
+  @@index([sortOrder])
+  @@index([deletedAt])
+}
+
+model MenuItemPackaging {
+  id              String            @id @default(uuid())
+  itemId          String
+  packagingTypeId String
+  sortOrder       Int               @default(0)
+  item            MenuItem          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  packagingType   MenuPackagingType @relation(fields: [packagingTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([itemId, packagingTypeId])
+  @@index([itemId, sortOrder])
+  @@index([packagingTypeId])
 }
 
 model MenuDailySpecial {
@@ -1403,15 +1442,16 @@ model MenuOptionChoiceLink {
 }
 
 model MenuItemOptionGroup {
-  id              String                  @id @default(uuid())
-  itemId          String
-  templateGroupId String
-  minSelect       Int                     @default(0)
-  maxSelect       Int?
-  sortOrder       Int                     @default(0)
-  isEnabled       Boolean                 @default(true)
-  item            MenuItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  templateGroup   MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
+  id                             String                  @id @default(uuid())
+  itemId                         String
+  templateGroupId                String
+  minSelect                      Int                     @default(0)
+  maxSelect                      Int?
+  sortOrder                      Int                     @default(0)
+  isEnabled                      Boolean                 @default(true)
+  affectedPackagingTypeStableIds String[]                @default([])
+  item                           MenuItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  templateGroup                  MenuOptionGroupTemplate @relation(fields: [templateGroupId], references: [id], onDelete: Cascade)
 
   @@unique([itemId, templateGroupId])
   @@index([itemId, sortOrder])

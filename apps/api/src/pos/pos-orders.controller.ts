@@ -337,7 +337,7 @@ export class PosOrdersController {
     @Body()
     body?: {
       locale?: 'zh' | 'en';
-      targets?: { customer?: boolean; kitchen?: boolean };
+      targets?: { customer?: boolean; kitchen?: boolean; label?: boolean };
       cashReceivedCents?: number;
       cashChangeCents?: number;
     },
@@ -348,6 +348,7 @@ export class PosOrdersController {
       targets: {
         customer: body?.targets?.customer ?? true,
         kitchen: body?.targets?.kitchen ?? false,
+        label: body?.targets?.label ?? false,
       },
       ...(typeof body?.cashReceivedCents === 'number'
         ? { cashReceivedCents: Math.max(0, Math.round(body.cashReceivedCents)) }

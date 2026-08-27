@@ -35,6 +35,13 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
       {
         getByStableId: jest.fn().mockResolvedValue({ orderNumber: '1001' }),
       } as never,
+      {
+        getByStableId: jest.fn().mockResolvedValue({
+          labelWidthMm: 70,
+          labelHeightMm: 30,
+          labels: [],
+        }),
+      } as never,
     );
 
     await expect(

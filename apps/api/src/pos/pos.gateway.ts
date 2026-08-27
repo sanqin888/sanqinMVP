@@ -37,6 +37,14 @@ type PosSocketCredentials = {
   deviceKey: string;
 };
 
+type PosPrintTarget = 'customer' | 'kitchen' | 'label';
+
+const POS_PRINT_TARGETS: readonly PosPrintTarget[] = [
+  'customer',
+  'kitchen',
+  'label',
+];
+
 function resolvePosSocketCorsOrigin(): string | string[] {
   const configured = process.env.CORS_ORIGIN?.split(',')
     .map((origin) => origin.trim())
@@ -250,7 +258,7 @@ export class PosGateway
     client: Socket,
     payload?: {
       jobId?: string;
-      target?: 'customer' | 'kitchen';
+      target?: PosPrintTarget;
       success?: boolean;
       error?: string;
     },
@@ -272,7 +280,8 @@ export class PosGateway
     const success = payload?.success;
     if (
       !jobId ||
-      (target !== 'customer' && target !== 'kitchen') ||
+      !target ||
+      !POS_PRINT_TARGETS.includes(target) ||
       typeof success !== 'boolean'
     ) {
       this.logger.warn({
@@ -354,7 +363,9 @@ export class PosGateway
     data: unknown;
   }) {
     const targets = (
-      input.data as { targets?: { customer?: boolean; kitchen?: boolean } }
+      input.data as {
+        targets?: { customer?: boolean; kitchen?: boolean; label?: boolean };
+      }
     )?.targets;
     const job = await this.prisma.posPrintJob.upsert({
       where: {
@@ -372,8 +383,10 @@ export class PosGateway
         payload: input.data as never,
         customerRequested: targets?.customer === true,
         kitchenRequested: targets?.kitchen === true,
+        labelRequested: targets?.label === true,
         customerStatus: targets?.customer === true ? 'PENDING' : 'SKIPPED',
         kitchenStatus: targets?.kitchen === true ? 'PENDING' : 'SKIPPED',
+        labelStatus: targets?.label === true ? 'PENDING' : 'SKIPPED',
       },
       update: {},
     });
@@ -385,13 +398,16 @@ export class PosGateway
       targets: {
         customer: job.customerRequested,
         kitchen: job.kitchenRequested,
+        label: job.labelRequested,
       },
-      status: { customer: job.customerStatus, kitchen: job.kitchenStatus },
+      status: {
+        customer: job.customerStatus,
+        kitchen: job.kitchenStatus,
+        label: job.labelStatus,
+      },
     });
     await Promise.all(
-      (['customer', 'kitchen'] as const).map((target) =>
-        this.dispatchTarget(job.jobId, target),
-      ),
+      POS_PRINT_TARGETS.map((target) => this.dispatchTarget(job.jobId, target)),
     );
     return job;
   }
@@ -417,14 +433,21 @@ export class PosGateway
               { kitchenFailureReason: 'CLIENT_OFFLINE' },
             ],
           },
+          {
+            labelRequested: true,
+            labelStatus: { in: ['PENDING', 'FAILED'] },
+            OR: [
+              { labelAttempts: { lt: this.maxAttempts } },
+              { labelFailureReason: 'CLIENT_OFFLINE' },
+            ],
+          },
         ],
       },
       orderBy: { createdAt: 'asc' },
       take: 100,
     });
     const dispatches = jobs.flatMap((job) =>
-      (['customer', 'kitchen'] as const)
-        .filter(
+      POS_PRINT_TARGETS.filter(
           (target) =>
             job[`${target}Requested`] &&
             ['PENDING', 'FAILED'].includes(job[`${target}Status`]) &&
@@ -445,7 +468,7 @@ export class PosGateway
     );
   }
 
-  private async dispatchTarget(jobId: string, target: 'customer' | 'kitchen') {
+  private async dispatchTarget(jobId: string, target: PosPrintTarget) {
     if (this.timers.has(`${jobId}:${target}`)) return;
     const job = await this.prisma.posPrintJob.findUnique({ where: { jobId } });
     if (
@@ -545,7 +568,7 @@ export class PosGateway
 
   private async markTimeoutAndRetry(
     jobId: string,
-    target: 'customer' | 'kitchen',
+    target: PosPrintTarget,
   ) {
     this.timers.delete(`${jobId}:${target}`);
     const job = await this.prisma.posPrintJob.update({

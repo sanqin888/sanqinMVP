@@ -17,12 +17,16 @@ describe('PosGateway durable print delivery', () => {
     payload: { targets: { customer: true, kitchen: true } },
     customerRequested: true,
     kitchenRequested: true,
+    labelRequested: false,
     customerStatus: 'PENDING',
     kitchenStatus: 'PENDING',
+    labelStatus: 'SKIPPED',
     customerAttempts: 0,
     kitchenAttempts: 0,
+    labelAttempts: 0,
     customerFailureReason: null,
     kitchenFailureReason: null,
+    labelFailureReason: null,
     createdAt: new Date(),
   };
 
