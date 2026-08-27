@@ -20,6 +20,8 @@ export const POS_CUSTOMER_ORDERING_STATUS_UPDATED_EVENT =
   'CUSTOMER_ORDERING_STATUS_UPDATED';
 export const POS_CARD_PAYMENT_STATUS_UPDATED_EVENT =
   'POS_CARD_PAYMENT_STATUS_UPDATED';
+export const POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED_EVENT =
+  'POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED';
 
 type PosSocketDeviceIdentity = {
   deviceStableId: string;
@@ -614,6 +616,31 @@ export class PosGateway
         orderStableId: data.orderStableId ?? null,
         orderNumber: data.orderNumber ?? null,
         pickupCode: data.pickupCode ?? null,
+      });
+  }
+
+  publishCardPaymentReverseSync(
+    storeId: string,
+    data: {
+      attemptId: string;
+      paymentId: string;
+      externalReversal: 'PARTIAL_REFUND' | 'FULL_REFUND' | 'VOID';
+      refundedAmountCents: number;
+      orderStableId?: string | null;
+      orderStatus?: string | null;
+      requiresManualReview?: boolean;
+    },
+  ) {
+    this.server
+      .to(`store:${storeId}`)
+      .emit(POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED_EVENT, {
+        attemptId: data.attemptId,
+        paymentId: data.paymentId,
+        externalReversal: data.externalReversal,
+        refundedAmountCents: data.refundedAmountCents,
+        orderStableId: data.orderStableId ?? null,
+        orderStatus: data.orderStatus ?? null,
+        requiresManualReview: data.requiresManualReview ?? false,
       });
   }
 

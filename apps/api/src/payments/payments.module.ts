@@ -7,6 +7,19 @@ import {
 } from './application/create-payment-attempt.use-case';
 import { RefundPaymentService } from './application/refund-payment.service';
 import {
+  PAYMENT_PROVIDER_TRANSACTION_LOOKUP,
+  type PaymentProviderTransactionLookup,
+} from './application/payment-provider-transaction-lookup.port';
+import {
+  PAYMENT_REVERSE_SYNC_PERSISTENCE,
+  type PaymentReverseSyncPersistence,
+} from './application/payment-reverse-sync-persistence.port';
+import { PaymentReverseSyncService } from './application/payment-reverse-sync.service';
+import {
+  PAYMENT_WEBHOOK_EVENT_REPOSITORY,
+  type PaymentWebhookEventRepository,
+} from './application/payment-webhook-event.repository';
+import {
   PAYMENT_PROVIDER,
   PAYMENT_TERMINAL_PROVIDER,
   type PaymentProvider,
@@ -19,14 +32,37 @@ import {
 import { CloverPaymentProviderAdapter } from './infrastructure/clover/clover-payment-provider.adapter';
 import { CloverProviderInfrastructureModule } from './infrastructure/clover/clover-provider-infrastructure.module';
 import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/prisma-payment-transaction.repository';
+import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/prisma-payment-webhook-event.repository';
 
 @Module({
   imports: [PrismaModule, CloverProviderInfrastructureModule],
   providers: [
     PrismaPaymentTransactionRepository,
+    PrismaPaymentWebhookEventRepository,
     {
       provide: PAYMENT_TRANSACTION_REPOSITORY,
       useExisting: PrismaPaymentTransactionRepository,
+    },
+    {
+      provide: PAYMENT_PROVIDER_TRANSACTION_LOOKUP,
+      useFactory: (
+        lookup: PrismaPaymentTransactionRepository,
+      ): PaymentProviderTransactionLookup => lookup,
+      inject: [PrismaPaymentTransactionRepository],
+    },
+    {
+      provide: PAYMENT_WEBHOOK_EVENT_REPOSITORY,
+      useFactory: (
+        repository: PrismaPaymentWebhookEventRepository,
+      ): PaymentWebhookEventRepository => repository,
+      inject: [PrismaPaymentWebhookEventRepository],
+    },
+    {
+      provide: PAYMENT_REVERSE_SYNC_PERSISTENCE,
+      useFactory: (
+        persistence: PrismaPaymentTransactionRepository,
+      ): PaymentReverseSyncPersistence => persistence,
+      inject: [PrismaPaymentTransactionRepository],
     },
     {
       provide: PAYMENT_PROVIDER,
@@ -69,6 +105,30 @@ import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/pris
       ],
     },
     {
+      provide: PaymentReverseSyncService,
+      useFactory: (
+        lookup: PaymentProviderTransactionLookup,
+        transactions: PaymentTransactionRepository,
+        persistence: PaymentReverseSyncPersistence,
+        provider: PaymentProvider,
+        terminalPayments: TerminalPaymentService,
+      ) =>
+        new PaymentReverseSyncService(
+          lookup,
+          transactions,
+          persistence,
+          provider,
+          terminalPayments,
+        ),
+      inject: [
+        PAYMENT_PROVIDER_TRANSACTION_LOOKUP,
+        PAYMENT_TRANSACTION_REPOSITORY,
+        PAYMENT_REVERSE_SYNC_PERSISTENCE,
+        PAYMENT_PROVIDER,
+        TerminalPaymentService,
+      ],
+    },
+    {
       provide: RefundPaymentService,
       useFactory: (
         createAttempt: CreatePaymentAttemptUseCase,
@@ -83,11 +143,14 @@ import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/pris
     },
   ],
   exports: [
+    CloverProviderInfrastructureModule,
     PAYMENT_TRANSACTION_REPOSITORY,
     PAYMENT_PROVIDER,
+    PAYMENT_WEBHOOK_EVENT_REPOSITORY,
     CreatePaymentAttemptUseCase,
     TerminalPaymentService,
     RefundPaymentService,
+    PaymentReverseSyncService,
   ],
 })
 export class PaymentsModule {}
