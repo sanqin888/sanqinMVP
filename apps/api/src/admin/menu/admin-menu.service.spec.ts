@@ -130,9 +130,7 @@ describe('AdminMenuService packaging option scope', () => {
         menuItem: {
           findFirst: jest.fn().mockResolvedValue({
             id: 'item-1',
-            packagings: [
-              { packagingType: { stableId: 'packaging-16oz' } },
-            ],
+            packagings: [{ packagingType: { stableId: 'packaging-16oz' } }],
           }),
         },
         menuOptionGroupTemplate: {
@@ -152,16 +150,30 @@ describe('AdminMenuService packaging option scope', () => {
       affectedPackagingTypeStableIds: ['packaging-16oz'],
     });
 
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          affectedPackagingTypeStableIds: [],
-        }),
-        update: expect.objectContaining({
-          affectedPackagingTypeStableIds: [],
-        }),
-      }),
-    );
+    expect(upsert).toHaveBeenCalledWith({
+      where: {
+        itemId_templateGroupId: {
+          itemId: 'item-1',
+          templateGroupId: 'template-1',
+        },
+      },
+      create: {
+        itemId: 'item-1',
+        templateGroupId: 'template-1',
+        minSelect: 0,
+        maxSelect: 1,
+        sortOrder: 0,
+        isEnabled: true,
+        affectedPackagingTypeStableIds: [],
+      },
+      update: {
+        minSelect: 0,
+        maxSelect: 1,
+        sortOrder: 0,
+        isEnabled: true,
+        affectedPackagingTypeStableIds: [],
+      },
+    });
   });
 
   it('multi-package items reject an option scope outside the item packaging list', async () => {

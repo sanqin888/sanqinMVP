@@ -537,7 +537,9 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
 
         visit(
           modifier.children,
-          meta?.targetItemStableId ? localStableId : targetContextOptionStableId,
+          meta?.targetItemStableId
+            ? localStableId
+            : targetContextOptionStableId,
         );
       }
     };

@@ -272,7 +272,9 @@ export class OrderLabelPlanService {
       .some((segment) => segment === `option-${targetChoiceStableId}`);
   }
 
-  private expandPackagingComponents(item: FulfillmentItem): PackagingComponent[] {
+  private expandPackagingComponents(
+    item: FulfillmentItem,
+  ): PackagingComponent[] {
     const packagings =
       item.config.packagings.length > 0
         ? item.config.packagings
@@ -307,9 +309,12 @@ export class OrderLabelPlanService {
     return packagings.map((packaging) => {
       const applicableChoices = item.options.flatMap((group) => {
         const affectedPackagingTypeStableIds =
-          affectedPackagingTypesByTemplate.get(group.templateGroupStableId) ?? [];
+          affectedPackagingTypesByTemplate.get(group.templateGroupStableId) ??
+          [];
         return affectedPackagingTypeStableIds.length === 0 ||
-          affectedPackagingTypeStableIds.includes(packaging.packagingType.stableId)
+          affectedPackagingTypeStableIds.includes(
+            packaging.packagingType.stableId,
+          )
           ? group.choices
           : [];
       });
@@ -378,9 +383,13 @@ export class OrderLabelPlanService {
       const identities = [...group.distinctPairIdentities];
       const hasMultiPackageIdentity = identities.some((identity) => {
         const identityComponents = componentsByIdentity.get(identity) ?? [];
-        return new Set(
-          identityComponents.map((component) => component.packagingTypeStableId),
-        ).size > 1;
+        return (
+          new Set(
+            identityComponents.map(
+              (component) => component.packagingTypeStableId,
+            ),
+          ).size > 1
+        );
       });
       if (!hasMultiPackageIdentity) continue;
 
@@ -398,7 +407,10 @@ export class OrderLabelPlanService {
     const ambiguousPackageTypesByProduct = new Map<string, Set<string>>();
     const ambiguousIdentitiesByProduct = new Map<string, Set<string>>();
     for (const [packagingTypeStableId, group] of physicalGroups.entries()) {
-      if (group.distinctVariants.size < 2 || group.distinctProducts.size !== 1) {
+      if (
+        group.distinctVariants.size < 2 ||
+        group.distinctProducts.size !== 1
+      ) {
         continue;
       }
       const productStableId = group.components[0]?.productStableId;
@@ -408,18 +420,24 @@ export class OrderLabelPlanService {
       );
       if (identities.size < 2) continue;
       const packageTypes =
-        ambiguousPackageTypesByProduct.get(productStableId) ?? new Set<string>();
+        ambiguousPackageTypesByProduct.get(productStableId) ??
+        new Set<string>();
       packageTypes.add(packagingTypeStableId);
       ambiguousPackageTypesByProduct.set(productStableId, packageTypes);
       const productIdentities =
-        ambiguousIdentitiesByProduct.get(productStableId) ?? new Set<string>();
+        ambiguousIdentitiesByProduct.get(productStableId) ??
+        new Set<string>();
       identities.forEach((identity) => productIdentities.add(identity));
       ambiguousIdentitiesByProduct.set(productStableId, productIdentities);
     }
 
-    for (const [productStableId, packageTypes] of ambiguousPackageTypesByProduct) {
+    for (const [
+      productStableId,
+      packageTypes,
+    ] of ambiguousPackageTypesByProduct) {
       if (packageTypes.size < 2) continue;
-      const identities = ambiguousIdentitiesByProduct.get(productStableId) ?? new Set();
+      const identities =
+        ambiguousIdentitiesByProduct.get(productStableId) ?? new Set();
       identities.forEach((identity) => pairingIdentities.add(identity));
       for (const identity of identities) {
         for (const component of componentsByIdentity.get(identity) ?? []) {
@@ -446,7 +464,10 @@ export class OrderLabelPlanService {
       }
     }
     const codeByIdentity = new Map(
-      orderedIdentities.map((identity, index) => [identity, this.pairCode(index)]),
+      orderedIdentities.map((identity, index) => [
+        identity,
+        this.pairCode(index),
+      ]),
     );
     for (const component of components) {
       if (!component.shouldPrint) continue;
@@ -475,7 +496,9 @@ export class OrderLabelPlanService {
     return groups;
   }
 
-  private collapseLabels(components: PackagingComponent[]): OrderFoodLabelDto[] {
+  private collapseLabels(
+    components: PackagingComponent[],
+  ): OrderFoodLabelDto[] {
     const grouped = new Map<string, OrderFoodLabelDto>();
     for (const component of components) {
       const key = JSON.stringify({
@@ -536,15 +559,14 @@ export class OrderLabelPlanService {
 
   private readOptions(value: unknown): OrderItemOptionsSnapshot {
     if (!Array.isArray(value)) return [];
-    return value.filter(
-      (group): group is OrderItemOptionGroupSnapshot =>
-        Boolean(
-          group &&
-            typeof group === 'object' &&
-            typeof (group as { templateGroupStableId?: unknown })
-              .templateGroupStableId === 'string' &&
-            Array.isArray((group as { choices?: unknown }).choices),
-        ),
+    return value.filter((group): group is OrderItemOptionGroupSnapshot =>
+      Boolean(
+        group &&
+          typeof group === 'object' &&
+          typeof (group as { templateGroupStableId?: unknown })
+            .templateGroupStableId === 'string' &&
+          Array.isArray((group as { choices?: unknown }).choices),
+      ),
     );
   }
 

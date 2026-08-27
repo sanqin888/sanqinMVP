@@ -422,7 +422,9 @@ export class AdminMenuService {
     const created = await this.prisma.menuPackagingType.create({
       data: {
         name,
-        sortOrder: Number.isFinite(body.sortOrder) ? Math.trunc(body.sortOrder!) : 0,
+        sortOrder: Number.isFinite(body.sortOrder)
+          ? Math.trunc(body.sortOrder!)
+          : 0,
         isActive: body.isActive ?? true,
         deletedAt: null,
       },
@@ -611,7 +613,9 @@ export class AdminMenuService {
       );
       if (packagingTypesForUpdate.length > 1) {
         const nextPackagingTypeStableIds = new Set(
-          packagingTypesForUpdate.map((packagingType) => packagingType.stableId),
+          packagingTypesForUpdate.map(
+            (packagingType) => packagingType.stableId,
+          ),
         );
         const referencedPackagingTypeStableIds = new Set(
           existing.optionGroups.flatMap(
@@ -1707,7 +1711,9 @@ export class AdminMenuService {
       (stableId) => !packagingTypeByStableId.has(stableId),
     );
     if (missing.length > 0) {
-      throw new NotFoundException(`Packaging type not found: ${missing.join(', ')}`);
+      throw new NotFoundException(
+        `Packaging type not found: ${missing.join(', ')}`,
+      );
     }
 
     return stableIds.map((stableId) => packagingTypeByStableId.get(stableId)!);

@@ -448,13 +448,12 @@ export class PosGateway
     });
     const dispatches = jobs.flatMap((job) =>
       POS_PRINT_TARGETS.filter(
-          (target) =>
-            job[`${target}Requested`] &&
-            ['PENDING', 'FAILED'].includes(job[`${target}Status`]) &&
-            (job[`${target}Attempts`] < this.maxAttempts ||
-              job[`${target}FailureReason`] === 'CLIENT_OFFLINE'),
-        )
-        .map((target) => ({ jobId: job.jobId, target })),
+        (target) =>
+          job[`${target}Requested`] &&
+          ['PENDING', 'FAILED'].includes(job[`${target}Status`]) &&
+          (job[`${target}Attempts`] < this.maxAttempts ||
+            job[`${target}FailureReason`] === 'CLIENT_OFFLINE'),
+      ).map((target) => ({ jobId: job.jobId, target })),
     );
     const jobCount = new Set(dispatches.map(({ jobId }) => jobId)).size;
     this.logger.log({
@@ -566,10 +565,7 @@ export class PosGateway
     );
   }
 
-  private async markTimeoutAndRetry(
-    jobId: string,
-    target: PosPrintTarget,
-  ) {
+  private async markTimeoutAndRetry(jobId: string, target: PosPrintTarget) {
     this.timers.delete(`${jobId}:${target}`);
     const job = await this.prisma.posPrintJob.update({
       where: { jobId },

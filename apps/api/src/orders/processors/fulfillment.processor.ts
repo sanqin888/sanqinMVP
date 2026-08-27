@@ -207,7 +207,9 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       labels: [],
     };
     try {
-      labelPlan = await this.orderLabelPlanService.getByStableId(order.orderStableId);
+      labelPlan = await this.orderLabelPlanService.getByStableId(
+        order.orderStableId,
+      );
     } catch (error) {
       // Label planning is supplemental. Never block the established receipt and
       // kitchen print path because a label configuration is incomplete.

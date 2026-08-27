@@ -105,7 +105,10 @@ function orderLine(
   };
 }
 
-function createService(items: ReturnType<typeof orderLine>[], configs: ItemConfig[]) {
+function createService(
+  items: ReturnType<typeof orderLine>[],
+  configs: ItemConfig[],
+) {
   const prisma = {
     order: {
       findUnique: jest.fn().mockResolvedValue({
@@ -157,10 +160,13 @@ describe('OrderLabelPlanService', () => {
 
     const plan = await service.getByStableId('order-1');
     expect(plan.labels).toHaveLength(2);
-    expect(plan.labels.map((label) => label.component)).toEqual(['38oz', '38oz']);
-    expect(plan.labels.every((label) => label.packagingTypeStableId === '38oz')).toBe(
-      true,
-    );
+    expect(plan.labels.map((label) => label.component)).toEqual([
+      '38oz',
+      '38oz',
+    ]);
+    expect(
+      plan.labels.every((label) => label.packagingTypeStableId === '38oz'),
+    ).toBe(true);
     expect(plan.labels.every((label) => label.pairCode === null)).toBe(true);
   });
 
@@ -184,10 +190,13 @@ describe('OrderLabelPlanService', () => {
 
     const plan = await service.getByStableId('order-1');
     expect(plan.labels).toHaveLength(2);
-    expect(plan.labels.map((label) => label.component)).toEqual(['16oz', '16oz']);
-    expect(plan.labels.every((label) => label.packagingTypeStableId === '16oz')).toBe(
-      true,
-    );
+    expect(plan.labels.map((label) => label.component)).toEqual([
+      '16oz',
+      '16oz',
+    ]);
+    expect(
+      plan.labels.every((label) => label.packagingTypeStableId === '16oz'),
+    ).toBe(true);
     expect(plan.labels.every((label) => label.pairCode === null)).toBe(true);
   });
 
@@ -234,9 +243,9 @@ describe('OrderLabelPlanService', () => {
 
     const plan = await service.getByStableId('order-1');
     expect(plan.labels).toHaveLength(2);
-    expect(plan.labels.every((label) => label.packagingTypeStableId === '16oz')).toBe(
-      true,
-    );
+    expect(
+      plan.labels.every((label) => label.packagingTypeStableId === '16oz'),
+    ).toBe(true);
     expect(plan.labels.every((label) => label.pairCode === null)).toBe(true);
   });
 
@@ -289,8 +298,12 @@ describe('OrderLabelPlanService', () => {
     expect(plan.labels).toHaveLength(4);
     const codes = new Set(plan.labels.map((label) => label.pairCode));
     expect(codes).toEqual(new Set(['A', 'B']));
-    expect(plan.labels.filter((label) => label.pairCode === 'A')).toHaveLength(2);
-    expect(plan.labels.filter((label) => label.pairCode === 'B')).toHaveLength(2);
+    expect(plan.labels.filter((label) => label.pairCode === 'A')).toHaveLength(
+      2,
+    );
+    expect(plan.labels.filter((label) => label.pairCode === 'B')).toHaveLength(
+      2,
+    );
   });
 
   it('does not infer cross-product confusion when packaging is unconfigured', async () => {
