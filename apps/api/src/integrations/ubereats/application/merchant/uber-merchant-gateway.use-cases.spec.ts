@@ -421,10 +421,11 @@ describe('Uber merchant gateway use-case boundaries', () => {
       Parameters<UberStoreApiPort['updateIntegrationConfig']>
     > = [];
     const api = {
-      updateIntegrationConfig: async (
+      updateIntegrationConfig: (
         ...args: Parameters<UberStoreApiPort['updateIntegrationConfig']>
       ) => {
         updateCalls.push(args);
+        return Promise.resolve();
       },
     };
     const mappings = {

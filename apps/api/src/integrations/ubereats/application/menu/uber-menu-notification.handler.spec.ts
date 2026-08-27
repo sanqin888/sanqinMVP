@@ -67,14 +67,11 @@ describe('UberMenuRefreshRequestHandler', () => {
     const publications = {
       findLastSucceededPayload: jest.fn().mockResolvedValue(payload),
     };
-    const uploads: Array<
-      Parameters<UberMenuGatewayPort['uploadMenu']>[0]
-    > = [];
+    const uploads: Array<Parameters<UberMenuGatewayPort['uploadMenu']>[0]> = [];
     const gateway = {
-      uploadMenu: async (
-        input: Parameters<UberMenuGatewayPort['uploadMenu']>[0],
-      ) => {
+      uploadMenu: (input: Parameters<UberMenuGatewayPort['uploadMenu']>[0]) => {
         uploads.push(input);
+        return Promise.resolve();
       },
     };
     const telemetry = {
