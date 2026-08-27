@@ -34,6 +34,14 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
       return config;
     }), `已更新并核验 ${store.storeName ?? store.storeId} 的 Integration Config`);
   };
+  const activateIntegration = (store: UberStore) => {
+    void runAction(`integration-activate-${store.storeId}`, () => uberApiFetch(`/integrations/ubereats/oauth/stores/${encodeURIComponent(store.storeId)}/activate`, {
+      method: 'PATCH',
+    }).then(() => uberApiFetch<UberIntegrationConfigResponse>(integrationPath(store.storeId))).then((config) => {
+      setIntegrationConfigs((current) => ({ ...current, [store.storeId]: config }));
+      return config;
+    }), `已通过 PATCH Activate 并核验 ${store.storeName ?? store.storeId} 的 Integration Config`);
+  };
   const removeIntegration = (store: UberStore) => {
     if (!window.confirm(`确定从 Uber 永久移除「${store.storeName ?? store.storeId}」的 Integration 吗？这是永久解除操作；Uber 之后可能不再在 Store Discovery 返回该门店，恢复通常需要重新走 onboarding，Test Store 还可能需要 Uber Support 重新 whitelist。仅在确实要永久解除集成时继续。`)) return;
     void runAction(`integration-remove-${store.storeId}`, () => uberApiFetch(integrationPath(store.storeId), { method: 'DELETE' }).then((result) => {
@@ -63,7 +71,7 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
     const provisionedStores = stores.filter((store) => store.isProvisioned);
     if (!provisionedStores.length) return setActionError('当前没有已 provision 的 Uber 门店');
     void runAction('store-status-sync', async () => {
-      await uberApiFetch('/integrations/ubereats/oauth/store/status/sync', { method: 'POST' });
+      await uberApiFetch('/integrations/ubereats/store/status/sync', { method: 'POST' });
       const entries = await Promise.all(
         provisionedStores.map(async (store) => [
           store.storeId,
@@ -142,10 +150,18 @@ export function AuthPanel({ connectUrl, connection, stores, retry, actionLoading
                               onClick={() => {
                                 void runAction(`provision-${s.storeId}`, () => uberApiFetch('/integrations/ubereats/oauth/provision', {
                                   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: s.storeId, payload: {} }),
-                                }), `已提交 ${s.storeId} 的 Activate`);
+                                }), `已提交 ${s.storeId} 的 Initial Provision`);
                               }}
                             >
-                              {actionLoading[`provision-${s.storeId}`] ? '提交中...' : 'Activate'}
+                              {actionLoading[`provision-${s.storeId}`] ? '提交中...' : 'Initial Provision'}
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border px-2 py-1 text-xs disabled:opacity-40"
+                              disabled={!s.isMapped || !s.posExternalStoreId || actionLoading[`integration-activate-${s.storeId}`]}
+                              onClick={() => activateIntegration(s)}
+                            >
+                              {actionLoading[`integration-activate-${s.storeId}`] ? '激活中...' : 'Activate / Re-enable (PATCH)'}
                             </button>
                             <button type="button" className="rounded border px-2 py-1 text-xs disabled:opacity-40" disabled={!s.isProvisioned || actionLoading[`integration-get-${s.storeId}`]} onClick={() => readIntegration(s)}>{actionLoading[`integration-get-${s.storeId}`] ? '读取中...' : '读取 Config'}</button>
                             <button type="button" className="rounded border px-2 py-1 text-xs disabled:opacity-40" disabled={!s.isProvisioned || !s.posExternalStoreId || actionLoading[`integration-update-${s.storeId}`]} onClick={() => updateIntegration(s)}>{actionLoading[`integration-update-${s.storeId}`] ? '同步中...' : '同步 Config'}</button>
