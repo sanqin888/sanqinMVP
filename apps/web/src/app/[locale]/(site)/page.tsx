@@ -327,6 +327,7 @@ export default function LocalOrderPage() {
   const [activeCategoryStableId, setActiveCategoryStableId] = useState<
     string | null
   >(null);
+  const [hasReachedFullMenu, setHasReachedFullMenu] = useState(false);
 
   useEffect(() => {
     if (displayedMenu.length === 0) {
@@ -388,6 +389,35 @@ export default function LocalOrderPage() {
       behavior: "smooth",
     });
   }, [activeCategoryStableId]);
+
+  useEffect(() => {
+    if (displayedMenu.length === 0) {
+      setHasReachedFullMenu(false);
+      return;
+    }
+
+    const syncCartCtaVisibility = () => {
+      const menuSection = document.getElementById("menu");
+      if (!menuSection) {
+        setHasReachedFullMenu(false);
+        return;
+      }
+
+      const triggerLine = Math.max(0, window.innerHeight - 96);
+      const reached = menuSection.getBoundingClientRect().top <= triggerLine;
+      setHasReachedFullMenu((current) =>
+        current === reached ? current : reached,
+      );
+    };
+
+    syncCartCtaVisibility();
+    window.addEventListener("scroll", syncCartCtaVisibility, { passive: true });
+    window.addEventListener("resize", syncCartCtaVisibility);
+    return () => {
+      window.removeEventListener("scroll", syncCartCtaVisibility);
+      window.removeEventListener("resize", syncCartCtaVisibility);
+    };
+  }, [displayedMenu.length]);
 
   // Map: ID -> Item
   const menuItemMap = useMemo(
@@ -1579,7 +1609,7 @@ export default function LocalOrderPage() {
         <button
           type="button"
           onClick={() => openCartPreview("sticky")}
-          className="fixed inset-x-3 bottom-3 z-50 flex h-16 items-center justify-between rounded-2xl bg-[#87362E] px-4 text-white shadow-[0_18px_50px_-18px_rgba(76,27,22,0.8)] transition hover:bg-[#6f2c26] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-14 sm:min-w-52 sm:rounded-full sm:px-5"
+          className={`fixed inset-x-3 bottom-3 z-50 h-16 items-center justify-between rounded-2xl bg-[#87362E] px-4 text-white shadow-[0_18px_50px_-18px_rgba(76,27,22,0.8)] transition hover:bg-[#6f2c26] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:flex sm:h-14 sm:min-w-52 sm:rounded-full sm:px-5 ${hasReachedFullMenu ? "flex" : "hidden"}`}
         >
           <span className="flex items-center gap-3">
             <span className="grid h-9 min-w-9 place-items-center rounded-full bg-white px-2 text-sm font-black text-[#87362E]">{totalQuantity}</span>
