@@ -130,6 +130,15 @@ export class HandleUberFinancialReportSuccessUseCase {
     if (eventType !== 'eats.report.success' || !workflowId) {
       throw new Error('Invalid Uber report success webhook');
     }
+    const existing = await this.reports.findByWorkflowId(workflowId);
+    if (
+      existing &&
+      (existing.status === 'READY' || existing.status === 'IMPORTED') &&
+      existing.artifactUrls.length > 0
+    ) {
+      return;
+    }
+
     const metadata = this.object(root?.report_metadata);
     const rawSections = Array.isArray(metadata?.sections) ? metadata.sections : [];
     const sections = rawSections

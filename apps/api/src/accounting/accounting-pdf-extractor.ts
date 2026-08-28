@@ -66,6 +66,18 @@ function extractTextOperators(content: string): string[] {
   return parts;
 }
 
+function replacePdfControlChars(value: string): string {
+  let normalized = '';
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    normalized +=
+      code <= 0x08 || code === 0x0b || code === 0x0c || (code >= 0x0e && code <= 0x1f)
+        ? ' '
+        : char;
+  }
+  return normalized;
+}
+
 export function extractPdfText(buffer: Buffer): string {
   if (buffer.length < 5 || buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
     return '';
@@ -88,11 +100,7 @@ export function extractPdfText(buffer: Buffer): string {
     }
   }
 
-  return parts
-    .join(' ')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return replacePdfControlChars(parts.join(' ')).replace(/\s+/g, ' ').trim();
 }
 
 function moneyAfterLabel(text: string, labels: RegExp[]): number | null {

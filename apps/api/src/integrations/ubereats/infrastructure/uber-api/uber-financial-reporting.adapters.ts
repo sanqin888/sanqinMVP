@@ -81,6 +81,15 @@ export class UberFinancialReportPrismaRepository
     return row ? this.present(row) : null;
   }
 
+  async findByWorkflowId(
+    workflowId: string,
+  ): Promise<UberFinancialReportRecord | null> {
+    const row = await this.prisma.uberFinancialReport.findUnique({
+      where: { workflowId },
+    });
+    return row ? this.present(row) : null;
+  }
+
   async saveRequested(input: {
     workflowId: string;
     reportType: UberEatsFinancialReportType;

@@ -420,9 +420,17 @@ export class AccountingOperationsService {
       seen.add(cursor);
       const row = await this.prisma.accountingCategory.findUnique({
         where: { categoryStableId: cursor },
-        select: { parent: { select: { categoryStableId: true } } },
+        select: { parentId: true },
       });
-      cursor = row?.parent?.categoryStableId ?? null;
+      if (!row?.parentId) {
+        cursor = null;
+        continue;
+      }
+      const parent = await this.prisma.accountingCategory.findUnique({
+        where: { id: row.parentId },
+        select: { categoryStableId: true },
+      });
+      cursor = parent?.categoryStableId ?? null;
     }
     return false;
   }

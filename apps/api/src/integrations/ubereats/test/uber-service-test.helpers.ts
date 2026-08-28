@@ -39,6 +39,7 @@ export function createReceiveUberWebhookUseCase(
   const reports = new HandleUberFinancialReportSuccessUseCase(
     {
       findExisting: () => Promise.resolve(null),
+      findByWorkflowId: () => Promise.resolve(null),
       saveRequested: () => Promise.reject(new Error('not used')),
       markReady: () => Promise.reject(new Error('not used')),
       markError: () => Promise.resolve(),

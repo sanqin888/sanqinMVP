@@ -47,8 +47,8 @@ export class AccountingGmailIngestService {
   isConfigured(): boolean {
     return Boolean(
       process.env.ACCOUNTING_GMAIL_CLIENT_ID?.trim() &&
-        process.env.ACCOUNTING_GMAIL_CLIENT_SECRET?.trim() &&
-        process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN?.trim(),
+      process.env.ACCOUNTING_GMAIL_CLIENT_SECRET?.trim() &&
+      process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN?.trim(),
     );
   }
 
@@ -70,7 +70,8 @@ export class AccountingGmailIngestService {
     }
 
     const token = await this.getAccessToken();
-    const mailbox = process.env.ACCOUNTING_GMAIL_ADDRESS?.trim() || 'bills@sanq.ca';
+    const mailbox =
+      process.env.ACCOUNTING_GMAIL_ADDRESS?.trim() || 'bills@sanq.ca';
     const query = `to:${mailbox} has:attachment filename:pdf newer_than:30d -in:trash -in:spam`;
     const messageIds = await this.listMessageIds(token, query);
     let importedDocuments = 0;
@@ -111,7 +112,8 @@ export class AccountingGmailIngestService {
       const filename = part.filename?.trim() ?? '';
       return (
         part.body?.attachmentId &&
-        (part.mimeType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf'))
+        (part.mimeType === 'application/pdf' ||
+          filename.toLowerCase().endsWith('.pdf'))
       );
     });
     let imported = 0;
@@ -121,10 +123,14 @@ export class AccountingGmailIngestService {
     for (const part of pdfParts) {
       const attachmentId = part.body?.attachmentId;
       if (!attachmentId) continue;
-      const existingAttachment = await this.prisma.accountingExpenseDocument.findFirst({
-        where: { gmailMessageId: messageId, gmailAttachmentId: attachmentId },
-        select: { documentStableId: true },
-      });
+      const existingAttachment =
+        await this.prisma.accountingExpenseDocument.findFirst({
+          where: {
+            gmailMessageId: messageId,
+            gmailAttachmentId: attachmentId,
+          },
+          select: { documentStableId: true },
+        });
       if (existingAttachment) {
         duplicates += 1;
         continue;
@@ -148,10 +154,11 @@ export class AccountingGmailIngestService {
           continue;
         }
         const fileHash = createHash('sha256').update(buffer).digest('hex');
-        const duplicateHash = await this.prisma.accountingExpenseDocument.findUnique({
-          where: { fileHash },
-          select: { documentStableId: true },
-        });
+        const duplicateHash =
+          await this.prisma.accountingExpenseDocument.findUnique({
+            where: { fileHash },
+            select: { documentStableId: true },
+          });
         if (duplicateHash) {
           duplicates += 1;
           continue;
@@ -164,7 +171,9 @@ export class AccountingGmailIngestService {
             documentStableId: `expense_${createId()}`,
             source: AccountingDocumentSource.GMAIL,
             status: AccountingDocumentStatus.PENDING_REVIEW,
-            occurredAt: extraction.date ? new Date(`${extraction.date}T12:00:00Z`) : null,
+            occurredAt: extraction.date
+              ? new Date(`${extraction.date}T12:00:00Z`)
+              : null,
             subtotalCents: extraction.subtotalCents,
             taxCents: extraction.taxCents,
             totalCents: extraction.totalCents,
@@ -212,7 +221,9 @@ export class AccountingGmailIngestService {
         body,
       },
     );
-    const payload = (await response.json().catch(() => null)) as GoogleTokenResponse | null;
+    const payload = (await response
+      .json()
+      .catch(() => null)) as GoogleTokenResponse | null;
     if (!response.ok || !payload?.access_token) {
       throw new Error(
         `Gmail OAuth refresh failed (${response.status}): ${payload?.error_description ?? payload?.error ?? 'unknown error'}`,
@@ -239,10 +250,16 @@ export class AccountingGmailIngestService {
     return result.slice(0, 500);
   }
 
-  private async gmailJson<T>(accessToken: string, pathName: string): Promise<T> {
-    const response = await this.fetchWithTimeout(`https://gmail.googleapis.com${pathName}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+  private async gmailJson<T>(
+    accessToken: string,
+    pathName: string,
+  ): Promise<T> {
+    const response = await this.fetchWithTimeout(
+      `https://gmail.googleapis.com${pathName}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
       throw new Error(`Gmail API ${response.status}: ${detail.slice(0, 500)}`);
@@ -258,19 +275,25 @@ export class AccountingGmailIngestService {
       .replace(/[^a-zA-Z0-9_-]+/g, '-')
       .slice(0, 48);
     const fileName = `${Date.now()}-${createId()}-${safeBase || 'bill'}.pdf`;
-    await fs.promises.writeFile(path.join(dir, fileName), buffer, { flag: 'wx' });
+    await fs.promises.writeFile(path.join(dir, fileName), buffer, {
+      flag: 'wx',
+    });
     return `/api/v1/accounting/files/bills/${fileName}`;
   }
 
   private flattenParts(part?: GmailPart): GmailPart[] {
     if (!part) return [];
-    return [part, ...(part.parts ?? []).flatMap((child) => this.flattenParts(child))];
+    return [
+      part,
+      ...(part.parts ?? []).flatMap((child) => this.flattenParts(child)),
+    ];
   }
 
   private header(headers: GmailHeader[] | undefined, name: string) {
     return (
-      headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value ??
-      null
+      headers?.find(
+        (header) => header.name?.toLowerCase() === name.toLowerCase(),
+      )?.value ?? null
     );
   }
 

@@ -47,6 +47,7 @@ export interface UberFinancialReportRepositoryPort {
     startDate: string;
     endDate: string;
   }): Promise<UberFinancialReportRecord | null>;
+  findByWorkflowId(workflowId: string): Promise<UberFinancialReportRecord | null>;
   saveRequested(input: {
     workflowId: string;
     reportType: UberEatsFinancialReportType;
