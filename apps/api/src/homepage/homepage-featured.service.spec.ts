@@ -37,13 +37,15 @@ describe('HomepageFeaturedService', () => {
   it('reserves fixed positions and fills automatic positions from eligible sales ranking', async () => {
     const prisma = {
       menuItem: {
-        findMany: jest.fn().mockResolvedValue([
-          menuItem('top-food'),
-          menuItem('drink', { itemKind: 'BEVERAGE' }),
-          menuItem('no-image', { imageUrl: null }),
-          menuItem('second-food'),
-          menuItem('third-food'),
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            menuItem('top-food'),
+            menuItem('drink', { itemKind: 'BEVERAGE' }),
+            menuItem('no-image', { imageUrl: null }),
+            menuItem('second-food'),
+            menuItem('third-food'),
+          ]),
       },
     } as unknown as PrismaService;
     const reportsService = {
@@ -85,12 +87,14 @@ describe('HomepageFeaturedService', () => {
   it('automatically labels only the top eligible food as 周销量第一', async () => {
     const prisma = {
       menuItem: {
-        findMany: jest.fn().mockResolvedValue([
-          menuItem('drink', { itemKind: 'BEVERAGE' }),
-          menuItem('food-1'),
-          menuItem('food-2'),
-          menuItem('food-3'),
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            menuItem('drink', { itemKind: 'BEVERAGE' }),
+            menuItem('food-1'),
+            menuItem('food-2'),
+            menuItem('food-3'),
+          ]),
       },
     } as unknown as PrismaService;
     const reportsService = {

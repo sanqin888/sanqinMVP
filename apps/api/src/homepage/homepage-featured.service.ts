@@ -91,10 +91,7 @@ export class HomepageFeaturedService {
       .map((slot) => slot.itemStableId)
       .filter((value): value is string => Boolean(value));
     const candidateStableIds = Array.from(
-      new Set([
-        ...manualStableIds,
-        ...ranking.map((item) => item.stableId),
-      ]),
+      new Set([...manualStableIds, ...ranking.map((item) => item.stableId)]),
     );
     const menuItems = await this.loadMenuItems(candidateStableIds);
     const itemByStableId = new Map(

@@ -187,9 +187,7 @@ export class HomepageContentService {
       }
 
       const itemStableId =
-        typeof slot.itemStableId === 'string'
-          ? slot.itemStableId.trim()
-          : null;
+        typeof slot.itemStableId === 'string' ? slot.itemStableId.trim() : null;
       if (itemStableId && itemStableId.length > 200) {
         throw new BadRequestException(
           `featured slot ${index + 1} itemStableId is too long`,

@@ -104,7 +104,9 @@ export class ReportsService {
       );
     }
 
-    return Array.from(aggregate.values()).sort((a, b) => b.quantity - a.quantity);
+    return Array.from(aggregate.values()).sort(
+      (a, b) => b.quantity - a.quantity,
+    );
   }
 
   private extractChoiceStableIds(
@@ -283,7 +285,10 @@ export class ReportsService {
 
     // 8. 统计畅销单品 Top 10
     // 复用同一套 stableId 聚合逻辑：首页近 7 天推荐也使用该口径。
-    const topItems = (await this.getTopItemsForRange(startDate, endDate)).slice(0, 10);
+    const topItems = (await this.getTopItemsForRange(startDate, endDate)).slice(
+      0,
+      10,
+    );
 
     // 9. 计算最终结果
     const totalCents = aggregations._sum.totalCents ?? 0;
