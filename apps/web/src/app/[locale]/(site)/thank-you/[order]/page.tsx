@@ -35,7 +35,7 @@ export default async function ThankYouPage({ params }: PageProps) {
     "https://www.google.com/maps/dir/?api=1&destination=43.76037647252751,-79.41244863168872";
 
   return (
-    <main className="mx-auto max-w-3xl p-6 sm:p-10">
+    <main className="mx-auto max-w-3xl bg-[#fffdfa] p-6 sm:p-10">
       {/* 支付成功页挂载时清空购物车（localStorage） */}
       <ClearCartOnMount />
 
@@ -49,7 +49,7 @@ export default async function ThankYouPage({ params }: PageProps) {
         </a>
       </div>
 
-      <div className="rounded-3xl bg-slate-50 p-6 sm:p-10 shadow-sm">
+      <div className="rounded-3xl border border-[#87362E]/10 bg-[#f8eee5] p-6 shadow-sm sm:p-10">
         <h1 className="text-2xl sm:text-3xl font-semibold text-center mb-3">
           {t.title}
         </h1>
@@ -85,7 +85,7 @@ export default async function ThankYouPage({ params }: PageProps) {
               href={mapNavigateUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center justify-center rounded-xl border border-slate-900 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-900 hover:text-white"
+              className="inline-flex items-center justify-center rounded-xl border border-[#87362E] px-4 py-2 text-sm font-semibold text-[#87362E] transition hover:bg-[#87362E] hover:text-white"
             >
               {t.mapCta}
             </a>
@@ -96,7 +96,7 @@ export default async function ThankYouPage({ params }: PageProps) {
           <p className="text-sm text-slate-600">{t.contact}</p>
           <a
             href={`/${locale}`}
-            className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+            className="inline-flex items-center justify-center rounded-xl bg-[#87362E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#6f2c26]"
           >
             {t.backCta}
           </a>

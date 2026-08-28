@@ -73,21 +73,11 @@ export default function LocaleSwitcher({
     <button
       type="button"
       onClick={() => switchLocale(other)}
-      className="inline-flex h-10 items-center justify-center rounded-full border border-[#87362E]/20 bg-white px-3 text-xs font-semibold text-[#87362E] transition hover:border-[#87362E]/40 hover:bg-[#fff3ea] sm:text-sm"
-      aria-label={locale === "zh" ? "切换语言" : "Switch language"}
+      className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#87362E]/20 bg-white text-xs font-extrabold text-[#87362E] transition hover:border-[#87362E]/40 hover:bg-[#fff3ea]"
+      aria-label={locale === "zh" ? "切换到英文" : "Switch to Chinese"}
+      title={locale === "zh" ? "英文" : "Chinese"}
     >
-      <svg
-        viewBox="0 0 24 24"
-        className="mr-1.5 h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
-      </svg>
-      {locale === "zh" ? "语言" : "Language"}
+      {locale === "zh" ? "en" : "中"}
     </button>
   );
 }
