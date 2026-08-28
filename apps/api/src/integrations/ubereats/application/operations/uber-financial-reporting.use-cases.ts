@@ -35,7 +35,12 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
     const reportTypes = input.reportTypes?.length
       ? Array.from(new Set(input.reportTypes))
       : DEFAULT_REPORT_TYPES;
-    const results = [];
+    const results: Array<{
+      reportStableId: string;
+      workflowId: string;
+      reportType: UberEatsFinancialReportType;
+      status: UberFinancialReportStatus;
+    }> = [];
     for (const reportType of reportTypes) {
       const existing = await this.reports.findExisting({
         reportType,
