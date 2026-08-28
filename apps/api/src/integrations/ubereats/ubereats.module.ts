@@ -28,6 +28,7 @@ import {
   UBER_EATS_MENU_AVAILABILITY,
   UBER_EATS_ORDER_ACTIONS,
   UBER_EATS_ORDER_STATUS_SYNC,
+  UBER_EATS_REPORTING,
   UBER_EATS_STORE_STATUS_SYNC,
 } from './public-api';
 
@@ -100,6 +101,7 @@ export function createUberEatsWorkerRuntimeModule(
     UBER_EATS_MENU_AVAILABILITY,
     UBER_EATS_ORDER_ACTIONS,
     UBER_EATS_ORDER_STATUS_SYNC,
+    UBER_EATS_REPORTING,
     UBER_EATS_STORE_STATUS_SYNC,
     ClaimAndProcessUberWebhookInboxUseCase,
     ClaimAndExecuteUberOrderActionsUseCase,

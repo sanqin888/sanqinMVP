@@ -61,18 +61,24 @@ export default async function AccountingLayout({
   }
 
 
+  const isZh = safeLocale === 'zh';
   const nav = [
-    { href: `/${safeLocale}/accounting/dashboard`, label: '财务看板' },
-    { href: `/${safeLocale}/accounting/transactions`, label: '流水管理' },
-    { href: `/${safeLocale}/accounting/reports`, label: 'P&L 报表' },
-    { href: `/${safeLocale}/accounting/audit-logs`, label: '审计日志' },
+    { href: `/${safeLocale}/accounting/dashboard`, label: isZh ? '财务首页' : 'Dashboard' },
+    { href: `/${safeLocale}/accounting/inbox`, label: isZh ? '财务收件箱' : 'Inbox' },
+    { href: `/${safeLocale}/accounting/expenses`, label: isZh ? '支出' : 'Expenses' },
+    { href: `/${safeLocale}/accounting/sales`, label: isZh ? '销售' : 'Sales' },
+    { href: `/${safeLocale}/accounting/reconciliation`, label: isZh ? '对账' : 'Reconciliation' },
+    { href: `/${safeLocale}/accounting/reports`, label: isZh ? '报表' : 'Reports' },
+    { href: `/${safeLocale}/accounting/settings`, label: isZh ? '设置与月结' : 'Settings & close' },
   ];
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto flex max-w-7xl gap-6 px-6 py-6">
         <aside className="w-52 shrink-0 rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-lg font-semibold">财务系统</h2>
+          <h2 className="mb-3 text-lg font-semibold">
+            {isZh ? '财务系统' : 'Accounting'}
+          </h2>
           <div className="flex flex-col gap-2 text-sm">
             {nav.map((item) => (
               <Link key={item.href} href={item.href} className="rounded-md px-2 py-1 hover:bg-slate-100">

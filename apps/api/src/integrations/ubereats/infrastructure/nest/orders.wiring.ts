@@ -9,6 +9,7 @@ import {
 import type { Provider } from '@nestjs/common';
 import { ReceiveUberWebhookUseCase } from '../../application/orders/uber-webhook-receiver.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../../application/orders/process-uber-webhook-inbox.use-case';
+import { HandleUberFinancialReportSuccessUseCase } from '../../application/operations/uber-financial-reporting.use-cases';
 import { ReplayUnsupportedUberWebhooksUseCase } from '../../application/orders/replay-unsupported-uber-webhooks.use-case';
 import { UberOrderActionService } from '../../application/orders/uber-order-action.service';
 import { UberOrderStatusSyncService } from '../../application/orders/uber-order-status-sync.service';
@@ -107,14 +108,22 @@ export function createOrdersWiring(): Provider[] {
         UBER_WEBHOOK_SIGNATURE_VERIFIER,
         UBER_TELEMETRY_PORT,
         UBER_WORKER_WAKE_PORT,
+        HandleUberFinancialReportSuccessUseCase,
       ],
       useFactory: (
         inbox: UberWebhookInboxPort,
         signatures: UberWebhookSignatureVerifier,
         telemetry: UberTelemetryPort,
         workerWake: UberWorkerWakePort,
+        reports: HandleUberFinancialReportSuccessUseCase,
       ) =>
-        new ReceiveUberWebhookUseCase(inbox, signatures, telemetry, workerWake),
+        new ReceiveUberWebhookUseCase(
+          inbox,
+          signatures,
+          telemetry,
+          workerWake,
+          reports,
+        ),
     },
     {
       provide: ReplayUnsupportedUberWebhooksUseCase,

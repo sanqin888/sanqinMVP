@@ -17,6 +17,7 @@ import {
   type UberWebhookInboxPort,
   type UberWebhookSignatureVerifier,
 } from './uber-order-processing.ports';
+import { HandleUberFinancialReportSuccessUseCase } from '../operations/uber-financial-reporting.use-cases';
 
 /** Signature verification, contract parsing and one atomic inbox insert. */
 export class ReceiveUberWebhookUseCase {
@@ -25,6 +26,7 @@ export class ReceiveUberWebhookUseCase {
     private readonly signatures: UberWebhookSignatureVerifier,
     private readonly telemetry: UberTelemetryPort,
     private readonly workerWake: UberWorkerWakePort,
+    private readonly reports?: HandleUberFinancialReportSuccessUseCase,
   ) {}
 
   async execute(input: UberWebhookInput): Promise<void> {
@@ -64,13 +66,26 @@ export class ReceiveUberWebhookUseCase {
       fallback,
     );
     const normalized = normalizeUberEventType(parsed.envelope.eventType);
+    if (normalized === 'eats.report.success') {
+      if (!this.reports) {
+        throw new UberTransientUpstreamError({
+          code: 'UBER_REPORT_HANDLER_UNAVAILABLE',
+          message: 'Uber report handler is unavailable',
+          operation: 'reporting.webhook',
+        });
+      }
+      await this.reports.execute(parsed.payload);
+      return;
+    }
     const prefix = normalized.startsWith('orders.')
       ? 'order'
       : normalized.startsWith('menus.')
         ? 'menu'
         : normalized.startsWith('store.')
           ? 'store'
-          : 'event';
+          : normalized.startsWith('eats.report.')
+            ? 'report'
+            : 'event';
     let inserted: boolean;
     try {
       inserted = await this.inbox.enqueue({

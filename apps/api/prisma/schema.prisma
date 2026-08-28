@@ -183,9 +183,28 @@ enum AccountingSourceType {
   OTHER
 }
 
+enum AccountingDocumentSource {
+  MANUAL
+  GMAIL
+}
+
+enum AccountingDocumentStatus {
+  PENDING_REVIEW
+  CONFIRMED
+  DUPLICATE
+  ERROR
+}
+
 enum SettlementPlatform {
   UBER_EATS
   FANTUAN
+}
+
+enum UberFinancialReportStatus {
+  REQUESTED
+  READY
+  IMPORTED
+  ERROR
 }
 
 enum UserLanguage {
@@ -1458,17 +1477,18 @@ model MenuItemOptionGroup {
 }
 
 model AccountingCategory {
-  id           String                  @id @default(uuid()) @db.Uuid
-  name         String
-  type         AccountingTxType
-  parentId     String?                 @db.Uuid
-  isActive     Boolean                 @default(true)
-  sortOrder    Int                     @default(0)
-  createdAt    DateTime                @default(now())
-  updatedAt    DateTime                @updatedAt
-  parent       AccountingCategory?     @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children     AccountingCategory[]    @relation("AccountingCategoryTree")
-  transactions AccountingTransaction[]
+  id               String                  @id @default(uuid()) @db.Uuid
+  categoryStableId String                  @unique @default(cuid())
+  name             String
+  type             AccountingTxType
+  parentId         String?                 @db.Uuid
+  isActive         Boolean                 @default(true)
+  sortOrder        Int                     @default(0)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  parent           AccountingCategory?     @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children         AccountingCategory[]    @relation("AccountingCategoryTree")
+  transactions     AccountingTransaction[]
 
   @@unique([name, type])
   @@index([parentId])
@@ -1484,46 +1504,84 @@ model AccountingAccount {
   isActive         Boolean                @default(true)
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
-  outgoingTx      AccountingTransaction[] @relation("AccountingTxAccount")
-  incomingTx      AccountingTransaction[] @relation("AccountingTxToAccount")
+  outgoingTx       AccountingTransaction[]   @relation("AccountingTxAccount")
+  incomingTx       AccountingTransaction[]   @relation("AccountingTxToAccount")
+  expenseDocuments AccountingExpenseDocument[]
 
   @@unique([name, type])
   @@index([type, isActive])
 }
 
 model AccountingTransaction {
-  id              String               @id @default(uuid()) @db.Uuid
-  txStableId      String               @unique @default(cuid())
+  id              String                     @id @default(uuid()) @db.Uuid
+  txStableId      String                     @unique @default(cuid())
   type            AccountingTxType
   source          AccountingSourceType
   amountCents     Int
-  currency        String               @default("CAD")
+  taxCents        Int                        @default(0)
+  currency        String                     @default("CAD")
   occurredAt      DateTime
-  categoryId      String               @db.Uuid
-  accountId       String?              @db.Uuid
-  toAccountId     String?              @db.Uuid
+  categoryId      String                     @db.Uuid
+  accountId       String?                    @db.Uuid
+  toAccountId     String?                    @db.Uuid
+  documentId      String?                    @db.Uuid
   orderId         String?
-  idempotencyKey  String?              @unique
+  idempotencyKey  String?                    @unique
   externalRef     String?
   counterparty    String?
   memo            String?
-  attachmentUrls  String[]             @default([])
+  attachmentUrls  String[]                   @default([])
   createdByUserId String
   updatedByUserId String
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  version         Int                  @default(1)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  version         Int                        @default(1)
   deletedAt       DateTime?
-  category        AccountingCategory   @relation(fields: [categoryId], references: [id])
-  account         AccountingAccount?   @relation("AccountingTxAccount", fields: [accountId], references: [id])
-  toAccount       AccountingAccount?   @relation("AccountingTxToAccount", fields: [toAccountId], references: [id])
+  category        AccountingCategory         @relation(fields: [categoryId], references: [id])
+  account         AccountingAccount?         @relation("AccountingTxAccount", fields: [accountId], references: [id])
+  toAccount       AccountingAccount?         @relation("AccountingTxToAccount", fields: [toAccountId], references: [id])
+  document        AccountingExpenseDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([occurredAt])
   @@index([categoryId, occurredAt])
   @@index([source, occurredAt])
   @@index([accountId, occurredAt])
   @@index([toAccountId, occurredAt])
+  @@index([documentId])
   @@index([deletedAt])
+}
+
+model AccountingExpenseDocument {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  documentStableId     String                   @unique @default(cuid())
+  source               AccountingDocumentSource @default(MANUAL)
+  status               AccountingDocumentStatus @default(PENDING_REVIEW)
+  occurredAt           DateTime?
+  subtotalCents        Int?
+  taxCents             Int?
+  totalCents           Int?
+  currency             String                   @default("CAD")
+  accountId            String?                  @db.Uuid
+  gmailMessageId       String?
+  gmailAttachmentId    String?
+  fileHash             String?                  @unique
+  emailSubject         String?
+  attachmentUrls       String[]                 @default([])
+  extractedText        String?
+  extractionJson       Json?
+  memo                 String?
+  confirmedAt          DateTime?
+  confirmedByUserId    String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  account              AccountingAccount?       @relation(fields: [accountId], references: [id])
+  transactions         AccountingTransaction[]
+
+  @@unique([gmailMessageId, gmailAttachmentId])
+  @@index([status, createdAt])
+  @@index([source, createdAt])
+  @@index([occurredAt])
+  @@index([accountId])
 }
 
 model PlatformSettlementRecord {
@@ -1544,6 +1602,29 @@ model PlatformSettlementRecord {
   @@index([platform, payoutAt])
   @@index([orderId])
   @@index([importBatchId])
+}
+
+model UberFinancialReport {
+  id              String                    @id @default(uuid()) @db.Uuid
+  reportStableId  String                    @unique @default(cuid())
+  workflowId      String                    @unique
+  reportType      String
+  storeUuids      String[]                  @default([])
+  startDate       String
+  endDate         String
+  status          UberFinancialReportStatus @default(REQUESTED)
+  downloadUrls    String[]                  @default([])
+  artifactUrls    String[]                  @default([])
+  rawMetadata     Json?
+  requestedAt     DateTime                  @default(now())
+  completedAt     DateTime?
+  importedAt      DateTime?
+  errorMessage    String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@index([reportType, requestedAt])
+  @@index([status, requestedAt])
 }
 
 model AccountingAuditLog {
@@ -1571,6 +1652,17 @@ model AccountingPeriodClose {
 
   @@unique([periodType, periodKey])
   @@index([periodType, closedAt])
+}
+
+model AccountingAutomationConfig {
+  id                   Int      @id @default(1)
+  timezone             String   @default("America/Toronto")
+  runHour              Int      @default(2)
+  runMinute            Int      @default(15)
+  gmailEnabled         Boolean  @default(true)
+  uberReportsEnabled   Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model AnalyticsEvent {

@@ -1,97 +1,135 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 
-type Tx = {
-  txStableId: string;
-  type: 'INCOME' | 'EXPENSE' | 'ADJUSTMENT';
-  source: string;
-  amountCents: number;
-  occurredAt: string;
-  memo?: string | null;
-};
-
-type Pnl = {
+type Dashboard = {
+  from: string;
+  to: string;
   summary: {
     incomeCents: number;
     expenseCents: number;
     adjustmentCents: number;
     netProfitCents: number;
+    taxCents: number;
   };
+  pending: { expenseDocuments: number };
+  topExpenseCategories: Array<{
+    categoryStableId: string;
+    name: string;
+    amountCents: number;
+  }>;
+  lastClosedMonth: string | null;
 };
 
+type Slice = {
+  byChannel: Array<{ key: string; amountCents: number }>;
+  byPaymentMethod: Array<{ key: string; amountCents: number }>;
+};
+
+const money = (cents: number | null | undefined) => `$${((cents ?? 0) / 100).toFixed(2)}`;
+
 export default function AccountingDashboardPage() {
-  const [pnl, setPnl] = useState<Pnl | null>(null);
-  const [recent, setRecent] = useState<Tx[]>([]);
+  const params = useParams<{ locale: string }>();
+  const isZh = params?.locale === 'zh';
+  const locale = isZh ? 'zh' : 'en';
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [slice, setSlice] = useState<Slice | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const range = useMemo(() => {
     const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), 1)
-      .toISOString()
-      .slice(0, 10);
-    const to = now.toISOString().slice(0, 10);
-
-    void apiFetch<Pnl>(`/accounting/report/pnl?from=${from}&to=${to}&groupBy=month`).then(setPnl);
-    void apiFetch<Tx[]>(`/accounting/tx?from=${from}&to=${to}&limit=8`).then(setRecent);
+    return {
+      from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
+      to: now.toISOString().slice(0, 10),
+    };
   }, []);
 
-  const cards = useMemo(() => {
-    const summary = pnl?.summary;
-    return [
-      { label: '收入', value: summary?.incomeCents ?? 0, color: 'text-emerald-600' },
-      { label: '费用', value: summary?.expenseCents ?? 0, color: 'text-red-600' },
-      { label: '调整', value: summary?.adjustmentCents ?? 0, color: 'text-amber-600' },
-      { label: '净利润', value: summary?.netProfitCents ?? 0, color: 'text-blue-600' },
-    ];
-  }, [pnl]);
+  useEffect(() => {
+    setError(null);
+    void Promise.all([
+      apiFetch<Dashboard>(`/accounting/dashboard?from=${range.from}&to=${range.to}`),
+      apiFetch<Slice>(`/accounting/report/slice?from=${range.from}&to=${range.to}`),
+    ])
+      .then(([nextDashboard, nextSlice]) => {
+        setDashboard(nextDashboard);
+        setSlice(nextSlice);
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }, [range]);
+
+  const cards = [
+    { label: isZh ? '本月收入' : 'Income', value: dashboard?.summary.incomeCents ?? 0 },
+    { label: isZh ? '本月支出' : 'Expenses', value: dashboard?.summary.expenseCents ?? 0 },
+    { label: isZh ? '经营净额' : 'Operating net', value: dashboard?.summary.netProfitCents ?? 0 },
+    { label: isZh ? '支出 HST' : 'Expense HST', value: dashboard?.summary.taxCents ?? 0 },
+  ];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">财务看板（当月）</h1>
+      <div>
+        <h1 className="text-2xl font-bold">{isZh ? '财务首页' : 'Financial dashboard'}</h1>
+        <p className="mt-1 text-sm text-slate-500">{range.from} — {range.to}</p>
+      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {error ? <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-500">{card.label}</p>
-            <p className={`mt-2 text-2xl font-semibold ${card.color}`}>${(card.value / 100).toFixed(2)}</p>
+            <p className="mt-2 text-2xl font-semibold">{money(card.value)}</p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">最近流水</h2>
-          <Link href="./transactions" className="text-sm text-blue-600 hover:underline">
-            查看全部
-          </Link>
+      <section className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">{isZh ? '待处理' : 'Needs attention'}</h2>
+            <Link className="text-sm text-blue-600 hover:underline" href={`/${locale}/accounting/inbox`}>{isZh ? '打开收件箱' : 'Open inbox'}</Link>
+          </div>
+          <div className="mt-4 rounded-lg bg-amber-50 p-4">
+            <p className="text-sm text-slate-600">{isZh ? '账单 / PDF 待确认' : 'Bills / PDFs awaiting review'}</p>
+            <p className="mt-1 text-3xl font-semibold text-amber-700">{dashboard?.pending.expenseDocuments ?? 0}</p>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            {isZh
+              ? `最近锁账月份：${dashboard?.lastClosedMonth ?? '尚未锁账'}`
+              : `Latest closed month: ${dashboard?.lastClosedMonth ?? 'none'}`}
+          </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-slate-500">
-                <th className="px-2 py-2">时间</th>
-                <th className="px-2 py-2">类型</th>
-                <th className="px-2 py-2">来源</th>
-                <th className="px-2 py-2">金额</th>
-                <th className="px-2 py-2">备注</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recent.map((tx) => (
-                <tr key={tx.txStableId} className="border-b last:border-0">
-                  <td className="px-2 py-2">{new Date(tx.occurredAt).toLocaleDateString()}</td>
-                  <td className="px-2 py-2">{tx.type}</td>
-                  <td className="px-2 py-2">{tx.source}</td>
-                  <td className="px-2 py-2">${(tx.amountCents / 100).toFixed(2)}</td>
-                  <td className="px-2 py-2">{tx.memo ?? '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">{isZh ? '主要支出' : 'Top expenses'}</h2>
+          <div className="mt-3 space-y-2 text-sm">
+            {(dashboard?.topExpenseCategories ?? []).length ? dashboard?.topExpenseCategories.map((item) => (
+              <div key={item.categoryStableId} className="flex justify-between border-b border-slate-100 pb-2 last:border-0">
+                <span>{item.name}</span><strong>{money(item.amountCents)}</strong>
+              </div>
+            )) : <p className="text-slate-500">{isZh ? '本月暂无支出数据。' : 'No expense data this month.'}</p>}
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">{isZh ? '销售渠道' : 'Sales channels'}</h2>
+          <div className="mt-3 space-y-2 text-sm">
+            {(slice?.byChannel ?? []).map((item) => <div key={item.key} className="flex justify-between"><span>{item.key}</span><strong>{money(item.amountCents)}</strong></div>)}
+            {!slice?.byChannel?.length ? <p className="text-slate-500">{isZh ? '暂无订单数据。' : 'No order data.'}</p> : null}
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">{isZh ? '支付方式' : 'Payment methods'}</h2>
+          <div className="mt-3 space-y-2 text-sm">
+            {(slice?.byPaymentMethod ?? []).map((item) => <div key={item.key} className="flex justify-between"><span>{item.key}</span><strong>{money(item.amountCents)}</strong></div>)}
+            {!slice?.byPaymentMethod?.length ? <p className="text-slate-500">{isZh ? '暂无订单数据。' : 'No order data.'}</p> : null}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
