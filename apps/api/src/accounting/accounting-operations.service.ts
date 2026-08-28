@@ -167,7 +167,11 @@ export class AccountingOperationsService {
   ) {}
 
   async initializeDefaults() {
-    for (let rootIndex = 0; rootIndex < DEFAULT_CATEGORY_TREE.length; rootIndex += 1) {
+    for (
+      let rootIndex = 0;
+      rootIndex < DEFAULT_CATEGORY_TREE.length;
+      rootIndex += 1
+    ) {
       const root = DEFAULT_CATEGORY_TREE[rootIndex];
       const parent = await this.prisma.accountingCategory.upsert({
         where: { categoryStableId: root.stableId },
@@ -181,7 +185,11 @@ export class AccountingOperationsService {
         select: { id: true },
       });
 
-      for (let childIndex = 0; childIndex < root.children.length; childIndex += 1) {
+      for (
+        let childIndex = 0;
+        childIndex < root.children.length;
+        childIndex += 1
+      ) {
         const [categoryStableId, name] = root.children[childIndex];
         await this.prisma.accountingCategory.upsert({
           where: { categoryStableId },
@@ -198,7 +206,11 @@ export class AccountingOperationsService {
     }
 
     const accountDefaults = [
-      { accountStableId: 'account_store_cash', name: '门店现金', type: 'CASH' as const },
+      {
+        accountStableId: 'account_store_cash',
+        name: '门店现金',
+        type: 'CASH' as const,
+      },
       {
         accountStableId: 'account_clover_pending',
         name: 'Clover 待结算',
@@ -272,7 +284,9 @@ export class AccountingOperationsService {
       throw new BadRequestException('parentStableId is invalid');
     }
     if (parent && parent.type !== input.type) {
-      throw new BadRequestException('parent category type must match category type');
+      throw new BadRequestException(
+        'parent category type must match category type',
+      );
     }
     const created = await this.prisma.accountingCategory.create({
       data: {
@@ -322,7 +336,9 @@ export class AccountingOperationsService {
           throw new BadRequestException('parentStableId is invalid');
         }
         if (parent.type !== existing.type) {
-          throw new BadRequestException('parent category type must match category type');
+          throw new BadRequestException(
+            'parent category type must match category type',
+          );
         }
         const createsCycle = await this.categoryHasDescendant(
           categoryStableId,
@@ -358,7 +374,9 @@ export class AccountingOperationsService {
         select: { categoryStableId: true },
       });
       if (duplicate) {
-        throw new ConflictException('category name already exists for this type');
+        throw new ConflictException(
+          'category name already exists for this type',
+        );
       }
     }
     if (
@@ -378,7 +396,9 @@ export class AccountingOperationsService {
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(parentId !== undefined ? { parentId } : {}),
-        ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+        ...(input.sortOrder !== undefined
+          ? { sortOrder: input.sortOrder }
+          : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       },
     });
