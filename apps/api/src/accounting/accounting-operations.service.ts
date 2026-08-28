@@ -432,20 +432,30 @@ export class AccountingOperationsService {
     categoryStableId: string,
     candidateDescendantStableId: string,
   ) {
+    const rows = await this.prisma.accountingCategory.findMany({
+      select: {
+        id: true,
+        categoryStableId: true,
+        parentId: true,
+      },
+    });
+    const stableIdByDbId = new Map(
+      rows.map((row) => [row.id, row.categoryStableId]),
+    );
+    const parentByStableId = new Map<string, string | null>(
+      rows.map((row) => [
+        row.categoryStableId,
+        row.parentId ? (stableIdByDbId.get(row.parentId) ?? null) : null,
+      ]),
+    );
+
     let cursor: string | null = candidateDescendantStableId;
     const seen = new Set<string>();
     while (cursor) {
-      const currentStableId = cursor;
-      if (currentStableId === categoryStableId) return true;
-      if (seen.has(currentStableId)) return true;
-      seen.add(currentStableId);
-      const row = await this.prisma.accountingCategory.findUnique({
-        where: { categoryStableId: currentStableId },
-        select: {
-          parent: { select: { categoryStableId: true } },
-        },
-      });
-      cursor = row?.parent?.categoryStableId ?? null;
+      if (cursor === categoryStableId) return true;
+      if (seen.has(cursor)) return true;
+      seen.add(cursor);
+      cursor = parentByStableId.get(cursor) ?? null;
     }
     return false;
   }
