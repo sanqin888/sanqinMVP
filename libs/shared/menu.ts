@@ -17,6 +17,19 @@ export type SpecialPricingMode =
   | 'DISCOUNT_PERCENT';
 
 export type MenuItemVisibility = 'PUBLIC' | 'HIDDEN';
+export type MenuLabelStrategy = 'AUTO' | 'ALWAYS' | 'NEVER';
+
+export type MenuPackagingTypeDto = {
+  stableId: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export type MenuItemPackagingDto = {
+  sortOrder: number;
+  packagingType: MenuPackagingTypeDto;
+};
 
 export type ActiveSpecialDto = {
   stableId: string;
@@ -91,6 +104,11 @@ export type MenuOptionGroupBindingDto = {
   options?: OptionChoiceDto[];
 };
 
+export type AdminMenuOptionGroupBindingDto = MenuOptionGroupBindingDto & {
+  /** Empty means the option group affects every packaging used by the item. */
+  affectedPackagingTypeStableIds: string[];
+};
+
 export type MenuOptionGroupWithOptionsDto = MenuOptionGroupBindingDto & {
   options: OptionChoiceDto[];
 };
@@ -112,7 +130,9 @@ export type MenuItemDtoBase = LocalizedName &
 
 export type MenuItemWithBindingsDto = MenuItemDtoBase & {
   publishToUberEats: boolean;
-  optionGroups: MenuOptionGroupBindingDto[];
+  labelStrategy: MenuLabelStrategy;
+  packagings: MenuItemPackagingDto[];
+  optionGroups: AdminMenuOptionGroupBindingDto[];
 };
 
 export type MenuItemWithOptionsDto = MenuItemDtoBase & {
@@ -137,6 +157,7 @@ export type AdminMenuFullResponse = {
   categories: AdminMenuCategoryDto[];
   templatesLite: TemplateGroupLiteDto[];
   dailySpecials: DailySpecialDto[];
+  packagingTypes: MenuPackagingTypeDto[];
 };
 
 export type PublicMenuResponse = {

@@ -21,6 +21,7 @@ import { PrintPosPayloadService } from './print-pos-payload.service';
 import { OrderIngestionService } from './order-ingestion.service';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
+import { OrderLabelPlanService } from './order-label-plan.service';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { OrderSchedulingQueryService } from './order-scheduling-query.service';
     OrderPreparationService,
     OrderSchedulingQueryService,
     PrintPosPayloadService,
+    OrderLabelPlanService,
     NotificationProcessor,
     FulfillmentProcessor,
     OrderLifecycleOutboxProcessor,

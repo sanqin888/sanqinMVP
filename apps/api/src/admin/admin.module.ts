@@ -19,6 +19,8 @@ import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
 import { EmailModule } from '../email/email.module';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
+import { HomepageContentModule } from '../homepage/homepage-content.module';
+import { AdminHomepageController } from './homepage/admin-homepage.controller';
 
 @Module({
   imports: [
@@ -33,11 +35,13 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
     AdminPosDevicesModule,
     EmailModule,
     UberEatsModule,
+    HomepageContentModule,
   ],
   controllers: [
     AdminBusinessController,
     AdminImageUploadController,
     AdminStaffController,
+    AdminHomepageController,
   ],
   providers: [
     PrismaService,

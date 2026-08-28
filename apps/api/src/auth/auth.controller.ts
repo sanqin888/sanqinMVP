@@ -526,6 +526,7 @@ export class AuthController {
         userStableId: string;
         email?: string | null;
         role?: string;
+        language?: 'ZH' | 'EN';
         twoFactorEnabledAt?: Date | null;
         twoFactorMethod?: TwoFactorMethod;
       };
@@ -550,6 +551,7 @@ export class AuthController {
       userStableId: user.userStableId,
       email: user.email,
       role: user.role,
+      language: user.language === 'EN' ? 'en' : 'zh',
       mfaVerifiedAt,
       twoFactorEnabled,
       requiresTwoFactor,

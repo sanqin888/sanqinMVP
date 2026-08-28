@@ -23,6 +23,8 @@ import type {
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
   UberOrderMenuMapping,
+  UberOrderModifierSnapshotMapping,
+  UberOrderModifierSnapshotSource,
 } from '../../application/orders/uber-order.ports';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { ParsedUberModifier } from '../../domain/orders/uber-order.types';
@@ -209,6 +211,15 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     const mapping = new Map(
       input.menuMappings.map((item) => [item.externalItemId, item]),
     );
+    const modifierSnapshotMeta = new Map<
+      string,
+      UberOrderModifierSnapshotMapping
+    >(
+      (input.modifierSnapshotMappings ?? []).map((item) => [
+        item.externalItemId,
+        item,
+      ]),
+    );
     const items: NormalizedOrderItem[] = input.order.items.map((item) => ({
       productStableId: mapping.get(item.externalItemId ?? '')!.menuItemStableId,
       quantity: item.quantity,
@@ -218,7 +229,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       baseUnitPriceCents: item.baseUnitPriceCents,
       optionsUnitPriceCents: item.optionsUnitPriceCents,
       unitPriceCents: item.unitPriceCents,
-      options: this.modifierSnapshots(item.modifiers),
+      options: this.modifierSnapshots(item.modifiers, modifierSnapshotMeta),
       external: {
         itemId: item.externalItemId,
         lineId: item.externalLineId,
@@ -432,33 +443,99 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return (status && map[status]) || OrderStatus.pending;
   }
 
+  async findModifierSnapshotSources(): Promise<
+    UberOrderModifierSnapshotSource[]
+  > {
+    const rows = await this.prisma.menuOptionTemplateChoice.findMany({
+      where: {
+        deletedAt: null,
+        templateGroup: { deletedAt: null },
+      },
+      select: {
+        stableId: true,
+        targetItemStableId: true,
+        nameEn: true,
+        nameZh: true,
+        templateGroup: {
+          select: {
+            stableId: true,
+            nameEn: true,
+            nameZh: true,
+          },
+        },
+      },
+    });
+
+    return rows.map((row) => ({
+      stableId: row.stableId,
+      templateGroupStableId: row.templateGroup.stableId,
+      targetItemStableId: row.targetItemStableId?.trim() || null,
+      nameEn: row.nameEn,
+      nameZh: row.nameZh ?? null,
+      templateNameEn: row.templateGroup.nameEn,
+      templateNameZh: row.templateGroup.nameZh ?? null,
+    }));
+  }
+
   private modifierSnapshots(
     values: ParsedUberModifier[],
+    metadata: Map<string, UberOrderModifierSnapshotMapping>,
   ): Prisma.InputJsonValue {
-    return this.flattenValues(values).map((modifier, sortOrder) => {
-      const templateGroupStableId =
-        modifier.parentExternalId ?? `uber-group:${sortOrder}`;
-      return {
-        templateGroupStableId,
-        nameEn: null,
-        nameZh: null,
-        displayName: null,
-        minSelect: 0,
-        maxSelect: null,
-        sortOrder,
-        choices: [
-          {
-            stableId: modifier.externalId ?? `uber-option:${sortOrder}`,
-            templateGroupStableId,
-            nameEn: null,
-            nameZh: null,
-            displayName: modifier.displayName,
-            priceDeltaCents: modifier.priceDeltaCents,
-            sortOrder: 0,
-          },
-        ],
-      };
-    }) as unknown as Prisma.InputJsonValue;
+    const snapshots: Array<Record<string, unknown>> = [];
+    let sortOrder = 0;
+
+    const visit = (
+      modifiers: ParsedUberModifier[],
+      targetContextOptionStableId: string | null,
+    ) => {
+      for (const modifier of modifiers) {
+        const meta = modifier.externalId
+          ? metadata.get(modifier.externalId)
+          : undefined;
+        const templateGroupStableId =
+          meta?.templateGroupStableId ??
+          modifier.parentExternalId ??
+          `uber-group:${sortOrder}`;
+        const localStableId =
+          meta?.stableId ?? modifier.externalId ?? `uber-option:${sortOrder}`;
+
+        snapshots.push({
+          templateGroupStableId,
+          groupKey: targetContextOptionStableId
+            ? `uber__option-${targetContextOptionStableId}`
+            : null,
+          nameEn: meta?.templateNameEn ?? null,
+          nameZh: meta?.templateNameZh ?? null,
+          displayName: null,
+          minSelect: 0,
+          maxSelect: null,
+          sortOrder,
+          choices: [
+            {
+              stableId: localStableId,
+              templateGroupStableId,
+              targetItemStableId: meta?.targetItemStableId ?? null,
+              nameEn: meta?.nameEn ?? null,
+              nameZh: meta?.nameZh ?? null,
+              displayName: modifier.displayName,
+              priceDeltaCents: modifier.priceDeltaCents,
+              sortOrder: 0,
+            },
+          ],
+        });
+        sortOrder += 1;
+
+        visit(
+          modifier.children,
+          meta?.targetItemStableId
+            ? localStableId
+            : targetContextOptionStableId,
+        );
+      }
+    };
+
+    visit(values, null);
+    return snapshots as unknown as Prisma.InputJsonValue;
   }
 
   private flattenValues(values: ParsedUberModifier[]): ParsedUberModifier[] {

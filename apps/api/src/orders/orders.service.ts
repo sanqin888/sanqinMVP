@@ -1982,6 +1982,7 @@ export class OrdersService {
           optionGroupSnapshots.get(snapshotKey) ??
           ({
             templateGroupStableId,
+            groupKey: selectedRef?.groupKey ?? null,
             nameEn: context.group.nameEn,
             nameZh: context.group.nameZh ?? null,
             minSelect:
@@ -2004,6 +2005,7 @@ export class OrdersService {
         groupSnapshot.choices.push({
           stableId: context.choice.stableId,
           templateGroupStableId,
+          targetItemStableId: context.choice.targetItemStableId?.trim() || null,
           nameEn: context.choice.nameEn,
           nameZh: context.choice.nameZh ?? null,
           priceDeltaCents: context.choice.priceDeltaCents,

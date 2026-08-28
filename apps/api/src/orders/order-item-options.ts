@@ -7,6 +7,8 @@ export type OrderItemOptionChoiceSnapshot = {
   stableId: string;
   /** StableId of the template group this option belongs to */
   templateGroupStableId: string;
+  /** Stable business id of a linked menu item selected by this option. */
+  targetItemStableId?: string | null;
   nameEn: string | null;
   nameZh: string | null;
   /** External title retained as an immutable order-time fallback. */
@@ -18,6 +20,7 @@ export type OrderItemOptionChoiceSnapshot = {
 
 export type OrderItemOptionGroupSnapshot = {
   templateGroupStableId: string;
+  groupKey?: string | null;
   nameEn: string | null;
   nameZh: string | null;
   /** External title retained as an immutable order-time fallback. */

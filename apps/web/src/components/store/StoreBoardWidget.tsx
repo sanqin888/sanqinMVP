@@ -161,6 +161,7 @@ const STRINGS = {
     syncingUber: "同步中…",
     reprintFront: "重打前台",
     printKitchen: "后厨小票",
+    printLabels: "重打标签",
     printPending: "待打印",
     printCompleted: "已打印",
     printFailed: "打印失败",
@@ -186,6 +187,7 @@ const STRINGS = {
     syncingUber: "Syncing…",
     reprintFront: "Reprint front",
     printKitchen: "Kitchen",
+    printLabels: "Labels",
     printPending: "Pending print",
     printCompleted: "Printed",
     printFailed: "Print failed",
@@ -1141,6 +1143,20 @@ export function StoreBoardWidget(props: { locale: Locale }) {
     [locale],
   );
 
+  const handlePrintLabels = useCallback(
+    async (orderStableId: string) => {
+      try {
+        await printOrderCloud(orderStableId, {
+          locale,
+          targets: { customer: false, kitchen: false, label: true },
+        });
+      } catch (error) {
+        console.error("Failed to print food labels via cloud:", error);
+      }
+    },
+    [locale],
+  );
+
   const fetchOrdersAndProcess = useCallback(async () => {
     const data = await apiFetch<BoardOrder[]>(query);
     const visibleOrders = data
@@ -1859,6 +1875,16 @@ export function StoreBoardWidget(props: { locale: Locale }) {
                         className="rounded-full bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs text-slate-100 transition"
                       >
                         {t.printKitchen}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handlePrintLabels(sid);
+                        }}
+                        className="rounded-full bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs text-slate-100 transition"
+                      >
+                        {t.printLabels}
                       </button>
                     </div>
                   </div>

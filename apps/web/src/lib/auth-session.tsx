@@ -15,6 +15,7 @@ export type SessionUser = {
   userStableId?: string;
   email?: string | null;
   role?: string | null;
+  language?: 'zh' | 'en';
   name?: string | null;
   mfaVerifiedAt?: string | null;
   requiresTwoFactor?: boolean;
@@ -61,6 +62,19 @@ function unwrapEnvelope<T>(payload: unknown): T | null {
   return payload as T;
 }
 
+function syncMemberLocaleCookie(session: Session): void {
+  if (typeof document === 'undefined') return;
+
+  const user = session?.user;
+  const language = user?.role === 'CUSTOMER' ? user.language : undefined;
+  if (language === 'zh' || language === 'en') {
+    document.cookie = `member_locale=${language}; path=/; max-age=${60 * 60 * 24 * 365}`;
+    return;
+  }
+
+  document.cookie = 'member_locale=; path=/; max-age=0';
+}
+
 async function fetchSession(): Promise<Session> {
   const res = await fetch('/api/v1/auth/me', {
     credentials: 'include',
@@ -88,6 +102,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setStatus('loading');
     const next = await fetchSession();
+    syncMemberLocaleCookie(next);
     setSession(next);
     setStatus(next ? 'authenticated' : 'unauthenticated');
   }, []);
@@ -126,6 +141,9 @@ export async function signOut(): Promise<void> {
     method: 'POST',
     credentials: 'include',
   });
+  if (typeof document !== 'undefined') {
+    document.cookie = 'member_locale=; path=/; max-age=0';
+  }
   notifyAuthChange();
 }
 

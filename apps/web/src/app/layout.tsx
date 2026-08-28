@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
 import "./globals.css";
 import type { Locale } from "@/lib/i18n/locales";
+import { pickSupportedLocaleFromAcceptLanguage } from "@/lib/i18n/detect-locale";
 import { AuthProvider } from "./providers";
 
 export const metadata: Metadata = {
@@ -36,8 +37,7 @@ async function detectLang(): Promise<Locale> {
   if (c === "zh" || c === "en") return c;
 
   const hdrs = await headers();
-  const accept = hdrs.get("accept-language") || "";
-  return /(?:^|[,\s])zh(?:-|;|,|\s|$)/i.test(accept) ? "zh" : "en";
+  return pickSupportedLocaleFromAcceptLanguage(hdrs.get("accept-language"));
 }
 
 export default async function RootLayout({

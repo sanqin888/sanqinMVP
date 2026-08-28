@@ -22,6 +22,7 @@ export default function AdminLayoutClient({
   const navItems = [
     { href: `/${locale}/admin`, labelZh: '总览' },
     { href: `/${locale}/admin/setting`, labelZh: '门店信息设置' },
+    { href: `/${locale}/admin/homepage`, labelZh: '首页装潢' },
     { href: `/${locale}/admin/menu`, labelZh: '菜单管理' },
     { href: optionsHref, labelZh: '选项管理' },
     { href: `/${locale}/admin/promotions`, labelZh: '营销活动' },
