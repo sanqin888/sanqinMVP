@@ -7,9 +7,7 @@ import {
   UberMenuRefreshRequestHandler,
 } from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
-import {
-  HandleUberFinancialReportSuccessUseCase,
-} from '../operations/uber-financial-reporting.use-cases';
+import { HandleUberFinancialReportSuccessUseCase } from '../operations/uber-financial-reporting.use-cases';
 import {
   type UberWebhookInboxItem,
   type UberWebhookInboxPort,

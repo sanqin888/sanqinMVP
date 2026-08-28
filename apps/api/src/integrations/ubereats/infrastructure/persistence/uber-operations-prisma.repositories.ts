@@ -306,9 +306,7 @@ export class UberOperationsPrismaUnitOfWork implements UberOperationsUnitOfWorkP
 }
 
 @Injectable()
-export class UberFinancialReportPrismaRepository
-  implements UberFinancialReportRepositoryPort
-{
+export class UberFinancialReportPrismaRepository implements UberFinancialReportRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async findExisting(input: {
