@@ -9,6 +9,7 @@ export const UBER_EATS_ORDER_STATUS_SYNC = Symbol(
 export const UBER_EATS_STORE_STATUS_SYNC = Symbol(
   'UBER_EATS_STORE_STATUS_SYNC',
 );
+export const UBER_EATS_REPORTING = Symbol('UBER_EATS_REPORTING');
 
 export type {
   UberEatsAvailabilitySyncResult,
@@ -77,4 +78,42 @@ export interface UberEatsStoreStatusSyncPort {
   syncStoreStatusToUber(
     target?: UberEatsStoreStatusTarget,
   ): Promise<UberEatsStoreStatusSyncResult>;
+}
+
+export type UberEatsFinancialReportType =
+  | 'PAYMENT_DETAILS_REPORT'
+  | 'FINANCE_SUMMARY_REPORT'
+  | 'ORDERS_AND_ITEMS_REPORT';
+
+export interface UberEatsReportingPort {
+  requestFinancialReports(input: {
+    storeUuids: string[];
+    startDate: string;
+    endDate: string;
+    reportTypes?: UberEatsFinancialReportType[];
+  }): Promise<
+    Array<{
+      reportStableId: string;
+      workflowId: string;
+      reportType: UberEatsFinancialReportType;
+      status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
+    }>
+  >;
+  listFinancialReports(input?: {
+    limit?: number;
+    status?: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
+  }): Promise<
+    Array<{
+      reportStableId: string;
+      workflowId: string;
+      reportType: string;
+      startDate: string;
+      endDate: string;
+      status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
+      artifactUrls: string[];
+      requestedAt: string;
+      completedAt: string | null;
+      errorMessage: string | null;
+    }>
+  >;
 }

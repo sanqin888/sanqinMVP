@@ -25,20 +25,28 @@ export function parseUberWebhookEnvelopeV1(
   const resourceHref = text(root?.resource_href);
   if (!eventType) return null;
   const isStoreEvent = eventType.startsWith('store.');
+  const isReportEvent = eventType === 'eats.report.success';
   const resourceId = isStoreEvent
     ? text(root?.store_id, meta?.resource_id)
-    : text(meta?.resource_id);
+    : isReportEvent
+      ? text(root?.job_id)
+      : text(meta?.resource_id);
   const userId = text(meta?.user_id);
-  if (!resourceId || (!isStoreEvent && (!resourceHref || !userId))) return null;
+  if (
+    !resourceId ||
+    (!isStoreEvent && !isReportEvent && (!resourceHref || !userId))
+  )
+    return null;
   return {
     version: 1,
     eventType,
     resourceHref,
     resourceId,
     userId,
-    eventId: isStoreEvent
-      ? text(webhookMeta?.webhook_msg_uuid, root?.event_id, root?.id)
-      : text(root?.event_id, root?.id),
+    eventId:
+      isStoreEvent || isReportEvent
+        ? text(webhookMeta?.webhook_msg_uuid, root?.event_id, root?.id)
+        : text(root?.event_id, root?.id),
   };
 }
 

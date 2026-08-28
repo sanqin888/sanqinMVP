@@ -82,10 +82,11 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 ## OAuth scope contract
 
 SanQ 将 Uber OAuth scope 按 grant type 分离维护。`UBER_EATS_APP_SCOPES` 只声明当前部署预期已获批的
-`client_credentials` 权限，不再作为业务请求漏写 scope 时的默认 token scope。当前运行时硬依赖
-`eats.store`、`eats.order`、`eats.store.status.write`；`eats.report` 与
-`eats.store.orders.read` 仅作为已知可选 app scope 保留，未被当前 endpoint 自动请求。
-每次 app API 调用必须显式指定单一 capability scope，并按该 scope 独立缓存 token。
+`client_credentials` 权限，不再作为业务请求漏写 scope 时的默认 token scope。当前订单/门店运行时硬依赖
+`eats.store`、`eats.order`、`eats.store.status.write`；`eats.store.orders.read` 仍为可选 app scope。
+财务 Reporting capability 已实现 `eats.report`：仅当部署配置明确包含该 scope 时，Accounting 夜间任务才会
+请求 Payment Details、Finance Summary、Orders & Items 三类官方报告；未获批/未配置时必须安全跳过，不能把
+Reporting scope 变成订单/门店链路的硬依赖。每次 app API 调用必须显式指定单一 capability scope，并按该 scope 独立缓存 token。
 
 Merchant provisioning 使用独立的 authorization-code scope 集合：业务 scope 为
 `eats.pos_provisioning`；Uber 已签发 credential 可能同时包含辅助 `offline_access`，刷新链路允许并验证
@@ -364,7 +365,7 @@ Structured Allergy 若 Uber 尚未给 Test Store 开通 payload，必须记录�
 - Test Client / Production Client 是否启用 order-level special instructions、item-level special instructions、structured allergens/customer requests。
 - `orders.customer_order_edit` 是否向当前普通餐厅 / `webhooks_version=1.0.0` 门店下发，以及是否属于本次 Production Verification；在确认前不得 replay 为 `orders.notification`。
 - Uber joint E2E verification、Production Client scopes/whitelist、Production webhook configuration。
-- Production 应申请/确认已实现产品需要的 `eats.store`、`eats.order`、`eats.store.status.write`；不得为未实现产品能力额外申请 `eats.report`。`offline_access` 仅作为 merchant provisioning OAuth token 辅助 scope 处理。
+- Production 应申请/确认已实现产品需要的 `eats.store`、`eats.order`、`eats.store.status.write`；Accounting Reporting 上线前还需申请/确认 `eats.report` whitelist。未获批前保持该 scope 不配置，夜间任务会安全跳过 Reporting。`offline_access` 仅作为 merchant provisioning OAuth token 辅助 scope 处理。
 
 Special Instructions 支持请求可向 Uber Tech Support 说明：SanQ 在 POST/PATCH `/v1/eats/stores/{store_id}/pos_data` 都发送两个 boolean capability flags，但 Retrieve 当前只回显 single-use items；请确认 Test Client 和 Production Client 的 special instructions / structured allergens capability 是否已启用或需要 whitelist。
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
 import {
   CartesianGrid,
   Legend,
@@ -30,9 +31,9 @@ type PnlReport = {
     isClosed: boolean;
   }>;
   byCategoryTree: Array<{
-    categoryId: string;
+    categoryStableId: string;
     categoryName: string;
-    parentId?: string | null;
+    parentStableId?: string | null;
     type: string;
     amountCents: number;
   }>;
@@ -44,159 +45,112 @@ type PnlReport = {
   };
 };
 
-const toMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+type Cashflow = {
+  operatingCents: number;
+  investingCents: number;
+  financingCents: number;
+  netCashflowCents: number;
+};
+
+type AccountBalance = Array<{
+  accountStableId: string;
+  accountName: string;
+  inflowCents: number;
+  outflowCents: number;
+  balanceChangeCents: number;
+}>;
+
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function AccountingReportsPage() {
+  const params = useParams<{ locale: string }>();
+  const isZh = params?.locale === 'zh';
+  const now = new Date();
+  const [from, setFrom] = useState(new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10));
+  const [to, setTo] = useState(now.toISOString().slice(0, 10));
   const [groupBy, setGroupBy] = useState<'month' | 'quarter' | 'year'>('month');
   const [report, setReport] = useState<PnlReport | null>(null);
-  const [monthToClose, setMonthToClose] = useState(new Date().toISOString().slice(0, 7));
-
-  const loadReport = async (nextGroupBy: 'month' | 'quarter' | 'year') => {
-    const now = new Date();
-    const from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-    const to = now.toISOString().slice(0, 10);
-    const result = await apiFetch<PnlReport>(`/accounting/report/pnl?from=${from}&to=${to}&groupBy=${nextGroupBy}`);
-    setReport(result);
-  };
+  const [cashflow, setCashflow] = useState<Cashflow | null>(null);
+  const [balances, setBalances] = useState<AccountBalance>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadReport(groupBy);
-  }, [groupBy]);
+    setError(null);
+    void Promise.all([
+      apiFetch<PnlReport>(`/accounting/report/pnl?from=${from}&to=${to}&groupBy=${groupBy}`),
+      apiFetch<Cashflow>(`/accounting/report/cashflow?from=${from}&to=${to}`),
+      apiFetch<AccountBalance>(`/accounting/report/account-balance?from=${from}&to=${to}`),
+    ])
+      .then(([nextReport, nextCashflow, nextBalances]) => {
+        setReport(nextReport);
+        setCashflow(nextCashflow);
+        setBalances(nextBalances);
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }, [from, to, groupBy]);
 
   const chartData = useMemo(
     () =>
       (report?.periods ?? []).map((item) => ({
         period: item.period,
-        收入: item.incomeCents / 100,
-        费用: item.expenseCents / 100,
-        净利润: item.netProfitCents / 100,
+        [isZh ? '收入' : 'Income']: item.incomeCents / 100,
+        [isZh ? '支出' : 'Expenses']: item.expenseCents / 100,
+        [isZh ? '净利润' : 'Net']: item.netProfitCents / 100,
       })),
-    [report],
+    [isZh, report],
   );
+
+  const exportQuery = new URLSearchParams({ from, to, groupBy }).toString();
+
+  function setPreset(preset: 'month' | 'lastMonth' | 'quarter' | 'year') {
+    const today = new Date();
+    if (preset === 'month') {
+      setFrom(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10));
+      setTo(today.toISOString().slice(0, 10));
+    } else if (preset === 'lastMonth') {
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last = new Date(today.getFullYear(), today.getMonth(), 0);
+      setFrom(first.toISOString().slice(0, 10));
+      setTo(last.toISOString().slice(0, 10));
+    } else if (preset === 'quarter') {
+      const quarterStart = Math.floor(today.getMonth() / 3) * 3;
+      setFrom(new Date(today.getFullYear(), quarterStart, 1).toISOString().slice(0, 10));
+      setTo(today.toISOString().slice(0, 10));
+    } else {
+      setFrom(new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10));
+      setTo(today.toISOString().slice(0, 10));
+    }
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">P&L 报表</h1>
-        <div className="flex gap-2">
-          <select className="rounded border px-3 py-2" value={groupBy} onChange={(e) => setGroupBy(e.target.value as 'month' | 'quarter' | 'year')}>
-            <option value="month">月报</option>
-            <option value="quarter">季报</option>
-            <option value="year">年报</option>
-          </select>
-          <a className="rounded border px-3 py-2 text-sm" href={`/api/v1/accounting/export/report.csv?template=MANAGEMENT&groupBy=${groupBy}`} target="_blank" rel="noreferrer">导出管理版 CSV</a>
-          <a className="rounded border px-3 py-2 text-sm" href={`/api/v1/accounting/export/report.csv?template=BOSS&groupBy=${groupBy}`} target="_blank" rel="noreferrer">导出老板版 CSV</a>
-          <a className="rounded border px-3 py-2 text-sm" href={`/api/v1/accounting/export/report.pdf?template=MANAGEMENT&groupBy=${groupBy}`} target="_blank" rel="noreferrer">导出管理版 PDF</a>
-          <a className="rounded border px-3 py-2 text-sm" href={`/api/v1/accounting/export/report.pdf?template=BOSS&groupBy=${groupBy}`} target="_blank" rel="noreferrer">导出老板版 PDF</a>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h1 className="text-2xl font-bold">{isZh ? '报表' : 'Reports'}</h1><p className="mt-1 text-sm text-slate-500">{isZh ? '按实际日期区间查看损益、现金流和账户变动。' : 'Use explicit date ranges for P&L, cash flow and account movement.'}</p></div>
+        <div className="flex flex-wrap gap-2">
+          <a className="rounded border bg-white px-3 py-2 text-sm" href={`/api/v1/accounting/export/report.pdf?template=MANAGEMENT&${exportQuery}`} target="_blank" rel="noreferrer">{isZh ? '管理版 PDF' : 'Management PDF'}</a>
+          <a className="rounded border bg-white px-3 py-2 text-sm" href={`/api/v1/accounting/export/report.csv?template=MANAGEMENT&${exportQuery}`} target="_blank" rel="noreferrer">CSV</a>
         </div>
       </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold">月结锁账</h2>
-        <div className="flex items-center gap-2">
-          <input type="month" className="rounded border px-3 py-2" value={monthToClose} onChange={(e) => setMonthToClose(e.target.value)} />
-          <button className="rounded bg-slate-900 px-4 py-2 text-white" onClick={async () => {
-            await apiFetch(`/accounting/period-close/month/${monthToClose}`, { method: 'POST' });
-            await loadReport(groupBy);
-            window.alert(`${monthToClose} 锁账成功`);
-          }}>执行锁账</button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="收入" cents={report?.summary.incomeCents ?? 0} />
-        <Card label="费用" cents={report?.summary.expenseCents ?? 0} />
-        <Card label="调整" cents={report?.summary.adjustmentCents ?? 0} />
-        <Card label="净利润" cents={report?.summary.netProfitCents ?? 0} />
-      </div>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        <Card label="本月净利润" cents={report?.trends.currentMonthNetCents ?? 0} />
-        <Card label="上月净利润" cents={report?.trends.lastMonthNetCents ?? 0} />
-        <Card label="季度累计净利润" cents={report?.trends.quarterToDateNetCents ?? 0} />
+      <section className="space-y-3 rounded-xl border bg-white p-4">
+        <div className="flex flex-wrap gap-2 text-sm"><button className="rounded border px-3 py-1.5" onClick={() => setPreset('month')}>{isZh ? '本月' : 'This month'}</button><button className="rounded border px-3 py-1.5" onClick={() => setPreset('lastMonth')}>{isZh ? '上月' : 'Last month'}</button><button className="rounded border px-3 py-1.5" onClick={() => setPreset('quarter')}>{isZh ? '本季度' : 'This quarter'}</button><button className="rounded border px-3 py-1.5" onClick={() => setPreset('year')}>{isZh ? '今年' : 'This year'}</button></div>
+        <div className="flex flex-wrap gap-2"><input type="date" className="rounded border px-3 py-2" value={from} onChange={(event) => setFrom(event.target.value)} /><span className="self-center text-slate-400">→</span><input type="date" className="rounded border px-3 py-2" value={to} onChange={(event) => setTo(event.target.value)} /><select className="rounded border px-3 py-2" value={groupBy} onChange={(event) => setGroupBy(event.target.value as typeof groupBy)}><option value="month">{isZh ? '按月' : 'Monthly'}</option><option value="quarter">{isZh ? '按季度' : 'Quarterly'}</option><option value="year">{isZh ? '按年' : 'Yearly'}</option></select></div>
       </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold">趋势图（复用 Recharts 风格）</h2>
-        <div className="h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="收入" stroke="#10b981" strokeWidth={2} />
-              <Line type="monotone" dataKey="费用" stroke="#ef4444" strokeWidth={2} />
-              <Line type="monotone" dataKey="净利润" stroke="#2563eb" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold">按期间汇总</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-slate-500">
-                <th className="px-2 py-2">期间</th>
-                <th className="px-2 py-2">收入</th>
-                <th className="px-2 py-2">费用</th>
-                <th className="px-2 py-2">调整</th>
-                <th className="px-2 py-2">净利润</th>
-                <th className="px-2 py-2">锁账</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(report?.periods ?? []).map((item) => (
-                <tr key={item.period} className="border-b last:border-0">
-                  <td className="px-2 py-2">{item.period}</td>
-                  <td className="px-2 py-2">{toMoney(item.incomeCents)}</td>
-                  <td className="px-2 py-2">{toMoney(item.expenseCents)}</td>
-                  <td className="px-2 py-2">{toMoney(item.adjustmentCents)}</td>
-                  <td className="px-2 py-2">{toMoney(item.netProfitCents)}</td>
-                  <td className="px-2 py-2">{item.isClosed ? '已锁' : '未锁'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
+      {error ? <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Card label={isZh ? '收入' : 'Income'} cents={report?.summary.incomeCents ?? 0} /><Card label={isZh ? '支出' : 'Expenses'} cents={report?.summary.expenseCents ?? 0} /><Card label={isZh ? '调整' : 'Adjustments'} cents={report?.summary.adjustmentCents ?? 0} /><Card label={isZh ? '净利润' : 'Net profit'} cents={report?.summary.netProfitCents ?? 0} /></div>
+      <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="mb-3 text-lg font-semibold">{isZh ? '损益趋势' : 'P&L trend'}</h2><div className="h-72 w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="period" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey={isZh ? '收入' : 'Income'} /><Line type="monotone" dataKey={isZh ? '支出' : 'Expenses'} /><Line type="monotone" dataKey={isZh ? '净利润' : 'Net'} /></LineChart></ResponsiveContainer></div></section>
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-2 font-semibold">分类树汇总（父类自动汇总子类）</h3>
-          <ul className="space-y-2 text-sm">
-            {(report?.byCategoryTree ?? []).map((item) => (
-              <li key={item.categoryId} className="flex justify-between border-b pb-1 last:border-0">
-                <span>{item.parentId ? '└ ' : ''}{item.categoryName} ({item.type})</span>
-                <span>{toMoney(item.amountCents)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-2 font-semibold">来源汇总</h3>
-          <ul className="space-y-2 text-sm">
-            {(report?.bySource ?? []).map((item) => (
-              <li key={item.source} className="flex justify-between border-b pb-1 last:border-0">
-                <span>{item.source}</span>
-                <span>{toMoney(item.amountCents)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <div className="rounded-xl border bg-white p-5"><h2 className="text-lg font-semibold">{isZh ? '现金流' : 'Cash flow'}</h2><div className="mt-3 space-y-2 text-sm"><Row label={isZh ? '经营活动' : 'Operating'} value={money(cashflow?.operatingCents ?? 0)} /><Row label={isZh ? '投资活动' : 'Investing'} value={money(cashflow?.investingCents ?? 0)} /><Row label={isZh ? '融资活动' : 'Financing'} value={money(cashflow?.financingCents ?? 0)} /><Row label={isZh ? '净现金流' : 'Net cash flow'} value={money(cashflow?.netCashflowCents ?? 0)} strong /></div></div>
+        <div className="rounded-xl border bg-white p-5"><h2 className="text-lg font-semibold">{isZh ? '账户变动' : 'Account movement'}</h2><div className="mt-3 space-y-2 text-sm">{balances.map((row) => <Row key={row.accountStableId} label={row.accountName} value={money(row.balanceChangeCents)} />)}{!balances.length ? <p className="text-slate-500">{isZh ? '暂无账户流水。' : 'No account movements.'}</p> : null}</div></div>
       </section>
+      <section className="grid gap-4 lg:grid-cols-2"><div className="rounded-xl border bg-white p-5"><h2 className="text-lg font-semibold">{isZh ? '分类汇总' : 'Category summary'}</h2><div className="mt-3 space-y-2 text-sm">{(report?.byCategoryTree ?? []).filter((row) => row.amountCents !== 0).map((row) => <Row key={row.categoryStableId} label={`${row.parentStableId ? '└ ' : ''}${row.categoryName}`} value={money(row.amountCents)} />)}</div></div><div className="rounded-xl border bg-white p-5"><h2 className="text-lg font-semibold">{isZh ? '来源汇总' : 'Source summary'}</h2><div className="mt-3 space-y-2 text-sm">{(report?.bySource ?? []).map((row) => <Row key={row.source} label={row.source} value={money(row.amountCents)} />)}</div></div></section>
     </div>
   );
 }
 
 function Card({ label, cents }: { label: string; cents: number }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{toMoney(cents)}</p>
-    </div>
-  );
+  return <div className="rounded-xl border bg-white p-4 shadow-sm"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold">{money(cents)}</p></div>;
+}
+
+function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return <div className="flex justify-between border-b border-slate-100 pb-2 last:border-0"><span>{label}</span><span className={strong ? 'font-semibold' : ''}>{value}</span></div>;
 }

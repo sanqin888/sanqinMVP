@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 
 type AuditLog = {
-  id: string;
   action: string;
   entityType: string;
   entityId: string;
@@ -50,7 +49,7 @@ export default function AccountingAuditLogsPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id} className="border-b last:border-0">
+                <tr key={`${row.entityType}:${row.entityId}:${row.createdAt}:${row.action}`} className="border-b last:border-0">
                   <td className="px-2 py-2">{new Date(row.createdAt).toLocaleString()}</td>
                   <td className="px-2 py-2">{row.action}</td>
                   <td className="px-2 py-2">{row.entityType}</td>
