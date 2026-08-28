@@ -851,7 +851,8 @@ describe('Clover Platform Payments Gateway', () => {
     }) as unknown as CloverMerchantAccessTokenService;
   const createPlatformGateway = (
     accessTokens: CloverMerchantAccessTokenService = createAccessTokens(),
-  ) => new CloverPlatformPaymentsGateway(new CloverProviderConfig(), accessTokens);
+  ) =>
+    new CloverPlatformPaymentsGateway(new CloverProviderConfig(), accessTokens);
 
   beforeEach(() => {
     setPlatformEnv('CLOVER_PLATFORM_API_BASE', 'https://platform.example.test');
