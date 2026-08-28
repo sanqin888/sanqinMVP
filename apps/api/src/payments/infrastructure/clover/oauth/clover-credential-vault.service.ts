@@ -35,15 +35,17 @@ export class CloverCredentialVaultService {
       for (const [version, encodedKey] of Object.entries(keyRing)) {
         const key = Buffer.from(encodedKey, 'base64');
         if (key.length !== 32 || !Number.isInteger(Number(version))) {
-          throw new Error('Clover credential key ring configuration is invalid');
+          throw new Error(
+            'Clover credential key ring configuration is invalid',
+          );
         }
         this.keys.set(Number(version), key);
       }
     }
     const hasCredentialConfiguration = Boolean(
       environment.CLOVER_CREDENTIAL_ACTIVE_KEY_VERSION?.trim() ||
-        environment.CLOVER_CREDENTIAL_ENCRYPTION_KEYS?.trim() ||
-        environment.CLOVER_CREDENTIAL_KEYS_SOURCE?.trim(),
+      environment.CLOVER_CREDENTIAL_ENCRYPTION_KEYS?.trim() ||
+      environment.CLOVER_CREDENTIAL_KEYS_SOURCE?.trim(),
     );
     if (
       hasCredentialConfiguration &&
@@ -90,7 +92,9 @@ export class CloverCredentialVaultService {
 
   private requireKey(version: number): Buffer {
     const key = this.keys.get(version);
-    if (!key) throw new Error('Clover credential encryption key is unavailable');
+    if (!key) {
+      throw new Error('Clover credential encryption key is unavailable');
+    }
     return key;
   }
 

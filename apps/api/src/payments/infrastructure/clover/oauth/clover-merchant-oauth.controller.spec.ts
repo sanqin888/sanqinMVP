@@ -45,10 +45,14 @@ describe('CloverMerchantOAuthController', () => {
     const url = new URL(result.url);
 
     expect(result.statusCode).toBe(303);
-    expect(url.origin + url.pathname).toBe('https://sanq.ca/clover/oauth/result');
+    expect(url.origin + url.pathname).toBe(
+      'https://sanq.ca/clover/oauth/result',
+    );
     expect(url.searchParams.get('status')).toBe('success');
     expect(url.searchParams.get('merchant')).toBe('SanQ Roujiamo');
-    expect(url.searchParams.get('storeStableId')).toBe('4750_Yonge_Street');
+    expect(url.searchParams.get('storeStableId')).toBe(
+      '4750_Yonge_Street',
+    );
     expect(url.toString()).not.toContain('authorization-code');
     expect(url.toString()).not.toContain('opaque-state');
   });

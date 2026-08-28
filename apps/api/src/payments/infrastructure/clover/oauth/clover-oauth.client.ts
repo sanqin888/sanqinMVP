@@ -126,14 +126,19 @@ export class CloverOAuthClient {
     }
   }
 
-  private async parseJson(response: Response): Promise<Record<string, unknown>> {
+  private async parseJson(
+    response: Response,
+  ): Promise<Record<string, unknown>> {
     try {
       const value: unknown = await response.json();
       return value && typeof value === 'object' && !Array.isArray(value)
         ? (value as Record<string, unknown>)
         : {};
     } catch {
-      throw new CloverOAuthProviderError('CLOVER_OAUTH_RESPONSE_INVALID', false);
+      throw new CloverOAuthProviderError(
+        'CLOVER_OAUTH_RESPONSE_INVALID',
+        false,
+      );
     }
   }
 
@@ -155,7 +160,10 @@ export class CloverOAuthClient {
 
   private requireClientId(): string {
     if (!this.config.oauthClientId) {
-      throw new CloverOAuthProviderError('CLOVER_OAUTH_CLIENT_ID_MISSING', false);
+      throw new CloverOAuthProviderError(
+        'CLOVER_OAUTH_CLIENT_ID_MISSING',
+        false,
+      );
     }
     return this.config.oauthClientId;
   }

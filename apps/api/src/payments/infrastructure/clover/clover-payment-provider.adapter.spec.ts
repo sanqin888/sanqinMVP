@@ -845,7 +845,9 @@ describe('Clover Platform Payments Gateway', () => {
   const createAccessTokens = () =>
     ({
       hasUsableCredential: jest.fn().mockResolvedValue(true),
-      getAccessToken: jest.fn().mockResolvedValue({ token: 'merchant-oauth-token' }),
+      getAccessToken: jest
+        .fn()
+        .mockResolvedValue({ token: 'merchant-oauth-token' }),
     }) as unknown as CloverMerchantAccessTokenService;
   const createPlatformGateway = (
     accessTokens: CloverMerchantAccessTokenService = createAccessTokens(),
@@ -1128,11 +1130,12 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('uses the persisted merchant-scoped OAuth token for Platform v3', async () => {
+    const getAccessToken = jest.fn().mockResolvedValue({
+      token: 'database-merchant-token',
+    });
     const accessTokens = {
       hasUsableCredential: jest.fn().mockResolvedValue(true),
-      getAccessToken: jest.fn().mockResolvedValue({
-        token: 'database-merchant-token',
-      }),
+      getAccessToken,
     } as unknown as CloverMerchantAccessTokenService;
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(platformPayment()), { status: 200 }),
@@ -1145,19 +1148,20 @@ describe('Clover Platform Payments Gateway', () => {
     await expect(gateway.getCanonicalPayment(platformRequest)).resolves.toMatchObject({
       status: 'SUCCEEDED',
     });
-    expect(accessTokens.getAccessToken).toHaveBeenCalledWith('merchant-1');
+    expect(getAccessToken.mock.calls).toEqual([['merchant-1']]);
     expect(fetchSpy.mock.calls[0]?.[1]?.headers).toMatchObject({
       Authorization: 'Bearer database-merchant-token',
     });
   });
 
   it('forces one merchant token refresh and retries a Platform v3 read once after a database-token 401', async () => {
+    const getAccessToken = jest
+      .fn()
+      .mockResolvedValueOnce({ token: 'expired-db-token' })
+      .mockResolvedValueOnce({ token: 'refreshed-db-token' });
     const accessTokens = {
       hasUsableCredential: jest.fn().mockResolvedValue(true),
-      getAccessToken: jest
-        .fn()
-        .mockResolvedValueOnce({ token: 'expired-db-token' })
-        .mockResolvedValueOnce({ token: 'refreshed-db-token' }),
+      getAccessToken,
     } as unknown as CloverMerchantAccessTokenService;
     const fetchSpy = jest
       .spyOn(global, 'fetch')
@@ -1174,10 +1178,10 @@ describe('Clover Platform Payments Gateway', () => {
       status: 'SUCCEEDED',
     });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(accessTokens.getAccessToken).toHaveBeenNthCalledWith(1, 'merchant-1');
-    expect(accessTokens.getAccessToken).toHaveBeenNthCalledWith(2, 'merchant-1', {
-      forceRefresh: true,
-    });
+    expect(getAccessToken.mock.calls).toEqual([
+      ['merchant-1'],
+      ['merchant-1', { forceRefresh: true }],
+    ]);
     expect(fetchSpy.mock.calls[1]?.[1]?.headers).toMatchObject({
       Authorization: 'Bearer refreshed-db-token',
     });
@@ -1185,9 +1189,10 @@ describe('Clover Platform Payments Gateway', () => {
 
   it('does not fall back to Ecommerce credentials when merchant OAuth authorization is unavailable', async () => {
     setPlatformEnv('CLOVER_ACCESS_TOKEN', 'ecommerce-only-fixture-token');
+    const getAccessToken = jest.fn().mockResolvedValue(null);
     const accessTokens = {
       hasUsableCredential: jest.fn().mockResolvedValue(false),
-      getAccessToken: jest.fn().mockResolvedValue(null),
+      getAccessToken,
     } as unknown as CloverMerchantAccessTokenService;
     const fetchSpy = jest.spyOn(global, 'fetch');
     const gateway = createPlatformGateway(accessTokens);
@@ -1198,7 +1203,7 @@ describe('Clover Platform Payments Gateway', () => {
       status: 'UNKNOWN',
       failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
     });
-    expect(accessTokens.getAccessToken).not.toHaveBeenCalled();
+    expect(getAccessToken.mock.calls).toHaveLength(0);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

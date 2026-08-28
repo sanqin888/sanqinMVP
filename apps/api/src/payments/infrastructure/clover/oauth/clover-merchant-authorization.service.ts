@@ -6,6 +6,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import { CloverProviderConfig } from '../clover-provider.config';
 import { CloverCredentialVaultService } from './clover-credential-vault.service';
 import {
+  type CloverMerchantIdentity,
   CloverPlatformMerchantVerificationGateway,
   CloverPlatformVerificationError,
 } from '../platform/clover-platform-merchant-verification.gateway';
@@ -97,10 +98,7 @@ export class CloverMerchantAuthorizationService {
       input.client_id,
       input.clientId,
     ]);
-    if (
-      launchClientId &&
-      launchClientId !== this.config.oauthClientId
-    ) {
+    if (launchClientId && launchClientId !== this.config.oauthClientId) {
       throw new CloverMerchantAuthorizationError('INVALID_LAUNCH');
     }
 
@@ -123,7 +121,9 @@ export class CloverMerchantAuthorizationService {
         expiresAt,
       },
     });
-    this.logger.log(`[CloverOAuth] authorization started merchantId=${merchantId}`);
+    this.logger.log(
+      `[CloverOAuth] authorization started merchantId=${merchantId}`,
+    );
     return this.oauth.buildAuthorizeUrl(state);
   }
 
@@ -241,7 +241,7 @@ export class CloverMerchantAuthorizationService {
       throw new CloverMerchantAuthorizationError('TEMPORARY_FAILURE', true);
     }
 
-    let merchant;
+    let merchant: CloverMerchantIdentity;
     try {
       merchant = await this.platform.getMerchantIdentity(
         state.merchantId,
@@ -304,7 +304,9 @@ export class CloverMerchantAuthorizationService {
     };
   }
 
-  private async resolveStoreMapping(merchantId: string): Promise<string | null> {
+  private async resolveStoreMapping(
+    merchantId: string,
+  ): Promise<string | null> {
     const existing = await this.prisma.cloverMerchantAuthorization.findUnique({
       where: { merchantId },
       select: { storeStableId: true },
@@ -317,10 +319,7 @@ export class CloverMerchantAuthorizationService {
       if (store?.isActive) return existing.storeStableId;
     }
 
-    if (
-      this.config.merchantId !== merchantId ||
-      !this.config.storeStableId
-    ) {
+    if (this.config.merchantId !== merchantId || !this.config.storeStableId) {
       return null;
     }
     const store = await this.prisma.store.findUnique({
@@ -427,7 +426,8 @@ export class CloverMerchantAuthorizationService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString(),
-      refreshTokenExpiresAt: tokens.refreshTokenExpiresAt?.toISOString() ?? null,
+      refreshTokenExpiresAt:
+        tokens.refreshTokenExpiresAt?.toISOString() ?? null,
     };
   }
 
@@ -441,7 +441,10 @@ export class CloverMerchantAuthorizationService {
     return new CloverMerchantAuthorizationError('TEMPORARY_FAILURE', true);
   }
 
-  private async failState(stateHash: string, lastErrorCode: string): Promise<void> {
+  private async failState(
+    stateHash: string,
+    lastErrorCode: string,
+  ): Promise<void> {
     await this.prisma.cloverOAuthStateRequest.updateMany({
       where: {
         stateHash,
@@ -493,7 +496,11 @@ export class CloverMerchantAuthorizationService {
     } catch {
       throw new CloverMerchantAuthorizationError('CONFIGURATION_ERROR');
     }
-    if (callback.protocol !== 'https:' || callback.username || callback.password) {
+    if (
+      callback.protocol !== 'https:' ||
+      callback.username ||
+      callback.password
+    ) {
       throw new CloverMerchantAuthorizationError('CONFIGURATION_ERROR');
     }
   }

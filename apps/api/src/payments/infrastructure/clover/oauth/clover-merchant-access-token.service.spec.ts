@@ -46,47 +46,49 @@ const createHarness = () => {
   } as unknown as CloverMerchantAuthorization;
 
   let finalCasWins = true;
-  const updateMany = jest.fn(
-    ({ data }: { data: Record<string, unknown> }) => {
-      if ('refreshLeaseId' in data && data.refreshLeaseId && !('encryptedAccessToken' in data)) {
-        row = {
-          ...row,
-          refreshLeaseId: data.refreshLeaseId as string,
-          refreshLeaseExpiresAt: data.refreshLeaseExpiresAt as Date,
-        };
-        return Promise.resolve({ count: 1 });
-      }
-      if ('encryptedAccessToken' in data) {
-        if (!finalCasWins) return Promise.resolve({ count: 0 });
-        row = {
-          ...row,
-          encryptedAccessToken: data.encryptedAccessToken as string,
-          encryptedRefreshToken: data.encryptedRefreshToken as string,
-          accessTokenExpiresAt: data.accessTokenExpiresAt as Date,
-          refreshTokenExpiresAt: data.refreshTokenExpiresAt as Date | null,
-          tokenVersion: row.tokenVersion + 1,
-          refreshedAt: data.refreshedAt as Date,
-          refreshLeaseId: null,
-          refreshLeaseExpiresAt: null,
-        };
-        return Promise.resolve({ count: 1 });
-      }
-      if (data.status === 'REAUTH_REQUIRED') {
-        row = {
-          ...row,
-          status: 'REAUTH_REQUIRED',
-          refreshLeaseId: null,
-          refreshLeaseExpiresAt: null,
-        } as CloverMerchantAuthorization;
-        return Promise.resolve({ count: 1 });
-      }
-      if (data.refreshLeaseId === null) {
-        row = { ...row, refreshLeaseId: null, refreshLeaseExpiresAt: null };
-        return Promise.resolve({ count: 1 });
-      }
-      return Promise.resolve({ count: 0 });
-    },
-  );
+  const updateMany = jest.fn(({ data }: { data: Record<string, unknown> }) => {
+    if (
+      'refreshLeaseId' in data &&
+      data.refreshLeaseId &&
+      !('encryptedAccessToken' in data)
+    ) {
+      row = {
+        ...row,
+        refreshLeaseId: data.refreshLeaseId as string,
+        refreshLeaseExpiresAt: data.refreshLeaseExpiresAt as Date,
+      };
+      return Promise.resolve({ count: 1 });
+    }
+    if ('encryptedAccessToken' in data) {
+      if (!finalCasWins) return Promise.resolve({ count: 0 });
+      row = {
+        ...row,
+        encryptedAccessToken: data.encryptedAccessToken as string,
+        encryptedRefreshToken: data.encryptedRefreshToken as string,
+        accessTokenExpiresAt: data.accessTokenExpiresAt as Date,
+        refreshTokenExpiresAt: data.refreshTokenExpiresAt as Date | null,
+        tokenVersion: row.tokenVersion + 1,
+        refreshedAt: data.refreshedAt as Date,
+        refreshLeaseId: null,
+        refreshLeaseExpiresAt: null,
+      };
+      return Promise.resolve({ count: 1 });
+    }
+    if (data.status === 'REAUTH_REQUIRED') {
+      row = {
+        ...row,
+        status: 'REAUTH_REQUIRED',
+        refreshLeaseId: null,
+        refreshLeaseExpiresAt: null,
+      } as CloverMerchantAuthorization;
+      return Promise.resolve({ count: 1 });
+    }
+    if (data.refreshLeaseId === null) {
+      row = { ...row, refreshLeaseId: null, refreshLeaseExpiresAt: null };
+      return Promise.resolve({ count: 1 });
+    }
+    return Promise.resolve({ count: 0 });
+  });
   const prisma = {
     cloverMerchantAuthorization: {
       findUnique: jest.fn(() => Promise.resolve(row)),
@@ -134,7 +136,7 @@ describe('CloverMerchantAccessTokenService', () => {
     expect(credential).toEqual({
       token: 'old-access-token',
     });
-    expect(harness.oauth.refreshTokens).not.toHaveBeenCalled();
+    expect(harness.oauth.refreshTokens.mock.calls).toHaveLength(0);
   });
 
   it('refreshes an expired token, persists both rotated tokens, and increments the CAS version', async () => {
@@ -145,7 +147,9 @@ describe('CloverMerchantAccessTokenService', () => {
     expect(credential).toEqual({
       token: 'new-access-token',
     });
-    expect(harness.oauth.refreshTokens).toHaveBeenCalledWith('old-refresh-token');
+    expect(harness.oauth.refreshTokens.mock.calls).toEqual([
+      ['old-refresh-token'],
+    ]);
     expect(harness.vault.decrypt(harness.getRow().encryptedAccessToken)).toBe(
       'new-access-token',
     );
@@ -165,7 +169,7 @@ describe('CloverMerchantAccessTokenService', () => {
     ]);
 
     expect(a).toEqual(b);
-    expect(harness.oauth.refreshTokens).toHaveBeenCalledTimes(1);
+    expect(harness.oauth.refreshTokens.mock.calls).toHaveLength(1);
     expect(harness.getRow().tokenVersion).toBe(5);
   });
 
@@ -202,7 +206,7 @@ describe('CloverMerchantAccessTokenService', () => {
   it('does not overwrite a newer refresh token when a concurrent reauthorization wins the final CAS', async () => {
     const harness = createHarness();
     harness.setFinalCasWins(false);
-    harness.oauth.refreshTokens.mockImplementationOnce(async () => {
+    harness.oauth.refreshTokens.mockImplementationOnce(() => {
       const winner = {
         ...harness.getRow(),
         encryptedAccessToken: harness.vault.encrypt('winner-access-token'),
@@ -213,7 +217,7 @@ describe('CloverMerchantAccessTokenService', () => {
         refreshLeaseExpiresAt: null,
       } as CloverMerchantAuthorization;
       harness.setRow(winner);
-      return harness.refreshedTokens;
+      return Promise.resolve(harness.refreshedTokens);
     });
 
     const credential = await harness.service.getAccessToken(merchantId);
@@ -224,16 +228,20 @@ describe('CloverMerchantAccessTokenService', () => {
     expect(harness.vault.decrypt(harness.getRow().encryptedRefreshToken)).toBe(
       'winner-refresh-token',
     );
-    expect(harness.vault.decrypt(harness.getRow().encryptedRefreshToken)).not.toBe(
-      'new-refresh-token',
-    );
+    expect(
+      harness.vault.decrypt(harness.getRow().encryptedRefreshToken),
+    ).not.toBe('new-refresh-token');
   });
 
   it('returns no credential when the merchant authorization requires reauthorization', async () => {
     const harness = createHarness();
     harness.getRow().status = 'REAUTH_REQUIRED';
 
-    await expect(harness.service.getAccessToken(merchantId)).resolves.toBeNull();
-    await expect(harness.service.hasUsableCredential(merchantId)).resolves.toBe(false);
+    await expect(
+      harness.service.getAccessToken(merchantId),
+    ).resolves.toBeNull();
+    await expect(
+      harness.service.hasUsableCredential(merchantId),
+    ).resolves.toBe(false);
   });
 });

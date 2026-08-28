@@ -1,6 +1,12 @@
 import { CloverProviderConfig } from '../clover-provider.config';
 import { CloverOAuthClient } from './clover-oauth.client';
 
+const requestUrlText = (value: string | URL | Request): string => {
+  if (typeof value === 'string') return value;
+  if (value instanceof URL) return value.toString();
+  return value.url;
+};
+
 const withEnvironment = (
   values: Record<string, string | undefined>,
   run: () => Promise<void> | void,
@@ -84,9 +90,11 @@ describe('CloverOAuthClient', () => {
         expect(tokens.accessToken).toBe('access-token');
         expect(tokens.refreshToken).toBe('refresh-token');
         const [url, init] = fetchSpy.mock.calls[0];
-        expect(url).toBe('https://api.clover.com/oauth/v2/token');
-        expect(String(url)).not.toContain('server-secret');
-        expect(JSON.parse(String(init?.body))).toEqual({
+        const urlText = requestUrlText(url);
+        const bodyText = typeof init?.body === 'string' ? init.body : '';
+        expect(urlText).toBe('https://api.clover.com/oauth/v2/token');
+        expect(urlText).not.toContain('server-secret');
+        expect(JSON.parse(bodyText)).toEqual({
           client_id: 'app-123',
           client_secret: 'server-secret',
           code: 'auth-code',
@@ -136,7 +144,10 @@ describe('CloverOAuthClient', () => {
         expect(fetchSpy.mock.calls[1][0]).toBe(
           'https://api.clover.com/oauth/v2/recovery',
         );
-        expect(JSON.parse(String(fetchSpy.mock.calls[1][1]?.body))).toEqual({
+        const recoveryBody = fetchSpy.mock.calls[1][1]?.body;
+        expect(
+          JSON.parse(typeof recoveryBody === 'string' ? recoveryBody : ''),
+        ).toEqual({
           client_id: 'app-123',
           client_secret: 'server-secret',
           recovery_token: 'previous-refresh-token',

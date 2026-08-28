@@ -44,7 +44,8 @@ export class CloverProviderConfig {
     this.oauthClientId = process.env.CLOVER_OAUTH_CLIENT_ID?.trim();
     this.oauthClientSecret = process.env.CLOVER_OAUTH_CLIENT_SECRET?.trim();
     this.oauthAuthorizeBase = (
-      process.env.CLOVER_OAUTH_AUTHORIZE_BASE?.trim() || 'https://www.clover.com'
+      process.env.CLOVER_OAUTH_AUTHORIZE_BASE?.trim() ||
+      'https://www.clover.com'
     ).replace(/\/$/, '');
     this.oauthApiBase = (
       process.env.CLOVER_OAUTH_API_BASE?.trim() || 'https://api.clover.com'

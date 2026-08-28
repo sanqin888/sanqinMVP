@@ -16,9 +16,10 @@ describe('CloverPlatformMerchantVerificationGateway', () => {
 
   it('verifies Merchant Read against Platform v3 with the merchant-scoped token', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ id: 'MERCHANT123', name: 'SanQ Roujiamo' }), {
-        status: 200,
-      }),
+      new Response(
+        JSON.stringify({ id: 'MERCHANT123', name: 'SanQ Roujiamo' }),
+        { status: 200 },
+      ),
     );
     const gateway = new CloverPlatformMerchantVerificationGateway(
       new CloverProviderConfig(),
@@ -38,7 +39,9 @@ describe('CloverPlatformMerchantVerificationGateway', () => {
   it('verifies Payment Read using the Platform v3 payment collection', async () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify({ elements: [] }), { status: 200 }));
+      .mockResolvedValue(
+        new Response(JSON.stringify({ elements: [] }), { status: 200 }),
+      );
     const gateway = new CloverPlatformMerchantVerificationGateway(
       new CloverProviderConfig(),
     );

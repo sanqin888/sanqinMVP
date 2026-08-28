@@ -8,6 +8,7 @@ import { CloverCredentialVaultService } from './clover-credential-vault.service'
 import {
   CloverOAuthClient,
   CloverOAuthProviderError,
+  type CloverOAuthTokenPair,
 } from './clover-oauth.client';
 
 const REFRESH_LEASE_MS = 12_000;
@@ -50,10 +51,10 @@ export class CloverMerchantAccessTokenService {
     });
     return Boolean(
       row?.status === 'ACTIVE' &&
-        this.vault.isConfigured() &&
-        (row.accessTokenExpiresAt.getTime() > Date.now() ||
-          !row.refreshTokenExpiresAt ||
-          row.refreshTokenExpiresAt.getTime() > Date.now()),
+      this.vault.isConfigured() &&
+      (row.accessTokenExpiresAt.getTime() > Date.now() ||
+        !row.refreshTokenExpiresAt ||
+        row.refreshTokenExpiresAt.getTime() > Date.now()),
     );
   }
 
@@ -130,7 +131,7 @@ export class CloverMerchantAccessTokenService {
       return this.waitForRefreshWinner(initial);
     }
 
-    let refreshed;
+    let refreshed: CloverOAuthTokenPair;
     try {
       const refreshToken = this.vault.decrypt(initial.encryptedRefreshToken);
       refreshed = await this.oauth.refreshTokens(refreshToken);
@@ -183,7 +184,9 @@ export class CloverMerchantAccessTokenService {
     initial: CloverMerchantAuthorization,
   ): Promise<CloverMerchantAccessToken | null> {
     for (let attempt = 0; attempt < REFRESH_WAIT_ATTEMPTS; attempt += 1) {
-      await new Promise<void>((resolve) => setTimeout(resolve, REFRESH_WAIT_MS));
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, REFRESH_WAIT_MS),
+      );
       const winner = await this.prisma.cloverMerchantAuthorization.findUnique({
         where: { merchantId: initial.merchantId },
       });
@@ -196,7 +199,8 @@ export class CloverMerchantAccessTokenService {
         };
       }
       const leaseExpired =
-        !winner.refreshLeaseExpiresAt || winner.refreshLeaseExpiresAt <= new Date();
+        !winner.refreshLeaseExpiresAt ||
+        winner.refreshLeaseExpiresAt <= new Date();
       if (leaseExpired) {
         return this.refreshDatabaseCredential(winner);
       }

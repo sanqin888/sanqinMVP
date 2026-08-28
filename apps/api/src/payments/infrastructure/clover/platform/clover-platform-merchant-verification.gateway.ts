@@ -101,7 +101,9 @@ export class CloverPlatformMerchantVerificationGateway {
     }
   }
 
-  private async parseJson(response: Response): Promise<Record<string, unknown>> {
+  private async parseJson(
+    response: Response,
+  ): Promise<Record<string, unknown>> {
     try {
       const value: unknown = await response.json();
       return value && typeof value === 'object' && !Array.isArray(value)

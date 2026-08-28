@@ -139,7 +139,9 @@ describe('Payments bounded-context architecture', () => {
       'infrastructure',
       'clover',
     );
-    const oauthDefinitions = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
+    const oauthDefinitions = scanTypeScript(SOURCE_ROOT, {
+      productionOnly: true,
+    })
       .filter(({ source }) =>
         source.includes('class CloverMerchantAuthorizationService'),
       )
@@ -171,7 +173,9 @@ describe('Payments bounded-context architecture', () => {
       path.endsWith('oauth/clover-oauth.client.ts'),
     );
     const platformVerification = cloverFiles.find(({ path }) =>
-      path.endsWith('platform/clover-platform-merchant-verification.gateway.ts'),
+      path.endsWith(
+        'platform/clover-platform-merchant-verification.gateway.ts',
+      ),
     );
 
     expect(oauthClient?.source).toContain('/oauth/v2/authorize');

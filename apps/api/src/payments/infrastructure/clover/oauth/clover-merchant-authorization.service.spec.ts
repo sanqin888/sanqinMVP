@@ -20,6 +20,41 @@ const merchantId = 'MERCHANT123';
 const storeStableId = '4750_Yonge_Street';
 const callbackUrl = 'https://sanq.ca/clover/oauth/callback';
 
+type StateRow = {
+  stateHash: string;
+  merchantId: string;
+  clientId: string;
+  redirectUri: string;
+  issuedAt: Date;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  status: 'ISSUED' | 'EXCHANGING' | 'EXCHANGED' | 'COMPLETED' | 'FAILED';
+  lastErrorCode: string | null;
+  encryptedExchangeResult: string | null;
+};
+
+type StateCreateInput = Omit<
+  StateRow,
+  'status' | 'consumedAt' | 'lastErrorCode' | 'encryptedExchangeResult'
+>;
+
+type AuthorizationUpsertArgs = {
+  where: { merchantId: string };
+  create: {
+    storeStableId: string | null;
+    status: string;
+    encryptedAccessToken: string;
+    encryptedRefreshToken: string;
+    [key: string]: unknown;
+  };
+  update: {
+    tokenVersion: { increment: number };
+    refreshLeaseId: string | null;
+    revokedAt: Date | null;
+    [key: string]: unknown;
+  };
+};
+
 const expectOAuthError = async (
   promise: Promise<unknown>,
   code: string,
@@ -52,26 +87,15 @@ const createHarness = () => {
     oauthStateTtlMs: 600_000,
   } as unknown as CloverProviderConfig;
 
-  type StateRow = {
-    stateHash: string;
-    merchantId: string;
-    clientId: string;
-    redirectUri: string;
-    issuedAt: Date;
-    expiresAt: Date;
-    consumedAt: Date | null;
-    status: 'ISSUED' | 'EXCHANGING' | 'EXCHANGED' | 'COMPLETED' | 'FAILED';
-    lastErrorCode: string | null;
-    encryptedExchangeResult: string | null;
-  };
   let stateRow: StateRow | null = null;
   let existingAuthorization: { storeStableId: string | null } | null = null;
   let mappingConflict: { merchantId: string } | null = null;
   let storeActive = true;
+  let authorizationUpsert: AuthorizationUpsertArgs | null = null;
 
   const oauthStateRequest = {
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-    create: jest.fn(({ data }: { data: Omit<StateRow, 'status' | 'consumedAt' | 'lastErrorCode' | 'encryptedExchangeResult'> }) => {
+    create: jest.fn(({ data }: { data: StateCreateInput }) => {
       stateRow = {
         ...data,
         consumedAt: null,
@@ -82,43 +106,49 @@ const createHarness = () => {
       return Promise.resolve(stateRow);
     }),
     findUnique: jest.fn(() => Promise.resolve(stateRow)),
-    updateMany: jest.fn(
-      ({ data }: { data: Partial<StateRow> }) => {
-        if (!stateRow) return Promise.resolve({ count: 0 });
-        if (data.status === 'EXCHANGING') {
-          if (stateRow.status !== 'ISSUED' || stateRow.expiresAt <= new Date()) {
-            return Promise.resolve({ count: 0 });
-          }
-          stateRow = { ...stateRow, ...data };
-          return Promise.resolve({ count: 1 });
+    updateMany: jest.fn(({ data }: { data: Partial<StateRow> }) => {
+      if (!stateRow) return Promise.resolve({ count: 0 });
+      if (data.status === 'EXCHANGING') {
+        if (stateRow.status !== 'ISSUED' || stateRow.expiresAt <= new Date()) {
+          return Promise.resolve({ count: 0 });
         }
-        if (data.status === 'EXCHANGED') {
-          if (stateRow.status !== 'EXCHANGING') return Promise.resolve({ count: 0 });
-          stateRow = { ...stateRow, ...data };
-          return Promise.resolve({ count: 1 });
+        stateRow = { ...stateRow, ...data };
+        return Promise.resolve({ count: 1 });
+      }
+      if (data.status === 'EXCHANGED') {
+        if (stateRow.status !== 'EXCHANGING') {
+          return Promise.resolve({ count: 0 });
         }
-        if (data.status === 'COMPLETED') {
-          if (stateRow.status !== 'EXCHANGED') return Promise.resolve({ count: 0 });
-          stateRow = { ...stateRow, ...data };
-          return Promise.resolve({ count: 1 });
+        stateRow = { ...stateRow, ...data };
+        return Promise.resolve({ count: 1 });
+      }
+      if (data.status === 'COMPLETED') {
+        if (stateRow.status !== 'EXCHANGED') {
+          return Promise.resolve({ count: 0 });
         }
-        if (data.status === 'FAILED') {
-          if (stateRow.status === 'COMPLETED' || stateRow.status === 'FAILED') {
-            return Promise.resolve({ count: 0 });
-          }
-          stateRow = { ...stateRow, ...data };
-          return Promise.resolve({ count: 1 });
+        stateRow = { ...stateRow, ...data };
+        return Promise.resolve({ count: 1 });
+      }
+      if (data.status === 'FAILED') {
+        if (stateRow.status === 'COMPLETED' || stateRow.status === 'FAILED') {
+          return Promise.resolve({ count: 0 });
         }
-        return Promise.resolve({ count: 0 });
-      },
-    ),
+        stateRow = { ...stateRow, ...data };
+        return Promise.resolve({ count: 1 });
+      }
+      return Promise.resolve({ count: 0 });
+    }),
   };
+  const authorizationUpsertMock = jest.fn((args: AuthorizationUpsertArgs) => {
+    authorizationUpsert = args;
+    return Promise.resolve({ id: 'authorization-db-id' });
+  });
   const cloverMerchantAuthorization = {
     findUnique: jest.fn(({ where }: { where: Record<string, string> }) => {
       if ('storeStableId' in where) return Promise.resolve(mappingConflict);
       return Promise.resolve(existingAuthorization);
     }),
-    upsert: jest.fn().mockResolvedValue({ id: 'authorization-db-id' }),
+    upsert: authorizationUpsertMock,
   };
   const store = {
     findUnique: jest.fn(() =>
@@ -137,18 +167,22 @@ const createHarness = () => {
     accessTokenExpiresAt: new Date(Date.now() + 30 * 60_000),
     refreshTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
   };
+  const buildAuthorizeUrl = jest.fn(
+    (state: string) =>
+      `https://www.clover.com/oauth/v2/authorize?state=${state}`,
+  );
+  const exchangeAuthorizationCode = jest.fn().mockResolvedValue(tokens);
   const oauth = {
-    buildAuthorizeUrl: jest.fn(
-      (state: string) =>
-        `https://www.clover.com/oauth/v2/authorize?state=${state}`,
-    ),
-    exchangeAuthorizationCode: jest.fn().mockResolvedValue(tokens),
+    buildAuthorizeUrl,
+    exchangeAuthorizationCode,
   } as unknown as jest.Mocked<CloverOAuthClient>;
+  const getMerchantIdentity = jest
+    .fn()
+    .mockResolvedValue({ id: merchantId, name: 'SanQ Roujiamo' });
+  const verifyPaymentsRead = jest.fn().mockResolvedValue(undefined);
   const platform = {
-    getMerchantIdentity: jest
-      .fn()
-      .mockResolvedValue({ id: merchantId, name: 'SanQ Roujiamo' }),
-    verifyPaymentsRead: jest.fn().mockResolvedValue(undefined),
+    getMerchantIdentity,
+    verifyPaymentsRead,
   } as unknown as jest.Mocked<CloverPlatformMerchantVerificationGateway>;
 
   const service = new CloverMerchantAuthorizationService(
@@ -161,7 +195,7 @@ const createHarness = () => {
 
   const start = async () => {
     await service.start({ merchant_id: merchantId, client_id: 'app-123' });
-    return oauth.buildAuthorizeUrl.mock.calls.at(-1)?.[0] as string;
+    return buildAuthorizeUrl.mock.calls.at(-1)?.[0] as string;
   };
 
   return {
@@ -172,9 +206,15 @@ const createHarness = () => {
     vault,
     oauthStateRequest,
     cloverMerchantAuthorization,
+    authorizationUpsertMock,
+    buildAuthorizeUrl,
+    exchangeAuthorizationCode,
+    getMerchantIdentity,
+    verifyPaymentsRead,
     store,
     start,
     getState: () => stateRow,
+    getAuthorizationUpsert: () => authorizationUpsert,
     setState: (value: StateRow | null) => {
       stateRow = value;
     },
@@ -198,7 +238,7 @@ describe('CloverMerchantAuthorizationService', () => {
       clientId: 'app-123',
       redirect_uri: 'https://evil.example/callback',
     } as never);
-    const rawState = harness.oauth.buildAuthorizeUrl.mock.calls[0][0];
+    const rawState = harness.buildAuthorizeUrl.mock.calls[0][0];
     const state = harness.getState();
 
     expect(result).toContain('https://www.clover.com/oauth/v2/authorize');
@@ -206,14 +246,21 @@ describe('CloverMerchantAuthorizationService', () => {
     expect(state?.stateHash).not.toBe(rawState);
     expect(state?.stateHash).toHaveLength(64);
     expect(state?.redirectUri).toBe(callbackUrl);
-    expect(state!.expiresAt.getTime() - state!.issuedAt.getTime()).toBe(600_000);
-    expect(JSON.stringify(harness.oauthStateRequest.create.mock.calls[0])).not.toContain(rawState);
+    expect(state!.expiresAt.getTime() - state!.issuedAt.getTime()).toBe(
+      600_000,
+    );
+    expect(
+      JSON.stringify(harness.oauthStateRequest.create.mock.calls[0]),
+    ).not.toContain(rawState);
   });
 
   it('rejects conflicting or malformed launch identifiers', async () => {
     const harness = createHarness();
     await expectOAuthError(
-      harness.service.start({ merchant_id: merchantId, merchantId: 'OTHER123' }),
+      harness.service.start({
+        merchant_id: merchantId,
+        merchantId: 'OTHER123',
+      }),
       'INVALID_LAUNCH',
     );
     await expectOAuthError(
@@ -221,7 +268,10 @@ describe('CloverMerchantAuthorizationService', () => {
       'INVALID_LAUNCH',
     );
     await expectOAuthError(
-      harness.service.start({ merchant_id: merchantId, client_id: 'wrong-app' }),
+      harness.service.start({
+        merchant_id: merchantId,
+        client_id: 'wrong-app',
+      }),
       'INVALID_LAUNCH',
     );
   });
@@ -243,14 +293,12 @@ describe('CloverMerchantAuthorizationService', () => {
       storeStableId,
       status: 'ACTIVE',
     });
-    expect(harness.platform.getMerchantIdentity).toHaveBeenCalledWith(
-      merchantId,
-      harness.tokens.accessToken,
-    );
-    expect(harness.platform.verifyPaymentsRead).toHaveBeenCalledWith(
-      merchantId,
-      harness.tokens.accessToken,
-    );
+    expect(harness.getMerchantIdentity.mock.calls).toEqual([
+      [merchantId, harness.tokens.accessToken],
+    ]);
+    expect(harness.verifyPaymentsRead.mock.calls).toEqual([
+      [merchantId, harness.tokens.accessToken],
+    ]);
     expect(harness.store.findUnique).toHaveBeenCalledWith({
       where: { storeStableId },
       select: { isActive: true },
@@ -260,7 +308,9 @@ describe('CloverMerchantAuthorizationService', () => {
         where: expect.objectContaining({ id: expect.anything() }),
       }),
     );
-    const upsert = harness.cloverMerchantAuthorization.upsert.mock.calls[0][0];
+    const upsert = harness.getAuthorizationUpsert();
+    expect(upsert).not.toBeNull();
+    if (!upsert) throw new Error('expected authorization upsert');
     expect(upsert.where).toEqual({ merchantId });
     expect(upsert.create.storeStableId).toBe(storeStableId);
     expect(upsert.create.status).toBe('ACTIVE');
@@ -308,16 +358,22 @@ describe('CloverMerchantAuthorizationService', () => {
     });
 
     expect(result.storeStableId).toBe('existing_store');
-    const update = harness.cloverMerchantAuthorization.upsert.mock.calls[0][0].update;
-    expect(update.tokenVersion).toEqual({ increment: 1 });
-    expect(update.refreshLeaseId).toBeNull();
-    expect(update.revokedAt).toBeNull();
+    const upsert = harness.getAuthorizationUpsert();
+    expect(upsert).not.toBeNull();
+    if (!upsert) throw new Error('expected authorization upsert');
+    expect(upsert.update.tokenVersion).toEqual({ increment: 1 });
+    expect(upsert.update.refreshLeaseId).toBeNull();
+    expect(upsert.update.revokedAt).toBeNull();
   });
 
   it('keeps a verified merchant unbound instead of guessing when no explicit mapping exists', async () => {
     const harness = createHarness();
     harness.setExistingAuthorization(null);
-    (harness.service as unknown as { config: { merchantId?: string; storeStableId?: string } }).config.storeStableId = undefined;
+    (
+      harness.service as unknown as {
+        config: { merchantId?: string; storeStableId?: string };
+      }
+    ).config.storeStableId = undefined;
     const state = await harness.start();
 
     const result = await harness.service.complete({
@@ -339,7 +395,7 @@ describe('CloverMerchantAuthorizationService', () => {
       }),
       'INVALID_STATE',
     );
-    expect(missing.oauth.exchangeAuthorizationCode).not.toHaveBeenCalled();
+    expect(missing.exchangeAuthorizationCode.mock.calls).toHaveLength(0);
 
     const unknown = createHarness();
     await expectOAuthError(
@@ -350,7 +406,7 @@ describe('CloverMerchantAuthorizationService', () => {
       }),
       'INVALID_STATE',
     );
-    expect(unknown.oauth.exchangeAuthorizationCode).not.toHaveBeenCalled();
+    expect(unknown.exchangeAuthorizationCode.mock.calls).toHaveLength(0);
   });
 
   it('rejects expired and replayed state', async () => {
@@ -390,7 +446,7 @@ describe('CloverMerchantAuthorizationService', () => {
       }),
       'USER_DENIED',
     );
-    expect(denied.oauth.exchangeAuthorizationCode).not.toHaveBeenCalled();
+    expect(denied.exchangeAuthorizationCode.mock.calls).toHaveLength(0);
 
     const providerError = createHarness();
     const providerErrorState = await providerError.start();
@@ -407,7 +463,10 @@ describe('CloverMerchantAuthorizationService', () => {
     const missing = createHarness();
     const missingState = await missing.start();
     await expectOAuthError(
-      missing.service.complete({ state: missingState, merchant_id: merchantId }),
+      missing.service.complete({
+        state: missingState,
+        merchant_id: merchantId,
+      }),
       'MISSING_CODE',
     );
 
@@ -426,7 +485,7 @@ describe('CloverMerchantAuthorizationService', () => {
   it('distinguishes token endpoint final failures from retryable provider timeouts', async () => {
     const finalFailure = createHarness();
     const finalState = await finalFailure.start();
-    finalFailure.oauth.exchangeAuthorizationCode.mockRejectedValueOnce(
+    finalFailure.exchangeAuthorizationCode.mockRejectedValueOnce(
       new CloverOAuthProviderError('CLOVER_OAUTH_HTTP_400', false, 400),
     );
     await expectOAuthError(
@@ -441,7 +500,7 @@ describe('CloverMerchantAuthorizationService', () => {
 
     const timeout = createHarness();
     const timeoutState = await timeout.start();
-    timeout.oauth.exchangeAuthorizationCode.mockRejectedValueOnce(
+    timeout.exchangeAuthorizationCode.mockRejectedValueOnce(
       new CloverOAuthProviderError('CLOVER_OAUTH_TIMEOUT', true),
     );
     await expectOAuthError(
@@ -458,7 +517,7 @@ describe('CloverMerchantAuthorizationService', () => {
   it('rejects a token that cannot prove the launched merchant identity', async () => {
     const harness = createHarness();
     const state = await harness.start();
-    harness.platform.getMerchantIdentity.mockResolvedValueOnce({
+    harness.getMerchantIdentity.mockResolvedValueOnce({
       id: 'DIFFERENT_MERCHANT',
       name: 'Other Merchant',
     });
@@ -477,7 +536,7 @@ describe('CloverMerchantAuthorizationService', () => {
   it('requires the authorized token to read Payments before activating it', async () => {
     const harness = createHarness();
     const state = await harness.start();
-    harness.platform.verifyPaymentsRead.mockRejectedValueOnce(
+    harness.verifyPaymentsRead.mockRejectedValueOnce(
       new CloverPlatformVerificationError(
         'CLOVER_PAYMENTS_READ_HTTP_403',
         false,

@@ -831,7 +831,9 @@ export class CloverPlatformPaymentsGateway {
         const refreshed = await this.accessTokens.getAccessToken(merchantId, {
           forceRefresh: true,
         });
-        if (refreshed) result = await this.requestWithToken(path, refreshed.token);
+        if (refreshed) {
+          result = await this.requestWithToken(path, refreshed.token);
+        }
       }
       return result;
     } catch (error) {
