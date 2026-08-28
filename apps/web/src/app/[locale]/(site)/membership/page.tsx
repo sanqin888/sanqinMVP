@@ -1685,7 +1685,7 @@ export default function MembershipHomePage() {
   // 状态控制渲染
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-[#fffdfa]">
         <p className="text-sm text-slate-500">
           {summaryError ??
             (isZh ? "加载会员信息中…" : "Loading membership info…")}
@@ -1701,7 +1701,7 @@ export default function MembershipHomePage() {
 
   if (!member) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-[#fffdfa]">
         <p className="text-sm text-slate-500">
           {summaryError ??
             (isZh ? "未能获取会员信息" : "Unable to load membership info")}
@@ -1711,8 +1711,8 @@ export default function MembershipHomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-[#fffdfa]">
+      <header className="border-b border-[#87362E]/10 bg-[#fffaf5]">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <Link
             href={`/${locale}`}
@@ -1734,7 +1734,7 @@ export default function MembershipHomePage() {
 
       <main className="mx-auto max-w-4xl px-4 py-6">
         {/* 顶部会员信息卡片 */}
-        <section className="mb-6 rounded-2xl bg-slate-900 px-5 py-4 text-white">
+        <section className="mb-6 rounded-2xl bg-[#87362E] px-5 py-4 text-white shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-300">

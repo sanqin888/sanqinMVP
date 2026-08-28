@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Inject,
   Delete,
   Get,
   Param,
@@ -10,19 +11,40 @@ import {
   Query,
   Req,
   Res,
+  NotFoundException,
   UnauthorizedException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
+  AccountingDocumentStatus,
   AccountingSourceType,
   AccountingTxType,
   SettlementPlatform,
 } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { getUploadsAccountingDir } from '../common/utils/uploads-path';
 import { AccountingService } from './accounting.service';
+import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
+import {
+  AccountingOperationsService,
+  type AccountingExpenseInput,
+} from './accounting-operations.service';
+import {
+  UBER_EATS_REPORTING,
+  type UberEatsReportingPort,
+} from '../integrations/ubereats/public-api';
+
+type AuthedAccountingRequest = Request & {
+  user?: { id?: string; userStableId?: string };
+};
 
 type TxBody = {
   type: AccountingTxType;
@@ -30,9 +52,9 @@ type TxBody = {
   amountCents: number;
   currency?: string;
   occurredAt: string;
-  categoryId: string;
-  accountId?: string | null;
-  toAccountId?: string | null;
+  categoryStableId: string;
+  accountStableId?: string | null;
+  toAccountStableId?: string | null;
   orderId?: string | null;
   idempotencyKey?: string | null;
   externalRef?: string | null;
@@ -46,7 +68,13 @@ type TxBody = {
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN', 'ACCOUNTANT')
 export class AccountingController {
-  constructor(private readonly accountingService: AccountingService) {}
+  constructor(
+    private readonly accountingService: AccountingService,
+    private readonly operations: AccountingOperationsService,
+    private readonly automation: AccountingAutomationScheduler,
+    @Inject(UBER_EATS_REPORTING)
+    private readonly uberReporting: UberEatsReportingPort,
+  ) {}
 
   private parseNonNegativeNumber(
     raw: string | undefined,
@@ -62,19 +90,150 @@ export class AccountingController {
     return value;
   }
 
-  private requireOperatorUserId(req: Request & { user?: { id?: string } }) {
-    const operatorUserId = req.user?.id?.trim();
+  private requireOperatorUserId(req: AuthedAccountingRequest) {
+    const operatorUserId = req.user?.userStableId?.trim();
     if (!operatorUserId) {
-      throw new UnauthorizedException('operator user id is required');
+      throw new UnauthorizedException('operator stable user id is required');
     }
     return operatorUserId;
   }
 
-  @Post('tx')
-  async createTx(
-    @Body() body: TxBody,
-    @Req() req: Request & { user?: { id?: string } },
+  @Post('setup/initialize')
+  initializeAccounting() {
+    return this.operations.initializeDefaults();
+  }
+
+  @Get('dashboard')
+  dashboard(@Query('from') from?: string, @Query('to') to?: string) {
+    const now = new Date();
+    const resolvedTo = to?.trim() || now.toISOString().slice(0, 10);
+    const resolvedFrom =
+      from?.trim() ||
+      new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    return this.operations.dashboard(resolvedFrom, resolvedTo);
+  }
+
+  @Post('expenses')
+  createExpense(
+    @Body() body: AccountingExpenseInput,
+    @Req() req: AuthedAccountingRequest,
   ) {
+    return this.operations.createExpense(body, this.requireOperatorUserId(req));
+  }
+
+  @Get('expenses')
+  listExpenses(
+    @Query('status') status?: AccountingDocumentStatus,
+    @Query('limit') limit?: string,
+  ) {
+    return this.operations.listExpenseDocuments({
+      status,
+      limit: this.parseNonNegativeNumber(limit, 'limit'),
+    });
+  }
+
+  @Get('inbox')
+  inbox(@Query('limit') limit?: string) {
+    return this.operations.listExpenseDocuments({
+      status: AccountingDocumentStatus.PENDING_REVIEW,
+      limit: this.parseNonNegativeNumber(limit, 'limit'),
+    });
+  }
+
+  @Post('inbox/:documentStableId/confirm')
+  confirmInboxDocument(
+    @Param('documentStableId') documentStableId: string,
+    @Body() body: AccountingExpenseInput,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.confirmInboxDocument(
+      documentStableId,
+      body,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Post('files/receipts')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  async uploadReceipt(
+    @UploadedFile() file: { originalname: string; buffer: Buffer } | undefined,
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    return { url: await this.operations.saveReceiptImage(file) };
+  }
+
+  @Get('files/:kind/:fileName')
+  accountingFile(
+    @Param('kind') kind: string,
+    @Param('fileName') fileName: string,
+    @Res() res: Response,
+  ) {
+    const safeName = path.basename(fileName);
+    const extension = path.extname(safeName).toLowerCase();
+    const contentType =
+      kind === 'bills' && extension === '.pdf'
+        ? 'application/pdf'
+        : kind === 'uber-reports' && extension === '.csv'
+          ? 'text/csv; charset=utf-8'
+          : kind === 'receipts' && extension === '.jpg'
+            ? 'image/jpeg'
+            : kind === 'receipts' && extension === '.png'
+              ? 'image/png'
+              : kind === 'receipts' && extension === '.webp'
+                ? 'image/webp'
+                : null;
+    if (!contentType || safeName !== fileName) {
+      throw new NotFoundException('accounting file not found');
+    }
+    const filePath = path.join(getUploadsAccountingDir(), kind, safeName);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('accounting file not found');
+    }
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.sendFile(filePath);
+  }
+
+  @Post('automation/run')
+  runAutomation() {
+    return this.automation.runNow();
+  }
+
+  @Get('automation/settings')
+  automationSettings() {
+    return this.automation.getSettings();
+  }
+
+  @Put('automation/settings')
+  updateAutomationSettings(
+    @Body()
+    body: {
+      timezone?: string;
+      runHour?: number;
+      runMinute?: number;
+      gmailEnabled?: boolean;
+      uberReportsEnabled?: boolean;
+    },
+  ) {
+    return this.automation.updateSettings(body);
+  }
+
+  @Get('automation/uber-reports')
+  listUberReports(
+    @Query('limit') limit?: string,
+    @Query('status') status?: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR',
+  ) {
+    return this.uberReporting.listFinancialReports({
+      limit: this.parseNonNegativeNumber(limit, 'limit'),
+      status,
+    });
+  }
+
+  @Post('tx')
+  async createTx(@Body() body: TxBody, @Req() req: AuthedAccountingRequest) {
     return this.accountingService.createTx(
       body,
       this.requireOperatorUserId(req),
@@ -85,7 +244,7 @@ export class AccountingController {
   async listTx(
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Query('categoryId') categoryId?: string,
+    @Query('categoryStableId') categoryStableId?: string,
     @Query('source') source?: AccountingSourceType,
     @Query('keyword') keyword?: string,
     @Query('limit') limit?: string,
@@ -95,7 +254,7 @@ export class AccountingController {
     return this.accountingService.listTx({
       from,
       to,
-      categoryId,
+      categoryStableId,
       source,
       keyword,
       limit: this.parseNonNegativeNumber(limit, 'limit'),
@@ -108,7 +267,7 @@ export class AccountingController {
   async updateTx(
     @Param('txStableId') txStableId: string,
     @Body() body: TxBody,
-    @Req() req: Request & { user?: { id?: string } },
+    @Req() req: AuthedAccountingRequest,
   ) {
     return this.accountingService.updateTx(
       txStableId,
@@ -120,7 +279,7 @@ export class AccountingController {
   @Delete('tx/:txStableId')
   async deleteTx(
     @Param('txStableId') txStableId: string,
-    @Req() req: Request & { user?: { id?: string } },
+    @Req() req: AuthedAccountingRequest,
   ) {
     return this.accountingService.deleteTx(
       txStableId,
@@ -131,9 +290,20 @@ export class AccountingController {
   @Post('period-close/month/:periodKey')
   async closeMonth(
     @Param('periodKey') periodKey: string,
-    @Req() req: Request & { user?: { id?: string } },
+    @Req() req: AuthedAccountingRequest,
   ) {
     return this.accountingService.closeMonth(
+      periodKey,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Delete('period-close/month/:periodKey')
+  async reopenMonth(
+    @Param('periodKey') periodKey: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.accountingService.reopenMonth(
       periodKey,
       this.requireOperatorUserId(req),
     );
@@ -146,6 +316,26 @@ export class AccountingController {
       .map((item) => item.trim())
       .filter(Boolean);
     return this.accountingService.listPeriodCloseStatus(keys);
+  }
+
+  @Post('period-close/year/:periodKey')
+  async closeYear(
+    @Param('periodKey') periodKey: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.accountingService.closeYear(
+      periodKey,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Get('period-close/year')
+  async listYearCloseStatus(@Query('periodKeys') periodKeys?: string) {
+    const keys = periodKeys
+      ?.split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return this.accountingService.listYearCloseStatus(keys);
   }
 
   @Get('report/pnl')
@@ -162,11 +352,11 @@ export class AccountingController {
     @Body()
     body: {
       date: string;
-      categoryId: string;
-      accountId?: string;
+      categoryStableId: string;
+      accountStableId?: string;
       mode?: 'DAILY' | 'PER_ORDER';
     },
-    @Req() req: Request & { user?: { id?: string } },
+    @Req() req: AuthedAccountingRequest,
   ) {
     return this.accountingService.autoAccrueOrderRevenue(
       body,
@@ -204,12 +394,12 @@ export class AccountingController {
       currency?: string;
     },
   ) {
-    return this.accountingService.createAccount(body);
+    return this.operations.createAccount(body);
   }
 
   @Get('accounts')
   async listAccounts() {
-    return this.accountingService.listAccounts();
+    return this.operations.listAccounts();
   }
 
   @Get('report/account-balance')
@@ -258,14 +448,14 @@ export class AccountingController {
   async exportTxCsv(
     @Query('from') from: string | undefined,
     @Query('to') to: string | undefined,
-    @Query('categoryId') categoryId: string | undefined,
+    @Query('categoryStableId') categoryStableId: string | undefined,
     @Query('source') source: AccountingSourceType | undefined,
     @Query('keyword') keyword: string | undefined,
-    @Req() req: Request & { user?: { id?: string } },
+    @Req() req: AuthedAccountingRequest,
     @Res() res: Response,
   ) {
     const csv = await this.accountingService.exportTxCsv(
-      { from, to, categoryId, source, keyword },
+      { from, to, categoryStableId, source, keyword },
       this.requireOperatorUserId(req),
     );
 
@@ -284,7 +474,7 @@ export class AccountingController {
     @Query('from') from: string | undefined,
     @Query('to') to: string | undefined,
     @Query('groupBy') groupBy: 'month' | 'quarter' | 'year' | undefined,
-    @Req() req: Request & { user?: { id?: string } },
+    @Req() req: AuthedAccountingRequest,
     @Res() res: Response,
   ) {
     const csv = await this.accountingService.exportPnlTemplate(
@@ -308,7 +498,7 @@ export class AccountingController {
     @Query('from') from: string | undefined,
     @Query('to') to: string | undefined,
     @Query('groupBy') groupBy: 'month' | 'quarter' | 'year' | undefined,
-    @Req() req: Request & { user?: { id?: string } },
+    @Req() req: AuthedAccountingRequest,
     @Res() res: Response,
   ) {
     const pdfBuffer = await this.accountingService.exportPnlPdf(
@@ -327,7 +517,34 @@ export class AccountingController {
   }
 
   @Get('categories')
-  async categories() {
-    return this.accountingService.listCategories();
+  async categories(@Query('includeInactive') includeInactive?: string) {
+    return this.operations.listCategories(includeInactive === 'true');
+  }
+
+  @Post('categories')
+  async createCategory(
+    @Body()
+    body: {
+      name: string;
+      type: AccountingTxType;
+      parentStableId?: string | null;
+      sortOrder?: number;
+    },
+  ) {
+    return this.operations.createCategory(body);
+  }
+
+  @Put('categories/:categoryStableId')
+  async updateCategory(
+    @Param('categoryStableId') categoryStableId: string,
+    @Body()
+    body: {
+      name?: string;
+      parentStableId?: string | null;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+  ) {
+    return this.operations.updateCategory(categoryStableId, body);
   }
 }

@@ -6,8 +6,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import {
   getDefaultHomepageContent,
+  getDefaultHomepageFeaturedConfig,
   type HomepageContent,
+  type HomepageFeaturedConfig,
 } from '@/lib/homepage-content';
+import type { AdminMenuFullResponse } from '@shared/menu';
 type EditingLocale = 'zh' | 'en';
 type ImageField = 'heroImageUrl' | 'heroMobileImageUrl' | 'membershipImageUrl';
 type TextField = Exclude<keyof HomepageContent, ImageField>;
@@ -63,6 +66,12 @@ function cloneContent(content: HomepageContent): HomepageContent {
   return { ...content };
 }
 
+function cloneFeaturedConfig(config: HomepageFeaturedConfig): HomepageFeaturedConfig {
+  return {
+    slots: config.slots.map((slot) => ({ ...slot })) as HomepageFeaturedConfig['slots'],
+  };
+}
+
 export default function AdminHomepagePage() {
   const [editingLocale, setEditingLocale] = useState<EditingLocale>('zh');
   const [content, setContent] = useState<HomepageContent>(() =>
@@ -71,6 +80,15 @@ export default function AdminHomepagePage() {
   const [savedSnapshot, setSavedSnapshot] = useState<HomepageContent>(() =>
     getDefaultHomepageContent('zh'),
   );
+  const [featuredConfig, setFeaturedConfig] = useState<HomepageFeaturedConfig>(() =>
+    getDefaultHomepageFeaturedConfig(),
+  );
+  const [savedFeaturedSnapshot, setSavedFeaturedSnapshot] = useState<HomepageFeaturedConfig>(() =>
+    getDefaultHomepageFeaturedConfig(),
+  );
+  const [featuredMenuItems, setFeaturedMenuItems] = useState<
+    Array<{ stableId: string; label: string }>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingField, setUploadingField] = useState<ImageField | null>(null);
@@ -78,8 +96,10 @@ export default function AdminHomepagePage() {
   const [error, setError] = useState<string | null>(null);
 
   const dirty = useMemo(
-    () => JSON.stringify(content) !== JSON.stringify(savedSnapshot),
-    [content, savedSnapshot],
+    () =>
+      JSON.stringify(content) !== JSON.stringify(savedSnapshot) ||
+      JSON.stringify(featuredConfig) !== JSON.stringify(savedFeaturedSnapshot),
+    [content, featuredConfig, savedFeaturedSnapshot, savedSnapshot],
   );
 
   useEffect(() => {
@@ -90,17 +110,50 @@ export default function AdminHomepagePage() {
       setMessage(null);
       setError(null);
       const fallback = getDefaultHomepageContent(editingLocale);
+      const fallbackFeatured = getDefaultHomepageFeaturedConfig();
       setContent(fallback);
       setSavedSnapshot(fallback);
+      setFeaturedConfig(fallbackFeatured);
+      setSavedFeaturedSnapshot(fallbackFeatured);
 
       try {
-        const loaded = await apiFetch<HomepageContent>(
-          `/admin/homepage/content?locale=${editingLocale}`,
-          { cache: 'no-store' },
-        );
+        const [loaded, loadedFeatured, menu] = await Promise.all([
+          apiFetch<HomepageContent>(
+            `/admin/homepage/content?locale=${editingLocale}`,
+            { cache: 'no-store' },
+          ),
+          apiFetch<HomepageFeaturedConfig>('/admin/homepage/featured', {
+            cache: 'no-store',
+          }),
+          apiFetch<AdminMenuFullResponse>('/admin/menu/full', {
+            cache: 'no-store',
+          }),
+        ]);
         if (cancelled) return;
         setContent(cloneContent(loaded));
         setSavedSnapshot(cloneContent(loaded));
+        setFeaturedConfig(cloneFeaturedConfig(loadedFeatured));
+        setSavedFeaturedSnapshot(cloneFeaturedConfig(loadedFeatured));
+        setFeaturedMenuItems(
+          menu.categories
+            .filter((category) => category.isActive)
+            .flatMap((category) =>
+              category.items
+                .filter(
+                  (item) =>
+                    item.visibility === 'PUBLIC' &&
+                    item.isVisibleOnMainMenu &&
+                    Boolean(item.imageUrl),
+                )
+                .map((item) => ({
+                  stableId: item.stableId,
+                  label:
+                    editingLocale === 'zh'
+                      ? item.nameZh ?? item.nameEn
+                      : item.nameEn,
+                })),
+            ),
+        );
       } catch (loadError) {
         if (cancelled) return;
         setError(loadError instanceof Error ? loadError.message : '首页内容加载失败');
@@ -133,6 +186,29 @@ export default function AdminHomepagePage() {
     setMessage(null);
   }
 
+  function updateFeaturedItem(index: number, itemStableId: string | null) {
+    setFeaturedConfig((current) => {
+      const slots = current.slots.map((slot) => ({ ...slot })) as HomepageFeaturedConfig['slots'];
+      const currentSlot = slots[index];
+      if (!currentSlot) return current;
+      slots[index] = { ...currentSlot, itemStableId };
+      return { slots };
+    });
+    setMessage(null);
+  }
+
+  function updateFeaturedBadge(index: number, value: string) {
+    const field = editingLocale === 'zh' ? 'badgeZh' : 'badgeEn';
+    setFeaturedConfig((current) => {
+      const slots = current.slots.map((slot) => ({ ...slot })) as HomepageFeaturedConfig['slots'];
+      const currentSlot = slots[index];
+      if (!currentSlot) return current;
+      slots[index] = { ...currentSlot, [field]: value || null };
+      return { slots };
+    });
+    setMessage(null);
+  }
+
   async function uploadImage(field: ImageField, file: File) {
     setUploadingField(field);
     setError(null);
@@ -160,17 +236,26 @@ export default function AdminHomepagePage() {
     setMessage(null);
 
     try {
-      const saved = await apiFetch<HomepageContent>(
-        `/admin/homepage/content/${editingLocale}`,
-        {
+      const [saved, savedFeatured] = await Promise.all([
+        apiFetch<HomepageContent>(
+          `/admin/homepage/content/${editingLocale}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(content),
+          },
+        ),
+        apiFetch<HomepageFeaturedConfig>('/admin/homepage/featured', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(content),
-        },
-      );
+          body: JSON.stringify(featuredConfig),
+        }),
+      ]);
       setContent(cloneContent(saved));
       setSavedSnapshot(cloneContent(saved));
-      setMessage(editingLocale === 'zh' ? '中文首页装潢已保存。' : '英文首页装潢已保存。');
+      setFeaturedConfig(cloneFeaturedConfig(savedFeatured));
+      setSavedFeaturedSnapshot(cloneFeaturedConfig(savedFeatured));
+      setMessage(editingLocale === 'zh' ? '中文首页装潢与招牌推荐已保存。' : '英文首页装潢与招牌推荐已保存。');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : '保存失败');
     } finally {
@@ -187,8 +272,8 @@ export default function AdminHomepagePage() {
           <p className="text-xs font-semibold tracking-[0.18em] text-slate-500">顾客首页内容管理</p>
           <h1 className="mt-1 text-3xl font-semibold text-slate-900">首页装潢</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            中文与英文内容完全独立维护。先选择要编辑的语言，再替换该语言首页的文字和图片。
-            菜品图片、价格和菜单名称仍由“菜单管理”维护。
+            中文与英文文案分别维护；招牌推荐的三个菜品位置为全站共用，推荐标签按语言分别维护。
+            菜品图片、价格、名称与食品/饮品类型仍由“菜单管理”维护。
           </p>
         </div>
         <Link
@@ -272,7 +357,77 @@ export default function AdminHomepagePage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
             <div className="mb-5">
-              <h2 className="text-xl font-semibold text-slate-900">3. 页面图片</h2>
+              <h2 className="text-xl font-semibold text-slate-900">3. 招牌推荐商品</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                每个位置可单独指定菜品；留在“自动”时，由后端按近 7 天销量依次选择有图片、可展示且商品类型为“食品”的菜品。标签留空时，后端只会为销量第一的菜品自动显示“周销量第一”。
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              {featuredConfig.slots.map((slot, index) => {
+                const badgeValue =
+                  editingLocale === 'zh' ? slot.badgeZh ?? '' : slot.badgeEn ?? '';
+                return (
+                  <div key={index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-sm font-semibold text-slate-900">推荐位置 {index + 1}</div>
+                    <label className="mt-3 block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-600">菜品</span>
+                      <select
+                        value={slot.itemStableId ?? ''}
+                        onChange={(event) =>
+                          updateFeaturedItem(index, event.target.value || null)
+                        }
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                      >
+                        <option value="">自动（近 7 天销量）</option>
+                        {featuredMenuItems.map((item) => (
+                          <option
+                            key={item.stableId}
+                            value={item.stableId}
+                            disabled={featuredConfig.slots.some(
+                              (otherSlot, otherIndex) =>
+                                otherIndex !== index && otherSlot.itemStableId === item.stableId,
+                            )}
+                          >
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="mt-3 block">
+                      <span className="mb-1.5 block text-xs font-medium text-slate-600">
+                        {editingLocale === 'zh' ? '中文标签' : 'English badge'}
+                      </span>
+                      <input
+                        value={badgeValue}
+                        maxLength={32}
+                        list={`featured-badge-suggestions-${editingLocale}`}
+                        onChange={(event) => updateFeaturedBadge(index, event.target.value)}
+                        placeholder={
+                          editingLocale === 'zh'
+                            ? '留空=自动；例：店主推荐 / 新品上市'
+                            : 'Blank = automatic; e.g. Owner Pick / New'
+                        }
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+            <datalist id={`featured-badge-suggestions-${editingLocale}`}>
+              {(editingLocale === 'zh'
+                ? ['店主推荐', '新品上市', '本周人气', '必点招牌']
+                : ['Owner Pick', 'New', 'Popular This Week', 'Signature Pick']
+              ).map((label) => (
+                <option key={label} value={label} />
+              ))}
+            </datalist>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-5">
+              <h2 className="text-xl font-semibold text-slate-900">4. 页面图片</h2>
               <p className="mt-1 text-sm text-slate-500">
                 当前语言的图片独立保存。如果图片本身含文字，请在中文与英文标签下分别上传对应版本。
               </p>

@@ -1,5 +1,20 @@
 import type { Locale } from '@/lib/i18n/locales';
 
+export type HomepageFeaturedSlotConfig = {
+  itemStableId: string | null;
+  badgeZh: string | null;
+  badgeEn: string | null;
+};
+
+export type HomepageFeaturedConfig = {
+  slots: [HomepageFeaturedSlotConfig, HomepageFeaturedSlotConfig, HomepageFeaturedSlotConfig];
+};
+
+export type HomepageFeaturedItem = {
+  itemStableId: string;
+  badge: string | null;
+};
+
 export type HomepageContent = {
   heroEyebrow: string;
   heroTitle: string;
@@ -23,7 +38,7 @@ const DEFAULTS: Record<Locale, HomepageContent> = {
   zh: {
     heroEyebrow: '三秦 · 西安街头味',
     heroTitle: '西安味，现做更好吃。',
-    heroDescription: '肉夹馍、凉皮和陕西面食，在北约克新鲜现做。',
+    heroDescription: '肉夹馍、凉皮和西安面食，在北约克新鲜现做。',
     heroPrimaryCtaLabel: '开始点单',
     heroSecondaryCtaLabel: '查看今日特价',
     heroImageUrl: null,
@@ -41,7 +56,7 @@ const DEFAULTS: Record<Locale, HomepageContent> = {
   en: {
     heroEyebrow: "SANQ · XI'AN STREET FOOD",
     heroTitle: "Xi'an street food, made fresh.",
-    heroDescription: 'Roujiamo, Liangpi and Shaanxi-style noodles made fresh in North York.',
+    heroDescription: "Roujiamo, Liangpi and Xi'an-style noodles made fresh in North York.",
     heroPrimaryCtaLabel: 'Order Now',
     heroSecondaryCtaLabel: "Today's Special",
     heroImageUrl: null,
@@ -60,4 +75,14 @@ const DEFAULTS: Record<Locale, HomepageContent> = {
 
 export function getDefaultHomepageContent(locale: Locale): HomepageContent {
   return { ...DEFAULTS[locale] };
+}
+
+export function getDefaultHomepageFeaturedConfig(): HomepageFeaturedConfig {
+  return {
+    slots: [
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+    ],
+  };
 }

@@ -14,6 +14,31 @@ import { PublishUberMenuUseCase } from '../../application/menu/publish-uber-menu
 import { SyncUberStoreStatusUseCase } from '../../application/merchant/uber-merchant-provisioning.service';
 import { SyncUberOrderStatusUseCase } from '../../application/orders/sync-uber-order-status.use-case';
 import {
+  HandleUberFinancialReportSuccessUseCase,
+  UberFinancialReportingUseCase,
+} from '../../application/operations/uber-financial-reporting.use-cases';
+import {
+  type UberFinancialReportApiPort,
+  type UberFinancialReportArtifactStorePort,
+  type UberFinancialReportRepositoryPort,
+  UBER_FINANCIAL_REPORT_API,
+  UBER_FINANCIAL_REPORT_ARTIFACT_STORE,
+  UBER_FINANCIAL_REPORT_REPOSITORY,
+} from '../../application/operations/uber-financial-reporting.ports';
+import {
+  UberFinancialReportApiAdapter,
+  UberFinancialReportArtifactStore,
+} from '../uber-api/uber-financial-reporting.adapters';
+import {
+  UberFinancialReportPrismaRepository,
+  UberMenuItemOperationsPrismaRepository,
+  UberOperationsPrismaUnitOfWork,
+  UberOpsTicketPrismaRepository,
+  UberOrderOperationsPrismaRepository,
+  UberReconciliationPrismaRepository,
+} from '../../infrastructure/persistence/uber-operations-prisma.repositories';
+import { UBER_EATS_REPORTING } from '../../public-api';
+import {
   type UberMenuItemOperationsRepositoryPort,
   type UberOperationsUnitOfWorkPort,
   type UberOpsTicketRepositoryPort,
@@ -25,16 +50,47 @@ import {
   UBER_ORDER_OPERATIONS_REPOSITORY,
   UBER_RECONCILIATION_REPOSITORY,
 } from '../../application/operations/uber-operations.ports';
-import {
-  UberMenuItemOperationsPrismaRepository,
-  UberOperationsPrismaUnitOfWork,
-  UberOpsTicketPrismaRepository,
-  UberOrderOperationsPrismaRepository,
-  UberReconciliationPrismaRepository,
-} from '../../infrastructure/persistence/uber-operations-prisma.repositories';
 
 export function createOperationsWiring(): Provider[] {
   return [
+    UberFinancialReportApiAdapter,
+    {
+      provide: UBER_FINANCIAL_REPORT_API,
+      useExisting: UberFinancialReportApiAdapter,
+    },
+    UberFinancialReportPrismaRepository,
+    {
+      provide: UBER_FINANCIAL_REPORT_REPOSITORY,
+      useExisting: UberFinancialReportPrismaRepository,
+    },
+    UberFinancialReportArtifactStore,
+    {
+      provide: UBER_FINANCIAL_REPORT_ARTIFACT_STORE,
+      useExisting: UberFinancialReportArtifactStore,
+    },
+    {
+      provide: UberFinancialReportingUseCase,
+      inject: [UBER_FINANCIAL_REPORT_API, UBER_FINANCIAL_REPORT_REPOSITORY],
+      useFactory: (
+        api: UberFinancialReportApiPort,
+        reports: UberFinancialReportRepositoryPort,
+      ) => new UberFinancialReportingUseCase(api, reports),
+    },
+    {
+      provide: UBER_EATS_REPORTING,
+      useExisting: UberFinancialReportingUseCase,
+    },
+    {
+      provide: HandleUberFinancialReportSuccessUseCase,
+      inject: [
+        UBER_FINANCIAL_REPORT_REPOSITORY,
+        UBER_FINANCIAL_REPORT_ARTIFACT_STORE,
+      ],
+      useFactory: (
+        reports: UberFinancialReportRepositoryPort,
+        artifacts: UberFinancialReportArtifactStorePort,
+      ) => new HandleUberFinancialReportSuccessUseCase(reports, artifacts),
+    },
     UberOrderOperationsPrismaRepository,
     {
       provide: UBER_ORDER_OPERATIONS_REPOSITORY,

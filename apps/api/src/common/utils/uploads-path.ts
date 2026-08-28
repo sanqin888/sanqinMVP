@@ -15,3 +15,7 @@ export function getUploadsRootDir(): string {
 export function getUploadsImagesDir(): string {
   return path.join(getUploadsRootDir(), 'images');
 }
+
+export function getUploadsAccountingDir(): string {
+  return path.join(getUploadsRootDir(), 'accounting');
+}

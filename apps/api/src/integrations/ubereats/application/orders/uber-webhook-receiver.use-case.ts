@@ -70,7 +70,9 @@ export class ReceiveUberWebhookUseCase {
         ? 'menu'
         : normalized.startsWith('store.')
           ? 'store'
-          : 'event';
+          : normalized.startsWith('eats.report.')
+            ? 'report'
+            : 'event';
     let inserted: boolean;
     try {
       inserted = await this.inbox.enqueue({

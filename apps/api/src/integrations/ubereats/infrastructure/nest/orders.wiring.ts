@@ -9,6 +9,7 @@ import {
 import type { Provider } from '@nestjs/common';
 import { ReceiveUberWebhookUseCase } from '../../application/orders/uber-webhook-receiver.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../../application/orders/process-uber-webhook-inbox.use-case';
+import { HandleUberFinancialReportSuccessUseCase } from '../../application/operations/uber-financial-reporting.use-cases';
 import { ReplayUnsupportedUberWebhooksUseCase } from '../../application/orders/replay-unsupported-uber-webhooks.use-case';
 import { UberOrderActionService } from '../../application/orders/uber-order-action.service';
 import { UberOrderStatusSyncService } from '../../application/orders/uber-order-status-sync.service';
@@ -240,6 +241,7 @@ export function createOrdersWiring(): Provider[] {
         UberMenuNotificationHandler,
         UberMenuRefreshRequestHandler,
         HandleUberMerchantWebhookHandler,
+        HandleUberFinancialReportSuccessUseCase,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
@@ -248,6 +250,7 @@ export function createOrdersWiring(): Provider[] {
         menu: UberMenuNotificationHandler,
         menuRefresh: UberMenuRefreshRequestHandler,
         merchant: HandleUberMerchantWebhookHandler,
+        reports: HandleUberFinancialReportSuccessUseCase,
         telemetry: UberTelemetryPort,
       ) =>
         new ProcessUberWebhookInboxUseCase(
@@ -257,6 +260,7 @@ export function createOrdersWiring(): Provider[] {
           menuRefresh,
           merchant,
           telemetry,
+          reports,
         ),
     },
   ];
