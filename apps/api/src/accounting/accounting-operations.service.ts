@@ -435,11 +435,12 @@ export class AccountingOperationsService {
     let cursor: string | null = candidateDescendantStableId;
     const seen = new Set<string>();
     while (cursor) {
-      if (cursor === categoryStableId) return true;
-      if (seen.has(cursor)) return true;
-      seen.add(cursor);
+      const currentStableId = cursor;
+      if (currentStableId === categoryStableId) return true;
+      if (seen.has(currentStableId)) return true;
+      seen.add(currentStableId);
       const row = await this.prisma.accountingCategory.findUnique({
-        where: { categoryStableId: cursor },
+        where: { categoryStableId: currentStableId },
         select: {
           parent: { select: { categoryStableId: true } },
         },
@@ -818,12 +819,13 @@ export class AccountingOperationsService {
     const pendingDocuments = await this.prisma.accountingExpenseDocument.count({
       where: { status: AccountingDocumentStatus.PENDING_REVIEW },
     });
-    const latestClosedMonth =
-      await this.prisma.accountingPeriodClose.findFirst({
+    const latestClosedMonth = await this.prisma.accountingPeriodClose.findFirst(
+      {
         where: { periodType: 'MONTH' },
         orderBy: { closedAt: 'desc' },
         select: { periodKey: true },
-      });
+      },
+    );
 
     return {
       from,
