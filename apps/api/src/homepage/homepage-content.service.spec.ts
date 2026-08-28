@@ -9,7 +9,9 @@ describe('HomepageContentService', () => {
 
   beforeEach(async () => {
     previousUploadRoot = process.env.UPLOAD_ROOT;
-    tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sanq-homepage-'));
+    tempRoot = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), 'sanq-homepage-'),
+    );
     process.env.UPLOAD_ROOT = tempRoot;
   });
 
@@ -58,6 +60,8 @@ describe('HomepageContentService', () => {
       service.updateLocaleContent('en', {
         heroImageUrl: 'https://example.com/hero.jpg',
       }),
-    ).rejects.toThrow('heroImageUrl must reference an uploaded or bundled image');
+    ).rejects.toThrow(
+      'heroImageUrl must reference an uploaded or bundled image',
+    );
   });
 });

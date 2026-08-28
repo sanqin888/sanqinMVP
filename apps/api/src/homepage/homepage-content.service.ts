@@ -54,7 +54,9 @@ export class HomepageContentService {
   private readonly logger = new Logger(HomepageContentService.name);
   private writeQueue: Promise<void> = Promise.resolve();
 
-  async getLocaleContent(locale: HomepageLocale): Promise<HomepageLocaleContent> {
+  async getLocaleContent(
+    locale: HomepageLocale,
+  ): Promise<HomepageLocaleContent> {
     const document = await this.readDocument();
     return document[locale];
   }
@@ -156,7 +158,9 @@ export class HomepageContentService {
       }
       const normalized = typeof value === 'string' ? value.trim() : null;
       if (normalized && !this.isAllowedImageUrl(normalized)) {
-        throw new BadRequestException(`${key} must reference an uploaded or bundled image`);
+        throw new BadRequestException(
+          `${key} must reference an uploaded or bundled image`,
+        );
       }
       next[key] = normalized || null;
     }
@@ -170,7 +174,9 @@ export class HomepageContentService {
     return false;
   }
 
-  private async writeDocument(document: HomepageContentDocument): Promise<void> {
+  private async writeDocument(
+    document: HomepageContentDocument,
+  ): Promise<void> {
     const configPath = this.getConfigPath();
     const configDir = path.dirname(configPath);
     await fs.promises.mkdir(configDir, { recursive: true });

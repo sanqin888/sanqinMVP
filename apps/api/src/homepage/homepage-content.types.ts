@@ -41,25 +41,29 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContentDocument = {
     favoritesTitle: '三秦招牌推荐',
     membershipEyebrow: '三秦会员',
     membershipTitle: '加入会员，吃得越多福利越多',
-    membershipDescription: '累积积分、领取会员优惠券，并享受不定期会员专享活动。',
+    membershipDescription:
+      '累积积分、领取会员优惠券，并享受不定期会员专享活动。',
     membershipCtaLabel: '免费注册会员',
     membershipImageUrl: null,
   },
   en: {
     heroEyebrow: "SANQ · XI'AN STREET FOOD",
     heroTitle: "Xi'an street food, made fresh.",
-    heroDescription: 'Roujiamo, Liangpi and Shaanxi-style noodles made fresh in North York.',
+    heroDescription:
+      'Roujiamo, Liangpi and Shaanxi-style noodles made fresh in North York.',
     heroPrimaryCtaLabel: 'Order Now',
     heroSecondaryCtaLabel: "Today's Special",
     heroImageUrl: null,
     heroMobileImageUrl: null,
     dailySpecialTitle: "Today's Special",
-    dailySpecialDescription: 'A different SanQ favorite every day, specially priced when you order online.',
+    dailySpecialDescription:
+      'A different SanQ favorite every day, specially priced when you order online.',
     favoritesEyebrow: 'FIRST TIME HERE? START WITH THESE',
     favoritesTitle: 'SanQ Favorites',
     membershipEyebrow: 'SANQ MEMBERS',
     membershipTitle: 'Join SanQ and enjoy more',
-    membershipDescription: 'Earn points, receive member coupons and unlock occasional member-only offers.',
+    membershipDescription:
+      'Earn points, receive member coupons and unlock occasional member-only offers.',
     membershipCtaLabel: 'Join SanQ',
     membershipImageUrl: null,
   },

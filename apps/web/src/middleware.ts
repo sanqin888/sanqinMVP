@@ -6,8 +6,7 @@ const SESSION_COOKIE_NAME = "session_id";
 const POS_DEVICE_ID_COOKIE = "posDeviceId";
 const POS_DEVICE_KEY_COOKIE = "posDeviceKey";
 
-const LOCALES = ["zh", "en"] as const;
-type Locale = (typeof LOCALES)[number];
+type Locale = "zh" | "en";
 
 const SEO_BOT_UA_RE =
   /(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot)/i;

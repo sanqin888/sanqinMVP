@@ -2,11 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import LocaleSwitcher from "@/components/LocaleSwitcher";
 import { useSession } from "@/lib/auth-session";
 import { usePersistentCart } from "@/lib/cart";
-import { addLocaleToPath, removeLeadingLocale } from "@/lib/i18n/path";
 
 type Props = {
   locale: "zh" | "en";
