@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "PosPrintJob_storeId_customerStatus_kitchenStatus_labelStatus_id" RENAME TO "PosPrintJob_storeId_customerStatus_kitchenStatus_labelStatu_idx";
