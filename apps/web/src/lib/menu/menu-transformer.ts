@@ -89,7 +89,9 @@ export function buildLocalizedMenuFromDb(
   );
 
   return activeCategories.map<PublicMenuCategory>((c) => {
-    const localizedName = isZh && c.nameZh ? c.nameZh : c.nameEn;
+    const localizedName = isZh
+      ? c.nameZh?.trim() || "未命名分类"
+      : c.nameEn;
 
     const items = (c.items ?? [])
       .filter((i) => i.visibility === "PUBLIC" && i.isAvailable)
@@ -102,10 +104,13 @@ export function buildLocalizedMenuFromDb(
           );
         }
 
-        const name = isZh && i.nameZh ? i.nameZh : i.nameEn;
+        const name = isZh
+          ? i.nameZh?.trim() || "未命名菜品"
+          : i.nameEn;
 
-        const ingredientsText =
-          (isZh && i.ingredientsZh ? i.ingredientsZh : i.ingredientsEn) ?? "";
+        const ingredientsText = isZh
+          ? i.ingredientsZh ?? ""
+          : i.ingredientsEn ?? "";
         const ingredients = ingredientsText.trim() ? ingredientsText : undefined;
 
         const optionGroups = (i.optionGroups ?? [])
@@ -176,7 +181,9 @@ export function buildLocalizedDailySpecials(
   for (const special of specials ?? []) {
     const item = itemMap.get(special.itemStableId);
     if (!item) continue;
-    const name = isZh && item.nameZh ? item.nameZh : item.nameEn;
+    const name = isZh
+      ? item.nameZh?.trim() || "未命名菜品"
+      : item.nameEn;
     localizedSpecials.push({
       stableId: special.stableId,
       itemStableId: special.itemStableId,

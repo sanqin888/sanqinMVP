@@ -270,7 +270,7 @@ export const UI_STRINGS: Record<
 
     thankYou: {
       brand: "SanQ · Xi'an Street Food",
-      switchLabel: "中文",
+      switchLabel: "Language",
       title: "Payment successful",
       intro: "Thank you for your order! We're preparing your food.",
       numberLabel: "Order number",
@@ -400,7 +400,7 @@ export const UI_STRINGS: Record<
 
     thankYou: {
       brand: "三秦 · 西安小吃",
-      switchLabel: "English",
+      switchLabel: "语言",
       title: "支付成功",
       intro: "感谢下单！我们已经开始为你制作餐品。",
       numberLabel: "订单编号",
