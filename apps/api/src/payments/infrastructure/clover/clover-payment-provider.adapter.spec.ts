@@ -4,6 +4,7 @@ import {
 } from './clover-payment-provider.adapter';
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
+import type { CloverMerchantAccessTokenService } from './oauth/clover-merchant-access-token.service';
 import {
   CloverTerminalTransport,
   mapTerminalPaymentResponse,
@@ -14,10 +15,14 @@ describe('CloverPaymentProviderAdapter', () => {
     const config = new CloverProviderConfig();
     const ecommerce = new CloverEcommerceTransport(config);
     const terminal = new CloverTerminalTransport(config);
-    const platform = new CloverPlatformPaymentsGateway(config);
+    const accessTokens = {
+      hasUsableCredential: jest.fn().mockResolvedValue(true),
+      getAccessToken: jest.fn().mockResolvedValue({ token: 'platform-token' }),
+    } as unknown as CloverMerchantAccessTokenService;
+    const platform = new CloverPlatformPaymentsGateway(config, accessTokens);
     const platformConfigured = jest
       .spyOn(platform, 'isConfigured')
-      .mockReturnValue(true);
+      .mockResolvedValue(true);
     return {
       adapter: new CloverPaymentProviderAdapter(ecommerce, terminal, platform),
       ecommerce,
@@ -826,7 +831,6 @@ describe('Clover Platform Payments Gateway', () => {
   });
   const original = {
     base: process.env.CLOVER_PLATFORM_API_BASE,
-    platformToken: process.env.CLOVER_V3_ACCESS_TOKEN,
     ecommerceToken: process.env.CLOVER_ACCESS_TOKEN,
     merchantId: process.env.CLOVER_MERCHANT_ID,
   };
@@ -838,16 +842,26 @@ describe('Clover Platform Payments Gateway', () => {
     else process.env[key] = value;
   };
 
+  const createAccessTokens = () =>
+    ({
+      hasUsableCredential: jest.fn().mockResolvedValue(true),
+      getAccessToken: jest
+        .fn()
+        .mockResolvedValue({ token: 'merchant-oauth-token' }),
+    }) as unknown as CloverMerchantAccessTokenService;
+  const createPlatformGateway = (
+    accessTokens: CloverMerchantAccessTokenService = createAccessTokens(),
+  ) =>
+    new CloverPlatformPaymentsGateway(new CloverProviderConfig(), accessTokens);
+
   beforeEach(() => {
     setPlatformEnv('CLOVER_PLATFORM_API_BASE', 'https://platform.example.test');
-    setPlatformEnv('CLOVER_V3_ACCESS_TOKEN', 'platform-v3-fixture-token');
     setPlatformEnv('CLOVER_MERCHANT_ID', 'merchant-1');
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
     restorePlatformEnv('CLOVER_PLATFORM_API_BASE', original.base);
-    restorePlatformEnv('CLOVER_V3_ACCESS_TOKEN', original.platformToken);
     restorePlatformEnv('CLOVER_ACCESS_TOKEN', original.ecommerceToken);
     restorePlatformEnv('CLOVER_MERCHANT_ID', original.merchantId);
   });
@@ -858,9 +872,7 @@ describe('Clover Platform Payments Gateway', () => {
       .mockResolvedValue(
         new Response(JSON.stringify(platformPayment()), { status: 200 }),
       );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -887,7 +899,7 @@ describe('Clover Platform Payments Gateway', () => {
     );
     expect(firstUrl).toContain('expand=');
     expect(fetchSpy.mock.calls[0]?.[1]?.headers).toMatchObject({
-      Authorization: 'Bearer platform-v3-fixture-token',
+      Authorization: 'Bearer merchant-oauth-token',
     });
   });
 
@@ -897,9 +909,7 @@ describe('Clover Platform Payments Gateway', () => {
         status: 200,
       }),
     );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalPayment({
@@ -923,9 +933,7 @@ describe('Clover Platform Payments Gateway', () => {
         status: 200,
       }),
     );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -944,9 +952,7 @@ describe('Clover Platform Payments Gateway', () => {
           { status: 200 },
         ),
       );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -972,9 +978,7 @@ describe('Clover Platform Payments Gateway', () => {
         { status: 200 },
       ),
     );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -999,9 +1003,7 @@ describe('Clover Platform Payments Gateway', () => {
         { status: 200 },
       ),
     );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalReversal({
@@ -1034,9 +1036,7 @@ describe('Clover Platform Payments Gateway', () => {
         status: 200,
       }),
     );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalReversal({
@@ -1081,9 +1081,7 @@ describe('Clover Platform Payments Gateway', () => {
           { status: 200 },
         ),
       );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalReversal({
@@ -1114,9 +1112,7 @@ describe('Clover Platform Payments Gateway', () => {
         { status: 200 },
       ),
     );
-    const gateway = new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-    );
+    const gateway = createPlatformGateway();
 
     await expect(
       gateway.getCanonicalReversal({
@@ -1130,13 +1126,79 @@ describe('Clover Platform Payments Gateway', () => {
     });
   });
 
-  it('does not fall back to Ecommerce credentials for Platform v3', async () => {
-    delete process.env.CLOVER_V3_ACCESS_TOKEN;
-    setPlatformEnv('CLOVER_ACCESS_TOKEN', 'ecommerce-only-fixture-token');
-    const fetchSpy = jest.spyOn(global, 'fetch');
+  it('uses the persisted merchant-scoped OAuth token for Platform v3', async () => {
+    const getAccessToken = jest.fn().mockResolvedValue({
+      token: 'database-merchant-token',
+    });
+    const accessTokens = {
+      hasUsableCredential: jest.fn().mockResolvedValue(true),
+      getAccessToken,
+    } as unknown as CloverMerchantAccessTokenService;
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(platformPayment()), { status: 200 }),
+      );
     const gateway = new CloverPlatformPaymentsGateway(
       new CloverProviderConfig(),
+      accessTokens,
     );
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+    });
+    expect(getAccessToken.mock.calls).toEqual([['merchant-1']]);
+    expect(fetchSpy.mock.calls[0]?.[1]?.headers).toMatchObject({
+      Authorization: 'Bearer database-merchant-token',
+    });
+  });
+
+  it('forces one merchant token refresh and retries a Platform v3 read once after a database-token 401', async () => {
+    const getAccessToken = jest
+      .fn()
+      .mockResolvedValueOnce({ token: 'expired-db-token' })
+      .mockResolvedValueOnce({ token: 'refreshed-db-token' });
+    const accessTokens = {
+      hasUsableCredential: jest.fn().mockResolvedValue(true),
+      getAccessToken,
+    } as unknown as CloverMerchantAccessTokenService;
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(platformPayment()), { status: 200 }),
+      );
+    const gateway = new CloverPlatformPaymentsGateway(
+      new CloverProviderConfig(),
+      accessTokens,
+    );
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'SUCCEEDED',
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(getAccessToken.mock.calls).toEqual([
+      ['merchant-1'],
+      ['merchant-1', { forceRefresh: true }],
+    ]);
+    expect(fetchSpy.mock.calls[1]?.[1]?.headers).toMatchObject({
+      Authorization: 'Bearer refreshed-db-token',
+    });
+  });
+
+  it('does not fall back to Ecommerce credentials when merchant OAuth authorization is unavailable', async () => {
+    setPlatformEnv('CLOVER_ACCESS_TOKEN', 'ecommerce-only-fixture-token');
+    const getAccessToken = jest.fn().mockResolvedValue(null);
+    const accessTokens = {
+      hasUsableCredential: jest.fn().mockResolvedValue(false),
+      getAccessToken,
+    } as unknown as CloverMerchantAccessTokenService;
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const gateway = createPlatformGateway(accessTokens);
 
     await expect(
       gateway.getCanonicalPayment(platformRequest),
@@ -1144,6 +1206,7 @@ describe('Clover Platform Payments Gateway', () => {
       status: 'UNKNOWN',
       failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
     });
+    expect(getAccessToken.mock.calls).toHaveLength(0);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

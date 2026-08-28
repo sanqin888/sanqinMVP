@@ -133,6 +133,75 @@ describe('Payments bounded-context architecture', () => {
     ]);
   });
 
+  it('keeps Clover merchant OAuth and merchant-scoped credential persistence inside Payments Clover infrastructure', () => {
+    const cloverInfrastructureRoot = resolve(
+      PAYMENTS_ROOT,
+      'infrastructure',
+      'clover',
+    );
+    const oauthDefinitions = scanTypeScript(SOURCE_ROOT, {
+      productionOnly: true,
+    })
+      .filter(({ source }) =>
+        source.includes('class CloverMerchantAuthorizationService'),
+      )
+      .map(({ path }) =>
+        path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
+      );
+    const outsideClover = scanTypeScript(SOURCE_ROOT, {
+      productionOnly: true,
+    }).filter(({ path }) => !path.startsWith(cloverInfrastructureRoot));
+
+    expect(oauthDefinitions).toEqual([
+      'payments/infrastructure/clover/oauth/clover-merchant-authorization.service.ts',
+    ]);
+    expect(
+      importViolations(outsideClover, SOURCE_ROOT, (specifier) =>
+        /payments\/infrastructure\/clover\/(?:oauth|platform)(?:\/|$)/.test(
+          specifier,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps Clover OAuth protocol calls separate from Platform v3 verification calls', () => {
+    const cloverFiles = scanTypeScript(
+      resolve(PAYMENTS_ROOT, 'infrastructure', 'clover'),
+      { productionOnly: true },
+    );
+    const oauthClient = cloverFiles.find(({ path }) =>
+      path.endsWith('oauth/clover-oauth.client.ts'),
+    );
+    const platformVerification = cloverFiles.find(({ path }) =>
+      path.endsWith(
+        'platform/clover-platform-merchant-verification.gateway.ts',
+      ),
+    );
+
+    expect(oauthClient?.source).toContain('/oauth/v2/authorize');
+    expect(oauthClient?.source).not.toContain('/v3/merchants/');
+    expect(platformVerification?.source).toContain('/v3/merchants/');
+    expect(platformVerification?.source).not.toContain('/oauth/v2/');
+  });
+
+  it('keeps Clover OAuth secrets and merchant credentials out of Web source', () => {
+    const webSource = scanTypeScript(
+      resolve(PAYMENTS_ROOT, '../../../web/src'),
+      {
+        productionOnly: true,
+      },
+    );
+    const violations = webSource
+      .filter(({ source }) =>
+        /CLOVER_(?:OAUTH_CLIENT_SECRET|CREDENTIAL_ENCRYPTION_KEYS|TERMINAL_OAUTH_TOKEN)/.test(
+          source,
+        ),
+      )
+      .map(({ path }) => path.replaceAll('\\', '/'));
+
+    expect(violations).toEqual([]);
+  });
+
   it('prevents unified-payment orchestration from importing Clover infrastructure', () => {
     const orchestrationFiles = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),

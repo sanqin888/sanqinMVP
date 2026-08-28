@@ -62,7 +62,7 @@ export default function CustomerSiteHeader({ locale }: Props) {
         <Link href={homeHref} className="flex shrink-0 items-center gap-1 sm:gap-1.5" aria-label="SanQ">
           <div className="relative h-9 w-9 overflow-hidden sm:h-11 sm:w-11 lg:h-12 lg:w-12">
             <Image
-              src="/images/sanq-logo-omega.svg"
+              src="/images/sanqinLOGO.png"
               alt=""
               fill
               priority
