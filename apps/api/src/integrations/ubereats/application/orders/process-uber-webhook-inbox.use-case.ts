@@ -8,6 +8,9 @@ import {
 } from '../menu/uber-menu-notification.handler';
 import { HandleUberMerchantWebhookHandler } from '../merchant/uber-merchant-webhook.handler';
 import {
+  HandleUberFinancialReportSuccessUseCase,
+} from '../operations/uber-financial-reporting.use-cases';
+import {
   type UberWebhookInboxItem,
   type UberWebhookInboxPort,
 } from './uber-order-processing.ports';
@@ -17,6 +20,7 @@ import {
 } from './uber-order.use-cases';
 import {
   UberApplicationError,
+  UberTransientUpstreamError,
   UberValidationError,
 } from '../shared/uber-application.error';
 
@@ -29,6 +33,7 @@ export class ProcessUberWebhookInboxUseCase {
     private readonly menuRefresh: UberMenuRefreshRequestHandler,
     private readonly merchant: HandleUberMerchantWebhookHandler,
     private readonly telemetry: UberTelemetryPort,
+    private readonly reports?: HandleUberFinancialReportSuccessUseCase,
   ) {}
 
   async execute(limit = 50): Promise<number> {
@@ -46,6 +51,21 @@ export class ProcessUberWebhookInboxUseCase {
   private async route(item: UberWebhookInboxItem): Promise<void> {
     const { eventId, eventType, payload } = item;
     try {
+      if (normalizeUberEventType(eventType) === 'eats.report.success') {
+        if (!this.reports) {
+          throw new UberTransientUpstreamError({
+            code: 'UBER_REPORT_HANDLER_UNAVAILABLE',
+            message: 'Uber report handler is unavailable',
+            operation: 'reporting.webhook',
+          });
+        }
+        await this.reports.execute(payload);
+        if (!(await this.inbox.markSucceeded(item))) {
+          throw new UberWebhookLeaseLostError(eventId, 'markSucceeded');
+        }
+        return;
+      }
+
       const dispatched = dispatchUberWebhookV1({
         eventType,
         businessVersion: item.businessVersion,

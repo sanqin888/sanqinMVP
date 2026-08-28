@@ -108,21 +108,18 @@ export function createOrdersWiring(): Provider[] {
         UBER_WEBHOOK_SIGNATURE_VERIFIER,
         UBER_TELEMETRY_PORT,
         UBER_WORKER_WAKE_PORT,
-        HandleUberFinancialReportSuccessUseCase,
       ],
       useFactory: (
         inbox: UberWebhookInboxPort,
         signatures: UberWebhookSignatureVerifier,
         telemetry: UberTelemetryPort,
         workerWake: UberWorkerWakePort,
-        reports: HandleUberFinancialReportSuccessUseCase,
       ) =>
         new ReceiveUberWebhookUseCase(
           inbox,
           signatures,
           telemetry,
           workerWake,
-          reports,
         ),
     },
     {
@@ -249,6 +246,7 @@ export function createOrdersWiring(): Provider[] {
         UberMenuNotificationHandler,
         UberMenuRefreshRequestHandler,
         HandleUberMerchantWebhookHandler,
+        HandleUberFinancialReportSuccessUseCase,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
@@ -257,6 +255,7 @@ export function createOrdersWiring(): Provider[] {
         menu: UberMenuNotificationHandler,
         menuRefresh: UberMenuRefreshRequestHandler,
         merchant: HandleUberMerchantWebhookHandler,
+        reports: HandleUberFinancialReportSuccessUseCase,
         telemetry: UberTelemetryPort,
       ) =>
         new ProcessUberWebhookInboxUseCase(
@@ -266,6 +265,7 @@ export function createOrdersWiring(): Provider[] {
           menuRefresh,
           merchant,
           telemetry,
+          reports,
         ),
     },
   ];

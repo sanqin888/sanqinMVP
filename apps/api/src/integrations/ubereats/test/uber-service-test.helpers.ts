@@ -5,7 +5,6 @@ import type { UberWebhookInboxPort } from '../application/orders/uber-order-proc
 import type { UberCryptoConfigService } from '../infrastructure/crypto/uber-crypto-config.service';
 import type { UberWorkerWakePort } from '../application/shared/uber-worker-wake.port';
 import { HmacUberWebhookSignatureVerifier } from '../infrastructure/crypto/uber-webhook-signature-verifier';
-import { HandleUberFinancialReportSuccessUseCase } from '../application/operations/uber-financial-reporting.use-cases';
 
 type WebhookInboxTestPrisma = {
   uberWebhookInbox: {
@@ -36,22 +35,10 @@ export function createReceiveUberWebhookUseCase(
     markFailed: () => Promise.resolve(true),
     setStoreProvisioned: () => Promise.resolve(false),
   };
-  const reports = new HandleUberFinancialReportSuccessUseCase(
-    {
-      findExisting: () => Promise.resolve(null),
-      findByWorkflowId: () => Promise.resolve(null),
-      saveRequested: () => Promise.reject(new Error('not used')),
-      markReady: () => Promise.reject(new Error('not used')),
-      markError: () => Promise.resolve(),
-      list: () => Promise.resolve([]),
-    },
-    { downloadCsvSections: () => Promise.resolve([]) },
-  );
   return new ReceiveUberWebhookUseCase(
     inbox,
     new HmacUberWebhookSignatureVerifier(config),
     { captureEvent: () => Promise.resolve(), workflowLog: () => undefined },
     workerWake,
-    reports,
   );
 }

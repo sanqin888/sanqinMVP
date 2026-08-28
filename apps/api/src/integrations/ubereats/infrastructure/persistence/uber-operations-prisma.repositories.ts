@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { createId } from '@paralleldrive/cuid2';
 import {
   Channel,
+  UberFinancialReportStatus as PrismaReportStatus,
   UberOpsTicketStatus as DbTicketStatus,
   type Prisma,
 } from '@prisma/client';
@@ -13,6 +15,12 @@ import type {
   UberOrderOperationsRepositoryPort,
   UberReconciliationRepositoryPort,
 } from '../../application/operations/uber-operations.ports';
+import type {
+  UberFinancialReportRecord,
+  UberFinancialReportRepositoryPort,
+  UberFinancialReportStatus,
+} from '../../application/operations/uber-financial-reporting.ports';
+import type { UberEatsFinancialReportType } from '../../public-api';
 import type { UberOpsTicketStatus } from '../../application/operations/uber-operations.types';
 import {
   toDomainTicketPriority,
@@ -294,5 +302,142 @@ export class UberOperationsPrismaUnitOfWork implements UberOperationsUnitOfWorkP
     return this.prisma.$transaction((tx) =>
       work({ tickets: new TicketRepository(tx) }),
     );
+  }
+}
+
+@Injectable()
+export class UberFinancialReportPrismaRepository
+  implements UberFinancialReportRepositoryPort
+{
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findExisting(input: {
+    reportType: UberEatsFinancialReportType;
+    storeUuids: string[];
+    startDate: string;
+    endDate: string;
+  }): Promise<UberFinancialReportRecord | null> {
+    const row = await this.prisma.uberFinancialReport.findFirst({
+      where: {
+        reportType: input.reportType,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        storeUuids: { equals: input.storeUuids },
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+    return row ? this.present(row) : null;
+  }
+
+  async findByWorkflowId(
+    workflowId: string,
+  ): Promise<UberFinancialReportRecord | null> {
+    const row = await this.prisma.uberFinancialReport.findUnique({
+      where: { workflowId },
+    });
+    return row ? this.present(row) : null;
+  }
+
+  async saveRequested(input: {
+    workflowId: string;
+    reportType: UberEatsFinancialReportType;
+    storeUuids: string[];
+    startDate: string;
+    endDate: string;
+  }): Promise<UberFinancialReportRecord> {
+    const row = await this.prisma.uberFinancialReport.upsert({
+      where: { workflowId: input.workflowId },
+      create: {
+        reportStableId: `uberreport_${createId()}`,
+        workflowId: input.workflowId,
+        reportType: input.reportType,
+        storeUuids: input.storeUuids,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        status: PrismaReportStatus.REQUESTED,
+      },
+      update: {},
+    });
+    return this.present(row);
+  }
+
+  async markReady(input: {
+    workflowId: string;
+    downloadUrls: string[];
+    artifactUrls: string[];
+    rawMetadata: unknown;
+  }): Promise<UberFinancialReportRecord> {
+    const row = await this.prisma.uberFinancialReport.update({
+      where: { workflowId: input.workflowId },
+      data: {
+        status: PrismaReportStatus.READY,
+        downloadUrls: input.downloadUrls,
+        artifactUrls: input.artifactUrls,
+        rawMetadata: input.rawMetadata as Prisma.InputJsonValue,
+        completedAt: new Date(),
+        errorMessage: null,
+      },
+    });
+    return this.present(row);
+  }
+
+  async markError(input: {
+    workflowId: string;
+    errorMessage: string;
+  }): Promise<void> {
+    await this.prisma.uberFinancialReport.updateMany({
+      where: { workflowId: input.workflowId },
+      data: {
+        status: PrismaReportStatus.ERROR,
+        errorMessage: input.errorMessage.slice(0, 1000),
+      },
+    });
+  }
+
+  async list(input?: {
+    limit?: number;
+    status?: UberFinancialReportStatus;
+  }): Promise<UberFinancialReportRecord[]> {
+    const take = Math.min(Math.max(input?.limit ?? 100, 1), 200);
+    const rows = await this.prisma.uberFinancialReport.findMany({
+      where: input?.status
+        ? { status: input.status as PrismaReportStatus }
+        : undefined,
+      orderBy: { requestedAt: 'desc' },
+      take,
+    });
+    return rows.map((row) => this.present(row));
+  }
+
+  private present(row: {
+    reportStableId: string;
+    workflowId: string;
+    reportType: string;
+    storeUuids: string[];
+    startDate: string;
+    endDate: string;
+    status: PrismaReportStatus;
+    downloadUrls: string[];
+    artifactUrls: string[];
+    requestedAt: Date;
+    completedAt: Date | null;
+    importedAt: Date | null;
+    errorMessage: string | null;
+  }): UberFinancialReportRecord {
+    return {
+      reportStableId: row.reportStableId,
+      workflowId: row.workflowId,
+      reportType: row.reportType,
+      storeUuids: row.storeUuids,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      status: row.status,
+      downloadUrls: row.downloadUrls,
+      artifactUrls: row.artifactUrls,
+      requestedAt: row.requestedAt,
+      completedAt: row.completedAt,
+      importedAt: row.importedAt,
+      errorMessage: row.errorMessage,
+    };
   }
 }

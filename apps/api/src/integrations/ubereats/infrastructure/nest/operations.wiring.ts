@@ -28,8 +28,15 @@ import {
 import {
   UberFinancialReportApiAdapter,
   UberFinancialReportArtifactStore,
-  UberFinancialReportPrismaRepository,
 } from '../uber-api/uber-financial-reporting.adapters';
+import {
+  UberFinancialReportPrismaRepository,
+  UberMenuItemOperationsPrismaRepository,
+  UberOperationsPrismaUnitOfWork,
+  UberOpsTicketPrismaRepository,
+  UberOrderOperationsPrismaRepository,
+  UberReconciliationPrismaRepository,
+} from '../../infrastructure/persistence/uber-operations-prisma.repositories';
 import { UBER_EATS_REPORTING } from '../../public-api';
 import {
   type UberMenuItemOperationsRepositoryPort,
@@ -43,13 +50,6 @@ import {
   UBER_ORDER_OPERATIONS_REPOSITORY,
   UBER_RECONCILIATION_REPOSITORY,
 } from '../../application/operations/uber-operations.ports';
-import {
-  UberMenuItemOperationsPrismaRepository,
-  UberOperationsPrismaUnitOfWork,
-  UberOpsTicketPrismaRepository,
-  UberOrderOperationsPrismaRepository,
-  UberReconciliationPrismaRepository,
-} from '../../infrastructure/persistence/uber-operations-prisma.repositories';
 
 export function createOperationsWiring(): Provider[] {
   return [
