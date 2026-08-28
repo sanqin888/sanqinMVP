@@ -908,6 +908,30 @@ export default function MembershipHomePage() {
               }
             : prev,
         );
+
+        const manualLocale = document.cookie
+          .split(';')
+          .map((part) => part.trim())
+          .find((part) => part.startsWith('preferred_locale='))
+          ?.split('=')[1];
+        const hasManualLocale = manualLocale === 'zh' || manualLocale === 'en';
+
+        try {
+          document.cookie = `member_locale=${updated.language}; path=/; max-age=${60 * 60 * 24 * 365}`;
+          if (!hasManualLocale) {
+            document.cookie = `locale=${updated.language}; path=/; max-age=${60 * 60 * 24 * 365}`;
+          }
+        } catch {}
+
+        if (!hasManualLocale && updated.language !== locale) {
+          const query = searchParams.toString();
+          window.location.assign(
+            query
+              ? `/${updated.language}/membership?${query}`
+              : `/${updated.language}/membership`,
+          );
+          return;
+        }
       }
 
       setLanguageSaved(true);
@@ -921,7 +945,7 @@ export default function MembershipHomePage() {
     } finally {
       setLanguageSaving(false);
     }
-  }, [member, languagePreference, isZh]);
+  }, [member, languagePreference, isZh, locale, searchParams]);
 
   const handleBirthdaySave = useCallback(async () => {
     if (!member) return;

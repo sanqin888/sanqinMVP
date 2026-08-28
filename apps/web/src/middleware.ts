@@ -1,21 +1,15 @@
 //Users/apple/sanqinMVP/apps/web/src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { resolveLocalePreference } from "./lib/i18n/detect-locale";
 const SESSION_COOKIE_NAME = "session_id";
 const POS_DEVICE_ID_COOKIE = "posDeviceId";
 const POS_DEVICE_KEY_COOKIE = "posDeviceKey";
 
-const LOCALES = ["zh", "en"] as const;
-type Locale = (typeof LOCALES)[number];
+type Locale = "zh" | "en";
 
 const SEO_BOT_UA_RE =
   /(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot)/i;
-
-function pickFromAcceptLanguage(accept: string | null): Locale {
-  if (!accept) return "en";
-  // 只要优先里出现 zh，即选 zh；否则 en
-  return /(?:^|[,\s])zh(?:-|;|,|\s|$)/i.test(accept) ? "zh" : "en";
-}
 
 function startsWithLocale(pathname: string): pathname is `/${Locale}${string}` {
   return /^\/(zh|en)(\/|$)/.test(pathname);
@@ -115,15 +109,22 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // 无前缀：决定语言并 308 到 /{locale}{path}
-  const cookieLocale = (req.cookies.get("locale")?.value as Locale) || null;
+  // 无前缀：用户显式选择 > 会员偏好 > 浏览器语言。
+  // preferred_locale 记录当前设备上的手动选择；member_locale 由已认证会员会话同步。
+  const hasSession = Boolean(req.cookies.get(SESSION_COOKIE_NAME)?.value);
+  const memberLocale = hasSession
+    ? (req.cookies.get("member_locale")?.value as Locale) || null
+    : null;
+  const preferredLocale =
+    (req.cookies.get("preferred_locale")?.value as Locale) || null;
   const seoBot = isSeoCrawler(req.headers.get("user-agent"));
-  const acceptLocale = pickFromAcceptLanguage(req.headers.get("accept-language"));
   const locale: Locale = seoBot
     ? "en"
-    : cookieLocale && LOCALES.includes(cookieLocale)
-      ? cookieLocale
-      : acceptLocale;
+    : resolveLocalePreference({
+        manualLocale: preferredLocale,
+        memberLocale,
+        acceptLanguage: req.headers.get("accept-language"),
+      });
 
   const url = req.nextUrl.clone();
   url.pathname = `/${locale}${pathname}`;

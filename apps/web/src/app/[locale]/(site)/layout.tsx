@@ -1,9 +1,9 @@
 // apps/web/src/app/[locale]/(site)/layout.tsx
 
 import Link from "next/link";
-import Image from "next/image";
-import LocaleSwitcher from "@/components/LocaleSwitcher";
 import AnalyticsConsentControls from "@/components/AnalyticsConsentControls";
+import CustomerSiteHeader from "@/components/site/CustomerSiteHeader";
+import CustomerLocalePreferenceSync from "@/components/site/CustomerLocalePreferenceSync";
 
 export default async function SiteLayout({
   children,
@@ -18,29 +18,13 @@ export default async function SiteLayout({
   const year = new Date().getFullYear();
 
   return (
-    <div className="min-h-screen">
-      <header className="mx-auto flex max-w-5xl items-center justify-between border-b px-4 py-4">
-        <Link
-          href={`/${safeLocale}`}
-          className="font-semiboldflex flex items-center gap-2"
-        >
-          <div className="relative h-8 w-16 rounded-md bg-white">
-            <Image
-              src="/images/sanqinLOGO.png"
-              alt="Logo"
-              fill
-              sizes="64px"
-              className="object-contain"
-            />
-          </div>
-          {isZh ? "三秦肉夹馍" : "SanQ Roujiamo"}
-        </Link>
-        <LocaleSwitcher locale={safeLocale} />
-      </header>
+    <div className="min-h-screen bg-[#fffdfa] text-stone-900">
+      <CustomerLocalePreferenceSync locale={safeLocale} />
+      <CustomerSiteHeader locale={safeLocale} />
 
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-[1600px] px-4 py-0 sm:px-6 lg:px-8">{children}</main>
 
-      <footer className="mx-auto mt-8 max-w-5xl border-t px-4 py-6 text-sm text-gray-500">
+      <footer className="mx-auto mt-8 w-full max-w-[1600px] border-t border-[#87362E]/10 px-4 py-8 text-sm text-stone-500 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             <Link
@@ -83,7 +67,9 @@ export default async function SiteLayout({
           <div className="flex flex-col items-start gap-2 sm:items-end">
             <AnalyticsConsentControls locale={safeLocale} />
             <div className="text-xs text-gray-400">
-              © {year} San Qin. All rights reserved.
+              {isZh
+                ? `© ${year} 三秦。保留所有权利。`
+                : `© ${year} San Qin. All rights reserved.`}
             </div>
           </div>
         </div>

@@ -25,8 +25,12 @@ import type {
 } from "@shared/menu";
 import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
-import { signOut, useSession } from "@/lib/auth-session";
+import { useSession } from "@/lib/auth-session";
 import { trackClientEvent } from "@/lib/analytics";
+import {
+  getDefaultHomepageContent,
+  type HomepageContent,
+} from "@/lib/homepage-content";
 
 type StoreStatus = {
   publicNotice: string | null;
@@ -64,8 +68,9 @@ export default function LocalOrderPage() {
   const q = searchParams?.toString();
 
   const { data: session } = useSession();
-  const isMemberLoggedIn = Boolean(session?.user?.userStableId);
-  const memberName = session?.user?.email ?? null;
+  const isMemberLoggedIn = Boolean(
+    session?.user?.role === "CUSTOMER" && session.user.userStableId,
+  );
 
   const strings = UI_STRINGS[locale];
 
@@ -86,6 +91,9 @@ export default function LocalOrderPage() {
   const [isIosInstallHintVisible, setIsIosInstallHintVisible] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isCartPreviewOpen, setIsCartPreviewOpen] = useState(false);
+  const [homeContent, setHomeContent] = useState<HomepageContent>(() =>
+    getDefaultHomepageContent(locale),
+  );
 
   useEffect(() => {
     trackClientEvent("customer_home_viewed", {
@@ -175,6 +183,28 @@ export default function LocalOrderPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setHomeContent(getDefaultHomepageContent(locale));
+
+    async function loadHomepageContent() {
+      try {
+        const content = await apiFetch<HomepageContent>(
+          `/homepage/content?locale=${locale}`,
+          { cache: "no-store" },
+        );
+        if (!cancelled) setHomeContent(content);
+      } catch (error) {
+        console.error("Failed to load homepage content", error);
+      }
+    }
+
+    void loadHomepageContent();
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     async function loadMenu() {
       setMenuLoading(true);
@@ -190,6 +220,7 @@ export default function LocalOrderPage() {
           dbMenu.categories ?? [],
           locale,
         );
+
         setMenu(localized);
         setDailySpecials(
           buildLocalizedDailySpecials(
@@ -541,15 +572,15 @@ export default function LocalOrderPage() {
       const optionById = new Map(
         group.options.map((option) => [option.optionStableId, option]),
       );
-      const groupName =
-        locale === "zh" && group.template.nameZh
-          ? group.template.nameZh
-          : group.template.nameEn;
+      const groupName = locale === "zh"
+        ? group.template.nameZh?.trim() || "未命名选项组"
+        : group.template.nameEn;
       selectedIds.forEach((optionId) => {
         const option = optionById.get(optionId);
         if (!option) return;
-        const optionName =
-          locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+        const optionName = locale === "zh"
+          ? option.nameZh?.trim() || "未命名选项"
+          : option.nameEn;
         details.push({
           groupName,
           optionName,
@@ -563,10 +594,9 @@ export default function LocalOrderPage() {
         childSelectedIds.forEach((childId) => {
           const childOption = optionById.get(childId);
           if (!childOption) return;
-          const optionName =
-            locale === "zh" && childOption.nameZh
-              ? childOption.nameZh
-              : childOption.nameEn;
+          const optionName = locale === "zh"
+            ? childOption.nameZh?.trim() || "未命名选项"
+            : childOption.nameEn;
           details.push({
             groupName,
             optionName,
@@ -600,8 +630,9 @@ export default function LocalOrderPage() {
   // ✅ 用递归收集到的所有 active groups（包含套餐嵌套组选项）
   activeOptionGroups.forEach(({ group }) => {
     group.options.forEach((option) => {
-      const name =
-        locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+      const name = locale === "zh"
+        ? option.nameZh?.trim() || "未命名选项"
+        : option.nameEn;
 
       lookup.set(option.optionStableId, {
         id: option.optionStableId,
@@ -653,14 +684,6 @@ export default function LocalOrderPage() {
   const membershipHref = isMemberLoggedIn
     ? `/${locale}/membership`
     : `/${locale}/membership/login?redirect=${encodeURIComponent(orderHref)}`;
-  const membershipLabel = locale === "zh" 
-    ? (isMemberLoggedIn ? (memberName ? `会员中心（${memberName}）` : "会员中心") : "会员登录 / 注册")
-    : (isMemberLoggedIn ? (memberName ? `Member center (${memberName})` : "Member center") : "Member login / sign up");
-  const logoutLabel = locale === "zh" ? "退出登录" : "Log out";
-  
-  const handleLogout = () => {
-    void signOut().then(() => router.push(`/${locale}`));
-  };
 
   const cartPreviewItems = useMemo(
     () =>
@@ -683,12 +706,21 @@ export default function LocalOrderPage() {
   );
 
   const openCartPreview = useCallback(
-    (source: "hero" | "floating") => {
+    (source: "hero" | "header" | "sticky" | "floating") => {
       trackClientEvent("customer_home_checkout_clicked", { locale, source });
       setIsCartPreviewOpen(true);
     },
     [locale],
   );
+
+  useEffect(() => {
+    const handleHeaderCart = () => openCartPreview("header");
+    window.addEventListener("sanq:open-cart", handleHeaderCart);
+    if (searchParams?.get("cart") === "1") {
+      openCartPreview("header");
+    }
+    return () => window.removeEventListener("sanq:open-cart", handleHeaderCart);
+  }, [openCartPreview, searchParams]);
 
   const handleConfirmOrder = useCallback(() => {
     setIsCartPreviewOpen(false);
@@ -722,7 +754,32 @@ export default function LocalOrderPage() {
 
   const publicNoticeText = locale === "zh"
       ? storeStatus?.publicNotice?.trim() ?? ""
-      : storeStatus?.publicNoticeEn?.trim() ?? storeStatus?.publicNotice?.trim() ?? "";
+      : storeStatus?.publicNoticeEn?.trim() ?? "";
+
+  const featuredItems = useMemo(() => {
+    const allItems = displayedMenu.flatMap((category) => category.items);
+    const selected: LocalizedMenuItem[] = [];
+    const preferredPatterns = [/roujiamo/i, /liangpi/i, /noodle/i];
+
+    preferredPatterns.forEach((pattern) => {
+      const match = allItems.find(
+        (item) =>
+          !selected.some((selectedItem) => selectedItem.stableId === item.stableId) &&
+          pattern.test(`${item.nameEn ?? ""} ${item.name ?? ""}`) &&
+          Boolean(item.imageUrl),
+      );
+      if (match) selected.push(match);
+    });
+
+    allItems.forEach((item) => {
+      if (selected.length >= 3) return;
+      if (!item.imageUrl) return;
+      if (selected.some((selectedItem) => selectedItem.stableId === item.stableId)) return;
+      selected.push(item);
+    });
+
+    return selected.slice(0, 3);
+  }, [displayedMenu]);
 
   const renderOptionGroup = (
     group: MenuOptionGroupWithOptionsDto,
@@ -768,7 +825,7 @@ export default function LocalOrderPage() {
             >
             <div>
                 <h4 className="text-base font-semibold text-slate-900">
-                {locale === "zh" && group.template.nameZh ? group.template.nameZh : group.template.nameEn}
+                {locale === "zh" ? group.template.nameZh?.trim() || "未命名选项组" : group.template.nameEn}
                 </h4>
                 <p className={`text-xs ${isRequiredGroup ? "text-rose-500" : "text-slate-500"}`}>
                   {requirementLabel}
@@ -808,8 +865,9 @@ export default function LocalOrderPage() {
                 const optionTempUnavailable = isTempUnavailable(
                   option.tempUnavailableUntil,
                 );
-                const optionLabel =
-                  locale === "zh" && option.nameZh ? option.nameZh : option.nameEn;
+                const optionLabel = locale === "zh"
+                  ? option.nameZh?.trim() || "未命名选项"
+                  : option.nameEn;
 
                 // 使用增强后的查找逻辑
                 const linkedItem = resolveLinkedItem(option);
@@ -869,7 +927,9 @@ export default function LocalOrderPage() {
                              {childOptions.map((child) => {
                                 const childSelected = selectedChildOptions[parentOptionPathKey]?.includes(child.optionStableId) ?? false;
                                 const childTempUnavailable = isTempUnavailable(child.tempUnavailableUntil);
-                                const childLabel = locale === "zh" && child.nameZh ? child.nameZh : child.nameEn;
+                                const childLabel = locale === "zh"
+                                  ? child.nameZh?.trim() || "未命名选项"
+                                  : child.nameEn;
                                 const childPriceDelta = child.priceDeltaCents > 0 ? `+${currencyFormatter.format(child.priceDeltaCents / 100)}` : child.priceDeltaCents < 0 ? `-${currencyFormatter.format(Math.abs(child.priceDeltaCents) / 100)}` : "";
 
                                 return (
@@ -916,182 +976,367 @@ export default function LocalOrderPage() {
   };
 
   return (
-    <div className="space-y-12 pb-28">
-      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
-        <div className="flex flex-col gap-2">
-          <p className="text-sm font-semibold text-slate-900">
-            {locale === "zh" ? "今日营业时间" : "Today's hours"}：{hoursValue}
+    <div className="space-y-8 pb-32 pt-3 sm:space-y-10 lg:pb-28 lg:pt-4">
+      <section className="flex flex-col gap-2 rounded-2xl bg-[#87362E] px-4 py-3 text-white shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="flex items-center gap-2 text-sm font-bold">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#f4b75f]" />
+          <span>{locale === "zh" ? "今日营业" : "Open today"}</span>
+          <span className="text-white/60">·</span>
+          <span>{hoursValue}</span>
+          <span className="hidden text-white/60 sm:inline">·</span>
+          <span className="hidden font-medium text-white/85 sm:inline">{locale === "zh" ? "自取 & 配送" : "Pickup & Delivery"}</span>
+        </div>
+        {publicNoticeText ? (
+          <p className="text-xs font-medium text-white/80 sm:max-w-xl sm:text-right">
+            {publicNoticeText}
           </p>
-          {publicNoticeText ? (
-            <p className="text-sm text-slate-600">
-              {locale === "zh" ? "网站公告" : "Notice"}：{publicNoticeText}
+        ) : null}
+      </section>
+
+      <section className="relative overflow-hidden rounded-[2rem] border border-[#87362E]/10 bg-[#f8eee5] shadow-[0_24px_70px_-38px_rgba(100,45,38,0.55)]">
+        <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="relative z-10 flex flex-col justify-center px-6 py-9 sm:px-10 sm:py-12 lg:min-h-[540px] lg:px-14 xl:px-16">
+            <p className="mb-4 text-xs font-extrabold uppercase tracking-[0.24em] text-[#87362E] sm:text-sm">
+              {homeContent.heroEyebrow}
             </p>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm min-h-[260px] lg:min-h-[320px]">
-        <div className="hidden lg:block pointer-events-none absolute top-1/2 -translate-y-1/2 left-[700px] z-0 opacity-100">
-          <Image src="/images/hero.png" alt="Illustration" width={320} height={350} className="object-contain" loading="eager"/>
-        </div>
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">{strings.tagline}</p>
-        <div className="mt-6 flex flex-col gap-8 lg:flex-row lg:justify-between">
-          <div className="relative z-10 flex flex-col gap-6">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">{strings.heroTitle}</h1>
-              <p className="mt-3 max-w-2xl text-base text-slate-600">{strings.heroDescription}</p>
+            <h1 className="max-w-2xl text-[2.6rem] font-black leading-[0.98] tracking-[-0.045em] text-[#2d211d] sm:text-6xl xl:text-7xl">
+              {homeContent.heroTitle}
+            </h1>
+            <p className="mt-5 max-w-xl text-base leading-7 text-stone-600 sm:text-lg">
+              {homeContent.heroDescription}
+            </p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <Link href="#menu" className="inline-flex h-12 items-center justify-center rounded-full bg-[#87362E] px-7 text-sm font-extrabold text-white shadow-lg shadow-[#87362E]/20 transition hover:-translate-y-0.5 hover:bg-[#6f2c26]">
+                {homeContent.heroPrimaryCtaLabel}
+                <span className="ml-2 text-lg">→</span>
+              </Link>
+              <Link href={dailySpecials.length > 0 ? "#daily-special" : "#menu"} className="inline-flex h-12 items-center justify-center rounded-full border border-[#87362E]/35 bg-white/70 px-7 text-sm font-extrabold text-[#87362E] transition hover:bg-white">
+                {homeContent.heroSecondaryCtaLabel}
+              </Link>
             </div>
-            <ol className="flex flex-wrap gap-2 text-xs text-slate-500">
-              {strings.orderSteps.map((step) => (
-                <li key={step.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
-                  <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-900 text-[0.65rem] font-semibold text-white">{step.id}</span>
-                  {step.label}
-                </li>
-              ))}
-            </ol>
-            <div className="flex flex-wrap gap-2 mt-4">
-              <Link href={membershipHref} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{membershipLabel}</Link>
-              {isMemberLoggedIn ? (
-                <button type="button" onClick={handleLogout} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{logoutLabel}</button>
-              ) : null}
-              <button type="button" onClick={() => openCartPreview("hero")} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.cartTitle}</button>
-              {shouldShowInstallButton ? (
-                <button type="button" onClick={() => void handleInstallApp()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">{strings.installApp}</button>
-              ) : null}
+            <div className="mt-7 grid max-w-xl grid-cols-3 divide-x divide-[#87362E]/10 overflow-hidden rounded-2xl border border-[#87362E]/10 bg-white/70 text-center backdrop-blur">
+              <div className="px-2 py-3">
+                <div className="text-lg">♨</div>
+                <p className="mt-1 text-[11px] font-bold text-stone-700 sm:text-xs">{locale === "zh" ? "每日现做" : "Made fresh"}</p>
+              </div>
+              <div className="px-2 py-3">
+                <div className="text-lg">★</div>
+                <p className="mt-1 text-[11px] font-bold text-stone-700 sm:text-xs">{locale === "zh" ? "招牌口味" : "Local favorite"}</p>
+              </div>
+              <div className="px-2 py-3">
+                <div className="text-lg">↗</div>
+                <p className="mt-1 text-[11px] font-bold text-stone-700 sm:text-xs">{locale === "zh" ? "自取配送" : "Pickup & delivery"}</p>
+              </div>
             </div>
-            {installFeedback ? (
-              <p className="text-xs text-emerald-600">{installFeedback}</p>
-            ) : null}
-            {isIosInstallHintVisible ? (
-              <p className="text-xs text-slate-500">{strings.installAppIosHint}</p>
-            ) : null}
           </div>
-          <div className="hidden lg:block lg:w-[220px]" />
+
+          <div className="relative min-h-[320px] overflow-hidden bg-[#ead8c8] sm:min-h-[390px] lg:min-h-[540px]">
+            {homeContent.heroImageUrl || homeContent.heroMobileImageUrl ? (
+              <>
+                <Image
+                  src={homeContent.heroMobileImageUrl ?? homeContent.heroImageUrl ?? "/images/hero.png"}
+                  alt={homeContent.heroTitle}
+                  fill
+                  priority
+                  sizes="100vw"
+                  className="object-cover sm:hidden"
+                />
+                <Image
+                  src={homeContent.heroImageUrl ?? homeContent.heroMobileImageUrl ?? "/images/hero.png"}
+                  alt={homeContent.heroTitle}
+                  fill
+                  priority
+                  sizes="(min-width: 1024px) 58vw, 100vw"
+                  className="hidden object-cover sm:block"
+                />
+              </>
+            ) : featuredItems.length > 0 ? (
+              <div className="grid h-full min-h-[320px] grid-cols-2 grid-rows-2 gap-2 p-2 sm:min-h-[390px] sm:gap-3 sm:p-3 lg:min-h-[540px]">
+                {featuredItems.map((item, index) => (
+                  <button
+                    key={item.stableId}
+                    type="button"
+                    onClick={() => {
+                      if (isTempUnavailable(item.tempUnavailableUntil)) return;
+                      trackClientEvent("customer_home_item_opened", { locale, itemStableId: item.stableId, source: "menu" });
+                      setActiveItem(item);
+                      setSelectedQuantity(1);
+                      setSelectedOptions({});
+                      setSelectedChildOptions({});
+                      setSelectedDailySpecial(null);
+                    }}
+                    className={`group relative overflow-hidden rounded-[1.4rem] bg-white ${index === 0 ? "row-span-2" : ""}`}
+                    aria-label={item.name}
+                  >
+                    <Image
+                      src={item.imageUrl ?? "/images/hero.png"}
+                      alt={item.name}
+                      fill
+                      priority={index === 0}
+                      sizes={index === 0 ? "(min-width: 1024px) 34vw, 50vw" : "(min-width: 1024px) 27vw, 50vw"}
+                      className="object-cover transition duration-500 group-hover:scale-[1.04]"
+                    />
+                    <span className="absolute inset-x-3 bottom-3 rounded-full bg-black/55 px-3 py-2 text-left text-xs font-bold text-white backdrop-blur-md sm:text-sm">
+                      {item.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <Image src="/images/hero.png" alt={homeContent.heroTitle} fill priority className="object-contain p-8" sizes="50vw" />
+            )}
+          </div>
         </div>
       </section>
 
-      {/* ===== 菜单区 ===== */}
-      <section className="space-y-10">
-        {menuLoading ? (
-          <p className="text-sm text-slate-500">{locale === "zh" ? "菜单加载中…" : "Loading menu…"}</p>
-        ) : (
-          <>
-            {menuError && <p className="text-xs text-amber-600">{menuError}</p>}
-            {cartNotice && <p className="text-xs text-amber-600">{cartNotice}</p>}
+      {menuLoading ? (
+        <section className="rounded-3xl border border-[#87362E]/10 bg-white p-8 text-sm text-stone-500 shadow-sm">
+          {locale === "zh" ? "菜单加载中…" : "Loading menu…"}
+        </section>
+      ) : (
+        <>
+          {menuError ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700">{menuError}</p> : null}
+          {cartNotice ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700">{cartNotice}</p> : null}
 
-            {displayedMenu.length === 0 ? (
-              <p className="text-sm text-slate-500">{locale === "zh" ? "当前暂无可售菜品。" : "No items available at the moment."}</p>
-            ) : (
-              <>
-                {/* ... Daily Specials Logic ... */}
-                {dailySpecials.length > 0 && (
-                    <div className="space-y-4">
-                        <h2 className="text-2xl font-semibold text-slate-900">{locale === "zh" ? "今日特价" : "Today specials"}</h2>
-                        <div className="grid gap-4 md:grid-cols-2">
-                            {dailySpecials.map(special => {
-                                const item = menuItemMap.get(special.itemStableId);
-                                if (!item) return null;
-                                return (
-                                    <article key={special.stableId} 
-                                        className={`group flex h-full flex-col justify-between rounded-3xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm transition ${isTempUnavailable(item.tempUnavailableUntil) ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"}`}
-                                        onClick={() => { if (!isTempUnavailable(item.tempUnavailableUntil)) { trackClientEvent("customer_home_item_opened", { locale, itemStableId: item.stableId, source: "daily_special", specialStableId: special.stableId }); setActiveItem(item); setSelectedDailySpecial(special); setSelectedQuantity(1); setSelectedOptions({}); setSelectedChildOptions({}); } }}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            {item.imageUrl && (
-                                              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-amber-100">
-                                                <Image
-                                                  src={item.imageUrl}
-                                                  alt={item.name}
-                                                  fill
-                                                  sizes="48px"
-                                                  className="object-cover"
-                                                />
-                                              </div>
-                                            )}
-                                            <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">{locale === "zh" ? "特价" : "Special"}</span>
-                                            <h3 className="text-lg font-semibold text-slate-900">{special.name}</h3>
-                                        </div>
-                                        <div className="mt-4 flex items-center justify-between">
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-lg font-semibold text-slate-900">{currencyFormatter.format(special.effectivePriceCents / 100)}</span>
-                                                <span className="text-xs text-slate-400 line-through">{currencyFormatter.format(special.basePriceCents / 100)}</span>
-                                            </div>
-                                        </div>
-                                    </article>
-                                );
-                            })}
-                        </div>
+          {displayedMenu.length > 0 ? (
+            <>
+              {dailySpecials.length > 0 ? (
+                <section id="daily-special" className="scroll-mt-28 overflow-hidden rounded-[2rem] bg-[#87362E] text-white shadow-[0_24px_70px_-42px_rgba(100,45,38,0.7)]">
+                  <div className="grid lg:grid-cols-[0.72fr_1.28fr]">
+                    <div className="flex flex-col justify-center px-6 py-8 sm:px-9 lg:px-12 lg:py-10">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-[#f4b75f] px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#65251f]">
+                          {locale === "zh" ? "仅限今日" : "TODAY ONLY"}
+                        </span>
+                      </div>
+                      <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">{homeContent.dailySpecialTitle}</h2>
+                      <p className="mt-3 max-w-md text-sm leading-6 text-white/75">
+                        {homeContent.dailySpecialDescription}
+                      </p>
                     </div>
-                )}
-
-                {/* ... Main Menu Categories ... */}
-                {displayedMenu.map((category) => (
-                  <div key={category.stableId} className="space-y-4">
-                    <h2 className="rounded-2xl bg-black py-3 text-center text-2xl font-semibold text-white">{category.name}</h2>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {category.items.map((item) => {
-                        const isDailySpecial = Boolean(item.activeSpecial);
+                    <div className="grid gap-3 bg-[#fff7ef] p-3 text-stone-900 sm:grid-cols-2 sm:p-4">
+                      {dailySpecials.map((special) => {
+                        const item = menuItemMap.get(special.itemStableId);
+                        if (!item) return null;
                         return (
-                          <article
-                            key={item.stableId}
-                            className={`group flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition ${isTempUnavailable(item.tempUnavailableUntil) ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"}`}
+                          <button
+                            key={special.stableId}
+                            type="button"
+                            disabled={isTempUnavailable(item.tempUnavailableUntil)}
                             onClick={() => {
                               if (isTempUnavailable(item.tempUnavailableUntil)) return;
-                              trackClientEvent("customer_home_item_opened", {
-                                locale,
-                                itemStableId: item.stableId,
-                                source: "menu",
-                              });
+                              trackClientEvent("customer_home_item_opened", { locale, itemStableId: item.stableId, source: "daily_special", specialStableId: special.stableId });
                               setActiveItem(item);
+                              setSelectedDailySpecial(special);
                               setSelectedQuantity(1);
                               setSelectedOptions({});
                               setSelectedChildOptions({});
-                              setSelectedDailySpecial(null);
                             }}
+                            className="group grid min-h-40 grid-cols-[1fr_132px] overflow-hidden rounded-3xl border border-[#87362E]/10 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-48"
                           >
-                            {item.imageUrl && (
-                              <div className="mb-3 overflow-hidden rounded-2xl bg-slate-100">
-                                <div className="relative h-64 w-full">
-                                  <Image
-                                    src={item.imageUrl}
-                                    alt={item.name}
-                                    fill
-                                    sizes="(min-width: 768px) 50vw, 100vw"
-                                    className="object-cover transition duration-300 group-hover:scale-105"
-                                  />
-                                </div>
-                              </div>
-                            )}
-                            <div className="space-y-3">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            {isDailySpecial && <span className="rounded-full bg-amber-500/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">{locale === "zh" ? "特价" : "Special"}</span>}
-                                            <h3 className="text-lg font-semibold text-slate-900">{item.name}</h3>
-                                        </div>
-                                        {item.ingredients && <p className="mt-1 text-xs text-slate-500">{item.ingredients}</p>}
-                                    </div>
-                                    <div className="flex flex-col items-end gap-2">
-                                        <span className="rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white">{currencyFormatter.format(item.price)}</span>
-                                        {isTempUnavailable(item.tempUnavailableUntil) && <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">{locale === "zh" ? "当日售罄" : "Sold out today"}</span>}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="mt-5 flex items-center justify-end">
-                                <button type="button" className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">
-                                    {strings.chooseOptions}
-                                </button>
-                            </div>
-                          </article>
+                            <span className="flex flex-col justify-center p-5">
+                              <span className="text-xs font-black uppercase tracking-[0.16em] text-[#87362E]">{locale === "zh" ? "今日特价" : "Special"}</span>
+                              <span className="mt-2 text-lg font-black leading-tight sm:text-xl">{special.name}</span>
+                              <span className="mt-3 flex items-baseline gap-2">
+                                <span className="text-2xl font-black text-[#87362E]">{currencyFormatter.format(special.effectivePriceCents / 100)}</span>
+                                <span className="text-xs text-stone-400 line-through">{currencyFormatter.format(special.basePriceCents / 100)}</span>
+                              </span>
+                              <span className="mt-3 text-xs font-bold text-[#87362E]">{locale === "zh" ? "立即选择 →" : "Choose options →"}</span>
+                            </span>
+                            <span className="relative min-h-full bg-[#f2e2d4]">
+                              <Image src={item.imageUrl ?? "/images/hero.png"} alt={item.name} fill sizes="160px" className="object-cover transition duration-500 group-hover:scale-105" />
+                            </span>
+                          </button>
                         );
                       })}
                     </div>
                   </div>
-                ))}
-              </>
-            )}
-          </>
-        )}
+                </section>
+              ) : null}
+
+              {featuredItems.length > 0 ? (
+                <section className="space-y-4">
+                  <div className="flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#87362E]">{homeContent.favoritesEyebrow}</p>
+                      <h2 className="mt-1 text-2xl font-black tracking-tight text-stone-900 sm:text-3xl">{homeContent.favoritesTitle}</h2>
+                    </div>
+                    <Link href="#menu" className="hidden text-sm font-bold text-[#87362E] sm:inline">{locale === "zh" ? "查看完整菜单 →" : "View full menu →"}</Link>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+                    {featuredItems.map((item) => (
+                      <button
+                        key={item.stableId}
+                        type="button"
+                        disabled={isTempUnavailable(item.tempUnavailableUntil)}
+                        onClick={() => {
+                          if (isTempUnavailable(item.tempUnavailableUntil)) return;
+                          trackClientEvent("customer_home_item_opened", { locale, itemStableId: item.stableId, source: "menu" });
+                          setActiveItem(item);
+                          setSelectedQuantity(1);
+                          setSelectedOptions({});
+                          setSelectedChildOptions({});
+                          setSelectedDailySpecial(null);
+                        }}
+                        className="group grid grid-cols-[116px_1fr] overflow-hidden rounded-3xl border border-[#87362E]/10 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:block"
+                      >
+                        <span className="relative min-h-32 bg-[#f1e5da] sm:block sm:aspect-[5/3] sm:min-h-0">
+                          <Image src={item.imageUrl ?? "/images/hero.png"} alt={item.name} fill sizes="(min-width: 640px) 33vw, 116px" className="object-cover transition duration-500 group-hover:scale-105" />
+                        </span>
+                        <span className="flex min-w-0 flex-col justify-center p-4 sm:block sm:p-5">
+                          <span className="block truncate text-base font-black text-stone-900 sm:text-lg">{item.name}</span>
+                          {item.ingredients ? <span className="mt-1 line-clamp-2 block text-xs leading-5 text-stone-500 sm:text-sm">{item.ingredients}</span> : null}
+                          <span className="mt-2 block text-sm font-black text-[#87362E]">{currencyFormatter.format(item.price)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <section id="menu" className="scroll-mt-28 space-y-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-[#87362E]">{locale === "zh" ? "在线点单" : "ORDER ONLINE"}</p>
+                    <h2 className="mt-1 text-3xl font-black tracking-tight text-stone-900 sm:text-4xl">{locale === "zh" ? "完整菜单" : "Full Menu"}</h2>
+                  </div>
+                  <p className="max-w-xl text-sm text-stone-500">{locale === "zh" ? "选择菜品后可继续选择口味、加料与数量。" : "Tap any dish to customize options, add-ons and quantity."}</p>
+                </div>
+
+                <div className="sticky top-[68px] z-30 -mx-1 overflow-x-auto border-y border-[#87362E]/10 bg-[#fffdfa]/95 px-1 py-3 backdrop-blur-xl lg:top-[76px]">
+                  <div className="flex min-w-max gap-2">
+                    {displayedMenu.map((category, index) => (
+                      <Link
+                        key={category.stableId}
+                        href={`#category-${category.stableId}`}
+                        className={`rounded-full px-4 py-2 text-sm font-bold transition ${index === 0 ? "bg-[#87362E] text-white" : "border border-[#87362E]/15 bg-white text-stone-700 hover:border-[#87362E]/35 hover:text-[#87362E]"}`}
+                      >
+                        {category.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-10">
+                  {displayedMenu.map((category) => (
+                    <div key={category.stableId} id={`category-${category.stableId}`} className="scroll-mt-36 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-2xl font-black tracking-tight text-stone-900">{category.name}</h3>
+                        <span className="h-px flex-1 bg-[#87362E]/10" />
+                        <span className="text-xs font-bold text-stone-400">{category.items.length}</span>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {category.items.map((item) => {
+                          const soldOut = isTempUnavailable(item.tempUnavailableUntil);
+                          const isDailySpecial = Boolean(item.activeSpecial);
+                          return (
+                            <button
+                              key={item.stableId}
+                              type="button"
+                              disabled={soldOut}
+                              onClick={() => {
+                                if (soldOut) return;
+                                trackClientEvent("customer_home_item_opened", { locale, itemStableId: item.stableId, source: "menu" });
+                                setActiveItem(item);
+                                setSelectedQuantity(1);
+                                setSelectedOptions({});
+                                setSelectedChildOptions({});
+                                setSelectedDailySpecial(null);
+                              }}
+                              className="group grid min-h-[126px] grid-cols-[118px_1fr] overflow-hidden rounded-3xl border border-[#87362E]/10 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:block"
+                            >
+                              <span className="relative block min-h-full bg-[#f3e7dd] sm:aspect-[4/3] sm:min-h-0">
+                                <Image
+                                  src={item.imageUrl ?? "/images/sanq-logo-omega.svg"}
+                                  alt={item.name}
+                                  fill
+                                  sizes="(min-width: 1280px) 25vw, (min-width: 640px) 50vw, 118px"
+                                  className={item.imageUrl ? "object-cover transition duration-500 group-hover:scale-105" : "object-contain p-7 opacity-35"}
+                                />
+                                {isDailySpecial ? <span className="absolute left-3 top-3 rounded-full bg-[#87362E] px-2.5 py-1 text-[10px] font-black uppercase text-white">{locale === "zh" ? "特价" : "Special"}</span> : null}
+                              </span>
+                              <span className="flex min-w-0 flex-col justify-between p-4 sm:min-h-[154px] sm:p-5">
+                                <span>
+                                  <span className="block text-base font-black leading-tight text-stone-900 sm:text-lg">{item.name}</span>
+                                  {item.ingredients ? <span className="mt-1 line-clamp-2 block text-xs leading-5 text-stone-500">{item.ingredients}</span> : null}
+                                </span>
+                                <span className="mt-3 flex items-center justify-between gap-3">
+                                  <span className="text-base font-black text-[#87362E]">{currencyFormatter.format(item.price)}</span>
+                                  {soldOut ? (
+                                    <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-bold text-stone-500">{locale === "zh" ? "今日售罄" : "Sold out"}</span>
+                                  ) : (
+                                    <span className="grid h-9 w-9 place-items-center rounded-full bg-[#87362E] text-xl font-light text-white">+</span>
+                                  )}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </>
+          ) : (
+            <section className="rounded-3xl border border-[#87362E]/10 bg-white p-8 text-sm text-stone-500 shadow-sm">
+              {locale === "zh" ? "当前暂无可售菜品。" : "No items available at the moment."}
+            </section>
+          )}
+        </>
+      )}
+
+      <section className="overflow-hidden rounded-[2rem] border border-[#d9bca4] bg-[#f7eadc]">
+        <div className={`grid gap-6 px-6 py-8 sm:px-9 lg:items-center lg:px-12 ${homeContent.membershipImageUrl ? "lg:grid-cols-[1fr_220px_auto]" : "lg:grid-cols-[1fr_auto]"}`}>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#87362E]">{homeContent.membershipEyebrow}</p>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-stone-900">{homeContent.membershipTitle}</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-600">{homeContent.membershipDescription}</p>
+            <div className="mt-5 grid gap-3 text-sm text-stone-700 sm:grid-cols-3">
+              <div className="rounded-2xl bg-white/70 p-4"><strong className="block text-[#87362E]">{locale === "zh" ? "积分" : "Earn Points"}</strong><span className="mt-1 block text-xs text-stone-500">{locale === "zh" ? "每次下单都能累积" : "Rewards every time you order"}</span></div>
+              <div className="rounded-2xl bg-white/70 p-4"><strong className="block text-[#87362E]">{locale === "zh" ? "会员券" : "Member Coupons"}</strong><span className="mt-1 block text-xs text-stone-500">{locale === "zh" ? "专享折扣与优惠券" : "Exclusive deals and discounts"}</span></div>
+              <div className="rounded-2xl bg-white/70 p-4"><strong className="block text-[#87362E]">{locale === "zh" ? "会员专享" : "Member Specials"}</strong><span className="mt-1 block text-xs text-stone-500">{locale === "zh" ? "不定期专属活动" : "Occasional member-only offers"}</span></div>
+            </div>
+          </div>
+          {homeContent.membershipImageUrl ? (
+            <div className="relative aspect-[4/3] overflow-hidden rounded-3xl bg-white/60">
+              <Image
+                src={homeContent.membershipImageUrl}
+                alt={homeContent.membershipTitle}
+                fill
+                sizes="220px"
+                className="object-cover"
+              />
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-3 lg:min-w-48">
+            <Link href={membershipHref} className="inline-flex h-12 items-center justify-center rounded-full bg-[#87362E] px-6 text-sm font-black text-white transition hover:bg-[#6f2c26]">
+              {isMemberLoggedIn ? (locale === "zh" ? "进入会员中心" : "Member Center") : homeContent.membershipCtaLabel}
+            </Link>
+            {shouldShowInstallButton ? (
+              <button type="button" onClick={() => void handleInstallApp()} className="inline-flex h-11 items-center justify-center rounded-full border border-[#87362E]/25 bg-white/70 px-5 text-xs font-bold text-[#87362E] transition hover:bg-white">
+                {strings.installApp}
+              </button>
+            ) : null}
+            {installFeedback ? <p className="text-center text-xs text-emerald-700">{installFeedback}</p> : null}
+            {isIosInstallHintVisible ? <p className="text-center text-xs text-stone-500">{strings.installAppIosHint}</p> : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 rounded-[2rem] border border-[#87362E]/10 bg-white p-6 shadow-sm sm:p-8 lg:grid-cols-[1.1fr_0.8fr_auto] lg:items-center">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#87362E]">{locale === "zh" ? "到店" : "VISIT SANQ"}</p>
+          <h2 className="mt-2 text-2xl font-black text-stone-900">4750 Yonge Street, North York</h2>
+          <p className="mt-1 text-sm text-stone-500">North York, ON M2N 5M6</p>
+        </div>
+        <div className="rounded-2xl bg-[#fff7ef] p-4">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-stone-400">{locale === "zh" ? "今日营业时间" : "TODAY’S HOURS"}</p>
+          <p className="mt-1 text-lg font-black text-[#87362E]">{hoursValue}</p>
+        </div>
+        <Link href={`/${locale}/legal/contact`} className="inline-flex h-12 items-center justify-center rounded-full border border-[#87362E]/30 px-6 text-sm font-black text-[#87362E] transition hover:bg-[#fff3ea]">
+          {locale === "zh" ? "路线 / 联系方式" : "Directions & Contact"}
+        </Link>
       </section>
 
       {/* ===== 菜品选项弹窗 ===== */}
@@ -1256,10 +1501,20 @@ export default function LocalOrderPage() {
         </div>
       ) : null}
 
-      {/* 浮动购物车入口 */}
-      <button type="button" onClick={() => openCartPreview("floating")} className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-slate-700">
-        <span>{strings.floatingCartLabel}</span>
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-sm font-semibold text-slate-900">{totalQuantity}</span>
+      {/* 手机端固定购物车 CTA / 桌面端浮动入口 */}
+      <button
+        type="button"
+        onClick={() => openCartPreview("sticky")}
+        className="fixed inset-x-3 bottom-3 z-50 flex h-16 items-center justify-between rounded-2xl bg-[#87362E] px-4 text-white shadow-[0_18px_50px_-18px_rgba(76,27,22,0.8)] transition hover:bg-[#6f2c26] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-14 sm:min-w-52 sm:rounded-full sm:px-5"
+      >
+        <span className="flex items-center gap-3">
+          <span className="grid h-9 min-w-9 place-items-center rounded-full bg-white px-2 text-sm font-black text-[#87362E]">{totalQuantity}</span>
+          <span className="text-left">
+            <span className="block text-sm font-black">{strings.floatingCartLabel}</span>
+            <span className="block text-[10px] font-medium text-white/70 sm:hidden">{locale === "zh" ? "查看已选菜品" : "Review your order"}</span>
+          </span>
+        </span>
+        <span className="text-xl">→</span>
       </button>
 
     </div>

@@ -33,6 +33,7 @@ import { UberEatsModule } from './integrations/ubereats/ubereats.module';
 import { CloverWebCheckoutOrchestrationModule } from './orchestration/clover-web-checkout-orchestration.module';
 import { PosCardPaymentOrchestrationModule } from './orchestration/pos-card-payment-orchestration.module';
 import { PaymentsModule } from './payments/payments.module';
+import { HomepageContentModule } from './homepage/homepage-content.module';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -72,6 +73,7 @@ const envConfigModule = configModuleFactory.forRoot({
     PublicMenuModule,
     UberEatsModule,
     PaymentsModule,
+    HomepageContentModule,
     CloverWebCheckoutOrchestrationModule,
     PosCardPaymentOrchestrationModule,
   ],
