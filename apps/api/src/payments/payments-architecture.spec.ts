@@ -185,9 +185,12 @@ describe('Payments bounded-context architecture', () => {
   });
 
   it('keeps Clover OAuth secrets and merchant credentials out of Web source', () => {
-    const webSource = scanTypeScript(resolve(PAYMENTS_ROOT, '../../../web/src'), {
-      productionOnly: true,
-    });
+    const webSource = scanTypeScript(
+      resolve(PAYMENTS_ROOT, '../../../web/src'),
+      {
+        productionOnly: true,
+      },
+    );
     const violations = webSource
       .filter(({ source }) =>
         /CLOVER_(?:OAUTH_CLIENT_SECRET|CREDENTIAL_ENCRYPTION_KEYS|TERMINAL_OAUTH_TOKEN)/.test(

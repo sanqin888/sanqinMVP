@@ -38,6 +38,11 @@ type StateCreateInput = Omit<
   'status' | 'consumedAt' | 'lastErrorCode' | 'encryptedExchangeResult'
 >;
 
+type StoreFindUniqueArgs = {
+  where: { storeStableId: string };
+  select: { isActive: boolean };
+};
+
 type AuthorizationUpsertArgs = {
   where: { merchantId: string };
   create: {
@@ -150,10 +155,12 @@ const createHarness = () => {
     }),
     upsert: authorizationUpsertMock,
   };
+  const storeFindUniqueArgs: StoreFindUniqueArgs[] = [];
   const store = {
-    findUnique: jest.fn(() =>
-      Promise.resolve(storeActive ? { isActive: true } : null),
-    ),
+    findUnique: jest.fn((args: StoreFindUniqueArgs) => {
+      storeFindUniqueArgs.push(args);
+      return Promise.resolve(storeActive ? { isActive: true } : null);
+    }),
   };
   const prisma = {
     cloverOAuthStateRequest: oauthStateRequest,
@@ -212,13 +219,16 @@ const createHarness = () => {
     getMerchantIdentity,
     verifyPaymentsRead,
     store,
+    storeFindUniqueArgs,
     start,
     getState: () => stateRow,
     getAuthorizationUpsert: () => authorizationUpsert,
     setState: (value: StateRow | null) => {
       stateRow = value;
     },
-    setExistingAuthorization: (value: { storeStableId: string | null } | null) => {
+    setExistingAuthorization: (
+      value: { storeStableId: string | null } | null,
+    ) => {
       existingAuthorization = value;
     },
     setMappingConflict: (value: { merchantId: string } | null) => {
@@ -299,15 +309,15 @@ describe('CloverMerchantAuthorizationService', () => {
     expect(harness.verifyPaymentsRead.mock.calls).toEqual([
       [merchantId, harness.tokens.accessToken],
     ]);
-    expect(harness.store.findUnique).toHaveBeenCalledWith({
+    expect(harness.storeFindUniqueArgs).toContainEqual({
       where: { storeStableId },
       select: { isActive: true },
     });
-    expect(harness.store.findUnique).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ id: expect.anything() }),
-      }),
-    );
+    expect(
+      harness.storeFindUniqueArgs.every(
+        ({ where }) => !Object.prototype.hasOwnProperty.call(where, 'id'),
+      ),
+    ).toBe(true);
     const upsert = harness.getAuthorizationUpsert();
     expect(upsert).not.toBeNull();
     if (!upsert) throw new Error('expected authorization upsert');

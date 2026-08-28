@@ -14,7 +14,9 @@ describe('CloverMerchantOAuthController', () => {
     const authorization = {
       start: jest
         .fn()
-        .mockResolvedValue('https://www.clover.com/oauth/v2/authorize?state=opaque'),
+        .mockResolvedValue(
+          'https://www.clover.com/oauth/v2/authorize?state=opaque',
+        ),
     } as unknown as CloverMerchantAuthorizationService;
     const controller = new CloverMerchantOAuthController(authorization, config);
 
@@ -50,9 +52,7 @@ describe('CloverMerchantOAuthController', () => {
     );
     expect(url.searchParams.get('status')).toBe('success');
     expect(url.searchParams.get('merchant')).toBe('SanQ Roujiamo');
-    expect(url.searchParams.get('storeStableId')).toBe(
-      '4750_Yonge_Street',
-    );
+    expect(url.searchParams.get('storeStableId')).toBe('4750_Yonge_Street');
     expect(url.toString()).not.toContain('authorization-code');
     expect(url.toString()).not.toContain('opaque-state');
   });

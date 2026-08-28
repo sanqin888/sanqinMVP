@@ -851,11 +851,7 @@ describe('Clover Platform Payments Gateway', () => {
     }) as unknown as CloverMerchantAccessTokenService;
   const createPlatformGateway = (
     accessTokens: CloverMerchantAccessTokenService = createAccessTokens(),
-  ) =>
-    new CloverPlatformPaymentsGateway(
-      new CloverProviderConfig(),
-      accessTokens,
-    );
+  ) => new CloverPlatformPaymentsGateway(new CloverProviderConfig(), accessTokens);
 
   beforeEach(() => {
     setPlatformEnv('CLOVER_PLATFORM_API_BASE', 'https://platform.example.test');
@@ -1137,15 +1133,19 @@ describe('Clover Platform Payments Gateway', () => {
       hasUsableCredential: jest.fn().mockResolvedValue(true),
       getAccessToken,
     } as unknown as CloverMerchantAccessTokenService;
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(platformPayment()), { status: 200 }),
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(platformPayment()), { status: 200 }),
+      );
     const gateway = new CloverPlatformPaymentsGateway(
       new CloverProviderConfig(),
       accessTokens,
     );
 
-    await expect(gateway.getCanonicalPayment(platformRequest)).resolves.toMatchObject({
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
       status: 'SUCCEEDED',
     });
     expect(getAccessToken.mock.calls).toEqual([['merchant-1']]);
@@ -1174,7 +1174,9 @@ describe('Clover Platform Payments Gateway', () => {
       accessTokens,
     );
 
-    await expect(gateway.getCanonicalPayment(platformRequest)).resolves.toMatchObject({
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
       status: 'SUCCEEDED',
     });
     expect(fetchSpy).toHaveBeenCalledTimes(2);

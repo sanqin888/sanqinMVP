@@ -240,8 +240,8 @@ describe('CloverMerchantAccessTokenService', () => {
     await expect(
       harness.service.getAccessToken(merchantId),
     ).resolves.toBeNull();
-    await expect(
-      harness.service.hasUsableCredential(merchantId),
-    ).resolves.toBe(false);
+    await expect(harness.service.hasUsableCredential(merchantId)).resolves.toBe(
+      false,
+    );
   });
 });
