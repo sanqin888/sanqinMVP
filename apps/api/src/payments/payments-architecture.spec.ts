@@ -202,6 +202,29 @@ describe('Payments bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps the Clover OAuth callback exchange server-side before returning the browser to the result page', () => {
+    const callbackRoute = scanTypeScript(
+      resolve(PAYMENTS_ROOT, '../../../web/src/app/clover/oauth/callback'),
+      { productionOnly: true },
+    ).find(({ path }) => path.endsWith('route.ts'));
+
+    expect(callbackRoute?.source).toContain('process.env.API_UPSTREAM');
+    expect(callbackRoute?.source).toContain("redirect: 'manual'");
+    expect(callbackRoute?.source).toContain('await fetch(target');
+    expect(callbackRoute?.source).toContain(
+      "result.pathname !== '/clover/oauth/result'",
+    );
+    expect(callbackRoute?.source).toContain(
+      "response.headers.set('Referrer-Policy', 'no-referrer')",
+    );
+    expect(callbackRoute?.source).toContain(
+      "response.headers.set('Cache-Control', 'no-store')",
+    );
+    expect(callbackRoute?.source).not.toContain(
+      'NextResponse.redirect(target, 302)',
+    );
+  });
+
   it('prevents unified-payment orchestration from importing Clover infrastructure', () => {
     const orchestrationFiles = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),
