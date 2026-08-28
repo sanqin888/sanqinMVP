@@ -18,9 +18,7 @@ export default function CustomerSiteHeader({ locale }: Props) {
   const { data: session } = useSession();
   const { totalQuantity } = usePersistentCart();
   const isZh = locale === "zh";
-  const isMemberLoggedIn = Boolean(
-    session?.user?.role === "CUSTOMER" && session.user.userStableId,
-  );
+  const isMemberLoggedIn = Boolean(session?.user?.userStableId);
   const homeHref = `/${locale}`;
   const isHome = pathname === homeHref || pathname === `${homeHref}/`;
   const currentPath = pathname || homeHref;
