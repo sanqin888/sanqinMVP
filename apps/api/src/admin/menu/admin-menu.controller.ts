@@ -149,6 +149,7 @@ export class AdminMenuController {
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
       labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+      itemKind?: 'FOOD' | 'BEVERAGE';
       packagingTypeStableIds?: string[];
       tempUnavailableUntil?: string | null;
     },
@@ -179,6 +180,7 @@ export class AdminMenuController {
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
       labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+      itemKind?: 'FOOD' | 'BEVERAGE';
       packagingTypeStableIds?: string[];
       tempUnavailableUntil?: string | null;
     },
