@@ -5,6 +5,8 @@ import { getUploadsRootDir } from '../common/utils/uploads-path';
 import {
   DEFAULT_HOMEPAGE_CONTENT,
   type HomepageContentDocument,
+  type HomepageFeaturedConfig,
+  type HomepageFeaturedSlotConfig,
   type HomepageLocale,
   type HomepageLocaleContent,
 } from './homepage-content.types';
@@ -65,6 +67,39 @@ export class HomepageContentService {
     return this.readDocument();
   }
 
+  async getFeaturedConfig(): Promise<HomepageFeaturedConfig> {
+    const document = await this.readDocument();
+    return document.featured;
+  }
+
+  async updateFeaturedConfig(
+    input: HomepageFeaturedConfig,
+  ): Promise<HomepageFeaturedConfig> {
+    const operation = this.writeQueue.then(async () => {
+      const current = await this.readDocument();
+      const featured = this.validateFeaturedConfig(input);
+      const nextDocument: HomepageContentDocument = {
+        ...current,
+        featured,
+      };
+      await this.writeDocument(nextDocument);
+      return featured;
+    });
+
+    this.writeQueue = operation.then(
+      () => undefined,
+      (error: unknown) => {
+        this.logger.error(
+          `Homepage featured config write failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      },
+    );
+
+    return operation;
+  }
+
   async updateLocaleContent(
     locale: HomepageLocale,
     input: Partial<HomepageLocaleContent>,
@@ -111,9 +146,12 @@ export class HomepageContentService {
     try {
       const parsed = JSON.parse(raw) as Partial<HomepageContentDocument>;
       return {
-        version: 1,
+        version: 2,
         zh: this.validateAndMerge(DEFAULT_HOMEPAGE_CONTENT.zh, parsed.zh ?? {}),
         en: this.validateAndMerge(DEFAULT_HOMEPAGE_CONTENT.en, parsed.en ?? {}),
+        featured: this.validateFeaturedConfig(
+          parsed.featured ?? DEFAULT_HOMEPAGE_CONTENT.featured,
+        ),
       };
     } catch (error) {
       this.logger.error(
@@ -121,6 +159,75 @@ export class HomepageContentService {
       );
       return structuredClone(DEFAULT_HOMEPAGE_CONTENT);
     }
+  }
+
+  private validateFeaturedConfig(
+    input: HomepageFeaturedConfig,
+  ): HomepageFeaturedConfig {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      throw new BadRequestException(
+        'homepage featured config must be an object',
+      );
+    }
+    if (!Array.isArray(input.slots) || input.slots.length !== 3) {
+      throw new BadRequestException(
+        'homepage featured config must contain exactly 3 slots',
+      );
+    }
+
+    const seenStableIds = new Set<string>();
+    const normalizeSlot = (
+      slot: HomepageFeaturedSlotConfig,
+      index: number,
+    ): HomepageFeaturedSlotConfig => {
+      if (!slot || typeof slot !== 'object' || Array.isArray(slot)) {
+        throw new BadRequestException(
+          `featured slot ${index + 1} must be an object`,
+        );
+      }
+
+      const itemStableId =
+        typeof slot.itemStableId === 'string' ? slot.itemStableId.trim() : null;
+      if (itemStableId && itemStableId.length > 200) {
+        throw new BadRequestException(
+          `featured slot ${index + 1} itemStableId is too long`,
+        );
+      }
+      if (itemStableId && seenStableIds.has(itemStableId)) {
+        throw new BadRequestException(
+          'the same featured item cannot be assigned twice',
+        );
+      }
+      if (itemStableId) seenStableIds.add(itemStableId);
+
+      const normalizeBadge = (value: string | null, field: string) => {
+        if (value !== null && typeof value !== 'string') {
+          throw new BadRequestException(`${field} must be a string or null`);
+        }
+        const normalized = typeof value === 'string' ? value.trim() : '';
+        if (normalized.length > 32) {
+          throw new BadRequestException(`${field} exceeds 32 characters`);
+        }
+        return normalized || null;
+      };
+
+      return {
+        itemStableId: itemStableId || null,
+        badgeZh: normalizeBadge(
+          slot.badgeZh,
+          `featured slot ${index + 1} badgeZh`,
+        ),
+        badgeEn: normalizeBadge(
+          slot.badgeEn,
+          `featured slot ${index + 1} badgeEn`,
+        ),
+      };
+    };
+
+    const slots = input.slots.map(
+      normalizeSlot,
+    ) as HomepageFeaturedConfig['slots'];
+    return { slots };
   }
 
   private validateAndMerge(

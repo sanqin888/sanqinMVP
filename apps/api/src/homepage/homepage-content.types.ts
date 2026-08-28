@@ -19,14 +19,34 @@ export type HomepageLocaleContent = {
   membershipImageUrl: string | null;
 };
 
+export type HomepageFeaturedSlotConfig = {
+  itemStableId: string | null;
+  badgeZh: string | null;
+  badgeEn: string | null;
+};
+
+export type HomepageFeaturedConfig = {
+  slots: [
+    HomepageFeaturedSlotConfig,
+    HomepageFeaturedSlotConfig,
+    HomepageFeaturedSlotConfig,
+  ];
+};
+
+export type HomepageFeaturedItem = {
+  itemStableId: string;
+  badge: string | null;
+};
+
 export type HomepageContentDocument = {
-  version: 1;
+  version: 2;
   zh: HomepageLocaleContent;
   en: HomepageLocaleContent;
+  featured: HomepageFeaturedConfig;
 };
 
 export const DEFAULT_HOMEPAGE_CONTENT: HomepageContentDocument = {
-  version: 1,
+  version: 2,
   zh: {
     heroEyebrow: '三秦 · 西安街头味',
     heroTitle: '西安味，现做更好吃。',
@@ -66,5 +86,12 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContentDocument = {
       'Earn points, receive member coupons and unlock occasional member-only offers.',
     membershipCtaLabel: 'Join SanQ',
     membershipImageUrl: null,
+  },
+  featured: {
+    slots: [
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+    ],
   },
 };

@@ -448,6 +448,7 @@ export default function AdminMenuPage() {
         isVisibleOnMainMenu: item.isVisibleOnMainMenu,
         publishToUberEats: item.publishToUberEats,
         labelStrategy: item.labelStrategy,
+        itemKind: item.itemKind,
         packagingTypeStableIds: item.packagings.map(
           (packaging) => packaging.packagingType.stableId,
         ),
@@ -1251,6 +1252,25 @@ export default function AdminMenuPage() {
                                 ? '只有明确开启的公开菜品才会进入 Uber Eats 菜单。'
                                 : 'Only public items explicitly enabled here will be included in the Uber Eats menu.'}
                             </span>
+                          </label>
+
+                          <label className="space-y-1 md:col-span-2">
+                            <div className="text-xs text-slate-600">{isZh ? '商品类型' : 'Item type'}</div>
+                            <select
+                              value={item.itemKind}
+                              onChange={(e) =>
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'itemKind',
+                                  e.target.value as MenuItemWithBindingsDto['itemKind'],
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                            >
+                              <option value="FOOD">{isZh ? '食品' : 'Food'}</option>
+                              <option value="BEVERAGE">{isZh ? '饮品' : 'Beverage'}</option>
+                            </select>
                           </label>
 
                           <label className="space-y-1 md:col-span-2">

@@ -254,6 +254,11 @@ enum MenuLabelStrategy {
   NEVER
 }
 
+enum MenuItemKind {
+  FOOD
+  BEVERAGE
+}
+
 enum CouponStackingPolicy {
   EXCLUSIVE
   STACKABLE
@@ -1345,6 +1350,7 @@ model MenuItem {
   isVisibleOnMainMenu  Boolean               @default(true)
   publishToUberEats    Boolean               @default(false)
   labelStrategy        MenuLabelStrategy     @default(AUTO)
+  itemKind             MenuItemKind          @default(FOOD)
   tempUnavailableUntil DateTime?
   sortOrder            Int                   @default(0)
   imageUrl             String?

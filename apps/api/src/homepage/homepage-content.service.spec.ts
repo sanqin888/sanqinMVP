@@ -64,4 +64,46 @@ describe('HomepageContentService', () => {
       'heroImageUrl must reference an uploaded or bundled image',
     );
   });
+
+  it('persists three featured slots without coupling them to one locale', async () => {
+    const service = new HomepageContentService();
+
+    await service.updateFeaturedConfig({
+      slots: [
+        {
+          itemStableId: 'item-a',
+          badgeZh: '店主推荐',
+          badgeEn: 'Owner Pick',
+        },
+        { itemStableId: null, badgeZh: null, badgeEn: null },
+        { itemStableId: 'item-c', badgeZh: '新品上市', badgeEn: 'New' },
+      ],
+    });
+
+    await expect(service.getFeaturedConfig()).resolves.toEqual({
+      slots: [
+        {
+          itemStableId: 'item-a',
+          badgeZh: '店主推荐',
+          badgeEn: 'Owner Pick',
+        },
+        { itemStableId: null, badgeZh: null, badgeEn: null },
+        { itemStableId: 'item-c', badgeZh: '新品上市', badgeEn: 'New' },
+      ],
+    });
+  });
+
+  it('rejects assigning the same featured item to two fixed slots', async () => {
+    const service = new HomepageContentService();
+
+    await expect(
+      service.updateFeaturedConfig({
+        slots: [
+          { itemStableId: 'item-a', badgeZh: null, badgeEn: null },
+          { itemStableId: 'item-a', badgeZh: null, badgeEn: null },
+          { itemStableId: null, badgeZh: null, badgeEn: null },
+        ],
+      }),
+    ).rejects.toThrow('the same featured item cannot be assigned twice');
+  });
 });

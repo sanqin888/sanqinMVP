@@ -76,6 +76,28 @@ describe('ReportsService', () => {
     expect(report.topItems).toEqual([{ name: 'Noodle', quantity: 3 }]);
   });
 
+  it('内部热销排行保留 stableId 供首页等后端消费者复用', async () => {
+    const { service } = createService([
+      {
+        qty: 3,
+        productStableId: 'item_noodle',
+        displayName: 'Noodle',
+        nameEn: 'Noodle',
+        nameZh: '面',
+        optionsJson: null,
+      },
+    ]);
+
+    await expect(
+      service.getTopItemsForRange(
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-01-08T00:00:00.000Z'),
+      ),
+    ).resolves.toEqual([
+      { stableId: 'item_noodle', name: 'Noodle', quantity: 3 },
+    ]);
+  });
+
   it('套餐订单行不作为独立商品出现，且套餐内菜品按套餐数量累加', async () => {
     const { service } = createService([
       {

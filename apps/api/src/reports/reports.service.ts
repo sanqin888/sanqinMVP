@@ -18,7 +18,8 @@ type ReportOrderItem = {
   optionsJson: Prisma.JsonValue | null;
 };
 
-type TopItemAggregate = {
+export type TopItemAggregate = {
+  stableId: string;
   name: string;
   quantity: number;
 };
@@ -74,6 +75,7 @@ export class ReportsService {
     const addItem = (key: string, name: string, quantity: number) => {
       const current = aggregate.get(key);
       aggregate.set(key, {
+        stableId: key,
         name: current?.name ?? name,
         quantity: (current?.quantity ?? 0) + quantity,
       });
@@ -102,9 +104,9 @@ export class ReportsService {
       );
     }
 
-    return Array.from(aggregate.values())
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 10);
+    return Array.from(aggregate.values()).sort(
+      (a, b) => b.quantity - a.quantity,
+    );
   }
 
   private extractChoiceStableIds(
@@ -150,6 +152,36 @@ export class ReportsService {
       item.productStableId ||
       '未知商品'
     );
+  }
+
+  async getTopItemsForRange(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<TopItemAggregate[]> {
+    const validStatuses: OrderStatus[] = [
+      'paid',
+      'making',
+      'ready',
+      'completed',
+    ];
+    const orderItems = await this.prisma.orderItem.findMany({
+      where: {
+        order: {
+          createdAt: { gte: startDate, lte: endDate },
+          status: { in: validStatuses },
+        },
+      },
+      select: {
+        qty: true,
+        productStableId: true,
+        displayName: true,
+        nameEn: true,
+        nameZh: true,
+        optionsJson: true,
+      },
+    });
+
+    return this.buildTopItems(orderItems);
   }
 
   async getReport(query: ReportQueryDto) {
@@ -252,23 +284,11 @@ export class ReportsService {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // 8. 统计畅销单品 Top 10
-    // 套餐会把选中的具体菜品快照写入 optionsJson，这里先取出订单项，
-    // 再在内存中按真实菜品 stableId 聚合，避免用 displayName 合并导致重名/语言问题。
-    const orderItems = await this.prisma.orderItem.findMany({
-      where: {
-        order: whereCondition,
-      },
-      select: {
-        qty: true,
-        productStableId: true,
-        displayName: true,
-        nameEn: true,
-        nameZh: true,
-        optionsJson: true,
-      },
-    });
-
-    const topItems = await this.buildTopItems(orderItems);
+    // 复用同一套 stableId 聚合逻辑：首页近 7 天推荐也使用该口径。
+    const topItems = (await this.getTopItemsForRange(startDate, endDate)).slice(
+      0,
+      10,
+    );
 
     // 9. 计算最终结果
     const totalCents = aggregations._sum.totalCents ?? 0;
@@ -296,7 +316,7 @@ export class ReportsService {
           value: (f._sum.totalCents ?? 0) / 100,
         })),
       },
-      topItems,
+      topItems: topItems.map(({ name, quantity }) => ({ name, quantity })),
     };
   }
 }

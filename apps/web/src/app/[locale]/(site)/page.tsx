@@ -30,6 +30,7 @@ import { trackClientEvent } from "@/lib/analytics";
 import {
   getDefaultHomepageContent,
   type HomepageContent,
+  type HomepageFeaturedItem,
 } from "@/lib/homepage-content";
 
 type StoreStatus = {
@@ -94,6 +95,7 @@ export default function LocalOrderPage() {
   const [homeContent, setHomeContent] = useState<HomepageContent>(() =>
     getDefaultHomepageContent(locale),
   );
+  const [featuredConfigItems, setFeaturedConfigItems] = useState<HomepageFeaturedItem[]>([]);
 
   useEffect(() => {
     trackClientEvent("customer_home_viewed", {
@@ -184,6 +186,7 @@ export default function LocalOrderPage() {
   useEffect(() => {
     let cancelled = false;
     setHomeContent(getDefaultHomepageContent(locale));
+    setFeaturedConfigItems([]);
 
     async function loadHomepageContent() {
       try {
@@ -197,7 +200,20 @@ export default function LocalOrderPage() {
       }
     }
 
+    async function loadFeaturedItems() {
+      try {
+        const featured = await apiFetch<{ items: HomepageFeaturedItem[] }>(
+          `/homepage/featured?locale=${locale}`,
+          { cache: "no-store" },
+        );
+        if (!cancelled) setFeaturedConfigItems(featured.items ?? []);
+      } catch (error) {
+        console.error("Failed to load homepage featured items", error);
+      }
+    }
+
     void loadHomepageContent();
+    void loadFeaturedItems();
     return () => {
       cancelled = true;
     };
@@ -851,29 +867,17 @@ export default function LocalOrderPage() {
       : storeStatus?.publicNoticeEn?.trim() ?? "";
 
   const featuredItems = useMemo(() => {
-    const allItems = displayedMenu.flatMap((category) => category.items);
-    const selected: LocalizedMenuItem[] = [];
-    const preferredPatterns = [/roujiamo/i, /liangpi/i, /noodle/i];
+    const itemByStableId = new Map(
+      displayedMenu
+        .flatMap((category) => category.items)
+        .map((item) => [item.stableId, item]),
+    );
 
-    preferredPatterns.forEach((pattern) => {
-      const match = allItems.find(
-        (item) =>
-          !selected.some((selectedItem) => selectedItem.stableId === item.stableId) &&
-          pattern.test(`${item.nameEn ?? ""} ${item.name ?? ""}`) &&
-          Boolean(item.imageUrl),
-      );
-      if (match) selected.push(match);
+    return featuredConfigItems.flatMap((featured) => {
+      const item = itemByStableId.get(featured.itemStableId);
+      return item ? [{ ...item, featuredBadge: featured.badge }] : [];
     });
-
-    allItems.forEach((item) => {
-      if (selected.length >= 3) return;
-      if (!item.imageUrl) return;
-      if (selected.some((selectedItem) => selectedItem.stableId === item.stableId)) return;
-      selected.push(item);
-    });
-
-    return selected.slice(0, 3);
-  }, [displayedMenu]);
+  }, [displayedMenu, featuredConfigItems]);
 
   const renderOptionGroup = (
     group: MenuOptionGroupWithOptionsDto,
@@ -1272,16 +1276,21 @@ export default function LocalOrderPage() {
                           setSelectedChildOptions({});
                           setSelectedDailySpecial(null);
                         }}
-                        className="group grid grid-cols-[116px_1fr] overflow-hidden rounded-3xl border border-[#87362E]/10 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:block"
+                        className="group relative grid grid-cols-[116px_1fr] overflow-hidden rounded-3xl border border-[#87362E]/10 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:block"
                       >
                         <span className="relative min-h-32 bg-[#f1e5da] sm:block sm:aspect-[5/3] sm:min-h-0">
                           <Image src={item.imageUrl ?? "/images/hero.png"} alt={item.name} fill sizes="(min-width: 640px) 33vw, 116px" className="object-cover transition duration-500 group-hover:scale-105" />
                         </span>
-                        <span className="flex min-w-0 flex-col justify-center p-4 sm:block sm:p-5">
+                        <span className="flex min-w-0 flex-col justify-center p-4 pb-11 sm:block sm:p-5 sm:pb-12">
                           <span className="block truncate text-base font-black text-stone-900 sm:text-lg">{item.name}</span>
                           {item.ingredients ? <span className="mt-1 line-clamp-2 block text-xs leading-5 text-stone-500 sm:text-sm">{item.ingredients}</span> : null}
                           <span className="mt-2 block text-sm font-black text-[#87362E]">{currencyFormatter.format(item.price)}</span>
                         </span>
+                        {item.featuredBadge ? (
+                          <span className="absolute bottom-3 right-3 max-w-[70%] truncate rounded-full bg-[#87362E] px-2.5 py-1 text-[11px] font-black text-white shadow-sm sm:text-xs">
+                            {item.featuredBadge}
+                          </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>

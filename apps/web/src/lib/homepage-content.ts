@@ -1,5 +1,20 @@
 import type { Locale } from '@/lib/i18n/locales';
 
+export type HomepageFeaturedSlotConfig = {
+  itemStableId: string | null;
+  badgeZh: string | null;
+  badgeEn: string | null;
+};
+
+export type HomepageFeaturedConfig = {
+  slots: [HomepageFeaturedSlotConfig, HomepageFeaturedSlotConfig, HomepageFeaturedSlotConfig];
+};
+
+export type HomepageFeaturedItem = {
+  itemStableId: string;
+  badge: string | null;
+};
+
 export type HomepageContent = {
   heroEyebrow: string;
   heroTitle: string;
@@ -60,4 +75,14 @@ const DEFAULTS: Record<Locale, HomepageContent> = {
 
 export function getDefaultHomepageContent(locale: Locale): HomepageContent {
   return { ...DEFAULTS[locale] };
+}
+
+export function getDefaultHomepageFeaturedConfig(): HomepageFeaturedConfig {
+  return {
+    slots: [
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+      { itemStableId: null, badgeZh: null, badgeEn: null },
+    ],
+  };
 }

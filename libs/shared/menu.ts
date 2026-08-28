@@ -18,6 +18,7 @@ export type SpecialPricingMode =
 
 export type MenuItemVisibility = 'PUBLIC' | 'HIDDEN';
 export type MenuLabelStrategy = 'AUTO' | 'ALWAYS' | 'NEVER';
+export type MenuItemKind = 'FOOD' | 'BEVERAGE';
 
 export type MenuPackagingTypeDto = {
   stableId: string;
@@ -131,6 +132,7 @@ export type MenuItemDtoBase = LocalizedName &
 export type MenuItemWithBindingsDto = MenuItemDtoBase & {
   publishToUberEats: boolean;
   labelStrategy: MenuLabelStrategy;
+  itemKind: MenuItemKind;
   packagings: MenuItemPackagingDto[];
   optionGroups: AdminMenuOptionGroupBindingDto[];
 };

@@ -13,8 +13,10 @@ import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 import { HomepageContentService } from '../../homepage/homepage-content.service';
+import { HomepageFeaturedService } from '../../homepage/homepage-featured.service';
 import type {
   HomepageContentDocument,
+  HomepageFeaturedConfig,
   HomepageLocale,
   HomepageLocaleContent,
 } from '../../homepage/homepage-content.types';
@@ -23,7 +25,10 @@ import type {
 @Roles('ADMIN')
 @Controller('admin/homepage')
 export class AdminHomepageController {
-  constructor(private readonly service: HomepageContentService) {}
+  constructor(
+    private readonly service: HomepageContentService,
+    private readonly featuredService: HomepageFeaturedService,
+  ) {}
 
   @Get('content')
   async getContent(
@@ -39,6 +44,18 @@ export class AdminHomepageController {
     @Body() body: Partial<HomepageLocaleContent>,
   ): Promise<HomepageLocaleContent> {
     return this.service.updateLocaleContent(this.parseLocale(localeRaw), body);
+  }
+
+  @Get('featured')
+  async getFeaturedConfig(): Promise<HomepageFeaturedConfig> {
+    return this.featuredService.getConfig();
+  }
+
+  @Put('featured')
+  async updateFeaturedConfig(
+    @Body() body: HomepageFeaturedConfig,
+  ): Promise<HomepageFeaturedConfig> {
+    return this.featuredService.updateConfig(body);
   }
 
   private parseLocale(value: string): HomepageLocale {

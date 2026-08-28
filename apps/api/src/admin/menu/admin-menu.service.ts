@@ -296,6 +296,7 @@ export class AdminMenuService {
             isVisibleOnMainMenu: it.isVisibleOnMainMenu,
             publishToUberEats: it.publishToUberEats,
             labelStrategy: it.labelStrategy,
+            itemKind: it.itemKind,
             packagings: it.packagings.map((packaging) => ({
               sortOrder: packaging.sortOrder,
               packagingType: {
@@ -478,6 +479,7 @@ export class AdminMenuService {
     isVisibleOnMainMenu?: boolean;
     publishToUberEats?: boolean;
     labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+    itemKind?: 'FOOD' | 'BEVERAGE';
     packagingTypeStableIds?: string[];
     tempUnavailableUntil?: string | null;
   }) {
@@ -536,6 +538,7 @@ export class AdminMenuService {
             ? body.publishToUberEats
             : false,
         labelStrategy: body.labelStrategy ?? 'AUTO',
+        itemKind: body.itemKind ?? 'FOOD',
         packagings: {
           create: packagingTypes.map((packagingType, index) => ({
             packagingTypeId: packagingType.id,
@@ -572,6 +575,7 @@ export class AdminMenuService {
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
       labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+      itemKind?: 'FOOD' | 'BEVERAGE';
       packagingTypeStableIds?: string[];
       tempUnavailableUntil?: string | null;
     },
@@ -673,6 +677,7 @@ export class AdminMenuService {
             : body.publishToUberEats,
         labelStrategy:
           body.labelStrategy === undefined ? undefined : body.labelStrategy,
+        itemKind: body.itemKind === undefined ? undefined : body.itemKind,
         ...(packagingTypesForUpdate
           ? {
               packagings: {
