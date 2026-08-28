@@ -2921,8 +2921,8 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="space-y-10 pb-24">
-      <section className="rounded-3xl bg-white p-6 shadow-sm">
+    <div className="space-y-10 bg-[#fffdfa] pb-24 pt-4">
+      <section className="rounded-3xl border border-[#87362E]/10 bg-[#f8eee5] p-6 shadow-sm">
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">
@@ -2937,7 +2937,7 @@ export default function CheckoutPage() {
             <div className="flex flex-wrap gap-2">
               <Link
                 href={membershipHref}
-                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
+                className="inline-flex items-center gap-2 rounded-full bg-[#87362E] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#6f2c26]"
               >
                 {membershipLabel}
               </Link>
@@ -2952,7 +2952,7 @@ export default function CheckoutPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
+      <section className="rounded-3xl border border-[#87362E]/10 bg-white p-6 shadow-lg">
         {(storeStatusLoading || !isStoreOpen || storeStatusError) && (
           <div className="mb-4 space-y-2">
             {storeStatusLoading && (

@@ -324,6 +324,70 @@ export default function LocalOrderPage() {
         .filter((category) => category.items.length > 0),
     [menu],
   );
+  const [activeCategoryStableId, setActiveCategoryStableId] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    if (displayedMenu.length === 0) {
+      setActiveCategoryStableId(null);
+      return;
+    }
+
+    const syncActiveCategory = () => {
+      const stickyOffset = window.innerWidth >= 1024 ? 152 : 144;
+      let nextActive = displayedMenu[0]?.stableId ?? null;
+
+      for (const category of displayedMenu) {
+        const element = document.getElementById(
+          `category-${category.stableId}`,
+        );
+        if (!element) continue;
+        if (element.getBoundingClientRect().top <= stickyOffset) {
+          nextActive = category.stableId;
+        } else {
+          break;
+        }
+      }
+
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 2
+      ) {
+        nextActive =
+          displayedMenu[displayedMenu.length - 1]?.stableId ?? nextActive;
+      }
+
+      setActiveCategoryStableId((current) =>
+        current === nextActive ? current : nextActive,
+      );
+    };
+
+    syncActiveCategory();
+    window.addEventListener("scroll", syncActiveCategory, { passive: true });
+    window.addEventListener("resize", syncActiveCategory);
+    return () => {
+      window.removeEventListener("scroll", syncActiveCategory);
+      window.removeEventListener("resize", syncActiveCategory);
+    };
+  }, [displayedMenu]);
+
+  useEffect(() => {
+    if (!activeCategoryStableId) return;
+    const activeTab = document.getElementById(
+      `category-tab-${activeCategoryStableId}`,
+    );
+    const scrollContainer = activeTab?.parentElement?.parentElement;
+    if (!activeTab || !(scrollContainer instanceof HTMLElement)) return;
+
+    const centeredLeft =
+      activeTab.offsetLeft -
+      (scrollContainer.clientWidth - activeTab.offsetWidth) / 2;
+    scrollContainer.scrollTo({
+      left: Math.max(0, centeredLeft),
+      behavior: "smooth",
+    });
+  }, [activeCategoryStableId]);
 
   // Map: ID -> Item
   const menuItemMap = useMemo(
@@ -1101,7 +1165,7 @@ export default function LocalOrderPage() {
           {displayedMenu.length > 0 ? (
             <>
               {dailySpecials.length > 0 ? (
-                <section id="daily-special" className="scroll-mt-28 overflow-hidden rounded-[2rem] bg-[#87362E] text-white shadow-[0_24px_70px_-42px_rgba(100,45,38,0.7)]">
+                <section id="daily-special" className="scroll-mt-[88px] overflow-hidden rounded-[2rem] bg-[#87362E] text-white shadow-[0_24px_70px_-42px_rgba(100,45,38,0.7)] lg:scroll-mt-[96px]">
                   <div className="grid lg:grid-cols-[0.72fr_1.28fr]">
                     <div className="flex flex-col justify-center px-6 py-8 sm:px-9 lg:px-12 lg:py-10">
                       <div className="flex items-center gap-2">
@@ -1194,7 +1258,7 @@ export default function LocalOrderPage() {
                 </section>
               ) : null}
 
-              <section id="menu" className="scroll-mt-28 space-y-6">
+              <section id="menu" className="scroll-mt-[88px] space-y-6 lg:scroll-mt-[96px]">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-[#87362E]">{locale === "zh" ? "在线点单" : "ORDER ONLINE"}</p>
@@ -1205,21 +1269,30 @@ export default function LocalOrderPage() {
 
                 <div className="sticky top-[68px] z-30 -mx-1 overflow-x-auto border-y border-[#87362E]/10 bg-[#fffdfa]/95 px-1 py-3 backdrop-blur-xl lg:top-[76px]">
                   <div className="flex min-w-max gap-2">
-                    {displayedMenu.map((category, index) => (
-                      <Link
-                        key={category.stableId}
-                        href={`#category-${category.stableId}`}
-                        className={`rounded-full px-4 py-2 text-sm font-bold transition ${index === 0 ? "bg-[#87362E] text-white" : "border border-[#87362E]/15 bg-white text-stone-700 hover:border-[#87362E]/35 hover:text-[#87362E]"}`}
-                      >
-                        {category.name}
-                      </Link>
-                    ))}
+                    {displayedMenu.map((category) => {
+                      const isActive =
+                        activeCategoryStableId === category.stableId;
+                      return (
+                        <Link
+                          key={category.stableId}
+                          id={`category-tab-${category.stableId}`}
+                          href={`#category-${category.stableId}`}
+                          onClick={() =>
+                            setActiveCategoryStableId(category.stableId)
+                          }
+                          aria-current={isActive ? "true" : undefined}
+                          className={`rounded-full px-4 py-2 text-sm font-bold transition ${isActive ? "bg-[#87362E] text-white" : "border border-[#87362E]/15 bg-white text-stone-700 hover:border-[#87362E]/35 hover:text-[#87362E]"}`}
+                        >
+                          {category.name}
+                        </Link>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div className="space-y-10">
                   {displayedMenu.map((category) => (
-                    <div key={category.stableId} id={`category-${category.stableId}`} className="scroll-mt-36 space-y-4">
+                    <div key={category.stableId} id={`category-${category.stableId}`} className="scroll-mt-[152px] space-y-4 lg:scroll-mt-[164px]">
                       <div className="flex items-center gap-3">
                         <h3 className="text-2xl font-black tracking-tight text-stone-900">{category.name}</h3>
                         <span className="h-px flex-1 bg-[#87362E]/10" />
@@ -1501,21 +1574,23 @@ export default function LocalOrderPage() {
         </div>
       ) : null}
 
-      {/* 手机端固定购物车 CTA / 桌面端浮动入口 */}
-      <button
-        type="button"
-        onClick={() => openCartPreview("sticky")}
-        className="fixed inset-x-3 bottom-3 z-50 flex h-16 items-center justify-between rounded-2xl bg-[#87362E] px-4 text-white shadow-[0_18px_50px_-18px_rgba(76,27,22,0.8)] transition hover:bg-[#6f2c26] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-14 sm:min-w-52 sm:rounded-full sm:px-5"
-      >
-        <span className="flex items-center gap-3">
-          <span className="grid h-9 min-w-9 place-items-center rounded-full bg-white px-2 text-sm font-black text-[#87362E]">{totalQuantity}</span>
-          <span className="text-left">
-            <span className="block text-sm font-black">{strings.floatingCartLabel}</span>
-            <span className="block text-[10px] font-medium text-white/70 sm:hidden">{locale === "zh" ? "查看已选菜品" : "Review your order"}</span>
+      {/* 手机端固定购物车 CTA / 桌面端浮动入口。购物车预览打开时隐藏，避免遮挡确认按钮。 */}
+      {!isCartPreviewOpen ? (
+        <button
+          type="button"
+          onClick={() => openCartPreview("sticky")}
+          className="fixed inset-x-3 bottom-3 z-50 flex h-16 items-center justify-between rounded-2xl bg-[#87362E] px-4 text-white shadow-[0_18px_50px_-18px_rgba(76,27,22,0.8)] transition hover:bg-[#6f2c26] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-14 sm:min-w-52 sm:rounded-full sm:px-5"
+        >
+          <span className="flex items-center gap-3">
+            <span className="grid h-9 min-w-9 place-items-center rounded-full bg-white px-2 text-sm font-black text-[#87362E]">{totalQuantity}</span>
+            <span className="text-left">
+              <span className="block text-sm font-black">{strings.floatingCartLabel}</span>
+              <span className="block text-[10px] font-medium text-white/70 sm:hidden">{locale === "zh" ? "查看已选菜品" : "Review your order"}</span>
+            </span>
           </span>
-        </span>
-        <span className="text-xl">→</span>
-      </button>
+          <span className="text-xl">→</span>
+        </button>
+      ) : null}
 
     </div>
   );

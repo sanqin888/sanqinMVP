@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import type { MouseEvent } from "react";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import { useSession } from "@/lib/auth-session";
 import { usePersistentCart } from "@/lib/cart";
@@ -35,11 +36,33 @@ export default function CustomerSiteHeader({ locale }: Props) {
     router.push(`${homeHref}?cart=1`);
   };
 
+  const scrollToHomeSection = (
+    event: MouseEvent<HTMLAnchorElement>,
+    sectionId: string,
+  ) => {
+    if (!isHome) return;
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+
+    event.preventDefault();
+    const header = document.querySelector<HTMLElement>(
+      "[data-customer-site-header]",
+    );
+    const headerHeight = header?.offsetHeight ?? 76;
+    const top =
+      target.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+    window.history.pushState(null, "", `#${sectionId}`);
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  };
+
   return (
-    <header className="sticky top-0 z-40 border-b border-[#87362E]/10 bg-[#fffaf5]/95 backdrop-blur-xl">
-      <div className="mx-auto flex h-[68px] w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:h-[76px] lg:px-8">
-        <Link href={homeHref} className="flex shrink-0 items-center gap-1.5" aria-label="SanQ">
-          <div className="relative h-10 w-10 overflow-hidden sm:h-11 sm:w-11 lg:h-12 lg:w-12">
+    <header
+      data-customer-site-header
+      className="sticky top-0 z-40 border-b border-[#87362E]/10 bg-[#fffaf5]/95 backdrop-blur-xl"
+    >
+      <div className="mx-auto flex h-[68px] w-full max-w-[1600px] items-center gap-1.5 px-4 sm:gap-3 sm:px-6 lg:h-[76px] lg:px-8">
+        <Link href={homeHref} className="flex shrink-0 items-center gap-1 sm:gap-1.5" aria-label="SanQ">
+          <div className="relative h-9 w-9 overflow-hidden sm:h-11 sm:w-11 lg:h-12 lg:w-12">
             <Image
               src="/images/sanq-logo-omega.svg"
               alt=""
@@ -49,7 +72,7 @@ export default function CustomerSiteHeader({ locale }: Props) {
               className="origin-top scale-[1.5] object-contain"
             />
           </div>
-          <span className="flex items-baseline text-[1.65rem] font-semibold leading-none tracking-[-0.06em] text-[#87362E] sm:text-[1.9rem] lg:text-[2.05rem]">
+          <span className="flex items-baseline text-[1.45rem] font-semibold leading-none tracking-[-0.06em] text-[#87362E] sm:text-[1.9rem] lg:text-[2.05rem]">
             <span>San</span><span className="ml-0.5 font-medium">Ω</span>
           </span>
         </Link>
@@ -58,24 +81,29 @@ export default function CustomerSiteHeader({ locale }: Props) {
           className="ml-5 hidden items-center gap-1 lg:flex"
           aria-label={isZh ? "主导航" : "Primary navigation"}
         >
-          <Link href={`${homeHref}#menu`} className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-[#87362E]/10 hover:text-[#87362E]">
+          <Link
+            href={`${homeHref}#menu`}
+            onClick={(event) => scrollToHomeSection(event, "menu")}
+            className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-[#87362E]/10 hover:text-[#87362E]"
+          >
             {isZh ? "菜单" : "Menu"}
           </Link>
-          <Link href={`${homeHref}#daily-special`} className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-[#87362E]/10 hover:text-[#87362E]">
+          <Link
+            href={`${homeHref}#daily-special`}
+            onClick={(event) => scrollToHomeSection(event, "daily-special")}
+            className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-[#87362E]/10 hover:text-[#87362E]"
+          >
             {isZh ? "今日特价" : "Daily Special"}
-          </Link>
-          <Link href={membershipHref} className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-[#87362E]/10 hover:text-[#87362E]">
-            {isZh ? "会员" : "Membership"}
           </Link>
           <Link href={`/${locale}/legal/contact`} className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-[#87362E]/10 hover:text-[#87362E]">
             {isZh ? "门店" : "Visit"}
           </Link>
         </nav>
 
-        <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3">
           <Link
             href={membershipHref}
-            className="inline-flex h-10 items-center justify-center rounded-full border border-[#87362E] px-3 text-xs font-bold text-[#87362E] transition hover:bg-[#87362E] hover:text-white sm:px-5 sm:text-sm lg:bg-[#87362E] lg:text-white lg:hover:bg-[#6f2c26]"
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-[#87362E] px-2.5 text-[11px] font-bold text-[#87362E] transition hover:bg-[#87362E] hover:text-white sm:px-5 sm:text-sm lg:bg-[#87362E] lg:text-white lg:hover:bg-[#6f2c26]"
           >
             <span className="sm:hidden">{isMemberLoggedIn ? (isZh ? "会员" : "Member") : (isZh ? "登录/注册" : "Login")}</span>
             <span className="hidden sm:inline">
