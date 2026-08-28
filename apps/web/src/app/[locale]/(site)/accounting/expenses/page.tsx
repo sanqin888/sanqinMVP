@@ -220,7 +220,7 @@ export default function AccountingExpensesPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const result = await apiFetch<{ url: string }>('/admin/upload/image', {
+      const result = await apiFetch<{ url: string }>('/accounting/files/receipts', {
         method: 'POST',
         body: formData,
       });

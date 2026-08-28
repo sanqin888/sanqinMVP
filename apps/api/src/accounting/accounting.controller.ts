@@ -13,7 +13,9 @@ import {
   Res,
   NotFoundException,
   UnauthorizedException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   AccountingDocumentStatus,
@@ -22,6 +24,7 @@ import {
   SettlementPlatform,
 } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
@@ -150,30 +153,43 @@ export class AccountingController {
     );
   }
 
+  @Post('files/receipts')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async uploadReceipt(
+    @UploadedFile() file: { originalname: string; buffer: Buffer } | undefined,
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    return { url: await this.operations.saveReceiptImage(file) };
+  }
+
   @Get('files/:kind/:fileName')
   accountingFile(
     @Param('kind') kind: string,
     @Param('fileName') fileName: string,
     @Res() res: Response,
   ) {
-    const allowedKind = kind === 'bills' || kind === 'uber-reports';
     const safeName = path.basename(fileName);
-    const expectedExtension = kind === 'bills' ? '.pdf' : '.csv';
-    if (
-      !allowedKind ||
-      safeName !== fileName ||
-      path.extname(safeName).toLowerCase() !== expectedExtension
-    ) {
+    const extension = path.extname(safeName).toLowerCase();
+    const contentType =
+      kind === 'bills' && extension === '.pdf'
+        ? 'application/pdf'
+        : kind === 'uber-reports' && extension === '.csv'
+          ? 'text/csv; charset=utf-8'
+          : kind === 'receipts' && extension === '.jpg'
+            ? 'image/jpeg'
+            : kind === 'receipts' && extension === '.png'
+              ? 'image/png'
+              : kind === 'receipts' && extension === '.webp'
+                ? 'image/webp'
+                : null;
+    if (!contentType || safeName !== fileName) {
       throw new NotFoundException('accounting file not found');
     }
     const filePath = path.join(getUploadsAccountingDir(), kind, safeName);
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('accounting file not found');
     }
-    res.setHeader(
-      'Content-Type',
-      expectedExtension === '.pdf' ? 'application/pdf' : 'text/csv; charset=utf-8',
-    );
+    res.setHeader('Content-Type', contentType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
     return res.sendFile(filePath);

@@ -12,6 +12,9 @@ import {
   Prisma,
 } from '@prisma/client';
 import { createId } from '@paralleldrive/cuid2';
+import * as fs from 'fs';
+import * as path from 'path';
+import { getUploadsAccountingDir } from '../common/utils/uploads-path';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountingService } from './accounting.service';
 
@@ -461,6 +464,28 @@ export class AccountingOperationsService {
     return created;
   }
 
+  async saveReceiptImage(file: { originalname: string; buffer: Buffer }) {
+    const extension = this.detectReceiptImageExtension(file.buffer);
+    if (!extension) {
+      throw new BadRequestException('Unsupported or invalid receipt image');
+    }
+    const originalExtension = path.extname(file.originalname).toLowerCase();
+    const allowedOriginalExtensions =
+      extension === '.jpg' ? new Set(['.jpg', '.jpeg']) : new Set([extension]);
+    if (originalExtension && !allowedOriginalExtensions.has(originalExtension)) {
+      throw new BadRequestException(
+        'Receipt image extension does not match file type',
+      );
+    }
+    const dir = path.join(getUploadsAccountingDir(), 'receipts');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const fileName = `${Date.now()}-${createId()}${extension}`;
+    await fs.promises.writeFile(path.join(dir, fileName), file.buffer, {
+      flag: 'wx',
+    });
+    return `/api/v1/accounting/files/receipts/${fileName}`;
+  }
+
   async createExpense(input: AccountingExpenseInput, operatorUserStableId: string) {
     const occurredAt = this.parseDate(input.occurredAt);
     await this.accounting.assertEditableForPeriod(
@@ -826,9 +851,33 @@ export class AccountingOperationsService {
     }
   }
 
+  private detectReceiptImageExtension(
+    buffer: Buffer,
+  ): '.jpg' | '.png' | '.webp' | null {
+    if (buffer.length < 12) return null;
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      return '.jpg';
+    }
+    const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    if (pngSignature.every((byte, index) => buffer[index] === byte)) {
+      return '.png';
+    }
+    if (
+      buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+    ) {
+      return '.webp';
+    }
+    return null;
+  }
+
   private normalizeUrls(urls?: string[]) {
     return Array.from(
-      new Set((urls ?? []).map((value) => value.trim()).filter(Boolean)),
+      new Set(
+        (urls ?? [])
+          .map((value) => value.trim())
+          .filter((value) => value.startsWith('/api/v1/accounting/files/')),
+      ),
     );
   }
 }

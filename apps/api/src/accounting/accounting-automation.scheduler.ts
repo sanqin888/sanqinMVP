@@ -45,7 +45,9 @@ export class AccountingAutomationScheduler
     if (this.timeout) clearTimeout(this.timeout);
   }
 
-  async getSettings(): Promise<AutomationSettings & { nextRunAt: string | null }> {
+  async getSettings(): Promise<
+    AutomationSettings & { nextRunAt: string | null }
+  > {
     const settings = await this.loadSettings();
     return {
       ...settings,
@@ -63,10 +65,14 @@ export class AccountingAutomationScheduler
     const runHour = input.runHour ?? current.runHour;
     const runMinute = input.runMinute ?? current.runMinute;
     if (!Number.isInteger(runHour) || runHour < 0 || runHour > 23) {
-      throw new BadRequestException('runHour must be an integer between 0 and 23');
+      throw new BadRequestException(
+        'runHour must be an integer between 0 and 23',
+      );
     }
     if (!Number.isInteger(runMinute) || runMinute < 0 || runMinute > 59) {
-      throw new BadRequestException('runMinute must be an integer between 0 and 59');
+      throw new BadRequestException(
+        'runMinute must be an integer between 0 and 59',
+      );
     }
 
     await this.prisma.accountingAutomationConfig.upsert({
@@ -149,7 +155,9 @@ export class AccountingAutomationScheduler
     const settings = await this.loadSettings();
     const next = this.nextRun(settings);
     if (!next) {
-      this.logger.error('Accounting automation schedule has an invalid timezone');
+      this.logger.error(
+        'Accounting automation schedule has an invalid timezone',
+      );
       return;
     }
     const delay = Math.max(next.toMillis() - DateTime.now().toMillis(), 1_000);
