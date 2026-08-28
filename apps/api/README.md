@@ -41,8 +41,23 @@ exercise the Clover POS proof-of-concept endpoints:
 | `CLOVER_API_BASE_URL` | Optional. Defaults to the Clover sandbox (`https://sandbox.dev.clover.com/v3`). |
 | `CLOVER_MERCHANT_ID` | Required. Merchant identifier issued by Clover. |
 | `CLOVER_ACCESS_TOKEN` | Required. OAuth access token with permissions to read the merchant profile and orders. |
-| `CLOVER_V3_ACCESS_TOKEN` | Required for canonical Platform v3 payment/reversal reads used by the Unified Payment Core. |
+| `CLOVER_STORE_STABLE_ID` | Optional explicit mapping to `Store.storeStableId`; OAuth never guesses a store. |
+| `CLOVER_OAUTH_CLIENT_ID` | Clover Production OAuth v2 client ID. |
+| `CLOVER_OAUTH_CLIENT_SECRET` | Server-only Clover Production OAuth credential. |
+| `CLOVER_OAUTH_CALLBACK_URL` | Fixed public callback URL, normally `https://sanq.ca/clover/oauth/callback`. |
+| `CLOVER_OAUTH_SCOPES` | Optional permission metadata for authorization auditing. |
+| `CLOVER_CREDENTIAL_ACTIVE_KEY_VERSION` | Active Clover credential-encryption key version. |
+| `CLOVER_CREDENTIAL_ENCRYPTION_KEYS` | JSON key ring of base64-encoded 32-byte AES-256-GCM keys. |
+| `CLOVER_CREDENTIAL_KEYS_SOURCE` | Must be `env` when Clover credential encryption is configured. |
 | `CLOVER_WEBHOOK_AUTH_CODE` | Required after Clover callback verification. Event deliveries must present this value in `X-Clover-Auth`. |
+
+Merchant OAuth v2 launches at `https://sanq.ca/clover/oauth/start` and returns to
+`https://sanq.ca/clover/oauth/callback`. The Web app only performs same-origin browser
+redirects. OAuth exchange, credential encryption, merchant verification, refresh rotation,
+and Platform v3 authorization remain in the API Payments/Clover infrastructure. Platform v3
+reads require an active persisted merchant authorization; there is no static access-token
+environment fallback. Rotate the Production app credential before the first live authorization
+and configure the replacement only in the server environment.
 
 Phase F reverse sync receives Clover callbacks at
 `/api/v1/payments/webhooks/clover`. The initial Clover verification challenge is

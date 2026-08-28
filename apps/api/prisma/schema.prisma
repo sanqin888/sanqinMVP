@@ -416,7 +416,8 @@ model Store {
   posDevices    PosDevice[]
   orders        Order[]
   businessHours BusinessHour[]
-  holidays      Holiday[]
+  holidays                    Holiday[]
+  cloverMerchantAuthorization CloverMerchantAuthorization?
 }
 
 enum AllergyHandlingMode {
@@ -1010,6 +1011,65 @@ model CheckoutIntent {
   id                 String    @id @default(uuid()) @db.Uuid
 
   @@index([referenceId, createdAt])
+}
+
+enum CloverMerchantAuthorizationStatus {
+  PENDING_BINDING
+  ACTIVE
+  REAUTH_REQUIRED
+  REVOKED
+}
+
+enum CloverOAuthStateStatus {
+  ISSUED
+  EXCHANGING
+  EXCHANGED
+  COMPLETED
+  FAILED
+}
+
+model CloverMerchantAuthorization {
+  id                       String                            @id @default(uuid()) @db.Uuid
+  merchantId               String                            @unique
+  merchantName             String?
+  storeStableId            String?                           @unique
+  encryptedAccessToken     String
+  encryptedRefreshToken    String
+  accessTokenExpiresAt     DateTime
+  refreshTokenExpiresAt    DateTime?
+  scopes                   String?
+  status                   CloverMerchantAuthorizationStatus @default(PENDING_BINDING)
+  tokenVersion             Int                               @default(0)
+  refreshLeaseId           String?
+  refreshLeaseExpiresAt    DateTime?
+  authorizedAt             DateTime
+  refreshedAt              DateTime?
+  revokedAt                DateTime?
+  createdAt                DateTime                          @default(now())
+  updatedAt                DateTime                          @updatedAt
+  store                    Store?                            @relation(fields: [storeStableId], references: [storeStableId], onDelete: SetNull)
+
+  @@index([status, accessTokenExpiresAt])
+  @@index([status, refreshTokenExpiresAt])
+  @@index([refreshLeaseExpiresAt])
+}
+
+model CloverOAuthStateRequest {
+  stateHash               String                 @id
+  merchantId              String
+  clientId                String
+  redirectUri             String
+  issuedAt                DateTime
+  expiresAt               DateTime
+  consumedAt              DateTime?
+  status                  CloverOAuthStateStatus @default(ISSUED)
+  lastErrorCode           String?
+  encryptedExchangeResult String?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  @@index([expiresAt])
+  @@index([status, expiresAt])
 }
 
 // PaymentTransaction is the provider-independent money fact / logical attempt.

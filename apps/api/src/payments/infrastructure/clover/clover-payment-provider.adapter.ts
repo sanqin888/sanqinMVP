@@ -14,6 +14,7 @@ import type {
 import type { PaymentProviderOutcome } from '../../domain/payment.types';
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
+import { CloverMerchantAccessTokenService } from './oauth/clover-merchant-access-token.service';
 import {
   toProviderOutcomeFromCreate,
   toProviderOutcomeFromStatus,
@@ -509,21 +510,27 @@ const mapPlatformRefund = (
 export class CloverPlatformPaymentsGateway {
   private readonly logger = new AppLogger(CloverPlatformPaymentsGateway.name);
 
-  constructor(private readonly config: CloverProviderConfig) {}
+  constructor(
+    private readonly config: CloverProviderConfig,
+    private readonly accessTokens: CloverMerchantAccessTokenService,
+  ) {}
 
-  isConfigured(): boolean {
-    return Boolean(this.config.merchantId && this.config.platformAccessToken);
+  async isConfigured(): Promise<boolean> {
+    const merchantId = this.config.merchantId;
+    return Boolean(
+      merchantId && (await this.accessTokens.hasUsableCredential(merchantId)),
+    );
   }
 
   async getCanonicalPayment(
     request: CloverPlatformCanonicalPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     const merchantId = this.config.merchantId;
-    if (!merchantId || !this.config.platformAccessToken) {
+    if (!merchantId || !(await this.isConfigured())) {
       return platformPaymentUnknown(
         request,
         'CLOVER_PLATFORM_MISCONFIGURED',
-        'Clover Platform payment read requires merchant id and Platform v3 access token',
+        'Clover Platform payment read requires an active merchant OAuth authorization',
       );
     }
 
@@ -586,11 +593,11 @@ export class CloverPlatformPaymentsGateway {
     request: CloverPlatformCanonicalReversalRequest,
   ): Promise<PaymentProviderOutcome> {
     const merchantId = this.config.merchantId;
-    if (!merchantId || !this.config.platformAccessToken) {
+    if (!merchantId || !(await this.isConfigured())) {
       return reversalUnknown(
         request,
         'CLOVER_PLATFORM_MISCONFIGURED',
-        'Clover Platform reversal read requires merchant id and Platform v3 access token',
+        'Clover Platform reversal read requires an active merchant OAuth authorization',
       );
     }
     const providerPaymentId = request.providerPaymentId?.trim();
@@ -814,9 +821,33 @@ export class CloverPlatformPaymentsGateway {
   private async request(
     path: string,
   ): Promise<CloverPlatformHttpResult | null> {
-    const token = this.config.platformAccessToken;
-    if (!token) return null;
+    const merchantId = this.config.merchantId;
+    if (!merchantId) return null;
+    try {
+      const credential = await this.accessTokens.getAccessToken(merchantId);
+      if (!credential) return null;
+      let result = await this.requestWithToken(path, credential.token);
+      if (result?.httpStatus === 401) {
+        const refreshed = await this.accessTokens.getAccessToken(merchantId, {
+          forceRefresh: true,
+        });
+        if (refreshed) {
+          result = await this.requestWithToken(path, refreshed.token);
+        }
+      }
+      return result;
+    } catch (error) {
+      this.logger.warn(
+        `[CloverPlatformPaymentsGateway] request unavailable path=${path} reason=${this.errorMessage(error)}`,
+      );
+      return null;
+    }
+  }
 
+  private async requestWithToken(
+    path: string,
+    token: string,
+  ): Promise<CloverPlatformHttpResult | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PLATFORM_TIMEOUT_MS);
     let response: Response;
@@ -884,14 +915,14 @@ export class CloverPaymentProviderAdapter
   ) {}
 
   async getAvailability(): Promise<PaymentTerminalAvailability> {
-    if (!this.platform.isConfigured()) {
+    if (!(await this.platform.isConfigured())) {
       return {
         state: 'MISCONFIGURED',
         configured: false,
         available: false,
         failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
         failureMessage:
-          'Clover Platform canonical payment read requires merchant id and Platform v3 access token',
+          'Clover Platform canonical payment read requires an active merchant OAuth authorization',
       };
     }
     return this.terminal.getAvailability();
@@ -901,7 +932,7 @@ export class CloverPaymentProviderAdapter
     request: StartPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     if (request.source === 'POS_TERMINAL') {
-      if (!this.platform.isConfigured()) {
+      if (!(await this.platform.isConfigured())) {
         return {
           status: 'FAILED',
           paymentId: request.paymentId,
@@ -1051,7 +1082,7 @@ export class CloverPaymentProviderAdapter
     request: VoidPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     if (request.source === 'POS_TERMINAL') {
-      if (!this.platform.isConfigured()) {
+      if (!(await this.platform.isConfigured())) {
         return {
           status: 'FAILED',
           paymentId: request.paymentId,
@@ -1099,7 +1130,7 @@ export class CloverPaymentProviderAdapter
     request: RefundPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     if (request.source === 'POS_TERMINAL') {
-      if (!this.platform.isConfigured()) {
+      if (!(await this.platform.isConfigured())) {
         return {
           status: 'FAILED',
           paymentId: request.paymentId,
