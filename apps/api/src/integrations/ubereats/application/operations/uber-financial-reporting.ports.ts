@@ -47,7 +47,9 @@ export interface UberFinancialReportRepositoryPort {
     startDate: string;
     endDate: string;
   }): Promise<UberFinancialReportRecord | null>;
-  findByWorkflowId(workflowId: string): Promise<UberFinancialReportRecord | null>;
+  findByWorkflowId(
+    workflowId: string,
+  ): Promise<UberFinancialReportRecord | null>;
   saveRequested(input: {
     workflowId: string;
     reportType: UberEatsFinancialReportType;
@@ -61,10 +63,7 @@ export interface UberFinancialReportRepositoryPort {
     artifactUrls: string[];
     rawMetadata: unknown;
   }): Promise<UberFinancialReportRecord>;
-  markError(input: {
-    workflowId: string;
-    errorMessage: string;
-  }): Promise<void>;
+  markError(input: { workflowId: string; errorMessage: string }): Promise<void>;
   list(input?: {
     limit?: number;
     status?: UberFinancialReportStatus;

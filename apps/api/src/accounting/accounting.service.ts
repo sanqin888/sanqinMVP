@@ -183,10 +183,7 @@ export class AccountingService {
     };
   }
 
-  async assertEditableForPeriod(
-    occurredAt: Date,
-    type: AccountingTxType,
-  ) {
+  async assertEditableForPeriod(occurredAt: Date, type: AccountingTxType) {
     const timezone = await this.getBusinessTimezone();
     const zoned = DateTime.fromJSDate(occurredAt, { zone: timezone });
     if (!zoned.isValid) {
@@ -321,13 +318,23 @@ export class AccountingService {
       accountStableId
         ? this.prisma.accountingAccount.findUnique({
             where: { accountStableId },
-            select: { id: true, accountStableId: true, currency: true, isActive: true },
+            select: {
+              id: true,
+              accountStableId: true,
+              currency: true,
+              isActive: true,
+            },
           })
         : Promise.resolve(null),
       toAccountStableId
         ? this.prisma.accountingAccount.findUnique({
             where: { accountStableId: toAccountStableId },
-            select: { id: true, accountStableId: true, currency: true, isActive: true },
+            select: {
+              id: true,
+              accountStableId: true,
+              currency: true,
+              isActive: true,
+            },
           })
         : Promise.resolve(null),
     ]);
@@ -649,7 +656,9 @@ export class AccountingService {
       select: { id: true },
     });
     if (yearLocked) {
-      throw new ForbiddenException(`财年 ${yearKey} 已硬锁账，月份不能重新打开`);
+      throw new ForbiddenException(
+        `财年 ${yearKey} 已硬锁账，月份不能重新打开`,
+      );
     }
     const existing = await this.prisma.accountingPeriodClose.findUnique({
       where: {
@@ -693,7 +702,9 @@ export class AccountingService {
       select: { periodKey: true },
     });
     const closedMonths = new Set(monthRows.map((row) => row.periodKey));
-    const missingMonths = requiredMonths.filter((month) => !closedMonths.has(month));
+    const missingMonths = requiredMonths.filter(
+      (month) => !closedMonths.has(month),
+    );
     if (missingMonths.length) {
       throw new ConflictException(
         `年度硬锁前必须完成12个月月结；未月结：${missingMonths.join(', ')}`,
@@ -1590,7 +1601,10 @@ export class AccountingService {
           item.balanceChangeCents -= row.amountCents;
         }
         if (row.toAccount) {
-          const item = upsert(row.toAccount.accountStableId, row.toAccount.name);
+          const item = upsert(
+            row.toAccount.accountStableId,
+            row.toAccount.name,
+          );
           item.inflowCents += row.amountCents;
           item.balanceChangeCents += row.amountCents;
         }

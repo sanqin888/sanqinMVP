@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
-import { Prisma, UberFinancialReportStatus as PrismaReportStatus } from '@prisma/client';
+import {
+  Prisma,
+  UberFinancialReportStatus as PrismaReportStatus,
+} from '@prisma/client';
 import { isIP } from 'net';
 import { lookup } from 'dns/promises';
 import * as fs from 'fs';
@@ -58,9 +61,7 @@ export class UberFinancialReportApiAdapter implements UberFinancialReportApiPort
 }
 
 @Injectable()
-export class UberFinancialReportPrismaRepository
-  implements UberFinancialReportRepositoryPort
-{
+export class UberFinancialReportPrismaRepository implements UberFinancialReportRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async findExisting(input: {
@@ -195,9 +196,7 @@ export class UberFinancialReportPrismaRepository
 }
 
 @Injectable()
-export class UberFinancialReportArtifactStore
-  implements UberFinancialReportArtifactStorePort
-{
+export class UberFinancialReportArtifactStore implements UberFinancialReportArtifactStorePort {
   async downloadCsvSections(input: {
     workflowId: string;
     sections: Array<{ downloadUrl: string; sectionId: string | null }>;
@@ -206,7 +205,9 @@ export class UberFinancialReportArtifactStore
     for (let index = 0; index < input.sections.length; index += 1) {
       const section = input.sections[index];
       const response = await this.safeFetch(section.downloadUrl);
-      const declaredLength = Number(response.headers.get('content-length') ?? '0');
+      const declaredLength = Number(
+        response.headers.get('content-length') ?? '0',
+      );
       if (declaredLength > 25 * 1024 * 1024) {
         throw new Error('Uber report section exceeds 25 MB');
       }
@@ -223,7 +224,9 @@ export class UberFinancialReportArtifactStore
         .replace(/[^a-zA-Z0-9_-]/g, '-')
         .slice(0, 80);
       const fileName = `${Date.now()}-${workflow}-${sectionId}.csv`;
-      await fs.promises.writeFile(path.join(dir, fileName), bytes, { flag: 'wx' });
+      await fs.promises.writeFile(path.join(dir, fileName), bytes, {
+        flag: 'wx',
+      });
       urls.push(`/api/v1/accounting/files/uber-reports/${fileName}`);
     }
     return urls;
@@ -272,7 +275,10 @@ export class UberFinancialReportArtifactStore
     const addresses = isIP(url.hostname)
       ? [{ address: url.hostname }]
       : await lookup(url.hostname, { all: true, verbatim: true });
-    if (!addresses.length || addresses.some(({ address }) => !this.isPublicIp(address))) {
+    if (
+      !addresses.length ||
+      addresses.some(({ address }) => !this.isPublicIp(address))
+    ) {
       throw new Error('Unsafe Uber report download address');
     }
   }

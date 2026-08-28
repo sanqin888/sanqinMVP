@@ -154,7 +154,9 @@ export class AccountingController {
   }
 
   @Post('files/receipts')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
   async uploadReceipt(
     @UploadedFile() file: { originalname: string; buffer: Buffer } | undefined,
   ) {
@@ -231,10 +233,7 @@ export class AccountingController {
   }
 
   @Post('tx')
-  async createTx(
-    @Body() body: TxBody,
-    @Req() req: AuthedAccountingRequest,
-  ) {
+  async createTx(@Body() body: TxBody, @Req() req: AuthedAccountingRequest) {
     return this.accountingService.createTx(
       body,
       this.requireOperatorUserId(req),

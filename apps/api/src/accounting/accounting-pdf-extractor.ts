@@ -71,7 +71,10 @@ function replacePdfControlChars(value: string): string {
   for (const char of value) {
     const code = char.charCodeAt(0);
     normalized +=
-      code <= 0x08 || code === 0x0b || code === 0x0c || (code >= 0x0e && code <= 0x1f)
+      code <= 0x08 ||
+      code === 0x0b ||
+      code === 0x0c ||
+      (code >= 0x0e && code <= 0x1f)
         ? ' '
         : char;
   }
@@ -79,7 +82,10 @@ function replacePdfControlChars(value: string): string {
 }
 
 export function extractPdfText(buffer: Buffer): string {
-  if (buffer.length < 5 || buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
+  if (
+    buffer.length < 5 ||
+    buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
+  ) {
     return '';
   }
   const bounded = buffer.subarray(0, Math.min(buffer.length, 10 * 1024 * 1024));
@@ -89,11 +95,16 @@ export function extractPdfText(buffer: Buffer): string {
   const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
   for (const match of source.matchAll(streamRegex)) {
     const streamStart = match.index ?? 0;
-    const dictionary = source.slice(Math.max(0, streamStart - 500), streamStart);
+    const dictionary = source.slice(
+      Math.max(0, streamStart - 500),
+      streamStart,
+    );
     if (!/\/FlateDecode\b/.test(dictionary)) continue;
     const compressed = Buffer.from(match[1], 'latin1');
     try {
-      const inflated = inflateSync(compressed, { maxOutputLength: 4 * 1024 * 1024 });
+      const inflated = inflateSync(compressed, {
+        maxOutputLength: 4 * 1024 * 1024,
+      });
       parts.push(...extractTextOperators(inflated.toString('latin1')));
     } catch {
       // Some streams use additional filters/predictors. Leave them for manual review.
@@ -107,7 +118,10 @@ function moneyAfterLabel(text: string, labels: RegExp[]): number | null {
   for (const label of labels) {
     const match = label.exec(text);
     if (!match) continue;
-    const tail = text.slice(match.index + match[0].length, match.index + match[0].length + 80);
+    const tail = text.slice(
+      match.index + match[0].length,
+      match.index + match[0].length + 80,
+    );
     const money = moneyPattern.exec(tail);
     if (!money) continue;
     const value = Number(money[1].replace(/,/g, ''));
@@ -117,17 +131,41 @@ function moneyAfterLabel(text: string, labels: RegExp[]): number | null {
 }
 
 function detectDate(text: string): string | null {
-  const isoLike = /\b(20\d{2})[-/.](0?[1-9]|1[0-2])[-/.]([0-2]?\d|3[01])\b/.exec(text);
+  const isoLike =
+    /\b(20\d{2})[-/.](0?[1-9]|1[0-2])[-/.]([0-2]?\d|3[01])\b/.exec(text);
   if (isoLike) {
     return `${isoLike[1]}-${isoLike[2].padStart(2, '0')}-${isoLike[3].padStart(2, '0')}`;
   }
   const monthNames: Record<string, string> = {
-    january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
-    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
-    jan: '01', feb: '02', mar: '03', apr: '04', jun: '06', jul: '07', aug: '08', sep: '09',
-    sept: '09', oct: '10', nov: '11', dec: '12',
+    january: '01',
+    february: '02',
+    march: '03',
+    april: '04',
+    may: '05',
+    june: '06',
+    july: '07',
+    august: '08',
+    september: '09',
+    october: '10',
+    november: '11',
+    december: '12',
+    jan: '01',
+    feb: '02',
+    mar: '03',
+    apr: '04',
+    jun: '06',
+    jul: '07',
+    aug: '08',
+    sep: '09',
+    sept: '09',
+    oct: '10',
+    nov: '11',
+    dec: '12',
   };
-  const named = /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(20\d{2})\b/i.exec(text);
+  const named =
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(20\d{2})\b/i.exec(
+      text,
+    );
   if (!named) return null;
   const month = monthNames[named[1].toLowerCase()];
   return month ? `${named[3]}-${month}-${named[2].padStart(2, '0')}` : null;
@@ -135,13 +173,33 @@ function detectDate(text: string): string | null {
 
 function suggestCategory(text: string) {
   const rules: Array<[RegExp, string, string]> = [
-    [/\b(hydro|electric(?:ity)?|natural gas|utility|utilities|water bill)\b/i, 'expense_utilities', '水电燃气'],
-    [/\b(rogers|bell|telus|internet|telecom|phone service|wireless)\b/i, 'expense_telecom', '网络通讯'],
+    [
+      /\b(hydro|electric(?:ity)?|natural gas|utility|utilities|water bill)\b/i,
+      'expense_utilities',
+      '水电燃气',
+    ],
+    [
+      /\b(rogers|bell|telus|internet|telecom|phone service|wireless)\b/i,
+      'expense_telecom',
+      '网络通讯',
+    ],
     [/\b(insurance|policy premium)\b/i, 'expense_insurance', '保险'],
     [/\b(rent|lease payment|base rent)\b/i, 'expense_rent', '房租'],
-    [/\b(accounting|bookkeeping|legal services?|professional fee)\b/i, 'expense_professional', '专业服务'],
-    [/\b(subscription|software|saas|hosting|domain renewal)\b/i, 'expense_software', '软件订阅'],
-    [/\b(repair|maintenance|service call|parts and labour|parts and labor)\b/i, 'expense_repair', '设备维修'],
+    [
+      /\b(accounting|bookkeeping|legal services?|professional fee)\b/i,
+      'expense_professional',
+      '专业服务',
+    ],
+    [
+      /\b(subscription|software|saas|hosting|domain renewal)\b/i,
+      'expense_software',
+      '软件订阅',
+    ],
+    [
+      /\b(repair|maintenance|service call|parts and labour|parts and labor)\b/i,
+      'expense_repair',
+      '设备维修',
+    ],
     [/\b(cleaning|janitorial|sanitation)\b/i, 'expense_cleaning', '清洁用品'],
   ];
   for (const [pattern, stableId, name] of rules) {
@@ -155,8 +213,16 @@ export function extractAccountingPdf(buffer: Buffer): {
   extraction: AccountingPdfExtraction;
 } {
   const text = extractPdfText(buffer);
-  const subtotalCents = moneyAfterLabel(text, [/\bsub\s*total\b/i, /\bsubtotal\b/i]);
-  const taxCents = moneyAfterLabel(text, [/\bHST\b/i, /\bGST\/HST\b/i, /\btotal tax\b/i, /\btax\b/i]);
+  const subtotalCents = moneyAfterLabel(text, [
+    /\bsub\s*total\b/i,
+    /\bsubtotal\b/i,
+  ]);
+  const taxCents = moneyAfterLabel(text, [
+    /\bHST\b/i,
+    /\bGST\/HST\b/i,
+    /\btotal tax\b/i,
+    /\btax\b/i,
+  ]);
   const totalCents = moneyAfterLabel(text, [
     /\bamount due\b/i,
     /\bbalance due\b/i,
@@ -165,7 +231,9 @@ export function extractAccountingPdf(buffer: Buffer): {
     /\btotal\b/i,
   ]);
   const suggestion = suggestCategory(text);
-  const priceTokenCount = Array.from(text.matchAll(/\$?\d{1,5}\.\d{2}\b/g)).length;
+  const priceTokenCount = Array.from(
+    text.matchAll(/\$?\d{1,5}\.\d{2}\b/g),
+  ).length;
   const requiresSplit = priceTokenCount >= 8 && !suggestion.stableId;
   const date = detectDate(text);
   const confidence: AccountingPdfExtraction['confidence'] =

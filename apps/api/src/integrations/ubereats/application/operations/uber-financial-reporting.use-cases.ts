@@ -140,7 +140,9 @@ export class HandleUberFinancialReportSuccessUseCase {
     }
 
     const metadata = this.object(root?.report_metadata);
-    const rawSections = Array.isArray(metadata?.sections) ? metadata.sections : [];
+    const rawSections = Array.isArray(metadata?.sections)
+      ? metadata.sections
+      : [];
     const sections = rawSections
       .map((value) => {
         const section = this.object(value);
@@ -158,7 +160,8 @@ export class HandleUberFinancialReportSuccessUseCase {
     if (!sections.length) {
       await this.reports.markError({
         workflowId,
-        errorMessage: 'Uber report success webhook contained no downloadable sections',
+        errorMessage:
+          'Uber report success webhook contained no downloadable sections',
       });
       throw new Error('Uber report success webhook has no sections');
     }

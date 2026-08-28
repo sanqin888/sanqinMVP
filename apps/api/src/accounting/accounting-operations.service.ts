@@ -440,17 +440,11 @@ export class AccountingOperationsService {
       seen.add(cursor);
       const row = await this.prisma.accountingCategory.findUnique({
         where: { categoryStableId: cursor },
-        select: { parentId: true },
+        select: {
+          parent: { select: { categoryStableId: true } },
+        },
       });
-      if (!row?.parentId) {
-        cursor = null;
-        continue;
-      }
-      const parent = await this.prisma.accountingCategory.findUnique({
-        where: { id: row.parentId },
-        select: { categoryStableId: true },
-      });
-      cursor = parent?.categoryStableId ?? null;
+      cursor = row?.parent?.categoryStableId ?? null;
     }
     return false;
   }
@@ -500,7 +494,10 @@ export class AccountingOperationsService {
     const originalExtension = path.extname(file.originalname).toLowerCase();
     const allowedOriginalExtensions =
       extension === '.jpg' ? new Set(['.jpg', '.jpeg']) : new Set([extension]);
-    if (originalExtension && !allowedOriginalExtensions.has(originalExtension)) {
+    if (
+      originalExtension &&
+      !allowedOriginalExtensions.has(originalExtension)
+    ) {
       throw new BadRequestException(
         'Receipt image extension does not match file type',
       );
@@ -514,7 +511,10 @@ export class AccountingOperationsService {
     return `/api/v1/accounting/files/receipts/${fileName}`;
   }
 
-  async createExpense(input: AccountingExpenseInput, operatorUserStableId: string) {
+  async createExpense(
+    input: AccountingExpenseInput,
+    operatorUserStableId: string,
+  ) {
     const occurredAt = this.parseDate(input.occurredAt);
     await this.accounting.assertEditableForPeriod(
       occurredAt,
@@ -684,7 +684,9 @@ export class AccountingOperationsService {
       0,
     );
     if (subtotalCents + taxCents !== input.totalCents) {
-      throw new BadRequestException('expense splits do not match document total');
+      throw new BadRequestException(
+        'expense splits do not match document total',
+      );
     }
 
     const categories = await this.prisma.accountingCategory.findMany({
@@ -700,8 +702,12 @@ export class AccountingOperationsService {
     const categoryMap = new Map(
       categories.map((row) => [row.categoryStableId, row.id]),
     );
-    if (normalizedSplits.some((split) => !categoryMap.has(split.categoryStableId))) {
-      throw new BadRequestException('one or more expense categories are invalid');
+    if (
+      normalizedSplits.some((split) => !categoryMap.has(split.categoryStableId))
+    ) {
+      throw new BadRequestException(
+        'one or more expense categories are invalid',
+      );
     }
 
     const account = input.accountStableId
@@ -786,13 +792,18 @@ export class AccountingOperationsService {
     let expenseCents = 0;
     let adjustmentCents = 0;
     let taxCents = 0;
-    const expenseCategories = new Map<string, { name: string; amountCents: number }>();
+    const expenseCategories = new Map<
+      string,
+      { name: string; amountCents: number }
+    >();
     for (const row of rows) {
       taxCents += row.taxCents;
       if (row.type === AccountingTxType.INCOME) incomeCents += row.amountCents;
       if (row.type === AccountingTxType.EXPENSE) {
         expenseCents += row.amountCents;
-        const previous = expenseCategories.get(row.category.categoryStableId) ?? {
+        const previous = expenseCategories.get(
+          row.category.categoryStableId,
+        ) ?? {
           name: row.category.name,
           amountCents: 0,
         };
@@ -807,11 +818,12 @@ export class AccountingOperationsService {
     const pendingDocuments = await this.prisma.accountingExpenseDocument.count({
       where: { status: AccountingDocumentStatus.PENDING_REVIEW },
     });
-    const latestClosedMonth = await this.prisma.accountingPeriodClose.findFirst({
-      where: { periodType: 'MONTH' },
-      orderBy: { closedAt: 'desc' },
-      select: { periodKey: true },
-    });
+    const latestClosedMonth =
+      await this.prisma.accountingPeriodClose.findFirst({
+        where: { periodType: 'MONTH' },
+        orderBy: { closedAt: 'desc' },
+        select: { periodKey: true },
+      });
 
     return {
       from,
