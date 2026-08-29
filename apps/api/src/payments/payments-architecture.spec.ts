@@ -225,6 +225,17 @@ describe('Payments bounded-context architecture', () => {
     );
   });
 
+  it('keeps Clover OAuth protocol routes outside locale redirects', () => {
+    const middleware = scanTypeScript(
+      resolve(PAYMENTS_ROOT, '../../../web/src'),
+      { productionOnly: true },
+    ).find(({ path }) => path.endsWith('middleware.ts'));
+
+    expect(middleware?.source).toContain(
+      'pathname.startsWith("/clover/oauth/")',
+    );
+  });
+
   it('prevents unified-payment orchestration from importing Clover infrastructure', () => {
     const orchestrationFiles = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),
