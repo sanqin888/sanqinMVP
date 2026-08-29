@@ -213,6 +213,56 @@ export class EmailService {
     return value.replace(/^[^:：]+[:：]\s*/, '').trim();
   }
 
+  private formatDiscountLabel(
+    discount: PrintPosPayloadDto['snapshot']['appliedDiscounts'][number],
+    locale: 'zh' | 'en',
+  ): string {
+    const localizedTitle =
+      locale === 'zh'
+        ? (discount.titleZh ?? discount.title ?? discount.titleEn)
+        : (discount.titleEn ?? discount.title ?? discount.titleZh);
+    if (discount.source === 'DAILY_SPECIAL') {
+      const itemName =
+        locale === 'zh'
+          ? (discount.productNameZh ??
+            discount.productName ??
+            discount.productNameEn)
+          : (discount.productNameEn ??
+            discount.productName ??
+            discount.productNameZh);
+      const label = locale === 'zh' ? '每日特价' : 'Daily special';
+      return itemName ? `${label} · ${itemName}` : label;
+    }
+    if (localizedTitle) return localizedTitle;
+    if (discount.source === 'COUPON') {
+      return locale === 'zh' ? '优惠券' : 'Coupon';
+    }
+    if (discount.source === 'POS_MANUAL_DISCOUNT') {
+      return locale === 'zh' ? '人工折扣' : 'Manual discount';
+    }
+    if (discount.source === 'AUTOMATIC_PROMOTION') {
+      return locale === 'zh' ? '活动优惠' : 'Promotion';
+    }
+    return locale === 'zh' ? '其他优惠' : 'Other discount';
+  }
+
+  private externalPaymentLabel(
+    paymentMethod: PrintPosPayloadDto['paymentMethod'],
+    locale: 'zh' | 'en',
+  ): string {
+    if (paymentMethod === 'card') {
+      return locale === 'zh' ? '银行卡支付' : 'Card payment';
+    }
+    if (paymentMethod === 'cash') {
+      return locale === 'zh' ? '现金支付' : 'Cash payment';
+    }
+    if (paymentMethod === 'wechat_alipay') {
+      return locale === 'zh' ? '微信/支付宝支付' : 'WeChat/Alipay payment';
+    }
+    if (paymentMethod === 'ubereats') return 'Uber Eats';
+    return locale === 'zh' ? '其他支付' : 'Other payment';
+  }
+
   private buildInvoiceHtml(params: {
     payload: PrintPosPayloadDto;
     locale: 'zh' | 'en';
@@ -237,12 +287,15 @@ export class EmailService {
             items: '菜品明细',
             quantity: '数量',
             amount: '金额',
-            subtotal: '小计',
-            discount: '优惠',
+            subtotal: '商品小计',
+            discount: '折扣/优惠',
+            points: '积分抵扣',
             deliveryFee: '配送费',
             creditCardSurcharge: '信用卡附加费',
-            tax: '税费',
-            total: '合计',
+            tax: '税费 (HST)',
+            orderTotal: '订单总额',
+            balancePayment: '储值余额支付',
+            total: '最终支付',
             storeInfo: '门店信息',
             contact: '联系方式',
           }
@@ -252,12 +305,15 @@ export class EmailService {
             items: 'Items',
             quantity: 'Qty',
             amount: 'Amount',
-            subtotal: 'Subtotal',
-            discount: 'Discount',
+            subtotal: 'Merchandise subtotal',
+            discount: 'Discounts & offers',
+            points: 'Points redemption',
             deliveryFee: 'Delivery fee',
             creditCardSurcharge: 'Credit card surcharge',
-            tax: 'Tax',
-            total: 'Total',
+            tax: 'Tax (HST)',
+            orderTotal: 'Order total',
+            balancePayment: 'Stored balance payment',
+            total: 'Total paid',
             storeInfo: 'Store information',
             contact: 'Contact',
           };
@@ -338,19 +394,53 @@ export class EmailService {
     const rows: Array<{ label: string; value: string; highlight?: boolean }> = [
       {
         label: labels.subtotal,
-        value: this.formatCurrency(payload.snapshot.subtotalCents, locale),
+        value: this.formatCurrency(
+          payload.snapshot.displaySubtotalCents,
+          locale,
+        ),
       },
     ];
-    if (payload.snapshot.discountCents > 0) {
+    for (const discount of payload.snapshot.appliedDiscounts) {
       rows.push({
-        label: labels.discount,
-        value: `-${this.formatCurrency(payload.snapshot.discountCents, locale)}`,
+        label: `${labels.discount} · ${this.formatDiscountLabel(discount, locale)}`,
+        value: `-${this.formatCurrency(discount.discountCents, locale)}`,
+      });
+    }
+    if (payload.snapshot.loyaltyRedeemCents > 0) {
+      rows.push({
+        label: labels.points,
+        value: `-${this.formatCurrency(payload.snapshot.loyaltyRedeemCents, locale)}`,
       });
     }
     if (payload.snapshot.deliveryFeeCents > 0) {
       rows.push({
         label: labels.deliveryFee,
         value: this.formatCurrency(payload.snapshot.deliveryFeeCents, locale),
+      });
+    }
+    rows.push({
+      label: labels.tax,
+      value: this.formatCurrency(payload.snapshot.taxCents, locale),
+    });
+    rows.push({
+      label: labels.orderTotal,
+      value: this.formatCurrency(payload.snapshot.orderTotalCents, locale),
+      highlight: true,
+    });
+    if (payload.snapshot.balancePaidCents > 0) {
+      rows.push({
+        label: labels.balancePayment,
+        value: `-${this.formatCurrency(payload.snapshot.balancePaidCents, locale)}`,
+      });
+    }
+    if (
+      payload.snapshot.externalPaidCents > 0 &&
+      (payload.snapshot.balancePaidCents > 0 ||
+        payload.snapshot.creditCardSurchargeCents > 0)
+    ) {
+      rows.push({
+        label: this.externalPaymentLabel(payload.paymentMethod, locale),
+        value: this.formatCurrency(payload.snapshot.externalPaidCents, locale),
       });
     }
     if (payload.snapshot.creditCardSurchargeCents > 0) {
@@ -361,16 +451,12 @@ export class EmailService {
           locale,
         ),
       });
+      rows.push({
+        label: labels.total,
+        value: this.formatCurrency(payload.snapshot.totalCents, locale),
+        highlight: true,
+      });
     }
-    rows.push({
-      label: labels.tax,
-      value: this.formatCurrency(payload.snapshot.taxCents, locale),
-    });
-    rows.push({
-      label: labels.total,
-      value: this.formatCurrency(payload.snapshot.totalCents, locale),
-      highlight: true,
-    });
 
     const rowsHtml = rows
       .map(
@@ -472,23 +558,29 @@ export class EmailService {
             title: '正式账单',
             orderNumber: '订单编号',
             items: '菜品明细',
-            subtotal: '小计',
-            discount: '优惠',
+            subtotal: '商品小计',
+            discount: '折扣/优惠',
+            points: '积分抵扣',
             deliveryFee: '配送费',
             creditCardSurcharge: '信用卡附加费',
-            tax: '税费',
-            total: '合计',
+            tax: '税费 (HST)',
+            orderTotal: '订单总额',
+            balancePayment: '储值余额支付',
+            total: '最终支付',
           }
         : {
             title: 'Invoice',
             orderNumber: 'Order number',
             items: 'Items',
-            subtotal: 'Subtotal',
-            discount: 'Discount',
+            subtotal: 'Merchandise subtotal',
+            discount: 'Discounts & offers',
+            points: 'Points redemption',
             deliveryFee: 'Delivery fee',
             creditCardSurcharge: 'Credit card surcharge',
-            tax: 'Tax',
-            total: 'Total',
+            tax: 'Tax (HST)',
+            orderTotal: 'Order total',
+            balancePayment: 'Stored balance payment',
+            total: 'Total paid',
           };
 
     const itemLines = payload.snapshot.items
@@ -550,14 +642,22 @@ export class EmailService {
 
     const totalLines: string[] = [
       `${labels.subtotal}: ${this.formatCurrency(
-        payload.snapshot.subtotalCents,
+        payload.snapshot.displaySubtotalCents,
         locale,
       )}`,
     ];
-    if (payload.snapshot.discountCents > 0) {
+    for (const discount of payload.snapshot.appliedDiscounts) {
       totalLines.push(
-        `${labels.discount}: -${this.formatCurrency(
-          payload.snapshot.discountCents,
+        `${labels.discount} · ${this.formatDiscountLabel(discount, locale)}: -${this.formatCurrency(
+          discount.discountCents,
+          locale,
+        )}`,
+      );
+    }
+    if (payload.snapshot.loyaltyRedeemCents > 0) {
+      totalLines.push(
+        `${labels.points}: -${this.formatCurrency(
+          payload.snapshot.loyaltyRedeemCents,
           locale,
         )}`,
       );
@@ -570,23 +670,45 @@ export class EmailService {
         )}`,
       );
     }
+    totalLines.push(
+      `${labels.tax}: ${this.formatCurrency(
+        payload.snapshot.taxCents,
+        locale,
+      )}`,
+      `${labels.orderTotal}: ${this.formatCurrency(
+        payload.snapshot.orderTotalCents,
+        locale,
+      )}`,
+    );
+    if (payload.snapshot.balancePaidCents > 0) {
+      totalLines.push(
+        `${labels.balancePayment}: -${this.formatCurrency(
+          payload.snapshot.balancePaidCents,
+          locale,
+        )}`,
+      );
+    }
+    if (
+      payload.snapshot.externalPaidCents > 0 &&
+      (payload.snapshot.balancePaidCents > 0 ||
+        payload.snapshot.creditCardSurchargeCents > 0)
+    ) {
+      totalLines.push(
+        `${this.externalPaymentLabel(payload.paymentMethod, locale)}: ${this.formatCurrency(
+          payload.snapshot.externalPaidCents,
+          locale,
+        )}`,
+      );
+    }
     if (payload.snapshot.creditCardSurchargeCents > 0) {
       totalLines.push(
         `${labels.creditCardSurcharge}: ${this.formatCurrency(
           payload.snapshot.creditCardSurchargeCents,
           locale,
         )}`,
+        `${labels.total}: ${this.formatCurrency(payload.snapshot.totalCents, locale)}`,
       );
     }
-    totalLines.push(
-      `${labels.tax}: ${this.formatCurrency(
-        payload.snapshot.taxCents,
-        locale,
-      )}`,
-    );
-    totalLines.push(
-      `${labels.total}: ${this.formatCurrency(payload.snapshot.totalCents, locale)}`,
-    );
 
     const contactLines = [storePhone, supportEmail].filter(Boolean).join('\n');
 

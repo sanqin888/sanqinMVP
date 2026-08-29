@@ -187,6 +187,22 @@ export default function LocalOrderPage() {
   const shouldShowInstallButton = !isStandalone && (Boolean(installPromptEvent) || isIosDevice());
 
   useEffect(() => {
+    const navigationEntry = window.performance.getEntriesByType("navigation")[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+
+    if (navigationEntry?.type !== "reload" || window.location.hash) return;
+
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+
+    return () => {
+      window.history.scrollRestoration = previousScrollRestoration;
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     setHomeContent(getDefaultHomepageContent(locale));
     setFeaturedConfigItems([]);

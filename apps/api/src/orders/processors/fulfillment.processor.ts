@@ -612,7 +612,19 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           options: this.parseOrderItemOptions(item.optionsJson),
         })),
         subtotalCents: order.subtotalCents ?? 0,
+        displaySubtotalCents: order.subtotalCents ?? 0,
+        appliedDiscounts: [],
+        loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
         taxCents: order.taxCents ?? 0,
+        orderTotalCents: order.totalCents ?? 0,
+        balancePaidCents:
+          order.paymentMethod === PaymentMethod.STORE_BALANCE
+            ? (order.totalCents ?? 0)
+            : 0,
+        externalPaidCents:
+          order.paymentMethod === PaymentMethod.STORE_BALANCE
+            ? 0
+            : (order.totalCents ?? 0),
         totalCents: order.totalCents ?? 0,
         creditCardSurchargeCents: 0,
         discountCents: Math.max(

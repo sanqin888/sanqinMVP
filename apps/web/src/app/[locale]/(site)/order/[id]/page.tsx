@@ -6,13 +6,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api/client';
 import { fetchOrderById } from '@/lib/api/pos';
 import { isStableId } from '@shared/menu';
-import { ORDER_STATUS_SEQUENCE, OrderStatus } from '@shared/order';
+import {
+  ORDER_STATUS_SEQUENCE,
+  OrderStatus,
+  type OrderDiscountDisplayEntry,
+} from '@shared/order';
 import type {
   DeliveryProviderOption,
   DeliveryTypeOption,
 } from '@/lib/order/shared';
 import type { Locale } from '@/lib/i18n/locales';
 import type { OrderItemOptionsSnapshot } from '@/lib/order/order-item-options';
+import { formatOrderDiscountLabel } from '@/lib/order/discount-display';
 
 type FullOrderItem = {
   productStableId: string;
@@ -30,8 +35,14 @@ type FullOrder = {
   channel: string;
   paymentMethod: string | null;
   subtotalCents: number;
+  displaySubtotalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
+  subtotalAfterDiscountCents: number;
   taxCents: number;
   totalCents: number;
+  paymentTotalCents: number;
+  creditCardSurchargeCents: number;
+  externalPaidCents?: number;
   fulfillmentType: string;
   pickupCode: string | null;
   clientRequestId: string | null;
@@ -44,7 +55,6 @@ type FullOrder = {
   createdAt: string;
   items: FullOrderItem[];
   loyaltyRedeemCents: number | null;
-  subtotalAfterDiscountCents: number | null;
   balancePaidCents?: number | null;
   pointsEarned?: number | null;
   couponStableId: string | null;
@@ -73,10 +83,16 @@ type PublicSummary = {
   itemCount: number;
   currency: 'CAD';
   subtotalCents: number;
+  displaySubtotalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
   taxCents: number;
   deliveryFeeCents: number;
   discountCents: number;
   totalCents: number;
+  orderTotalCents: number;
+  paymentTotalCents: number;
+  externalPaidCents: number;
+  creditCardSurchargeCents?: number;
   loyaltyRedeemCents?: number | null;
   couponDiscountCents?: number | null;
   subtotalAfterDiscountCents?: number | null;
@@ -115,15 +131,19 @@ function formatOrderStatus(status: OrderStatus, isZh: boolean): string {
 }
 
 function formatPaymentMethod(value: string | null, isZh: boolean): string {
-  if (!value) return isZh ? "未知" : "Unknown";
+  if (!value) return isZh ? '未知' : 'Unknown';
   const map: Record<string, { zh: string; en: string }> = {
-    CASH: { zh: "现金", en: "Cash" },
-    CARD: { zh: "刷卡", en: "Card" },
-    WECHAT_ALIPAY: { zh: "微信/支付宝", en: "WeChat/Alipay" },
-    STORE_BALANCE: { zh: "储值余额", en: "Store balance" },
+    CASH: { zh: '现金', en: 'Cash' },
+    CARD: { zh: '银行卡', en: 'Card' },
+    WECHAT_ALIPAY: { zh: '微信/支付宝', en: 'WeChat/Alipay' },
+    STORE_BALANCE: { zh: '储值余额', en: 'Store balance' },
   };
   const hit = map[value];
   return hit ? (isZh ? hit.zh : hit.en) : value;
+}
+
+function formatMoney(cents: number | null | undefined): string {
+  return `$${((cents ?? 0) / 100).toFixed(2)}`;
 }
 
 export default function OrderDetailPage({ params }: PageProps) {
@@ -231,15 +251,25 @@ export default function OrderDetailPage({ params }: PageProps) {
   const fullOrder = isFullDetail ? (order as FullOrder) : null;
   const summaryOrder = !isFullDetail ? (order as PublicSummary) : null;
   const paymentLabel = formatPaymentMethod(fullOrder?.paymentMethod ?? null, isZh);
-  const manualDiscountCents = useMemo(() => {
-    const subtotal = order?.subtotalCents ?? 0;
-    const subtotalAfterDiscount = order?.subtotalAfterDiscountCents;
-    if (typeof subtotalAfterDiscount !== 'number') return 0;
-    const totalDiscount = Math.max(0, subtotal - subtotalAfterDiscount);
-    const couponDiscount = Math.max(0, order?.couponDiscountCents ?? 0);
-    const loyaltyDiscount = Math.max(0, order?.loyaltyRedeemCents ?? 0);
-    return Math.max(0, totalDiscount - couponDiscount - loyaltyDiscount);
-  }, [order]);
+  const appliedDiscounts = order?.appliedDiscounts ?? [];
+  const displaySubtotalCents =
+    order?.displaySubtotalCents ?? order?.subtotalCents ?? 0;
+  const orderTotalCents = fullOrder
+    ? fullOrder.totalCents
+    : (summaryOrder?.orderTotalCents ?? summaryOrder?.totalCents ?? 0);
+  const paymentTotalCents = fullOrder
+    ? fullOrder.paymentTotalCents
+    : (summaryOrder?.paymentTotalCents ?? summaryOrder?.totalCents ?? 0);
+  const creditCardSurchargeCents = fullOrder
+    ? fullOrder.creditCardSurchargeCents
+    : (summaryOrder?.creditCardSurchargeCents ?? 0);
+  const balancePaidCents = Math.max(0, order?.balancePaidCents ?? 0);
+  const externalPaidCents = Math.max(
+    0,
+    fullOrder?.externalPaidCents ??
+      summaryOrder?.externalPaidCents ??
+      orderTotalCents - balancePaidCents,
+  );
 
   const renderOptions = (
     rawOptions: FullOrderItem['optionsJson'] | PublicSummaryItem['optionsJson'],
@@ -327,76 +357,116 @@ export default function OrderDetailPage({ params }: PageProps) {
             </span>
           </div>
 
-<div className="space-y-2">
-  <h2 className="text-sm font-semibold text-gray-700">金额</h2>
-  <ul className="text-sm text-gray-600">
-    <li>小计：${(order.subtotalCents / 100).toFixed(2)}</li>
+          <div className="space-y-3 rounded-2xl border border-[#87362E]/15 bg-[#fffaf5] p-4">
+            <h2 className="text-sm font-bold text-stone-900">
+              {isZh ? '账单详情' : 'Bill details'}
+            </h2>
+            <div className="space-y-2 text-sm text-stone-700">
+              <div className="flex items-center justify-between gap-4">
+                <span>{isZh ? '商品小计' : 'Merchandise subtotal'}</span>
+                <span>{formatMoney(displaySubtotalCents)}</span>
+              </div>
 
-    {typeof order.loyaltyRedeemCents === "number" &&
-      order.loyaltyRedeemCents > 0 && (
-        <li>
-          积分抵扣：
-          <span className="text-emerald-700">
-            -${(order.loyaltyRedeemCents / 100).toFixed(2)}
-          </span>
-          {typeof order.subtotalAfterDiscountCents === "number" && (
-            <span className="ml-2 text-xs text-gray-500">
-              （折后小计：$
-              {(order.subtotalAfterDiscountCents / 100).toFixed(2)}
-              ）
-            </span>
-          )}
-        </li>
-      )}
-  {/* ⭐ 新增：优惠券使用情况 */}
-  {typeof order.couponDiscountCents === 'number' &&
-    order.couponDiscountCents > 0 && (
-      <li>
-        优惠券：
-        <span className="text-amber-700">
-          -${(order.couponDiscountCents / 100).toFixed(2)}
-        </span>
-      </li>
-    )}
+              {appliedDiscounts.length > 0 ? (
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-2">
+                  <p className="text-xs font-bold text-emerald-800">
+                    {isZh ? '折扣/优惠' : 'Discounts & offers'}
+                  </p>
+                  <div className="mt-1.5 space-y-1">
+                    {appliedDiscounts.map((discount) => (
+                      <div
+                        key={`${discount.source}-${discount.promotionStableId ?? 'legacy'}-${discount.productStableId ?? 'order'}`}
+                        className="flex items-start justify-between gap-3 text-xs text-emerald-800"
+                      >
+                        <span>↳ {formatOrderDiscountLabel(discount, locale)}</span>
+                        <span className="shrink-0 font-semibold">
+                          -{formatMoney(discount.discountCents)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
-    {manualDiscountCents > 0 && (
-      <li>
-        {isZh ? '折扣/优惠：' : 'Discount:'}
-        <span className="text-amber-700">-${(manualDiscountCents / 100).toFixed(2)}</span>
-      </li>
-    )}
+              {(order.loyaltyRedeemCents ?? 0) > 0 ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span>{isZh ? '积分抵扣' : 'Points redemption'}</span>
+                  <span className="font-semibold text-emerald-700">
+                    -{formatMoney(order.loyaltyRedeemCents)}
+                  </span>
+                </div>
+              ) : null}
 
-    {typeof order.balancePaidCents === "number" && order.balancePaidCents > 0 && (
-      <li>
-        余额支付：
-        <span className="text-indigo-700">
-          -${(order.balancePaidCents / 100).toFixed(2)}
-        </span>
-      </li>
-    )}
+              {(order.deliveryFeeCents ?? 0) > 0 ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span>{isZh ? '配送费' : 'Delivery fee'}</span>
+                  <span>{formatMoney(order.deliveryFeeCents)}</span>
+                </div>
+              ) : null}
 
-    {typeof order.pointsEarned === "number" && order.pointsEarned !== 0 && (
-      <li>
-        积分赚取：
-        <span className="text-sky-700">+{order.pointsEarned.toFixed(2)} pts</span>
-      </li>
-    )}
-    <li>税额：${(order.taxCents / 100).toFixed(2)}</li>
-    {typeof order.deliveryFeeCents === "number" &&
-      order.deliveryFeeCents > 0 && (
-        <li>配送费：${(order.deliveryFeeCents / 100).toFixed(2)}</li>
-      )}
-    <li className="font-medium text-gray-900">
-      合计：${(order.totalCents / 100).toFixed(2)}
-    </li>
-    {isFullDetail && fullOrder ? (
-      <li>
-        {isZh ? "支付方式：" : "Payment method: "}
-        <span className="text-gray-700">{paymentLabel}</span>
-      </li>
-    ) : null}
-  </ul>
-</div>
+              <div className="flex items-center justify-between gap-4">
+                <span>{isZh ? '税费 (HST)' : 'Tax (HST)'}</span>
+                <span>{formatMoney(order.taxCents)}</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 border-t border-[#87362E]/15 pt-3 font-bold text-stone-900">
+                <span>{isZh ? '订单总额' : 'Order total'}</span>
+                <span>{formatMoney(orderTotalCents)}</span>
+              </div>
+
+              {balancePaidCents > 0 ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span>{isZh ? '储值余额支付' : 'Stored balance payment'}</span>
+                  <span className="font-semibold text-emerald-700">
+                    -{formatMoney(balancePaidCents)}
+                  </span>
+                </div>
+              ) : null}
+
+              {externalPaidCents > 0 &&
+              (balancePaidCents > 0 || creditCardSurchargeCents > 0) ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span>
+                    {isFullDetail && fullOrder
+                      ? `${paymentLabel}${isZh ? '支付' : ' payment'}`
+                      : isZh
+                        ? '外部支付'
+                        : 'External payment'}
+                  </span>
+                  <span>{formatMoney(externalPaidCents)}</span>
+                </div>
+              ) : null}
+
+              {creditCardSurchargeCents > 0 ? (
+                <>
+                  <div className="flex items-center justify-between gap-4">
+                    <span>{isZh ? '信用卡附加费' : 'Credit card surcharge'}</span>
+                    <span>{formatMoney(creditCardSurchargeCents)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 font-bold text-stone-900">
+                    <span>{isZh ? '最终支付' : 'Total paid'}</span>
+                    <span>{formatMoney(paymentTotalCents)}</span>
+                  </div>
+                </>
+              ) : null}
+
+              {isFullDetail && fullOrder ? (
+                <div className="flex items-center justify-between gap-4 border-t border-[#87362E]/10 pt-2 text-xs text-stone-500">
+                  <span>{isZh ? '支付方式' : 'Payment method'}</span>
+                  <span className="font-semibold text-stone-700">{paymentLabel}</span>
+                </div>
+              ) : null}
+
+              {typeof order.pointsEarned === 'number' && order.pointsEarned !== 0 ? (
+                <div className="flex items-center justify-between gap-4 text-xs text-stone-500">
+                  <span>{isZh ? '本单获得积分' : 'Points earned'}</span>
+                  <span className="font-semibold text-sky-700">
+                    +{order.pointsEarned.toFixed(2)} pts
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          </div>
 
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-gray-700">状态流转</h2>

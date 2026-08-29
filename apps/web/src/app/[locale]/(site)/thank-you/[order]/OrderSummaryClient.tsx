@@ -6,7 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
 import type { OrderItemOptionsSnapshot } from "@/lib/order/order-item-options";
+import { formatOrderDiscountLabel } from "@/lib/order/discount-display";
 import { clampDisplayedPrepTimeMinutes } from "@/lib/prep-time";
+import type { OrderDiscountDisplayEntry } from "@shared/order";
 
 type OrderSummaryLineItem = {
   productStableId: string;
@@ -25,10 +27,16 @@ type OrderSummaryResponse = {
   orderNumber: string;
   currency: string;
   subtotalCents: number;
+  displaySubtotalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
   taxCents: number;
   deliveryFeeCents: number;
   discountCents: number;
   totalCents: number;
+  orderTotalCents: number;
+  paymentTotalCents: number;
+  externalPaidCents: number;
+  balancePaidCents?: number | null;
   creditCardSurchargeCents?: number;
   chargeStatusUnverified?: boolean;
   chargeStatusUnverifiedReason?: string;
@@ -328,69 +336,89 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
             </div>
 
             {/* 金额小结 */}
-            <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-xs">
-              {/* 小计（未扣积分） */}
-              <div className="flex items-center justify-between">
-                <span>{labels.subtotal}</span>
-                <span>{centsToMoney(data.subtotalCents)}</span>
+            <div className="mt-4 space-y-2 rounded-2xl border border-[#87362E]/15 bg-[#fffaf5] p-4 text-xs text-stone-700">
+              <div className="flex items-center justify-between gap-4">
+                <span>{locale === "zh" ? "商品小计" : "Merchandise subtotal"}</span>
+                <span>{centsToMoney(data.displaySubtotalCents)}</span>
               </div>
 
-              {/* 优惠券折扣 */}
-              {(data.couponDiscountCents ?? 0) > 0 && (
-                <div className="flex items-center justify-between text-amber-700">
-                  <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
-                  <span>
-                    -{centsToMoney(data.couponDiscountCents ?? 0)}
-                  </span>
+              {data.appliedDiscounts.length > 0 ? (
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-2">
+                  <p className="font-bold text-emerald-800">
+                    {locale === "zh" ? "折扣/优惠" : "Discounts & offers"}
+                  </p>
+                  <div className="mt-1.5 space-y-1">
+                    {data.appliedDiscounts.map((discount) => (
+                      <div
+                        key={`${discount.source}-${discount.promotionStableId ?? "legacy"}-${discount.productStableId ?? "order"}`}
+                        className="flex items-start justify-between gap-3 text-emerald-800"
+                      >
+                        <span>↳ {formatOrderDiscountLabel(discount, locale)}</span>
+                        <span className="shrink-0 font-semibold">
+                          -{centsToMoney(discount.discountCents)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )}
+              ) : null}
 
-              {/* 积分抵扣 */}
-              {(data.loyaltyRedeemCents ?? 0) > 0 && (
-                <div className="flex items-center justify-between text-emerald-700">
-                  <span>{locale === "zh" ? "积分抵扣" : "Points redeemed"}</span>
-                  <span>
+              {(data.loyaltyRedeemCents ?? 0) > 0 ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span>{locale === "zh" ? "积分抵扣" : "Points redemption"}</span>
+                  <span className="font-semibold text-emerald-700">
                     -{centsToMoney(data.loyaltyRedeemCents ?? 0)}
                   </span>
                 </div>
-              )}
+              ) : null}
 
-              {/* 其他折扣（如果有统一 discountCents 但 coupon/points 都没单独拆开） */}
-              {(data.discountCents ?? 0) > 0 &&
-                (data.couponDiscountCents ?? 0) === 0 &&
-                (data.loyaltyRedeemCents ?? 0) === 0 && (
-                  <div className="flex items-center justify-between text-amber-700">
-                    <span>{labels.discount}</span>
-                    <span>-{centsToMoney(data.discountCents)}</span>
-                  </div>
-                )}
-
-              {/* 配送费 */}
-              {data.deliveryFeeCents > 0 && (
-                <div className="flex items-center justify-between">
+              {data.deliveryFeeCents > 0 ? (
+                <div className="flex items-center justify-between gap-4">
                   <span>{labels.deliveryFee}</span>
                   <span>{centsToMoney(data.deliveryFeeCents)}</span>
                 </div>
-              )}
+              ) : null}
 
-              {(data.creditCardSurchargeCents ?? 0) > 0 && (
-                <div className="flex items-center justify-between">
-                  <span>{labels.creditCardSurcharge}</span>
-                  <span>{centsToMoney(data.creditCardSurchargeCents ?? 0)}</span>
-                </div>
-              )}
-
-              {/* 税 */}
-              <div className="flex items-center justify-between">
-                <span>{labels.tax}</span>
+              <div className="flex items-center justify-between gap-4">
+                <span>{locale === "zh" ? "税费 (HST)" : "Tax (HST)"}</span>
                 <span>{centsToMoney(data.taxCents)}</span>
               </div>
 
-              {/* 合计 */}
-              <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
-                <span>{labels.total}</span>
-                <span>{centsToMoney(data.totalCents)}</span>
+              <div className="flex items-center justify-between gap-4 border-t border-[#87362E]/15 pt-3 text-sm font-bold text-stone-900">
+                <span>{locale === "zh" ? "订单总额" : "Order total"}</span>
+                <span>{centsToMoney(data.orderTotalCents)}</span>
               </div>
+
+              {(data.balancePaidCents ?? 0) > 0 ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span>{locale === "zh" ? "储值余额支付" : "Stored balance payment"}</span>
+                  <span className="font-semibold text-emerald-700">
+                    -{centsToMoney(data.balancePaidCents ?? 0)}
+                  </span>
+                </div>
+              ) : null}
+
+              {data.externalPaidCents > 0 &&
+              ((data.balancePaidCents ?? 0) > 0 ||
+                (data.creditCardSurchargeCents ?? 0) > 0) ? (
+                <div className="flex items-center justify-between gap-4">
+                  <span>{locale === "zh" ? "外部支付" : "External payment"}</span>
+                  <span>{centsToMoney(data.externalPaidCents)}</span>
+                </div>
+              ) : null}
+
+              {(data.creditCardSurchargeCents ?? 0) > 0 ? (
+                <>
+                  <div className="flex items-center justify-between gap-4">
+                    <span>{labels.creditCardSurcharge}</span>
+                    <span>{centsToMoney(data.creditCardSurchargeCents ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 font-bold text-stone-900">
+                    <span>{locale === "zh" ? "最终支付" : "Total paid"}</span>
+                    <span>{centsToMoney(data.paymentTotalCents)}</span>
+                  </div>
+                </>
+              ) : null}
             </div>
           </>
         )}

@@ -26,6 +26,7 @@ type PaymentSessionFetchResponse = {
   pricingTokenExpiresAt: string;
   currency: string;
   quote: { totalCents: number };
+  externalPaymentCents: number;
   metadata: Record<string, unknown>;
 };
 
@@ -297,7 +298,7 @@ export default function ApplePayWalletPage() {
           pricingToken: data.pricingToken,
           pricingTokenExpiresAt: data.pricingTokenExpiresAt,
           currency: data.currency || HOSTED_CHECKOUT_CURRENCY,
-          totalCents: data.quote.totalCents,
+          totalCents: data.externalPaymentCents,
           metadata: data.metadata,
         });
         setRemainingMs(getRemainingMs(data.pricingTokenExpiresAt));

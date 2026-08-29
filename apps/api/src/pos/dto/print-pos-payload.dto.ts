@@ -1,6 +1,7 @@
 // apps/api/src/pos/dto/print-pos-payload.dto.ts
 import type { FulfillmentType } from '@prisma/client';
 import type { OrderItemOptionsSnapshot } from '../../orders/order-item-options';
+import type { OrderDiscountDisplayEntry } from '@shared/order';
 
 type PrintPosPaymentMethod =
   | 'cash'
@@ -30,7 +31,13 @@ type PrintPosUtensilsSnapshot = {
 type PrintPosOrderSnapshot = {
   items: PrintPosItemSnapshot[];
   subtotalCents: number;
+  displaySubtotalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
+  loyaltyRedeemCents: number;
   taxCents: number;
+  orderTotalCents: number;
+  balancePaidCents: number;
+  externalPaidCents: number;
   totalCents: number;
   creditCardSurchargeCents: number;
   discountCents: number;

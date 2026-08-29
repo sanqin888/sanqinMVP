@@ -66,6 +66,7 @@ export type CheckoutMetadata = {
   loyaltyAvailableDiscountCents?: number; // 前端计算的“最多可抵扣金额”（分），仅调试使用
   loyaltyPointsBalance?: number; // 下单前积分余额（点）
   loyaltyUserStableId?: string; // ✅ 会员 stableId（对外只用 stableId）
+  balanceUsedCents?: number; // 本单使用储值余额（分），不参与税基计算
 
   coupon?: {
     couponStableId?: string;
@@ -354,6 +355,7 @@ export function parseCheckoutMetadata(input: unknown): CheckoutMetadata {
     loyaltyPointsBalance: toNumber(metadata.loyaltyPointsBalance),
     loyaltyUserStableId:
       normalizeStableId(toString(input.loyaltyUserStableId)) ?? undefined,
+    balanceUsedCents: toOptionalCents(metadata.balanceUsedCents),
     coupon: parseCoupon(input.coupon),
     selectedUserCouponId: toString(metadata.selectedUserCouponId),
     deliveryDestination: parseDeliveryDestination(metadata.deliveryDestination),
@@ -394,11 +396,15 @@ export function resolveMetadataPayableTotalCents(
   const recalculatedTaxCents =
     taxRate !== null ? Math.round(subtotalAfterDiscountCents * taxRate) : null;
 
-  return Math.round(
+  const orderTotalCents = Math.round(
     subtotalAfterDiscountCents +
       (recalculatedTaxCents ?? fallbackTaxCents) +
       (metadata.serviceFeeCents ?? 0) +
       (metadata.deliveryFeeCents ?? 0),
+  );
+  return Math.max(
+    0,
+    orderTotalCents - Math.min(orderTotalCents, metadata.balanceUsedCents ?? 0),
   );
 }
 
@@ -463,6 +469,7 @@ export function buildOrderDtoFromMetadata(
   const serviceFeeCents = meta.serviceFeeCents ?? 0;
 
   const redeemValueCents = meta.loyaltyRedeemCents ?? 0;
+  const balanceUsedCents = meta.balanceUsedCents ?? 0;
 
   const dto: CreateOrderInput = {
     channel: 'web',
@@ -488,6 +495,8 @@ export function buildOrderDtoFromMetadata(
 
     // ⭐ 告诉 OrdersService 本单用了多少积分抵扣（分）
     ...(redeemValueCents > 0 ? { redeemValueCents } : {}),
+    // 储值余额是支付资金来源，不参与税基；仅在最终 tender 分配时扣减。
+    ...(balanceUsedCents > 0 ? { balanceUsedCents } : {}),
 
     items: meta.items.map((item) => {
       const options: Record<string, unknown> | undefined = (() => {
