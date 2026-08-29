@@ -118,12 +118,7 @@ export class MembershipService {
     startsAt: Date | null;
     endsAt: Date | null;
     reservationAttemptId: string | null;
-  }):
-    | 'active'
-    | 'used'
-    | 'expired'
-    | 'inactive'
-    | 'not_started'
+  }): 'active' | 'used' | 'expired' | 'inactive' | 'not_started'
     | 'reserved' {
     const now = Date.now();
     if (coupon.usedAt) return 'used';
