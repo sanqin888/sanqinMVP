@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { cloverOAuthResultUrl } from '../public-url';
+
 export const dynamic = 'force-dynamic';
 
 const ALLOWED_QUERY_KEYS = [
@@ -10,14 +12,15 @@ const ALLOWED_QUERY_KEYS = [
   'clientId',
 ] as const;
 
-const failureRedirect = (request: NextRequest) =>
-  NextResponse.redirect(
-    new URL(
-      '/clover/oauth/result?status=failure&reason=TEMPORARY_FAILURE',
-      request.url,
-    ),
-    303,
-  );
+const oauthRedirect = (url: URL, status: number): NextResponse => {
+  const response = NextResponse.redirect(url, status);
+  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
+};
+
+const failureRedirect = () =>
+  oauthRedirect(cloverOAuthResultUrl('TEMPORARY_FAILURE'), 303);
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const upstream = process.env.API_UPSTREAM || 'http://localhost:4000';
@@ -35,10 +38,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
     const location = response.headers.get('location');
     if (!location || response.status < 300 || response.status >= 400) {
-      return failureRedirect(request);
+      return failureRedirect();
     }
-    return NextResponse.redirect(new URL(location, request.url), response.status);
+    return oauthRedirect(new URL(location), response.status);
   } catch {
-    return failureRedirect(request);
+    return failureRedirect();
   }
 }

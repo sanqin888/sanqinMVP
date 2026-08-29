@@ -1,7 +1,13 @@
-import type { CloverProviderConfig } from '../clover-provider.config';
+import type { Server } from 'node:http';
+
+import type { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+
+import { CloverProviderConfig } from '../clover-provider.config';
 import {
   CloverMerchantAuthorizationError,
-  type CloverMerchantAuthorizationService,
+  CloverMerchantAuthorizationService,
 } from './clover-merchant-authorization.service';
 import { CloverMerchantOAuthController } from './clover-merchant-oauth.controller';
 
@@ -9,47 +15,95 @@ const config = {
   oauthCallbackUrl: 'https://sanq.ca/clover/oauth/callback',
 } as unknown as CloverProviderConfig;
 
-describe('CloverMerchantOAuthController', () => {
-  it('redirects start directly to Clover authorize without exposing an intermediate JSON payload', async () => {
-    const authorization = {
-      start: jest
-        .fn()
-        .mockResolvedValue(
-          'https://www.clover.com/oauth/v2/authorize?state=opaque',
-        ),
-    } as unknown as CloverMerchantAuthorizationService;
-    const controller = new CloverMerchantOAuthController(authorization, config);
+const start = jest.fn<CloverMerchantAuthorizationService['start']>();
+const complete = jest.fn<CloverMerchantAuthorizationService['complete']>();
 
-    await expect(
-      controller.start({ merchant_id: 'MERCHANT123' }),
-    ).resolves.toEqual({
-      url: 'https://www.clover.com/oauth/v2/authorize?state=opaque',
-      statusCode: 302,
-    });
+const authorization = { start, complete };
+
+describe('CloverMerchantOAuthController HTTP redirect contract', () => {
+  let app: INestApplication;
+  let httpServer: Server;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    const moduleRef = await Test.createTestingModule({
+      controllers: [CloverMerchantOAuthController],
+      providers: [
+        {
+          provide: CloverMerchantAuthorizationService,
+          useValue: authorization,
+        },
+        {
+          provide: CloverProviderConfig,
+          useValue: config,
+        },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    await app.init();
+    httpServer = app.getHttpServer() as unknown as Server;
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('returns an actual 302 Location redirect to Clover authorize', async () => {
+    start.mockResolvedValue(
+      'https://www.clover.com/oauth/v2/authorize?state=opaque',
+    );
+
+    const response = await request(httpServer)
+      .get('/api/v1/payments/clover/oauth/start')
+      .query({ merchant_id: 'MERCHANT123' })
+      .redirects(0);
+
+    expect(response.status).toBe(302);
+    expect(response.get('location')).toBe(
+      'https://www.clover.com/oauth/v2/authorize?state=opaque',
+    );
+  });
+
+  it('returns an actual 303 Location redirect on start failure', async () => {
+    start.mockRejectedValue(
+      new CloverMerchantAuthorizationError('INVALID_LAUNCH'),
+    );
+
+    const response = await request(httpServer)
+      .get('/api/v1/payments/clover/oauth/start')
+      .query({ merchant_id: 'MERCHANT123' })
+      .redirects(0);
+
+    expect(response.status).toBe(303);
+    expect(response.get('location')).toBe(
+      'https://sanq.ca/clover/oauth/result?status=failure&reason=INVALID_LAUNCH',
+    );
   });
 
   it('redirects a successful callback to the non-sensitive browser result page', async () => {
-    const authorization = {
-      complete: jest.fn().mockResolvedValue({
-        merchantId: 'MERCHANT123',
-        merchantName: 'SanQ Roujiamo',
-        storeStableId: '4750_Yonge_Street',
-        status: 'ACTIVE',
-      }),
-    } as unknown as CloverMerchantAuthorizationService;
-    const controller = new CloverMerchantOAuthController(authorization, config);
-
-    const result = await controller.callback({
-      code: 'authorization-code',
-      state: 'opaque-state',
-      merchant_id: 'MERCHANT123',
+    complete.mockResolvedValue({
+      merchantId: 'MERCHANT123',
+      merchantName: 'SanQ Roujiamo',
+      storeStableId: '4750_Yonge_Street',
+      status: 'ACTIVE',
     });
-    const url = new URL(result.url);
 
-    expect(result.statusCode).toBe(303);
-    expect(url.origin + url.pathname).toBe(
-      'https://sanq.ca/clover/oauth/result',
-    );
+    const response = await request(httpServer)
+      .get('/api/v1/payments/clover/oauth/callback')
+      .query({
+        code: 'authorization-code',
+        state: 'opaque-state',
+        merchant_id: 'MERCHANT123',
+      })
+      .redirects(0);
+
+    expect(response.status).toBe(303);
+    const location = response.get('location');
+    expect(location).toBeDefined();
+    const url = new URL(location ?? 'https://invalid.local');
+    expect(url.origin + url.pathname).toBe('https://sanq.ca/clover/oauth/result');
     expect(url.searchParams.get('status')).toBe('success');
     expect(url.searchParams.get('merchant')).toBe('SanQ Roujiamo');
     expect(url.searchParams.get('storeStableId')).toBe('4750_Yonge_Street');
@@ -57,25 +111,26 @@ describe('CloverMerchantOAuthController', () => {
     expect(url.toString()).not.toContain('opaque-state');
   });
 
-  it('renders only a safe reason code on callback failure', async () => {
-    const authorization = {
-      complete: jest
-        .fn()
-        .mockRejectedValue(
-          new CloverMerchantAuthorizationError('INVALID_STATE'),
-        ),
-    } as unknown as CloverMerchantAuthorizationService;
-    const controller = new CloverMerchantOAuthController(authorization, config);
+  it('redirects callback failures with only a safe public reason code', async () => {
+    complete.mockRejectedValue(
+      new CloverMerchantAuthorizationError('INVALID_STATE'),
+    );
 
-    const result = await controller.callback({
-      code: 'sensitive-code',
-      state: 'sensitive-state',
-      merchant_id: 'MERCHANT123',
-    });
+    const response = await request(httpServer)
+      .get('/api/v1/payments/clover/oauth/callback')
+      .query({
+        code: 'sensitive-code',
+        state: 'sensitive-state',
+        merchant_id: 'MERCHANT123',
+      })
+      .redirects(0);
 
-    expect(result).toEqual({
-      url: 'https://sanq.ca/clover/oauth/result?status=failure&reason=INVALID_STATE',
-      statusCode: 303,
-    });
+    expect(response.status).toBe(303);
+    const location = response.get('location');
+    expect(location).toBe(
+      'https://sanq.ca/clover/oauth/result?status=failure&reason=INVALID_STATE',
+    );
+    expect(location).not.toContain('sensitive-code');
+    expect(location).not.toContain('sensitive-state');
   });
 });

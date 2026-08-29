@@ -202,6 +202,18 @@ describe('Payments bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps Clover OAuth start redirects on the configured public origin instead of the container origin', () => {
+    const startRoute = scanTypeScript(
+      resolve(PAYMENTS_ROOT, '../../../web/src/app/clover/oauth/start'),
+      { productionOnly: true },
+    ).find(({ path }) => path.endsWith('route.ts'));
+
+    expect(startRoute?.source).toContain('cloverOAuthResultUrl');
+    expect(startRoute?.source).toContain("response.headers.set('Cache-Control', 'no-store')");
+    expect(startRoute?.source).not.toContain('new URL(location, request.url)');
+    expect(startRoute?.source).not.toContain('failureRedirect(request)');
+  });
+
   it('keeps the Clover OAuth callback exchange server-side before returning the browser to the result page', () => {
     const callbackRoute = scanTypeScript(
       resolve(PAYMENTS_ROOT, '../../../web/src/app/clover/oauth/callback'),
@@ -214,6 +226,9 @@ describe('Payments bounded-context architecture', () => {
     expect(callbackRoute?.source).toContain(
       "result.pathname !== '/clover/oauth/result'",
     );
+    expect(callbackRoute?.source).toContain('cloverOAuthPublicOrigin()');
+    expect(callbackRoute?.source).not.toContain('request.nextUrl.origin');
+    expect(callbackRoute?.source).not.toContain('new URL(location, request.url)');
     expect(callbackRoute?.source).toContain(
       "response.headers.set('Referrer-Policy', 'no-referrer')",
     );
