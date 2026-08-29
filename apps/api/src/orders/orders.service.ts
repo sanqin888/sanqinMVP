@@ -2190,7 +2190,9 @@ export class OrdersService {
 
       const componentSnapshots: OrderItemComponentsSnapshot = [];
       const componentPathQuantity = new Map<string, number>();
-      const optionGroupsUnderPath = (pathKey: string): OrderItemOptionsSnapshot =>
+      const optionGroupsUnderPath = (
+        pathKey: string,
+      ): OrderItemOptionsSnapshot =>
         optionsSnapshot.filter((group) =>
           group.groupKey?.startsWith(`${pathKey}__`),
         );

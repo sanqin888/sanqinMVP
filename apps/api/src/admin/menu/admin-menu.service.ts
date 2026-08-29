@@ -1822,7 +1822,9 @@ export class AdminMenuService {
       return false;
     };
     if (hasCycle(parentItemStableId)) {
-      throw new BadRequestException('Fixed combo components cannot form a cycle');
+      throw new BadRequestException(
+        'Fixed combo components cannot form a cycle',
+      );
     }
 
     return normalized;

@@ -32,7 +32,8 @@ export class ReportsService {
 
   private async buildTopItems(orderItems: ReportOrderItem[]) {
     const legacyOrderItems = orderItems.filter(
-      (item) => readOrderItemComponentsSnapshot(item.componentsJson).length === 0,
+      (item) =>
+        readOrderItemComponentsSnapshot(item.componentsJson).length === 0,
     );
     const selectedChoiceStableIds = Array.from(
       new Set(
@@ -89,14 +90,14 @@ export class ReportsService {
     };
 
     for (const orderItem of orderItems) {
-      const components = readOrderItemComponentsSnapshot(orderItem.componentsJson);
+      const components = readOrderItemComponentsSnapshot(
+        orderItem.componentsJson,
+      );
       if (components.length > 0) {
         for (const component of components) {
           addItem(
             component.productStableId,
-            component.nameZh ||
-              component.nameEn ||
-              component.productStableId,
+            component.nameZh || component.nameEn || component.productStableId,
             orderItem.qty * component.quantityPerParent,
           );
         }

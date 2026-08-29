@@ -124,7 +124,10 @@ describe('AdminMenuService daily specials weekdays', () => {
 
 describe('AdminMenuService fixed combo composition', () => {
   it('stores fixed components by stable business id and quantity', async () => {
-    const update = jest.fn().mockResolvedValue({ stableId: 'breakfast-combo' });
+    type MenuItemUpdate = (args: unknown) => Promise<{ stableId: string }>;
+    const update: jest.MockedFunction<MenuItemUpdate> = jest
+      .fn()
+      .mockResolvedValue({ stableId: 'breakfast-combo' });
     const service = new AdminMenuService(
       {
         menuItem: {
@@ -152,28 +155,28 @@ describe('AdminMenuService fixed combo composition', () => {
       ],
     });
 
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { stableId: 'breakfast-combo' },
-        data: expect.objectContaining({
-          fixedComponents: {
-            deleteMany: {},
-            create: [
-              {
-                componentItemStableId: 'hulatang',
-                quantity: 1,
-                sortOrder: 0,
-              },
-              {
-                componentItemStableId: 'youtiao',
-                quantity: 2,
-                sortOrder: 1,
-              },
-            ],
-          },
-        }),
-      }),
-    );
+    const updateArg = update.mock.calls[0]?.[0] as
+      | { where?: unknown; data?: unknown }
+      | undefined;
+    expect(updateArg?.where).toEqual({ stableId: 'breakfast-combo' });
+    const updateData = updateArg?.data as
+      | { fixedComponents?: unknown }
+      | undefined;
+    expect(updateData?.fixedComponents).toEqual({
+      deleteMany: {},
+      create: [
+        {
+          componentItemStableId: 'hulatang',
+          quantity: 1,
+          sortOrder: 0,
+        },
+        {
+          componentItemStableId: 'youtiao',
+          quantity: 2,
+          sortOrder: 1,
+        },
+      ],
+    });
   });
 
   it('blocks Uber Eats publishing while fixed component context is unsupported', async () => {

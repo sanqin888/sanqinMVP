@@ -154,8 +154,9 @@ export class PublicMenuService {
 
       const nextVisiting = new Set(visiting);
       nextVisiting.add(itemStableId);
-      const componentsAvailable = (item.fixedComponents ?? []).every((component) =>
-        isItemFulfillable(component.componentItemStableId, nextVisiting),
+      const componentsAvailable = (item.fixedComponents ?? []).every(
+        (component) =>
+          isItemFulfillable(component.componentItemStableId, nextVisiting),
       );
       fulfillableMemo.set(itemStableId, componentsAvailable);
       return componentsAvailable;
