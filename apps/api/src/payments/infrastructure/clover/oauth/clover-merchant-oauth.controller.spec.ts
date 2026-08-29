@@ -103,7 +103,9 @@ describe('CloverMerchantOAuthController HTTP redirect contract', () => {
     const location = response.get('location');
     expect(location).toBeDefined();
     const url = new URL(location ?? 'https://invalid.local');
-    expect(url.origin + url.pathname).toBe('https://sanq.ca/clover/oauth/result');
+    expect(url.origin + url.pathname).toBe(
+      'https://sanq.ca/clover/oauth/result',
+    );
     expect(url.searchParams.get('status')).toBe('success');
     expect(url.searchParams.get('merchant')).toBe('SanQ Roujiamo');
     expect(url.searchParams.get('storeStableId')).toBe('4750_Yonge_Street');
