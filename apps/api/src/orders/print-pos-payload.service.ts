@@ -3,6 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 import { OrderItemOptionsSnapshot } from './order-item-options';
+import { buildOrderPricingDisplay } from './order-pricing-display';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -57,6 +58,19 @@ export class PrintPosPayloadService {
       (order.subtotalCents ?? 0) -
         (order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0),
     );
+    const pricingDisplay = buildOrderPricingDisplay({
+      effectiveSubtotalCents: order.subtotalCents ?? 0,
+      promotionSnapshot: order.promotionSnapshot,
+      items: order.items,
+      couponTitleSnapshot: order.couponTitleSnapshot ?? null,
+      couponDiscountCents: order.couponDiscountCents ?? 0,
+      loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
+      subtotalAfterDiscountCents:
+        order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0,
+    });
+    const balancePaidCents = await this.getBalancePaidCents(order.id);
+    const orderTotalCents = order.totalCents ?? 0;
+    const externalPaidCents = Math.max(0, orderTotalCents - balancePaidCents);
     const intentMetadata = await this.getCheckoutIntentMetadata(orderNumber);
     const surcharge = this.getOrderCreditCardSurcharge(order, intentMetadata);
     const creditCardSurchargeCents = surcharge?.cents ?? 0;
@@ -97,7 +111,13 @@ export class PrintPosPayloadService {
       snapshot: {
         items,
         subtotalCents: order.subtotalCents ?? 0,
+        displaySubtotalCents: pricingDisplay.displaySubtotalCents,
+        appliedDiscounts: pricingDisplay.discounts,
+        loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
         taxCents: order.taxCents ?? 0,
+        orderTotalCents,
+        balancePaidCents,
+        externalPaidCents,
         totalCents: paymentTotalCents,
         creditCardSurchargeCents,
         discountCents,
@@ -106,6 +126,23 @@ export class PrintPosPayloadService {
         deliverySubsidyCents,
       },
     };
+  }
+
+  private async getBalancePaidCents(orderDbId: string): Promise<number> {
+    const ledgers = await this.prisma.loyaltyLedger.findMany({
+      where: {
+        orderId: orderDbId,
+        target: 'BALANCE',
+        type: 'REDEEM_ON_ORDER',
+        deltaMicro: { lt: 0n },
+      },
+      select: { deltaMicro: true },
+    });
+    const balanceMicroUsed = ledgers.reduce(
+      (sum, entry) => sum + -entry.deltaMicro,
+      0n,
+    );
+    return Number(balanceMicroUsed) / 10_000;
   }
 
   private async getCheckoutIntentMetadata(

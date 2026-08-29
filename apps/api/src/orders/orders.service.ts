@@ -27,7 +27,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MembershipService } from '../membership/membership.service';
-import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
+import {
+  CreateOrderInput,
+  DeliveryDestinationInput,
+  type OrderDiscountDisplayEntry,
+} from '@shared/order';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   ORDER_STATUS_TRANSITIONS,
@@ -71,6 +75,7 @@ import {
 } from '../promotions/order-promotion-evaluator';
 import type { PromotionSource } from '../promotions/promotion-engine';
 import { PromotionsService } from '../promotions/promotions.service';
+import { buildOrderPricingDisplay } from './order-pricing-display';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -114,6 +119,8 @@ const orderDetailSelect = {
   couponTitleSnapshot: true,
   couponDiscountCents: true,
   loyaltyRedeemCents: true,
+  subtotalAfterDiscountCents: true,
+  promotionSnapshot: true,
   createdAt: true,
   paidAt: true,
   userId: true,
@@ -300,8 +307,11 @@ type OrderReadyNotificationResult = {
   sendId?: string;
 };
 
+export type AppliedPricingDiscount = OrderDiscountDisplayEntry;
+
 export type OrderPricingQuote = {
   subtotalCents: number;
+  displaySubtotalCents: number;
   couponDiscountCents: number;
   automaticPromotionDiscountCents: number;
   posManualDiscountCents: number;
@@ -309,6 +319,7 @@ export type OrderPricingQuote = {
   taxCents: number;
   deliveryFeeCents: number;
   totalCents: number;
+  appliedDiscounts: AppliedPricingDiscount[];
 };
 
 export type PaymentTenderAllocation = {
@@ -604,9 +615,19 @@ export class OrdersService {
       purchaseBaseCents + (isDelivery ? deliveryFeeCustomerCents : 0);
     const taxCents = Math.round(taxableCents * pricingConfig.salesTaxRate);
     const totalCents = purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
+    const pricingDisplay = buildOrderPricingDisplay({
+      effectiveSubtotalCents: subtotalCents,
+      promotionSnapshot: promotionEvaluation.snapshot,
+      items: calculatedItems,
+      couponTitleSnapshot: couponInfo?.coupon?.title ?? null,
+      couponDiscountCents,
+      loyaltyRedeemCents,
+      subtotalAfterDiscountCents: purchaseBaseCents,
+    });
 
     return {
       subtotalCents,
+      displaySubtotalCents: pricingDisplay.displaySubtotalCents,
       couponDiscountCents,
       automaticPromotionDiscountCents,
       posManualDiscountCents: posDiscountCents,
@@ -614,6 +635,52 @@ export class OrdersService {
       taxCents,
       deliveryFeeCents: deliveryFeeCustomerCents,
       totalCents,
+      appliedDiscounts: pricingDisplay.discounts,
+    };
+  }
+
+  async quoteWebPaymentTender(dto: CreateOrderInput): Promise<{
+    pricing: OrderPricingQuote;
+    balanceCents: number;
+    externalCents: number;
+  }> {
+    const pricing = await this.quoteOrderPricing(dto);
+    const requestedBalanceCents = Math.max(
+      0,
+      Math.round(dto.balanceUsedCents ?? 0),
+    );
+    if (requestedBalanceCents === 0) {
+      return {
+        pricing,
+        balanceCents: 0,
+        externalCents: pricing.totalCents,
+      };
+    }
+
+    const userStableId =
+      typeof dto.userStableId === 'string' ? dto.userStableId.trim() : '';
+    if (!userStableId) {
+      throw new BadRequestException(
+        'member is required for stored balance payment',
+      );
+    }
+    const userId = await this.loyalty.resolveUserIdByStableId(userStableId);
+    const availableTender =
+      await this.loyalty.getAvailablePaymentTender(userId);
+    if (requestedBalanceCents > availableTender.balanceCents) {
+      throw new ConflictException({
+        code: 'STORE_BALANCE_CHANGED',
+        message:
+          'Available stored balance changed. Refresh checkout and try again.',
+        availableBalanceCents: availableTender.balanceCents,
+      });
+    }
+
+    const balanceCents = Math.min(requestedBalanceCents, pricing.totalCents);
+    return {
+      pricing,
+      balanceCents,
+      externalCents: Math.max(0, pricing.totalCents - balanceCents),
     };
   }
 
@@ -669,6 +736,33 @@ export class OrdersService {
       specialInstructions: it.externalSpecialInstructions?.trim() || null,
       optionsJson: it.optionsJson ?? undefined,
     }));
+    const subtotalCents = order.subtotalCents ?? 0;
+    const loyaltyRedeemCents = order.loyaltyRedeemCents ?? 0;
+    const subtotalAfterDiscountCents =
+      order.subtotalAfterDiscountCents ??
+      Math.max(
+        0,
+        subtotalCents - (order.couponDiscountCents ?? 0) - loyaltyRedeemCents,
+      );
+    const pricingDisplay = buildOrderPricingDisplay({
+      effectiveSubtotalCents: subtotalCents,
+      promotionSnapshot: order.promotionSnapshot,
+      items: rawItems,
+      couponTitleSnapshot: order.couponTitleSnapshot ?? null,
+      couponDiscountCents: order.couponDiscountCents ?? 0,
+      loyaltyRedeemCents,
+      subtotalAfterDiscountCents,
+    });
+    const creditCardSurchargeCents = Math.max(
+      0,
+      order.creditCardSurchargeCents ?? 0,
+    );
+    const paymentTotalCents =
+      typeof order.paymentTotalCents === 'number' &&
+      Number.isFinite(order.paymentTotalCents) &&
+      order.paymentTotalCents > 0
+        ? Math.round(order.paymentTotalCents)
+        : (order.totalCents ?? 0) + creditCardSurchargeCents;
 
     return {
       orderStableId,
@@ -693,12 +787,17 @@ export class OrdersService {
       deliveryEtaMinMinutes: order.deliveryEtaMinMinutes ?? null,
       deliveryEtaMaxMinutes: order.deliveryEtaMaxMinutes ?? null,
 
-      subtotalCents: order.subtotalCents ?? 0,
+      subtotalCents,
+      displaySubtotalCents: pricingDisplay.displaySubtotalCents,
+      appliedDiscounts: pricingDisplay.discounts,
+      subtotalAfterDiscountCents,
       taxCents: order.taxCents ?? 0,
       deliveryFeeCents: order.deliveryFeeCents ?? 0,
       deliveryCostCents,
       deliverySubsidyCents,
       totalCents: order.totalCents ?? 0,
+      paymentTotalCents,
+      creditCardSurchargeCents,
 
       couponCodeSnapshot: order.couponCodeSnapshot ?? null,
       couponTitleSnapshot: order.couponTitleSnapshot ?? null,
@@ -2970,12 +3069,16 @@ export class OrdersService {
             const totalCents =
               purchaseBaseCents + deliveryFeeCustomerCents + taxCents;
 
+            const externalPaymentCents = Math.max(
+              0,
+              totalCents - Math.min(totalCents, balanceUsedCents),
+            );
             if (
               verifiedCheckoutIntent &&
-              totalCents !== verifiedCheckoutIntent.amountCents
+              externalPaymentCents !== verifiedCheckoutIntent.amountCents
             ) {
               throw new BadRequestException(
-                `Price mismatch. order=${totalCents}, paid=${verifiedCheckoutIntent.amountCents}`,
+                `Price mismatch. order=${totalCents}, balance=${balanceUsedCents}, external=${externalPaymentCents}, paid=${verifiedCheckoutIntent.amountCents}`,
               );
             }
             const loyaltyRedeemCents = redeemValueCents;
@@ -3249,9 +3352,14 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
+    const dto = this.toOrderDto(order);
     return {
-      ...this.toOrderDto(order),
+      ...dto,
       ...loyaltyUsage,
+      externalPaidCents: Math.max(
+        0,
+        dto.totalCents - loyaltyUsage.balancePaidCents,
+      ),
     };
   }
 
@@ -3275,10 +3383,15 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
+    const dto = this.toOrderDto(order);
     return {
       order: {
-        ...this.toOrderDto(order),
+        ...dto,
         ...loyaltyUsage,
+        externalPaidCents: Math.max(
+          0,
+          dto.totalCents - loyaltyUsage.balancePaidCents,
+        ),
       },
       ownerUserStableId,
     };
@@ -3342,6 +3455,24 @@ export class OrdersService {
       };
     });
 
+    const pricingDisplay = buildOrderPricingDisplay({
+      effectiveSubtotalCents: subtotalCents,
+      promotionSnapshot: order.promotionSnapshot,
+      items: order.items,
+      couponTitleSnapshot: order.couponTitleSnapshot ?? null,
+      couponDiscountCents: order.couponDiscountCents ?? 0,
+      loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
+      subtotalAfterDiscountCents:
+        order.subtotalAfterDiscountCents ?? subtotalCents,
+    });
+    const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
+      order.orderStableId,
+    );
+    const orderTotalCents = order.totalCents ?? 0;
+    const externalPaidCents = Math.max(
+      0,
+      orderTotalCents - loyaltyUsage.balancePaidCents,
+    );
     const orderNumber = order.clientRequestId ?? order.orderStableId;
 
     return {
@@ -3353,10 +3484,15 @@ export class OrdersService {
       itemCount,
       currency: 'CAD',
       subtotalCents,
+      displaySubtotalCents: pricingDisplay.displaySubtotalCents,
+      appliedDiscounts: pricingDisplay.discounts,
       taxCents,
       deliveryFeeCents,
       discountCents,
       totalCents: paymentTotalCents,
+      orderTotalCents,
+      paymentTotalCents,
+      externalPaidCents,
       loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
       couponDiscountCents: order.couponDiscountCents ?? 0,
       creditCardSurchargeCents,
@@ -3368,7 +3504,7 @@ export class OrdersService {
           : undefined,
       subtotalAfterDiscountCents:
         order.subtotalAfterDiscountCents ?? subtotalCents,
-      ...(await this.getLoyaltyUsageByOrderStableId(order.orderStableId)),
+      ...loyaltyUsage,
       lineItems,
     };
   }

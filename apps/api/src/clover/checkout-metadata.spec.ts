@@ -1,6 +1,7 @@
 import {
   buildOrderDtoFromMetadata,
   parseCheckoutMetadata,
+  resolveMetadataPayableTotalCents,
 } from './checkout-metadata';
 
 const metadataWithCustomer = (
@@ -237,5 +238,20 @@ describe('parseCheckoutMetadata customer contacts', () => {
         ),
       ),
     ).toThrow('customer phone must be a valid Canadian phone number');
+  });
+
+  it('储值余额只减少外部应付金额，不减少 HST 税基', () => {
+    const parsed = parseCheckoutMetadata({
+      ...metadataWithCustomer({
+        firstName: 'San',
+        lastName: 'Qin',
+        email: 'customer@example.com',
+      }),
+      balanceUsedCents: 500,
+    });
+
+    expect(parsed.balanceUsedCents).toBe(500);
+    expect(resolveMetadataPayableTotalCents(parsed)).toBe(630);
+    expect(buildOrderDtoFromMetadata(parsed).balanceUsedCents).toBe(500);
   });
 });

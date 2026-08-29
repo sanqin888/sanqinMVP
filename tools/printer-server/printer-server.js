@@ -121,6 +121,44 @@ function pickBilingualNames(value) {
   ];
 }
 
+function getReceiptPaymentLabel(paymentMethod) {
+  if (paymentMethod === "card") return "银行卡 Card";
+  if (paymentMethod === "cash") return "现金 Cash";
+  if (paymentMethod === "wechat_alipay") return "微信/支付宝 WeChat/Alipay";
+  if (paymentMethod === "ubereats") return "Uber Eats";
+  return "外部支付 External Payment";
+}
+
+function getReceiptDiscountLabel(discount) {
+  if (!discount || typeof discount !== "object") return "其他优惠 Other discount";
+  const titleZh =
+    typeof discount.titleZh === "string" ? discount.titleZh.trim() : "";
+  const titleEn =
+    typeof discount.titleEn === "string" ? discount.titleEn.trim() : "";
+  const title = typeof discount.title === "string" ? discount.title.trim() : "";
+  if (discount.source === "DAILY_SPECIAL") {
+    const itemNames = pickBilingualNames({
+      nameZh: discount.productNameZh,
+      nameEn: discount.productNameEn,
+      displayName: discount.productName,
+      productStableId: discount.productStableId,
+    }).join(" / ");
+    return itemNames
+      ? `每日特价 Daily special · ${itemNames}`
+      : "每日特价 Daily special";
+  }
+  const localizedTitles = [...new Set([titleZh, titleEn, title].filter(Boolean))];
+  if (localizedTitles.length > 0) return localizedTitles.join(" / ");
+  if (discount.source === "COUPON") return "优惠券 Coupon";
+  if (discount.source === "POS_MANUAL_DISCOUNT") {
+    return "人工折扣 Manual discount";
+  }
+  if (discount.source === "AUTOMATIC_PROMOTION") {
+    return "活动优惠 Promotion";
+  }
+  return "其他优惠 Other discount";
+}
+
 function getOptionLines(
   item,
   { locale = "zh", bilingual = false, includePrice = true } = {},
@@ -654,27 +692,57 @@ async function buildCustomerReceiptEscPos(params) {
   }
 
   // ==== 金额汇总 ====
-  const subtotal = snapshot.subtotalCents ?? 0;
-  const discount = snapshot.discountCents ?? 0;
+  const subtotal = snapshot.displaySubtotalCents ?? snapshot.subtotalCents ?? 0;
+  const appliedDiscounts = Array.isArray(snapshot.appliedDiscounts)
+    ? snapshot.appliedDiscounts
+    : [];
+  const loyaltyRedeemCents = Number.isFinite(snapshot.loyaltyRedeemCents)
+    ? Math.max(0, Math.round(snapshot.loyaltyRedeemCents))
+    : 0;
+  const legacyDiscount = Math.max(
+    0,
+    Math.round(snapshot.discountCents ?? 0) - loyaltyRedeemCents,
+  );
   const tax = snapshot.taxCents ?? 0;
-  const total = snapshot.totalCents ?? 0;
+  const creditCardSurcharge = snapshot.creditCardSurchargeCents ?? 0;
+  const orderTotal =
+    snapshot.orderTotalCents ??
+    Math.max(0, (snapshot.totalCents ?? 0) - creditCardSurcharge);
+  const balancePaid = Number.isFinite(snapshot.balancePaidCents)
+    ? Math.max(0, Math.round(snapshot.balancePaidCents))
+    : 0;
+  const externalPaid = Number.isFinite(snapshot.externalPaidCents)
+    ? Math.max(0, Math.round(snapshot.externalPaidCents))
+    : Math.max(0, orderTotal - balancePaid);
+  const total = snapshot.totalCents ?? orderTotal + creditCardSurcharge;
   const cashReceivedCents = Number.isFinite(params.cashReceivedCents)
     ? Math.max(0, Math.round(params.cashReceivedCents))
     : 0;
   const cashChangeCents = Number.isFinite(params.cashChangeCents)
     ? Math.max(0, Math.round(params.cashChangeCents))
     : 0;
-  const creditCardSurcharge = snapshot.creditCardSurchargeCents ?? 0;
   const loyalty = snapshot.loyalty || {};
-
   const deliveryFee = snapshot.deliveryFeeCents ?? 0;
 
   chunks.push(encLine(makeLine("-")));
-  chunks.push(encLine(`小计 Subtotal: ${money(subtotal)}`));
-  if (discount > 0) {
-    chunks.push(encLine(`折扣 Discount: -${money(discount)}`));
+  chunks.push(encLine(`商品小计 Subtotal: ${money(subtotal)}`));
+  if (appliedDiscounts.length > 0) {
+    appliedDiscounts.forEach((discount) => {
+      const discountCents = Number.isFinite(discount?.discountCents)
+        ? Math.max(0, Math.round(discount.discountCents))
+        : 0;
+      if (discountCents <= 0) return;
+      wrapReceiptText("优惠 Discount · ", getReceiptDiscountLabel(discount)).forEach(
+        (line) => chunks.push(encLine(line)),
+      );
+      chunks.push(encLine(`  -${money(discountCents)}`));
+    });
+  } else if (legacyDiscount > 0) {
+    chunks.push(encLine(`折扣/优惠 Discount: -${money(legacyDiscount)}`));
   }
-  if (
+  if (loyaltyRedeemCents > 0) {
+    chunks.push(encLine(`积分抵扣 Points: -${money(loyaltyRedeemCents)}`));
+  } else if (
     typeof loyalty.pointsRedeemed === "number" &&
     loyalty.pointsRedeemed > 0
   ) {
@@ -687,14 +755,22 @@ async function buildCustomerReceiptEscPos(params) {
     chunks.push(encLine(`配送费(顾客) Delivery Fee: ${money(deliveryFee)}`));
   }
 
+  chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
+  chunks.push(encLine(`订单总额 Order Total: ${money(orderTotal)}`));
+  if (balancePaid > 0) {
+    chunks.push(encLine(`储值余额 Stored Balance: -${money(balancePaid)}`));
+  }
+  if (externalPaid > 0 && (balancePaid > 0 || creditCardSurcharge > 0)) {
+    chunks.push(
+      encLine(`${getReceiptPaymentLabel(paymentMethod)}: ${money(externalPaid)}`),
+    );
+  }
   if (creditCardSurcharge > 0) {
     chunks.push(
       encLine(`信用卡附加费 Card Surcharge: ${money(creditCardSurcharge)}`),
     );
+    chunks.push(encLine(`最终支付 Total Paid: ${money(total)}`));
   }
-
-  chunks.push(encLine(`税费(HST) Tax: ${money(tax)}`));
-  chunks.push(encLine(`合计 Total:   ${money(total)}`));
   if (cashReceivedCents > 0) {
     chunks.push(encLine(`实收 Paid:    ${money(cashReceivedCents)}`));
   }

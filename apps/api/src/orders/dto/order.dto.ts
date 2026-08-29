@@ -8,6 +8,7 @@ import type {
 } from '@prisma/client';
 import type { OrderStatus } from '../order-status';
 import type { Prisma } from '@prisma/client';
+import type { OrderDiscountDisplayEntry } from '@shared/order';
 
 export type OrderItemDto = {
   productStableId: string;
@@ -51,11 +52,17 @@ export type OrderDto = {
   deliveryEtaMaxMinutes: number | null;
 
   subtotalCents: number;
+  displaySubtotalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
+  subtotalAfterDiscountCents: number;
   taxCents: number;
   deliveryFeeCents: number;
   deliveryCostCents: number | null; // 白标实际成本（没有就 null/0，按你偏好）
   deliverySubsidyCents: number | null; //补贴金额
   totalCents: number;
+  paymentTotalCents: number;
+  creditCardSurchargeCents: number;
+  externalPaidCents?: number;
 
   couponCodeSnapshot: string | null;
   couponTitleSnapshot: string | null;

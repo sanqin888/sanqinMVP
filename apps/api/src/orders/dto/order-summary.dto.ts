@@ -2,6 +2,7 @@
 import { FulfillmentType } from '@prisma/client';
 import { OrderItemOptionsSnapshot } from '../order-item-options';
 import type { OrderStatus } from '../order-status';
+import type { OrderDiscountDisplayEntry } from '@shared/order';
 export type OrderSummaryLineItemDto = {
   // ✅ 对外统一：引用菜品 stableId
   productStableId: string;
@@ -23,10 +24,15 @@ export type OrderSummaryDto = {
   itemCount: number;
   currency: 'CAD';
   subtotalCents: number;
+  displaySubtotalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
   taxCents: number;
   deliveryFeeCents: number;
   discountCents: number;
   totalCents: number;
+  orderTotalCents: number;
+  paymentTotalCents: number;
+  externalPaidCents: number;
 
   loyaltyRedeemCents?: number | null;
   couponDiscountCents?: number | null;

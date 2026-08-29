@@ -51,11 +51,29 @@ function createHarness() {
     .fn<Promise<void>, [RecordIntentParams]>()
     .mockResolvedValue(undefined);
   const checkoutIntents = { recordIntent };
-  type QuoteOrderInput = Parameters<OrdersService['quoteOrderPricing']>[0];
-  const quoteOrderPricing = jest
-    .fn<Promise<{ totalCents: number }>, [QuoteOrderInput]>()
-    .mockResolvedValue({ totalCents: 1130 });
-  const orders = { quoteOrderPricing };
+  type QuoteTenderInput = Parameters<OrdersService['quoteWebPaymentTender']>[0];
+  const quoteWebPaymentTender = jest
+    .fn<
+      ReturnType<OrdersService['quoteWebPaymentTender']>,
+      [QuoteTenderInput]
+    >()
+    .mockResolvedValue({
+      pricing: {
+        subtotalCents: 1000,
+        displaySubtotalCents: 1000,
+        couponDiscountCents: 0,
+        automaticPromotionDiscountCents: 0,
+        posManualDiscountCents: 0,
+        loyaltyRedeemCents: 0,
+        taxCents: 130,
+        deliveryFeeCents: 0,
+        totalCents: 1130,
+        appliedDiscounts: [],
+      },
+      balanceCents: 0,
+      externalCents: 1130,
+    });
+  const orders = { quoteWebPaymentTender };
   const pricingTokens = {
     issue: jest.fn().mockReturnValue({
       pricingToken: 'pricing-token',
@@ -81,8 +99,8 @@ describe('CloverPayController member identity boundary', () => {
 
     await controller.createPaymentSession({} as AuthedRequest, createDto());
 
-    expect(orders.quoteOrderPricing).toHaveBeenCalledTimes(1);
-    const quotedOrder = orders.quoteOrderPricing.mock.calls[0]?.[0];
+    expect(orders.quoteWebPaymentTender).toHaveBeenCalledTimes(1);
+    const quotedOrder = orders.quoteWebPaymentTender.mock.calls[0]?.[0];
     expect(quotedOrder?.userStableId).toBeUndefined();
     expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
     const recordedIntent = checkoutIntents.recordIntent.mock.calls[0]?.[0];
@@ -97,7 +115,7 @@ describe('CloverPayController member identity boundary', () => {
 
     await controller.createPaymentSession(req, createDto());
 
-    expect(orders.quoteOrderPricing).toHaveBeenCalledWith(
+    expect(orders.quoteWebPaymentTender).toHaveBeenCalledWith(
       expect.objectContaining({ userStableId: sessionUserStableId }),
     );
     expect(checkoutIntents.recordIntent).toHaveBeenCalledTimes(1);
