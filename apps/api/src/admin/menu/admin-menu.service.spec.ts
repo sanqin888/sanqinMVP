@@ -137,10 +137,12 @@ describe('AdminMenuService fixed combo composition', () => {
             fixedComponents: [],
             optionGroups: [],
           }),
-          findMany: jest.fn().mockResolvedValue([
-            { stableId: 'hulatang' },
-            { stableId: 'youtiao' },
-          ]),
+          findMany: jest
+            .fn()
+            .mockResolvedValue([
+              { stableId: 'hulatang' },
+              { stableId: 'youtiao' },
+            ]),
           update,
         },
         menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
