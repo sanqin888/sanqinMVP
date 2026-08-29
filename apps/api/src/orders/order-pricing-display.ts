@@ -80,7 +80,11 @@ function readSnapshotDiscountEntries(params: {
   items: readonly PricingDisplayItem[];
 }): OrderDiscountDisplayEntry[] {
   const snapshot = asRecord(params.promotionSnapshot);
-  if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.adjustments)) {
+  if (
+    !snapshot ||
+    snapshot.version !== 1 ||
+    !Array.isArray(snapshot.adjustments)
+  ) {
     return [];
   }
 
@@ -139,10 +143,17 @@ export function buildOrderPricingDisplay(
     items: params.items,
   });
 
-  const couponEntryIndex = entries.findIndex((entry) => entry.source === 'COUPON');
+  const couponEntryIndex = entries.findIndex(
+    (entry) => entry.source === 'COUPON',
+  );
   if (couponEntryIndex >= 0 && couponTitleSnapshot) {
     const couponEntry = entries[couponEntryIndex];
-    if (couponEntry && !couponEntry.title && !couponEntry.titleZh && !couponEntry.titleEn) {
+    if (
+      couponEntry &&
+      !couponEntry.title &&
+      !couponEntry.titleZh &&
+      !couponEntry.titleEn
+    ) {
       entries[couponEntryIndex] = {
         ...couponEntry,
         title: couponTitleSnapshot,

@@ -53,7 +53,10 @@ function createHarness() {
   const checkoutIntents = { recordIntent };
   type QuoteTenderInput = Parameters<OrdersService['quoteWebPaymentTender']>[0];
   const quoteWebPaymentTender = jest
-    .fn<ReturnType<OrdersService['quoteWebPaymentTender']>, [QuoteTenderInput]>()
+    .fn<
+      ReturnType<OrdersService['quoteWebPaymentTender']>,
+      [QuoteTenderInput]
+    >()
     .mockResolvedValue({
       pricing: {
         subtotalCents: 1000,

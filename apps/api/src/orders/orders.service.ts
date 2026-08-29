@@ -665,11 +665,13 @@ export class OrdersService {
       );
     }
     const userId = await this.loyalty.resolveUserIdByStableId(userStableId);
-    const availableTender = await this.loyalty.getAvailablePaymentTender(userId);
+    const availableTender =
+      await this.loyalty.getAvailablePaymentTender(userId);
     if (requestedBalanceCents > availableTender.balanceCents) {
       throw new ConflictException({
         code: 'STORE_BALANCE_CHANGED',
-        message: 'Available stored balance changed. Refresh checkout and try again.',
+        message:
+          'Available stored balance changed. Refresh checkout and try again.',
         availableBalanceCents: availableTender.balanceCents,
       });
     }
@@ -738,7 +740,10 @@ export class OrdersService {
     const loyaltyRedeemCents = order.loyaltyRedeemCents ?? 0;
     const subtotalAfterDiscountCents =
       order.subtotalAfterDiscountCents ??
-      Math.max(0, subtotalCents - (order.couponDiscountCents ?? 0) - loyaltyRedeemCents);
+      Math.max(
+        0,
+        subtotalCents - (order.couponDiscountCents ?? 0) - loyaltyRedeemCents,
+      );
     const pricingDisplay = buildOrderPricingDisplay({
       effectiveSubtotalCents: subtotalCents,
       promotionSnapshot: order.promotionSnapshot,
@@ -3351,7 +3356,10 @@ export class OrdersService {
     return {
       ...dto,
       ...loyaltyUsage,
-      externalPaidCents: Math.max(0, dto.totalCents - loyaltyUsage.balancePaidCents),
+      externalPaidCents: Math.max(
+        0,
+        dto.totalCents - loyaltyUsage.balancePaidCents,
+      ),
     };
   }
 
@@ -3380,7 +3388,10 @@ export class OrdersService {
       order: {
         ...dto,
         ...loyaltyUsage,
-        externalPaidCents: Math.max(0, dto.totalCents - loyaltyUsage.balancePaidCents),
+        externalPaidCents: Math.max(
+          0,
+          dto.totalCents - loyaltyUsage.balancePaidCents,
+        ),
       },
       ownerUserStableId,
     };

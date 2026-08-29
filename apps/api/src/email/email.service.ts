@@ -234,7 +234,9 @@ export class EmailService {
       return itemName ? `${label} · ${itemName}` : label;
     }
     if (localizedTitle) return localizedTitle;
-    if (discount.source === 'COUPON') return locale === 'zh' ? '优惠券' : 'Coupon';
+    if (discount.source === 'COUPON') {
+      return locale === 'zh' ? '优惠券' : 'Coupon';
+    }
     if (discount.source === 'POS_MANUAL_DISCOUNT') {
       return locale === 'zh' ? '人工折扣' : 'Manual discount';
     }
@@ -248,8 +250,12 @@ export class EmailService {
     paymentMethod: PrintPosPayloadDto['paymentMethod'],
     locale: 'zh' | 'en',
   ): string {
-    if (paymentMethod === 'card') return locale === 'zh' ? '银行卡支付' : 'Card payment';
-    if (paymentMethod === 'cash') return locale === 'zh' ? '现金支付' : 'Cash payment';
+    if (paymentMethod === 'card') {
+      return locale === 'zh' ? '银行卡支付' : 'Card payment';
+    }
+    if (paymentMethod === 'cash') {
+      return locale === 'zh' ? '现金支付' : 'Cash payment';
+    }
     if (paymentMethod === 'wechat_alipay') {
       return locale === 'zh' ? '微信/支付宝支付' : 'WeChat/Alipay payment';
     }
@@ -388,7 +394,10 @@ export class EmailService {
     const rows: Array<{ label: string; value: string; highlight?: boolean }> = [
       {
         label: labels.subtotal,
-        value: this.formatCurrency(payload.snapshot.displaySubtotalCents, locale),
+        value: this.formatCurrency(
+          payload.snapshot.displaySubtotalCents,
+          locale,
+        ),
       },
     ];
     for (const discount of payload.snapshot.appliedDiscounts) {

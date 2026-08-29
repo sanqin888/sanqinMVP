@@ -118,7 +118,13 @@ export class MembershipService {
     startsAt: Date | null;
     endsAt: Date | null;
     reservationAttemptId: string | null;
-  }): 'active' | 'used' | 'expired' | 'inactive' | 'not_started' | 'reserved' {
+  }):
+    | 'active'
+    | 'used'
+    | 'expired'
+    | 'inactive'
+    | 'not_started'
+    | 'reserved' {
     const now = Date.now();
     if (coupon.usedAt) return 'used';
     if (
@@ -128,7 +134,9 @@ export class MembershipService {
       return 'expired';
     }
     if (!coupon.isActive || coupon.isFrozen) return 'inactive';
-    if (coupon.startsAt && coupon.startsAt.getTime() > now) return 'not_started';
+    if (coupon.startsAt && coupon.startsAt.getTime() > now) {
+      return 'not_started';
+    }
     if (coupon.reservationAttemptId) return 'reserved';
     return 'active';
   }

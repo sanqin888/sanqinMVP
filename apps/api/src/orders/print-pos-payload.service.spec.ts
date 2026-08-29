@@ -141,9 +141,7 @@ describe('PrintPosPayloadService', () => {
         }),
       },
       loyaltyLedger: {
-        findMany: jest.fn().mockResolvedValue([
-          { deltaMicro: -3_000_000n },
-        ]),
+        findMany: jest.fn().mockResolvedValue([{ deltaMicro: -3_000_000n }]),
       },
       checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
     };

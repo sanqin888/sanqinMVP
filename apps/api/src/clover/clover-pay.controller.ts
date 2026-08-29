@@ -646,7 +646,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             });
             throw new ConflictException({
               code: 'FINALIZE_AMOUNT_MISMATCH',
-              message: 'server external payment amount changed after authorization',
+              message:
+                'server external payment amount changed after authorization',
             });
           }
 
@@ -704,7 +705,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             });
             throw new ConflictException({
               code: 'ORDER_AMOUNT_MISMATCH',
-              message: 'order external payment amount does not match charged amount',
+              message:
+                'order external payment amount does not match charged amount',
             });
           }
 
