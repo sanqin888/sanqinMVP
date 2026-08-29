@@ -1,4 +1,5 @@
-import { Controller, Get, Query, Redirect } from '@nestjs/common';
+import { Controller, Get, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 
 import { CloverProviderConfig } from '../clover-provider.config';
 import {
@@ -17,41 +18,41 @@ export class CloverMerchantOAuthController {
   ) {}
 
   @Get('start')
-  @Redirect(undefined, 302)
   async start(
     @Query() query: CloverOAuthLaunchInput,
-  ): Promise<{ url: string; statusCode: number }> {
+    @Res() response: Response,
+  ): Promise<void> {
     try {
-      return { url: await this.authorization.start(query), statusCode: 302 };
+      response.redirect(302, await this.authorization.start(query));
     } catch (error) {
-      return {
-        url: this.resultUrl('failure', this.publicErrorCode(error)),
-        statusCode: 303,
-      };
+      response.redirect(
+        303,
+        this.resultUrl('failure', this.publicErrorCode(error)),
+      );
     }
   }
 
   @Get('callback')
-  @Redirect(undefined, 302)
   async callback(
     @Query() query: CloverOAuthCallbackInput,
-  ): Promise<{ url: string; statusCode: number }> {
+    @Res() response: Response,
+  ): Promise<void> {
     try {
       const result = await this.authorization.complete(query);
-      return {
-        url: this.resultUrl('success', undefined, {
+      response.redirect(
+        303,
+        this.resultUrl('success', undefined, {
           merchant: result.merchantName ?? result.merchantId,
           merchantId: result.merchantId,
           storeStableId: result.storeStableId ?? undefined,
           binding: result.status,
         }),
-        statusCode: 303,
-      };
+      );
     } catch (error) {
-      return {
-        url: this.resultUrl('failure', this.publicErrorCode(error)),
-        statusCode: 303,
-      };
+      response.redirect(
+        303,
+        this.resultUrl('failure', this.publicErrorCode(error)),
+      );
     }
   }
 
