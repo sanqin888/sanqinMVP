@@ -2634,9 +2634,9 @@ function AddressesSection({
             }}
             placeholder={isZh ? "地址行 1" : "Address line 1"}
             containerClassName="relative"
-            inputClassName="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
-            suggestionListClassName="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg"
-            suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
+            inputClassName="w-full rounded-xl border border-[#87362E]/15 bg-white px-3 py-2 text-xs text-stone-700 outline-none transition focus:border-[#87362E]/45 focus:ring-2 focus:ring-[#87362E]/10"
+            suggestionListClassName="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-[#87362E]/15 bg-[#fffaf5] py-1 text-xs shadow-[0_18px_45px_-28px_rgba(100,45,38,0.55)]"
+            suggestionItemClassName="cursor-pointer px-3 py-2 text-stone-700 transition hover:bg-[#fff3ea] hover:text-[#87362E]"
             debounceMs={500}
             minLength={3}
             country="ca"

@@ -6,6 +6,9 @@ import { useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import { useSession } from "@/lib/auth-session";
 import type { Locale } from "@/lib/i18n/locales";
+import CustomerModalShell, {
+  CustomerModalHeader,
+} from "@/components/site/CustomerModalShell";
 
 type Props = {
   orderStableId: string;
@@ -136,16 +139,16 @@ export function InvoiceButton({ orderStableId, locale }: Props) {
   };
 
   return (
-    <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-200 bg-white/80 px-4 py-5 text-center sm:px-6">
-      <div className="text-sm font-semibold text-slate-900">
+    <div className="mx-auto mt-4 max-w-xl rounded-3xl border border-[#87362E]/10 bg-[#fffaf5] px-4 py-5 text-center shadow-sm sm:px-6">
+      <div className="text-sm font-bold text-stone-900">
         {copy.button}
       </div>
-      <p className="mt-2 text-xs text-slate-500">{hint}</p>
+      <p className="mt-2 text-xs text-stone-500">{hint}</p>
       <button
         type="button"
         onClick={handlePrimaryClick}
         disabled={isSending || status === "loading"}
-        className="mt-3 inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-3 inline-flex items-center justify-center rounded-full bg-[#87362E] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isSending ? copy.sending : copy.button}
       </button>
@@ -160,41 +163,44 @@ export function InvoiceButton({ orderStableId, locale }: Props) {
       ) : null}
 
       {showModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-xl">
-            <div className="text-lg font-semibold text-slate-900">
-              {copy.modalTitle}
+        <CustomerModalShell ariaLabel={copy.modalTitle} maxWidthClassName="max-w-md">
+          <CustomerModalHeader
+            title={copy.modalTitle}
+            closeLabel={locale === "zh" ? "关闭" : "Close"}
+            onClose={() => setShowModal(false)}
+          />
+          <form
+            className="space-y-4 bg-[#fff7ef] px-5 py-5 sm:px-6"
+            onSubmit={handleGuestSubmit}
+          >
+            <label className="block space-y-1.5 text-left text-sm">
+              <span className="font-semibold text-stone-700">{copy.emailLabel}</span>
+              <input
+                type="email"
+                value={emailInput}
+                onChange={(event) => setEmailInput(event.target.value)}
+                placeholder={copy.emailPlaceholder}
+                className="w-full rounded-2xl border border-[#87362E]/15 bg-white px-3 py-2.5 text-sm text-stone-700 outline-none transition focus:border-[#87362E]/45 focus:ring-2 focus:ring-[#87362E]/10"
+              />
+            </label>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="rounded-full border border-[#87362E]/20 bg-white px-4 py-2 text-sm font-bold text-[#87362E] transition hover:bg-[#fff3ea]"
+              >
+                {copy.cancel}
+              </button>
+              <button
+                type="submit"
+                disabled={isSending}
+                className="rounded-full bg-[#87362E] px-5 py-2 text-sm font-bold text-white transition hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSending ? copy.sending : copy.submit}
+              </button>
             </div>
-            <form className="mt-4 space-y-4" onSubmit={handleGuestSubmit}>
-              <label className="block space-y-1 text-left text-sm">
-                <span className="text-slate-700">{copy.emailLabel}</span>
-                <input
-                  type="email"
-                  value={emailInput}
-                  onChange={(event) => setEmailInput(event.target.value)}
-                  placeholder={copy.emailPlaceholder}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </label>
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                >
-                  {copy.cancel}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSending}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSending ? copy.sending : copy.submit}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </CustomerModalShell>
       ) : null}
     </div>
   );
