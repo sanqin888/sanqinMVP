@@ -274,6 +274,18 @@ export default function LocalOrderPage() {
   }, [locale]);
 
   useEffect(() => {
+    if (menuLoading) return;
+
+    const sectionId = window.location.hash.slice(1);
+    if (sectionId !== "menu" && sectionId !== "daily-special") return;
+
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [menuLoading]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadStoreStatus() {
