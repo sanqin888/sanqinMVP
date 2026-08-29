@@ -38,10 +38,11 @@ function ensureLocaleCookieIfNeeded(req: NextRequest, res: NextResponse, locale:
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
-  // 跳过静态资源与 API
+  // 跳过静态资源、API 与不应本地化的协议入口
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
+    pathname.startsWith("/clover/oauth/") ||
     pathname.startsWith("/favicon") ||
     pathname.startsWith("/assets") ||
     pathname.match(/\.(?:css|js|png|jpg|jpeg|gif|svg|ico|webp|avif|woff2?)$/)
