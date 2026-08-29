@@ -1544,51 +1544,58 @@ export default function LocalOrderPage() {
       ) : null}
 
       {isCartPreviewOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 md:items-center">
-          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h3 className="text-lg font-semibold text-slate-900">
-                {locale === "zh" ? "购物车" : "Cart"}
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-stone-900/35 p-3 backdrop-blur-[2px] sm:p-4 md:items-center">
+          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-[#87362E]/10 bg-[#fffaf5] shadow-[0_28px_80px_-34px_rgba(100,45,38,0.55)]">
+            <div className="flex items-center justify-between border-b border-[#87362E]/10 px-5 py-4 sm:px-6">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#87362E]/60">
+                  {locale === "zh" ? "已选餐品" : "YOUR ORDER"}
+                </p>
+                <h3 className="mt-1 text-xl font-black tracking-tight text-stone-900">
+                  {locale === "zh" ? "购物车" : "Cart"}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsCartPreviewOpen(false)}
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50"
+                className="rounded-full border border-[#87362E]/15 bg-white px-3.5 py-2 text-xs font-bold text-[#87362E] transition hover:border-[#87362E]/30 hover:bg-[#fff3ea]"
               >
                 {locale === "zh" ? "关闭" : "Close"}
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#fff7ef] px-4 py-4 sm:px-6">
               {cartPreviewItems.length === 0 ? (
-                <p className="text-sm text-slate-500">{strings.cartEmpty}</p>
+                <div className="rounded-3xl border border-dashed border-[#87362E]/20 bg-white px-5 py-8 text-center">
+                  <p className="text-sm font-semibold text-stone-500">{strings.cartEmpty}</p>
+                </div>
               ) : (
                 cartPreviewItems.map((item) => (
-                  <div key={item.cartLineId} className="rounded-2xl border border-slate-200 px-4 py-3">
+                  <div key={item.cartLineId} className="rounded-3xl border border-[#87362E]/10 bg-white px-4 py-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-slate-900">{item.name}</p>
+                      <div className="min-w-0 pt-0.5">
+                        <p className="font-bold text-stone-900">{item.name}</p>
                         {item.optionNames.length > 0 ? (
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="mt-1.5 text-xs leading-5 text-stone-500">
                             {item.optionNames.join("、")}
                           </p>
                         ) : null}
                       </div>
-                      <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
+                      <div className="inline-flex shrink-0 items-center rounded-full border border-[#87362E]/10 bg-[#fff7ef] p-1">
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.cartLineId, -1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-base font-semibold text-slate-600 transition hover:bg-slate-100"
+                          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-base font-black text-[#87362E] shadow-sm transition hover:bg-[#fff3ea]"
                         >
                           −
                         </button>
-                        <span className="min-w-[2rem] text-center text-sm font-semibold text-slate-700">
+                        <span className="min-w-[2.25rem] text-center text-sm font-black text-stone-800">
                           {item.quantity}
                         </span>
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.cartLineId, 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-base font-semibold text-slate-600 transition hover:bg-slate-100"
+                          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#87362E] text-base font-black text-white shadow-sm transition hover:bg-[#6f2c26]"
                         >
                           +
                         </button>
@@ -1599,12 +1606,12 @@ export default function LocalOrderPage() {
               )}
             </div>
 
-            <div className="border-t border-slate-100 px-6 py-4">
+            <div className="border-t border-[#87362E]/10 bg-[#fffaf5] px-4 py-4 sm:px-6">
               <button
                 type="button"
                 disabled={cartPreviewItems.length === 0}
                 onClick={handleConfirmOrder}
-                className={`w-full rounded-full px-4 py-3 text-sm font-semibold transition ${cartPreviewItems.length > 0 ? "bg-slate-900 text-white hover:bg-slate-700" : "cursor-not-allowed bg-slate-200 text-slate-400"}`}
+                className={`w-full rounded-full px-4 py-3.5 text-sm font-black transition ${cartPreviewItems.length > 0 ? "bg-[#87362E] text-white shadow-[0_14px_30px_-16px_rgba(100,45,38,0.8)] hover:bg-[#6f2c26]" : "cursor-not-allowed bg-[#87362E]/10 text-[#87362E]/35"}`}
               >
                 {locale === "zh" ? "确认下单" : "Confirm order"}
               </button>
