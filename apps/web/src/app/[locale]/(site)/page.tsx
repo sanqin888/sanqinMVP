@@ -27,6 +27,9 @@ import { usePersistentCart } from "@/lib/cart";
 import { apiFetch } from "@/lib/api/client";
 import { useSession } from "@/lib/auth-session";
 import { trackClientEvent } from "@/lib/analytics";
+import CustomerModalShell, {
+  CustomerModalHeader,
+} from "@/components/site/CustomerModalShell";
 import {
   getDefaultHomepageContent,
   type HomepageContent,
@@ -915,23 +918,23 @@ export default function LocalOrderPage() {
                   [groupKey]: !prev[groupKey],
                 }));
               }}
-              className={`flex w-full items-center justify-between gap-4 rounded-2xl text-left transition ${
+              className={`flex w-full items-center justify-between gap-4 rounded-2xl px-2 py-1 text-left transition ${
                 isRequiredGroup
                   ? "cursor-default"
-                  : "cursor-pointer hover:bg-slate-50"
+                  : "cursor-pointer hover:bg-[#fff3ea]"
               }`}
             >
             <div>
-                <h4 className="text-base font-semibold text-slate-900">
+                <h4 className="text-base font-bold text-stone-900">
                 {locale === "zh" ? group.template.nameZh?.trim() || "未命名选项组" : group.template.nameEn}
                 </h4>
-                <p className={`text-xs ${isRequiredGroup ? "text-rose-500" : "text-slate-500"}`}>
+                <p className={`text-xs ${isRequiredGroup ? "text-rose-500" : "text-stone-500"}`}>
                   {requirementLabel}
                 </p>
             </div>
             <span className="flex items-center gap-2">
                 {!isRequiredGroup ? (
-                  <span className="rounded-full border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500">
+                  <span className="rounded-full border border-[#87362E]/15 bg-white px-2 py-1 text-xs font-bold text-[#87362E]/70">
                     {isExpanded
                       ? locale === "zh"
                         ? "收起"
@@ -941,7 +944,7 @@ export default function LocalOrderPage() {
                         : "Expand"}
                   </span>
                 ) : null}
-                <span className={`text-xs font-semibold ${group.minSelect > 0 && selectedCount < group.minSelect ? "text-rose-500" : "text-slate-400"}`}>
+                <span className={`text-xs font-semibold ${group.minSelect > 0 && selectedCount < group.minSelect ? "text-rose-500" : "text-stone-400"}`}>
                     {locale === "zh" ? `已选 ${selectedCount}` : `${selectedCount} selected`}
                 </span>
             </span>
@@ -1004,9 +1007,9 @@ export default function LocalOrderPage() {
                         // 使用 groupKey 传递点击事件
                         onClick={() => optionTempUnavailable ? undefined : handleOptionToggle(groupKey, option.optionStableId, group.minSelect, group.maxSelect)}
                         className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition ${
-                            optionTempUnavailable ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : 
-                            selected ? "border-slate-900 bg-slate-900 text-white" : 
-                            "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                            optionTempUnavailable ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400" : 
+                            selected ? "border-[#87362E] bg-[#87362E] text-white shadow-sm" : 
+                            "border-[#87362E]/15 bg-white text-stone-700 hover:border-[#87362E]/35 hover:bg-[#fff3ea]"
                         }`}
                     >
                     <span className="flex flex-col gap-1">
@@ -1016,7 +1019,7 @@ export default function LocalOrderPage() {
                         ) : null}
                     </span>
                     {priceDelta ? (
-                        <span className={`text-xs font-semibold ${selected ? "text-white/80" : "text-slate-400"}`}>{priceDelta}</span>
+                        <span className={`text-xs font-semibold ${selected ? "text-white/80" : "text-stone-400"}`}>{priceDelta}</span>
                     ) : null}
                     </button>
 
@@ -1033,7 +1036,7 @@ export default function LocalOrderPage() {
                                 return (
                                     <button key={child.optionStableId} type="button" disabled={childTempUnavailable}
                                         onClick={() => childTempUnavailable ? undefined : handleChildOptionToggle(parentOptionPathKey, child.optionStableId)}
-                                        className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left text-xs transition ${childTempUnavailable ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : childSelected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
+                                        className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left text-xs transition ${childTempUnavailable ? "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400" : childSelected ? "border-[#87362E] bg-[#87362E] text-white shadow-sm" : "border-[#87362E]/15 bg-white text-stone-600 hover:border-[#87362E]/35 hover:bg-[#fff3ea]"}`}
                                     >
                                         <span className="font-medium">{childLabel}</span>
                                         {childTempUnavailable && (
@@ -1042,7 +1045,7 @@ export default function LocalOrderPage() {
                                           </span>
                                         )}
                                         {childPriceDelta && (
-                                          <span className={`text-[10px] font-semibold ${childSelected ? "text-white/80" : "text-slate-400"}`}>
+                                          <span className={`text-[10px] font-semibold ${childSelected ? "text-white/80" : "text-stone-400"}`}>
                                             {childPriceDelta}
                                           </span>
                                         )}
@@ -1054,7 +1057,7 @@ export default function LocalOrderPage() {
 
                     {/* ✅ 嵌套 Item 渲染：递归调用 renderOptionGroup */}
                     {selected && linkedItem && linkedItem.optionGroups && linkedItem.optionGroups.length > 0 ? (
-                        <div className="mt-2 ml-2 pl-3 border-l-2 border-slate-100 space-y-4">
+                        <div className="mt-2 ml-2 space-y-4 border-l-2 border-[#87362E]/10 pl-3">
                             {linkedItem.optionGroups.map((nestedGroup, nestedIndex) =>
                               renderOptionGroup(
                                 nestedGroup,
@@ -1453,22 +1456,24 @@ export default function LocalOrderPage() {
 
       {/* ===== 菜品选项弹窗 ===== */}
       {activeItem ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 md:items-center">
-          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">{locale === "zh" ? "菜品选项" : "Dish options"}</p>
-                <h3 className="mt-2 text-2xl font-semibold text-slate-900">{activeItem.name}</h3>
-                {activeItem.ingredients ? <p className="mt-2 text-sm text-slate-500">{activeItem.ingredients}</p> : null}
-              </div>
-              <button type="button" onClick={closeOptionsModal} className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50">{locale === "zh" ? "关闭" : "Close"}</button>
-            </div>
+        <CustomerModalShell
+          ariaLabel={locale === "zh" ? `${activeItem.name} 菜品选项` : `${activeItem.name} dish options`}
+          maxWidthClassName="max-w-2xl"
+          mobileSheet
+        >
+          <CustomerModalHeader
+            eyebrow={locale === "zh" ? "菜品选项" : "Dish options"}
+            title={activeItem.name}
+            description={activeItem.ingredients ?? undefined}
+            closeLabel={locale === "zh" ? "关闭" : "Close"}
+            onClose={closeOptionsModal}
+            titleClassName="text-2xl"
+          />
 
             {/* Content: Option Groups */}
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-[#fff7ef] px-5 py-5 sm:px-6">
               {activeItem.imageUrl ? (
-                <div className="overflow-hidden rounded-2xl bg-slate-100">
+                <div className="overflow-hidden rounded-3xl border border-[#87362E]/10 bg-[#f2e2d4]">
                   <div className="relative aspect-[5/3] w-full">
                     <Image
                       src={activeItem.imageUrl}
@@ -1482,7 +1487,7 @@ export default function LocalOrderPage() {
               ) : null}
 
               {(activeItem.optionGroups ?? []).length === 0 ? (
-                <p className="text-sm text-slate-500">{locale === "zh" ? "该菜品暂无可选项。" : "No options available for this dish."}</p>
+                <p className="rounded-2xl border border-dashed border-[#87362E]/15 bg-white px-4 py-5 text-sm text-stone-500">{locale === "zh" ? "该菜品暂无可选项。" : "No options available for this dish."}</p>
               ) : (
                 // ✅ 使用递归渲染函数
                 (activeItem.optionGroups ?? []).map((group, groupIndex) =>
@@ -1496,18 +1501,18 @@ export default function LocalOrderPage() {
             </div>
 
             {/* Footer: Totals & Action */}
-            <div className="space-y-4 border-t border-slate-100 px-6 py-5">
+            <div className="space-y-4 border-t border-[#87362E]/10 bg-[#fffaf5] px-5 py-5 sm:px-6">
               {requiredGroupsMissing.length > 0 ? (
                 <p className="text-xs text-rose-500">{locale === "zh" ? "请完成所有必选项后再加入购物车。" : "Please complete all required selections before adding to cart."}</p>
               ) : null}
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-slate-600">{locale === "zh" ? "当前价格" : "Current price"}: <span className="font-semibold text-slate-900">{currencyFormatter.format((activeBasePriceCents + optionsPriceCents) / 100)}</span></div>
+                <div className="text-sm font-semibold text-stone-500">{locale === "zh" ? "当前价格" : "Current price"}: <span className="font-black text-[#87362E]">{currencyFormatter.format((activeBasePriceCents + optionsPriceCents) / 100)}</span></div>
                 <div className="flex items-center gap-3">
-                  <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                    <button type="button" onClick={() => setSelectedQuantity((qty) => Math.max(1, qty - 1))} disabled={selectedQuantity <= 1} className={`flex h-8 w-8 items-center justify-center rounded-full text-lg font-semibold transition ${selectedQuantity <= 1 ? "cursor-not-allowed text-slate-300" : "text-slate-600 hover:bg-slate-100"}`}>−</button>
-                    <span className="min-w-[2.5rem] text-center text-sm font-semibold text-slate-700">{selectedQuantity}</span>
-                    <button type="button" onClick={() => setSelectedQuantity((qty) => qty + 1)} className="flex h-8 w-8 items-center justify-center rounded-full text-lg font-semibold text-slate-600 transition hover:bg-slate-100">+</button>
+                  <div className="inline-flex items-center rounded-full border border-[#87362E]/10 bg-[#fff7ef] p-1">
+                    <button type="button" onClick={() => setSelectedQuantity((qty) => Math.max(1, qty - 1))} disabled={selectedQuantity <= 1} className={`flex h-8 w-8 items-center justify-center rounded-full bg-white text-lg font-black shadow-sm transition ${selectedQuantity <= 1 ? "cursor-not-allowed text-stone-300" : "text-[#87362E] hover:bg-[#fff3ea]"}`}>−</button>
+                    <span className="min-w-[2.5rem] text-center text-sm font-black text-stone-800">{selectedQuantity}</span>
+                    <button type="button" onClick={() => setSelectedQuantity((qty) => qty + 1)} className="flex h-8 w-8 items-center justify-center rounded-full bg-[#87362E] text-lg font-black text-white shadow-sm transition hover:bg-[#6f2c26]">+</button>
                   </div>
                   <button
                     type="button"
@@ -1532,37 +1537,28 @@ export default function LocalOrderPage() {
                       closeOptionsModal();
                     }}
                     disabled={!canAddToCart}
-                    className={`inline-flex items-center justify-center rounded-full px-6 py-2 text-sm font-semibold transition ${canAddToCart ? "bg-slate-900 text-white hover:bg-slate-700" : "cursor-not-allowed bg-slate-200 text-slate-400"}`}
+                    className={`inline-flex items-center justify-center rounded-full px-6 py-2.5 text-sm font-black transition ${canAddToCart ? "bg-[#87362E] text-white shadow-[0_14px_30px_-18px_rgba(100,45,38,0.8)] hover:bg-[#6f2c26]" : "cursor-not-allowed bg-[#87362E]/10 text-[#87362E]/35"}`}
                   >
                     {strings.addToCart}
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+        </CustomerModalShell>
       ) : null}
 
       {isCartPreviewOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-stone-900/35 p-3 backdrop-blur-[2px] sm:p-4 md:items-center">
-          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-[#87362E]/10 bg-[#fffaf5] shadow-[0_28px_80px_-34px_rgba(100,45,38,0.55)]">
-            <div className="flex items-center justify-between border-b border-[#87362E]/10 px-5 py-4 sm:px-6">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#87362E]/60">
-                  {locale === "zh" ? "已选餐品" : "YOUR ORDER"}
-                </p>
-                <h3 className="mt-1 text-xl font-black tracking-tight text-stone-900">
-                  {locale === "zh" ? "购物车" : "Cart"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCartPreviewOpen(false)}
-                className="rounded-full border border-[#87362E]/15 bg-white px-3.5 py-2 text-xs font-bold text-[#87362E] transition hover:border-[#87362E]/30 hover:bg-[#fff3ea]"
-              >
-                {locale === "zh" ? "关闭" : "Close"}
-              </button>
-            </div>
+        <CustomerModalShell
+          ariaLabel={locale === "zh" ? "购物车" : "Cart"}
+          maxWidthClassName="max-w-xl"
+          mobileSheet
+        >
+          <CustomerModalHeader
+            eyebrow={locale === "zh" ? "已选餐品" : "YOUR ORDER"}
+            title={locale === "zh" ? "购物车" : "Cart"}
+            closeLabel={locale === "zh" ? "关闭" : "Close"}
+            onClose={() => setIsCartPreviewOpen(false)}
+          />
 
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#fff7ef] px-4 py-4 sm:px-6">
               {cartPreviewItems.length === 0 ? (
@@ -1616,8 +1612,7 @@ export default function LocalOrderPage() {
                 {locale === "zh" ? "确认下单" : "Confirm order"}
               </button>
             </div>
-          </div>
-        </div>
+        </CustomerModalShell>
       ) : null}
 
       {/* 手机端固定购物车 CTA / 桌面端浮动入口。购物车预览打开时隐藏，避免遮挡确认按钮。 */}
