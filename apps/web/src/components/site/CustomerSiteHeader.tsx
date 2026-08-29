@@ -59,19 +59,23 @@ export default function CustomerSiteHeader({ locale }: Props) {
       className="sticky top-0 z-40 border-b border-[#87362E]/10 bg-[#fffaf5]/95 backdrop-blur-xl"
     >
       <div className="mx-auto flex h-[68px] w-full max-w-[1600px] items-center gap-1.5 px-4 sm:gap-3 sm:px-6 lg:h-[76px] lg:px-8">
-        <Link href={homeHref} className="flex shrink-0 items-center gap-1 sm:gap-1.5" aria-label="SanQ">
-          <div className="relative h-9 w-9 overflow-hidden sm:h-11 sm:w-11 lg:h-12 lg:w-12">
+        <Link
+          href={homeHref}
+          className="flex shrink-0 items-center gap-1 sm:gap-2"
+          aria-label={isZh ? "三秦肉夹馍" : "SanQ Roujiamo"}
+        >
+          <div className="relative h-10 w-10 shrink-0 sm:h-12 sm:w-12 lg:h-14 lg:w-14">
             <Image
               src="/images/sanqinLOGO.png"
               alt=""
               fill
               priority
-              sizes="48px"
-              className="origin-top scale-[1.5] object-contain"
+              sizes="(min-width: 1024px) 56px, (min-width: 640px) 48px, 40px"
+              className="object-contain"
             />
           </div>
-          <span className="flex items-baseline text-[1.45rem] font-semibold leading-none tracking-[-0.06em] text-[#87362E] sm:text-[1.9rem] lg:text-[2.05rem]">
-            <span>San</span><span className="ml-0.5 font-medium">Ω</span>
+          <span className="whitespace-nowrap text-[0.95rem] font-semibold leading-none tracking-[-0.025em] text-[#87362E] sm:text-[1.15rem] lg:text-[1.3rem]">
+            {isZh ? "三秦肉夹馍" : "SanQ Roujiamo"}
           </span>
         </Link>
 
