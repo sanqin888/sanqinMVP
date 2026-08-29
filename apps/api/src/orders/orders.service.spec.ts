@@ -387,6 +387,17 @@ describe('OrdersService', () => {
     expect(quote.automaticPromotionDiscountCents).toBe(100);
     expect(quote.posManualDiscountCents).toBe(50);
     expect(quote.couponDiscountCents).toBe(0);
+    expect(quote.appliedDiscounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          promotionStableId: 'auto-10',
+          source: 'AUTOMATIC_PROMOTION',
+          titleZh: '自动九折',
+          titleEn: 'Automatic 10% off',
+          discountCents: 100,
+        }),
+      ]),
+    );
     expect(quote.totalCents).toBe(961);
     expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith(
       'in_store',

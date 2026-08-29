@@ -24,6 +24,7 @@ import {
   type DeliveryTypeOption,
   type SelectedOptionSnapshot,
 } from "@/lib/order/shared";
+import { formatOrderDiscountLabel } from "@/lib/order/discount-display";
 import type { Locale } from "@/lib/i18n/locales";
 import { UI_STRINGS, type ScheduleSlot } from "@/lib/i18n/dictionaries";
 import {
@@ -34,6 +35,7 @@ import type {
   DailySpecialDto,
   PublicMenuResponse as PublicMenuApiResponse,
 } from "@shared/menu";
+import type { OrderDiscountDisplayEntry } from "@shared/order";
 import { useSession } from "@/lib/auth-session";
 import { formatStoreTime } from "@/lib/time/tz";
 import { clampDisplayedPrepTimeMinutes } from "@/lib/prep-time";
@@ -266,14 +268,19 @@ type PaymentSessionResponse = {
   paymentMethod: "APPLE_PAY" | "GOOGLE_PAY" | "CARD";
   checkoutIntentId: string;
   orderStableId: string;
+  completedOrderStableId?: string;
   currency: string;
   quote: { totalCents: number };
+  externalPaymentCents: number;
   pricingToken: string;
   pricingTokenExpiresAt: string;
 };
 
+type AppliedPricingDiscount = OrderDiscountDisplayEntry;
+
 type OrderPricingPreview = {
   subtotalCents: number;
+  displaySubtotalCents: number;
   couponDiscountCents: number;
   automaticPromotionDiscountCents: number;
   posManualDiscountCents: number;
@@ -281,6 +288,7 @@ type OrderPricingPreview = {
   taxCents: number;
   deliveryFeeCents: number;
   totalCents: number;
+  appliedDiscounts: AppliedPricingDiscount[];
 };
 
 type StoreStatusRuleSource =
@@ -313,6 +321,7 @@ type MembershipSummaryResponse = {
   email: string | null;
   phone: string | null;
   tier: MemberTier;
+  balance: number;
   points: number;
   lifetimeSpendCents: number;
   availableDiscountCents: number;
@@ -333,6 +342,7 @@ type MembershipSummaryEnvelope =
 type LoyaltyInfo = {
   userStableId: string;
   tier: MemberTier;
+  balance: number;
   points: number;
   availableDiscountCents: number;
 };
@@ -792,6 +802,7 @@ export default function CheckoutPage() {
   }>({ distanceKm: null, isChecking: false, error: null });
 
   const [redeemPointsInput, setRedeemPointsInput] = useState<string>("");
+  const [useBalanceInput, setUseBalanceInput] = useState<string>("");
   const [loyaltyInfo, setLoyaltyInfo] = useState<LoyaltyInfo | null>(null);
   const [availableCoupons, setAvailableCoupons] = useState<CheckoutCoupon[]>(
     [],
@@ -1226,8 +1237,42 @@ export default function CheckoutPage() {
 
   const taxCents = Math.round(taxableBaseCents * TAX_RATE);
 
-  // ✅ 最终总价：抵扣后小计 + 配送费 + 税
+  // ✅ 订单总额：抵扣后小计 + 配送费 + 税。储值余额是支付资金来源，不参与税基。
   const totalCents = effectiveSubtotalCents + deliveryFeeCents + taxCents;
+  const availableBalanceCents = Math.max(
+    0,
+    Math.round((loyaltyInfo?.balance ?? 0) * 100),
+  );
+  const balanceUsedCents = useMemo(() => {
+    if (!loyaltyInfo || !useBalanceInput.trim()) return 0;
+    const requestedDollars = Number(useBalanceInput.replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(requestedDollars) || requestedDollars <= 0) return 0;
+    const requestedCents = Math.round(requestedDollars * 100);
+    return Math.min(requestedCents, availableBalanceCents, totalCents);
+  }, [availableBalanceCents, loyaltyInfo, totalCents, useBalanceInput]);
+  const externalPaymentCents = Math.max(0, totalCents - balanceUsedCents);
+  const appliedPricingDiscounts = pricingPreview?.appliedDiscounts ?? [];
+  const displayPricingDiscounts: AppliedPricingDiscount[] =
+    appliedPricingDiscounts.length > 0
+      ? appliedPricingDiscounts
+      : appliedCoupon && previewCouponDiscountCents > 0
+        ? [
+            {
+              promotionStableId: appliedCoupon.couponStableId,
+              source: "COUPON",
+              title: appliedCoupon.title,
+              titleZh: null,
+              titleEn: null,
+              productStableId: null,
+              productName: null,
+              productNameZh: null,
+              productNameEn: null,
+              discountCents: previewCouponDiscountCents,
+            },
+          ]
+        : [];
+  const displaySubtotalCents =
+    pricingPreview?.displaySubtotalCents ?? subtotalCents;
   const totalCentsRef = useRef(totalCents);
 
   useEffect(() => {
@@ -1403,7 +1448,7 @@ export default function CheckoutPage() {
     (fulfillment === "pickup" || deliveryAddressReady) &&
     isStoreOpen;
 
-  const requiresPayment = totalCents > 0;
+  const requiresPayment = externalPaymentCents > 0;
 
   const payButtonDisabledReason = useMemo(() => {
     if (isSubmitting) return null;
@@ -1553,6 +1598,7 @@ export default function CheckoutPage() {
       loyaltyAvailableDiscountCents: loyaltyInfo?.availableDiscountCents ?? 0,
       loyaltyPointsBalance: loyaltyInfo?.points ?? 0,
       loyaltyUserStableId: loyaltyInfo?.userStableId,
+      balanceUsedCents: balanceUsedCents > 0 ? balanceUsedCents : undefined,
       coupon: appliedCoupon
         ? {
             couponStableId: appliedCoupon.couponStableId,
@@ -1575,6 +1621,7 @@ export default function CheckoutPage() {
     };
   }, [
     appliedCoupon,
+    balanceUsedCents,
     cartItemsWithPricing,
     couponDiscountCents,
     customer,
@@ -1661,6 +1708,8 @@ export default function CheckoutPage() {
       return {
         sessionId: quoteResponse.sessionId,
         checkoutIntentId: quoteResponse.checkoutIntentId,
+        completedOrderStableId: quoteResponse.completedOrderStableId,
+        externalPaymentCents: quoteResponse.externalPaymentCents,
       };
     },
     [
@@ -1706,6 +1755,10 @@ export default function CheckoutPage() {
         setRedirecting(true);
 
         const session = await createPaymentSession(paymentMethod);
+        if (session.completedOrderStableId) {
+          router.push(`/${locale}/thank-you/${session.completedOrderStableId}`);
+          return;
+        }
         router.push(
           `/${locale}${path}?sessionId=${encodeURIComponent(session.sessionId)}`,
         );
@@ -1775,12 +1828,59 @@ export default function CheckoutPage() {
       startFailedMessageEn: "Failed to start card payment. Please try again.",
     });
   }, [redirectToPayment]);
+
+  const handleStoredBalanceCheckout = useCallback(async () => {
+    if (
+      !canPlaceOrder ||
+      totalCents <= 0 ||
+      balanceUsedCents < totalCents ||
+      isSubmitting
+    ) {
+      return;
+    }
+
+    try {
+      setErrorMessage(null);
+      setPayFlowState("SUBMITTING");
+      setIsSubmitting(true);
+      const session = await createPaymentSession("CARD");
+      if (!session.completedOrderStableId) {
+        throw new Error(
+          locale === "zh"
+            ? "余额支付未能完成，请刷新后重试。"
+            : "Stored balance payment could not be completed. Please refresh and try again.",
+        );
+      }
+      router.push(`/${locale}/thank-you/${session.completedOrderStableId}`);
+    } catch (error) {
+      console.error("[checkout] stored balance checkout failed", toSafeErrorLog(error));
+      setPayFlowState("IDLE");
+      setErrorMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : locale === "zh"
+            ? "余额支付失败，请稍后重试。"
+            : "Stored balance payment failed. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    balanceUsedCents,
+    canPlaceOrder,
+    createPaymentSession,
+    isSubmitting,
+    locale,
+    router,
+    totalCents,
+  ]);
+
   useEffect(() => {
-    if (requiresPayment) return;
+    if (totalCents > 0) return;
     clearCheckoutIntentId();
     setChallengeUrl(null);
     setPayFlowState("IDLE");
-  }, [clearCheckoutIntentId, requiresPayment]);
+  }, [clearCheckoutIntentId, totalCents]);
 
   useEffect(() => {
     if (!challengeIntentId) return;
@@ -2271,6 +2371,7 @@ export default function CheckoutPage() {
           setLoyaltyInfo({
             userStableId: stableId,
             tier: data.tier,
+            balance: data.balance ?? 0,
             points: data.points,
             availableDiscountCents: data.availableDiscountCents,
           });
@@ -2928,7 +3029,7 @@ export default function CheckoutPage() {
       <section className="rounded-3xl border border-[#87362E]/10 bg-[#f8eee5] p-6 shadow-sm">
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
+            <h1 className="text-2xl font-semibold text-stone-900">
               {strings.cartTitle}
             </h1>
             <p className="mt-2 max-w-xl text-sm text-slate-600">
@@ -2946,7 +3047,7 @@ export default function CheckoutPage() {
               </Link>
               <Link
                 href={orderHref}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                className="inline-flex items-center gap-2 rounded-full border border-[#87362E]/15 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#87362E]/25 hover:bg-[#fffaf5]"
               >
                 {locale === "zh" ? "返回菜单" : "Back to menu"}
               </Link>
@@ -2959,7 +3060,7 @@ export default function CheckoutPage() {
         {(storeStatusLoading || !isStoreOpen || storeStatusError) && (
           <div className="mb-4 space-y-2">
             {storeStatusLoading && (
-              <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-600">
+              <div className="rounded-2xl bg-[#fffaf5] px-4 py-3 text-xs text-slate-600">
                 {locale === "zh"
                   ? "正在获取门店营业状态…"
                   : "Checking store opening status…"}
@@ -3007,7 +3108,7 @@ export default function CheckoutPage() {
             <div>
               <Link
                 href={orderHref}
-                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                className="inline-flex items-center gap-2 rounded-full bg-[#87362E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#6f2c26]"
               >
                 {locale === "zh" ? "去点餐" : "Browse dishes"}
               </Link>
@@ -3033,7 +3134,7 @@ export default function CheckoutPage() {
             <div>
               <Link
                 href={orderHref}
-                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                className="inline-flex items-center gap-2 rounded-full bg-[#87362E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#6f2c26]"
               >
                 {locale === "zh" ? "返回菜单" : "Back to menu"}
               </Link>
@@ -3051,7 +3152,7 @@ export default function CheckoutPage() {
               {cartItemsWithPricing.map((cartItem) => (
                 <li
                   key={cartItem.cartLineId}
-                  className="rounded-2xl border border-slate-200 p-4"
+                  className="rounded-2xl border border-[#87362E]/15 p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -3061,7 +3162,7 @@ export default function CheckoutPage() {
                             {locale === "zh" ? "特价" : "Daily special"}
                           </span>
                         ) : null}
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-stone-900">
                           {cartItem.item.name}
                         </p>
                       </div>
@@ -3125,7 +3226,7 @@ export default function CheckoutPage() {
                       <button
                         type="button"
                         onClick={() => updateQuantity(cartItem.cartLineId, -1)}
-                        className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-semibold text-slate-600 transition hover:bg-slate-100"
+                        className="grid h-8 w-8 place-items-center rounded-full border border-[#87362E]/15 text-lg font-semibold text-slate-600 transition hover:bg-[#fff3ea]"
                         aria-label={strings.quantity.decrease}
                       >
                         −
@@ -3136,7 +3237,7 @@ export default function CheckoutPage() {
                       <button
                         type="button"
                         onClick={() => updateQuantity(cartItem.cartLineId, 1)}
-                        className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-semibold text-slate-600 transition hover:bg-slate-100"
+                        className="grid h-8 w-8 place-items-center rounded-full border border-[#87362E]/15 text-lg font-semibold text-slate-600 transition hover:bg-[#fff3ea]"
                         aria-label={strings.quantity.increase}
                       >
                         +
@@ -3151,7 +3252,7 @@ export default function CheckoutPage() {
                         updateNotes(cartItem.cartLineId, event.target.value)
                       }
                       placeholder={strings.cartNotesPlaceholder}
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-[#fffaf5] p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                       rows={2}
                     />
                   </label>
@@ -3159,7 +3260,7 @@ export default function CheckoutPage() {
               ))}
             </ul>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            <div className="rounded-2xl border border-[#87362E]/15 bg-white p-4 text-sm text-stone-700">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                 {strings.utensils.title}
               </p>
@@ -3178,8 +3279,8 @@ export default function CheckoutPage() {
                   }}
                   className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                     utensilsPreference === "no"
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                      ? "border-[#87362E] bg-[#87362E] text-white"
+                      : "border-[#87362E]/15 bg-[#fffaf5] text-slate-600 hover:border-[#87362E]/25"
                   }`}
                   aria-pressed={utensilsPreference === "no"}
                 >
@@ -3190,8 +3291,8 @@ export default function CheckoutPage() {
                   onClick={() => setUtensilsPreference("yes")}
                   className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                     utensilsPreference === "yes"
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                      ? "border-[#87362E] bg-[#87362E] text-white"
+                      : "border-[#87362E]/15 bg-[#fffaf5] text-slate-600 hover:border-[#87362E]/25"
                   }`}
                   aria-pressed={utensilsPreference === "yes"}
                 >
@@ -3202,7 +3303,7 @@ export default function CheckoutPage() {
               {utensilsPreference === "yes" ? (
                 <div className="mt-3 space-y-2 text-xs text-slate-600">
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-slate-700">
+                    <p className="text-xs font-medium text-stone-700">
                       {strings.utensils.typeLabel}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -3211,8 +3312,8 @@ export default function CheckoutPage() {
                         onClick={() => setUtensilsType("chopsticks")}
                         className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                           utensilsType === "chopsticks"
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                            ? "border-[#87362E] bg-[#87362E] text-white"
+                            : "border-[#87362E]/15 bg-[#fffaf5] text-slate-600 hover:border-[#87362E]/25"
                         }`}
                         aria-pressed={utensilsType === "chopsticks"}
                       >
@@ -3223,8 +3324,8 @@ export default function CheckoutPage() {
                         onClick={() => setUtensilsType("fork")}
                         className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                           utensilsType === "fork"
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
+                            ? "border-[#87362E] bg-[#87362E] text-white"
+                            : "border-[#87362E]/15 bg-[#fffaf5] text-slate-600 hover:border-[#87362E]/25"
                         }`}
                         aria-pressed={utensilsType === "fork"}
                       >
@@ -3232,7 +3333,7 @@ export default function CheckoutPage() {
                       </button>
                     </div>
                   </div>
-                  <label className="block font-medium text-slate-700">
+                  <label className="block font-medium text-stone-700">
                     {strings.utensils.quantityLabel}
                     <select
                       value={utensilsQuantity}
@@ -3241,7 +3342,7 @@ export default function CheckoutPage() {
                           event.target.value as typeof utensilsQuantity,
                         )
                       }
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                     >
                       <option value="1">{strings.utensils.optionOne}</option>
                       <option value="2">{strings.utensils.optionTwo}</option>
@@ -3252,7 +3353,7 @@ export default function CheckoutPage() {
                   </label>
 
                   {utensilsQuantity === "other" ? (
-                    <label className="block font-medium text-slate-700">
+                    <label className="block font-medium text-stone-700">
                       {strings.utensils.otherLabel}
                       <input
                         type="number"
@@ -3263,7 +3364,7 @@ export default function CheckoutPage() {
                           setUtensilsCustomQuantity(event.target.value)
                         }
                         placeholder={strings.utensils.otherPlaceholder}
-                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                       />
                     </label>
                   ) : null}
@@ -3297,8 +3398,8 @@ export default function CheckoutPage() {
                     onClick={() => setFulfillment("pickup")}
                     className={`rounded-2xl border px-3 py-2 ${
                       fulfillment === "pickup"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-slate-50 text-slate-600"
+                        ? "border-[#87362E] bg-[#87362E] text-white"
+                        : "border-[#87362E]/15 bg-[#fffaf5] text-slate-600"
                     }`}
                   >
                     {strings.fulfillment.pickup}
@@ -3308,8 +3409,8 @@ export default function CheckoutPage() {
                     onClick={() => setFulfillment("delivery")}
                     className={`rounded-2xl border px-3 py-2 ${
                       fulfillment === "delivery"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-slate-50 text-slate-600"
+                        ? "border-[#87362E] bg-[#87362E] text-white"
+                        : "border-[#87362E]/15 bg-[#fffaf5] text-slate-600"
                     }`}
                   >
                     {strings.fulfillment.delivery}
@@ -3329,14 +3430,14 @@ export default function CheckoutPage() {
                           key={option.type}
                           className="text-left rounded-2xl border border-emerald-500 bg-emerald-50 p-4 shadow-sm"
                         >
-                          <p className="text-sm font-semibold text-slate-900">
+                          <p className="text-sm font-semibold text-stone-900">
                             {option.title}
                           </p>
                           <p className="mt-1 text-xs text-slate-600">
                             {option.description}
                           </p>
                           <div className="mt-3 flex items-baseline justify-between text-sm">
-                            <span className="font-semibold text-slate-900">
+                            <span className="font-semibold text-stone-900">
                               {formatMoney(option.fee)}
                             </span>
                             <span className="text-xs uppercase tracking-wide text-slate-500">
@@ -3351,7 +3452,7 @@ export default function CheckoutPage() {
                   </div>
                 </>
               ) : (
-                <p className="rounded-2xl bg-slate-100 p-3 text-xs text-slate-600">
+                <p className="rounded-2xl bg-[#f8eee5] p-3 text-xs text-slate-600">
                   {strings.fulfillment.pickupNote}
                 </p>
               )}
@@ -3370,7 +3471,7 @@ export default function CheckoutPage() {
                         handleCustomerChange("firstName", event.target.value)
                       }
                       placeholder={strings.contactFields.firstNamePlaceholder}
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                     />
                   </label>
                   <label className="block text-xs font-medium text-slate-600">
@@ -3381,7 +3482,7 @@ export default function CheckoutPage() {
                         handleCustomerChange("lastName", event.target.value)
                       }
                       placeholder={strings.contactFields.lastNamePlaceholder}
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                     />
                   </label>
                 </div>
@@ -3408,9 +3509,9 @@ export default function CheckoutPage() {
                         handleCustomerChange("email", event.target.value)
                       }
                       placeholder={strings.contactFields.emailPlaceholder}
-                      className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                      className="w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                     />
-                    <div className="flex w-full items-center rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus-within:ring-1 focus-within:ring-slate-400">
+                    <div className="flex w-full items-center rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus-within:ring-1 focus-within:ring-[#87362E]/30">
                       <span className="mr-2 text-xs text-slate-500">+1</span>
                       <input
                         value={customer.phone}
@@ -3419,7 +3520,7 @@ export default function CheckoutPage() {
                           handleCustomerChange("phone", event.target.value)
                         }
                         placeholder={strings.contactFields.phonePlaceholder}
-                        className="w-full border-0 p-0 text-sm text-slate-700 focus:outline-none"
+                        className="w-full border-0 p-0 text-sm text-stone-700 focus:outline-none"
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -3440,7 +3541,7 @@ export default function CheckoutPage() {
                           disabled={
                             phoneVerificationLoading || !hasValidContactMethod
                           }
-                          className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="shrink-0 rounded-full border border-[#87362E]/25 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-[#fff3ea] disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {phoneVerificationLoading
                             ? locale === "zh"
@@ -3488,13 +3589,13 @@ export default function CheckoutPage() {
                                 ? "请输入短信验证码"
                                 : "Enter SMS code"
                           }
-                          className="w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                          className="w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                         />
                         <button
                           type="button"
                           onClick={handleVerifyContactCode}
                           disabled={phoneVerificationLoading}
-                          className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="shrink-0 rounded-full bg-[#87362E] px-3 py-1 text-[11px] font-medium text-white hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {phoneVerificationLoading
                             ? locale === "zh"
@@ -3529,7 +3630,7 @@ export default function CheckoutPage() {
                 </label>
 
                 {fulfillment === "delivery" ? (
-                  <div className="space-y-3 rounded-2xl bg-slate-50 p-3">
+                  <div className="space-y-3 rounded-2xl bg-[#fffaf5] p-3">
                     {isMemberLoggedIn && memberAddresses.length > 0 && (
                       <div className="mb-4">
                         <div className="mb-1 flex items-center justify-between">
@@ -3559,7 +3660,7 @@ export default function CheckoutPage() {
                         </div>
 
                         <select
-                          className="w-full rounded-xl border border-slate-200 bg-white p-2 text-sm outline-none focus:border-blue-500"
+                          className="w-full rounded-xl border border-[#87362E]/15 bg-white p-2 text-sm outline-none focus:border-blue-500"
                           value={selectedAddressStableId ?? ""}
                           onChange={(event) => {
                             const value = event.target.value;
@@ -3658,7 +3759,7 @@ export default function CheckoutPage() {
                         placeholder={
                           strings.contactFields.addressLine2Placeholder
                         }
-                        className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                       />
                     </label>
                     <div className="grid gap-3 md:grid-cols-2">
@@ -3670,7 +3771,7 @@ export default function CheckoutPage() {
                             handleCustomerChange("city", event.target.value)
                           }
                           placeholder={strings.contactFields.cityPlaceholder}
-                          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                          className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                         />
                       </label>
                       <label className="block text-xs font-medium text-slate-600">
@@ -3686,7 +3787,7 @@ export default function CheckoutPage() {
                           placeholder={
                             strings.contactFields.provincePlaceholder
                           }
-                          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                          className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                         />
                       </label>
                     </div>
@@ -3704,10 +3805,10 @@ export default function CheckoutPage() {
                           placeholder={
                             strings.contactFields.postalCodePlaceholder
                           }
-                          className={`mt-1 w-full rounded-2xl border bg-white p-2 text-sm text-slate-700 focus:outline-none ${
+                          className={`mt-1 w-full rounded-2xl border bg-white p-2 text-sm text-stone-700 focus:outline-none ${
                             showPostalCodeError
                               ? "border-red-400 focus:border-red-500"
-                              : "border-slate-200 focus:border-slate-400"
+                              : "border-[#87362E]/15 focus:border-[#87362E]/50"
                           }`}
                         />
                       </label>
@@ -3716,7 +3817,7 @@ export default function CheckoutPage() {
                         <input
                           value={DELIVERY_COUNTRY}
                           disabled
-                          className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-100 p-2 text-sm text-slate-500"
+                          className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-[#f8eee5] p-2 text-sm text-slate-500"
                         />
                       </label>
                     </div>
@@ -3755,7 +3856,7 @@ export default function CheckoutPage() {
                       handleCustomerChange("notes", event.target.value)
                     }
                     placeholder={strings.contactFields.notesPlaceholder}
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                    className="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                     rows={2}
                   />
                 </label>
@@ -3765,20 +3866,20 @@ export default function CheckoutPage() {
                 <p className="text-xs text-slate-500">{strings.paymentHint}</p>
               </div>
 
-              {(availableCoupons.length > 0 ||
-                appliedCoupon ||
-                couponLoading ||
-                couponError) && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
+              <div className="rounded-2xl border border-[#87362E]/15 bg-[#fff7ef] p-4 text-xs text-stone-800 shadow-sm">
                   <div className="space-y-2">
                     <div>
                       <p className="font-semibold">
                         {locale === "zh" ? "优惠券" : "Coupons"}
                       </p>
-                      <p className="mt-1 text-[11px] text-slate-600">
-                        {locale === "zh"
-                          ? "请选择本单可用的优惠券。"
-                          : "Pick a coupon to apply to this order."}
+                      <p className="mt-1 text-[11px] text-stone-600">
+                        {authStatus === "authenticated"
+                          ? locale === "zh"
+                            ? "请选择本单可用的优惠券。"
+                            : "Pick a coupon to apply to this order."
+                          : locale === "zh"
+                            ? "登录会员后可查看和使用优惠券。"
+                            : "Sign in as a member to view and use coupons."}
                       </p>
                       {hasCouponExcludedItems ? (
                         <p className="mt-1 text-[11px] text-amber-700">
@@ -3797,7 +3898,7 @@ export default function CheckoutPage() {
                   {appliedCoupon ? (
                     <div className="mt-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-stone-900">
                           {appliedCoupon.title}
                         </p>
                       </div>
@@ -3835,7 +3936,7 @@ export default function CheckoutPage() {
                         <button
                           type="button"
                           onClick={handleRemoveCoupon}
-                          className="shrink-0 whitespace-nowrap rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                          className="shrink-0 whitespace-nowrap rounded-full border border-[#87362E]/25 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-[#fff3ea]"
                         >
                           {locale === "zh" ? "取消使用" : "Remove"}
                         </button>
@@ -4030,10 +4131,9 @@ export default function CheckoutPage() {
                     </p>
                   )}
                 </div>
-              )}
 
-              {loyaltyInfo && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-800">
+              {loyaltyInfo ? (
+                <div className="rounded-2xl border border-[#87362E]/15 bg-[#fff7ef] p-4 text-xs text-stone-800 shadow-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="font-semibold">
@@ -4086,12 +4186,12 @@ export default function CheckoutPage() {
                           );
                           setRedeemPointsInput(String(clamped));
                         }}
-                        className="mt-1 w-full rounded-2xl border border-slate-300 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
+                        className="mt-1 w-full rounded-2xl border border-[#87362E]/25 bg-white p-2 text-sm text-stone-700 focus:border-[#87362E]/50 focus:outline-none"
                       />
                     </label>
                     <button
                       type="button"
-                      className="shrink-0 rounded-2xl border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                      className="shrink-0 rounded-2xl border border-[#87362E]/25 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-[#fff3ea]"
                       onClick={() =>
                         setRedeemPointsInput(
                           maxRedeemablePointsForOrder.toFixed(2),
@@ -4119,134 +4219,66 @@ export default function CheckoutPage() {
                     </p>
                   )}
                 </div>
+              ) : (
+                <div className="rounded-2xl border border-[#87362E]/15 bg-[#fff7ef] p-4 text-xs text-stone-700 shadow-sm">
+                  <p className="font-bold text-stone-900">
+                    {locale === "zh" ? "积分抵扣" : "Redeem points"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-stone-500">
+                    {locale === "zh"
+                      ? "登录会员后可查看积分并用于本单抵扣。"
+                      : "Sign in as a member to view and redeem points on this order."}
+                  </p>
+                </div>
               )}
 
-              {requiresPayment ? (
-                <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-semibold text-slate-600">
-                    {locale === "zh"
-                      ? "请选择支付方式并在下一页完成支付。"
-                      : "Choose a payment method to complete payment on the next page."}
+              {/* 3. 账单详情：先让顾客确认订单总额，再选择支付资金来源。 */}
+              <div className="rounded-2xl border border-[#87362E]/15 bg-[#fffaf5] p-4 text-sm text-stone-700 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="font-bold text-stone-900">
+                    {locale === "zh" ? "账单详情" : "Order total"}
                   </p>
-                  {/* 信用卡附加费提示（仅提示，不参与页面金额计算） */}
-                  <p className="text-center text-[11px] leading-snug text-slate-500">
-                    {locale === "zh"
-                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）；暂不接受 American Express。"
-                      : "Accepted cards: Visa / Mastercard / Discover / Debit. American Express is not accepted."}
-                  </p>
-                  <p className="text-center text-[11px] leading-snug text-slate-500">
-                    {locale === "zh"
-                      ? "如要使用苹果支付，请使用苹果设备和 Safari 浏览器。"
-                      : "To use Apple Pay, please use an Apple device and the Safari browser."}
-                  </p>
-                  <p className="text-center text-xs leading-snug text-slate-700">
-                    {locale === "zh"
-                      ? "使用符合附加费条件的信用卡支付时，将收取交易金额 2.40% 的信用卡附加费；借记卡及其他不符合附加费条件的银行卡不会收取此费用。实际附加费金额会在 Clover 支付流程和收据中显示。"
-                      : "A 2.40% surcharge applies to eligible credit card transactions. Debit cards and other cards not eligible for surcharging are not subject to this fee. The actual surcharge amount will be shown in the Clover payment flow and on your receipt."}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleApplePayCheckout();
-                    }}
-                    disabled={
-                      !canPlaceOrder ||
-                      !requiresPayment ||
-                      isSubmitting ||
-                      isRedirectingToApplePay ||
-                      isRedirectingToGooglePay ||
-                      isRedirectingToCardPay
-                    }
-                    className="w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRedirectingToApplePay
-                      ? locale === "zh"
-                        ? "正在跳转 Apple Pay…"
-                        : "Redirecting to Apple Pay…"
-                      : locale === "zh"
-                        ? "使用 Apple Pay"
-                        : "Use Apple Pay"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleGooglePayCheckout();
-                    }}
-                    disabled={
-                      !canPlaceOrder ||
-                      !requiresPayment ||
-                      isSubmitting ||
-                      isRedirectingToApplePay ||
-                      isRedirectingToGooglePay ||
-                      isRedirectingToCardPay
-                    }
-                    className="w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRedirectingToGooglePay
-                      ? locale === "zh"
-                        ? "正在跳转 Google Pay…"
-                        : "Redirecting to Google Pay…"
-                      : locale === "zh"
-                        ? "使用 Google Pay"
-                        : "Use Google Pay"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleCardPayCheckout();
-                    }}
-                    disabled={
-                      !canPlaceOrder ||
-                      !requiresPayment ||
-                      isSubmitting ||
-                      isRedirectingToApplePay ||
-                      isRedirectingToGooglePay ||
-                      isRedirectingToCardPay
-                    }
-                    className="w-full rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isRedirectingToCardPay
-                      ? locale === "zh"
-                        ? "正在跳转银行卡支付…"
-                        : "Redirecting to card payment…"
-                      : locale === "zh"
-                        ? "使用银行卡支付"
-                        : "Pay with Card"}
-                  </button>
+                  <span className="text-xs text-stone-500">
+                    {locale === "zh" ? "支付前确认" : "Review before payment"}
+                  </span>
                 </div>
-              ) : null}
 
-              {/* 订单金额小结 */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <div className="flex items-center justify-between text-xs">
                   <span>{strings.summary.subtotal}</span>
-                  <span>{formatMoney(subtotalCents)}</span>
+                  <span>{formatMoney(displaySubtotalCents)}</span>
                 </div>
 
-                {automaticPromotionDiscountCents > 0 && (
-                  <div className="mt-1 flex items-center justify-between text-xs text-emerald-700">
-                    <span>{locale === "zh" ? "自动优惠" : "Automatic promotion"}</span>
-                    <span>-{formatMoney(automaticPromotionDiscountCents)}</span>
+                {displayPricingDiscounts.length > 0 ? (
+                  <div className="mt-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3 py-2">
+                    <p className="text-xs font-bold text-emerald-800">
+                      {locale === "zh" ? "折扣/优惠" : "Discounts & offers"}
+                    </p>
+                    <div className="mt-1.5 space-y-1">
+                      {displayPricingDiscounts.map((discount) => (
+                        <div
+                          key={`${discount.source}-${discount.promotionStableId ?? "legacy"}-${discount.productStableId ?? "order"}`}
+                          className="flex items-center justify-between gap-3 text-xs text-emerald-800"
+                        >
+                          <span className="min-w-0 truncate">
+                            ↳ {formatOrderDiscountLabel(discount, locale)}
+                          </span>
+                          <span className="shrink-0 font-semibold">
+                            -{formatMoney(discount.discountCents)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                )}
+                ) : null}
 
-                {previewCouponDiscountCents > 0 && (
-                  <div className="mt-1 flex items-center justify-between text-xs text-amber-700">
-                    <span>{locale === "zh" ? "优惠券" : "Coupon"}</span>
-                    <span>-{formatMoney(previewCouponDiscountCents)}</span>
-                  </div>
-                )}
-
-                {previewLoyaltyRedeemCents > 0 && (
-                  <div className="mt-1 flex items-center justify-between text-xs">
-                    <span>
-                      {locale === "zh" ? "积分抵扣" : "Points discount"}
+                {previewLoyaltyRedeemCents > 0 ? (
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span>{locale === "zh" ? "积分抵扣" : "Points discount"}</span>
+                    <span className="font-semibold text-emerald-700">
+                      -{formatMoney(previewLoyaltyRedeemCents)}
                     </span>
-                    <span>-{formatMoney(previewLoyaltyRedeemCents)}</span>
                   </div>
-                )}
+                ) : null}
 
                 {pricingPreviewError ? (
                   <p className="mt-2 text-xs text-amber-700">
@@ -4275,19 +4307,211 @@ export default function CheckoutPage() {
                   <span>{formatMoney(taxCents)}</span>
                 </div>
 
-                <div className="mt-3 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
+                <div className="mt-3 border-t border-[#87362E]/15 pt-3 text-base font-black text-stone-900">
                   <div className="flex items-center justify-between">
-                    <span>{strings.summary.total}</span>
+                    <span>{locale === "zh" ? "订单总额" : "Order total"}</span>
                     <span>{formatMoney(totalCents)}</span>
                   </div>
                 </div>
               </div>
-              {!requiresPayment ? (
+
+              {/* 4. 储值余额：只改变支付资金分配，不改变 HST 税基。 */}
+              <div className="rounded-2xl border border-[#87362E]/15 bg-[#fff7ef] p-4 text-xs text-stone-700 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-stone-900">
+                      {locale === "zh" ? "储值余额支付" : "Stored balance"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-stone-500">
+                      {locale === "zh"
+                        ? "余额属于支付资金，不减少 HST 计税金额。"
+                        : "Stored balance is a payment tender and does not reduce the HST tax base."}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-white px-3 py-1 font-bold text-[#87362E] shadow-sm">
+                    {locale === "zh" ? "可用 " : "Available "}
+                    {formatMoney(availableBalanceCents)}
+                  </span>
+                </div>
+
+                {loyaltyInfo ? (
+                  <>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <label className="flex-1">
+                        <span className="text-[11px] font-medium text-stone-600">
+                          {locale === "zh" ? "本单使用余额" : "Balance to use"}
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={useBalanceInput}
+                          disabled={availableBalanceCents <= 0 || totalCents <= 0}
+                          onChange={(event) => {
+                            const raw = event.target.value;
+                            const value = Number(raw);
+                            if (raw === "" || !Number.isFinite(value) || value < 0) {
+                              setUseBalanceInput("");
+                              return;
+                            }
+                            const maxDollars =
+                              Math.min(availableBalanceCents, totalCents) / 100;
+                            setUseBalanceInput(String(Math.min(value, maxDollars)));
+                          }}
+                          className="mt-1 w-full rounded-2xl border border-[#87362E]/20 bg-white p-2 text-sm text-stone-700 outline-none focus:border-[#87362E]/50 disabled:bg-stone-100 disabled:text-stone-400"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={availableBalanceCents <= 0 || totalCents <= 0}
+                        onClick={() =>
+                          setUseBalanceInput(
+                            (
+                              Math.min(availableBalanceCents, totalCents) / 100
+                            ).toFixed(2),
+                          )
+                        }
+                        className="shrink-0 rounded-full border border-[#87362E]/25 bg-white px-3 py-2 text-xs font-bold text-[#87362E] transition hover:bg-[#fff3ea] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {locale === "zh" ? "全部使用" : "Use max"}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 space-y-1.5 rounded-xl bg-white/80 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <span>{locale === "zh" ? "余额支付" : "Balance payment"}</span>
+                        <span className="font-semibold text-emerald-700">
+                          {balanceUsedCents > 0
+                            ? `-${formatMoney(balanceUsedCents)}`
+                            : formatMoney(0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between font-bold text-stone-900">
+                        <span>{locale === "zh" ? "还需支付" : "Still to pay"}</span>
+                        <span>{formatMoney(externalPaymentCents)}</span>
+                      </div>
+                    </div>
+
+                    {totalCents > 0 && balanceUsedCents >= totalCents ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleStoredBalanceCheckout()}
+                        disabled={!canPlaceOrder || isSubmitting}
+                        className="mt-3 w-full rounded-full bg-[#87362E] px-5 py-3 text-sm font-bold text-white transition enabled:hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isSubmitting
+                          ? locale === "zh"
+                            ? "正在使用余额支付…"
+                            : "Paying with balance…"
+                          : locale === "zh"
+                            ? `使用余额支付 ${formatMoney(totalCents)}`
+                            : `Pay ${formatMoney(totalCents)} with balance`}
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="mt-3 rounded-xl bg-white/80 px-3 py-3 text-[11px] text-stone-500">
+                    {locale === "zh"
+                      ? "登录会员后可使用储值余额支付。"
+                      : "Sign in as a member to use stored balance."}
+                  </p>
+                )}
+              </div>
+
+              {/* 5. Clover 外部支付：仅支付余额之后的剩余金额。 */}
+              {requiresPayment ? (
+                <div className="space-y-3 rounded-2xl border border-[#87362E]/15 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-bold text-stone-900">
+                      {locale === "zh" ? "Clover 支付" : "Clover payment"}
+                    </p>
+                    <span className="rounded-full bg-[#fff3ea] px-3 py-1 text-xs font-black text-[#87362E]">
+                      {formatMoney(externalPaymentCents)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-600">
+                    {locale === "zh"
+                      ? "请选择支付方式，Clover 只会收取上方显示的剩余应付金额。"
+                      : "Choose a payment method. Clover will charge only the remaining amount shown above."}
+                  </p>
+                  <p className="text-center text-[11px] leading-snug text-stone-500">
+                    {locale === "zh"
+                      ? "可用卡种：Visa / Mastercard / Discover / 借记卡（Debit）；暂不接受 American Express。"
+                      : "Accepted cards: Visa / Mastercard / Discover / Debit. American Express is not accepted."}
+                  </p>
+                  <p className="text-center text-[11px] leading-snug text-stone-500">
+                    {locale === "zh"
+                      ? "如要使用苹果支付，请使用苹果设备和 Safari 浏览器。"
+                      : "To use Apple Pay, please use an Apple device and the Safari browser."}
+                  </p>
+                  <p className="text-center text-xs leading-snug text-stone-700">
+                    {locale === "zh"
+                      ? "使用符合附加费条件的信用卡支付时，将收取 Clover 实际银行卡交易金额 2.40% 的信用卡附加费；借记卡及其他不符合附加费条件的银行卡不会收取此费用。实际附加费金额会在 Clover 支付流程和收据中显示。"
+                      : "A 2.40% surcharge applies to eligible Clover credit card transactions. Debit cards and other cards not eligible for surcharging are not subject to this fee. The actual surcharge amount will be shown in the Clover payment flow and on your receipt."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleApplePayCheckout()}
+                    disabled={
+                      !canPlaceOrder ||
+                      isSubmitting ||
+                      isRedirectingToApplePay ||
+                      isRedirectingToGooglePay ||
+                      isRedirectingToCardPay
+                    }
+                    className="w-full rounded-full border border-[#87362E]/25 bg-[#fffaf5] px-4 py-2.5 text-sm font-bold text-[#87362E] transition hover:bg-[#fff3ea] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isRedirectingToApplePay
+                      ? locale === "zh"
+                        ? "正在跳转 Apple Pay…"
+                        : "Redirecting to Apple Pay…"
+                      : `${locale === "zh" ? "使用 Apple Pay" : "Use Apple Pay"} · ${formatMoney(externalPaymentCents)}`}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleGooglePayCheckout()}
+                    disabled={
+                      !canPlaceOrder ||
+                      isSubmitting ||
+                      isRedirectingToApplePay ||
+                      isRedirectingToGooglePay ||
+                      isRedirectingToCardPay
+                    }
+                    className="w-full rounded-full border border-[#87362E]/25 bg-[#fffaf5] px-4 py-2.5 text-sm font-bold text-[#87362E] transition hover:bg-[#fff3ea] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isRedirectingToGooglePay
+                      ? locale === "zh"
+                        ? "正在跳转 Google Pay…"
+                        : "Redirecting to Google Pay…"
+                      : `${locale === "zh" ? "使用 Google Pay" : "Use Google Pay"} · ${formatMoney(externalPaymentCents)}`}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleCardPayCheckout()}
+                    disabled={
+                      !canPlaceOrder ||
+                      isSubmitting ||
+                      isRedirectingToApplePay ||
+                      isRedirectingToGooglePay ||
+                      isRedirectingToCardPay
+                    }
+                    className="w-full rounded-full bg-[#87362E] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isRedirectingToCardPay
+                      ? locale === "zh"
+                        ? "正在跳转银行卡支付…"
+                        : "Redirecting to card payment…"
+                      : `${locale === "zh" ? "使用银行卡支付" : "Pay with Card"} · ${formatMoney(externalPaymentCents)}`}
+                  </button>
+                </div>
+              ) : null}
+
+              {totalCents <= 0 ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    void handlePlaceOrder();
-                  }}
+                  onClick={() => void handlePlaceOrder()}
                   disabled={
                     !canPlaceOrder ||
                     isSubmitting ||
@@ -4295,7 +4519,7 @@ export default function CheckoutPage() {
                     payFlowState === "PROCESSING" ||
                     payFlowState === "CHALLENGE"
                   }
-                  className="w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-200"
+                  className="w-full rounded-full bg-[#87362E] px-5 py-3 text-sm font-bold text-white transition enabled:hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {payButtonLabel}
                 </button>
@@ -4309,7 +4533,7 @@ export default function CheckoutPage() {
                 <div
                   className={`mt-2 rounded-2xl border p-3 text-xs ${
                     payFlowState === "PROCESSING"
-                      ? "border-slate-200 bg-slate-50 text-slate-600"
+                      ? "border-[#87362E]/15 bg-[#fffaf5] text-slate-600"
                       : "border-red-200 bg-red-50 text-red-600"
                   }`}
                 >

@@ -57,6 +57,8 @@ const checkoutFixture = (
     storeId: storeStableId,
     pricing: {
       subtotalCents: 1200,
+      displaySubtotalCents: 1200,
+      appliedDiscounts: [],
       couponDiscountCents: 100,
       automaticPromotionDiscountCents: 0,
       posManualDiscountCents: 0,

@@ -37,6 +37,7 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
+      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
@@ -73,6 +74,7 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 24,
         }),
       },
+      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
@@ -83,6 +85,92 @@ describe('PrintPosPayloadService', () => {
 
     expect(payload.snapshot.creditCardSurchargeCents).toBe(24);
     expect(payload.snapshot.totalCents).toBe(1024);
+  });
+
+  it('打印载荷会统一输出特价/促销明细、积分和余额支付拆分', async () => {
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-db-1',
+          orderStableId: 'ord_pricing',
+          clientRequestId: 'REQ-pricing',
+          deliveryFeeCents: 0,
+          deliveryCostCents: 0,
+          deliverySubsidyCents: 0,
+          items: [
+            {
+              productStableId: 'item-1',
+              displayName: '肉夹馍',
+              nameZh: '肉夹馍',
+              nameEn: 'Roujiamo',
+              qty: 1,
+              unitPriceCents: 800,
+              optionsJson: [],
+            },
+          ],
+          subtotalCents: 800,
+          subtotalAfterDiscountCents: 675,
+          loyaltyRedeemCents: 25,
+          couponDiscountCents: 0,
+          promotionSnapshot: {
+            version: 1,
+            adjustments: [
+              {
+                promotionStableId: 'daily-1',
+                source: 'DAILY_SPECIAL',
+                productStableId: 'item-1',
+                discountCents: 200,
+                snapshot: { pricingMode: 'OVERRIDE_PRICE' },
+              },
+              {
+                promotionStableId: 'auto-1',
+                source: 'AUTOMATIC_PROMOTION',
+                discountCents: 100,
+                snapshot: { titleZh: '买一送一', titleEn: 'Buy 1 Get 1 Free' },
+              },
+            ],
+          },
+          paymentTotalCents: 763,
+          totalCents: 763,
+          paymentMethod: PaymentMethod.CARD,
+          channel: Channel.web,
+          pickupCode: null,
+          fulfillmentType: 'pickup',
+          taxCents: 88,
+          creditCardSurchargeCents: 0,
+        }),
+      },
+      loyaltyLedger: {
+        findMany: jest.fn().mockResolvedValue([
+          { deltaMicro: -3_000_000n },
+        ]),
+      },
+      checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    const payload = await new PrintPosPayloadService(
+      prisma as never,
+    ).getByStableId('ord_pricing');
+
+    expect(payload.snapshot.displaySubtotalCents).toBe(1000);
+    expect(payload.snapshot.appliedDiscounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'DAILY_SPECIAL',
+          discountCents: 200,
+          productNameZh: '肉夹馍',
+        }),
+        expect.objectContaining({
+          source: 'AUTOMATIC_PROMOTION',
+          titleZh: '买一送一',
+          discountCents: 100,
+        }),
+      ]),
+    );
+    expect(payload.snapshot.loyaltyRedeemCents).toBe(25);
+    expect(payload.snapshot.balancePaidCents).toBe(300);
+    expect(payload.snapshot.externalPaidCents).toBe(463);
+    expect(payload.snapshot.orderTotalCents).toBe(763);
   });
 
   it('当订单未落库附加费但intent metadata有附加费时，打印载荷会回填附加费', async () => {
@@ -107,6 +195,7 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
+      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue({
           metadataJson: {
@@ -145,6 +234,7 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
+      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue({
           metadataJson: {
@@ -203,6 +293,7 @@ describe('PrintPosPayloadService', () => {
           taxCents: 0,
         }),
       },
+      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
     };
 
@@ -250,6 +341,7 @@ describe('PrintPosPayloadService', () => {
             taxCents: 0,
           }),
         },
+        loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
         checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
       };
 

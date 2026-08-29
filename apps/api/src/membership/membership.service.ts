@@ -113,11 +113,23 @@ export class MembershipService {
   private couponStatus(coupon: {
     expiresAt: Date | null;
     usedAt: Date | null;
-  }): 'active' | 'used' | 'expired' {
+    isActive: boolean;
+    isFrozen: boolean;
+    startsAt: Date | null;
+    endsAt: Date | null;
+    reservationAttemptId: string | null;
+  }): 'active' | 'used' | 'expired' | 'inactive' | 'not_started' | 'reserved' {
+    const now = Date.now();
     if (coupon.usedAt) return 'used';
-    if (coupon.expiresAt && coupon.expiresAt.getTime() < Date.now()) {
+    if (
+      (coupon.expiresAt && coupon.expiresAt.getTime() < now) ||
+      (coupon.endsAt && coupon.endsAt.getTime() < now)
+    ) {
       return 'expired';
     }
+    if (!coupon.isActive || coupon.isFrozen) return 'inactive';
+    if (coupon.startsAt && coupon.startsAt.getTime() > now) return 'not_started';
+    if (coupon.reservationAttemptId) return 'reserved';
     return 'active';
   }
 
@@ -134,11 +146,13 @@ export class MembershipService {
     issuedAt: Date;
     source: string | null;
     unlockedItemStableIds: string[];
+    isActive: boolean;
+    isFrozen: boolean;
+    startsAt: Date | null;
+    endsAt: Date | null;
+    reservationAttemptId: string | null;
   }) {
-    const status = this.couponStatus({
-      expiresAt: coupon.expiresAt,
-      usedAt: coupon.usedAt,
-    });
+    const status = this.couponStatus(coupon);
 
     return {
       // ✅ 对外统一：对外只用 stableId
@@ -898,6 +912,11 @@ export class MembershipService {
         issuedAt: coupon.issuedAt,
         source: localizedSource,
         unlockedItemStableIds: coupon.unlockedItemStableIds ?? [],
+        isActive: coupon.isActive,
+        isFrozen: coupon.isFrozen,
+        startsAt: coupon.startsAt,
+        endsAt: coupon.endsAt,
+        reservationAttemptId: coupon.reservationAttemptId,
       });
     });
   }
@@ -1340,11 +1359,8 @@ export class MembershipService {
       throw new BadRequestException('coupon not found for user');
     }
 
-    const status = this.couponStatus({
-      expiresAt: coupon.expiresAt,
-      usedAt: coupon.usedAt,
-    });
-    if (status !== 'active' || coupon.reservationAttemptId) {
+    const status = this.couponStatus(coupon);
+    if (status !== 'active') {
       throw new BadRequestException('coupon is not available');
     }
 
@@ -1385,14 +1401,13 @@ export class MembershipService {
           throw new BadRequestException('coupon not found for user');
         }
         const status = this.couponStatus({
-          expiresAt: coupon.expiresAt,
-          usedAt: coupon.usedAt,
+          ...coupon,
+          reservationAttemptId:
+            coupon.reservationAttemptId === attemptId
+              ? null
+              : coupon.reservationAttemptId,
         });
-        if (
-          status !== 'active' ||
-          (coupon.reservationAttemptId &&
-            coupon.reservationAttemptId !== attemptId)
-        ) {
+        if (status !== 'active') {
           throw new BadRequestException('coupon is not available');
         }
         if (coupon.reservationAttemptId !== attemptId) {

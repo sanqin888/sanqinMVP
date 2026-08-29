@@ -39,7 +39,7 @@ import { PricingTokenService } from './pricing-token.service';
 import { EmailService } from '../email/email.service';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { PhoneVerificationService } from '../phone-verification/phone-verification.service';
-import { MessagingTemplateType } from '@prisma/client';
+import { MessagingTemplateType, PaymentMethod } from '@prisma/client';
 import {
   type ChargeAmountReconcileResult,
   reconcileChargeAmount,
@@ -191,10 +191,13 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const orderStableId = metadata.orderStableId ?? generateStableId();
     const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
     orderDto.clientRequestId = checkoutIntentId;
-    const quote = await this.orders.quoteOrderPricing(orderDto);
+    const tenderQuote = await this.orders.quoteWebPaymentTender(orderDto);
+    orderDto.balanceUsedCents =
+      tenderQuote.balanceCents > 0 ? tenderQuote.balanceCents : undefined;
+    const quote = tenderQuote.pricing;
     const fingerprint = buildPricingFingerprint(orderDto);
     const token = this.pricingTokens.issue({
-      totalCents: quote.totalCents,
+      totalCents: tenderQuote.externalCents,
       fingerprint,
       checkoutIntentId,
     });
@@ -217,23 +220,44 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             },
           }
         : {}),
+      balanceUsedCents: tenderQuote.balanceCents,
       orderStableId,
       paymentMethod: dto.paymentMethod,
       paymentSessionId: sessionId,
       paymentSessionCreatedAt: new Date().toISOString(),
     } as CheckoutMetadata & Record<string, unknown>;
 
+    if (tenderQuote.externalCents === 0) {
+      orderDto.paymentMethod = PaymentMethod.STORE_BALANCE;
+      const order = await this.orders.createImmediatePaid(
+        orderDto,
+        checkoutIntentId,
+      );
+      return {
+        sessionId,
+        paymentMethod: dto.paymentMethod,
+        checkoutIntentId,
+        orderStableId: order.orderStableId,
+        completedOrderStableId: order.orderStableId,
+        currency: CLOVER_PAYMENT_CURRENCY,
+        quote,
+        externalPaymentCents: 0,
+        pricingToken: token.pricingToken,
+        pricingTokenExpiresAt: token.expiresAt,
+      };
+    }
+
     await this.checkoutIntents.recordIntent({
       referenceId: checkoutIntentId,
       checkoutSessionId: sessionId,
-      amountCents: quote.totalCents,
+      amountCents: tenderQuote.externalCents,
       currency: CLOVER_PAYMENT_CURRENCY,
       locale: metadata.locale,
       metadata: metadataWithSession as CheckoutMetadata,
     });
 
     this.logger.debug(
-      `[session.create] ok sessionId=${sessionId} method=${dto.paymentMethod} intent=${checkoutIntentId} total=${quote.totalCents}`,
+      `[session.create] ok sessionId=${sessionId} method=${dto.paymentMethod} intent=${checkoutIntentId} orderTotal=${quote.totalCents} external=${tenderQuote.externalCents}`,
     );
 
     return {
@@ -243,6 +267,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       orderStableId,
       currency: CLOVER_PAYMENT_CURRENCY,
       quote,
+      externalPaymentCents: tenderQuote.externalCents,
       pricingToken: token.pricingToken,
       pricingTokenExpiresAt: token.expiresAt,
     };
@@ -297,10 +322,13 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
     orderDto.clientRequestId = intent.referenceId;
 
-    const quote = await this.orders.quoteOrderPricing(orderDto);
+    const tenderQuote = await this.orders.quoteWebPaymentTender(orderDto);
+    orderDto.balanceUsedCents =
+      tenderQuote.balanceCents > 0 ? tenderQuote.balanceCents : undefined;
+    const quote = tenderQuote.pricing;
     const fingerprint = buildPricingFingerprint(orderDto);
     const token = this.pricingTokens.issue({
-      totalCents: quote.totalCents,
+      totalCents: tenderQuote.externalCents,
       fingerprint,
       checkoutIntentId: intent.referenceId,
     });
@@ -313,7 +341,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
           : 'unknown';
 
     this.logger.debug(
-      `[session.fetch] ok sessionId=${id} method=${resolvedMethod} intent=${intent.referenceId} total=${quote.totalCents}`,
+      `[session.fetch] ok sessionId=${id} method=${resolvedMethod} intent=${intent.referenceId} orderTotal=${quote.totalCents} external=${tenderQuote.externalCents}`,
     );
 
     return {
@@ -326,6 +354,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       orderStableId,
       currency: intent.currency ?? CLOVER_PAYMENT_CURRENCY,
       quote,
+      externalPaymentCents: tenderQuote.externalCents,
       pricingToken: token.pricingToken,
       pricingTokenExpiresAt: token.expiresAt,
       metadata,
@@ -384,10 +413,13 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     const orderStableId = metadata.orderStableId ?? generateStableId();
     const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
     orderDto.clientRequestId = checkoutIntentId;
-    const quote = await this.orders.quoteOrderPricing(orderDto);
+    const tenderQuote = await this.orders.quoteWebPaymentTender(orderDto);
+    orderDto.balanceUsedCents =
+      tenderQuote.balanceCents > 0 ? tenderQuote.balanceCents : undefined;
+    const quote = tenderQuote.pricing;
     const fingerprint = buildPricingFingerprint(orderDto);
     const token = this.pricingTokens.issue({
-      totalCents: quote.totalCents,
+      totalCents: tenderQuote.externalCents,
       fingerprint,
       checkoutIntentId,
     });
@@ -396,6 +428,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       orderStableId,
       currency: CLOVER_PAYMENT_CURRENCY,
       quote,
+      externalPaymentCents: tenderQuote.externalCents,
       pricingToken: token.pricingToken,
       pricingTokenExpiresAt: token.expiresAt,
       checkoutIntentId,
@@ -600,16 +633,20 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
           );
           orderDto.clientRequestId = intent.referenceId;
 
-          const preFinalizeQuote =
-            await this.orders.quoteOrderPricing(orderDto);
-          if (preFinalizeQuote.totalCents !== intent.amountCents) {
+          const preFinalizeTender =
+            await this.orders.quoteWebPaymentTender(orderDto);
+          orderDto.balanceUsedCents =
+            preFinalizeTender.balanceCents > 0
+              ? preFinalizeTender.balanceCents
+              : undefined;
+          if (preFinalizeTender.externalCents !== intent.amountCents) {
             await this.checkoutIntents.markFailed({
               intentId: intent.id,
               result: 'AMOUNT_MISMATCH',
             });
             throw new ConflictException({
               code: 'FINALIZE_AMOUNT_MISMATCH',
-              message: 'server total changed after payment authorization',
+              message: 'server external payment amount changed after authorization',
             });
           }
 
@@ -656,14 +693,18 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
             intent.referenceId,
           );
 
-          if (order.totalCents !== intent.amountCents) {
+          const finalizedExternalCents = Math.max(
+            0,
+            order.totalCents - (orderDto.balanceUsedCents ?? 0),
+          );
+          if (finalizedExternalCents !== intent.amountCents) {
             await this.checkoutIntents.markFailed({
               intentId: intent.id,
               result: 'ORDER_AMOUNT_MISMATCH',
             });
             throw new ConflictException({
               code: 'ORDER_AMOUNT_MISMATCH',
-              message: 'order total does not match charged amount',
+              message: 'order external payment amount does not match charged amount',
             });
           }
 
@@ -812,8 +853,10 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
     const orderDto = buildOrderDtoFromMetadata(metadata, orderStableId);
     orderDto.clientRequestId = referenceId;
-    const quote = await this.orders.quoteOrderPricing(orderDto);
-    const expectedTotalCents = quote.totalCents;
+    const tenderQuote = await this.orders.quoteWebPaymentTender(orderDto);
+    orderDto.balanceUsedCents =
+      tenderQuote.balanceCents > 0 ? tenderQuote.balanceCents : undefined;
+    const expectedTotalCents = tenderQuote.externalCents;
     const fingerprint = buildPricingFingerprint(orderDto);
 
     const existingIntent = await this.checkoutIntents.findByIdentifiers({
@@ -892,6 +935,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
 
     const metadataWithIds = {
       ...metadata,
+      balanceUsedCents: tenderQuote.balanceCents,
       orderStableId,
       paymentAttempt,
       lastIdempotencyKey: idempotencyKey,
@@ -1219,14 +1263,18 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       referenceId,
     );
 
-    if (order.totalCents !== expectedTotalCents) {
+    const finalizedExternalCents = Math.max(
+      0,
+      order.totalCents - (orderForCreation.balanceUsedCents ?? 0),
+    );
+    if (finalizedExternalCents !== expectedTotalCents) {
       await this.checkoutIntents.markFailed({
         intentId: intent.id,
         result: 'ORDER_AMOUNT_MISMATCH',
       });
       throw new ConflictException({
         code: 'ORDER_AMOUNT_MISMATCH',
-        message: 'order total does not match charged amount',
+        message: 'order external payment amount does not match charged amount',
       });
     }
 
@@ -1295,6 +1343,7 @@ function buildPricingFingerprint(
     selectedUserCouponId: orderDto.selectedUserCouponId ?? null,
     pointsToRedeem: orderDto.pointsToRedeem ?? null,
     redeemValueCents: orderDto.redeemValueCents ?? null,
+    balanceUsedCents: orderDto.balanceUsedCents ?? null,
     items: (orderDto.items ?? []).map((item) => ({
       productStableId: item.productStableId,
       qty: item.qty,

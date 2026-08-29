@@ -27,6 +27,7 @@ type PaymentSessionFetchResponse = {
   pricingTokenExpiresAt: string;
   currency: string;
   quote: { totalCents: number };
+  externalPaymentCents: number;
   metadata: Record<string, unknown>;
 };
 
@@ -102,7 +103,7 @@ export default function GooglePayWalletPage() {
       try {
         const data = await withTimeout(apiFetch<PaymentSessionFetchResponse>(`/clover/pay/online/session?sessionId=${encodeURIComponent(sessionId)}&paymentMethod=GOOGLE_PAY`), 15000, "apiFetch /clover/pay/online/session");
         if (cancelled) return;
-        setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "GOOGLE_PAY", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.quote.totalCents, metadata: data.metadata });
+        setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "GOOGLE_PAY", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.externalPaymentCents, metadata: data.metadata });
         setRemainingMs(getRemainingMs(data.pricingTokenExpiresAt));
         setLoading(false);
       } catch (err) {
