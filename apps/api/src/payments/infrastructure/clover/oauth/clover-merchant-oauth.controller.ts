@@ -21,11 +21,11 @@ export class CloverMerchantOAuthController {
   async start(
     @Query() query: CloverOAuthLaunchInput,
     @Res() response: Response,
-  ): Promise<Response> {
+  ): Promise<void> {
     try {
-      return response.redirect(302, await this.authorization.start(query));
+      response.redirect(302, await this.authorization.start(query));
     } catch (error) {
-      return response.redirect(
+      response.redirect(
         303,
         this.resultUrl('failure', this.publicErrorCode(error)),
       );
@@ -36,10 +36,10 @@ export class CloverMerchantOAuthController {
   async callback(
     @Query() query: CloverOAuthCallbackInput,
     @Res() response: Response,
-  ): Promise<Response> {
+  ): Promise<void> {
     try {
       const result = await this.authorization.complete(query);
-      return response.redirect(
+      response.redirect(
         303,
         this.resultUrl('success', undefined, {
           merchant: result.merchantName ?? result.merchantId,
@@ -49,7 +49,7 @@ export class CloverMerchantOAuthController {
         }),
       );
     } catch (error) {
-      return response.redirect(
+      response.redirect(
         303,
         this.resultUrl('failure', this.publicErrorCode(error)),
       );
