@@ -182,6 +182,11 @@ export class AdminMenuController {
       labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
       itemKind?: 'FOOD' | 'BEVERAGE';
       packagingTypeStableIds?: string[];
+      fixedComponents?: Array<{
+        componentItemStableId: string;
+        quantity: number;
+        sortOrder?: number;
+      }>;
       tempUnavailableUntil?: string | null;
     },
   ) {

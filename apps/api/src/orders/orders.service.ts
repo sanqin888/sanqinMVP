@@ -54,6 +54,10 @@ import {
   OrderItemOptionGroupSnapshot,
   OrderItemOptionsSnapshot,
 } from './order-item-options';
+import type {
+  OrderItemComponentSnapshot,
+  OrderItemComponentsSnapshot,
+} from './order-item-components';
 import { isAvailableNow } from '@shared/menu';
 import {
   isDailySpecialActiveNow,
@@ -88,6 +92,7 @@ type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
     unitPriceCents: true;
     externalSpecialInstructions: true;
     optionsJson: true;
+    componentsJson: true;
   };
 }>;
 
@@ -147,6 +152,7 @@ type OrderItemInput = NonNullable<CreateOrderInput['items']>[number] & {
 };
 type MenuItemWithOptions = Prisma.MenuItemGetPayload<{
   include: {
+    fixedComponents: true;
     optionGroups: {
       include: {
         templateGroup: {
@@ -343,6 +349,7 @@ export type PreparedPaymentOrderItemSnapshot = {
   isDailySpecialApplied: boolean;
   dailySpecialStableId: string | null;
   optionsJson: unknown;
+  componentsJson?: unknown;
 };
 
 export type PreparedPaymentOrderSnapshot = {
@@ -735,6 +742,7 @@ export class OrdersService {
       unitPriceCents: it.unitPriceCents ?? 0,
       specialInstructions: it.externalSpecialInstructions?.trim() || null,
       optionsJson: it.optionsJson ?? undefined,
+      componentsJson: it.componentsJson ?? undefined,
     }));
     const subtotalCents = order.subtotalCents ?? 0;
     const loyaltyRedeemCents = order.loyaltyRedeemCents ?? 0;
@@ -1698,8 +1706,10 @@ export class OrdersService {
         }
       }
 
-      if (!optionId || seen.has(optionId)) return;
-      seen.add(optionId);
+      if (!optionId) return;
+      const selectionKey = `${groupKey ?? ''}::${optionId}`;
+      if (seen.has(selectionKey)) return;
+      seen.add(selectionKey);
       refs.push({ optionId, groupKey, sequence: sequence++ });
     };
 
@@ -1798,6 +1808,9 @@ export class OrdersService {
         OR: [{ id: { in: productIds } }, { stableId: { in: productIds } }],
       },
       include: {
+        fixedComponents: {
+          orderBy: { sortOrder: 'asc' },
+        },
         optionGroups: {
           where: { isEnabled: true },
           include: {
@@ -1899,6 +1912,9 @@ export class OrdersService {
           deletedAt: null,
         },
         include: {
+          fixedComponents: {
+            orderBy: { sortOrder: 'asc' },
+          },
           optionGroups: {
             where: { isEnabled: true },
             include: {
@@ -1923,6 +1939,49 @@ export class OrdersService {
         );
       }
       return linkedProduct;
+    };
+
+    const prepareFixedComponentTree = async (
+      product: MenuItemWithOptions,
+      optionLookup: Map<string, OptionChoiceContext>,
+      visiting = new Set<string>(),
+    ): Promise<void> => {
+      if (visiting.has(product.stableId)) {
+        throw new BadRequestException(
+          `Fixed combo component cycle detected at ${product.stableId}`,
+        );
+      }
+      const nextVisiting = new Set(visiting);
+      nextVisiting.add(product.stableId);
+
+      for (const component of product.fixedComponents ?? []) {
+        const linkedProduct = await ensureLinkedProductByStableId(
+          component.componentItemStableId,
+        );
+        if (!linkedProduct) {
+          throw new BadRequestException(
+            `Fixed component item not found: ${component.componentItemStableId}`,
+          );
+        }
+        if (
+          !isAvailableNow(
+            availabilityFromDb(
+              linkedProduct.isAvailable,
+              linkedProduct.tempUnavailableUntil,
+            ),
+          )
+        ) {
+          throw new BadRequestException(
+            `Fixed component item not available: ${component.componentItemStableId}`,
+          );
+        }
+        addProductOptionChoices(optionLookup, linkedProduct);
+        await prepareFixedComponentTree(
+          linkedProduct,
+          optionLookup,
+          nextVisiting,
+        );
+      }
     };
 
     const businessConfig = await this.ensureBusinessConfig();
@@ -1979,14 +2038,12 @@ export class OrdersService {
         itemDto.options,
       );
       const selectedOptionIds = selectedOptionRefs.map((it) => it.optionId);
-      const selectedOptionRefMap = new Map(
-        selectedOptionRefs.map((it) => [it.optionId, it]),
-      );
 
       const baseOptionLookup =
         choiceLookupByProductId.get(itemDto.normalizedProductId) ??
         new Map<string, OptionChoiceContext>();
       const optionLookup = new Map(baseOptionLookup);
+      await prepareFixedComponentTree(product, optionLookup);
 
       const processedSelectedOptionIds = new Set<string>();
       const expandedTargetItems = new Set<string>();
@@ -2034,7 +2091,8 @@ export class OrdersService {
         OrderItemOptionGroupSnapshot & { sequence: number }
       >();
 
-      for (const optionId of selectedOptionIds) {
+      for (const selectedRef of selectedOptionRefs) {
+        const optionId = selectedRef.optionId;
         const context = optionLookup.get(optionId);
         if (!context) {
           throw new BadRequestException(
@@ -2072,8 +2130,7 @@ export class OrdersService {
 
         optionsUnitPriceCents += context.choice.priceDeltaCents;
         const templateGroupStableId = context.group.stableId;
-        const selectedRef = selectedOptionRefMap.get(optionId);
-        const snapshotKey = selectedRef?.groupKey
+        const snapshotKey = selectedRef.groupKey
           ? `${templateGroupStableId}::${selectedRef.groupKey}`
           : templateGroupStableId;
 
@@ -2081,7 +2138,7 @@ export class OrdersService {
           optionGroupSnapshots.get(snapshotKey) ??
           ({
             templateGroupStableId,
-            groupKey: selectedRef?.groupKey ?? null,
+            groupKey: selectedRef.groupKey ?? null,
             nameEn: context.group.nameEn,
             nameZh: context.group.nameZh ?? null,
             minSelect:
@@ -2094,10 +2151,7 @@ export class OrdersService {
               typeof context.link?.sortOrder === 'number'
                 ? context.link.sortOrder
                 : (context.group.sortOrder ?? 0),
-            sequence:
-              typeof selectedRef?.sequence === 'number'
-                ? selectedRef.sequence
-                : Number.MAX_SAFE_INTEGER,
+            sequence: selectedRef.sequence,
             choices: [] as OrderItemOptionChoiceSnapshot[],
           } satisfies OrderItemOptionGroupSnapshot & { sequence: number });
 
@@ -2133,6 +2187,98 @@ export class OrdersService {
           void sequence;
           return rest;
         });
+
+      const componentSnapshots: OrderItemComponentsSnapshot = [];
+      const componentPathQuantity = new Map<string, number>();
+      const optionGroupsUnderPath = (pathKey: string): OrderItemOptionsSnapshot =>
+        optionsSnapshot.filter((group) =>
+          group.groupKey?.startsWith(`${pathKey}__`),
+        );
+
+      const appendFixedComponentSnapshots = async (
+        parent: MenuItemWithOptions,
+        basePathKey: string,
+        parentQuantity: number,
+        visiting = new Set<string>(),
+      ): Promise<void> => {
+        if (visiting.has(parent.stableId)) return;
+        const nextVisiting = new Set(visiting);
+        nextVisiting.add(parent.stableId);
+
+        for (const component of parent.fixedComponents ?? []) {
+          const linkedProduct = await ensureLinkedProductByStableId(
+            component.componentItemStableId,
+          );
+          if (!linkedProduct) continue;
+          const quantityPerParent =
+            parentQuantity * Math.max(1, Math.trunc(component.quantity));
+          const componentPathKey = `${basePathKey}__component-${component.componentItemStableId}`;
+          componentPathQuantity.set(componentPathKey, quantityPerParent);
+
+          if ((linkedProduct.fixedComponents ?? []).length > 0) {
+            await appendFixedComponentSnapshots(
+              linkedProduct,
+              componentPathKey,
+              quantityPerParent,
+              nextVisiting,
+            );
+            continue;
+          }
+
+          componentSnapshots.push({
+            productStableId: linkedProduct.stableId,
+            nameEn: linkedProduct.nameEn,
+            nameZh: linkedProduct.nameZh ?? null,
+            quantityPerParent,
+            source: 'FIXED',
+            options: optionGroupsUnderPath(componentPathKey),
+          });
+        }
+      };
+
+      await appendFixedComponentSnapshots(
+        product,
+        `root__${product.stableId}`,
+        1,
+      );
+
+      const quantityForGroupPath = (groupKey: string | null | undefined) => {
+        if (!groupKey) return 1;
+        let multiplier = 1;
+        let matchedLength = -1;
+        for (const [pathKey, quantity] of componentPathQuantity) {
+          if (
+            (groupKey === pathKey || groupKey.startsWith(`${pathKey}__`)) &&
+            pathKey.length > matchedLength
+          ) {
+            multiplier = quantity;
+            matchedLength = pathKey.length;
+          }
+        }
+        return multiplier;
+      };
+
+      for (const group of optionsSnapshot) {
+        for (const choice of group.choices) {
+          const targetItemStableId = choice.targetItemStableId?.trim();
+          if (!targetItemStableId) continue;
+          const linkedProduct =
+            await ensureLinkedProductByStableId(targetItemStableId);
+          const targetPathKey = group.groupKey
+            ? `${group.groupKey}__option-${choice.stableId}`
+            : null;
+          const optionComponent: OrderItemComponentSnapshot = {
+            productStableId: targetItemStableId,
+            nameEn: linkedProduct?.nameEn ?? choice.nameEn,
+            nameZh: linkedProduct?.nameZh ?? choice.nameZh ?? null,
+            quantityPerParent: quantityForGroupPath(group.groupKey),
+            source: 'OPTION',
+            sourceOptionStableId: choice.stableId,
+            options: targetPathKey ? optionGroupsUnderPath(targetPathKey) : [],
+          };
+          componentSnapshots.push(optionComponent);
+        }
+      }
 
       const submittedCustomUnitPriceCents =
         allowCustomUnitPrice &&
@@ -2178,6 +2324,9 @@ export class OrdersService {
         dailySpecialStableId: activeSpecial?.stableId ?? null,
         optionsJson: optionsSnapshot.length
           ? (optionsSnapshot as Prisma.InputJsonValue)
+          : undefined,
+        componentsJson: componentSnapshots.length
+          ? (componentSnapshots as Prisma.InputJsonValue)
           : undefined,
       });
     }
@@ -2331,6 +2480,7 @@ export class OrdersService {
         isDailySpecialApplied: item.isDailySpecialApplied ?? false,
         dailySpecialStableId: item.dailySpecialStableId ?? null,
         optionsJson: item.optionsJson ?? null,
+        componentsJson: item.componentsJson ?? null,
       })),
       promotionSnapshot: promotionEvaluation.snapshot,
       coupon: couponInfo?.coupon
@@ -2492,6 +2642,12 @@ export class OrdersService {
                 ...(item.optionsJson !== null
                   ? {
                       optionsJson: item.optionsJson as Prisma.InputJsonValue,
+                    }
+                  : {}),
+                ...(item.componentsJson != null
+                  ? {
+                      componentsJson:
+                        item.componentsJson as Prisma.InputJsonValue,
                     }
                   : {}),
               })),

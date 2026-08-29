@@ -77,6 +77,9 @@ export class PublicMenuService {
           },
           orderBy: { sortOrder: 'asc' },
           include: {
+            fixedComponents: {
+              orderBy: { sortOrder: 'asc' },
+            },
             optionGroups: {
               where: {
                 isEnabled: true,
@@ -124,15 +127,43 @@ export class PublicMenuService {
       }
     });
 
-    const availablePublicItemStableIds = new Set(
+    const publicItemByStableId = new Map(
       (categories ?? []).flatMap((cat) =>
-        (cat.items ?? [])
-          .filter((item) =>
-            isAvailableNow(
-              availabilityFromDb(item.isAvailable, item.tempUnavailableUntil),
-            ),
-          )
-          .map((item) => item.stableId),
+        (cat.items ?? []).map((item) => [item.stableId, item] as const),
+      ),
+    );
+    const fulfillableMemo = new Map<string, boolean>();
+    const isItemFulfillable = (
+      itemStableId: string,
+      visiting = new Set<string>(),
+    ): boolean => {
+      const cached = fulfillableMemo.get(itemStableId);
+      if (cached !== undefined) return cached;
+      if (visiting.has(itemStableId)) return false;
+
+      const item = publicItemByStableId.get(itemStableId);
+      if (!item) return false;
+      if (
+        !isAvailableNow(
+          availabilityFromDb(item.isAvailable, item.tempUnavailableUntil),
+        )
+      ) {
+        fulfillableMemo.set(itemStableId, false);
+        return false;
+      }
+
+      const nextVisiting = new Set(visiting);
+      nextVisiting.add(itemStableId);
+      const componentsAvailable = (item.fixedComponents ?? []).every((component) =>
+        isItemFulfillable(component.componentItemStableId, nextVisiting),
+      );
+      fulfillableMemo.set(itemStableId, componentsAvailable);
+      return componentsAvailable;
+    };
+
+    const availablePublicItemStableIds = new Set(
+      Array.from(publicItemByStableId.keys()).filter((stableId) =>
+        isItemFulfillable(stableId),
       ),
     );
 
@@ -140,11 +171,7 @@ export class PublicMenuService {
       const categoryStableId = cat.stableId;
 
       const items = (cat.items ?? [])
-        .filter((it) => {
-          return isAvailableNow(
-            availabilityFromDb(it.isAvailable, it.tempUnavailableUntil),
-          );
-        })
+        .filter((it) => availablePublicItemStableIds.has(it.stableId))
         .map((it) => {
           const activeSpecial = specialsByItemStableId.get(it.stableId) ?? null;
           const effectivePriceCents = activeSpecial
@@ -244,6 +271,11 @@ export class PublicMenuService {
             imageUrl: it.imageUrl ?? null,
             ingredientsEn: it.ingredientsEn ?? null,
             ingredientsZh: it.ingredientsZh ?? null,
+            fixedComponents: (it.fixedComponents ?? []).map((component) => ({
+              componentItemStableId: component.componentItemStableId,
+              quantity: component.quantity,
+              sortOrder: component.sortOrder,
+            })),
             optionGroups,
           };
         });

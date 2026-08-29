@@ -419,6 +419,27 @@ export default function StorePosPage() {
     [allMenuItems],
   );
 
+  const itemHasConfigurableOptions = useCallback(
+    (item: PublicMenuCategory["items"][number]): boolean => {
+      const visit = (
+        current: PublicMenuCategory["items"][number],
+        visited: Set<string>,
+      ): boolean => {
+        if (visited.has(current.stableId)) return false;
+        if ((current.optionGroups ?? []).length > 0) return true;
+        const nextVisited = new Set(visited);
+        nextVisited.add(current.stableId);
+        return current.fixedComponents.some((component) => {
+          const linkedItem = menuItemMap.get(component.componentItemStableId);
+          return linkedItem ? visit(linkedItem, nextVisited) : false;
+        });
+      };
+
+      return visit(item, new Set<string>());
+    },
+    [menuItemMap],
+  );
+
   const menuItemMapByName = useMemo(() => {
     const map = new Map<string, PublicMenuCategory["items"][number]>();
     allMenuItems.forEach((item) => {
@@ -505,9 +526,22 @@ export default function StorePosPage() {
           );
         });
       });
+
+      item.fixedComponents.forEach((component) => {
+        const linkedItem = menuItemMap.get(component.componentItemStableId);
+        if (!linkedItem) return;
+        lines.push(
+          ...collectSelectedOptionLines(
+            linkedItem,
+            selected,
+            [...basePath, `component-${component.componentItemStableId}`],
+            visited,
+          ),
+        );
+      });
       return lines;
     },
-    [buildGroupSegment, buildPathKey, resolveLinkedItem],
+    [buildGroupSegment, buildPathKey, menuItemMap, resolveLinkedItem],
   );
 
   const cartWithDetails = useMemo(() => {
@@ -653,7 +687,7 @@ export default function StorePosPage() {
 
   const openCartOptionDialog = (lineId: string) => {
     const entry = cartWithDetails.find((line) => line.lineId === lineId);
-    if (!entry?.item.optionGroups?.length) return;
+    if (!entry?.item || !itemHasConfigurableOptions(entry.item)) return;
     const hasManualPrice =
       typeof entry.customUnitPriceCents === "number" &&
       entry.customUnitPriceCents !== entry.menuUnitPriceCents;
@@ -806,6 +840,7 @@ export default function StorePosPage() {
         >[number];
         key: string;
         path: string[];
+        ownerItem: PublicMenuCategory["items"][number];
       }>;
 
     const collect = (
@@ -819,6 +854,7 @@ export default function StorePosPage() {
         >[number];
         key: string;
         path: string[];
+        ownerItem: PublicMenuCategory["items"][number];
       }> = [];
 
       (item.optionGroups ?? []).forEach((group, groupIndex) => {
@@ -827,7 +863,12 @@ export default function StorePosPage() {
         if (visited.has(groupKey)) return;
         visited.add(groupKey);
 
-        collected.push({ group, key: groupKey, path: groupPath });
+        collected.push({
+          group,
+          key: groupKey,
+          path: groupPath,
+          ownerItem: item,
+        });
 
         const selectedIds = activeItem.selected[groupKey] ?? [];
         if (selectedIds.length === 0) return;
@@ -849,6 +890,18 @@ export default function StorePosPage() {
         });
       });
 
+      item.fixedComponents.forEach((component) => {
+        const linkedItem = menuItemMap.get(component.componentItemStableId);
+        if (!linkedItem) return;
+        collected.push(
+          ...collect(
+            linkedItem,
+            [...basePath, `component-${component.componentItemStableId}`],
+            visited,
+          ),
+        );
+      });
+
       return collected;
     };
 
@@ -857,7 +910,13 @@ export default function StorePosPage() {
       ["root", activeItem.item.stableId],
       new Set<string>(),
     );
-  }, [activeItem, buildGroupSegment, buildPathKey, resolveLinkedItem]);
+  }, [
+    activeItem,
+    buildGroupSegment,
+    buildPathKey,
+    menuItemMap,
+    resolveLinkedItem,
+  ]);
 
   const requiredGroupsMissing = activeOptionGroups.filter(({ group, key }) => {
     if (group.minSelect <= 0) return false;
@@ -1144,7 +1203,7 @@ export default function StorePosPage() {
                 const unitPriceCents = Math.round(item.price * 100);
                 const isDailySpecial = Boolean(item.activeSpecial);
                 const addItem = () => {
-                  if (!item.optionGroups || item.optionGroups.length === 0) {
+                  if (!itemHasConfigurableOptions(item)) {
                     const lineId = `line-${Date.now()}-${Math.random()}`;
                     setCart((prev) => [
                       ...prev,
@@ -1456,11 +1515,19 @@ export default function StorePosPage() {
             </div>
 
             <div className="mt-4 space-y-4 max-h-[60vh] overflow-auto pr-1">
-              {activeOptionGroups.map(({ group, key }) => {
-                const groupName =
+              {activeOptionGroups.map(({ group, key, ownerItem }) => {
+                const baseGroupName =
                   locale === "zh" && group.template.nameZh
                     ? group.template.nameZh
                     : group.template.nameEn;
+                const ownerName =
+                  locale === "zh"
+                    ? ownerItem.nameZh ?? ownerItem.nameEn
+                    : ownerItem.nameEn;
+                const groupName =
+                  ownerItem.stableId === activeItem.item.stableId
+                    ? baseGroupName
+                    : `${ownerName} · ${baseGroupName}`;
                 const selection = activeItem.selected[key] ?? [];
                 const minSelect = group.minSelect ?? 0;
                 const maxSelect = group.maxSelect ?? null;

@@ -767,6 +767,7 @@ model OrderItem {
   isDailySpecialApplied       Boolean                 @default(false)
   dailySpecialStableId        String?
   optionsJson                 Json?
+  componentsJson              Json?
   id                          String                  @id @default(uuid()) @db.Uuid
   orderId                     String                  @db.Uuid
   displayName                 String?
@@ -1420,6 +1421,8 @@ model MenuItem {
   category             MenuCategory          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   packagings           MenuItemPackaging[]
   optionGroups         MenuItemOptionGroup[]
+  fixedComponents      MenuItemComponent[]   @relation("MenuItemFixedComponents")
+  componentOf          MenuItemComponent[]   @relation("MenuItemComponentTarget")
   dailySpecials        MenuDailySpecial[]    @relation("MenuItemDailySpecials")
 
   @@index([categoryId, sortOrder])
@@ -1450,6 +1453,20 @@ model MenuItemPackaging {
   @@unique([itemId, packagingTypeId])
   @@index([itemId, sortOrder])
   @@index([packagingTypeId])
+}
+
+model MenuItemComponent {
+  id                    String   @id @default(uuid())
+  parentItemId          String
+  componentItemStableId String
+  quantity              Int      @default(1)
+  sortOrder             Int      @default(0)
+  parentItem            MenuItem @relation("MenuItemFixedComponents", fields: [parentItemId], references: [id], onDelete: Cascade)
+  componentItem         MenuItem @relation("MenuItemComponentTarget", fields: [componentItemStableId], references: [stableId], onDelete: Restrict)
+
+  @@unique([parentItemId, componentItemStableId])
+  @@index([parentItemId, sortOrder])
+  @@index([componentItemStableId])
 }
 
 model MenuDailySpecial {

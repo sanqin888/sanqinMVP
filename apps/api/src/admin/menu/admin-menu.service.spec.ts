@@ -122,6 +122,115 @@ describe('AdminMenuService daily specials weekdays', () => {
   });
 });
 
+describe('AdminMenuService fixed combo composition', () => {
+  it('stores fixed components by stable business id and quantity', async () => {
+    const update = jest.fn().mockResolvedValue({ stableId: 'breakfast-combo' });
+    const service = new AdminMenuService(
+      {
+        menuItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'combo-db-id',
+            publishToUberEats: false,
+            fixedComponents: [],
+            optionGroups: [],
+          }),
+          findMany: jest.fn().mockResolvedValue([
+            { stableId: 'hulatang' },
+            { stableId: 'youtiao' },
+          ]),
+          update,
+        },
+        menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
+      } as never,
+      {} as never,
+    );
+
+    await service.updateItem('breakfast-combo', {
+      fixedComponents: [
+        { componentItemStableId: 'hulatang', quantity: 1 },
+        { componentItemStableId: 'youtiao', quantity: 2 },
+      ],
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { stableId: 'breakfast-combo' },
+        data: expect.objectContaining({
+          fixedComponents: {
+            deleteMany: {},
+            create: [
+              {
+                componentItemStableId: 'hulatang',
+                quantity: 1,
+                sortOrder: 0,
+              },
+              {
+                componentItemStableId: 'youtiao',
+                quantity: 2,
+                sortOrder: 1,
+              },
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('blocks Uber Eats publishing while fixed component context is unsupported', async () => {
+    const update = jest.fn();
+    const service = new AdminMenuService(
+      {
+        menuItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'combo-db-id',
+            publishToUberEats: true,
+            fixedComponents: [],
+            optionGroups: [],
+          }),
+          findMany: jest.fn().mockResolvedValue([{ stableId: 'hulatang' }]),
+          update,
+        },
+        menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
+      } as never,
+      {} as never,
+    );
+
+    await expect(
+      service.updateItem('breakfast-combo', {
+        fixedComponents: [{ componentItemStableId: 'hulatang', quantity: 1 }],
+      }),
+    ).rejects.toThrow('Fixed combo items cannot be published to Uber Eats');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fixed combo containing itself', async () => {
+    const update = jest.fn();
+    const service = new AdminMenuService(
+      {
+        menuItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'combo-db-id',
+            publishToUberEats: false,
+            fixedComponents: [],
+            optionGroups: [],
+          }),
+          update,
+        },
+      } as never,
+      {} as never,
+    );
+
+    await expect(
+      service.updateItem('breakfast-combo', {
+        fixedComponents: [
+          { componentItemStableId: 'breakfast-combo', quantity: 1 },
+        ],
+      }),
+    ).rejects.toThrow('A menu item cannot contain itself');
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
 describe('AdminMenuService packaging option scope', () => {
   it('single-package items always store option scope as all packaging', async () => {
     const upsert = jest.fn().mockResolvedValue({});
