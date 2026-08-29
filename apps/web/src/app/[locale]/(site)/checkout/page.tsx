@@ -47,6 +47,9 @@ import {
   AddressAutocomplete,
   extractAddressParts,
 } from "@/components/AddressAutocomplete";
+import CustomerModalShell, {
+  CustomerModalHeader,
+} from "@/components/site/CustomerModalShell";
 import {
   buildCheckoutContactPayload,
   normalizeCheckoutEmail,
@@ -3629,9 +3632,9 @@ export default function CheckoutPage() {
                           strings.contactFields.addressLine1Placeholder
                         }
                         containerClassName="relative"
-                        inputClassName="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none"
-                        suggestionListClassName="absolute z-50 mt-1 w-full rounded-2xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
-                        suggestionItemClassName="cursor-pointer px-3 py-2 text-slate-700 hover:bg-slate-100"
+                        inputClassName="mt-1 w-full rounded-2xl border border-[#87362E]/15 bg-white p-2 text-sm text-stone-700 outline-none transition focus:border-[#87362E]/45 focus:ring-2 focus:ring-[#87362E]/10"
+                        suggestionListClassName="absolute z-50 mt-1 w-full overflow-hidden rounded-2xl border border-[#87362E]/15 bg-[#fffaf5] py-1 text-sm shadow-[0_18px_45px_-28px_rgba(100,45,38,0.55)]"
+                        suggestionItemClassName="cursor-pointer px-3 py-2 text-stone-700 transition hover:bg-[#fff3ea] hover:text-[#87362E]"
                         debounceMs={500}
                         minLength={3}
                         country="ca"
@@ -3860,10 +3863,10 @@ export default function CheckoutPage() {
                           type="button"
                           onClick={() => setCouponModalOpen(true)}
                           disabled={availableCoupons.length === 0}
-                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${
+                          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold transition ${
                             availableCoupons.length > 0
-                              ? "border border-amber-300 text-amber-700 hover:bg-amber-100"
-                              : "border border-slate-200 text-slate-400"
+                              ? "border border-[#87362E]/25 bg-white text-[#87362E] hover:bg-[#fff3ea]"
+                              : "border border-stone-200 text-stone-400"
                           }`}
                         >
                           {locale === "zh" ? "选择优惠券" : "Choose coupon"}
@@ -3873,31 +3876,25 @@ export default function CheckoutPage() {
                   )}
 
                   {couponModalOpen ? (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
-                      <div className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">
-                              {locale === "zh" ? "选择优惠券" : "Choose coupon"}
-                            </p>
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              {locale === "zh"
-                                ? "可使用券已高亮，不可用券已置灰。"
-                                : "Eligible coupons are highlighted; unavailable coupons are greyed out."}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCouponModalOpen(false)}
-                            className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
-                          >
-                            {locale === "zh" ? "关闭" : "Close"}
-                          </button>
-                        </div>
+                    <CustomerModalShell
+                      ariaLabel={locale === "zh" ? "选择优惠券" : "Choose coupon"}
+                      maxWidthClassName="max-w-lg"
+                      maxHeightClassName="max-h-[80vh]"
+                    >
+                      <CustomerModalHeader
+                        title={locale === "zh" ? "选择优惠券" : "Choose coupon"}
+                        description={
+                          locale === "zh"
+                            ? "可使用券已高亮，不可用券已置灰。"
+                            : "Eligible coupons are highlighted; unavailable coupons are greyed out."
+                        }
+                        closeLabel={locale === "zh" ? "关闭" : "Close"}
+                        onClose={() => setCouponModalOpen(false)}
+                      />
 
-                        <div className="max-h-[60vh] space-y-3 overflow-y-auto px-4 py-3">
+                        <div className="max-h-[60vh] space-y-3 overflow-y-auto bg-[#fff7ef] px-4 py-4 sm:px-6">
                           {availableCoupons.length === 0 && !couponLoading ? (
-                            <p className="text-[11px] text-slate-600">
+                            <p className="rounded-2xl border border-dashed border-[#87362E]/15 bg-white px-4 py-4 text-[11px] text-stone-500">
                               {locale === "zh"
                                 ? "暂无可用优惠券。"
                                 : "No coupons available."}
@@ -3917,14 +3914,14 @@ export default function CheckoutPage() {
                                 return (
                                   <div
                                     key={`${couponKey}-${index}`}
-                                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2"
+                                    className="rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-3"
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <div>
-                                        <p className="text-sm font-semibold text-slate-900">
+                                        <p className="text-sm font-bold text-stone-900">
                                           {coupon.title}
                                         </p>
-                                        <p className="text-[11px] text-slate-500">
+                                        <p className="text-[11px] text-stone-500">
                                           {coupon.minSpendCents
                                             ? locale === "zh"
                                               ? `满 ${formatMoney(
@@ -3943,12 +3940,12 @@ export default function CheckoutPage() {
                                         onClick={() =>
                                           handleApplyCoupon(coupon)
                                         }
-                                        className="shrink-0 rounded-full border border-emerald-300 bg-white px-3 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
+                                        className="shrink-0 rounded-full bg-[#87362E] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#6f2c26]"
                                       >
                                         {locale === "zh" ? "使用" : "Apply"}
                                       </button>
                                     </div>
-                                    <div className="mt-1 flex items-center justify-between text-[11px] text-slate-600">
+                                    <div className="mt-1 flex items-center justify-between text-[11px] text-stone-600">
                                       <span className="font-semibold text-amber-700">
                                         {typeof coupon.discountPercent ===
                                         "number"
@@ -3956,7 +3953,7 @@ export default function CheckoutPage() {
                                           : `${locale === "zh" ? "立减 " : "Save "}${formatMoney(coupon.discountCents)}`}
                                       </span>
                                       {coupon.expiresAt ? (
-                                        <span className="text-slate-500">
+                                        <span className="text-stone-500">
                                           {coupon.expiresAt}
                                         </span>
                                       ) : null}
@@ -3969,7 +3966,7 @@ export default function CheckoutPage() {
 
                           {inapplicableCoupons.length > 0 ? (
                             <div className="space-y-2">
-                              <p className="text-[11px] font-semibold text-slate-500">
+                              <p className="text-[11px] font-semibold text-stone-500">
                                 {locale === "zh" ? "不可使用" : "Unavailable"}
                               </p>
                               {inapplicableCoupons.map((coupon, index) => {
@@ -3980,14 +3977,14 @@ export default function CheckoutPage() {
                                 return (
                                   <div
                                     key={`${couponKey}-inapplicable-${index}`}
-                                    className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 opacity-80"
+                                    className="rounded-2xl border border-stone-200 bg-stone-100/85 px-3 py-3 opacity-80"
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <div>
-                                        <p className="text-sm font-semibold text-slate-500">
+                                        <p className="text-sm font-semibold text-stone-500">
                                           {coupon.title}
                                         </p>
-                                        <p className="text-[11px] text-slate-500">
+                                        <p className="text-[11px] text-stone-500">
                                           {coupon.minSpendCents
                                             ? locale === "zh"
                                               ? `满 ${formatMoney(
@@ -4001,13 +3998,13 @@ export default function CheckoutPage() {
                                               : "No minimum spend"}
                                         </p>
                                       </div>
-                                      <span className="shrink-0 rounded-full border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-400">
+                                      <span className="shrink-0 rounded-full border border-stone-300 px-3 py-1 text-[11px] font-medium text-stone-400">
                                         {locale === "zh"
                                           ? "未满足条件"
                                           : "Not eligible"}
                                       </span>
                                     </div>
-                                    <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                                    <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500">
                                       <span className="font-semibold">
                                         {typeof coupon.discountPercent ===
                                         "number"
@@ -4024,8 +4021,7 @@ export default function CheckoutPage() {
                             </div>
                           ) : null}
                         </div>
-                      </div>
-                    </div>
+                    </CustomerModalShell>
                   ) : null}
 
                   {couponError && (
@@ -4367,36 +4363,28 @@ export default function CheckoutPage() {
         )}
       </section>
       {challengeUrl ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <p className="text-sm font-semibold text-slate-700">
-                {locale === "zh"
-                  ? "完成 3D Secure 验证"
-                  : "Complete 3D Secure verification"}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setChallengeUrl(null);
-                  clearCheckoutIntentId();
-                  setPayFlowState("IDLE");
-                }}
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
-              >
-                {locale === "zh" ? "关闭" : "Close"}
-              </button>
-            </div>
-            <div className="h-[70vh] bg-white">
-              <iframe
-                title="3D Secure Challenge"
-                src={challengeUrl}
-                className="h-full w-full"
-                allow="payment *; fullscreen *"
-              />
-            </div>
+        <CustomerModalShell
+          ariaLabel={locale === "zh" ? "完成 3D Secure 验证" : "Complete 3D Secure verification"}
+          maxWidthClassName="max-w-2xl"
+        >
+          <CustomerModalHeader
+            title={locale === "zh" ? "完成 3D Secure 验证" : "Complete 3D Secure verification"}
+            closeLabel={locale === "zh" ? "关闭" : "Close"}
+            onClose={() => {
+              setChallengeUrl(null);
+              clearCheckoutIntentId();
+              setPayFlowState("IDLE");
+            }}
+          />
+          <div className="h-[70vh] bg-white">
+            <iframe
+              title="3D Secure Challenge"
+              src={challengeUrl}
+              className="h-full w-full"
+              allow="payment *; fullscreen *"
+            />
           </div>
-        </div>
+        </CustomerModalShell>
       ) : null}
       {isPwaStandalone ? (
         <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2">
@@ -4410,7 +4398,7 @@ export default function CheckoutPage() {
               }
               router.replace(`/${locale}`);
             }}
-            className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
+            className="rounded-full border border-[#87362E]/20 bg-[#fffaf5]/95 px-4 py-2 text-xs font-bold text-[#87362E] shadow-lg backdrop-blur transition hover:border-[#87362E]/35 hover:bg-[#fff3ea]"
           >
             {locale === "zh" ? "返回" : "Back"}
           </button>
@@ -4420,7 +4408,7 @@ export default function CheckoutPage() {
               if (typeof window === "undefined") return;
               window.location.reload();
             }}
-            className="rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-100"
+            className="rounded-full border border-[#87362E]/20 bg-[#fffaf5]/95 px-4 py-2 text-xs font-bold text-[#87362E] shadow-lg backdrop-blur transition hover:border-[#87362E]/35 hover:bg-[#fff3ea]"
           >
             {locale === "zh" ? "刷新" : "Refresh"}
           </button>

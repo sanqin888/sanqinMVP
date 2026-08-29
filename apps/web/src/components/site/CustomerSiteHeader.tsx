@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import type { MouseEvent } from "react";
+import { usePathname, useRouter, useSelectedLayoutSegments } from "next/navigation";
+import type { MouseEvent, ReactNode } from "react";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import { useSession } from "@/lib/auth-session";
 import { usePersistentCart } from "@/lib/cart";
@@ -11,6 +11,40 @@ import { usePersistentCart } from "@/lib/cart";
 type Props = {
   locale: "zh" | "en";
 };
+
+type CustomerSiteShellBoundaryProps = {
+  children: ReactNode;
+  customerHeader: ReactNode;
+  customerFooter: ReactNode;
+  localePreferenceSync: ReactNode;
+};
+
+export function CustomerSiteShellBoundary({
+  children,
+  customerHeader,
+  customerFooter,
+  localePreferenceSync,
+}: CustomerSiteShellBoundaryProps) {
+  const segments = useSelectedLayoutSegments();
+  const isBackOfficeRoute = segments.includes("admin") || segments.includes("accounting");
+
+  if (isBackOfficeRoute) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="min-h-screen bg-[#fffdfa] text-stone-900">
+      {localePreferenceSync}
+      {customerHeader}
+
+      <main className="mx-auto w-full max-w-[1600px] px-4 py-0 sm:px-6 lg:px-8">
+        {children}
+      </main>
+
+      {customerFooter}
+    </div>
+  );
+}
 
 export default function CustomerSiteHeader({ locale }: Props) {
   const pathname = usePathname();
