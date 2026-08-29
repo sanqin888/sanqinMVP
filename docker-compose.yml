@@ -153,6 +153,7 @@ services:
     restart: always
     environment:
       API_UPSTREAM: "http://api:4000"
+      PUBLIC_BASE_URL: "https://sanq.ca"
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
