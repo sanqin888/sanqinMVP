@@ -6,7 +6,6 @@ import {
   type HistoricalComponentBackfillCatalog,
   type HistoricalComponentBackfillIssueCode,
   type HistoricalComponentBackfillPlan,
-  type HistoricalComponentBackfillWarningCode,
 } from '../order-item-components-backfill';
 
 const APPLY_CONFIRMATION = 'BACKFILL_ORDER_ITEM_COMPONENTS_V1';
@@ -81,9 +80,7 @@ function buildReport(
   plans: HistoricalComponentBackfillPlan[],
 ): BackfillReport {
   const safePlans = plans.filter((plan) => plan.status === 'SAFE');
-  const unresolvedPlans = plans.filter(
-    (plan) => plan.status === 'UNRESOLVED',
-  );
+  const unresolvedPlans = plans.filter((plan) => plan.status === 'UNRESOLVED');
   const parentSummary = new Map<
     string,
     { parentProductStableId: string; safe: number; unresolved: number }
@@ -102,7 +99,7 @@ function buildReport(
 
   const warningCodes = plans.flatMap((plan) =>
     plan.warnings.map((warning) => warning.code),
-  ) as HistoricalComponentBackfillWarningCode[];
+  );
   const issueCodes = unresolvedPlans.flatMap((plan) =>
     plan.issues.map((issue) => issue.code),
   );
@@ -218,18 +215,11 @@ async function buildCatalog(
   return {
     currentTargetByChoiceStableId,
     knownMenuItemStableIds: new Set(menuItems.map((item) => item.stableId)),
-    optionGroupStableIdsByItemStableId: new Map<
-      string,
-      ReadonlySet<string>
-    >(
-      menuItems.map(
-        (item): [string, ReadonlySet<string>] => [
-          item.stableId,
-          new Set(
-            item.optionGroups.map((group) => group.templateGroup.stableId),
-          ),
-        ],
-      ),
+    optionGroupStableIdsByItemStableId: new Map<string, ReadonlySet<string>>(
+      menuItems.map((item): [string, ReadonlySet<string>] => [
+        item.stableId,
+        new Set(item.optionGroups.map((group) => group.templateGroup.stableId)),
+      ]),
     ),
   };
 }

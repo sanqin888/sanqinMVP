@@ -43,10 +43,7 @@ export type HistoricalComponentBackfillInput = {
 export type HistoricalComponentBackfillCatalog = {
   currentTargetByChoiceStableId: ReadonlyMap<string, string | null>;
   knownMenuItemStableIds: ReadonlySet<string>;
-  optionGroupStableIdsByItemStableId: ReadonlyMap<
-    string,
-    ReadonlySet<string>
-  >;
+  optionGroupStableIdsByItemStableId: ReadonlyMap<string, ReadonlySet<string>>;
 };
 
 export type HistoricalComponentBackfillEvidence = {
@@ -200,7 +197,9 @@ function hasPotentialTargetChoice(
       const choiceStableId = nonEmptyString(record.stableId);
       if (
         choiceStableId &&
-        nonEmptyString(catalog.currentTargetByChoiceStableId.get(choiceStableId))
+        nonEmptyString(
+          catalog.currentTargetByChoiceStableId.get(choiceStableId),
+        )
       ) {
         return true;
       }
@@ -251,7 +250,9 @@ function createEmptyEvidence(): HistoricalComponentBackfillEvidence {
   };
 }
 
-export function collectHistoricalOptionChoiceStableIds(value: unknown): string[] {
+export function collectHistoricalOptionChoiceStableIds(
+  value: unknown,
+): string[] {
   if (!Array.isArray(value)) return [];
   const stableIds: string[] = [];
   for (const group of value) {
@@ -271,7 +272,9 @@ export function collectHistoricalOptionChoiceStableIds(value: unknown): string[]
   return stableIds;
 }
 
-export function collectHistoricalSnapshotTargetStableIds(value: unknown): string[] {
+export function collectHistoricalSnapshotTargetStableIds(
+  value: unknown,
+): string[] {
   if (!Array.isArray(value)) return [];
   const stableIds: string[] = [];
   for (const group of value) {
@@ -341,8 +344,9 @@ export function planHistoricalOrderItemComponentsBackfill(
     };
   }
 
-  const parentGroupStableIds =
-    catalog.optionGroupStableIdsByItemStableId.get(input.parentProductStableId);
+  const parentGroupStableIds = catalog.optionGroupStableIdsByItemStableId.get(
+    input.parentProductStableId,
+  );
   const warnings: HistoricalComponentBackfillWarning[] = [];
   const issues: HistoricalComponentBackfillIssue[] = [];
   const resolvedTargets: ResolvedTargetChoice[] = [];
@@ -519,10 +523,7 @@ export function planHistoricalOrderItemComponentsBackfill(
     }
 
     const signatures = new Set(groups.map(semanticGroupSignature));
-    if (
-      groups.length !== componentIndexes.length ||
-      signatures.size !== 1
-    ) {
+    if (groups.length !== componentIndexes.length || signatures.size !== 1) {
       issues.push({
         code: 'REPEATED_TARGET_CHILD_OPTIONS',
         templateGroupStableId,

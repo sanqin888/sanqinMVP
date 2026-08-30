@@ -49,10 +49,7 @@ function catalog(params: {
       Object.entries(params.currentTargets ?? {}),
     ),
     knownMenuItemStableIds: new Set(params.knownItems ?? []),
-    optionGroupStableIdsByItemStableId: new Map<
-      string,
-      ReadonlySet<string>
-    >(
+    optionGroupStableIdsByItemStableId: new Map<string, ReadonlySet<string>>(
       Object.entries(params.itemGroups ?? {}).map(
         ([stableId, groups]): [string, ReadonlySet<string>] => [
           stableId,
@@ -259,7 +256,10 @@ describe('historical order item component backfill planner', () => {
         ],
       },
       catalog({
-        currentTargets: { 'choose-a': 'same-target', 'choose-b': 'same-target' },
+        currentTargets: {
+          'choose-a': 'same-target',
+          'choose-b': 'same-target',
+        },
         knownItems: ['combo', 'same-target'],
         itemGroups: {
           combo: ['root-a', 'root-b'],
@@ -286,7 +286,10 @@ describe('historical order item component backfill planner', () => {
         ],
       },
       catalog({
-        currentTargets: { 'choose-a': 'same-target', 'choose-b': 'same-target' },
+        currentTargets: {
+          'choose-a': 'same-target',
+          'choose-b': 'same-target',
+        },
         knownItems: ['combo', 'same-target'],
         itemGroups: {
           combo: ['root-a', 'root-b'],
