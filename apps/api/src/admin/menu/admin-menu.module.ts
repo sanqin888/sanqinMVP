@@ -6,9 +6,10 @@ import { AdminMenuService } from './admin-menu.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthModule } from '../../auth/auth.module';
 import { UberEatsModule } from '../../integrations/ubereats/ubereats.module';
+import { BrandStoreConfigModule } from '../../store/public-api';
 
 @Module({
-  imports: [AuthModule, UberEatsModule],
+  imports: [AuthModule, UberEatsModule, BrandStoreConfigModule],
   controllers: [AdminMenuController],
   providers: [AdminMenuService, PrismaService],
   exports: [AdminMenuService],

@@ -6,9 +6,10 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsController } from './promotions.controller';
 import { PromotionsService } from './promotions.service';
+import { BrandStoreConfigModule } from '../store/public-api';
 
 @Module({
-  imports: [AuthModule, CouponsModule],
+  imports: [AuthModule, CouponsModule, BrandStoreConfigModule],
   controllers: [PromotionsController],
   providers: [PromotionsService, PrismaService, SessionAuthGuard],
   exports: [PromotionsService],
