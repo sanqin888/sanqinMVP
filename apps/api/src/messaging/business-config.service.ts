@@ -85,7 +85,8 @@ export class BusinessConfigService {
       store: {
         name: this.pickText(config.store.storeName, brandName),
         address:
-          this.resolveInvoiceStoreAddress(config.store) ?? DEFAULT_STORE_ADDRESS,
+          this.resolveInvoiceStoreAddress(config.store) ??
+          DEFAULT_STORE_ADDRESS,
         phone: config.store.phone ?? undefined,
       },
     };

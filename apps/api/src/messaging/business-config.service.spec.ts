@@ -131,7 +131,9 @@ describe('BusinessConfigService canonical Brand/Store configuration', () => {
 
   it('fails closed when canonical Brand/Store configuration is unavailable', async () => {
     const brandStoreConfigReader = {
-      getSnapshot: jest.fn().mockRejectedValue(new Error('canonical config missing')),
+      getSnapshot: jest
+        .fn()
+        .mockRejectedValue(new Error('canonical config missing')),
     };
     const service = new BusinessConfigService(brandStoreConfigReader as never);
 
