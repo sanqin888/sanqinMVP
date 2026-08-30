@@ -1,4 +1,4 @@
-import type { Channel } from '@prisma/client';
+import type { Channel } from '@shared/order';
 
 export type ScheduledOrderSummaryDto = {
   orderStableId: string;

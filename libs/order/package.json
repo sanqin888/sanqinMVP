@@ -16,7 +16,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@shared/menu": "workspace:*"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
