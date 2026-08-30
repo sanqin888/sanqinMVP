@@ -1873,5 +1873,4 @@ export class AdminMenuService {
 
     return stableIds.map((stableId) => packagingTypeByStableId.get(stableId)!);
   }
-
 }
