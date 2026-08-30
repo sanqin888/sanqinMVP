@@ -157,7 +157,8 @@ export class AccountingAutomationScheduler
     });
     return {
       ...row,
-      accountingStartDate: row.accountingStartDate?.toISOString().slice(0, 10) ?? null,
+      accountingStartDate:
+        row.accountingStartDate?.toISOString().slice(0, 10) ?? null,
     };
   }
 

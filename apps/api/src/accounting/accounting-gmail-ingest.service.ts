@@ -206,7 +206,9 @@ export class AccountingGmailIngestService {
         }
 
         const { text, extraction } = extractAccountingPdf(buffer);
-        if (this.isBeforeStartDate(extraction.date, options.accountingStartDate)) {
+        if (
+          this.isBeforeStartDate(extraction.date, options.accountingStartDate)
+        ) {
           result.skippedBeforeStartDate += 1;
           continue;
         }
@@ -281,10 +283,11 @@ export class AccountingGmailIngestService {
       .update('\0')
       .update(text)
       .digest('hex');
-    const duplicateHash = await this.prisma.accountingExpenseDocument.findUnique({
-      where: { fileHash },
-      select: { documentStableId: true },
-    });
+    const duplicateHash =
+      await this.prisma.accountingExpenseDocument.findUnique({
+        where: { fileHash },
+        select: { documentStableId: true },
+      });
     if (duplicateHash) {
       result.duplicates += 1;
       return;
@@ -322,9 +325,9 @@ export class AccountingGmailIngestService {
 
   private gmailDateClause(accountingStartDate: string | null): string {
     if (!accountingStartDate) return 'newer_than:30d';
-    const previousDay = DateTime.fromISO(accountingStartDate, { zone: 'utc' }).minus({
-      days: 1,
-    });
+    const previousDay = DateTime.fromISO(accountingStartDate, {
+      zone: 'utc',
+    }).minus({ days: 1 });
     return `after:${previousDay.toFormat('yyyy/MM/dd')}`;
   }
 
@@ -335,10 +338,14 @@ export class AccountingGmailIngestService {
     if (!options.accountingStartDate || !message.internalDate) return true;
     const millis = Number(message.internalDate);
     if (!Number.isFinite(millis)) return true;
-    const receivedDate = DateTime.fromMillis(millis, { zone: options.timezone });
+    const receivedDate = DateTime.fromMillis(millis, {
+      zone: options.timezone,
+    });
     if (!receivedDate.isValid) return true;
     const receivedDateKey = receivedDate.toISODate();
-    return receivedDateKey ? receivedDateKey >= options.accountingStartDate : true;
+    return receivedDateKey
+      ? receivedDateKey >= options.accountingStartDate
+      : true;
   }
 
   private isBeforeStartDate(
@@ -367,10 +374,15 @@ export class AccountingGmailIngestService {
       if (!raw) continue;
       const decoded = raw.toString('utf8');
       const text =
-        part.mimeType === 'text/html' ? this.htmlToText(decoded) : decoded.trim();
+        part.mimeType === 'text/html'
+          ? this.htmlToText(decoded)
+          : decoded.trim();
       if (text) texts.push(text);
     }
-    return Array.from(new Set(texts)).join('\n\n').replace(/\s+\n/g, '\n').trim();
+    return Array.from(new Set(texts))
+      .join('\n\n')
+      .replace(/\s+\n/g, '\n')
+      .trim();
   }
 
   private async readPartData(

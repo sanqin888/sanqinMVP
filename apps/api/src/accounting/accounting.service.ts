@@ -136,9 +136,7 @@ export class AccountingService {
     }
   }
 
-  async clampAccountingFromDate(
-    requested?: Date,
-  ): Promise<Date | undefined> {
+  async clampAccountingFromDate(requested?: Date): Promise<Date | undefined> {
     const startAt = await this.getAccountingStartAt();
     if (!startAt) return requested;
     if (!requested || requested < startAt) return startAt;
