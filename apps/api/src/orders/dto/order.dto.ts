@@ -1,14 +1,14 @@
 //apps/api/src/orders/dto/order.dto.ts
+import type { OrderStatus } from '../order-status';
 import type {
   Channel,
   DeliveryProvider,
   DeliveryType,
   FulfillmentType,
+  OrderDiscountDisplayEntry,
+  OrderJsonValue,
   PaymentMethod,
-} from '@prisma/client';
-import type { OrderStatus } from '../order-status';
-import type { Prisma } from '@prisma/client';
-import type { OrderDiscountDisplayEntry } from '@shared/order';
+} from '@shared/order';
 import type { OrderItemComponentDisplaySnapshot } from '../order-item-components';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
 
@@ -20,8 +20,8 @@ export type OrderItemDto = {
   nameZh: string | null;
   unitPriceCents: number;
   specialInstructions: string | null;
-  optionsJson?: Prisma.InputJsonValue;
-  componentsJson?: Prisma.InputJsonValue;
+  optionsJson?: OrderJsonValue;
+  componentsJson?: OrderJsonValue;
   displayOptions?: OrderItemOptionsSnapshot | null;
   components?: OrderItemComponentDisplaySnapshot[];
 };

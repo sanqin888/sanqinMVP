@@ -4,12 +4,8 @@ import {
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
+import { ChallengeEngine } from '../auth/challenge-engine.service';
 import { PhoneVerificationService } from './phone-verification.service';
-
-type PhoneVerificationInternals = {
-  generateCode(): string;
-  hashCode(code: string): string;
-};
 
 describe('PhoneVerificationService OTP characterization', () => {
   const originalPhoneSecret = process.env.PHONE_VERIFICATION_SECRET;
@@ -35,14 +31,16 @@ describe('PhoneVerificationService OTP characterization', () => {
         .fn()
         .mockResolvedValue({ baseVars: { storeName: 'SanQin' } }),
     };
+    const challengeEngine = new ChallengeEngine();
     const service = new PhoneVerificationService(
       prisma as never,
       smsService as never,
       templateRenderer as never,
       businessConfigService as never,
+      challengeEngine,
     );
 
-    return { service, prisma, smsService };
+    return { service, prisma, smsService, challengeEngine };
   };
 
   afterEach(() => {
@@ -55,31 +53,41 @@ describe('PhoneVerificationService OTP characterization', () => {
     }
   });
 
-  it('uses PHONE_VERIFICATION_SECRET and retains the dev-secret fallback', () => {
-    const { service } = createService();
-    const internals = service as unknown as PhoneVerificationInternals;
+  it('selects the non-zero phone-secret profile when creating a challenge', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
+    const { service, prisma, smsService, challengeEngine } = createService();
+    prisma.authChallenge.count.mockResolvedValue(0);
+    prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
+    prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
+    const generateCodeSpy = jest
+      .spyOn(challengeEngine, 'generateCode')
+      .mockReturnValue('100000');
+    const hashCodeSpy = jest
+      .spyOn(challengeEngine, 'hashCode')
+      .mockReturnValue('code-hash');
+    smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'send-1' });
 
-    process.env.PHONE_VERIFICATION_SECRET = 'phone-secret';
-    expect(internals.hashCode('100000')).toBe(
-      createHmac('sha256', 'phone-secret').update('100000').digest('hex'),
-    );
+    await expect(
+      service.sendCode({
+        phone: '+1 416 555 0100',
+        purpose: 'checkout',
+      }),
+    ).resolves.toEqual({ ok: true });
 
-    delete process.env.PHONE_VERIFICATION_SECRET;
-    expect(internals.hashCode('100000')).toBe(
-      createHmac('sha256', 'dev-secret').update('100000').digest('hex'),
-    );
-  });
-
-  it('generates codes from 100000 through 999999 without leading zeroes', () => {
-    const { service } = createService();
-    const internals = service as unknown as PhoneVerificationInternals;
-    jest
-      .spyOn(Math, 'random')
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0.999999);
-
-    expect(internals.generateCode()).toBe('100000');
-    expect(internals.generateCode()).toBe('999999');
+    expect(generateCodeSpy).toHaveBeenCalledWith('NON_ZERO_SIX_DIGIT');
+    expect(hashCodeSpy).toHaveBeenCalledWith('100000', 'PHONE_VERIFICATION');
+    expect(prisma.authChallenge.create).toHaveBeenCalledWith({
+      data: {
+        type: AuthChallengeType.PHONE_VERIFY,
+        status: AuthChallengeStatus.PENDING,
+        channel: MessagingChannel.SMS,
+        addressNorm: '+14165550100',
+        addressRaw: '+1 416 555 0100',
+        codeHash: 'code-hash',
+        expiresAt: new Date('2026-08-30T12:10:00.000Z'),
+        purpose: 'checkout',
+      },
+    });
   });
 
   it('counts the IP attempt before the daily limit check', async () => {

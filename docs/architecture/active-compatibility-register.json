@@ -135,10 +135,6 @@
     {
       "candidate": "EventEmitter aliases alongside durable outbox events",
       "decisionNeeded": "Measure consumers and duplicate side effects before assigning a compat_id"
-    },
-    {
-      "candidate": "@shared/order re-export from @shared/menu",
-      "decisionNeeded": "Planned atomic internal migration; do not register as compatibility unless atomic removal proves impossible"
     }
   ]
 }

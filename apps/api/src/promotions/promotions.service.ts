@@ -2,7 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Channel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveStoreNow } from '../common/daily-specials';
+import { resolveStoreNow } from './daily-specials';
 import type { PromotionRuleLike } from './promotion-rule.adapter';
 
 @Injectable()

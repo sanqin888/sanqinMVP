@@ -1,4 +1,4 @@
-import type { OrderFulfillmentTiming, OrderStatus } from '@prisma/client';
+import type { OrderFulfillmentTiming, OrderStatus } from '@shared/order';
 
 export type OrderFulfillmentTimingDto = {
   orderStableId: string;

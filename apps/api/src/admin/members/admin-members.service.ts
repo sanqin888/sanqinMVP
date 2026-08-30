@@ -1,6 +1,7 @@
 // apps/api/src/admin/members/admin-members.service.ts
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,7 +12,6 @@ import {
   MessagingTemplateType,
   Prisma,
 } from '@prisma/client';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import { normalizeEmail } from '../../common/utils/email';
 import { normalizePhone } from '../../common/utils/phone';
@@ -21,6 +21,10 @@ import { MembershipService } from '../../membership/membership.service';
 import { PhoneVerificationService } from '../../phone-verification/phone-verification.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../../email/email.service';
+import {
+  IDENTITY_CHALLENGE_ENGINE,
+  type IdentityChallengeEnginePort,
+} from '../../auth/public-api';
 
 const MICRO_PER_POINT = 1_000_000;
 const DEFAULT_TIER_THRESHOLD_SILVER = 1000 * 100;
@@ -100,30 +104,9 @@ export class AdminMembersService {
     private readonly membership: MembershipService,
     private readonly phoneVerification: PhoneVerificationService,
     private readonly emailService: EmailService,
+    @Inject(IDENTITY_CHALLENGE_ENGINE)
+    private readonly challengeEngine: IdentityChallengeEnginePort,
   ) {}
-
-  private generateVerificationCode(): string {
-    const n = Math.floor(100000 + Math.random() * 900000);
-    return String(n);
-  }
-
-  private generateVerificationToken(): string {
-    return randomBytes(32).toString('hex');
-  }
-
-  private hashCode(code: string): string {
-    const secret = process.env.OTP_SECRET ?? 'dev-secret';
-    return createHmac('sha256', secret).update(code).digest('hex');
-  }
-
-  private verifyCodeHash(code: string, codeHash: string): boolean {
-    const computed = this.hashCode(code);
-    if (computed.length !== codeHash.length) return false;
-    return timingSafeEqual(
-      Buffer.from(codeHash, 'hex'),
-      Buffer.from(computed, 'hex'),
-    );
-  }
 
   private maskPhone(phone: string): string {
     const trimmed = phone.trim();
@@ -203,10 +186,6 @@ export class AdminMembersService {
     }
 
     throw new BadRequestException('member does not have an email or phone');
-  }
-
-  private hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
   }
 
   private parseDateInput(value?: string): Date | undefined {
@@ -929,9 +908,9 @@ export class AdminMembersService {
     });
 
     if (contact.kind === 'EMAIL') {
-      const code = this.generateVerificationCode();
+      const code = this.challengeEngine.generateCode('NON_ZERO_SIX_DIGIT');
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
+      const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000);
       const challenge = await this.prisma.authChallenge.create({
         data: {
           userId: user.id,
@@ -940,7 +919,7 @@ export class AdminMembersService {
           channel: MessagingChannel.EMAIL,
           addressNorm: contact.addressNorm,
           addressRaw: contact.addressRaw,
-          codeHash: this.hashCode(code),
+          codeHash: this.challengeEngine.hashCode(code, 'OTP'),
           purpose: POS_RECHARGE_PURPOSE,
           expiresAt,
         },
@@ -1022,40 +1001,35 @@ export class AdminMembersService {
       if (latest.expiresAt.getTime() < now.getTime()) {
         await this.prisma.authChallenge.update({
           where: { id: latest.id },
-          data: {
-            status: AuthChallengeStatus.EXPIRED,
-            consumedAt: now,
-          },
+          data: this.challengeEngine.expiredState(now),
         });
         return { ok: false, error: 'code_expired' };
       }
 
-      if (!this.verifyCodeHash(code, latest.codeHash ?? '')) {
-        const nextAttempts = latest.attempts + 1;
+      if (
+        !this.challengeEngine.verifyCodeHash(code, latest.codeHash ?? '', 'OTP')
+      ) {
+        const failedState = this.challengeEngine.failedAttemptState({
+          attempts: latest.attempts,
+          maxAttempts: latest.maxAttempts,
+          now,
+        });
         await this.prisma.authChallenge.update({
           where: { id: latest.id },
-          data: {
-            attempts: nextAttempts,
-            status:
-              nextAttempts >= latest.maxAttempts
-                ? AuthChallengeStatus.REVOKED
-                : AuthChallengeStatus.PENDING,
-            consumedAt: nextAttempts >= latest.maxAttempts ? now : null,
-          },
+          data: failedState,
         });
         return { ok: false, error: 'code_invalid' };
       }
 
-      const verificationToken = this.generateVerificationToken();
-      const tokenHash = this.hashToken(verificationToken);
+      const verificationToken =
+        this.challengeEngine.generateVerificationToken();
+      const tokenHash =
+        this.challengeEngine.hashVerificationToken(verificationToken);
 
       await this.prisma.$transaction([
         this.prisma.authChallenge.update({
           where: { id: latest.id },
-          data: {
-            status: AuthChallengeStatus.CONSUMED,
-            consumedAt: now,
-          },
+          data: this.challengeEngine.consumedState(now),
         }),
         this.prisma.authChallenge.create({
           data: {
@@ -1114,7 +1088,8 @@ export class AdminMembersService {
       userPhone: user.phone,
     });
     const now = new Date();
-    const tokenHash = this.hashToken(verificationToken);
+    const tokenHash =
+      this.challengeEngine.hashVerificationToken(verificationToken);
 
     const record = await this.prisma.authChallenge.findFirst({
       where: {
@@ -1151,10 +1126,7 @@ export class AdminMembersService {
         status: AuthChallengeStatus.PENDING,
         purpose: POS_RECHARGE_PURPOSE,
       },
-      data: {
-        status: AuthChallengeStatus.CONSUMED,
-        consumedAt: now,
-      },
+      data: this.challengeEngine.consumedState(now),
     });
 
     if (updated.count === 0) {

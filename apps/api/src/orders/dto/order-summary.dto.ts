@@ -1,8 +1,7 @@
 // apps/api/src/orders/dto/order-summary.dto.ts
-import { FulfillmentType } from '@prisma/client';
 import { OrderItemOptionsSnapshot } from '../order-item-options';
 import type { OrderStatus } from '../order-status';
-import type { OrderDiscountDisplayEntry } from '@shared/order';
+import type { FulfillmentType, OrderDiscountDisplayEntry } from '@shared/order';
 import type { OrderItemComponentDisplaySnapshot } from '../order-item-components';
 export type OrderSummaryLineItemDto = {
   // ✅ 对外统一：引用菜品 stableId

@@ -107,22 +107,28 @@
     "@shared/menu": "catalog-pricing-offers",
     "@shared/order": "commerce-orders-fulfillment"
   },
+  "dependencyBoundaries": [
+    {
+      "sourcePath": "libs/order",
+      "packageJson": "libs/order/package.json",
+      "forbiddenSpecifiers": ["@shared/menu"]
+    }
+  ],
   "legacyDirectImportLimits": {
     "accounting-reporting-analytics -> architecture-foundation": 3,
     "accounting-reporting-analytics -> commerce-orders-fulfillment": 1,
     "accounting-reporting-analytics -> external-channels": 1,
     "accounting-reporting-analytics -> identity-customer-benefits": 11,
     "accounting-reporting-analytics -> runtime-data-ci-ops": 9,
-    "architecture-foundation -> catalog-pricing-offers": 1,
     "brand-store -> accounting-reporting-analytics": 2,
     "brand-store -> architecture-foundation": 2,
     "brand-store -> runtime-data-ci-ops": 4,
     "brand-store -> store-operations-pos-print": 1,
-    "catalog-pricing-offers -> architecture-foundation": 4,
+    "catalog-pricing-offers -> architecture-foundation": 2,
     "catalog-pricing-offers -> identity-customer-benefits": 3,
     "catalog-pricing-offers -> messaging-notifications": 2,
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
-    "commerce-orders-fulfillment -> architecture-foundation": 12,
+    "commerce-orders-fulfillment -> architecture-foundation": 11,
     "commerce-orders-fulfillment -> brand-store": 2,
     "commerce-orders-fulfillment -> catalog-pricing-offers": 5,
     "commerce-orders-fulfillment -> identity-customer-benefits": 11,
@@ -134,7 +140,7 @@
     "external-channels -> identity-customer-benefits": 6,
     "external-channels -> messaging-notifications": 2,
     "external-channels -> runtime-data-ci-ops": 24,
-    "identity-customer-benefits -> architecture-foundation": 17,
+    "identity-customer-benefits -> architecture-foundation": 16,
     "identity-customer-benefits -> brand-store": 4,
     "identity-customer-benefits -> catalog-pricing-offers": 10,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,

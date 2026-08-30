@@ -4,12 +4,8 @@ import {
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
+import { ChallengeEngine } from '../auth/challenge-engine.service';
 import { EmailVerificationService } from './email-verification.service';
-
-type EmailVerificationInternals = {
-  generateVerificationCode(): string;
-  hashCode(code: string): string;
-};
 
 describe('EmailVerificationService OTP characterization', () => {
   const originalOtpSecret = process.env.OTP_SECRET;
@@ -31,12 +27,14 @@ describe('EmailVerificationService OTP characterization', () => {
     const emailService = {
       sendVerificationEmail: jest.fn(),
     };
+    const challengeEngine = new ChallengeEngine();
     const service = new EmailVerificationService(
       prisma as never,
       emailService as never,
+      challengeEngine,
     );
 
-    return { service, prisma, emailService };
+    return { service, prisma, emailService, challengeEngine };
   };
 
   afterEach(() => {
@@ -49,28 +47,43 @@ describe('EmailVerificationService OTP characterization', () => {
     }
   });
 
-  it('uses OTP_SECRET and retains the non-production dev-secret fallback', () => {
-    const { service } = createService();
-    const internals = service as unknown as EmailVerificationInternals;
+  it('selects the zero-padded OTP profile for checkout email challenges', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
+    const { service, prisma, emailService, challengeEngine } = createService();
+    prisma.authChallenge.count.mockResolvedValue(0);
+    prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
+    prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
+    const generateCodeSpy = jest
+      .spyOn(challengeEngine, 'generateCode')
+      .mockReturnValue('000042');
+    const hashCodeSpy = jest
+      .spyOn(challengeEngine, 'hashCode')
+      .mockReturnValue('code-hash');
+    emailService.sendVerificationEmail.mockResolvedValue({
+      ok: true,
+      sendId: 'send-1',
+    });
 
-    process.env.OTP_SECRET = 'email-secret';
-    expect(internals.hashCode('000042')).toBe(
-      createHmac('sha256', 'email-secret').update('000042').digest('hex'),
-    );
+    await expect(
+      service.requestCheckoutVerification({
+        email: 'Customer@Example.com',
+        purpose: 'checkout',
+      }),
+    ).resolves.toEqual({ ok: true });
 
-    delete process.env.OTP_SECRET;
-    expect(internals.hashCode('000042')).toBe(
-      createHmac('sha256', 'dev-secret').update('000042').digest('hex'),
-    );
-  });
-
-  it('generates a zero-padded six-digit code and permits leading zeroes', () => {
-    const crypto = jest.requireActual<typeof import('crypto')>('crypto');
-    jest.spyOn(crypto, 'randomInt').mockReturnValue(42);
-    const { service } = createService();
-    const internals = service as unknown as EmailVerificationInternals;
-
-    expect(internals.generateVerificationCode()).toBe('000042');
+    expect(generateCodeSpy).toHaveBeenCalledWith('ZERO_PADDED');
+    expect(hashCodeSpy).toHaveBeenCalledWith('000042', 'OTP');
+    expect(prisma.authChallenge.create).toHaveBeenCalledWith({
+      data: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        addressNorm: 'customer@example.com',
+        addressRaw: 'Customer@Example.com',
+        codeHash: 'code-hash',
+        purpose: 'checkout',
+        expiresAt: new Date('2026-08-30T12:10:00.000Z'),
+      },
+    });
   });
 
   it('limits checkout requests to five per email and purpose in 24 hours', async () => {
