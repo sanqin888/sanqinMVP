@@ -64,6 +64,7 @@ jobs:
       - name: Strict declaration check (shared libraries)
         if: matrix.app == 'api'
         run: |
+          pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false
           pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
           pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
 

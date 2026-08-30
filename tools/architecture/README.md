@@ -17,6 +17,10 @@ node tools/architecture/scan-architecture.mjs --report
   recorded raw/protocol exceptions, with stale allowances rejected;
 - one App Router `/api/v1` JSON BFF instead of a duplicate Next rewrite;
 - server-only Web API upstream configuration (`API_UPSTREAM`);
+- `@shared/foundation` registered as the `architecture-foundation` public package,
+  while architecture-foundation itself cannot depend on business public surfaces;
+- StableId foundation primitives have exactly one implementation owner and are not
+  re-exported from Menu/Order business packages;
 - unique, complete compatibility entries;
 - no unregistered `@compat <compat_id>` annotation.
 

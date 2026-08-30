@@ -76,11 +76,15 @@ This closeout makes no production payment-path change.
 - Notification disabled/fallback logic and versioned Uber event files were not
   deleted because dynamic/operational behavior is not sufficiently proven and the
   Uber boundary is frozen for structural changes.
-- `@shared/menu` still exposes the generic StableId helper for a Web consumer.
-  Moving that primitive into a new neutral shared architecture-foundation package
-  would change package/boundary ownership and therefore requires an explicit
-  architecture decision rather than an opportunistic closeout edit. Server
-  `common` no longer depends on it.
+
+## Post-closeout StableId ownership decision
+
+The explicit follow-up architecture decision moves generic StableId validation
+primitives into neutral `@shared/foundation`. API `common` uses that implementation,
+Web imports the foundation package directly, and `@shared/menu` no longer exports
+StableId helpers. The architecture scanner registers the package under
+`architecture-foundation` and rejects duplicate primitive implementations or
+business-package re-exports.
 
 ## Required production smoke verification
 

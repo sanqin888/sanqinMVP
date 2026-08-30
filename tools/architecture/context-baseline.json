@@ -14,7 +14,7 @@
   "contexts": [
     {
       "id": "architecture-foundation",
-      "paths": ["apps/api/src/common"]
+      "paths": ["apps/api/src/common", "libs/foundation"]
     },
     {
       "id": "brand-store",
@@ -104,8 +104,15 @@
     }
   ],
   "publicAliases": {
+    "@shared/foundation": "architecture-foundation",
     "@shared/menu": "catalog-pricing-offers",
     "@shared/order": "commerce-orders-fulfillment"
+  },
+  "foundationPrimitiveOwnership": {
+    "package": "@shared/foundation",
+    "ownerPath": "libs/foundation",
+    "businessPackagePaths": ["libs/shared", "libs/order"],
+    "symbols": ["isStableId", "normalizeStableId", "assertStableId"]
   },
   "dependencyBoundaries": [
     {

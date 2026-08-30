@@ -5,8 +5,9 @@ Phase 1 closeout base: `origin/dev@a050d8b2` (2026-08-30).
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
 slices. Test files and registered composition roots are excluded. Imports through
-`public-api`, `contracts`, `ports`, `@shared/menu`, or `@shared/order` are approved
-public-contract traffic and do not consume the debt counts below.
+`public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
+`@shared/order` are approved public-contract traffic and do not consume the debt
+counts below.
 
 The CI architecture scanner is authoritative for the exact source scan. This
 file is the human-readable closeout snapshot and must be refreshed again at the
@@ -16,7 +17,7 @@ end of the next phase.
 
 | # | Context | Current paths |
 |---:|---|---|
-| 1 | architecture-foundation | `apps/api/src/common` |
+| 1 | architecture-foundation | `apps/api/src/common`, `libs/foundation` (`@shared/foundation`) |
 | 2 | brand-store | `homepage`, `location`, `store` |
 | 3 | catalog-pricing-offers | `application/menu`, `coupons`, `menu`, `promotions`, `libs/shared` |
 | 4 | identity-customer-benefits | `admin`, `auth`, `loyalty`, `membership`, `phone-verification` |
@@ -55,8 +56,10 @@ pair fails CI.
 - `@shared/order` now owns Order contracts directly; `@shared/menu` no longer
   re-exports Order contracts.
 - Daily-special policy now belongs to Promotions/Pricing instead of `common`.
-- The Phase 1 closeout removes the final `common -> @shared/menu` StableId helper
-  dependency, so `architecture-foundation` has no business-context import edge.
+- StableId validation primitives now live in neutral `@shared/foundation`; API
+  `common` re-exports that implementation for existing server callers and Web
+  imports the foundation package directly. Menu/Order packages no longer own or
+  re-export those primitives.
 - Web regular JSON transport is guarded separately: one browser client, one
   App Router BFF, and one server-side API helper; raw/direct fetch exceptions are
   explicit architecture allowances.
