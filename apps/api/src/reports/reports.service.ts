@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
+import { readOrderItemComponentsSnapshot } from '../orders/order-item-components';
 
 interface ReportQueryDto {
   from?: string;
@@ -16,6 +17,7 @@ type ReportOrderItem = {
   nameEn: string | null;
   nameZh: string | null;
   optionsJson: Prisma.JsonValue | null;
+  componentsJson: Prisma.JsonValue | null;
 };
 
 export type TopItemAggregate = {
@@ -29,8 +31,14 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async buildTopItems(orderItems: ReportOrderItem[]) {
+    const legacyOrderItems = orderItems.filter(
+      (item) =>
+        readOrderItemComponentsSnapshot(item.componentsJson).length === 0,
+    );
     const selectedChoiceStableIds = Array.from(
-      new Set(orderItems.flatMap((item) => this.extractChoiceStableIds(item))),
+      new Set(
+        legacyOrderItems.flatMap((item) => this.extractChoiceStableIds(item)),
+      ),
     );
 
     const choices = selectedChoiceStableIds.length
@@ -82,6 +90,20 @@ export class ReportsService {
     };
 
     for (const orderItem of orderItems) {
+      const components = readOrderItemComponentsSnapshot(
+        orderItem.componentsJson,
+      );
+      if (components.length > 0) {
+        for (const component of components) {
+          addItem(
+            component.productStableId,
+            component.nameZh || component.nameEn || component.productStableId,
+            orderItem.qty * component.quantityPerParent,
+          );
+        }
+        continue;
+      }
+
       const targetStableIds = this.extractChoiceStableIds(orderItem)
         .map((choiceStableId) => choiceTargetByStableId.get(choiceStableId))
         .filter((stableId): stableId is string => Boolean(stableId));
@@ -178,6 +200,7 @@ export class ReportsService {
         nameEn: true,
         nameZh: true,
         optionsJson: true,
+        componentsJson: true,
       },
     });
 

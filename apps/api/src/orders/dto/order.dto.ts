@@ -19,6 +19,7 @@ export type OrderItemDto = {
   unitPriceCents: number;
   specialInstructions: string | null;
   optionsJson?: Prisma.InputJsonValue;
+  componentsJson?: Prisma.InputJsonValue;
 };
 
 export type OrderDto = {

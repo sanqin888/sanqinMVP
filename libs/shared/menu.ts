@@ -32,6 +32,12 @@ export type MenuItemPackagingDto = {
   packagingType: MenuPackagingTypeDto;
 };
 
+export type MenuFixedComponentDto = {
+  componentItemStableId: string;
+  quantity: number;
+  sortOrder: number;
+};
+
 export type ActiveSpecialDto = {
   stableId: string;
   effectivePriceCents: number;
@@ -134,10 +140,12 @@ export type MenuItemWithBindingsDto = MenuItemDtoBase & {
   labelStrategy: MenuLabelStrategy;
   itemKind: MenuItemKind;
   packagings: MenuItemPackagingDto[];
+  fixedComponents: MenuFixedComponentDto[];
   optionGroups: AdminMenuOptionGroupBindingDto[];
 };
 
 export type MenuItemWithOptionsDto = MenuItemDtoBase & {
+  fixedComponents: MenuFixedComponentDto[];
   optionGroups: MenuOptionGroupWithOptionsDto[];
 };
 

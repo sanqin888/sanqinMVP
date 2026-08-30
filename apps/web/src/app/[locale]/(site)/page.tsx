@@ -643,11 +643,16 @@ export default function LocalOrderPage() {
       item: LocalizedMenuItem,
       basePath: string[],
       visited: Set<string>,
-    ): Array<{ group: MenuOptionGroupWithOptionsDto; path: string[] }> => {
+    ): Array<{
+      group: MenuOptionGroupWithOptionsDto;
+      path: string[];
+      ownerItem: LocalizedMenuItem;
+    }> => {
       const groups = item.optionGroups ?? [];
       const collected: Array<{
         group: MenuOptionGroupWithOptionsDto;
         path: string[];
+        ownerItem: LocalizedMenuItem;
       }> = [];
 
       groups.forEach((group, groupIndex) => {
@@ -655,7 +660,7 @@ export default function LocalOrderPage() {
         const groupKey = buildPathKey(groupPath);
         if (visited.has(groupKey)) return;
         visited.add(groupKey);
-        collected.push({ group, path: groupPath });
+        collected.push({ group, path: groupPath, ownerItem: item });
 
         const selectedIds = selectedOptions[groupKey] ?? [];
         if (selectedIds.length === 0) return;
@@ -671,12 +676,25 @@ export default function LocalOrderPage() {
         });
       });
 
+      item.fixedComponents.forEach((component) => {
+        const linkedItem = menuItemMap.get(component.componentItemStableId);
+        if (!linkedItem) return;
+        const componentPath = [
+          ...basePath,
+          `component-${component.componentItemStableId}`,
+        ];
+        collected.push(
+          ...collectActiveGroups(linkedItem, componentPath, visited),
+        );
+      });
+
       return collected;
     },
     [
       buildGroupSegment,
       buildOptionSegment,
       buildPathKey,
+      menuItemMap,
       resolveLinkedItem,
       selectedOptions,
     ],
@@ -690,6 +708,40 @@ export default function LocalOrderPage() {
       new Set<string>(),
     );
   }, [activeItem, collectActiveGroups]);
+
+  const activeFixedComponents = useMemo(() => {
+    if (!activeItem) return [];
+    const collected: Array<{
+      component: LocalizedMenuItem["fixedComponents"][number];
+      item: LocalizedMenuItem;
+      path: string[];
+      depth: number;
+    }> = [];
+
+    const collect = (
+      parent: LocalizedMenuItem,
+      basePath: string[],
+      depth: number,
+      visiting: Set<string>,
+    ) => {
+      if (visiting.has(parent.stableId)) return;
+      const nextVisiting = new Set(visiting);
+      nextVisiting.add(parent.stableId);
+      parent.fixedComponents.forEach((component) => {
+        const componentItem = menuItemMap.get(component.componentItemStableId);
+        if (!componentItem) return;
+        const path = [
+          ...basePath,
+          `component-${component.componentItemStableId}`,
+        ];
+        collected.push({ component, item: componentItem, path, depth });
+        collect(componentItem, path, depth + 1, nextVisiting);
+      });
+    };
+
+    collect(activeItem, ["root", activeItem.stableId], 0, new Set<string>());
+    return collected;
+  }, [activeItem, menuItemMap]);
 
   // 更新：使用 activeOptionGroups 来计算缺失的必选项
   const requiredGroupsMissing = useMemo(() => {
@@ -1514,18 +1566,54 @@ export default function LocalOrderPage() {
                 </div>
               ) : null}
 
-              {(activeItem.optionGroups ?? []).length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-[#87362E]/15 bg-white px-4 py-5 text-sm text-stone-500">{locale === "zh" ? "该菜品暂无可选项。" : "No options available for this dish."}</p>
-              ) : (
-                // ✅ 使用递归渲染函数
-                (activeItem.optionGroups ?? []).map((group, groupIndex) =>
-                  renderOptionGroup(
-                    group,
-                    ["root", activeItem.stableId],
-                    groupIndex,
-                  ),
-                )
-              )}
+              {activeFixedComponents.length > 0 ? (
+                <div className="rounded-3xl border border-[#87362E]/10 bg-white p-4">
+                  <div className="text-sm font-black text-stone-900">
+                    {locale === "zh" ? "套餐包含" : "Combo includes"}
+                  </div>
+                  <div className="mt-3 space-y-4">
+                    {activeFixedComponents.map(({ component, item, path }) => (
+                      <div key={path.join('__')} className="space-y-3">
+                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#fff7ef] px-4 py-3">
+                          <span className="font-bold text-stone-800">{item.name}</span>
+                          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-[#87362E]">
+                            ×{component.quantity}
+                          </span>
+                        </div>
+                        {(item.optionGroups ?? []).length > 0 ? (
+                          <div className="space-y-4 border-l-2 border-[#87362E]/10 pl-3">
+                            {(item.optionGroups ?? []).map((group, groupIndex) =>
+                              renderOptionGroup(
+                                group,
+                                path,
+                                groupIndex,
+                              ),
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {(activeItem.optionGroups ?? []).length > 0
+                ? (activeItem.optionGroups ?? []).map((group, groupIndex) =>
+                    renderOptionGroup(
+                      group,
+                      ["root", activeItem.stableId],
+                      groupIndex,
+                    ),
+                  )
+                : activeFixedComponents.length === 0
+                  ? (
+                      <p className="rounded-2xl border border-dashed border-[#87362E]/15 bg-white px-4 py-5 text-sm text-stone-500">
+                        {locale === "zh"
+                          ? "该菜品暂无可选项。"
+                          : "No options available for this dish."}
+                      </p>
+                    )
+                  : null}
             </div>
 
             {/* Footer: Totals & Action */}

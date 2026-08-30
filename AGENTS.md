@@ -1,5 +1,9 @@
 # Codex rules for sanqinMVP
 
+This file applies to the entire repository. A more deeply nested `AGENTS.md`, if
+one is added later, may add stricter rules for its subtree but must not weaken
+the safety, architecture, validation, or delivery rules in this file.
+
 ## 1. Core principles
 
 * Make the smallest correct change needed for the task.
@@ -13,9 +17,21 @@
 
 ## 2. Dependencies
 
-Do not create or modify dependency manifests or lockfiles unless I explicitly request a dependency change.
+Prefer the repository's existing dependencies and platform APIs. Do not add a
+package for behavior that is already implemented safely in the workspace or can
+be expressed clearly with the current stack.
 
-Protected files include:
+When the requested change genuinely requires a dependency change:
+
+* make the smallest compatible addition or version change;
+* use the repository package manager (`pnpm`) and the correct workspace filter;
+* update the owning manifest and `pnpm-lock.yaml` together;
+* do not hand-edit generated lockfile sections;
+* do not combine unrelated upgrades, deduplication, or package-manager changes;
+* inspect the final manifest and lockfile diff for unexpected transitive churn;
+* report the dependency and why it was required.
+
+Dependency manifests and lockfiles include:
 
 ```text
 **/package.json
@@ -24,42 +40,59 @@ package-lock.json
 yarn.lock
 ```
 
-For clean CI reproduction, Codex MAY run:
+For clean CI reproduction, run:
 
 ```bash
 pnpm install --frozen-lockfile --prefer-offline
 ```
 
-Do not run dependency-changing commands such as `pnpm add`, `pnpm remove`, `pnpm update`, ordinary `pnpm install`, or equivalent npm/yarn commands unless explicitly authorized.
-
 If the frozen install fails because the manifest and lockfile are inconsistent:
 
-1. Do not modify or regenerate the lockfile.
+1. Do not bypass `--frozen-lockfile` or delete the lockfile merely to make CI
+   proceed.
 2. Identify the inconsistency.
-3. Explain the dependency change that appears necessary.
-4. Provide the exact command I should run or approve.
-5. Continue any work that can safely be completed without that dependency change.
-
-If a new dependency is required, explain why and propose the exact command instead of installing it automatically.
+3. If it was caused by the current task's intentional manifest change, regenerate
+   the lockfile with the repository's pinned pnpm version and inspect the diff.
+4. If it is pre-existing or unrelated, report it and do not disguise it with an
+   unrelated dependency rewrite.
 
 ---
 
 ## 3. Prisma
 
-Do not create, modify, delete, or regenerate files under:
+Persisted schema changes must include a matching migration in the same change by
+default. Do not leave `schema.prisma` ahead of migration history unless the user
+explicitly requested a schema proposal only.
+
+Migration files live under:
 
 ```text
 apps/api/prisma/migrations/**
 ```
 
-unless I explicitly request a migration.
+Rules:
 
-For ordinary Prisma schema changes:
-
-* `schema.prisma` may be edited.
-* Prisma Client generation is allowed.
-* Prisma schema validation is allowed.
-* Migration execution or generation is not allowed unless explicitly authorized.
+* Create one new, descriptively named migration for the task. Never rewrite,
+  reorder, squash, or delete an existing migration that may have been applied.
+* Generate the migration with the repository's Prisma version against a verified
+  disposable/local development database when available. `--create-only` is
+  preferred so the SQL can be reviewed before application.
+* If a suitable local database is unavailable, a migration SQL file may be
+  created and reviewed without applying it; report that generation/application
+  was not locally verified.
+* Inspect generated SQL. Prisma output is not automatically safe or semantically
+  complete, especially for renames, backfills, constraints, indexes, enum
+  changes, and relation changes.
+* Use additive expand-contract migrations for public, persisted, PWA, payment,
+  printing, and accounting contracts. A rename is not a drop-and-add when data
+  must be preserved.
+* Backfills must be deterministic and idempotent, with pre/post counts and
+  discrepancy checks appropriate to the data risk.
+* Adding `NOT NULL`, tightening a constraint, changing a type, dropping a column
+  or table, or otherwise risking loss requires staged migration and explicit
+  user approval of the destructive/contraction step.
+* Generate Prisma Client and validate the final schema after migration creation.
+* Include the new migration in relevant tests and the final change report.
 
 Allowed non-destructive commands include:
 
@@ -68,17 +101,22 @@ pnpm --filter api prisma:generate
 pnpm --filter api exec prisma validate
 ```
 
-Do not run:
+Allowed migration-generation command, after verifying the target is a disposable
+or local development database:
 
-```text
-prisma migrate dev
-prisma migrate deploy
-prisma migrate reset
+```bash
+pnpm --filter api exec prisma migrate dev --create-only --name <descriptive_name>
 ```
 
-or equivalent migration commands unless explicitly authorized.
+Never run `prisma migrate reset`, `prisma db push`, destructive SQL, or an
+equivalent history-bypassing/destructive command against a database containing
+valuable data.
 
-If a migration is required, propose an appropriate migration name and provide the exact command I should run.
+Do not run `prisma migrate deploy` against production or otherwise mutate the
+production database unless the user explicitly asks for that action and the
+exact target, backup/readiness checks, and rollout plan have been verified. The
+normal handoff is to generate and validate the migration locally, then report
+the production deployment command as a manual action.
 
 ---
 
@@ -244,8 +282,10 @@ Verify that:
 * required implementation files are not left untracked;
 * no temporary/debug artifacts remain;
 * no secrets or credentials were added;
-* dependency manifests or lockfiles were not changed without authorization;
-* Prisma migrations were not changed without authorization;
+* dependency changes are required by the task, minimal, and synchronized with
+  the lockfile;
+* each Prisma schema change has the intended new migration, existing migration
+  history was not rewritten, and generated SQL was reviewed;
 * unrelated user changes were not deleted or overwritten.
 
 Do not automatically discard, reset, or delete unrelated user changes.
@@ -295,3 +335,448 @@ If everything relevant was reproduced successfully, it is acceptable to say:
 ```text
 All locally reproducible GitHub CI checks passed against the final source state using dependencies reproduced from the committed lockfile.
 ```
+
+---
+
+## 10. Required workflow for repository changes
+
+Before editing code:
+
+1. Read this file completely and inspect any more specific `AGENTS.md` that
+   applies to the target path.
+2. Inspect the current implementation, its tests, the owning module's public
+   boundary, relevant architecture tests/docs, and the applicable GitHub
+   workflow.
+3. Identify the business owner of the change and every downstream consumer of
+   any contract, schema, event, shared type, or persisted field being changed.
+4. Classify the work as an internal atomic change, an expand-contract data or
+   public-contract migration, or a controlled integration/payment cutover as
+   defined in section 18.
+5. If the requested behavior requires changing an established architecture
+   boundary, module responsibility, compatibility promise, or migration
+   strategy, stop before editing. Explain the reason, impact, and alternatives,
+   and obtain explicit user authorization.
+
+Default delivery workflow:
+
+1. Make and validate the change locally.
+2. Stop and provide a change report for user review.
+3. Do not push a branch, create a pull request, merge, deploy, execute a
+   production mutation, or run a production database migration until the user
+   explicitly authorizes that next action.
+4. When authorized to open a PR, target `dev` unless the user explicitly names
+   another branch. Track the actual CI run and only merge after all required
+   checks are green and the requested merge authorization is present.
+
+Keep changes small and reviewable. Do not combine unrelated cleanup, renaming,
+dependency upgrades, schema changes, formatting sweeps, or architecture moves
+with a feature or bug fix. Prefer a sequence of independently valid vertical
+slices over a long-lived, repository-wide refactor branch.
+
+Existing violations are migration debt, not precedent. A scoped task does not
+require repairing every pre-existing violation in a touched area, but it must
+not create a new violation, broaden an allowed exception, or make the measured
+dependency graph worse. Planned modularization work must reduce and eventually
+remove those exceptions.
+
+---
+
+## 11. Architectural direction
+
+SanQ is a **modular monolith**, not a microservice migration project.
+
+Preserve the current natural deployment units unless the user explicitly
+authorizes a topology change:
+
+* Next.js Web/PWA/POS UI (`apps/web`)
+* NestJS API (`apps/api`)
+* dedicated UberEats worker
+* Windows printer agent (`tools/printer-server`)
+* PostgreSQL as the system database
+
+Modularization means making ownership and dependency direction enforceable
+inside those deployment units. It does not mean a rewrite, creating network
+calls between internal modules, splitting databases, or adding queues and
+repositories without a concrete consistency or substitution need.
+
+Use three levels of module maturity:
+
+* **L1 boundary module:** simple configuration, CRUD, or read model. Requires a
+  clear owner, narrow public API, thin transport adapters, and an architecture
+  rule preventing internal imports.
+* **L2 business module:** rules or replaceable external capabilities. Adds
+  application use cases, domain/policy code where useful, infrastructure
+  adapters, ports, and focused rule tests.
+* **L3 critical workflow:** orders, payments, financial benefits, fulfillment,
+  UberEats, printing delivery, and accounting. Adds explicit transaction
+  boundaries, idempotency, durable events/outbox where required, recovery,
+  reconciliation, auditability, and contract/end-to-end tests.
+
+Do not manufacture empty layers, pass-through facades, one-implementation
+repositories, or chains of DTO-to-DTO copying merely to resemble a template.
+Add a layer or mapping only when it enforces ownership, protects an external or
+persistence boundary, contains business rules, or has a real testing value.
+
+---
+
+## 12. Business contexts and ownership
+
+Every business fact has one owner. Admin, POS, Web pages, and external providers
+are access channels or adapters; they are not alternative owners of the same
+business data.
+
+| Context | Owns | Must not own |
+| --- | --- | --- |
+| Architecture foundations | neutral ID/Money/Time primitives and boundary tooling | store, order, offer, customer, or provider business rules |
+| Brand / Store | brand and store profiles, hours, notices, store configuration, stable store identity | order, payment, promotion, or messaging decisions |
+| Catalog / Pricing / Offers | products, categories, modifiers, packaging, availability, pricing, daily specials, offer stacking rules | customer entitlements, order lifecycle, provider protocols |
+| Identity / Customer / Benefits | authentication and challenges; customer profile/address/consent; points, balance, coupons and their reservations | payment-provider transport, order status, message delivery implementation |
+| Commerce / Orders / Fulfillment | quote/order snapshots, order aggregate and lifecycle, amendments, fulfillment intent | Clover/Uber wire schemas, benefit ledgers, printer drivers |
+| Payments / Clover | payment attempts/transactions, tenders, refunds/voids, reconciliation, provider adapters | order rules, menu facts, kitchen state, loyalty policy |
+| Store Operations / POS / Print | store-facing interaction use cases, device operation, print jobs, delivery/ack/retry and printer agent | order aggregate, payment truth, Uber business facts |
+| External Channels | UberEats/UberDirect wire protocols, mapping, inbound idempotency, provider commands and worker behavior | canonical menu/order ownership |
+| Messaging / Notifications | templates, rendering, delivery routing, provider receipts, unsubscribe/suppression | why an order, offer, or auth challenge should be sent |
+| Accounting / Reporting / Analytics | immutable ledger facts, expenses, periods, settlements, reconciliation, read models and telemetry | mutating canonical order or payment facts |
+| Web / PWA | route composition, client state, view models, localization, caching and UI adapters | server-side business policy or provider secrets/protocols |
+| Runtime / Data / CI / Ops | typed configuration, health/readiness, deployment, backup/restore, retention and quality gates | business policy |
+
+When ownership is unclear, do not place the code in `common`, `admin`, `pos`, or
+an arbitrary existing service. Resolve and document the owner first.
+
+---
+
+## 13. API module and dependency rules
+
+The target structure for a fully migrated bounded context is:
+
+```text
+apps/api/src/contexts/<context>/
+  public-api.ts
+  contracts/
+  api/
+  application/
+  domain/             # only when business invariants justify it
+  infrastructure/
+  architecture.spec.ts
+```
+
+Existing directories may migrate incrementally. Do not perform a repository-wide
+path rename merely to establish this shape.
+
+Dependency direction for new or migrated code:
+
+* `domain` depends only on its own framework-free domain code and truly neutral
+  primitives. It must not import NestJS, Prisma, controllers, infrastructure,
+  providers, or another context.
+* `application` depends on its own domain/contracts and application-owned ports.
+  External services, databases, clocks, queues, messaging, and other contexts
+  are represented by narrow capabilities.
+* `api` is a transport adapter. Controllers/guards validate protocol and auth,
+  call application use cases, and map results. They do not contain pricing,
+  order, payment, benefit, or provider business rules.
+* `infrastructure` implements application ports and contains Prisma, provider,
+  worker, crypto, filesystem, and device adapters. Provider and database shapes
+  are mapped at this boundary and must not leak inward or sideways.
+* a module/composition root wires implementations to ports. Wiring is not a
+  place for business logic.
+
+Cross-context rules:
+
+* New cross-context business imports must use the owner context's
+  `public-api.ts`, stable `contracts/`, or a narrow port. Do not deep-import its
+  controller, concrete service, repository, Prisma delegate/type, internal DTO,
+  domain entity, or infrastructure adapter.
+* Nest composition roots may import public Nest modules for wiring. This does
+  not authorize business code to import the other module's internals.
+* Do not solve a dependency cycle with `forwardRef`, a global module, a service
+  locator, duplicated logic, or a new `common` helper. Fix the ownership or add
+  explicit orchestration/ports.
+* `common` must remain framework-level or business-neutral. It must not import
+  Prisma or a business context.
+* Shared packages own their own contracts. Do not make one business package
+  re-export another package's contracts as a compatibility shortcut.
+* Public APIs should expose the smallest stable capability required by a
+  consumer. Do not export an entire service merely because one method is needed.
+
+Cross-context workflows belong in an explicit orchestration/application layer.
+An orchestrator may coordinate public use cases from multiple contexts, but it
+must not become a new data owner, contain provider transport, bypass a context's
+invariants, or update another context's tables directly.
+
+---
+
+## 14. Data, identity, money, and transaction boundaries
+
+In addition to section 3.1:
+
+* Public/browser/WebSocket/print/worker/provider boundaries use stable business
+  IDs. Internal database IDs stay inside the owning persistence boundary unless
+  a documented internal relation specifically requires them.
+* New ambiguous identity names such as `storeId`, `orderId`, or `userId` are not
+  allowed where both DB and stable identities exist. Use `storeDbId`,
+  `storeStableId`, `orderStableId`, `userStableId`, and similarly explicit names.
+* Money is represented as integer minor units with an explicit currency. Do not
+  use floating-point values for persisted or contractual financial facts.
+* Store-local time decisions require an explicit IANA timezone. Do not rely on
+  the VM, container, database, or browser default timezone.
+* Orders retain immutable menu, option, pricing, discount, tax, customer-visible
+  label, and payment-summary snapshots needed to explain historical facts.
+  Historical orders must not be re-priced or re-described from current catalog
+  or promotion state.
+* A context writes its own tables. Another context consumes a public use case,
+  port, versioned fact/event, or purpose-built read model; it does not reach into
+  the owner's Prisma delegate.
+* A database transaction is owned by the use case that protects the invariant.
+  Do not create a hidden transaction spanning unrelated contexts. Use explicit
+  orchestration, reservations, durable outbox/inbox, idempotency, and
+  reconciliation when atomic cross-context completion is impossible.
+* Financial, order, webhook, message, and print operations that may be retried
+  require stable idempotency identities. Timeout or lost response is not proof
+  of failure; preserve `UNKNOWN`/reconciling semantics where an external action
+  may have succeeded.
+
+Prisma schema fields are persistence contracts, not automatically public or
+domain contracts. Map them once at the ownership boundary. Raw provider payloads
+may be retained only for a documented audit/replay need, with secrets and
+sensitive data removed and an explicit retention policy.
+
+---
+
+## 15. Existing critical architecture boundaries
+
+### 15.1 Payments and Clover
+
+`docs/payments/clover-pos-integration-charter.md` and
+`apps/api/src/payments/payments-architecture.spec.ts` are binding for payment
+work.
+
+* Payments is the only owner of payment lifecycle and provider transaction
+  truth.
+* Clover is Payments infrastructure, separated by capability: Ecommerce
+  execution, REST Pay Display terminal execution, Platform REST canonical
+  reads, OAuth/device integration, and webhooks.
+* Orders and POS must not import Clover or Payments infrastructure.
+* Payments must not own order, fulfillment, kitchen, print, customer-benefit, or
+  Uber business rules.
+* Orders + Payments + Benefits coordination belongs in explicit orchestration.
+* Do not broaden the exact legacy Clover-to-Orders exception tracked by the
+  architecture test.
+* Existing production Web Ecommerce and POS compatibility paths remain until
+  the charter's gated cutover and deletion criteria are satisfied.
+
+### 15.2 UberEats
+
+`apps/api/src/integrations/ubereats/ARCHITECTURE.md` and all UberEats
+architecture tests are binding for Uber work.
+
+* Preserve its single `ubereats.module.ts` composition root, `worker.ts` worker
+  entry, and `public-api.ts` business boundary.
+* Code outside the bounded context must not deep-import Uber `api`,
+  `application`, `domain`, `contracts`, or `infrastructure` internals.
+* Uber wire contracts, credentials, persistence, rate limiting, retries, and
+  mapping stay within the integration boundary.
+* Uber does not own canonical SanQ menu or order facts. Provider changes are
+  translated at the boundary rather than added to Orders, Catalog, POS, or Web
+  domain contracts.
+
+Architecture tests encode permanent decisions, not incidental implementation
+details. Update a boundary assertion only when the architecture itself is
+intentionally changing and the user has explicitly approved that change. Never
+weaken it just to allow a convenient import.
+
+---
+
+## 16. Web, PWA, Admin, Accounting, and POS UI rules
+
+App Router pages and layouts are composition boundaries. New complex behavior
+belongs in feature-owned hooks, state machines/reducers, API adapters, and
+presentational components rather than a growing `page.tsx`.
+
+Target Web feature ownership includes:
+
+```text
+catalog
+cart-checkout
+member
+admin
+pos
+accounting
+ubereats
+payments
+```
+
+Rules:
+
+* Use one canonical API client and response-envelope parser. Direct `fetch` is
+  limited to the canonical client/BFF, streaming or binary transport, and
+  documented protocol adapters.
+* Shared server/Web contracts come from their owning contract package. Do not
+  redeclare public DTOs or response envelopes inside pages.
+* Provider SDK initialization and protocol handling live behind one feature
+  adapter. Secrets never enter browser bundles, URLs, logs, or public runtime
+  configuration.
+* Presentation components do not perform business mutations. Hooks/adapters do
+  not reimplement server pricing, discount, entitlement, payment, order-state,
+  or accounting rules.
+* Admin is a management adapter to owner-context use cases, not a business
+  domain. Accounting UI is an adapter to Accounting contracts. POS is a store
+  operations adapter to Orders, Payments, Benefits, Store, and Print public
+  capabilities.
+* Admin and Accounting redesigns are mobile-first and must intentionally support
+  narrow and wide layouts. Reuse accessible form, card, table/list, drawer,
+  dialog, upload, feedback, and navigation primitives without forcing the
+  customer-site header or customer navigation into staff consoles.
+* Preserve localization, keyboard access, visible focus, touch target size,
+  loading/empty/error states, and reduced-motion behavior when extracting UI.
+* PWA/service-worker clients may run old bundles. Removing or renaming public
+  fields, routes, assets, or print contracts requires an expand-observe-contract
+  plan, version telemetry where relevant, and an explicit cache/update path.
+
+For hand-written production code, a new or materially expanded page/container
+over 500 lines requires an explicit decomposition review. A file over 800 lines
+must be split by cohesive responsibility or carry a documented, user-approved
+exception. Generated protocol code and fixed data tables may be exempt.
+
+---
+
+## 17. External integrations, printing, and security
+
+External integrations are anti-corruption layers:
+
+* Provider request/response/webhook types remain inside the provider adapter.
+* Convert a provider wire shape once into a canonical SanQ command/event/result.
+  Do not pass provider DTOs through Orders, POS, Accounting, or Web components.
+* All externally retried commands and inbound events require explicit
+  idempotency, authentication/verification, replay handling, structured logs,
+  and actionable failure/reconciliation behavior.
+* Do not guess success from matching amount/time, invent missing provider IDs,
+  or convert unknown outcomes into failure.
+* Credentials and signing/encryption keys are server-only, validated at startup,
+  redacted in logs, and never committed. Production credentials must not be used
+  to compensate for an unavailable sandbox/test environment.
+
+Printing is a delivery boundary. Orders/Payments provide stable snapshots;
+Print owns job identity, template version, routing, retry and acknowledgement;
+the Windows agent owns rendering and device I/O. A reconnect or duplicate job
+must not produce an uncontrolled duplicate print. Changes to receipt, kitchen,
+or label contracts require fixture/golden coverage and backward compatibility
+with deployed agents until their versions are observed and retired.
+
+---
+
+## 18. Migration and compatibility discipline
+
+Choose exactly one migration class before implementation:
+
+### A. Atomic internal migration
+
+Use only when there is no persisted or external contract and all consumers can
+be changed together. Move implementation, update all imports/tests, and delete
+the old path in one PR. Do not leave aliases, deprecated re-exports, duplicate
+directories, or speculative compatibility facades.
+
+### B. Expand-contract migration
+
+Required for Prisma data, public APIs, shared contracts, stable IDs, PWA clients,
+print protocols, and historical accounting facts:
+
+1. audit current data/consumers and define invariants;
+2. add the new field/table/contract without removing the old one;
+3. perform an idempotent backfill with counts and discrepancy reporting;
+4. dual-write only when necessary and record its owner and exit condition;
+5. shadow-read/compare rather than silently falling back;
+6. cut reads after parity is demonstrated and observe a full relevant business
+   cycle;
+7. stop old writes and prove old usage is zero;
+8. remove old data/code/config/tests/docs in a separate authorized contraction.
+
+### C. Controlled critical cutover
+
+Required for payments, fulfillment, Uber/provider workflows, and other
+externally observable critical paths. In addition to class B, require feature
+flags or scoped rollout, idempotency, replay/reconciliation, dead-letter or
+operator recovery, old/new parity metrics, explicit rollback/cutback conditions,
+and no rewriting of historical facts during rollback.
+
+Every non-atomic compatibility path must be registered with:
+
+```text
+compat_id
+old_owner / new_owner
+dual_write_or_read paths
+parity metric
+rollback/cutback plan
+exit criteria
+removal task/PR
+deadline or business milestone
+```
+
+Compatibility is temporary infrastructure, not a permanent fallback. Operational
+retry/failover is different from legacy compatibility and must be named and
+tested accordingly.
+
+---
+
+## 19. Current modularization sequencing and temporary freeze zones
+
+Until the user explicitly confirms that UberEats production verification and
+the Clover developer/sandbox merchant identity blocker are closed:
+
+* do not structurally reorganize, rename, flatten, or change the public contracts
+  of `apps/api/src/integrations/ubereats/**`;
+* do not structurally reorganize Payments/Clover OAuth, terminal communication,
+  provider infrastructure, unified-payment orchestration, or their direct
+  Orders/POS contracts;
+* do not delete current provider compatibility paths or widen feature-flag
+  rollout;
+* narrowly scoped provider-verification or support-requested fixes are allowed,
+  but they must preserve current module boundaries and receive normal focused
+  regression coverage;
+* if a support response requires an architecture change, present its impact and
+  alternatives and obtain explicit authorization before implementation.
+
+Productive modularization work may proceed meanwhile in this order:
+
+1. baseline and guardrails: dependency graph, architecture tests, ID inventory,
+   compatibility register, characterization tests;
+2. low-risk deduplication and public-contract cleanup;
+3. responsive Admin/Accounting shells and reusable staff UI primitives, without
+   moving business ownership into the UI;
+4. Brand/Store identity and configuration, then Catalog/Pricing/Offers;
+5. Identity/Customer/Benefits and Messaging boundaries;
+6. Orders/Fulfillment only after characterization coverage and with extra care
+   around the temporarily frozen payment/Uber contracts;
+7. Payments/Clover, UberEats, POS terminal communication, and final critical
+   cutovers after the external blockers are resolved.
+
+Each modularization PR should establish or improve one enforceable boundary and
+remain deployable on its own. Recompute or rerun applicable dependency/architecture
+checks at the end of every slice. A phase is not complete if it introduces a new
+cycle, new internal cross-context import, ambiguous identity, duplicate active
+implementation, or unregistered compatibility path.
+
+---
+
+## 20. Testing requirements for modularization and refactoring
+
+Refactoring must prove behavior preservation; compilation alone is insufficient.
+
+* Add characterization tests before moving unclear pricing, order, benefit,
+  payment, fulfillment, notification, printing, or accounting behavior.
+* Add or update architecture tests when creating a context public API, moving an
+  owner, forbidding an import, or retiring a known exception.
+* Test domain/application rules without NestJS, Prisma, network, filesystem, or
+  provider SDK dependencies wherever the boundary permits.
+* Provider adapters require sanitized representative fixtures and mapping,
+  authentication, idempotency, retry, error, and unknown-outcome tests.
+* Contract changes require validating all API, Web, worker, printer, and shared
+  package consumers. Snapshot/golden tests must assert business-relevant content,
+  not unstable formatting noise.
+* A moved implementation is not complete while both old and new active paths
+  remain, unless an approved class B/C migration explicitly requires them.
+* For defect fixes, add a regression test that fails for the original cause when
+  practical. Do not overfit to an incidental private method call.
+
+The repository's architecture tests and GitHub CI are minimum gates. Passing CI
+does not by itself prove module ownership, data parity, production cutover, or
+external-provider verification; report those separately and accurately.

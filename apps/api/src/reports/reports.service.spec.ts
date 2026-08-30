@@ -122,6 +122,48 @@ describe('ReportsService', () => {
     });
   });
 
+  it('新套餐优先使用成交时 componentsJson，不回查当前菜单映射', async () => {
+    const { service, prisma } = createService([
+      {
+        qty: 2,
+        productStableId: 'breakfast_combo',
+        displayName: 'Breakfast Combo',
+        nameEn: 'Breakfast Combo',
+        nameZh: '早点套餐',
+        optionsJson: null,
+        componentsJson: [
+          {
+            productStableId: 'hulatang',
+            nameEn: 'Hulatang',
+            nameZh: '胡辣汤',
+            quantityPerParent: 1,
+            source: 'FIXED',
+            options: [],
+          },
+          {
+            productStableId: 'youtiao',
+            nameEn: 'Youtiao',
+            nameZh: '油条',
+            quantityPerParent: 2,
+            source: 'FIXED',
+            options: [],
+          },
+        ],
+      },
+    ]);
+
+    const report = await service.getReport({
+      from: '2026-01-01',
+      to: '2026-01-01',
+    });
+
+    expect(report.topItems).toEqual([
+      { name: '油条', quantity: 4 },
+      { name: '胡辣汤', quantity: 2 },
+    ]);
+    expect(prisma.menuOptionTemplateChoice.findMany).not.toHaveBeenCalled();
+  });
+
   it('同一套餐内重复目标菜品按出现次数乘以套餐数量累加', async () => {
     const { service } = createService([
       {
