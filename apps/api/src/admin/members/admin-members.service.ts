@@ -17,6 +17,10 @@ import { normalizeEmail } from '../../common/utils/email';
 import { normalizePhone } from '../../common/utils/phone';
 import { generateStableId } from '../../common/utils/stable-id';
 import { LoyaltyService } from '../../loyalty/loyalty.service';
+import {
+  LOYALTY_POLICY_READER,
+  type LoyaltyPolicyReaderPort,
+} from '../../loyalty/public-api';
 import { MembershipService } from '../../membership/membership.service';
 import { PhoneVerificationService } from '../../phone-verification/phone-verification.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -27,9 +31,6 @@ import {
 } from '../../auth/public-api';
 
 const MICRO_PER_POINT = 1_000_000;
-const DEFAULT_TIER_THRESHOLD_SILVER = 1000 * 100;
-const DEFAULT_TIER_THRESHOLD_GOLD = 10000 * 100;
-const DEFAULT_TIER_THRESHOLD_PLATINUM = 30000 * 100;
 const POS_RECHARGE_PURPOSE = 'pos-recharge';
 
 const UseRuleSchema = z
@@ -101,6 +102,8 @@ export class AdminMembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
+    @Inject(LOYALTY_POLICY_READER)
+    private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
     private readonly phoneVerification: PhoneVerificationService,
     private readonly emailService: EmailService,
@@ -266,24 +269,8 @@ export class AdminMembersService {
   }
 
   private async getTierThresholds() {
-    const config = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    return {
-      SILVER:
-        typeof config?.tierThresholdSilver === 'number'
-          ? config.tierThresholdSilver
-          : DEFAULT_TIER_THRESHOLD_SILVER,
-      GOLD:
-        typeof config?.tierThresholdGold === 'number'
-          ? config.tierThresholdGold
-          : DEFAULT_TIER_THRESHOLD_GOLD,
-      PLATINUM:
-        typeof config?.tierThresholdPlatinum === 'number'
-          ? config.tierThresholdPlatinum
-          : DEFAULT_TIER_THRESHOLD_PLATINUM,
-    };
+    const policy = await this.loyaltyPolicyReader.getLoyaltyPolicySnapshot();
+    return policy.tierThresholdCents;
   }
 
   private computeTierProgress(

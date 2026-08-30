@@ -6,11 +6,19 @@ import { MessagingModule } from '../messaging/messaging.module';
 import { LoyaltyService } from './loyalty.service';
 import { LoyaltyController } from './loyalty.controller';
 import { LoyaltyEventProcessor } from './loyalty-event.processor';
+import { LOYALTY_POLICY_READER } from './loyalty-policy.contract';
 
 @Module({
   imports: [PrismaModule, PosDeviceModule, MessagingModule],
-  providers: [LoyaltyService, LoyaltyEventProcessor],
+  providers: [
+    LoyaltyService,
+    {
+      provide: LOYALTY_POLICY_READER,
+      useExisting: LoyaltyService,
+    },
+    LoyaltyEventProcessor,
+  ],
   controllers: [LoyaltyController],
-  exports: [LoyaltyService],
+  exports: [LoyaltyService, LOYALTY_POLICY_READER],
 })
 export class LoyaltyModule {}

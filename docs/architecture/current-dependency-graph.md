@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Brand/Store Messaging reader base: `origin/dev@386866c1` (2026-08-30).
+Phase 2 Benefits loyalty policy reader base: `origin/dev@50edc208` (2026-08-30).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -109,6 +109,29 @@ pair fails CI.
   legacy writers; their more specific Brand/Store ownership should be registered
   when that writer boundary is migrated, rather than reclassifying existing
   direct-import debt without changing the implementation.
+
+## Phase 2 Benefits loyalty policy boundary started
+
+- `apps/api/src/loyalty/public-api.ts` exposes a narrow `LOYALTY_POLICY_READER`
+  contract owned by Identity/Customer/Benefits. Loyalty earn/redeem/referral
+  rates, tier multipliers, and tier thresholds are explicitly excluded from the
+  Brand/Store public configuration contract even though transitional columns
+  currently live in `BrandConfig`.
+- The existing BusinessConfig compatibility trigger already mirrors those policy
+  fields into `BrandConfig`. The first Benefits snapshot therefore reads those
+  transitional columns without a schema change, while the future dedicated
+  Benefits persistence migration remains a separate authorized step.
+- Membership program rules and Admin member tier-progress thresholds are the first
+  non-transaction consumers migrated to the Benefits snapshot. Admin Members can
+  no longer read `BusinessConfig` directly for tier thresholds.
+- Loyalty transaction-bound policy reads continue to use `BusinessConfig` for this
+  slice. Their data source and transaction boundaries are intentionally unchanged;
+  only the existing normalization/default rules were extracted into one pure
+  Benefits policy function shared by old and new read paths.
+- `benefits.business-config-loyalty-policy.v1` records the temporary split-read
+  state, parity requirement, rollback, and exit criteria. The architecture scanner
+  protects the public policy surface and prevents the migrated readers from
+  regressing or moving loyalty policy fields into Brand/Store public config.
 
 ## Carried debt outside this closeout
 

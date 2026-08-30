@@ -151,6 +151,38 @@
     },
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
   },
+  "benefitsLoyaltyPolicyOwnership": {
+    "context": "identity-customer-benefits",
+    "ownerRoot": "apps/api/src/loyalty",
+    "publicSurface": "apps/api/src/loyalty/public-api.ts",
+    "implementation": "apps/api/src/loyalty/loyalty.service.ts",
+    "contractImplementation": "apps/api/src/loyalty/loyalty-policy.contract.ts",
+    "policyImplementation": "apps/api/src/loyalty/loyalty-policy.ts",
+    "compositionModule": "apps/api/src/loyalty/loyalty.module.ts",
+    "publicSymbols": [
+      "LOYALTY_POLICY_READER",
+      "LoyaltyPolicyReaderPort",
+      "LoyaltyPolicySnapshot",
+      "LoyaltyModule"
+    ],
+    "transitionalStorageDelegate": "brandConfig",
+    "legacyStorageDelegate": "businessConfig",
+    "migratedLegacyConsumers": [
+      "apps/api/src/admin/members/admin-members.service.ts"
+    ],
+    "forbiddenBrandStoreContractFields": [
+      "earnPtPerDollar",
+      "redeemDollarPerPoint",
+      "referralPtPerDollar",
+      "tierMultiplierBronze",
+      "tierMultiplierSilver",
+      "tierMultiplierGold",
+      "tierMultiplierPlatinum",
+      "tierThresholdSilver",
+      "tierThresholdGold",
+      "tierThresholdPlatinum"
+    ]
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
