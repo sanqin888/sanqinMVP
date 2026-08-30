@@ -968,9 +968,8 @@ export class AccountingOperationsService {
 
   private async deleteStoredAccountingFiles(urls: string[]) {
     for (const url of urls) {
-      const match = /^\/api\/v1\/accounting\/files\/(bills|receipts)\/([^/]+)$/.exec(
-        url,
-      );
+      const match =
+        /^\/api\/v1\/accounting\/files\/(bills|receipts)\/([^/]+)$/.exec(url);
       if (!match) continue;
       const [, kind, rawFileName] = match;
       const fileName = path.basename(rawFileName);

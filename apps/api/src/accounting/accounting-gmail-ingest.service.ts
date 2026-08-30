@@ -580,7 +580,9 @@ export class AccountingGmailIngestService {
     return (await response.json()) as T;
   }
 
-  private attachmentKind(part: GmailPart): GmailAccountingAttachmentKind | null {
+  private attachmentKind(
+    part: GmailPart,
+  ): GmailAccountingAttachmentKind | null {
     const filename = part.filename?.trim().toLowerCase() ?? '';
     const mimeType = part.mimeType?.trim().toLowerCase() ?? '';
     if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
@@ -599,7 +601,9 @@ export class AccountingGmailIngestService {
     const filenameLooksLikeBill =
       /(?:bill|invoice|receipt|statement|purchase|order)/i.test(filename);
     const filenameLooksDecorative =
-      /(?:logo|signature|spacer|icon|facebook|instagram|linkedin)/i.test(filename);
+      /(?:logo|signature|spacer|icon|facebook|instagram|linkedin)/i.test(
+        filename,
+      );
     if (
       reportedSize > 0 &&
       reportedSize < 100_000 &&

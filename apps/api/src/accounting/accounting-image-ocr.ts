@@ -48,11 +48,8 @@ function runTesseract(buffer: Buffer): Promise<string> {
     let stdoutBytes = 0;
     let stderrBytes = 0;
     let settled = false;
-    let timer: NodeJS.Timeout | undefined;
 
-    const clearTimer = () => {
-      if (timer) clearTimeout(timer);
-    };
+    const clearTimer = () => clearTimeout(timer);
     const finishReject = (error: Error) => {
       if (settled) return;
       settled = true;
@@ -66,7 +63,7 @@ function runTesseract(buffer: Buffer): Promise<string> {
       resolve(value);
     };
 
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       child.kill('SIGKILL');
       finishReject(new Error('Accounting image OCR timed out'));
     }, OCR_TIMEOUT_MS);
