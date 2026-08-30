@@ -12,6 +12,15 @@ import { createHash } from 'crypto';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engine';
+import type {
+  LoyaltyPolicyReaderPort,
+  LoyaltyPolicySnapshot,
+  LoyaltyTier,
+} from './loyalty-policy.contract';
+import {
+  DEFAULT_LOYALTY_POLICY,
+  normalizeLoyaltyPolicy,
+} from './loyalty-policy';
 
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 
@@ -22,25 +31,28 @@ const ledgerSourceAmend = (amendStableId: string) => `AMEND:${amendStableId}`;
 const LEDGER_SOURCE_TOPUP = 'TOPUP';
 const LEDGER_SOURCE_MANUAL = 'MANUAL';
 const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
-const DEFAULT_EARN_PT_PER_DOLLAR = 0.01;
-const DEFAULT_REDEEM_DOLLAR_PER_POINT = 1;
-const DEFAULT_REFERRAL_PT_PER_DOLLAR = 0.01;
-const DEFAULT_TIER_THRESHOLD_SILVER = 1000 * 100;
-const DEFAULT_TIER_THRESHOLD_GOLD = 10000 * 100;
-const DEFAULT_TIER_THRESHOLD_PLATINUM = 30000 * 100;
-const DEFAULT_TIER_MULTIPLIER_BRONZE = 1;
-const DEFAULT_TIER_MULTIPLIER_SILVER = 2;
-const DEFAULT_TIER_MULTIPLIER_GOLD = 3;
-const DEFAULT_TIER_MULTIPLIER_PLATINUM = 5;
+const DEFAULT_EARN_PT_PER_DOLLAR = DEFAULT_LOYALTY_POLICY.earnPtPerDollar;
+const DEFAULT_REDEEM_DOLLAR_PER_POINT =
+  DEFAULT_LOYALTY_POLICY.redeemDollarPerPoint;
+const DEFAULT_REFERRAL_PT_PER_DOLLAR =
+  DEFAULT_LOYALTY_POLICY.referralPtPerDollar;
+const DEFAULT_TIER_THRESHOLD_SILVER =
+  DEFAULT_LOYALTY_POLICY.tierThresholdCents.SILVER;
+const DEFAULT_TIER_THRESHOLD_GOLD =
+  DEFAULT_LOYALTY_POLICY.tierThresholdCents.GOLD;
+const DEFAULT_TIER_THRESHOLD_PLATINUM =
+  DEFAULT_LOYALTY_POLICY.tierThresholdCents.PLATINUM;
+const DEFAULT_TIER_MULTIPLIER_BRONZE =
+  DEFAULT_LOYALTY_POLICY.tierMultipliers.BRONZE;
+const DEFAULT_TIER_MULTIPLIER_SILVER =
+  DEFAULT_LOYALTY_POLICY.tierMultipliers.SILVER;
+const DEFAULT_TIER_MULTIPLIER_GOLD =
+  DEFAULT_LOYALTY_POLICY.tierMultipliers.GOLD;
+const DEFAULT_TIER_MULTIPLIER_PLATINUM =
+  DEFAULT_LOYALTY_POLICY.tierMultipliers.PLATINUM;
 
-type Tier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
-type LoyaltyConfig = {
-  earnPtPerDollar: number;
-  redeemDollarPerPoint: number;
-  referralPtPerDollar: number;
-  tierThresholdCents: Record<Exclude<Tier, 'BRONZE'>, number>;
-  tierMultipliers: Record<Tier, number>;
-};
+type Tier = LoyaltyTier;
+type LoyaltyConfig = LoyaltyPolicySnapshot;
 
 type OrderForLoyaltySettlement = Pick<
   Prisma.OrderGetPayload<Record<string, never>>,
@@ -145,7 +157,7 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 }
 
 @Injectable()
-export class LoyaltyService {
+export class LoyaltyService implements LoyaltyPolicyReaderPort {
   constructor(
     private readonly prisma: PrismaService,
     private readonly couponTriggerService: CouponProgramTriggerService,
@@ -204,83 +216,27 @@ export class LoyaltyService {
   }
 
   private normalizeLoyaltyConfig(config: BusinessConfig): LoyaltyConfig {
-    const earnPtPerDollar =
-      typeof config.earnPtPerDollar === 'number' &&
-      Number.isFinite(config.earnPtPerDollar) &&
-      config.earnPtPerDollar >= 0
-        ? config.earnPtPerDollar
-        : DEFAULT_EARN_PT_PER_DOLLAR;
-    const redeemDollarPerPoint =
-      typeof config.redeemDollarPerPoint === 'number' &&
-      Number.isFinite(config.redeemDollarPerPoint) &&
-      config.redeemDollarPerPoint > 0
-        ? config.redeemDollarPerPoint
-        : DEFAULT_REDEEM_DOLLAR_PER_POINT;
-    const referralPtPerDollar =
-      typeof config.referralPtPerDollar === 'number' &&
-      Number.isFinite(config.referralPtPerDollar) &&
-      config.referralPtPerDollar >= 0
-        ? config.referralPtPerDollar
-        : DEFAULT_REFERRAL_PT_PER_DOLLAR;
-    const tierThresholdSilver =
-      typeof config.tierThresholdSilver === 'number' &&
-      Number.isFinite(config.tierThresholdSilver) &&
-      config.tierThresholdSilver >= 0
-        ? config.tierThresholdSilver
-        : DEFAULT_TIER_THRESHOLD_SILVER;
-    const tierThresholdGold =
-      typeof config.tierThresholdGold === 'number' &&
-      Number.isFinite(config.tierThresholdGold) &&
-      config.tierThresholdGold >= 0
-        ? config.tierThresholdGold
-        : DEFAULT_TIER_THRESHOLD_GOLD;
-    const tierThresholdPlatinum =
-      typeof config.tierThresholdPlatinum === 'number' &&
-      Number.isFinite(config.tierThresholdPlatinum) &&
-      config.tierThresholdPlatinum >= 0
-        ? config.tierThresholdPlatinum
-        : DEFAULT_TIER_THRESHOLD_PLATINUM;
-    const tierMultiplierBronze =
-      typeof config.tierMultiplierBronze === 'number' &&
-      Number.isFinite(config.tierMultiplierBronze) &&
-      config.tierMultiplierBronze >= 0
-        ? config.tierMultiplierBronze
-        : DEFAULT_TIER_MULTIPLIER_BRONZE;
-    const tierMultiplierSilver =
-      typeof config.tierMultiplierSilver === 'number' &&
-      Number.isFinite(config.tierMultiplierSilver) &&
-      config.tierMultiplierSilver >= 0
-        ? config.tierMultiplierSilver
-        : DEFAULT_TIER_MULTIPLIER_SILVER;
-    const tierMultiplierGold =
-      typeof config.tierMultiplierGold === 'number' &&
-      Number.isFinite(config.tierMultiplierGold) &&
-      config.tierMultiplierGold >= 0
-        ? config.tierMultiplierGold
-        : DEFAULT_TIER_MULTIPLIER_GOLD;
-    const tierMultiplierPlatinum =
-      typeof config.tierMultiplierPlatinum === 'number' &&
-      Number.isFinite(config.tierMultiplierPlatinum) &&
-      config.tierMultiplierPlatinum >= 0
-        ? config.tierMultiplierPlatinum
-        : DEFAULT_TIER_MULTIPLIER_PLATINUM;
+    return normalizeLoyaltyPolicy(config);
+  }
 
-    return {
-      earnPtPerDollar,
-      redeemDollarPerPoint,
-      referralPtPerDollar,
-      tierThresholdCents: {
-        SILVER: tierThresholdSilver,
-        GOLD: tierThresholdGold,
-        PLATINUM: tierThresholdPlatinum,
+  // @compat benefits.business-config-loyalty-policy.v1
+  async getLoyaltyPolicySnapshot(): Promise<LoyaltyPolicySnapshot> {
+    const config = await this.prisma.brandConfig.findUnique({
+      where: { id: 1 },
+      select: {
+        earnPtPerDollar: true,
+        redeemDollarPerPoint: true,
+        referralPtPerDollar: true,
+        tierMultiplierBronze: true,
+        tierMultiplierSilver: true,
+        tierMultiplierGold: true,
+        tierMultiplierPlatinum: true,
+        tierThresholdSilver: true,
+        tierThresholdGold: true,
+        tierThresholdPlatinum: true,
       },
-      tierMultipliers: {
-        BRONZE: tierMultiplierBronze,
-        SILVER: tierMultiplierSilver,
-        GOLD: tierMultiplierGold,
-        PLATINUM: tierMultiplierPlatinum,
-      },
-    };
+    });
+    return normalizeLoyaltyPolicy(config);
   }
 
   private async getLoyaltyConfig(): Promise<LoyaltyConfig> {
@@ -296,7 +252,7 @@ export class LoyaltyService {
   }
 
   async getMembershipProgramRules() {
-    const config = await this.getLoyaltyConfig();
+    const config = await this.getLoyaltyPolicySnapshot();
     const tierRules = (['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'] as const).map(
       (tier) => {
         const thresholdCents =

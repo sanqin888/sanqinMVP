@@ -630,6 +630,188 @@ if (brandStoreCanonicalConfigOwnership) {
   }
 }
 
+const benefitsLoyaltyPolicyOwnership = config.benefitsLoyaltyPolicyOwnership;
+if (benefitsLoyaltyPolicyOwnership) {
+  const ownerContext = benefitsLoyaltyPolicyOwnership.context;
+  const ownerRoot = toPosix(benefitsLoyaltyPolicyOwnership.ownerRoot);
+  const publicSurface = toPosix(benefitsLoyaltyPolicyOwnership.publicSurface);
+  const implementation = toPosix(benefitsLoyaltyPolicyOwnership.implementation);
+  const contractImplementation = toPosix(
+    benefitsLoyaltyPolicyOwnership.contractImplementation,
+  );
+  const policyImplementation = toPosix(
+    benefitsLoyaltyPolicyOwnership.policyImplementation,
+  );
+  const compositionModule = toPosix(
+    benefitsLoyaltyPolicyOwnership.compositionModule,
+  );
+  const publicSymbols = benefitsLoyaltyPolicyOwnership.publicSymbols ?? [];
+  const transitionalStorageDelegate =
+    benefitsLoyaltyPolicyOwnership.transitionalStorageDelegate;
+  const legacyStorageDelegate = benefitsLoyaltyPolicyOwnership.legacyStorageDelegate;
+  const migratedLegacyConsumers =
+    benefitsLoyaltyPolicyOwnership.migratedLegacyConsumers ?? [];
+  const forbiddenBrandStoreContractFields =
+    benefitsLoyaltyPolicyOwnership.forbiddenBrandStoreContractFields ?? [];
+
+  for (const boundaryPath of [
+    publicSurface,
+    implementation,
+    contractImplementation,
+    policyImplementation,
+    compositionModule,
+  ]) {
+    if (contextOf(boundaryPath) !== ownerContext) {
+      failures.push(
+        `Benefits loyalty policy boundary must belong to ${ownerContext}: ${boundaryPath}`,
+      );
+    }
+    if (!existsSync(join(REPOSITORY_ROOT, boundaryPath))) {
+      failures.push(`Benefits loyalty policy boundary path missing: ${boundaryPath}`);
+    }
+  }
+
+  if (!isPublicSurface(publicSurface)) {
+    failures.push(
+      `Benefits loyalty policy boundary is not a recognized public surface: ${publicSurface}`,
+    );
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const publicSource = readFileSync(publicSurfacePath, 'utf8');
+    for (const symbol of publicSymbols) {
+      if (
+        !declaresSymbol(publicSource, symbol) &&
+        !reexportsSymbol(publicSource, symbol)
+      ) {
+        failures.push(
+          `Benefits loyalty policy public symbol missing: ${publicSurface} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  const implementationPath = join(REPOSITORY_ROOT, implementation);
+  if (existsSync(implementationPath)) {
+    const source = readFileSync(implementationPath, 'utf8');
+    const transitionalDelegatePattern = new RegExp(
+      `\\.\\s*${escapeRegExp(transitionalStorageDelegate)}\\b`,
+    );
+    if (!transitionalDelegatePattern.test(source)) {
+      failures.push(
+        `Benefits loyalty policy reader must use transitional ${transitionalStorageDelegate} storage: ${implementation}`,
+      );
+    }
+    const policyReaderPattern =
+      /async\s+getLoyaltyPolicySnapshot\s*\(\s*\)\s*:[^{]+\{[\s\S]{0,1600}?\.brandConfig\.findUnique\s*\(/;
+    if (!policyReaderPattern.test(source)) {
+      failures.push(
+        `Benefits loyalty policy reader must read BrandConfig inside getLoyaltyPolicySnapshot(): ${implementation}`,
+      );
+    }
+    const legacyPolicyReaderPattern =
+      /async\s+getLoyaltyPolicySnapshot\s*\(\s*\)\s*:[^{]+\{[\s\S]{0,1600}?\.businessConfig\b/;
+    if (legacyPolicyReaderPattern.test(source)) {
+      failures.push(
+        `Benefits loyalty policy reader must not regress to BusinessConfig: ${implementation}`,
+      );
+    }
+    const membershipRulesPattern =
+      /async\s+getMembershipProgramRules\s*\(\s*\)\s*\{[\s\S]{0,500}?getLoyaltyPolicySnapshot\s*\(/;
+    if (!membershipRulesPattern.test(source)) {
+      failures.push(
+        `membership program rules must use the Benefits loyalty policy snapshot: ${implementation}`,
+      );
+    }
+    const legacyMembershipRulesPattern =
+      /async\s+getMembershipProgramRules\s*\(\s*\)\s*\{[\s\S]{0,500}?getLoyaltyConfig\s*\(/;
+    if (legacyMembershipRulesPattern.test(source)) {
+      failures.push(
+        `membership program rules must not regress to legacy BusinessConfig policy reads: ${implementation}`,
+      );
+    }
+  }
+
+  for (const consumer of migratedLegacyConsumers) {
+    const consumerPath = toPosix(consumer);
+    const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
+    if (!existsSync(absoluteConsumerPath)) {
+      failures.push(`migrated Benefits loyalty policy consumer missing: ${consumerPath}`);
+      continue;
+    }
+    const source = readFileSync(absoluteConsumerPath, 'utf8');
+    const legacyDelegatePattern = new RegExp(
+      `\\.\\s*${escapeRegExp(legacyStorageDelegate)}\\b`,
+    );
+    if (legacyDelegatePattern.test(source)) {
+      failures.push(
+        `migrated Benefits loyalty policy consumer must not regress to ${legacyStorageDelegate}: ${consumerPath}`,
+      );
+    }
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(absoluteConsumerPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    if (
+      !importsPublicSurface ||
+      !source.includes('LOYALTY_POLICY_READER') ||
+      !source.includes('loyaltyPolicyReader.getLoyaltyPolicySnapshot')
+    ) {
+      failures.push(
+        `migrated Benefits loyalty policy consumer must use ${publicSurface}: ${consumerPath}`,
+      );
+    }
+  }
+
+  const privateTargets = new Set(
+    [contractImplementation, policyImplementation].map((path) =>
+      path.replace(/\.(?:[cm]?[jt]sx?)$/, ''),
+    ),
+  );
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (sourcePath === publicSurface || sourcePath.startsWith(ownerRoot + '/')) {
+      continue;
+    }
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const specifier of importSpecifiers(source)) {
+      if (!specifier.startsWith('.')) continue;
+      const target = resolveTarget(absolutePath, specifier).replace(
+        /\.(?:[cm]?[jt]sx?)$/,
+        '',
+      );
+      if (privateTargets.has(target)) {
+        failures.push(
+          `Benefits loyalty policy import must use ${publicSurface}: ${sourcePath} -> ${specifier}`,
+        );
+      }
+    }
+  }
+
+  const brandStoreContract = toPosix(
+    config.brandStoreCanonicalConfigOwnership?.contractImplementation ?? '',
+  );
+  if (brandStoreContract) {
+    const brandStoreContractPath = join(REPOSITORY_ROOT, brandStoreContract);
+    if (existsSync(brandStoreContractPath)) {
+      const brandStoreContractSource = readFileSync(brandStoreContractPath, 'utf8');
+      for (const field of forbiddenBrandStoreContractFields) {
+        if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(brandStoreContractSource)) {
+          failures.push(
+            `Benefits loyalty policy field must not become Brand/Store public config: ${brandStoreContract} -> ${field}`,
+          );
+        }
+      }
+    }
+  }
+}
+
 if (config.contexts.length !== 12 || new Set(config.contexts.map(({ id }) => id)).size !== 12) {
   failures.push('context-baseline.json must define exactly 12 unique contexts');
 }

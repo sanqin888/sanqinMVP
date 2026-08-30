@@ -17,20 +17,40 @@
     {
       "compat_id": "brand-store.business-config.v1",
       "status": "active",
-      "old_owner": "BusinessConfig single-store compatibility model and BusinessConfigService",
-      "new_owner": "BrandConfig plus per-store StoreConfig snapshot",
+      "old_owner": "BusinessConfig single-store compatibility model and remaining direct readers/writers",
+      "new_owner": "BrandConfig plus per-store StoreConfig for Brand/Store facts; Benefits loyalty policy is tracked separately",
       "dual_write_or_read": [
-        "Orders, Loyalty, Messaging, StoreStatus, Admin Business and Uber tax/config readers still consume BusinessConfig",
-        "BrandConfig and StoreConfig already overlap part of the same field set"
+        "Orders, POS StoreStatus/Connectivity, Admin Business and Uber tax/config paths still consume BusinessConfig for remaining Brand/Store facts",
+        "The BusinessConfig compatibility trigger mirrors overlapping Brand/Store facts into BrandConfig and StoreConfig while those readers and writers are migrated"
       ],
       "parity_metric": "Per-field BrandConfig/StoreConfig versus BusinessConfig difference report must remain zero for one complete business cycle",
-      "rollback": "Keep BusinessConfig reads available until all consumers use the new snapshot and the difference report is zero",
-      "exit_criteria": "All fields have one owner, all reads use the new snapshot, old reads and writes are zero, then BusinessConfig service/table can be removed",
+      "rollback": "Keep remaining BusinessConfig reads available until each Brand/Store consumer uses its owner boundary and the difference report is zero",
+      "exit_criteria": "All Brand/Store fields have one owner, remaining Brand/Store reads and writes no longer use BusinessConfig, then the Brand/Store portion of BusinessConfig compatibility can be contracted",
       "remove_pr": "Phase 2 Brand/Store contraction PR (to be created after expand/backfill/cutover)",
       "deadline": "Before Phase 2 Brand/Store exit",
       "evidence": [
         "apps/api/prisma/schema.prisma",
         "SanQ full-site modularization audit section 3.3 and 6.2"
+      ]
+    },
+    {
+      "compat_id": "benefits.business-config-loyalty-policy.v1",
+      "status": "active",
+      "old_owner": "BusinessConfig loyalty policy fields read directly by LoyaltyService and AdminMembersService",
+      "new_owner": "Benefits-owned LoyaltyPolicySnapshot; BrandConfig columns are transitional persistence until a dedicated Benefits schema migration",
+      "dual_write_or_read": [
+        "The existing BusinessConfig compatibility trigger mirrors loyalty policy writes into the transitional BrandConfig columns",
+        "Membership program rules and Admin member tier progress read the Benefits policy snapshot, while transaction-bound Loyalty paths continue reading BusinessConfig until their dedicated cutover"
+      ],
+      "parity_metric": "BusinessConfig and BrandConfig loyalty policy fields must remain zero-diff, and transaction-bound versus non-transaction Benefits policy values must match across one complete business cycle",
+      "rollback": "Revert only the non-transaction policy readers to BusinessConfig while retaining the compatibility trigger; never rewrite loyalty ledger history",
+      "exit_criteria": "All transaction and non-transaction Loyalty readers use the Benefits policy boundary, the Admin writer targets the Benefits owner, and dedicated Benefits persistence replaces duplicated BusinessConfig/BrandConfig loyalty columns before contraction",
+      "remove_pr": "Benefits loyalty policy transactional cutover followed by an authorized Benefits persistence contraction PR",
+      "deadline": "Before Phase 2 Identity/Customer/Benefits exit",
+      "evidence": [
+        "apps/api/src/loyalty/public-api.ts",
+        "apps/api/src/loyalty/loyalty-policy.contract.ts",
+        "apps/api/prisma/migrations/20260819233000_add_store_config_foundation/migration.sql"
       ]
     },
     {
