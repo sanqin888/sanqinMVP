@@ -92,8 +92,7 @@ export function buildOrderItemParentDisplayOptions(
       const groupKey = group.groupKey?.trim();
       return (
         !groupKey ||
-        (!groupKey.includes('__component-') &&
-          !groupKey.includes('__option-'))
+        (!groupKey.includes('__component-') && !groupKey.includes('__option-'))
       );
     })
     .map((group) => ({
@@ -110,10 +109,7 @@ export function buildOrderItemComponentDisplaySnapshots(
   parentQuantity: number,
   optionsValue?: unknown,
 ): OrderItemComponentDisplaySnapshot[] {
-  const normalizedParentQuantity = Math.max(
-    1,
-    Math.trunc(parentQuantity || 1),
-  );
+  const normalizedParentQuantity = Math.max(1, Math.trunc(parentQuantity || 1));
   const optionPriceByStableId = new Map<string, number>();
   if (Array.isArray(optionsValue)) {
     for (const group of optionsValue as OrderItemOptionsSnapshot) {

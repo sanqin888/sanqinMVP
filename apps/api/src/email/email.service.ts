@@ -332,7 +332,9 @@ export class EmailService {
               item.productStableId);
         const safeName = this.escapeHtml(name);
         const options = Array.isArray(item.options) ? item.options : [];
-        const components = Array.isArray(item.components) ? item.components : [];
+        const components = Array.isArray(item.components)
+          ? item.components
+          : [];
         const optionsHtml =
           options.length > 0
             ? `<div style="margin-top:4px;color:#64748b;font-size:12px;">${options
@@ -653,7 +655,9 @@ export class EmailService {
               item.nameZh ??
               item.productStableId);
         const options = Array.isArray(item.options) ? item.options : [];
-        const components = Array.isArray(item.components) ? item.components : [];
+        const components = Array.isArray(item.components)
+          ? item.components
+          : [];
         const optionLines = options
           .map((group) => {
             const groupName =
