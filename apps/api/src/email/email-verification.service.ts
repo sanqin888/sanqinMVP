@@ -1,37 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
-import { createHash, createHmac, randomBytes, randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { normalizeEmail } from '../common/utils/email';
+import {
+  IDENTITY_CHALLENGE_ENGINE,
+  type IdentityChallengeEnginePort,
+} from '../auth/public-api';
 
 @Injectable()
 export class EmailVerificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    @Inject(IDENTITY_CHALLENGE_ENGINE)
+    private readonly challengeEngine: IdentityChallengeEnginePort,
   ) {}
-
-  private generateVerificationCode(): string {
-    return String(randomInt(0, 1_000_000)).padStart(6, '0');
-  }
-
-  private hashCode(code: string): string {
-    const secret = process.env.OTP_SECRET ?? 'dev-secret';
-    return createHmac('sha256', secret).update(code).digest('hex');
-  }
-
-  private generateVerificationToken(): string {
-    return randomBytes(32).toString('hex');
-  }
-
-  private hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
-  }
 
   async requestVerification(params: {
     userId: string;
@@ -43,14 +31,17 @@ export class EmailVerificationService {
       return { ok: false, error: 'invalid_email' };
     }
 
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = this.challengeEngine.expiresAt(
+      new Date(),
+      24 * 60 * 60 * 1000,
+    );
     const user = await this.prisma.user.findUnique({
       where: { id: params.userId },
       select: { language: true },
     });
 
-    const token = this.generateVerificationCode();
-    const codeHash = this.hashCode(token);
+    const token = this.challengeEngine.generateCode('ZERO_PADDED');
+    const codeHash = this.challengeEngine.hashCode(token, 'OTP');
 
     const challenge = await this.prisma.authChallenge.create({
       data: {
@@ -91,7 +82,10 @@ export class EmailVerificationService {
     }
 
     const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const oneDayAgo = this.challengeEngine.windowStart(
+      now,
+      24 * 60 * 60 * 1000,
+    );
     const dailyCount = await this.prisma.authChallenge.count({
       where: {
         type: AuthChallengeType.EMAIL_VERIFY,
@@ -102,13 +96,13 @@ export class EmailVerificationService {
       },
     });
 
-    if (dailyCount >= 5) {
+    if (this.challengeEngine.limitReached(dailyCount, 5)) {
       return { ok: false, error: 'too many requests in a day' };
     }
 
-    const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
-    const token = this.generateVerificationCode();
-    const codeHash = this.hashCode(token);
+    const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000);
+    const token = this.challengeEngine.generateCode('ZERO_PADDED');
+    const codeHash = this.challengeEngine.hashCode(token, 'OTP');
 
     const challenge = await this.prisma.authChallenge.create({
       data: {
@@ -143,7 +137,7 @@ export class EmailVerificationService {
     purpose?: 'checkout';
   }) {
     const normalized = normalizeEmail(params.email);
-    const codeHash = this.hashCode(params.token.trim());
+    const codeHash = this.challengeEngine.hashCode(params.token.trim(), 'OTP');
     const now = new Date();
 
     if (!normalized || !params.token.trim()) {
@@ -169,16 +163,16 @@ export class EmailVerificationService {
     if (record.expiresAt < now) {
       await this.prisma.authChallenge.update({
         where: { id: record.id },
-        data: { status: AuthChallengeStatus.EXPIRED, consumedAt: now },
+        data: this.challengeEngine.expiredState(now),
       });
       return { ok: false, error: 'token_expired' };
     }
 
-    const verificationToken = this.generateVerificationToken();
+    const verificationToken = this.challengeEngine.generateVerificationToken();
     await this.prisma.$transaction([
       this.prisma.authChallenge.update({
         where: { id: record.id },
-        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+        data: this.challengeEngine.consumedState(now),
       }),
       this.prisma.authChallenge.create({
         data: {
@@ -187,7 +181,8 @@ export class EmailVerificationService {
           channel: MessagingChannel.EMAIL,
           addressNorm: record.addressNorm,
           addressRaw: record.addressRaw,
-          tokenHash: this.hashToken(verificationToken),
+          tokenHash:
+            this.challengeEngine.hashVerificationToken(verificationToken),
           purpose: params.purpose ?? 'checkout',
           expiresAt: record.expiresAt,
         },
@@ -216,7 +211,7 @@ export class EmailVerificationService {
         status: AuthChallengeStatus.PENDING,
         addressNorm: normalized,
         purpose: 'checkout',
-        tokenHash: this.hashToken(token),
+        tokenHash: this.challengeEngine.hashVerificationToken(token),
         expiresAt: { gt: new Date() },
       },
       select: { id: true },
@@ -226,7 +221,7 @@ export class EmailVerificationService {
   }
 
   async verifyToken(token: string) {
-    const codeHash = this.hashCode(token);
+    const codeHash = this.challengeEngine.hashCode(token, 'OTP');
     const now = new Date();
 
     const record = await this.prisma.authChallenge.findFirst({
@@ -246,7 +241,7 @@ export class EmailVerificationService {
     if (record.expiresAt < now) {
       await this.prisma.authChallenge.update({
         where: { id: record.id },
-        data: { status: AuthChallengeStatus.EXPIRED, consumedAt: now },
+        data: this.challengeEngine.expiredState(now),
       });
       return { ok: false, error: 'token_expired' };
     }
@@ -254,7 +249,7 @@ export class EmailVerificationService {
     await this.prisma.$transaction([
       this.prisma.authChallenge.update({
         where: { id: record.id },
-        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+        data: this.challengeEngine.consumedState(now),
       }),
       ...(record.userId
         ? [
@@ -270,7 +265,7 @@ export class EmailVerificationService {
   }
 
   async verifyTokenForUser(params: { token: string; userId: string }) {
-    const codeHash = this.hashCode(params.token);
+    const codeHash = this.challengeEngine.hashCode(params.token, 'OTP');
     const now = new Date();
 
     const record = await this.prisma.authChallenge.findFirst({
@@ -291,7 +286,7 @@ export class EmailVerificationService {
     if (record.expiresAt < now) {
       await this.prisma.authChallenge.update({
         where: { id: record.id },
-        data: { status: AuthChallengeStatus.EXPIRED, consumedAt: now },
+        data: this.challengeEngine.expiredState(now),
       });
       return { ok: false, error: 'token_expired' };
     }
@@ -299,7 +294,7 @@ export class EmailVerificationService {
     await this.prisma.$transaction([
       this.prisma.authChallenge.update({
         where: { id: record.id },
-        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+        data: this.challengeEngine.consumedState(now),
       }),
       this.prisma.user.update({
         where: { id: record.userId ?? params.userId },

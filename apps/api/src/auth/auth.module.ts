@@ -17,6 +17,7 @@ import { AdminMfaGuard } from './admin-mfa.guard';
 import { SmsModule } from '../sms/sms.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationModule } from '../notifications/notification.module';
+import { IdentityChallengeModule } from './challenge-engine.module';
 
 @Global()
 @Module({
@@ -27,6 +28,7 @@ import { NotificationModule } from '../notifications/notification.module';
     SmsModule,
     MessagingModule,
     NotificationModule,
+    IdentityChallengeModule,
   ],
   providers: [
     AuthService,

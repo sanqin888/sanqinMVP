@@ -15,9 +15,10 @@ import { SendGridEmailWebhookController } from './webhooks/sendgrid-email.webhoo
 import { EmailCheckoutVerificationController } from './email-checkout-verification.controller';
 import { SendGridEmailWebhookService } from './webhooks/sendgrid-email.webhook.service';
 import { SendGridEmailWebhookVerifier } from './webhooks/sendgrid-email.webhook.verifier';
+import { IdentityChallengeModule } from '../auth/public-api';
 
 @Module({
-  imports: [HttpModule, PrismaModule, MessagingModule],
+  imports: [HttpModule, PrismaModule, MessagingModule, IdentityChallengeModule],
   controllers: [
     SendGridEmailWebhookController,
     EmailCheckoutVerificationController,

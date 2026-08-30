@@ -4,12 +4,8 @@ import {
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
+import { ChallengeEngine } from '../../auth/challenge-engine.service';
 import { AdminMembersService } from './admin-members.service';
-
-type AdminMembersOtpInternals = {
-  generateVerificationCode(): string;
-  hashCode(code: string): string;
-};
 
 type AdminMembersTestSeam = {
   getUserByStableId(userStableId: string): Promise<unknown>;
@@ -39,12 +35,14 @@ describe('AdminMembersService recharge OTP characterization', () => {
     const emailService = {
       sendEmail: jest.fn(),
     };
+    const challengeEngine = new ChallengeEngine();
     const service = new AdminMembersService(
       prisma as never,
       loyalty as never,
       {} as never,
       phoneVerification as never,
       emailService as never,
+      challengeEngine,
     );
 
     return {
@@ -53,6 +51,7 @@ describe('AdminMembersService recharge OTP characterization', () => {
       loyalty,
       phoneVerification,
       emailService,
+      challengeEngine,
     };
   };
 
@@ -78,39 +77,15 @@ describe('AdminMembersService recharge OTP characterization', () => {
     }
   });
 
-  it('uses OTP_SECRET and retains the non-production dev-secret fallback', () => {
-    const { service } = createService();
-    const internals = service as unknown as AdminMembersOtpInternals;
-
-    process.env.OTP_SECRET = 'admin-secret';
-    expect(internals.hashCode('100000')).toBe(
-      createHmac('sha256', 'admin-secret').update('100000').digest('hex'),
-    );
-
-    delete process.env.OTP_SECRET;
-    expect(internals.hashCode('100000')).toBe(
-      createHmac('sha256', 'dev-secret').update('100000').digest('hex'),
-    );
-  });
-
-  it('generates codes from 100000 through 999999 without leading zeroes', () => {
-    const { service } = createService();
-    const internals = service as unknown as AdminMembersOtpInternals;
-    jest
-      .spyOn(Math, 'random')
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0.999999);
-
-    expect(internals.generateVerificationCode()).toBe('100000');
-    expect(internals.generateVerificationCode()).toBe('999999');
-  });
-
   it('creates each email recharge code without a service-level rate-limit query', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, emailService } = createService();
+    const { service, prisma, emailService, challengeEngine } = createService();
     mockMember(service, emailMember);
-    jest
-      .spyOn(service as unknown as AdminMembersOtpInternals, 'hashCode')
+    const generateCodeSpy = jest
+      .spyOn(challengeEngine, 'generateCode')
+      .mockReturnValue('100000');
+    const hashCodeSpy = jest
+      .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     emailService.sendEmail.mockResolvedValue({ ok: true, sendId: 'send-1' });
@@ -122,6 +97,8 @@ describe('AdminMembersService recharge OTP characterization', () => {
       }),
     ).resolves.toEqual({ ok: true });
 
+    expect(generateCodeSpy).toHaveBeenCalledWith('NON_ZERO_SIX_DIGIT');
+    expect(hashCodeSpy).toHaveBeenCalledWith('100000', 'OTP');
     expect(prisma.authChallenge.create).toHaveBeenCalledWith({
       data: {
         userId: 'user-db-id',
