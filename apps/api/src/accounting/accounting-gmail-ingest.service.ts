@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createId } from '@paralleldrive/cuid2';
+import { DateTime } from 'luxon';
 import {
   AccountingDocumentSource,
   AccountingDocumentStatus,
@@ -10,7 +11,12 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { getUploadsAccountingDir } from '../common/utils/uploads-path';
-import { extractAccountingPdf } from './accounting-pdf-extractor';
+import {
+  extractAccountingPdf,
+  extractAccountingText,
+} from './accounting-pdf-extractor';
+
+const GMAIL_BILLS_LABEL = 'SanQ-Bills';
 
 type GmailMessageList = {
   messages?: Array<{ id?: string }>;
@@ -28,6 +34,7 @@ type GmailPart = {
 };
 type GmailMessage = {
   id?: string;
+  internalDate?: string;
   payload?: GmailPart;
 };
 type GmailAttachment = { data?: string; size?: number };
@@ -36,6 +43,18 @@ type GoogleTokenResponse = {
   expires_in?: number;
   error?: string;
   error_description?: string;
+};
+
+type GmailIngestOptions = {
+  accountingStartDate: string | null;
+  timezone: string;
+};
+
+type MessageIngestResult = {
+  imported: number;
+  duplicates: number;
+  failed: number;
+  skippedBeforeStartDate: number;
 };
 
 @Injectable()
@@ -52,12 +71,13 @@ export class AccountingGmailIngestService {
     );
   }
 
-  async ingestBillsMailbox(): Promise<{
+  async ingestBillsMailbox(options: GmailIngestOptions): Promise<{
     configured: boolean;
     scannedMessages: number;
     importedDocuments: number;
     duplicateDocuments: number;
     failedDocuments: number;
+    skippedBeforeStartDate: number;
   }> {
     if (!this.isConfigured()) {
       return {
@@ -66,24 +86,28 @@ export class AccountingGmailIngestService {
         importedDocuments: 0,
         duplicateDocuments: 0,
         failedDocuments: 0,
+        skippedBeforeStartDate: 0,
       };
     }
 
     const token = await this.getAccessToken();
     const mailbox =
       process.env.ACCOUNTING_GMAIL_ADDRESS?.trim() || 'bills@sanq.ca';
-    const query = `to:${mailbox} has:attachment filename:pdf newer_than:30d -in:trash -in:spam`;
+    const dateClause = this.gmailDateClause(options.accountingStartDate);
+    const query = `{to:${mailbox} label:${GMAIL_BILLS_LABEL}} ${dateClause} -in:trash -in:spam`;
     const messageIds = await this.listMessageIds(token, query);
     let importedDocuments = 0;
     let duplicateDocuments = 0;
     let failedDocuments = 0;
+    let skippedBeforeStartDate = 0;
 
     for (const messageId of messageIds) {
       try {
-        const result = await this.ingestMessage(token, messageId);
+        const result = await this.ingestMessage(token, messageId, options);
         importedDocuments += result.imported;
         duplicateDocuments += result.duplicates;
         failedDocuments += result.failed;
+        skippedBeforeStartDate += result.skippedBeforeStartDate;
       } catch (error) {
         failedDocuments += 1;
         this.logger.error(
@@ -99,14 +123,28 @@ export class AccountingGmailIngestService {
       importedDocuments,
       duplicateDocuments,
       failedDocuments,
+      skippedBeforeStartDate,
     };
   }
 
-  private async ingestMessage(accessToken: string, messageId: string) {
+  private async ingestMessage(
+    accessToken: string,
+    messageId: string,
+    options: GmailIngestOptions,
+  ): Promise<MessageIngestResult> {
     const message = await this.gmailJson<GmailMessage>(
       accessToken,
       `/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
     );
+    if (!this.receivedOnOrAfterStartDate(message, options)) {
+      return {
+        imported: 0,
+        duplicates: 0,
+        failed: 0,
+        skippedBeforeStartDate: 1,
+      };
+    }
+
     const subject = this.header(message.payload?.headers, 'subject');
     const pdfParts = this.flattenParts(message.payload).filter((part) => {
       const filename = part.filename?.trim() ?? '';
@@ -116,9 +154,12 @@ export class AccountingGmailIngestService {
           filename.toLowerCase().endsWith('.pdf'))
       );
     });
-    let imported = 0;
-    let duplicates = 0;
-    let failed = 0;
+    const result: MessageIngestResult = {
+      imported: 0,
+      duplicates: 0,
+      failed: 0,
+      skippedBeforeStartDate: 0,
+    };
 
     for (const part of pdfParts) {
       const attachmentId = part.body?.attachmentId;
@@ -132,7 +173,7 @@ export class AccountingGmailIngestService {
           select: { documentStableId: true },
         });
       if (existingAttachment) {
-        duplicates += 1;
+        result.duplicates += 1;
         continue;
       }
 
@@ -142,7 +183,7 @@ export class AccountingGmailIngestService {
           `/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
         );
         if (!attachment.data) {
-          failed += 1;
+          result.failed += 1;
           continue;
         }
         const buffer = this.decodeBase64Url(attachment.data);
@@ -150,7 +191,7 @@ export class AccountingGmailIngestService {
           buffer.length < 5 ||
           buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
         ) {
-          failed += 1;
+          result.failed += 1;
           continue;
         }
         const fileHash = createHash('sha256').update(buffer).digest('hex');
@@ -160,11 +201,15 @@ export class AccountingGmailIngestService {
             select: { documentStableId: true },
           });
         if (duplicateHash) {
-          duplicates += 1;
+          result.duplicates += 1;
           continue;
         }
 
         const { text, extraction } = extractAccountingPdf(buffer);
+        if (this.isBeforeStartDate(extraction.date, options.accountingStartDate)) {
+          result.skippedBeforeStartDate += 1;
+          continue;
+        }
         const attachmentUrl = await this.savePdf(buffer, part.filename);
         await this.prisma.accountingExpenseDocument.create({
           data: {
@@ -187,9 +232,9 @@ export class AccountingGmailIngestService {
             extractionJson: extraction as unknown as Prisma.InputJsonValue,
           },
         });
-        imported += 1;
+        result.imported += 1;
       } catch (error) {
-        failed += 1;
+        result.failed += 1;
         this.logger.error(
           `Failed to ingest Gmail attachment ${messageId}/${attachmentId}`,
           error instanceof Error ? error.stack : String(error),
@@ -197,7 +242,169 @@ export class AccountingGmailIngestService {
       }
     }
 
-    return { imported, duplicates, failed };
+    if (pdfParts.length === 0) {
+      await this.ingestBodyOnlyMessage(
+        accessToken,
+        messageId,
+        message.payload,
+        subject,
+        options,
+        result,
+      );
+    }
+
+    return result;
+  }
+
+  private async ingestBodyOnlyMessage(
+    accessToken: string,
+    messageId: string,
+    payload: GmailPart | undefined,
+    subject: string | null,
+    options: GmailIngestOptions,
+    result: MessageIngestResult,
+  ) {
+    const existing = await this.prisma.accountingExpenseDocument.findFirst({
+      where: { gmailMessageId: messageId, gmailAttachmentId: null },
+      select: { documentStableId: true },
+    });
+    if (existing) {
+      result.duplicates += 1;
+      return;
+    }
+
+    const text = await this.readMessageBody(accessToken, messageId, payload);
+    if (!text) return;
+    const fileHash = createHash('sha256')
+      .update('gmail-body\0')
+      .update(messageId)
+      .update('\0')
+      .update(text)
+      .digest('hex');
+    const duplicateHash = await this.prisma.accountingExpenseDocument.findUnique({
+      where: { fileHash },
+      select: { documentStableId: true },
+    });
+    if (duplicateHash) {
+      result.duplicates += 1;
+      return;
+    }
+
+    const extraction = extractAccountingText(text);
+    if (this.isBeforeStartDate(extraction.date, options.accountingStartDate)) {
+      result.skippedBeforeStartDate += 1;
+      return;
+    }
+
+    await this.prisma.accountingExpenseDocument.create({
+      data: {
+        documentStableId: `expense_${createId()}`,
+        source: AccountingDocumentSource.GMAIL,
+        status: AccountingDocumentStatus.PENDING_REVIEW,
+        occurredAt: extraction.date
+          ? new Date(`${extraction.date}T12:00:00Z`)
+          : null,
+        subtotalCents: extraction.subtotalCents,
+        taxCents: extraction.taxCents,
+        totalCents: extraction.totalCents,
+        currency: 'CAD',
+        gmailMessageId: messageId,
+        gmailAttachmentId: null,
+        fileHash,
+        emailSubject: subject,
+        attachmentUrls: [],
+        extractedText: text.slice(0, 100_000),
+        extractionJson: extraction as unknown as Prisma.InputJsonValue,
+      },
+    });
+    result.imported += 1;
+  }
+
+  private gmailDateClause(accountingStartDate: string | null): string {
+    if (!accountingStartDate) return 'newer_than:30d';
+    const previousDay = DateTime.fromISO(accountingStartDate, { zone: 'utc' }).minus({
+      days: 1,
+    });
+    return `after:${previousDay.toFormat('yyyy/MM/dd')}`;
+  }
+
+  private receivedOnOrAfterStartDate(
+    message: GmailMessage,
+    options: GmailIngestOptions,
+  ): boolean {
+    if (!options.accountingStartDate || !message.internalDate) return true;
+    const millis = Number(message.internalDate);
+    if (!Number.isFinite(millis)) return true;
+    const receivedDate = DateTime.fromMillis(millis, { zone: options.timezone });
+    if (!receivedDate.isValid) return true;
+    const receivedDateKey = receivedDate.toISODate();
+    return receivedDateKey ? receivedDateKey >= options.accountingStartDate : true;
+  }
+
+  private isBeforeStartDate(
+    documentDate: string | null,
+    accountingStartDate: string | null,
+  ): boolean {
+    return Boolean(
+      accountingStartDate && documentDate && documentDate < accountingStartDate,
+    );
+  }
+
+  private async readMessageBody(
+    accessToken: string,
+    messageId: string,
+    payload?: GmailPart,
+  ): Promise<string> {
+    const parts = this.flattenParts(payload).filter(
+      (part) => !(part.filename?.trim() ?? ''),
+    );
+    const plainParts = parts.filter((part) => part.mimeType === 'text/plain');
+    const htmlParts = parts.filter((part) => part.mimeType === 'text/html');
+    const candidates = plainParts.length ? plainParts : htmlParts;
+    const texts: string[] = [];
+    for (const part of candidates) {
+      const raw = await this.readPartData(accessToken, messageId, part);
+      if (!raw) continue;
+      const decoded = raw.toString('utf8');
+      const text =
+        part.mimeType === 'text/html' ? this.htmlToText(decoded) : decoded.trim();
+      if (text) texts.push(text);
+    }
+    return Array.from(new Set(texts)).join('\n\n').replace(/\s+\n/g, '\n').trim();
+  }
+
+  private async readPartData(
+    accessToken: string,
+    messageId: string,
+    part: GmailPart,
+  ): Promise<Buffer | null> {
+    if (part.body?.data) return this.decodeBase64Url(part.body.data);
+    const attachmentId = part.body?.attachmentId;
+    if (!attachmentId) return null;
+    const attachment = await this.gmailJson<GmailAttachment>(
+      accessToken,
+      `/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    );
+    return attachment.data ? this.decodeBase64Url(attachment.data) : null;
+  }
+
+  private htmlToText(html: string): string {
+    return html
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p\s*>/gi, '\n')
+      .replace(/<\/div\s*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s+/g, '\n')
+      .trim();
   }
 
   private async getAccessToken(): Promise<string> {
@@ -221,15 +428,15 @@ export class AccountingGmailIngestService {
         body,
       },
     );
-    const payload = (await response
+    const tokenPayload = (await response
       .json()
       .catch(() => null)) as GoogleTokenResponse | null;
-    if (!response.ok || !payload?.access_token) {
+    if (!response.ok || !tokenPayload?.access_token) {
       throw new Error(
-        `Gmail OAuth refresh failed (${response.status}): ${payload?.error_description ?? payload?.error ?? 'unknown error'}`,
+        `Gmail OAuth refresh failed (${response.status}): ${tokenPayload?.error_description ?? tokenPayload?.error ?? 'unknown error'}`,
       );
     }
-    return payload.access_token;
+    return tokenPayload.access_token;
   }
 
   private async listMessageIds(accessToken: string, query: string) {

@@ -208,34 +208,31 @@ function suggestCategory(text: string) {
   return { stableId: null, name: null };
 }
 
-export function extractAccountingPdf(buffer: Buffer): {
-  text: string;
-  extraction: AccountingPdfExtraction;
-} {
-  const text = extractPdfText(buffer);
-  const subtotalCents = moneyAfterLabel(text, [
+export function extractAccountingText(text: string): AccountingPdfExtraction {
+  const normalizedText = text.replace(/\s+/g, ' ').trim();
+  const subtotalCents = moneyAfterLabel(normalizedText, [
     /\bsub\s*total\b/i,
     /\bsubtotal\b/i,
   ]);
-  const taxCents = moneyAfterLabel(text, [
+  const taxCents = moneyAfterLabel(normalizedText, [
     /\bHST\b/i,
     /\bGST\/HST\b/i,
     /\btotal tax\b/i,
     /\btax\b/i,
   ]);
-  const totalCents = moneyAfterLabel(text, [
+  const totalCents = moneyAfterLabel(normalizedText, [
     /\bamount due\b/i,
     /\bbalance due\b/i,
     /\bgrand total\b/i,
     /\btotal amount\b/i,
     /\btotal\b/i,
   ]);
-  const suggestion = suggestCategory(text);
+  const suggestion = suggestCategory(normalizedText);
   const priceTokenCount = Array.from(
-    text.matchAll(/\$?\d{1,5}\.\d{2}\b/g),
+    normalizedText.matchAll(/\$?\d{1,5}\.\d{2}\b/g),
   ).length;
   const requiresSplit = priceTokenCount >= 8 && !suggestion.stableId;
-  const date = detectDate(text);
+  const date = detectDate(normalizedText);
   const confidence: AccountingPdfExtraction['confidence'] =
     totalCents != null && suggestion.stableId && date
       ? 'HIGH'
@@ -244,17 +241,22 @@ export function extractAccountingPdf(buffer: Buffer): {
         : 'LOW';
 
   return {
-    text,
-    extraction: {
-      date,
-      subtotalCents,
-      taxCents,
-      totalCents,
-      suggestedCategoryStableId: suggestion.stableId,
-      suggestedCategoryName: suggestion.name,
-      confidence,
-      requiresSplit,
-      textLength: text.length,
-    },
+    date,
+    subtotalCents,
+    taxCents,
+    totalCents,
+    suggestedCategoryStableId: suggestion.stableId,
+    suggestedCategoryName: suggestion.name,
+    confidence,
+    requiresSplit,
+    textLength: normalizedText.length,
   };
+}
+
+export function extractAccountingPdf(buffer: Buffer): {
+  text: string;
+  extraction: AccountingPdfExtraction;
+} {
+  const text = extractPdfText(buffer);
+  return { text, extraction: extractAccountingText(text) };
 }
