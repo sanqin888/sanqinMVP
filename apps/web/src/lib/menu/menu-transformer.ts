@@ -26,6 +26,11 @@ export type LocalizedMenuItem = {
   isAvailable: boolean;
   tempUnavailableUntil?: string | null;
   isVisibleOnMainMenu: boolean;
+  fixedComponents: Array<{
+    componentItemStableId: string;
+    quantity: number;
+    sortOrder: number;
+  }>;
 
   // 注意：对外只暴露 templateGroupStableId / stableId（以及 admin 才会有 bindingStableId）
   optionGroups?: MenuOptionGroupWithOptionsDto[];
@@ -154,6 +159,9 @@ export function buildLocalizedMenuFromDb(
           isAvailable: i.isAvailable,
           tempUnavailableUntil: i.tempUnavailableUntil ?? null,
           isVisibleOnMainMenu: i.isVisibleOnMainMenu,
+          fixedComponents: [...(i.fixedComponents ?? [])].sort(
+            (a, b) => a.sortOrder - b.sortOrder,
+          ),
           optionGroups,
         };
       });

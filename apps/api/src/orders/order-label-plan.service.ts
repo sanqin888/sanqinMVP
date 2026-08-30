@@ -6,6 +6,7 @@ import type {
   OrderItemOptionGroupSnapshot,
   OrderItemOptionsSnapshot,
 } from './order-item-options';
+import { readOrderItemComponentsSnapshot } from './order-item-components';
 
 type LabelStrategy = 'AUTO' | 'ALWAYS' | 'NEVER';
 
@@ -117,6 +118,7 @@ export class OrderLabelPlanService {
             nameZh: true,
             displayName: true,
             optionsJson: true,
+            componentsJson: true,
             externalSpecialInstructions: true,
           },
         },
@@ -207,6 +209,7 @@ export class OrderLabelPlanService {
       nameZh: string | null;
       displayName: string | null;
       optionsJson: unknown;
+      componentsJson: unknown;
       externalSpecialInstructions: string | null;
     }>,
   ): Array<Omit<FulfillmentItem, 'config'>> {
@@ -214,12 +217,43 @@ export class OrderLabelPlanService {
 
     orderItems.forEach((orderItem, lineIndex) => {
       const options = this.readOptions(orderItem.optionsJson);
+      const components = readOrderItemComponentsSnapshot(
+        orderItem.componentsJson,
+      );
+      const quantity = Math.max(1, Math.round(orderItem.qty || 1));
+
+      if (components.length > 0) {
+        for (
+          let quantityIndex = 0;
+          quantityIndex < quantity;
+          quantityIndex += 1
+        ) {
+          components.forEach((component, componentIndex) => {
+            for (
+              let componentQuantityIndex = 0;
+              componentQuantityIndex < component.quantityPerParent;
+              componentQuantityIndex += 1
+            ) {
+              output.push({
+                instanceId: `${lineIndex}:${quantityIndex}:component:${componentIndex}:${componentQuantityIndex}`,
+                productStableId: component.productStableId,
+                nameEn: component.nameEn,
+                nameZh: component.nameZh,
+                options: component.options,
+                specialInstructions:
+                  orderItem.externalSpecialInstructions?.trim() || null,
+              });
+            }
+          });
+        }
+        return;
+      }
+
       const targets = options.flatMap((group) =>
         group.choices
           .filter((choice) => Boolean(choice.targetItemStableId?.trim()))
           .map((choice) => ({ group, choice })),
       );
-      const quantity = Math.max(1, Math.round(orderItem.qty || 1));
 
       for (
         let quantityIndex = 0;

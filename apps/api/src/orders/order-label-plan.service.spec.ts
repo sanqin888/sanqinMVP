@@ -93,6 +93,7 @@ function orderLine(
   productStableId: string,
   optionsJson: unknown[] = [],
   qty = 1,
+  componentsJson: unknown[] = [],
 ) {
   return {
     productStableId,
@@ -101,6 +102,7 @@ function orderLine(
     nameZh: productStableId,
     displayName: productStableId,
     optionsJson,
+    componentsJson,
     externalSpecialInstructions: null,
   };
 }
@@ -265,6 +267,43 @@ describe('OrderLabelPlanService', () => {
       'hot-sour',
       'oil-splash',
     ]);
+  });
+
+  it('uses immutable component snapshots for fixed combo label planning', async () => {
+    const fixedComponents = [
+      {
+        productStableId: 'hot-sour',
+        nameEn: 'Hot Sour Soup',
+        nameZh: '胡辣汤',
+        quantityPerParent: 1,
+        source: 'FIXED',
+        options: [],
+      },
+      {
+        productStableId: 'side-dish',
+        nameEn: 'Side Dish',
+        nameZh: '小菜',
+        quantityPerParent: 1,
+        source: 'FIXED',
+        options: [],
+      },
+    ];
+    const { service } = createService(
+      [orderLine('breakfast-combo', [], 2, fixedComponents)],
+      [
+        menuConfig('hot-sour', { labelStrategy: 'ALWAYS' }),
+        menuConfig('side-dish', { labelStrategy: 'ALWAYS' }),
+      ],
+    );
+
+    const plan = await service.getByStableId('order-1');
+    expect(plan.labels).toHaveLength(2);
+    expect(plan.labels).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ productStableId: 'hot-sour', copies: 2 }),
+        expect.objectContaining({ productStableId: 'side-dish', copies: 2 }),
+      ]),
+    );
   });
 
   it('uses A/B only when both noodle and soup package variants must stay correlated', async () => {

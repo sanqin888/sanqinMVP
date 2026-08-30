@@ -253,6 +253,32 @@ describe('OrdersService', () => {
     jest.restoreAllMocks();
   });
 
+  it('keeps the same option stable id when selected in different component group paths', () => {
+    const internalService = service as unknown as {
+      collectOptionSelectionRefs: (
+        options?: Record<string, unknown>,
+      ) => Array<{ optionId: string; groupKey?: string; sequence: number }>;
+    };
+
+    expect(
+      internalService.collectOptionSelectionRefs({
+        'root__combo__component-soup-a__group-spice': ['mild'],
+        'root__combo__component-soup-b__group-spice': ['mild'],
+      }),
+    ).toEqual([
+      {
+        optionId: 'mild',
+        groupKey: 'root__combo__component-soup-a__group-spice',
+        sequence: 0,
+      },
+      {
+        optionId: 'mild',
+        groupKey: 'root__combo__component-soup-b__group-spice',
+        sequence: 1,
+      },
+    ]);
+  });
+
   it('uses Promotion Engine as the coupon min-spend eligibility source', async () => {
     const userStableId = 'c2234567890abcdefghijklmn';
     const couponStableId = 'c3234567890abcdefghijklmn';

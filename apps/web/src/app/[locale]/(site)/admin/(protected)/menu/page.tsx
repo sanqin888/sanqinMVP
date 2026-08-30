@@ -44,6 +44,11 @@ type BindingEditDraft = {
   affectedPackagingTypeStableId: string;
 };
 
+type FixedComponentDraft = {
+  componentItemStableId: string;
+  quantity: string;
+};
+
 function createEmptyBindDraft(): BindDraft {
   return {
     templateGroupStableId: '',
@@ -145,6 +150,9 @@ export default function AdminMenuPage() {
   const [bindingUpdateId, setBindingUpdateId] = useState<string | null>(null);
 
   const [bindDrafts, setBindDrafts] = useState<Record<string, BindDraft>>({});
+  const [fixedComponentDrafts, setFixedComponentDrafts] = useState<
+    Record<string, FixedComponentDraft>
+  >({});
   const [bindingEdits, setBindingEdits] = useState<
     Record<string, Record<string, BindingEditDraft>>
   >({});
@@ -185,9 +193,26 @@ export default function AdminMenuPage() {
     return m;
   }, [templates]);
 
+  const allMenuItems = useMemo(
+    () => categories.flatMap((category) => category.items),
+    [categories],
+  );
+  const menuItemByStableId = useMemo(
+    () => new Map(allMenuItems.map((item) => [item.stableId, item])),
+    [allMenuItems],
+  );
 
   function getBindDraft(itemStableId: string): BindDraft {
     return bindDrafts[itemStableId] ?? createEmptyBindDraft();
+  }
+
+  function getFixedComponentDraft(itemStableId: string): FixedComponentDraft {
+    return (
+      fixedComponentDrafts[itemStableId] ?? {
+        componentItemStableId: '',
+        quantity: '1',
+      }
+    );
   }
 
   function getBindingEditDraft(
@@ -452,6 +477,11 @@ export default function AdminMenuPage() {
         packagingTypeStableIds: item.packagings.map(
           (packaging) => packaging.packagingType.stableId,
         ),
+        fixedComponents: item.fixedComponents.map((component, index) => ({
+          componentItemStableId: component.componentItemStableId,
+          quantity: component.quantity,
+          sortOrder: index,
+        })),
         sortOrder: item.sortOrder,
         imageUrl: item.imageUrl ?? undefined,
         ingredientsEn: item.ingredientsEn ?? undefined,
@@ -1234,6 +1264,7 @@ export default function AdminMenuPage() {
                               <input
                                 type="checkbox"
                                 checked={item.publishToUberEats}
+                                disabled={item.fixedComponents.length > 0}
                                 onChange={(e) =>
                                   updateItemField(
                                     cat.stableId,
@@ -1248,9 +1279,13 @@ export default function AdminMenuPage() {
                               </span>
                             </span>
                             <span className="block text-xs text-slate-500">
-                              {isZh
-                                ? '只有明确开启的公开菜品才会进入 Uber Eats 菜单。'
-                                : 'Only public items explicitly enabled here will be included in the Uber Eats menu.'}
+                              {item.fixedComponents.length > 0
+                                ? isZh
+                                  ? '固定套餐暂不支持发布到 Uber Eats；先保证 Web / POS 的组成与子菜品选项上下文准确。'
+                                  : 'Fixed combos are not published to Uber Eats yet; Web/POS component and child-option context is protected first.'
+                                : isZh
+                                  ? '只有明确开启的公开菜品才会进入 Uber Eats 菜单。'
+                                  : 'Only public items explicitly enabled here will be included in the Uber Eats menu.'}
                             </span>
                           </label>
 
@@ -1439,6 +1474,193 @@ export default function AdminMenuPage() {
                               className="h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
                             />
                           </label>
+                        </div>
+
+                        {/* Fixed combo composition */}
+                        <div className="rounded-lg border border-slate-200 p-4">
+                          <div>
+                            <h4 className="text-sm font-semibold">
+                              {isZh ? '固定套餐组成' : 'Fixed combo composition'}
+                            </h4>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {isZh
+                                ? '这里添加套餐固定包含的实际菜品。顾客无需逐个勾选；组成菜品自己的选项会自动继承。'
+                                : 'Add the actual items included in this combo. Customers do not select them individually; component item options are inherited automatically.'}
+                            </p>
+                          </div>
+
+                          <div className="mt-3 space-y-2">
+                            {item.fixedComponents.length === 0 ? (
+                              <div className="text-sm text-slate-600">
+                                {isZh ? '当前不是固定套餐。' : 'No fixed components.'}
+                              </div>
+                            ) : (
+                              item.fixedComponents
+                                .slice()
+                                .sort((a, b) => a.sortOrder - b.sortOrder)
+                                .map((component) => {
+                                  const componentItem = menuItemByStableId.get(
+                                    component.componentItemStableId,
+                                  );
+                                  const componentName = componentItem
+                                    ? isZh
+                                      ? componentItem.nameZh ?? componentItem.nameEn
+                                      : componentItem.nameEn
+                                    : component.componentItemStableId;
+
+                                  return (
+                                    <div
+                                      key={component.componentItemStableId}
+                                      className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+                                    >
+                                      <span className="min-w-0 flex-1 text-sm font-medium">
+                                        {componentName}
+                                      </span>
+                                      <label className="flex items-center gap-1 text-xs text-slate-600">
+                                        <span>{isZh ? '数量' : 'Qty'}</span>
+                                        <input
+                                          value={String(component.quantity)}
+                                          onChange={(e) => {
+                                            const quantity = Math.max(
+                                              1,
+                                              toIntOrZero(e.target.value),
+                                            );
+                                            updateItemField(
+                                              cat.stableId,
+                                              item.stableId,
+                                              'fixedComponents',
+                                              item.fixedComponents.map((current) =>
+                                                current.componentItemStableId ===
+                                                component.componentItemStableId
+                                                  ? { ...current, quantity }
+                                                  : current,
+                                              ),
+                                            );
+                                          }}
+                                          className="w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
+                                          inputMode="numeric"
+                                        />
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateItemField(
+                                            cat.stableId,
+                                            item.stableId,
+                                            'fixedComponents',
+                                            item.fixedComponents
+                                              .filter(
+                                                (current) =>
+                                                  current.componentItemStableId !==
+                                                  component.componentItemStableId,
+                                              )
+                                              .map((current, index) => ({
+                                                ...current,
+                                                sortOrder: index,
+                                              })),
+                                          )
+                                        }
+                                        className="rounded-md border border-rose-200 bg-white px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                                      >
+                                        {isZh ? '移除' : 'Remove'}
+                                      </button>
+                                    </div>
+                                  );
+                                })
+                            )}
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_100px_auto]">
+                            <select
+                              value={getFixedComponentDraft(item.stableId).componentItemStableId}
+                              onChange={(e) =>
+                                setFixedComponentDrafts((prev) => ({
+                                  ...prev,
+                                  [item.stableId]: {
+                                    ...getFixedComponentDraft(item.stableId),
+                                    componentItemStableId: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+                            >
+                              <option value="">
+                                {isZh ? '选择组成菜品…' : 'Choose component item…'}
+                              </option>
+                              {allMenuItems
+                                .filter(
+                                  (candidate) =>
+                                    candidate.stableId !== item.stableId &&
+                                    !item.fixedComponents.some(
+                                      (component) =>
+                                        component.componentItemStableId ===
+                                        candidate.stableId,
+                                    ),
+                                )
+                                .map((candidate) => (
+                                  <option key={candidate.stableId} value={candidate.stableId}>
+                                    {isZh
+                                      ? candidate.nameZh ?? candidate.nameEn
+                                      : candidate.nameEn}
+                                  </option>
+                                ))}
+                            </select>
+                            <input
+                              value={getFixedComponentDraft(item.stableId).quantity}
+                              onChange={(e) =>
+                                setFixedComponentDrafts((prev) => ({
+                                  ...prev,
+                                  [item.stableId]: {
+                                    ...getFixedComponentDraft(item.stableId),
+                                    quantity: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              inputMode="numeric"
+                              aria-label={isZh ? '组成数量' : 'Component quantity'}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const draft = getFixedComponentDraft(item.stableId);
+                                const componentItemStableId =
+                                  draft.componentItemStableId.trim();
+                                if (!componentItemStableId) return;
+                                if (item.publishToUberEats) {
+                                  updateItemField(
+                                    cat.stableId,
+                                    item.stableId,
+                                    'publishToUberEats',
+                                    false,
+                                  );
+                                }
+                                updateItemField(
+                                  cat.stableId,
+                                  item.stableId,
+                                  'fixedComponents',
+                                  [
+                                    ...item.fixedComponents,
+                                    {
+                                      componentItemStableId,
+                                      quantity: Math.max(1, toIntOrZero(draft.quantity)),
+                                      sortOrder: item.fixedComponents.length,
+                                    },
+                                  ],
+                                );
+                                setFixedComponentDrafts((prev) => ({
+                                  ...prev,
+                                  [item.stableId]: {
+                                    componentItemStableId: '',
+                                    quantity: '1',
+                                  },
+                                }));
+                              }}
+                              className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800"
+                            >
+                              {isZh ? '添加组成' : 'Add component'}
+                            </button>
+                          </div>
                         </div>
 
                         {/* Option group bindings */}

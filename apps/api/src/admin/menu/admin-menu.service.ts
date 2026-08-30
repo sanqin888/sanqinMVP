@@ -173,6 +173,9 @@ export class AdminMenuService {
                 orderBy: { sortOrder: 'asc' },
                 include: { packagingType: true },
               },
+              fixedComponents: {
+                orderBy: { sortOrder: 'asc' },
+              },
               optionGroups: {
                 where: {
                   templateGroup: { deletedAt: null },
@@ -305,6 +308,11 @@ export class AdminMenuService {
                 isActive: packaging.packagingType.isActive,
                 sortOrder: packaging.packagingType.sortOrder,
               },
+            })),
+            fixedComponents: it.fixedComponents.map((component) => ({
+              componentItemStableId: component.componentItemStableId,
+              quantity: component.quantity,
+              sortOrder: component.sortOrder,
             })),
             tempUnavailableUntil: toIso(it.tempUnavailableUntil),
             sortOrder: it.sortOrder,
@@ -577,6 +585,11 @@ export class AdminMenuService {
       labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
       itemKind?: 'FOOD' | 'BEVERAGE';
       packagingTypeStableIds?: string[];
+      fixedComponents?: Array<{
+        componentItemStableId: string;
+        quantity: number;
+        sortOrder?: number;
+      }>;
       tempUnavailableUntil?: string | null;
     },
   ) {
@@ -588,6 +601,8 @@ export class AdminMenuService {
       where: { stableId, deletedAt: null },
       select: {
         id: true,
+        publishToUberEats: true,
+        fixedComponents: { select: { id: true } },
         optionGroups: {
           select: { affectedPackagingTypeStableIds: true },
         },
@@ -635,6 +650,22 @@ export class AdminMenuService {
           );
         }
       }
+    }
+
+    const fixedComponentsForUpdate =
+      body.fixedComponents === undefined
+        ? undefined
+        : await this.resolveFixedComponents(stableId, body.fixedComponents);
+    const nextHasFixedComponents =
+      fixedComponentsForUpdate === undefined
+        ? existing.fixedComponents.length > 0
+        : fixedComponentsForUpdate.length > 0;
+    const nextPublishToUberEats =
+      body.publishToUberEats ?? existing.publishToUberEats;
+    if (nextHasFixedComponents && nextPublishToUberEats) {
+      throw new BadRequestException(
+        'Fixed combo items cannot be published to Uber Eats until fixed-component modifier context is supported',
+      );
     }
 
     // ✅ 标准 2：只允许创建时写入 stableId（这里不更新 stableId）
@@ -685,6 +716,18 @@ export class AdminMenuService {
                 create: packagingTypesForUpdate.map((packagingType, index) => ({
                   packagingTypeId: packagingType.id,
                   sortOrder: index,
+                })),
+              },
+            }
+          : {}),
+        ...(fixedComponentsForUpdate
+          ? {
+              fixedComponents: {
+                deleteMany: {},
+                create: fixedComponentsForUpdate.map((component) => ({
+                  componentItemStableId: component.componentItemStableId,
+                  quantity: component.quantity,
+                  sortOrder: component.sortOrder,
                 })),
               },
             }
@@ -1684,6 +1727,107 @@ export class AdminMenuService {
     });
 
     return this.getDailySpecials();
+  }
+
+  private async resolveFixedComponents(
+    parentItemStableId: string,
+    input: Array<{
+      componentItemStableId: string;
+      quantity: number;
+      sortOrder?: number;
+    }>,
+  ): Promise<
+    Array<{
+      componentItemStableId: string;
+      quantity: number;
+      sortOrder: number;
+    }>
+  > {
+    if (!Array.isArray(input)) {
+      throw new BadRequestException('fixedComponents must be an array');
+    }
+
+    const normalized = input.map((component, index) => {
+      const componentItemStableId = component.componentItemStableId?.trim();
+      if (!componentItemStableId) {
+        throw new BadRequestException(
+          `fixedComponents[${index}].componentItemStableId is required`,
+        );
+      }
+      if (componentItemStableId === parentItemStableId) {
+        throw new BadRequestException('A menu item cannot contain itself');
+      }
+      if (!Number.isFinite(component.quantity) || component.quantity < 1) {
+        throw new BadRequestException(
+          `fixedComponents[${index}].quantity must be at least 1`,
+        );
+      }
+      return {
+        componentItemStableId,
+        quantity: Math.max(1, Math.trunc(component.quantity)),
+        sortOrder: Number.isFinite(component.sortOrder)
+          ? Math.max(0, Math.trunc(component.sortOrder as number))
+          : index,
+      };
+    });
+
+    const stableIds = normalized.map(
+      (component) => component.componentItemStableId,
+    );
+    if (new Set(stableIds).size !== stableIds.length) {
+      throw new BadRequestException(
+        'Each fixed component item may only appear once; use quantity for repeats',
+      );
+    }
+    if (stableIds.length === 0) return [];
+
+    const targets = await this.prisma.menuItem.findMany({
+      where: { stableId: { in: stableIds }, deletedAt: null },
+      select: { stableId: true },
+    });
+    const found = new Set(targets.map((target) => target.stableId));
+    const missing = stableIds.filter((stableId) => !found.has(stableId));
+    if (missing.length > 0) {
+      throw new NotFoundException(
+        `Fixed component item not found: ${missing.join(', ')}`,
+      );
+    }
+
+    const existingEdges = await this.prisma.menuItemComponent.findMany({
+      select: {
+        componentItemStableId: true,
+        parentItem: { select: { stableId: true } },
+      },
+    });
+    const adjacency = new Map<string, string[]>();
+    for (const edge of existingEdges) {
+      if (edge.parentItem.stableId === parentItemStableId) continue;
+      const values = adjacency.get(edge.parentItem.stableId) ?? [];
+      values.push(edge.componentItemStableId);
+      adjacency.set(edge.parentItem.stableId, values);
+    }
+    adjacency.set(parentItemStableId, stableIds);
+
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const hasCycle = (stableId: string): boolean => {
+      if (visiting.has(stableId)) return true;
+      if (visited.has(stableId)) return false;
+      visiting.add(stableId);
+      for (const childStableId of adjacency.get(stableId) ?? []) {
+        if (hasCycle(childStableId)) return true;
+      }
+      visiting.delete(stableId);
+      visited.add(stableId);
+      return false;
+    };
+    if (hasCycle(parentItemStableId)) {
+      throw new BadRequestException(
+        'Fixed combo components cannot form a cycle',
+      );
+    }
+
+    return normalized;
   }
 
   private async resolvePackagingTypes(
