@@ -127,10 +127,6 @@
       "limit": 1,
       "reason": "binary image download transport"
     },
-    "apps/web/src/app/[locale]/(site)/membership/page.tsx": {
-      "limit": 7,
-      "reason": "legacy membership browser API calls; migrate in later Web slice"
-    },
     "apps/web/src/app/[locale]/(site)/checkout/page.tsx": {
       "limit": 6,
       "reason": "legacy checkout browser API calls; payment-adjacent page is migrated separately"
