@@ -209,10 +209,6 @@ export class EmailService {
       .replace(/'/g, '&#39;');
   }
 
-  private stripAddressLabel(value: string): string {
-    return value.replace(/^[^:：]+[:：]\s*/, '').trim();
-  }
-
   private formatDiscountLabel(
     discount: PrintPosPayloadDto['snapshot']['appliedDiscounts'][number],
     locale: 'zh' | 'en',
@@ -848,44 +844,21 @@ ${totalLines.join('\n')}`;
     );
     const messagingConfig =
       await this.businessConfigService.getMessagingSnapshot(resolvedLocale);
-    const snapshot = await this.businessConfigService.getSnapshot();
-
-    const storeName =
-      snapshot.storeName?.trim() || messagingConfig.baseVars.brandName;
-
-    const addressParts = [
-      snapshot.storeAddressLine1,
-      snapshot.storeAddressLine2,
-      snapshot.storeCity,
-      snapshot.storeProvince,
-      snapshot.storePostalCode,
-    ]
-      .map((part) => part?.trim())
-      .filter((part): part is string => !!part);
-
-    const fallbackAddress = messagingConfig.baseVars.storeAddressLine
-      ? this.stripAddressLabel(messagingConfig.baseVars.storeAddressLine)
-      : '';
-
-    const storeAddress =
-      addressParts.length > 0 ? addressParts.join(', ') : fallbackAddress;
 
     const html = this.buildInvoiceHtml({
       payload: params.payload,
       locale: resolvedLocale,
-      storeName,
-      storeAddress,
-      storePhone:
-        snapshot.supportPhone ?? messagingConfig.baseVars.supportPhone,
+      storeName: messagingConfig.store.name,
+      storeAddress: messagingConfig.store.address,
+      storePhone: messagingConfig.store.phone,
       supportEmail: messagingConfig.baseVars.supportEmail,
     });
     const text = this.buildInvoiceText({
       payload: params.payload,
       locale: resolvedLocale,
-      storeName,
-      storeAddress,
-      storePhone:
-        snapshot.supportPhone ?? messagingConfig.baseVars.supportPhone,
+      storeName: messagingConfig.store.name,
+      storeAddress: messagingConfig.store.address,
+      storePhone: messagingConfig.store.phone,
       supportEmail: messagingConfig.baseVars.supportEmail,
     });
 

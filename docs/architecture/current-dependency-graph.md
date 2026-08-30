@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Brand/Store low-risk reader base: `origin/dev@5522b946` (2026-08-30).
+Phase 2 Benefits loyalty policy reader base: `origin/dev@50edc208` (2026-08-30).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -44,9 +44,9 @@ pair fails CI.
 | identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 10 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
-| messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 11; store-operations-pos-print 1 |
+| messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
@@ -85,19 +85,53 @@ pair fails CI.
 - Accounting, Promotions, PublicMenu, and AdminMenu now read store-local timezone
   through the canonical Store snapshot. Public/Admin menu reads no longer create
   a default `BusinessConfig` row as a side effect.
+- POS exchange-rate configuration now uses the combined Brand/Store snapshot:
+  `StoreConfig.timezone` controls the store clock and
+  `BrandConfig.wechatAlipayExchangeRate` supplies the existing manual fallback.
+  The POS exchange-rate module no longer imports Prisma directly, while the
+  externally visible fallback source label remains unchanged for compatibility.
+- Messaging configuration now caches the canonical Brand/Store snapshot instead
+  of a Prisma `BusinessConfig` model and no longer creates configuration on read.
+  Brand support contact fields feed message templates, while Store name/address/
+  phone feed invoice contact details so support and store-phone semantics are no
+  longer conflated.
 - `BrandStoreConfigModule` is exported through `store/public-api.ts`; its token,
   identity implementation, contract implementation, composition module, and
   Prisma reader stay owner-internal. Cross-context consumers wire the public
   module and inject the public reader token instead of deep-importing internals.
 - The architecture scanner protects the new public surface from cross-context
   deep imports, prevents the canonical reader from regressing to the legacy
-  `BusinessConfig` delegate, and freezes migrated consumers against reintroducing
-  direct `BusinessConfig` access.
+  `BusinessConfig` delegate, freezes migrated consumers against reintroducing
+  direct `BusinessConfig` access, and can forbid consumer-specific legacy Prisma
+  symbols after a service is fully de-Prisma'd.
 - Legacy `apps/api/src/admin/**` classification is intentionally unchanged in
   this slice. Admin business/config routes still mix authentication adapters and
   legacy writers; their more specific Brand/Store ownership should be registered
   when that writer boundary is migrated, rather than reclassifying existing
   direct-import debt without changing the implementation.
+
+## Phase 2 Benefits loyalty policy boundary started
+
+- `apps/api/src/loyalty/public-api.ts` exposes a narrow `LOYALTY_POLICY_READER`
+  contract owned by Identity/Customer/Benefits. Loyalty earn/redeem/referral
+  rates, tier multipliers, and tier thresholds are explicitly excluded from the
+  Brand/Store public configuration contract even though transitional columns
+  currently live in `BrandConfig`.
+- The existing BusinessConfig compatibility trigger already mirrors those policy
+  fields into `BrandConfig`. The first Benefits snapshot therefore reads those
+  transitional columns without a schema change, while the future dedicated
+  Benefits persistence migration remains a separate authorized step.
+- Membership program rules and Admin member tier-progress thresholds are the first
+  non-transaction consumers migrated to the Benefits snapshot. Admin Members can
+  no longer read `BusinessConfig` directly for tier thresholds.
+- Loyalty transaction-bound policy reads continue to use `BusinessConfig` for this
+  slice. Their data source and transaction boundaries are intentionally unchanged;
+  only the existing normalization/default rules were extracted into one pure
+  Benefits policy function shared by old and new read paths.
+- `benefits.business-config-loyalty-policy.v1` records the temporary split-read
+  state, parity requirement, rollback, and exit criteria. The architecture scanner
+  protects the public policy surface and prevents the migrated readers from
+  regressing or moving loyalty policy fields into Brand/Store public config.
 
 ## Carried debt outside this closeout
 

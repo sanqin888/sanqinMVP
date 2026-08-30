@@ -28,6 +28,9 @@ describe('AdminMembersService recharge OTP characterization', () => {
     const loyalty = {
       applyTopup: jest.fn(),
     };
+    const loyaltyPolicyReader = {
+      getLoyaltyPolicySnapshot: jest.fn(),
+    };
     const phoneVerification = {
       sendCode: jest.fn(),
       verifyCode: jest.fn(),
@@ -39,6 +42,7 @@ describe('AdminMembersService recharge OTP characterization', () => {
     const service = new AdminMembersService(
       prisma as never,
       loyalty as never,
+      loyaltyPolicyReader as never,
       {} as never,
       phoneVerification as never,
       emailService as never,

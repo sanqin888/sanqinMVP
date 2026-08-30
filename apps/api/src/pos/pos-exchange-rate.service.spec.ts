@@ -1,11 +1,5 @@
 import { PosExchangeRateService } from './pos-exchange-rate.service';
 
-type PrismaMock = {
-  businessConfig: {
-    findUnique: jest.Mock;
-  };
-};
-
 const originalFetch = global.fetch;
 
 function bankResponseFromObservations(observations: unknown[]): Response {
@@ -26,20 +20,18 @@ function bankResponse(date: string, value: string): Response {
 }
 
 function setup(fallbackRate = 4.85) {
-  const prisma: PrismaMock = {
-    businessConfig: {
-      findUnique: jest.fn().mockResolvedValue({
-        timezone: 'America/Toronto',
-        wechatAlipayExchangeRate: fallbackRate,
-      }),
-    },
+  const brandStoreConfigReader = {
+    getSnapshot: jest.fn().mockResolvedValue({
+      store: { timezone: 'America/Toronto' },
+      brand: { wechatAlipayExchangeRate: fallbackRate },
+    }),
   };
-  const service = new PosExchangeRateService(prisma as never);
+  const service = new PosExchangeRateService(brandStoreConfigReader as never);
   Reflect.set(service, 'logger', {
     log: jest.fn(),
     warn: jest.fn(),
   });
-  return { service };
+  return { service, brandStoreConfigReader };
 }
 
 describe('PosExchangeRateService', () => {
@@ -129,8 +121,8 @@ describe('PosExchangeRateService', () => {
     });
   });
 
-  it('uses the BusinessConfig rate rounded to two decimals only when no Bank of Canada cache exists', async () => {
-    const { service } = setup(4.856);
+  it('uses the configured Brand fallback rounded to two decimals only when no Bank of Canada cache exists', async () => {
+    const { service, brandStoreConfigReader } = setup(4.856);
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
     await expect(service.quoteCadToCny(1000)).resolves.toEqual({
@@ -140,6 +132,7 @@ describe('PosExchangeRateService', () => {
       rateDate: null,
       source: 'BUSINESS_CONFIG_FALLBACK',
     });
+    expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('rejects non-integer CAD cents', async () => {

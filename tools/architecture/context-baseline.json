@@ -139,9 +139,49 @@
       "apps/api/src/accounting/accounting.service.ts",
       "apps/api/src/promotions/promotions.service.ts",
       "apps/api/src/menu/public-menu.service.ts",
-      "apps/api/src/admin/menu/admin-menu.service.ts"
+      "apps/api/src/admin/menu/admin-menu.service.ts",
+      "apps/api/src/pos/pos-exchange-rate.service.ts",
+      "apps/api/src/messaging/business-config.service.ts"
     ],
+    "migratedConsumerForbiddenSymbols": {
+      "apps/api/src/messaging/business-config.service.ts": [
+        "BusinessConfig",
+        "PrismaService"
+      ]
+    },
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
+  },
+  "benefitsLoyaltyPolicyOwnership": {
+    "context": "identity-customer-benefits",
+    "ownerRoot": "apps/api/src/loyalty",
+    "publicSurface": "apps/api/src/loyalty/public-api.ts",
+    "implementation": "apps/api/src/loyalty/loyalty.service.ts",
+    "contractImplementation": "apps/api/src/loyalty/loyalty-policy.contract.ts",
+    "policyImplementation": "apps/api/src/loyalty/loyalty-policy.ts",
+    "compositionModule": "apps/api/src/loyalty/loyalty.module.ts",
+    "publicSymbols": [
+      "LOYALTY_POLICY_READER",
+      "LoyaltyPolicyReaderPort",
+      "LoyaltyPolicySnapshot",
+      "LoyaltyModule"
+    ],
+    "transitionalStorageDelegate": "brandConfig",
+    "legacyStorageDelegate": "businessConfig",
+    "migratedLegacyConsumers": [
+      "apps/api/src/admin/members/admin-members.service.ts"
+    ],
+    "forbiddenBrandStoreContractFields": [
+      "earnPtPerDollar",
+      "redeemDollarPerPoint",
+      "referralPtPerDollar",
+      "tierMultiplierBronze",
+      "tierMultiplierSilver",
+      "tierMultiplierGold",
+      "tierMultiplierPlatinum",
+      "tierThresholdSilver",
+      "tierThresholdGold",
+      "tierThresholdPlatinum"
+    ]
   },
   "dependencyBoundaries": [
     {
@@ -233,7 +273,7 @@
     "identity-customer-benefits -> runtime-data-ci-ops": 28,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
-    "messaging-notifications -> runtime-data-ci-ops": 11,
+    "messaging-notifications -> runtime-data-ci-ops": 10,
     "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
     "payments-clover -> commerce-orders-fulfillment": 10,
@@ -246,6 +286,6 @@
     "store-operations-pos-print -> commerce-orders-fulfillment": 10,
     "store-operations-pos-print -> external-channels": 1,
     "store-operations-pos-print -> identity-customer-benefits": 14,
-    "store-operations-pos-print -> runtime-data-ci-ops": 10
+    "store-operations-pos-print -> runtime-data-ci-ops": 8
   }
 }
