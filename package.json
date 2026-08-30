@@ -15,7 +15,7 @@
     "dev:api": "pnpm --filter api start:dev",
     "build": "pnpm --filter web build && pnpm --filter api build",
     "lint": "pnpm --filter web lint && pnpm --filter api lint",
-    "test": "pnpm --filter api test"
+    "test": "pnpm --filter web test && pnpm --filter api test"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10"

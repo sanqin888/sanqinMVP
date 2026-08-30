@@ -63,6 +63,5 @@ jobs:
           pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
           pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
 
-      - name: Test (api only)
-        if: matrix.app == 'api'
-        run: pnpm --filter api test
+      - name: Test (${{ matrix.app }})
+        run: pnpm --filter ${{ matrix.app }} test

@@ -3,16 +3,6 @@ import {
   isNewAddressActivationKey,
 } from "./checkout-address";
 
-declare const describe: (name: string, testSuite: () => void) => void;
-declare const it: {
-  (name: string, test: () => void): void;
-  each: (values: string[]) => (name: string, test: (key: string) => void) => void;
-};
-declare const expect: (value: unknown) => {
-  toBe: (expected: unknown) => void;
-  toMatchObject: (expected: unknown) => void;
-};
-
 describe("使用新地址", () => {
   const savedAddressCustomer = {
     firstName: "San",
