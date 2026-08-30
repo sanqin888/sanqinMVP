@@ -27,9 +27,9 @@ describe('order item component snapshots', () => {
   ];
 
   it('keeps the immutable per-parent snapshot unchanged', () => {
-    expect(
-      readOrderItemComponentsSnapshot(componentsJson),
-    ).toEqual(componentsJson);
+    expect(readOrderItemComponentsSnapshot(componentsJson)).toEqual(
+      componentsJson,
+    );
   });
 
   it('expands component quantities for display without changing parent pricing', () => {
