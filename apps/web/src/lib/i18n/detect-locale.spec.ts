@@ -3,12 +3,6 @@ import {
   resolveLocalePreference,
 } from './detect-locale';
 
-declare const describe: (name: string, suite: () => void) => void;
-declare const it: (name: string, test: () => void) => void;
-declare const expect: (value: unknown) => {
-  toBe(expected: unknown): void;
-};
-
 describe('resolveLocalePreference', () => {
   it('gives the manual site selection highest priority', () => {
     expect(
