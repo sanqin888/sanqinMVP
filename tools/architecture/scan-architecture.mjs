@@ -145,6 +145,60 @@ for (const absolutePath of sourceFiles) {
 }
 
 const failures = [];
+const packageDependencyFields = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+];
+
+for (const boundary of config.dependencyBoundaries ?? []) {
+  const forbiddenSpecifiers = new Set(boundary.forbiddenSpecifiers ?? []);
+  const boundarySourceFiles = walk(join(REPOSITORY_ROOT, boundary.sourcePath));
+
+  for (const absolutePath of boundarySourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const specifier of importSpecifiers(source)) {
+      const forbidden = [...forbiddenSpecifiers].find(
+        (candidate) =>
+          specifier === candidate || specifier.startsWith(candidate + '/'),
+      );
+      if (forbidden) {
+        failures.push(
+          'forbidden dependency import: ' +
+            sourcePath +
+            ' -> ' +
+            forbidden,
+        );
+      }
+    }
+  }
+
+  const manifestPath = join(REPOSITORY_ROOT, boundary.packageJson);
+  if (!existsSync(manifestPath)) {
+    failures.push('dependency boundary package.json missing: ' + boundary.packageJson);
+    continue;
+  }
+
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  for (const dependencyField of packageDependencyFields) {
+    const dependencies = manifest[dependencyField] ?? {};
+    for (const forbidden of forbiddenSpecifiers) {
+      if (Object.prototype.hasOwnProperty.call(dependencies, forbidden)) {
+        failures.push(
+          'forbidden package dependency: ' +
+            boundary.packageJson +
+            ' [' +
+            dependencyField +
+            '] -> ' +
+            forbidden,
+        );
+      }
+    }
+  }
+}
+
 if (config.contexts.length !== 12 || new Set(config.contexts.map(({ id }) => id)).size !== 12) {
   failures.push('context-baseline.json must define exactly 12 unique contexts');
 }

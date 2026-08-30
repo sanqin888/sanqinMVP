@@ -34,9 +34,6 @@ them, verify live callers, traffic, queue/dynamic loading, and side effects:
 
 - Next rewrite versus `app/api/[...path]` proxy overlap.
 - EventEmitter aliases versus durable outbox events.
-- `@shared/order` re-export from `@shared/menu`; the planned path is an atomic
-  internal move, so it must not acquire a shim unless atomic removal proves
-  impossible.
 
 Every new non-atomic compatibility path must add a unique `compat_id`, all
 required lifecycle fields in the JSON register, and an `@compat <compat_id>`

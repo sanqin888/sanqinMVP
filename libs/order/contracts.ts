@@ -1,22 +1,30 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-export type Channel = "web" | "in_store" | "ubereats";
-export type FulfillmentType = "pickup" | "dine_in" | "delivery";
-export type DeliveryType = "STANDARD" | "PRIORITY";
+export type Channel = 'web' | 'in_store' | 'ubereats';
+export type FulfillmentType = 'pickup' | 'dine_in' | 'delivery';
+export type DeliveryType = 'STANDARD' | 'PRIORITY';
+export type DeliveryProvider = 'UBER';
+export type OrderFulfillmentTiming = 'IMMEDIATE' | 'SCHEDULED';
 export type PaymentMethod =
-  | "CASH"
-  | "CARD"
-  | "WECHAT_ALIPAY"
-  | "STORE_BALANCE"
-  | "UBEREATS";
+  | 'CASH'
+  | 'CARD'
+  | 'WECHAT_ALIPAY'
+  | 'STORE_BALANCE'
+  | 'UBEREATS';
+
+export type OrderJsonPrimitive = string | number | boolean | null;
+export type OrderJsonValue =
+  | OrderJsonPrimitive
+  | OrderJsonValue[]
+  | { [key: string]: OrderJsonValue | undefined };
 
 export const OrderStatuses = [
-  "pending",
-  "paid",
-  "making",
-  "ready",
-  "completed",
-  "refunded",
+  'pending',
+  'paid',
+  'making',
+  'ready',
+  'completed',
+  'refunded',
 ] as const;
 export type OrderStatus = (typeof OrderStatuses)[number];
 
@@ -25,26 +33,26 @@ export const ORDER_STATUS_SEQUENCE: readonly OrderStatus[] = OrderStatuses;
 export const ORDER_STATUS_FLOW: Readonly<
   Record<OrderStatus, OrderStatus | null>
 > = {
-  pending: "paid",
-  paid: "making",
-  making: "ready",
-  ready: "completed",
+  pending: 'paid',
+  paid: 'making',
+  making: 'ready',
+  ready: 'completed',
   completed: null,
   refunded: null,
 };
 
 export const IS_ORDER_ACTIVE = (status: OrderStatus) =>
-  !["completed", "refunded"].includes(status);
+  !['completed', 'refunded'].includes(status);
 
-export const ChannelSchema = z.enum(["web", "in_store", "ubereats"]);
-export const FulfillmentTypeSchema = z.enum(["pickup", "dine_in", "delivery"]);
-export const DeliveryTypeSchema = z.enum(["STANDARD", "PRIORITY"]);
+export const ChannelSchema = z.enum(['web', 'in_store', 'ubereats']);
+export const FulfillmentTypeSchema = z.enum(['pickup', 'dine_in', 'delivery']);
+export const DeliveryTypeSchema = z.enum(['STANDARD', 'PRIORITY']);
 export const PaymentMethodSchema = z.enum([
-  "CASH",
-  "CARD",
-  "WECHAT_ALIPAY",
-  "STORE_BALANCE",
-  "UBEREATS",
+  'CASH',
+  'CARD',
+  'WECHAT_ALIPAY',
+  'STORE_BALANCE',
+  'UBEREATS',
 ]);
 
 export const CreateOrderItemSchema = z.object({

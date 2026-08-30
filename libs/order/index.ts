@@ -1,4 +1,29 @@
-export type { OrderStatus } from '@shared/menu';
+export {
+  ChannelSchema,
+  CreateOrderItemSchema,
+  CreateOrderSchema,
+  DeliveryDestinationSchema,
+  DeliveryTypeSchema,
+  FulfillmentTypeSchema,
+  IS_ORDER_ACTIVE,
+  ORDER_STATUS_FLOW,
+  ORDER_STATUS_SEQUENCE,
+  OrderStatuses,
+  PaymentMethodSchema,
+} from './contracts';
+export type {
+  Channel,
+  CreateOrderInput,
+  CreateOrderItemInput,
+  DeliveryDestinationInput,
+  DeliveryProvider,
+  DeliveryType,
+  FulfillmentType,
+  OrderFulfillmentTiming,
+  OrderJsonValue,
+  OrderStatus,
+  PaymentMethod,
+} from './contracts';
 
 export type OrderDiscountDisplaySource =
   | 'DAILY_SPECIAL'
@@ -19,30 +44,6 @@ export type OrderDiscountDisplayEntry = {
   productNameEn: string | null;
   discountCents: number;
 };
-export {
-  IS_ORDER_ACTIVE,
-  ORDER_STATUS_FLOW,
-  ORDER_STATUS_SEQUENCE,
-  OrderStatuses,
-} from '@shared/menu';
-export {
-  ChannelSchema,
-  CreateOrderItemSchema,
-  CreateOrderSchema,
-  DeliveryDestinationSchema,
-  DeliveryTypeSchema,
-  FulfillmentTypeSchema,
-  PaymentMethodSchema,
-} from '@shared/menu';
-export type {
-  Channel,
-  CreateOrderInput,
-  CreateOrderItemInput,
-  DeliveryDestinationInput,
-  DeliveryType,
-  FulfillmentType,
-  PaymentMethod,
-} from '@shared/menu';
 export {
   resolveOrderPreparationMinutes,
   resolveOrderPrepStartAt,

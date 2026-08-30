@@ -107,6 +107,13 @@
     "@shared/menu": "catalog-pricing-offers",
     "@shared/order": "commerce-orders-fulfillment"
   },
+  "dependencyBoundaries": [
+    {
+      "sourcePath": "libs/order",
+      "packageJson": "libs/order/package.json",
+      "forbiddenSpecifiers": ["@shared/menu"]
+    }
+  ],
   "legacyDirectImportLimits": {
     "accounting-reporting-analytics -> architecture-foundation": 3,
     "accounting-reporting-analytics -> commerce-orders-fulfillment": 1,
