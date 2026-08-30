@@ -7,9 +7,10 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingGmailIngestService } from './accounting-gmail-ingest.service';
 import { AccountingOperationsService } from './accounting-operations.service';
+import { BrandStoreConfigModule } from '../store/public-api';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UberEatsModule],
+  imports: [PrismaModule, AuthModule, UberEatsModule, BrandStoreConfigModule],
   controllers: [AccountingController],
   providers: [
     AccountingService,

@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Brand/Store start base: `origin/dev@7912deec` (2026-08-30).
+Phase 2 Brand/Store low-risk reader base: `origin/dev@5522b946` (2026-08-30).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -82,9 +82,17 @@ pair fails CI.
 - `StoreStatusService` is the first canonical consumer and no longer reads or
   creates `BusinessConfig`. BusinessHour/Holiday queries remain legacy global
   store-scope debt for a later schema-safe slice.
+- Accounting, Promotions, PublicMenu, and AdminMenu now read store-local timezone
+  through the canonical Store snapshot. Public/Admin menu reads no longer create
+  a default `BusinessConfig` row as a side effect.
+- `BrandStoreConfigModule` is exported through `store/public-api.ts`; its token,
+  identity implementation, contract implementation, composition module, and
+  Prisma reader stay owner-internal. Cross-context consumers wire the public
+  module and inject the public reader token instead of deep-importing internals.
 - The architecture scanner protects the new public surface from cross-context
-  deep imports and prevents the canonical reader from regressing to the legacy
-  `BusinessConfig` delegate.
+  deep imports, prevents the canonical reader from regressing to the legacy
+  `BusinessConfig` delegate, and freezes migrated consumers against reintroducing
+  direct `BusinessConfig` access.
 - Legacy `apps/api/src/admin/**` classification is intentionally unchanged in
   this slice. Admin business/config routes still mix authentication adapters and
   legacy writers; their more specific Brand/Store ownership should be registered

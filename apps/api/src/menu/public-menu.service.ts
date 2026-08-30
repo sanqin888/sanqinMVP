@@ -1,5 +1,5 @@
 // apps/api/src/menu/public-menu.service.ts
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import {
@@ -13,6 +13,10 @@ import {
   resolveEffectivePriceCents,
   resolveStoreNow,
 } from '../promotions/public-api';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from '../store/public-api';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -34,24 +38,15 @@ function availabilityFromDb(
 export class PublicMenuService {
   private readonly logger = new AppLogger(PublicMenuService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+  ) {}
 
   async getPublicMenu(): Promise<PublicMenuResponse> {
-    const businessConfig =
-      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
-      (await this.prisma.businessConfig.create({
-        data: {
-          id: 1,
-          storeName: '',
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          deliveryBaseFeeCents: 600,
-          priorityPerKmCents: 100,
-          salesTaxRate: 0.13,
-        },
-      }));
-    const now = resolveStoreNow(businessConfig.timezone);
+    const { timezone } = await this.brandStoreConfigReader.getStoreSnapshot();
+    const now = resolveStoreNow(timezone || 'America/Toronto');
     const weekday = now.weekday;
 
     const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({

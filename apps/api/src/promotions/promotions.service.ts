@@ -1,23 +1,28 @@
 // apps/api/src/promotions/promotions.service.ts
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { Channel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveStoreNow } from './daily-specials';
 import type { PromotionRuleLike } from './promotion-rule.adapter';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from '../store/public-api';
 
 @Injectable()
 export class PromotionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+  ) {}
 
   async getOrderPromotionContext(channel: Channel): Promise<{
     rules: PromotionRuleLike[];
     now: ReturnType<typeof resolveStoreNow>;
   }> {
-    const [businessConfig, rules] = await Promise.all([
-      this.prisma.businessConfig.findUnique({
-        where: { id: 1 },
-        select: { timezone: true },
-      }),
+    const [storeConfig, rules] = await Promise.all([
+      this.brandStoreConfigReader.getStoreSnapshot(),
       this.prisma.promotionRule.findMany({
         where: {
           status: 'ACTIVE',
@@ -29,7 +34,7 @@ export class PromotionsService {
     ]);
 
     return {
-      now: resolveStoreNow(businessConfig?.timezone ?? 'America/Toronto'),
+      now: resolveStoreNow(storeConfig.timezone || 'America/Toronto'),
       rules: rules.map((rule) => ({
         stableId: rule.stableId,
         titleZh: rule.titleZh,

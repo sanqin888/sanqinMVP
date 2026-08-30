@@ -52,7 +52,11 @@ describe('AdminMenuService availability Uber status', () => {
       },
     };
     return {
-      service: new AdminMenuService(prisma as never, uberProvider.useValue),
+      service: new AdminMenuService(
+        prisma as never,
+        uberProvider.useValue,
+        {} as never,
+      ),
       syncUberMenuItemAvailability,
     };
   };
@@ -90,6 +94,7 @@ describe('AdminMenuService daily specials weekdays', () => {
     const service = new AdminMenuService(
       { menuDailySpecial: { findMany } } as never,
       {} as never,
+      {} as never,
     );
 
     await service.getDailySpecials();
@@ -108,6 +113,7 @@ describe('AdminMenuService daily specials weekdays', () => {
     const findMany = jest.fn().mockResolvedValue([]);
     const service = new AdminMenuService(
       { menuDailySpecial: { findMany } } as never,
+      {} as never,
       {} as never,
     );
 
@@ -147,6 +153,7 @@ describe('AdminMenuService fixed combo composition', () => {
         },
         menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
       } as never,
+      {} as never,
       {} as never,
     );
 
@@ -198,6 +205,7 @@ describe('AdminMenuService fixed combo composition', () => {
         menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
       } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(
@@ -222,6 +230,7 @@ describe('AdminMenuService fixed combo composition', () => {
           update,
         },
       } as never,
+      {} as never,
       {} as never,
     );
 
@@ -252,6 +261,7 @@ describe('AdminMenuService packaging option scope', () => {
         },
         menuItemOptionGroup: { upsert },
       } as never,
+      {} as never,
       {} as never,
     );
 
@@ -306,6 +316,7 @@ describe('AdminMenuService packaging option scope', () => {
         menuOptionGroupTemplate: { findFirst: jest.fn() },
         menuItemOptionGroup: { upsert },
       } as never,
+      {} as never,
       {} as never,
     );
 

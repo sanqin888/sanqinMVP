@@ -4,7 +4,7 @@ import {
   PrismaBrandStoreConfigReader,
   PrismaStoreScheduleReader,
 } from './brand-store-config.reader';
-import { BRAND_STORE_CONFIG_READER } from './public-api';
+import { BRAND_STORE_CONFIG_READER } from './brand-store-config.contract';
 
 @Module({
   imports: [PrismaModule],

@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BrandStoreConfigUnavailableError,
-  resolveConfiguredStoreStableId,
   type BrandConfigSnapshot,
   type BrandStoreConfigReaderPort,
   type BrandStoreConfigSnapshot,
   type StoreConfigSnapshot,
-} from './public-api';
+} from './brand-store-config.contract';
+import { resolveConfiguredStoreStableId } from './store-identity';
 
 @Injectable()
 export class PrismaBrandStoreConfigReader implements BrandStoreConfigReaderPort {

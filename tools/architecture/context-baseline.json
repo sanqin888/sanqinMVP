@@ -123,14 +123,24 @@
       "resolveConfiguredStoreStableId",
       "BRAND_STORE_CONFIG_READER",
       "BrandStoreConfigReaderPort",
-      "BrandStoreConfigSnapshot"
+      "BrandStoreConfigSnapshot",
+      "BrandStoreConfigModule"
     ],
     "ownedIdentitySymbols": [
       "DEFAULT_STORE_STABLE_ID",
       "resolveConfiguredStoreStableId"
     ],
+    "identityImplementation": "apps/api/src/store/store-identity.ts",
+    "contractImplementation": "apps/api/src/store/brand-store-config.contract.ts",
+    "compositionModule": "apps/api/src/store/brand-store-config.module.ts",
     "forbiddenLegacyDelegates": ["businessConfig"],
     "forbiddenLegacyDelegateRoots": ["apps/api/src/store"],
+    "migratedLegacyConfigConsumers": [
+      "apps/api/src/accounting/accounting.service.ts",
+      "apps/api/src/promotions/promotions.service.ts",
+      "apps/api/src/menu/public-menu.service.ts",
+      "apps/api/src/admin/menu/admin-menu.service.ts"
+    ],
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
   },
   "dependencyBoundaries": [
