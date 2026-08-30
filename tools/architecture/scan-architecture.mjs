@@ -105,10 +105,15 @@ const sourceFiles = roots.flatMap(walk);
 const compositionRoots = new Set(config.baseline.compositionRootsExcluded);
 const directCounts = new Map();
 const publicCounts = new Map();
+const browserDirectFetchCounts = new Map();
 const unknownSourceRoots = new Set();
 const compatAnnotations = new Set();
 
 const increment = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
+const hasUseClientDirective = (source) =>
+  /(?:^|\n)\s*['"]use client['"]\s*;/.test(source.slice(0, 1024));
+const countDirectFetchCalls = (source) =>
+  [...source.matchAll(/\bfetch\s*\(/g)].length;
 
 for (const absolutePath of sourceFiles) {
   const sourcePath = repositoryPath(absolutePath);
@@ -121,6 +126,18 @@ for (const absolutePath of sourceFiles) {
   const source = readFileSync(absolutePath, 'utf8');
   for (const match of source.matchAll(/@compat\s+([a-z0-9][a-z0-9.-]+(?:\.v\d+)?)/gi)) {
     compatAnnotations.add(match[1]);
+  }
+
+  if (
+    sourcePath.startsWith('apps/web/src/') &&
+    (hasUseClientDirective(source) ||
+      sourcePath.startsWith('apps/web/src/lib/') ||
+      sourcePath.startsWith('apps/web/src/components/'))
+  ) {
+    const directFetchCount = countDirectFetchCalls(source);
+    if (directFetchCount > 0) {
+      browserDirectFetchCounts.set(sourcePath, directFetchCount);
+    }
   }
 
   if (compositionRoots.has(sourcePath)) continue;
@@ -145,6 +162,58 @@ for (const absolutePath of sourceFiles) {
 }
 
 const failures = [];
+const webBrowserDirectFetchLimits = config.webBrowserDirectFetchLimits ?? {};
+
+for (const [sourcePath, count] of [...browserDirectFetchCounts.entries()].sort()) {
+  const allowance = webBrowserDirectFetchLimits[sourcePath];
+  if (!allowance) {
+    failures.push(
+      'new browser direct fetch outside canonical/approved raw transport: ' +
+        sourcePath +
+        ' (' +
+        count +
+        ')',
+    );
+    continue;
+  }
+
+  if (!Number.isInteger(allowance.limit) || allowance.limit < 0) {
+    failures.push('invalid browser direct-fetch limit: ' + sourcePath);
+    continue;
+  }
+  if (typeof allowance.reason !== 'string' || allowance.reason.trim() === '') {
+    failures.push('browser direct-fetch allowance missing reason: ' + sourcePath);
+  }
+
+  if (count > allowance.limit) {
+    failures.push(
+      'browser direct-fetch debt increased: ' +
+        sourcePath +
+        ' baseline=' +
+        allowance.limit +
+        ' current=' +
+        count,
+    );
+  } else if (count < allowance.limit) {
+    failures.push(
+      'browser direct-fetch baseline is stale; lower/remove the allowance: ' +
+        sourcePath +
+        ' baseline=' +
+        allowance.limit +
+        ' current=' +
+        count,
+    );
+  }
+}
+
+for (const sourcePath of Object.keys(webBrowserDirectFetchLimits)) {
+  if (!browserDirectFetchCounts.has(sourcePath)) {
+    failures.push(
+      'browser direct-fetch allowance has no matching call; remove it: ' + sourcePath,
+    );
+  }
+}
+
 const packageDependencyFields = [
   'dependencies',
   'devDependencies',
@@ -264,6 +333,9 @@ const report = {
   ),
   publicContractImports: Object.fromEntries(
     [...publicCounts.entries()].sort(),
+  ),
+  webBrowserDirectFetch: Object.fromEntries(
+    [...browserDirectFetchCounts.entries()].sort(),
   ),
   compatibility: {
     active: registry.active.length,

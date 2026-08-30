@@ -1,5 +1,7 @@
 // apps/web/src/lib/location.ts
 
+import { apiFetch } from "@/lib/api/client";
+
 // 经纬度坐标类型
 export type Coordinates = {
   latitude: number;
@@ -61,7 +63,6 @@ export function calculateDistanceKm(from: Coordinates, to: Coordinates): number 
 // ==== 地址解析：调用后端 /location/geocode ====
 
 const geocodeCache = new Map<string, Coordinates>();
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/v1";
 
 /**
  * 调用后端 Nest API，根据地址获取坐标
@@ -83,16 +84,8 @@ export async function geocodeAddress(
   const cached = geocodeCache.get(cacheKey);
   if (cached) return cached;
 
-  if (!API_BASE_URL) {
-    console.warn(
-      "[geocodeAddress] NEXT_PUBLIC_API_BASE_URL is empty, cannot call backend geocoding API.",
-    );
-    return null;
-  }
-
   const query = options?.cityHint ? `${trimmed}, ${options.cityHint}` : trimmed;
-
-  const res = await fetch(`${API_BASE_URL}/location/geocode`, {
+  const candidate = await apiFetch<Coordinates | null>("/location/geocode", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -104,40 +97,7 @@ export async function geocodeAddress(
     signal: options?.signal,
   });
 
-  if (!res.ok) {
-    throw new Error(`Geocoding failed (${res.status})`);
-  }
-
-  const raw = await res.json();
-
-  // 一些全局响应包装可能是：
-  // { code: "SUCCESS", message: "", data: { latitude, longitude } }
-  // 或者直接 { latitude, longitude }
-  type GeocodeApiResponse =
-    | Coordinates
-    | { data?: Coordinates | null }
-    | { details?: Coordinates | null };
-
-  const hasCoordinates = (value: unknown): value is Coordinates =>
-    typeof value === "object" &&
-    value !== null &&
-    "latitude" in value &&
-    "longitude" in value;
-
-  let candidate: GeocodeApiResponse | null = raw as GeocodeApiResponse;
-
-  if (candidate && typeof candidate === "object") {
-    // 如果顶层没有 lat/long，但有 data，就优先用 data
-    if (!hasCoordinates(candidate) && "data" in candidate && candidate.data) {
-      candidate = candidate.data;
-    }
-    // 有些人喜欢用 details 字段，也顺手兼容一下
-    if (!hasCoordinates(candidate) && "details" in candidate && candidate.details) {
-      candidate = candidate.details;
-    }
-  }
-
-  if (!candidate || typeof candidate !== "object" || !hasCoordinates(candidate)) {
+  if (!candidate) {
     return null;
   }
 

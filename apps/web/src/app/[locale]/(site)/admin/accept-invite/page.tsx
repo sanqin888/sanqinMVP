@@ -3,6 +3,7 @@
 
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useState } from "react";
+import { apiFetch, getApiErrorMessage } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
 
 export default function AcceptInvitePage() {
@@ -26,25 +27,16 @@ export default function AcceptInvitePage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/v1/auth/accept-invite", {
+      await apiFetch<unknown>("/auth/accept-invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password, name: name || undefined }),
+        unauthorized: "throw",
       });
-
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        const message =
-          typeof payload?.message === "string"
-            ? payload.message
-            : `邀请无效 (${res.status})`;
-        throw new Error(message);
-      }
 
       router.push(`/${locale}/store/pos/login`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "邀请处理失败";
-      setError(message);
+      setError(getApiErrorMessage(err, "邀请处理失败"));
     } finally {
       setLoading(false);
     }
