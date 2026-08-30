@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { CheckoutIntent, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckoutMetadata } from './checkout-metadata';
-import { resolveConfiguredStoreId } from '../common/store-id';
+import { resolveConfiguredStoreStableId } from '../store/public-api';
 
 export type CheckoutIntentWithMetadata = CheckoutIntent & {
   metadata: CheckoutMetadata;
@@ -57,7 +57,7 @@ export class CheckoutIntentsService {
       // it impossible for a client-provided store ID to win.
       metadataJson: {
         ...params.metadata,
-        serverVerifiedStoreId: resolveConfiguredStoreId(),
+        serverVerifiedStoreId: resolveConfiguredStoreStableId(),
       } as Prisma.InputJsonValue,
     } satisfies Prisma.CheckoutIntentCreateInput;
 

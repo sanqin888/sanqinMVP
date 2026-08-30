@@ -27,7 +27,7 @@ import {
   OrderLabelPlanService,
   type OrderLabelPlanDto,
 } from '../order-label-plan.service';
-import { resolveConfiguredStoreId } from '../../common/store-id';
+import { resolveConfiguredStoreStableId } from '../../store/public-api';
 
 @Injectable()
 export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
@@ -180,7 +180,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       });
       // Compatibility only: orders created before store ownership was
       // persisted still follow the deployment's controlled POS route.
-      storeId = resolveConfiguredStoreId();
+      storeId = resolveConfiguredStoreStableId();
     }
 
     let printPayload: PrintPosPayloadDto;
@@ -283,7 +283,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }
     // Orders created before store mapping was persisted have a null storeId.
     // Keep their established reprint route compatible with the configured POS.
-    const storeId = order.storeId ?? resolveConfiguredStoreId();
+    const storeId = order.storeId ?? resolveConfiguredStoreStableId();
     if (!order.storeId) {
       this.logger.warn({
         event: 'reprint_legacy_store_fallback',
@@ -367,7 +367,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const storeId = order.storeId ?? resolveConfiguredStoreId();
+      const storeId = order.storeId ?? resolveConfiguredStoreStableId();
       const reason = payload.reason.trim();
       const operatorName = payload.operatorName.trim();
       const headerNote =

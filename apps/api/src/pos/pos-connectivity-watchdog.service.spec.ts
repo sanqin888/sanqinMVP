@@ -343,20 +343,8 @@ describe('StoreStatusService temporary pause expiry', () => {
     jest.restoreAllMocks();
   });
 
-  it('treats an expired timed pause as open without mutating BusinessConfig', async () => {
+  it('treats an expired timed pause as open without mutating configuration', async () => {
     const prisma = {
-      businessConfig: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 1,
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: true,
-          temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
-          publicNotice: null,
-          publicNoticeEn: null,
-        }),
-        update: jest.fn(),
-        create: jest.fn(),
-      },
       holiday: {
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -368,7 +356,19 @@ describe('StoreStatusService temporary pause expiry', () => {
         }),
       },
     };
-    const service = new StoreStatusService(prisma as never);
+    const configReader = {
+      getStoreSnapshot: jest.fn().mockResolvedValue({
+        timezone: 'America/Toronto',
+        isTemporarilyClosed: true,
+        temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
+        publicNotice: null,
+        publicNoticeEn: null,
+      }),
+    };
+    const service = new StoreStatusService(
+      prisma as never,
+      configReader as never,
+    );
 
     await expect(service.getCurrentStatus()).resolves.toMatchObject({
       isOpenBySchedule: true,
@@ -376,6 +376,7 @@ describe('StoreStatusService temporary pause expiry', () => {
       temporaryCloseReason: null,
       isOpen: true,
     });
-    expect(prisma.businessConfig.update).not.toHaveBeenCalled();
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect('businessConfig' in prisma).toBe(false);
   });
 });

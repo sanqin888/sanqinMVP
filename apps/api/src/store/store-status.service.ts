@@ -1,11 +1,14 @@
 // apps/api/src/store/store-status.service.ts
 
-import { Injectable } from '@nestjs/common';
-import type { BusinessConfig } from '@prisma/client';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import { DateTime } from 'luxon';
 import { parseAutoPauseReason } from '../pos/pos-store-status.service';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from './public-api';
 
 export type StoreStatus = {
   isOpenBySchedule: boolean;
@@ -51,10 +54,14 @@ type StoreClock = {
 export class StoreStatusService {
   private readonly logger = new AppLogger(StoreStatusService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly configReader: BrandStoreConfigReaderPort,
+  ) {}
 
   async getCurrentStatus(): Promise<StoreStatus> {
-    const config = await this.ensureConfig();
+    const config = await this.configReader.getStoreSnapshot();
     const tz = config.timezone || 'America/Toronto';
 
     const { nowIso, todayStr, weekday, minutesSinceMidnight, nowZ } =
@@ -215,29 +222,5 @@ export class StoreStatusService {
       dt.toUTC().toISO({ includeOffset: true }) ??
       new Date().toISOString()
     );
-  }
-
-  private async ensureConfig(): Promise<BusinessConfig> {
-    const existing = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    if (existing) return existing;
-
-    this.logger.log(
-      'BusinessConfig not found when querying store status, creating default row (id=1)',
-    );
-
-    return this.prisma.businessConfig.create({
-      data: {
-        id: 1,
-        storeName: '',
-        timezone: 'America/Toronto',
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
-        publicNotice: null,
-        publicNoticeEn: null,
-      },
-    });
   }
 }
