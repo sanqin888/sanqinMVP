@@ -14,7 +14,7 @@ import {
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../common/pos-connectivity';
-import { resolveConfiguredStoreId } from '../common/store-id';
+import { resolveConfiguredStoreStableId } from '../store/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
@@ -99,7 +99,7 @@ export class PosConnectivityWatchdogService
 
   private async poll(): Promise<void> {
     const now = Date.now();
-    const storeId = resolveConfiguredStoreId();
+    const storeId = resolveConfiguredStoreStableId();
 
     await this.posStoreStatus.reconcileExpiredPause();
     const schedule = await this.storeStatus.getCurrentStatus();

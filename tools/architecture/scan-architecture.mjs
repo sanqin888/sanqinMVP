@@ -89,6 +89,17 @@ const importSpecifiers = (source) => {
 const isPublicSurface = (targetPath) =>
   /(?:^|\/)(?:public-api|contracts?|ports?)(?:\/|\.|$)/.test(targetPath);
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const declaresSymbol = (source, symbol) =>
+  new RegExp(
+    `\\b(?:export\\s+)?(?:declare\\s+)?(?:async\\s+)?(?:function|class|const|let|var|type|interface|enum)\\s+${escapeRegExp(symbol)}\\b`,
+  ).test(source);
+const reexportsSymbol = (source, symbol) =>
+  new RegExp(
+    `\\bexport\\s*\\{[^}]*\\b${escapeRegExp(symbol)}\\b[^}]*\\}`,
+    's',
+  ).test(source);
+
 const resolveTarget = (sourcePath, specifier) =>
   toPosix(
     relative(
@@ -97,9 +108,17 @@ const resolveTarget = (sourcePath, specifier) =>
     ),
   );
 
+const sharedLibraryRoots = [
+  ...new Set(
+    contextPaths
+      .map(({ path }) => path)
+      .filter((path) => path.startsWith('libs/')),
+  ),
+];
 const roots = [
   join(REPOSITORY_ROOT, 'apps/api/src'),
   join(REPOSITORY_ROOT, 'apps/web/src'),
+  ...sharedLibraryRoots.map((path) => join(REPOSITORY_ROOT, path)),
 ];
 const sourceFiles = roots.flatMap(walk);
 const compositionRoots = new Set(config.baseline.compositionRootsExcluded);
@@ -165,6 +184,14 @@ for (const absolutePath of sourceFiles) {
 }
 
 const failures = [];
+
+for (const [edge, count] of publicCounts.entries()) {
+  if (edge.startsWith('architecture-foundation -> ')) {
+    failures.push(
+      `architecture-foundation must not depend on a business public surface: ${edge} (${count})`,
+    );
+  }
+}
 
 const validateDirectFetchLimits = ({ kind, counts, limits }) => {
   for (const [sourcePath, count] of [...counts.entries()].sort()) {
@@ -297,6 +324,296 @@ for (const boundary of config.dependencyBoundaries ?? []) {
             dependencyField +
             '] -> ' +
             forbidden,
+        );
+      }
+    }
+  }
+}
+
+const foundationPrimitiveOwnership = config.foundationPrimitiveOwnership;
+if (foundationPrimitiveOwnership) {
+  const packageSpecifier = foundationPrimitiveOwnership.package;
+  const ownerPath = toPosix(foundationPrimitiveOwnership.ownerPath);
+  const symbols = foundationPrimitiveOwnership.symbols ?? [];
+  const businessPackagePaths = foundationPrimitiveOwnership.businessPackagePaths ?? [];
+
+  if (config.publicAliases[packageSpecifier] !== 'architecture-foundation') {
+    failures.push(
+      `foundation package must be registered as architecture-foundation public surface: ${packageSpecifier}`,
+    );
+  }
+  if (contextOf(ownerPath) !== 'architecture-foundation') {
+    failures.push(`foundation primitive owner path is not architecture-foundation: ${ownerPath}`);
+  }
+
+  const foundationManifestPath = join(REPOSITORY_ROOT, ownerPath, 'package.json');
+  if (!existsSync(foundationManifestPath)) {
+    failures.push(`foundation package.json missing: ${ownerPath}/package.json`);
+  } else {
+    const foundationManifest = JSON.parse(readFileSync(foundationManifestPath, 'utf8'));
+    if (foundationManifest.name !== packageSpecifier) {
+      failures.push(
+        `foundation package name mismatch: expected ${packageSpecifier}, got ${foundationManifest.name ?? '<missing>'}`,
+      );
+    }
+  }
+
+  const ownerFiles = walk(join(REPOSITORY_ROOT, ownerPath));
+  for (const symbol of symbols) {
+    const declarations = ownerFiles.filter((absolutePath) =>
+      declaresSymbol(readFileSync(absolutePath, 'utf8'), symbol),
+    );
+    if (declarations.length !== 1) {
+      failures.push(
+        `foundation primitive must have exactly one owner implementation: ${symbol} (${declarations.length})`,
+      );
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (sourcePath === ownerPath || sourcePath.startsWith(ownerPath + '/')) {
+      continue;
+    }
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const symbol of symbols) {
+      if (declaresSymbol(source, symbol)) {
+        failures.push(
+          `foundation primitive implementation outside ${ownerPath}: ${sourcePath} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  const exportAllPattern = new RegExp(
+    `\\bexport\\s*\\*\\s*from\\s*['\"]${escapeRegExp(packageSpecifier)}['\"]`,
+  );
+  for (const packagePath of businessPackagePaths) {
+    for (const absolutePath of walk(join(REPOSITORY_ROOT, packagePath))) {
+      const sourcePath = repositoryPath(absolutePath);
+      const source = readFileSync(absolutePath, 'utf8');
+      if (exportAllPattern.test(source)) {
+        failures.push(
+          `business package must not re-export foundation surface: ${sourcePath} -> ${packageSpecifier}`,
+        );
+      }
+      for (const symbol of symbols) {
+        if (reexportsSymbol(source, symbol)) {
+          failures.push(
+            `business package must not re-export foundation primitive: ${sourcePath} -> ${symbol}`,
+          );
+        }
+      }
+    }
+  }
+}
+
+const brandStoreCanonicalConfigOwnership = config.brandStoreCanonicalConfigOwnership;
+if (brandStoreCanonicalConfigOwnership) {
+  const ownerContext = brandStoreCanonicalConfigOwnership.context;
+  const publicSurface = toPosix(
+    brandStoreCanonicalConfigOwnership.publicSurface,
+  );
+  const implementation = toPosix(
+    brandStoreCanonicalConfigOwnership.implementation,
+  );
+  const publicSymbols = brandStoreCanonicalConfigOwnership.publicSymbols ?? [];
+  const ownedIdentitySymbols =
+    brandStoreCanonicalConfigOwnership.ownedIdentitySymbols ?? [];
+  const identityImplementation = toPosix(
+    brandStoreCanonicalConfigOwnership.identityImplementation ?? '',
+  );
+  const contractImplementation = toPosix(
+    brandStoreCanonicalConfigOwnership.contractImplementation ?? '',
+  );
+  const compositionModule = toPosix(
+    brandStoreCanonicalConfigOwnership.compositionModule ?? '',
+  );
+  const forbiddenLegacyDelegates =
+    brandStoreCanonicalConfigOwnership.forbiddenLegacyDelegates ?? [];
+  const forbiddenLegacyDelegateRoots =
+    brandStoreCanonicalConfigOwnership.forbiddenLegacyDelegateRoots ?? [];
+  const migratedLegacyConfigConsumers =
+    brandStoreCanonicalConfigOwnership.migratedLegacyConfigConsumers ?? [];
+  const forbiddenLegacyPaths =
+    brandStoreCanonicalConfigOwnership.forbiddenLegacyPaths ?? [];
+
+  if (contextOf(publicSurface) !== ownerContext) {
+    failures.push(
+      `Brand/Store canonical config public surface must belong to ${ownerContext}: ${publicSurface}`,
+    );
+  }
+  if (contextOf(implementation) !== ownerContext) {
+    failures.push(
+      `Brand/Store canonical config implementation must belong to ${ownerContext}: ${implementation}`,
+    );
+  }
+  for (const internalPath of [
+    identityImplementation,
+    contractImplementation,
+    compositionModule,
+  ]) {
+    if (!internalPath || contextOf(internalPath) !== ownerContext) {
+      failures.push(
+        `Brand/Store internal boundary path must belong to ${ownerContext}: ${internalPath || '<missing>'}`,
+      );
+      continue;
+    }
+    if (!existsSync(join(REPOSITORY_ROOT, internalPath))) {
+      failures.push(`Brand/Store internal boundary path missing: ${internalPath}`);
+    }
+  }
+  if (!isPublicSurface(publicSurface)) {
+    failures.push(
+      `Brand/Store canonical config boundary is not a recognized public surface: ${publicSurface}`,
+    );
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, publicSurface);
+  if (!existsSync(publicSurfacePath)) {
+    failures.push(
+      `Brand/Store canonical config public surface missing: ${publicSurface}`,
+    );
+  } else {
+    const publicSource = readFileSync(publicSurfacePath, 'utf8');
+    for (const symbol of publicSymbols) {
+      if (
+        !declaresSymbol(publicSource, symbol) &&
+        !reexportsSymbol(publicSource, symbol)
+      ) {
+        failures.push(
+          `Brand/Store canonical config public symbol missing: ${publicSurface} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  for (const forbiddenPath of forbiddenLegacyPaths) {
+    const normalizedPath = toPosix(forbiddenPath);
+    if (existsSync(join(REPOSITORY_ROOT, normalizedPath))) {
+      failures.push(
+        `legacy Brand/Store ownership path must not return: ${normalizedPath}`,
+      );
+    }
+  }
+
+  const identityImplementationPath = join(
+    REPOSITORY_ROOT,
+    identityImplementation,
+  );
+  if (!identityImplementation || !existsSync(identityImplementationPath)) {
+    failures.push(
+      `configured store identity implementation missing: ${identityImplementation || '<missing>'}`,
+    );
+  } else {
+    const identitySource = readFileSync(identityImplementationPath, 'utf8');
+    for (const symbol of ownedIdentitySymbols) {
+      if (!declaresSymbol(identitySource, symbol)) {
+        failures.push(
+          `configured store identity implementation missing symbol: ${identityImplementation} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (sourcePath === identityImplementation) continue;
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const symbol of ownedIdentitySymbols) {
+      if (declaresSymbol(source, symbol)) {
+        failures.push(
+          `configured store identity must have one Brand/Store implementation owner: ${sourcePath} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  for (const root of forbiddenLegacyDelegateRoots) {
+    const normalizedRoot = toPosix(root);
+    for (const absolutePath of walk(join(REPOSITORY_ROOT, normalizedRoot))) {
+      const sourcePath = repositoryPath(absolutePath);
+      const source = readFileSync(absolutePath, 'utf8');
+      for (const delegate of forbiddenLegacyDelegates) {
+        const delegatePattern = new RegExp(
+          `\\.\\s*${escapeRegExp(delegate)}\\b`,
+        );
+        if (delegatePattern.test(source)) {
+          failures.push(
+            `Brand/Store owner must not read legacy Prisma delegate: ${sourcePath} -> ${delegate}`,
+          );
+        }
+      }
+    }
+  }
+
+  const implementationPath = join(REPOSITORY_ROOT, implementation);
+  if (!existsSync(implementationPath)) {
+    failures.push(
+      `Brand/Store canonical config implementation missing: ${implementation}`,
+    );
+  }
+
+  for (const consumer of migratedLegacyConfigConsumers) {
+    const consumerPath = toPosix(consumer);
+    const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
+    if (!existsSync(absoluteConsumerPath)) {
+      failures.push(
+        `migrated Brand/Store config consumer missing: ${consumerPath}`,
+      );
+      continue;
+    }
+    const source = readFileSync(absoluteConsumerPath, 'utf8');
+    for (const delegate of forbiddenLegacyDelegates) {
+      const delegatePattern = new RegExp(
+        `\\.\\s*${escapeRegExp(delegate)}\\b`,
+      );
+      if (delegatePattern.test(source)) {
+        failures.push(
+          `migrated Brand/Store config consumer must not regress to legacy Prisma delegate: ${consumerPath} -> ${delegate}`,
+        );
+      }
+    }
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(absoluteConsumerPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    if (!importsPublicSurface || !source.includes('BRAND_STORE_CONFIG_READER')) {
+      failures.push(
+        `migrated Brand/Store config consumer must use ${publicSurface}: ${consumerPath}`,
+      );
+    }
+  }
+
+  const privateTargets = new Set(
+    [
+      implementation,
+      identityImplementation,
+      contractImplementation,
+      compositionModule,
+    ]
+      .filter(Boolean)
+      .map((path) => path.replace(/\.(?:[cm]?[jt]sx?)$/, '')),
+  );
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    const sourceContext = contextOf(sourcePath);
+    if (!sourceContext || sourceContext === ownerContext) continue;
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const specifier of importSpecifiers(source)) {
+      if (!specifier.startsWith('.')) continue;
+      const target = resolveTarget(absolutePath, specifier).replace(
+        /\.(?:[cm]?[jt]sx?)$/,
+        '',
+      );
+      if (privateTargets.has(target)) {
+        failures.push(
+          `cross-context Brand/Store import must use ${publicSurface}: ${sourcePath} -> ${specifier}`,
         );
       }
     }

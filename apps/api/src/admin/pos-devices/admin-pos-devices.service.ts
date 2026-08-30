@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePosDeviceDto } from './dto/create-pos-device.dto';
 import { PosDeviceStatus } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
-import { resolveConfiguredStoreId } from '../../common/store-id';
+import { resolveConfiguredStoreStableId } from '../../store/public-api';
 
 @Injectable()
 export class AdminPosDevicesService {
@@ -28,7 +28,7 @@ export class AdminPosDevicesService {
           select: { id: true, isActive: true },
         })
       : await this.prisma.store.findUnique({
-          where: { storeStableId: resolveConfiguredStoreId() },
+          where: { storeStableId: resolveConfiguredStoreStableId() },
           select: { id: true, isActive: true },
         });
 

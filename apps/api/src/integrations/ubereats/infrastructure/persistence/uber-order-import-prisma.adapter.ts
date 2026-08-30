@@ -14,7 +14,7 @@ import {
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
-import { resolveConfiguredStoreId } from '../../../../common/store-id';
+import { resolveConfiguredStoreStableId } from '../../../../store/public-api';
 import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
 import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
@@ -117,7 +117,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   }
 
   async getPosStoreConnectivity(posStoreId: string) {
-    if (posStoreId !== resolveConfiguredStoreId()) {
+    if (posStoreId !== resolveConfiguredStoreStableId()) {
       return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
     }
     const devices = await this.prisma.posDevice.findMany({

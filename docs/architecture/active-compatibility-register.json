@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "dfdf7a36",
+  "baselineCommit": "a050d8b2",
   "updatedAt": "2026-08-30",
   "requiredFields": [
     "compat_id",
@@ -58,13 +58,13 @@
       "old_owner": "Direct API payload readers and page-local response unwrap helpers",
       "new_owner": "One Web API client using the global code/message/details response envelope",
       "dual_write_or_read": [
-        "apiFetch accepts both the global envelope and a direct payload",
-        "Page-local envelope declarations and unwrap paths coexist"
+        "Canonical apiFetch and serverApiFetch now require the global code/message/details envelope",
+        "Legacy browser direct-fetch debt remains only in Checkout (6 calls) and POS session/login paths (5 calls); Checkout still owns page-local envelope/direct-payload compatibility"
       ],
-      "parity_metric": "Request count by response shape and contract tests for the canonical client; direct-payload count must reach zero",
-      "rollback": "Keep the dual reader until every endpoint and caller is characterized, then remove it atomically with duplicate unwrap code",
-      "exit_criteria": "All Web calls use the canonical client, direct payload observations are zero, duplicate ApiEnvelope declarations are removed",
-      "remove_pr": "Phase 1 unified Web API client/envelope PR",
+      "parity_metric": "Architecture scanner browser direct-fetch debt must fall from 11 legacy calls to zero, and page-local Checkout envelope/direct-payload readers must be removed",
+      "rollback": "Keep the remaining Checkout/POS legacy calls isolated by architecture allowances until their dedicated risk-scoped migration; do not relax the strict canonical parser",
+      "exit_criteria": "All regular Web JSON API calls use the canonical client, remaining legacy browser direct fetches are zero, and duplicate/page-local ApiEnvelope readers are removed",
+      "remove_pr": "Dedicated Checkout and POS browser transport migration PRs",
       "deadline": "Before Phase 1 low-risk cleanup exit",
       "evidence": [
         "SanQ full-site modularization audit section 3.4"
@@ -128,10 +128,6 @@
     }
   ],
   "reviewCandidates": [
-    {
-      "candidate": "Next rewrite and app/api catch-all proxy overlap",
-      "decisionNeeded": "Determine whether both routes carry live traffic before classifying as compatibility or deleting one atomically"
-    },
     {
       "candidate": "EventEmitter aliases alongside durable outbox events",
       "decisionNeeded": "Measure consumers and duplicate side effects before assigning a compat_id"

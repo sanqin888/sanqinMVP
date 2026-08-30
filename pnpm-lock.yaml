@@ -66,6 +66,9 @@ importers:
       '@sendgrid/mail':
         specifier: ^8.1.6
         version: 8.1.6
+      '@shared/foundation':
+        specifier: workspace:*
+        version: link:../../libs/foundation
       '@shared/menu':
         specifier: workspace:*
         version: link:../../libs/shared
@@ -223,6 +226,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@shared/foundation':
+        specifier: workspace:*
+        version: link:../../libs/foundation
       '@shared/menu':
         specifier: workspace:*
         version: link:../../libs/shared
@@ -301,6 +307,12 @@ importers:
         version: 4.1.18
       typescript:
         specifier: ^5
+        version: 5.9.3
+
+  libs/foundation:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
         version: 5.9.3
 
   libs/order:

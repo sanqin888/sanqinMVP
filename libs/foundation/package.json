@@ -1,5 +1,5 @@
 {
-  "name": "@shared/menu",
+  "name": "@shared/foundation",
   "type": "commonjs",
   "version": "0.0.0",
   "private": true,
@@ -14,9 +14,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist"
-  },
-  "dependencies": {
-    "zod": "^3.25.76"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

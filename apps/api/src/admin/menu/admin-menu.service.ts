@@ -28,6 +28,10 @@ import {
   type UberEatsAvailabilitySyncResult,
   type UberEatsMenuAvailabilityPort,
 } from '../../integrations/ubereats/public-api';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from '../../store/public-api';
 type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
 function toIso(value: Date | null | undefined): string | null {
@@ -74,6 +78,8 @@ export class AdminMenuService {
     private readonly prisma: PrismaService,
     @Inject(UBER_EATS_MENU_AVAILABILITY)
     private readonly uberEatsService: UberEatsMenuAvailabilityPort,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
   ) {}
 
   async updateCategory(
@@ -147,8 +153,8 @@ export class AdminMenuService {
 
   // ========= Full menu for admin =========
   async getFullMenu(): Promise<AdminMenuFullResponse> {
-    const businessConfig = await this.ensureBusinessConfig();
-    const now = resolveStoreNow(businessConfig.timezone);
+    const { timezone } = await this.brandStoreConfigReader.getStoreSnapshot();
+    const now = resolveStoreNow(timezone || 'America/Toronto');
     const weekday = now.weekday;
     const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({
       where: {
@@ -1866,26 +1872,5 @@ export class AdminMenuService {
     }
 
     return stableIds.map((stableId) => packagingTypeByStableId.get(stableId)!);
-  }
-
-  private async ensureBusinessConfig() {
-    const existing = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    if (existing) return existing;
-
-    return this.prisma.businessConfig.create({
-      data: {
-        id: 1,
-        storeName: '',
-        timezone: 'America/Toronto',
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
-        deliveryBaseFeeCents: 600,
-        priorityPerKmCents: 100,
-        salesTaxRate: 0.13,
-      },
-    });
   }
 }

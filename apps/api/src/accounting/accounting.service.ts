@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,6 +17,10 @@ import {
   PaymentMethod,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from '../store/public-api';
 
 type TxFilters = {
   from?: string;
@@ -101,16 +106,15 @@ const ACCOUNTING_TX_PUBLIC_SELECT = {
 export class AccountingService {
   private static readonly DEFAULT_BUSINESS_TIMEZONE = 'America/Toronto';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+  ) {}
 
   private async getBusinessTimezone(): Promise<string> {
-    const config = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-      select: { timezone: true },
-    });
-    return (
-      config?.timezone?.trim() || AccountingService.DEFAULT_BUSINESS_TIMEZONE
-    );
+    const { timezone } = await this.brandStoreConfigReader.getStoreSnapshot();
+    return timezone.trim() || AccountingService.DEFAULT_BUSINESS_TIMEZONE;
   }
 
   async getAccountingStartDate(): Promise<string | null> {
