@@ -1,60 +1,48 @@
-# Historical order item component backfill
+# Historical order item component migration
 
-## Compatibility registration
+## Status
 
 - `compat_id`: `orders.order-item-components.v1`
-- `old_owner`: Orders legacy `OrderItem.optionsJson`, with selectable-combo target resolution falling back to the current `MenuOptionTemplateChoice.targetItemStableId` mapping when old snapshots did not contain a target stable ID.
-- `new_owner`: Orders immutable `OrderItem.componentsJson` component snapshot.
-- `dual_write_or_read paths`: New orders write `componentsJson` at order creation. Historical rows without a component snapshot continue to use the existing legacy read behavior. The backfill only populates rows where `componentsJson` is still database NULL.
-- `parity metric`: dry-run candidate/SAFE/UNRESOLVED counts, component counts, child-option-group assignment counts, mapping-source counts, and unresolved-reason counts. Historical component quantities must agree with the legacy selectable-combo target count before read contraction.
-- `rollback/cutback plan`: do not apply before dry-run review. If a post-apply discrepancy is found, stop further writes and cut reads back to the retained legacy path for affected historical rows; do not automatically erase or rewrite historical snapshots.
-- `exit criteria`: all automatically provable historical rows are backfilled, every remaining UNRESOLVED row is explicitly adjudicated, and legacy fallback usage reaches zero for the relevant historical set before any contraction.
-- `removal task/PR`: a separate, explicitly authorized contraction may remove the legacy current-menu target-mapping fallback after parity and observation are complete.
-- `deadline/business milestone`: complete before the Orders historical-read compatibility path is removed during modularization.
+- status: completed / contracted
+- completed: 2026-08-30
+- old compatibility source: Orders legacy `OrderItem.optionsJson`, including current `MenuOptionTemplateChoice.targetItemStableId` lookup for historical selectable-combo reconstruction.
+- canonical historical source: Orders immutable `OrderItem.componentsJson`.
 
-## Safety model
+The production backfill and manual adjudication are complete. The final dry-run before contraction reported:
 
-The backfill command is intentionally conservative and idempotent.
-
-- Default mode is dry-run and performs no writes.
-- `componentsJson` that is already non-NULL is never overwritten.
-- A historical choice-level `targetItemStableId` is authoritative when present.
-- For older choices without a snapshotted target, the current target mapping is accepted only when that option group is still bound to the historical parent menu item.
-- Historical component names come from the order-time option snapshot rather than the current menu item name.
-- Non-target option groups are assigned to a component only when current menu bindings identify exactly one selected target item as the owner.
-- If the same target item appears more than once, repeated child-option groups are accepted only when every occurrence has a semantically identical selection. Different A/B child selections are reported as unresolved instead of guessed.
-- Missing targets, unowned groups, ambiguous owners, malformed candidate snapshots, and repeated-target ambiguity are reported as `UNRESOLVED` and are not written.
-
-## Dry-run
-
-After the API image containing this command is deployed, run it inside the API container:
-
-```bash
-docker compose exec api node apps/api/dist/orders/tools/backfill-order-item-components.js
+```text
+scannedOrderItems: 3311
+alreadyBackfilled: 400
+notCandidates: 2911
+candidates: 0
+safe: 0
+unresolved: 0
+currentMappingTargetCount: 0
 ```
 
-The command prints a JSON report containing:
+All historical order items that require component-level interpretation now carry an immutable component snapshot. The compatibility exit criteria are therefore satisfied for this historical set.
 
-- scanned order-item count;
-- existing component-snapshot count;
-- candidate count;
-- `SAFE` and `UNRESOLVED` counts;
-- planned component and child-option-group counts;
-- snapshot-target versus current-mapping evidence counts;
-- warnings and unresolved reasons;
-- per-parent-item counts;
-- bounded unresolved order samples identified by `orderStableId` and parent product stable ID.
+## Contraction
 
-Dry-run does not return internal `OrderItem.id` values in the operator report.
+The contraction removes the obsolete read-time reconstruction paths:
 
-## Apply mode
+- Reports no longer query current menu-option target mappings when an order item has no component snapshot. Top-item reporting uses `componentsJson` when present and otherwise treats the order item as a direct item.
+- Label planning no longer expands `optionsJson.targetItemStableId` when an order item has no component snapshot. Component-based fulfillment uses `componentsJson`; non-component items remain direct items with their original option snapshot.
+- The one-time historical backfill planner, CLI, and planner tests are removed after successful completion.
 
-Apply mode exists for the later explicitly authorized production-write step. Do not run it merely because the command has been deployed.
+This prevents historical reporting or fulfillment behavior from being re-derived from mutable current catalog state.
 
-```bash
-docker compose exec api node apps/api/dist/orders/tools/backfill-order-item-components.js \
-  --apply \
-  --confirm=BACKFILL_ORDER_ITEM_COMPONENTS_V1
-```
+## Retained contracts
 
-Apply mode writes only plans classified as `SAFE`, and each update includes a `componentsJson IS NULL` guard. It then re-reads the planned rows and reports `postCheckFilled` and `postCheckMissing`; a non-zero `postCheckMissing` sets a non-zero process exit code so an operator cannot mistake an incomplete apply for success. The operation is retryable: an interrupted or partially completed run can be dry-run again, and already populated rows will be skipped.
+This contraction does **not** remove or repurpose persisted fields:
+
+- `OrderItem.optionsJson` remains the immutable order-time option/pricing snapshot and is still used for display and option price deltas.
+- `OrderItem.componentsJson` remains the immutable actual-component snapshot used for fulfillment, item-level sales quantity, labels, and historical display.
+- `MenuOptionTemplateChoice.targetItemStableId` remains the live catalog relationship used when creating new selectable-combo snapshots.
+- `MenuItemComponent` remains the live catalog configuration for fixed-combo composition.
+
+Historical soft-deleted catalog rows are retained for auditability; this change does not physically delete historical menu or option records.
+
+## Rollback
+
+If a regression is discovered after contraction, restore the removed compatibility reader in code for the affected consumer. Do not erase or regenerate existing `componentsJson` snapshots from the current catalog.
