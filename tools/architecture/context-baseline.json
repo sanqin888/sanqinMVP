@@ -167,6 +167,11 @@
     ],
     "transitionalStorageDelegate": "brandConfig",
     "legacyStorageDelegate": "businessConfig",
+    "implementationForbiddenSymbols": [
+      "BusinessConfig",
+      "ensureBusinessConfig",
+      "getLoyaltyConfig"
+    ],
     "migratedLegacyConsumers": [
       "apps/api/src/admin/members/admin-members.service.ts"
     ],

@@ -110,7 +110,7 @@ pair fails CI.
   when that writer boundary is migrated, rather than reclassifying existing
   direct-import debt without changing the implementation.
 
-## Phase 2 Benefits loyalty policy boundary started
+## Phase 2 Benefits loyalty policy read cutover complete
 
 - `apps/api/src/loyalty/public-api.ts` exposes a narrow `LOYALTY_POLICY_READER`
   contract owned by Identity/Customer/Benefits. Loyalty earn/redeem/referral
@@ -121,15 +121,18 @@ pair fails CI.
   fields into `BrandConfig`. The first Benefits snapshot therefore reads those
   transitional columns without a schema change, while the future dedicated
   Benefits persistence migration remains a separate authorized step.
-- Membership program rules and Admin member tier-progress thresholds are the first
-  non-transaction consumers migrated to the Benefits snapshot. Admin Members can
-  no longer read `BusinessConfig` directly for tier thresholds.
-- Loyalty transaction-bound policy reads continue to use `BusinessConfig` for this
-  slice. Their data source and transaction boundaries are intentionally unchanged;
-  only the existing normalization/default rules were extracted into one pure
-  Benefits policy function shared by old and new read paths.
-- `benefits.business-config-loyalty-policy.v1` records the temporary split-read
-  state, parity requirement, rollback, and exit criteria. The architecture scanner
+- Membership program rules, Admin member tier-progress thresholds, and all
+  remaining LoyaltyService policy readers now use the Benefits snapshot backed by
+  transitional `BrandConfig` columns. LoyaltyService no longer reads or creates
+  `BusinessConfig` for loyalty policy.
+- Transaction-bound policy reads stay inside their existing Prisma transaction:
+  `getLoyaltyPolicySnapshotWithTx(tx)` reads `tx.brandConfig` and applies the same
+  pure normalization/default rules as non-transaction readers. No policy snapshot
+  is moved outside the transaction boundary.
+- `benefits.business-config-loyalty-policy.v1` now records a read-cutover-complete
+  state: the legacy Admin Business writer still targets `BusinessConfig`, its
+  existing compatibility trigger mirrors into `BrandConfig`, and the next cutover
+  is the Benefits-owned writer boundary. The architecture scanner
   protects the public policy surface and prevents the migrated readers from
   regressing or moving loyalty policy fields into Brand/Store public config.
 
