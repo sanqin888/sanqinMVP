@@ -15,6 +15,16 @@ import {
   extractAccountingPdf,
   extractAccountingText,
 } from './accounting-pdf-extractor';
+import {
+  classifyAccountingDocumentText,
+  type AccountingReviewMetadata,
+} from './accounting-document-review';
+import { extractAccountingImageText } from './accounting-image-ocr';
+import {
+  ACCOUNTING_RECEIPT_IMAGE_POLICY,
+  detectAccountingReceiptImageType,
+  processAccountingReceiptImage,
+} from './accounting-receipt-image';
 
 const GMAIL_BILLS_LABEL = 'SanQ-Bills';
 
@@ -56,6 +66,16 @@ type MessageIngestResult = {
   failed: number;
   skippedBeforeStartDate: number;
 };
+
+type GmailAccountingAttachmentKind = 'PDF' | 'IMAGE';
+
+type AccountingImageReviewExtraction = ReturnType<
+  typeof extractAccountingText
+> &
+  AccountingReviewMetadata & {
+    ocrEngine: 'TESSERACT';
+    ocrStatus: 'SUCCESS' | 'ERROR';
+  };
 
 @Injectable()
 export class AccountingGmailIngestService {
@@ -146,14 +166,9 @@ export class AccountingGmailIngestService {
     }
 
     const subject = this.header(message.payload?.headers, 'subject');
-    const pdfParts = this.flattenParts(message.payload).filter((part) => {
-      const filename = part.filename?.trim() ?? '';
-      return (
-        part.body?.attachmentId &&
-        (part.mimeType === 'application/pdf' ||
-          filename.toLowerCase().endsWith('.pdf'))
-      );
-    });
+    const attachmentParts = this.flattenParts(message.payload).filter(
+      (part) => part.body?.attachmentId && this.attachmentKind(part) != null,
+    );
     const result: MessageIngestResult = {
       imported: 0,
       duplicates: 0,
@@ -161,9 +176,10 @@ export class AccountingGmailIngestService {
       skippedBeforeStartDate: 0,
     };
 
-    for (const part of pdfParts) {
+    for (const part of attachmentParts) {
       const attachmentId = part.body?.attachmentId;
-      if (!attachmentId) continue;
+      const kind = this.attachmentKind(part);
+      if (!attachmentId || !kind) continue;
       const existingAttachment =
         await this.prisma.accountingExpenseDocument.findFirst({
           where: {
@@ -187,13 +203,6 @@ export class AccountingGmailIngestService {
           continue;
         }
         const buffer = this.decodeBase64Url(attachment.data);
-        if (
-          buffer.length < 5 ||
-          buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
-        ) {
-          result.failed += 1;
-          continue;
-        }
         const fileHash = createHash('sha256').update(buffer).digest('hex');
         const duplicateHash =
           await this.prisma.accountingExpenseDocument.findUnique({
@@ -205,14 +214,99 @@ export class AccountingGmailIngestService {
           continue;
         }
 
-        const { text, extraction } = extractAccountingPdf(buffer);
+        if (kind === 'PDF') {
+          if (
+            buffer.length < 5 ||
+            buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
+          ) {
+            result.failed += 1;
+            continue;
+          }
+          const { text, extraction } = extractAccountingPdf(buffer);
+          if (
+            this.isBeforeStartDate(extraction.date, options.accountingStartDate)
+          ) {
+            result.skippedBeforeStartDate += 1;
+            continue;
+          }
+          const attachmentUrl = await this.savePdf(buffer, part.filename);
+          await this.prisma.accountingExpenseDocument.create({
+            data: {
+              documentStableId: `expense_${createId()}`,
+              source: AccountingDocumentSource.GMAIL,
+              status: AccountingDocumentStatus.PENDING_REVIEW,
+              occurredAt: extraction.date
+                ? new Date(`${extraction.date}T12:00:00Z`)
+                : null,
+              subtotalCents: extraction.subtotalCents,
+              taxCents: extraction.taxCents,
+              totalCents: extraction.totalCents,
+              currency: 'CAD',
+              gmailMessageId: messageId,
+              gmailAttachmentId: attachmentId,
+              fileHash,
+              emailSubject: subject,
+              attachmentUrls: [attachmentUrl],
+              extractedText: text.slice(0, 100_000),
+              extractionJson: extraction as unknown as Prisma.InputJsonValue,
+            },
+          });
+          result.imported += 1;
+          continue;
+        }
+
+        if (buffer.length > ACCOUNTING_RECEIPT_IMAGE_POLICY.maxUploadBytes) {
+          result.failed += 1;
+          continue;
+        }
+        const detectedType = detectAccountingReceiptImageType(buffer);
+        if (!detectedType) {
+          result.failed += 1;
+          continue;
+        }
+        const processed = await processAccountingReceiptImage({
+          originalname: `gmail-attachment${
+            detectedType === 'jpeg' ? '.jpg' : `.${detectedType}`
+          }`,
+          buffer,
+        });
+        let text = '';
+        let ocrStatus: AccountingImageReviewExtraction['ocrStatus'] = 'SUCCESS';
+        try {
+          text = (await extractAccountingImageText(processed.buffer)).text;
+        } catch (error) {
+          ocrStatus = 'ERROR';
+          this.logger.warn(
+            `Accounting image OCR failed for ${messageId}/${attachmentId}; preserving attachment for review: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        const extraction = extractAccountingText(text);
         if (
           this.isBeforeStartDate(extraction.date, options.accountingStartDate)
         ) {
           result.skippedBeforeStartDate += 1;
           continue;
         }
-        const attachmentUrl = await this.savePdf(buffer, part.filename);
+        const review =
+          ocrStatus === 'SUCCESS'
+            ? classifyAccountingDocumentText(text, extraction)
+            : {
+                reviewDisposition: 'UNRECOGNIZED' as const,
+                reviewReason: 'NO_READABLE_TEXT' as const,
+              };
+        const extractionJson: AccountingImageReviewExtraction = {
+          ...extraction,
+          inputKind: 'IMAGE',
+          ...review,
+          ocrEngine: 'TESSERACT',
+          ocrStatus,
+        };
+        const attachmentUrl = await this.saveBillImage(
+          processed.buffer,
+          part.filename,
+        );
         await this.prisma.accountingExpenseDocument.create({
           data: {
             documentStableId: `expense_${createId()}`,
@@ -231,7 +325,7 @@ export class AccountingGmailIngestService {
             emailSubject: subject,
             attachmentUrls: [attachmentUrl],
             extractedText: text.slice(0, 100_000),
-            extractionJson: extraction as unknown as Prisma.InputJsonValue,
+            extractionJson: extractionJson as unknown as Prisma.InputJsonValue,
           },
         });
         result.imported += 1;
@@ -244,7 +338,7 @@ export class AccountingGmailIngestService {
       }
     }
 
-    if (pdfParts.length === 0) {
+    if (attachmentParts.length === 0) {
       await this.ingestBodyOnlyMessage(
         accessToken,
         messageId,
@@ -484,6 +578,53 @@ export class AccountingGmailIngestService {
       throw new Error(`Gmail API ${response.status}: ${detail.slice(0, 500)}`);
     }
     return (await response.json()) as T;
+  }
+
+  private attachmentKind(part: GmailPart): GmailAccountingAttachmentKind | null {
+    const filename = part.filename?.trim().toLowerCase() ?? '';
+    const mimeType = part.mimeType?.trim().toLowerCase() ?? '';
+    if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
+      return 'PDF';
+    }
+    const isSupportedImage =
+      mimeType === 'image/jpeg' ||
+      mimeType === 'image/png' ||
+      mimeType === 'image/webp' ||
+      /\.(?:jpe?g|png|webp)$/.test(filename);
+    if (!isSupportedImage) return null;
+
+    const disposition =
+      this.header(part.headers, 'content-disposition')?.toLowerCase() ?? '';
+    const reportedSize = part.body?.size ?? 0;
+    const filenameLooksLikeBill =
+      /(?:bill|invoice|receipt|statement|purchase|order)/i.test(filename);
+    const filenameLooksDecorative =
+      /(?:logo|signature|spacer|icon|facebook|instagram|linkedin)/i.test(filename);
+    if (
+      reportedSize > 0 &&
+      reportedSize < 100_000 &&
+      !filenameLooksLikeBill &&
+      (disposition.includes('inline') || filenameLooksDecorative)
+    ) {
+      return null;
+    }
+    return 'IMAGE';
+  }
+
+  private async saveBillImage(buffer: Buffer, originalName?: string) {
+    const dir = path.join(getUploadsAccountingDir(), 'bills');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const originalBase = path.basename(originalName?.trim() || 'bill-image');
+    const extension = path.extname(originalBase);
+    const safeBase = originalBase
+      .slice(0, Math.max(0, originalBase.length - extension.length))
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .slice(0, 48);
+    const fileName = `${Date.now()}-${createId()}-${safeBase || 'bill-image'}.webp`;
+    await fs.promises.writeFile(path.join(dir, fileName), buffer, {
+      flag: 'wx',
+    });
+    return `/api/v1/accounting/files/bills/${fileName}`;
   }
 
   private async savePdf(buffer: Buffer, originalName?: string) {

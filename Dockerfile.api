@@ -38,6 +38,14 @@ RUN cd /app/api-runtime && npx prisma generate --schema=./prisma/schema.prisma
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# Accounting Gmail image attachments use local OCR so receipt text never leaves
+# the SanQ runtime. Keep OCR in the API runtime image instead of adding an npm
+# dependency or external OCR provider.
+RUN apk add --no-cache \
+    tesseract-ocr \
+    tesseract-ocr-data-eng \
+    tesseract-ocr-data-chi_sim
+
 ENV NODE_ENV=production
 ENV PORT=4000
 
