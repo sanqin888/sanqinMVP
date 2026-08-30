@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "commit": "dfdf7a36",
+    "capturedAt": "2026-08-30",
+    "importUnit": "production source import statements",
+    "compositionRootsExcluded": [
+      "apps/api/src/app.module.ts",
+      "apps/api/src/app.bootstrap.ts",
+      "apps/api/src/main.ts",
+      "apps/api/src/ubereats-worker.main.ts"
+    ]
+  },
+  "contexts": [
+    {
+      "id": "architecture-foundation",
+      "paths": ["apps/api/src/common"]
+    },
+    {
+      "id": "brand-store",
+      "paths": [
+        "apps/api/src/homepage",
+        "apps/api/src/location",
+        "apps/api/src/store"
+      ]
+    },
+    {
+      "id": "catalog-pricing-offers",
+      "paths": [
+        "apps/api/src/application/menu",
+        "apps/api/src/coupons",
+        "apps/api/src/menu",
+        "apps/api/src/promotions",
+        "libs/shared"
+      ]
+    },
+    {
+      "id": "identity-customer-benefits",
+      "paths": [
+        "apps/api/src/admin",
+        "apps/api/src/auth",
+        "apps/api/src/loyalty",
+        "apps/api/src/membership",
+        "apps/api/src/phone-verification"
+      ]
+    },
+    {
+      "id": "commerce-orders-fulfillment",
+      "paths": [
+        "apps/api/src/deliveries",
+        "apps/api/src/orders",
+        "libs/order"
+      ]
+    },
+    {
+      "id": "payments-clover",
+      "paths": [
+        "apps/api/src/clover",
+        "apps/api/src/orchestration",
+        "apps/api/src/payments"
+      ]
+    },
+    {
+      "id": "store-operations-pos-print",
+      "paths": [
+        "apps/api/src/pos",
+        "tools/printer-server"
+      ]
+    },
+    {
+      "id": "external-channels",
+      "paths": ["apps/api/src/integrations"]
+    },
+    {
+      "id": "messaging-notifications",
+      "paths": [
+        "apps/api/src/email",
+        "apps/api/src/messaging",
+        "apps/api/src/notifications",
+        "apps/api/src/sms"
+      ]
+    },
+    {
+      "id": "accounting-reporting-analytics",
+      "paths": [
+        "apps/api/src/accounting",
+        "apps/api/src/analytics",
+        "apps/api/src/reports"
+      ]
+    },
+    {
+      "id": "web-pwa",
+      "paths": ["apps/web/src"]
+    },
+    {
+      "id": "runtime-data-ci-ops",
+      "paths": [
+        ".github",
+        "apps/api/src/data-retention",
+        "apps/api/src/prisma",
+        "ops",
+        "tools/architecture"
+      ]
+    }
+  ],
+  "publicAliases": {
+    "@shared/menu": "catalog-pricing-offers",
+    "@shared/order": "commerce-orders-fulfillment"
+  },
+  "legacyDirectImportLimits": {
+    "accounting-reporting-analytics -> architecture-foundation": 3,
+    "accounting-reporting-analytics -> commerce-orders-fulfillment": 1,
+    "accounting-reporting-analytics -> external-channels": 1,
+    "accounting-reporting-analytics -> identity-customer-benefits": 11,
+    "accounting-reporting-analytics -> runtime-data-ci-ops": 9,
+    "architecture-foundation -> catalog-pricing-offers": 1,
+    "brand-store -> accounting-reporting-analytics": 2,
+    "brand-store -> architecture-foundation": 2,
+    "brand-store -> runtime-data-ci-ops": 4,
+    "brand-store -> store-operations-pos-print": 1,
+    "catalog-pricing-offers -> architecture-foundation": 4,
+    "catalog-pricing-offers -> identity-customer-benefits": 3,
+    "catalog-pricing-offers -> messaging-notifications": 2,
+    "catalog-pricing-offers -> runtime-data-ci-ops": 10,
+    "commerce-orders-fulfillment -> architecture-foundation": 12,
+    "commerce-orders-fulfillment -> brand-store": 2,
+    "commerce-orders-fulfillment -> catalog-pricing-offers": 5,
+    "commerce-orders-fulfillment -> identity-customer-benefits": 11,
+    "commerce-orders-fulfillment -> messaging-notifications": 9,
+    "commerce-orders-fulfillment -> runtime-data-ci-ops": 14,
+    "commerce-orders-fulfillment -> store-operations-pos-print": 6,
+    "external-channels -> architecture-foundation": 12,
+    "external-channels -> commerce-orders-fulfillment": 5,
+    "external-channels -> identity-customer-benefits": 6,
+    "external-channels -> messaging-notifications": 2,
+    "external-channels -> runtime-data-ci-ops": 24,
+    "identity-customer-benefits -> architecture-foundation": 17,
+    "identity-customer-benefits -> brand-store": 4,
+    "identity-customer-benefits -> catalog-pricing-offers": 10,
+    "identity-customer-benefits -> commerce-orders-fulfillment": 1,
+    "identity-customer-benefits -> external-channels": 2,
+    "identity-customer-benefits -> messaging-notifications": 24,
+    "identity-customer-benefits -> runtime-data-ci-ops": 28,
+    "identity-customer-benefits -> store-operations-pos-print": 4,
+    "messaging-notifications -> architecture-foundation": 5,
+    "messaging-notifications -> runtime-data-ci-ops": 11,
+    "messaging-notifications -> store-operations-pos-print": 1,
+    "payments-clover -> architecture-foundation": 16,
+    "payments-clover -> commerce-orders-fulfillment": 10,
+    "payments-clover -> identity-customer-benefits": 17,
+    "payments-clover -> messaging-notifications": 3,
+    "payments-clover -> runtime-data-ci-ops": 8,
+    "payments-clover -> store-operations-pos-print": 11,
+    "store-operations-pos-print -> architecture-foundation": 9,
+    "store-operations-pos-print -> brand-store": 2,
+    "store-operations-pos-print -> commerce-orders-fulfillment": 10,
+    "store-operations-pos-print -> external-channels": 1,
+    "store-operations-pos-print -> identity-customer-benefits": 14,
+    "store-operations-pos-print -> runtime-data-ci-ops": 10
+  }
+}

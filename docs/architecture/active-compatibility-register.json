@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "dfdf7a36",
+  "updatedAt": "2026-08-30",
+  "requiredFields": [
+    "compat_id",
+    "old_owner",
+    "new_owner",
+    "dual_write_or_read",
+    "parity_metric",
+    "rollback",
+    "exit_criteria",
+    "remove_pr",
+    "deadline"
+  ],
+  "active": [
+    {
+      "compat_id": "brand-store.business-config.v1",
+      "status": "active",
+      "old_owner": "BusinessConfig single-store compatibility model and BusinessConfigService",
+      "new_owner": "BrandConfig plus per-store StoreConfig snapshot",
+      "dual_write_or_read": [
+        "Orders, Loyalty, Messaging, StoreStatus, Admin Business and Uber tax/config readers still consume BusinessConfig",
+        "BrandConfig and StoreConfig already overlap part of the same field set"
+      ],
+      "parity_metric": "Per-field BrandConfig/StoreConfig versus BusinessConfig difference report must remain zero for one complete business cycle",
+      "rollback": "Keep BusinessConfig reads available until all consumers use the new snapshot and the difference report is zero",
+      "exit_criteria": "All fields have one owner, all reads use the new snapshot, old reads and writes are zero, then BusinessConfig service/table can be removed",
+      "remove_pr": "Phase 2 Brand/Store contraction PR (to be created after expand/backfill/cutover)",
+      "deadline": "Before Phase 2 Brand/Store exit",
+      "evidence": [
+        "apps/api/prisma/schema.prisma",
+        "SanQ full-site modularization audit section 3.3 and 6.2"
+      ]
+    },
+    {
+      "compat_id": "brand-store.default-store-identity.v1",
+      "status": "active",
+      "old_owner": "Implicit literal default store identity in Uber channel tables and single-store helpers",
+      "new_owner": "Explicit Store.storeStableId at public boundaries with repository-local DB UUID conversion",
+      "dual_write_or_read": [
+        "Uber channel configuration rows still default storeId to the literal default identity",
+        "Existing rows and callers may omit an explicit store identity"
+      ],
+      "parity_metric": "Count of rows using the default literal and count of requests resolved through implicit-store fallback; both must reach zero",
+      "rollback": "Retain the old nullable/default columns during expand-backfill-cutover; do not reinterpret historical IDs",
+      "exit_criteria": "All rows are backfilled, callers pass storeStableId, schema defaults and fallback helpers are removed",
+      "remove_pr": "Phase 2 store identity contraction PR",
+      "deadline": "Before Phase 2 Brand/Store exit",
+      "evidence": [
+        "apps/api/prisma/schema.prisma Uber*Config models",
+        "SanQ full-site modularization audit section 3.3 and 6.8"
+      ]
+    },
+    {
+      "compat_id": "web.api-envelope-direct-payload.v1",
+      "status": "active",
+      "old_owner": "Direct API payload readers and page-local response unwrap helpers",
+      "new_owner": "One Web API client using the global code/message/details response envelope",
+      "dual_write_or_read": [
+        "apiFetch accepts both the global envelope and a direct payload",
+        "Page-local envelope declarations and unwrap paths coexist"
+      ],
+      "parity_metric": "Request count by response shape and contract tests for the canonical client; direct-payload count must reach zero",
+      "rollback": "Keep the dual reader until every endpoint and caller is characterized, then remove it atomically with duplicate unwrap code",
+      "exit_criteria": "All Web calls use the canonical client, direct payload observations are zero, duplicate ApiEnvelope declarations are removed",
+      "remove_pr": "Phase 1 unified Web API client/envelope PR",
+      "deadline": "Before Phase 1 low-risk cleanup exit",
+      "evidence": [
+        "SanQ full-site modularization audit section 3.4"
+      ]
+    },
+    {
+      "compat_id": "payments.pos-card-legacy.v1",
+      "status": "frozen",
+      "old_owner": "POS CARD /pos/orders direct paid-order creation",
+      "new_owner": "Unified Payment Core plus Clover Terminal followed by idempotent order finalization",
+      "dual_write_or_read": [
+        "Feature flag false routes to legacy CARD",
+        "Feature flag true is reserved for the new terminal flow; the same operation must never call both"
+      ],
+      "parity_metric": "Terminal payment/provider truth, amount, surcharge, final order binding and refund outcome parity across one complete settlement cycle",
+      "rollback": "Set the rollout flag false to route new POS operations back to legacy CARD without rewriting payment history",
+      "exit_criteria": "Clover account blocker resolved, real-device acceptance complete, one settlement cycle reconciled, legacy invocation metric is zero",
+      "remove_pr": "Payments/Clover Phase G legacy POS contraction PR",
+      "deadline": "Before Phase 5B Payments/Clover exit; clock resumes when Clover sandbox identity blocker is resolved",
+      "freeze_reason": "Clover Developer sandbox test merchant does not recognize the developer identity; awaiting Clover support",
+      "evidence": [
+        "docs/payments/clover-pos-integration-charter.md sections 9 and 11"
+      ]
+    },
+    {
+      "compat_id": "payments.web-checkout-v1.v1",
+      "status": "frozen",
+      "old_owner": "CheckoutIntent, CloverPayController/CloverService and Clover Ecommerce /v1 charge path",
+      "new_owner": "Channel-neutral Unified Payment Core using canonical Clover Platform v3 truth",
+      "dual_write_or_read": [
+        "Legacy Web Ecommerce remains the production path until Phase G",
+        "Unified core exists but Web traffic must not be switched early"
+      ],
+      "parity_metric": "Payment ID, amount, surcharge, refund, settlement and old-path invocation metrics across one complete settlement cycle",
+      "rollback": "Keep legacy Web routing available until the new Web consumer is accepted; traffic rollback must not rewrite historical facts",
+      "exit_criteria": "Uber/Clover external blockers no longer constrain validation, Web cutover is accepted, one settlement cycle matches, old calls are zero",
+      "remove_pr": "Payments/Clover Phase G legacy Web contraction PR",
+      "deadline": "Before Phase 5B Payments/Clover exit; clock resumes when external verification blockers are resolved",
+      "freeze_reason": "Clover sandbox identity verification is blocked; current Web production behavior is explicitly frozen",
+      "evidence": [
+        "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
+      ]
+    }
+  ],
+  "closed": [
+    {
+      "compat_id": "orders.order-item-components.v1",
+      "status": "closed",
+      "old_owner": "OrderItem.componentsJson historical fixed-combo reconstruction path",
+      "new_owner": "Order-owned immutable item component snapshot",
+      "dual_write_or_read": "Removed after production dry-run and contraction",
+      "parity_metric": "Production dry-run returned zero actionable rows",
+      "rollback": "Git history and the completed audit record; no live fallback retained",
+      "exit_criteria": "Backfill planner/CLI and legacy read reconstruction removed",
+      "remove_pr": "#2004",
+      "deadline": "Completed 2026-08-30",
+      "evidence": [
+        "docs/orders/order-item-components-backfill.md",
+        "commit b8413cd7"
+      ]
+    }
+  ],
+  "reviewCandidates": [
+    {
+      "candidate": "Next rewrite and app/api catch-all proxy overlap",
+      "decisionNeeded": "Determine whether both routes carry live traffic before classifying as compatibility or deleting one atomically"
+    },
+    {
+      "candidate": "EventEmitter aliases alongside durable outbox events",
+      "decisionNeeded": "Measure consumers and duplicate side effects before assigning a compat_id"
+    },
+    {
+      "candidate": "@shared/order re-export from @shared/menu",
+      "decisionNeeded": "Planned atomic internal migration; do not register as compatibility unless atomic removal proves impossible"
+    }
+  ]
+}

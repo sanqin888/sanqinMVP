@@ -48,6 +48,10 @@ jobs:
         if: matrix.app == 'api'
         run: pnpm --filter api prisma:generate
 
+      - name: Architecture baseline gate
+        if: matrix.app == 'api'
+        run: node tools/architecture/scan-architecture.mjs --check
+
       - name: Lint (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} lint
 
