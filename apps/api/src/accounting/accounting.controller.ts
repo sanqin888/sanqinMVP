@@ -31,6 +31,7 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { getUploadsAccountingDir } from '../common/utils/uploads-path';
+import { ACCOUNTING_RECEIPT_IMAGE_POLICY } from './accounting-receipt-image';
 import { AccountingService } from './accounting.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import {
@@ -155,7 +156,9 @@ export class AccountingController {
 
   @Post('files/receipts')
   @UseInterceptors(
-    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+    FileInterceptor('file', {
+      limits: { fileSize: ACCOUNTING_RECEIPT_IMAGE_POLICY.maxUploadBytes },
+    }),
   )
   async uploadReceipt(
     @UploadedFile() file: { originalname: string; buffer: Buffer } | undefined,
