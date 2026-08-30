@@ -38,6 +38,7 @@ type InboxDocument = {
   currency: string;
   emailSubject: string | null;
   attachmentUrls: string[];
+  extractedText: string | null;
   extraction: Extraction | null;
   createdAt: string;
 };
@@ -204,8 +205,8 @@ export default function AccountingInboxPage() {
           <h1 className="text-2xl font-bold">{isZh ? '财务收件箱' : 'Accounting inbox'}</h1>
           <p className="mt-1 text-sm text-slate-500">
             {isZh
-              ? 'bills@sanq.ca 的 PDF 和财务自动化结果会先进入这里，确认后才正式入账。系统每天凌晨 02:15 自动拉取。'
-              : 'PDF bills from bills@sanq.ca enter review here before posting. The nightly pull runs at 2:15 AM Toronto time.'}
+              ? '发往 bills@sanq.ca 或带 SanQ-Bills 标签的 Gmail 账单会先进入这里，支持 PDF 和邮件正文；确认后才正式入账。'
+              : 'Gmail bills sent to bills@sanq.ca or labeled SanQ-Bills enter review here, including PDF and body-only bills, before posting.'}
           </p>
         </div>
         <button onClick={() => void runNow()} disabled={running} className="rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50">
@@ -224,6 +225,7 @@ export default function AccountingInboxPage() {
             </div>
             <button className="text-sm text-slate-600" onClick={() => setReviewing(null)}>{isZh ? '关闭' : 'Close'}</button>
           </div>
+          {reviewing.extractedText ? <details className="mt-4 rounded-lg border bg-white p-3 text-sm"><summary className="cursor-pointer font-medium">{isZh ? '查看识别原文' : 'View extracted text'}</summary><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans text-xs text-slate-600">{reviewing.extractedText}</pre></details> : null}
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <label className="text-sm"><span className="mb-1 block text-slate-500">{isZh ? '日期' : 'Date'}</span><input className="w-full rounded border bg-white px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
             <label className="text-sm"><span className="mb-1 block text-slate-500">{isZh ? '账单总额' : 'Bill total'}</span><div className="flex rounded border bg-white px-3 py-2"><span>$</span><input className="ml-1 min-w-0 flex-1 outline-none" value={total} inputMode="decimal" onChange={(event) => setTotal(event.target.value)} /></div></label>

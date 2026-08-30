@@ -133,6 +133,7 @@ const ACCOUNTING_DOCUMENT_SELECT = {
   currency: true,
   emailSubject: true,
   attachmentUrls: true,
+  extractedText: true,
   extractionJson: true,
   memo: true,
   createdAt: true,
@@ -514,6 +515,7 @@ export class AccountingOperationsService {
     operatorUserStableId: string,
   ) {
     const occurredAt = this.parseDate(input.occurredAt);
+    await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt);
     await this.accounting.assertEditableForPeriod(
       occurredAt,
       AccountingTxType.EXPENSE,
@@ -626,8 +628,14 @@ export class AccountingOperationsService {
     limit?: number;
   }) {
     const take = Math.min(Math.max(params.limit ?? 100, 1), 200);
+    const startAt = await this.accounting.clampAccountingFromDate(undefined);
     const rows = await this.prisma.accountingExpenseDocument.findMany({
-      where: params.status ? { status: params.status } : undefined,
+      where: {
+        ...(params.status ? { status: params.status } : {}),
+        ...(startAt
+          ? { OR: [{ occurredAt: null }, { occurredAt: { gte: startAt } }] }
+          : {}),
+      },
       select: ACCOUNTING_DOCUMENT_SELECT,
       orderBy: { createdAt: 'desc' },
       take,
@@ -659,6 +667,7 @@ export class AccountingOperationsService {
     }
 
     const occurredAt = this.parseDate(input.occurredAt);
+    await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt);
     await this.accounting.assertEditableForPeriod(
       occurredAt,
       AccountingTxType.EXPENSE,
@@ -770,7 +779,9 @@ export class AccountingOperationsService {
   }
 
   async dashboard(from: string, to: string) {
-    const fromDate = this.parseDate(from);
+    const fromDate = await this.accounting.clampAccountingFromDate(
+      this.parseDate(from),
+    );
     const toDate = this.parseDate(to, true);
     const where: Prisma.AccountingTransactionWhereInput = {
       deletedAt: null,
@@ -813,8 +824,20 @@ export class AccountingOperationsService {
       }
     }
 
+    const accountingStartAt =
+      await this.accounting.clampAccountingFromDate(undefined);
     const pendingDocuments = await this.prisma.accountingExpenseDocument.count({
-      where: { status: AccountingDocumentStatus.PENDING_REVIEW },
+      where: {
+        status: AccountingDocumentStatus.PENDING_REVIEW,
+        ...(accountingStartAt
+          ? {
+              OR: [
+                { occurredAt: null },
+                { occurredAt: { gte: accountingStartAt } },
+              ],
+            }
+          : {}),
+      },
     });
     const latestClosedMonth = await this.prisma.accountingPeriodClose.findFirst(
       {
@@ -857,6 +880,7 @@ export class AccountingOperationsService {
       currency: row.currency,
       emailSubject: row.emailSubject,
       attachmentUrls: row.attachmentUrls,
+      extractedText: row.extractedText?.slice(0, 20_000) ?? null,
       extraction: row.extractionJson,
       memo: row.memo,
       createdAt: row.createdAt.toISOString(),

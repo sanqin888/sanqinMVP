@@ -26,6 +26,7 @@ type AutomationSettings = {
   runMinute: number;
   gmailEnabled: boolean;
   uberReportsEnabled: boolean;
+  accountingStartDate: string | null;
   nextRunAt: string | null;
 };
 type AutomationResult = {
@@ -35,6 +36,7 @@ type AutomationResult = {
     importedDocuments: number;
     duplicateDocuments: number;
     failedDocuments: number;
+    skippedBeforeStartDate: number;
   };
   uber?: Array<unknown>;
 };
@@ -192,11 +194,12 @@ export default function AccountingSettingsPage() {
           runMinute,
           gmailEnabled: automation.gmailEnabled,
           uberReportsEnabled: automation.uberReportsEnabled,
+          accountingStartDate: automation.accountingStartDate,
         }),
       });
       setAutomation(updated);
       setAutomationTime(`${pad2(updated.runHour)}:${pad2(updated.runMinute)}`);
-      setMessage(isZh ? '夜间采集时间已保存。' : 'Nightly schedule saved.');
+      setMessage(isZh ? '财务起始日期与采集设置已保存。' : 'Accounting start date and intake settings saved.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(null); }
   }
@@ -301,23 +304,24 @@ export default function AccountingSettingsPage() {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">{isZh ? '夜间自动采集' : 'Nightly intake'}</h2>
-        <p className="mt-1 text-sm text-slate-500">{isZh ? '账单入口固定为 bills@sanq.ca；这里只调整每日批处理时间和开关。' : 'Bills enter through bills@sanq.ca; configure the daily batch time here.'}</p>
+        <h2 className="text-lg font-semibold">{isZh ? '财务起始日期与自动采集' : 'Accounting start date & intake'}</h2>
+        <p className="mt-1 text-sm text-slate-500">{isZh ? '财务起始日期是收入、支出、平台结算和报表的统一边界。Gmail 会读取发往 bills@sanq.ca 或带 SanQ-Bills 标签的邮件，并支持 PDF 与正文账单。' : 'The accounting start date is the shared boundary for income, expenses, settlements and reports. Gmail reads messages sent to bills@sanq.ca or labeled SanQ-Bills, including PDF and body-only bills.'}</p>
         {automation ? <div className="mt-4 flex flex-wrap items-end gap-4 text-sm">
+          <label>{isZh ? '财务起始日期' : 'Accounting start date'}<input type="date" className="mt-1 block rounded border px-3 py-2" value={automation.accountingStartDate ?? ''} onChange={(event) => setAutomation({ ...automation, accountingStartDate: event.target.value || null })} /></label>
           <label>{isZh ? '执行时间' : 'Run time'}<input type="time" className="mt-1 block rounded border px-3 py-2" value={automationTime} onChange={(event) => setAutomationTime(event.target.value)} /></label>
           <label>{isZh ? '时区' : 'Timezone'}<input className="mt-1 block w-48 rounded border px-3 py-2" value={automation.timezone} onChange={(event) => setAutomation({ ...automation, timezone: event.target.value })} /></label>
-          <label className="flex items-center gap-2 pb-2"><input type="checkbox" checked={automation.gmailEnabled} onChange={(event) => setAutomation({ ...automation, gmailEnabled: event.target.checked })} />Gmail PDF</label>
+          <label className="flex items-center gap-2 pb-2"><input type="checkbox" checked={automation.gmailEnabled} onChange={(event) => setAutomation({ ...automation, gmailEnabled: event.target.checked })} />{isZh ? 'Gmail 账单' : 'Gmail bills'}</label>
           <label className="flex items-center gap-2 pb-2"><input type="checkbox" checked={automation.uberReportsEnabled} onChange={(event) => setAutomation({ ...automation, uberReportsEnabled: event.target.checked })} />Uber Reports</label>
           <button onClick={() => void saveAutomation()} disabled={busy !== null} className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50">{isZh ? '保存计划' : 'Save schedule'}</button>
           <button onClick={() => void runAutomation()} disabled={busy !== null} className="rounded border px-4 py-2 disabled:opacity-50">{isZh ? '现在执行一次' : 'Run now'}</button>
         </div> : null}
         {automation?.nextRunAt ? <p className="mt-3 text-xs text-slate-500">{isZh ? '下次执行' : 'Next run'}: {new Date(automation.nextRunAt).toLocaleString()}</p> : null}
-        {automationResult?.gmail ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">{isZh ? '扫描邮件' : 'Scanned'}: {automationResult.gmail.scannedMessages} · {isZh ? '新账单' : 'Imported'}: {automationResult.gmail.importedDocuments} · {isZh ? '重复' : 'Duplicates'}: {automationResult.gmail.duplicateDocuments} · {isZh ? '失败' : 'Failed'}: {automationResult.gmail.failedDocuments}</p> : null}
+        {automationResult?.gmail ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">{isZh ? '扫描邮件' : 'Scanned'}: {automationResult.gmail.scannedMessages} · {isZh ? '新账单' : 'Imported'}: {automationResult.gmail.importedDocuments} · {isZh ? '起始日前忽略' : 'Before start date'}: {automationResult.gmail.skippedBeforeStartDate} · {isZh ? '重复' : 'Duplicates'}: {automationResult.gmail.duplicateDocuments} · {isZh ? '失败' : 'Failed'}: {automationResult.gmail.failedDocuments}</p> : null}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold">{isZh ? '期间结账' : 'Period close'}</h2>
-        <p className="mt-1 text-sm text-slate-500">{isZh ? '月结属于可审计的软锁，可重新打开；年度锁账是硬锁，要求全年12个月都已月结。' : 'Month close is an auditable soft lock; annual close is a hard lock after all 12 months are closed.'}</p>
+        <p className="mt-1 text-sm text-slate-500">{isZh ? '月结属于可审计的软锁，可重新打开；年度锁账是硬锁，要求财务起始日期之后的应结月份都已月结。' : 'Month close is an auditable soft lock; annual close is a hard lock after all required months on or after the accounting start date are closed.'}</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="rounded-lg border p-4"><h3 className="font-medium">{isZh ? '月结' : 'Month close'}</h3><div className="mt-3 flex flex-wrap items-center gap-2"><input type="month" className="rounded border px-3 py-2" value={month} onChange={(event) => { setMonth(event.target.value); setYear(event.target.value.slice(0, 4)); }} /><span className={`rounded px-2 py-1 text-xs ${monthClosed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{monthClosed ? (isZh ? '已月结' : 'Closed') : (isZh ? '进行中' : 'Open')}</span>{monthClosed ? <button onClick={() => void reopenMonth()} disabled={busy !== null || yearLocked} className="rounded border px-3 py-2 text-sm disabled:opacity-50">{isZh ? '重新打开' : 'Reopen'}</button> : <button onClick={() => void closeMonth()} disabled={busy !== null || yearLocked} className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50">{isZh ? '完成月结' : 'Close month'}</button>}</div></div>
           <div className="rounded-lg border p-4"><h3 className="font-medium">{isZh ? '年度硬锁' : 'Annual hard lock'}</h3><div className="mt-3 flex flex-wrap items-center gap-2"><input type="number" min="2000" max="2100" className="w-28 rounded border px-3 py-2" value={year} onChange={(event) => setYear(event.target.value)} /><span className={`rounded px-2 py-1 text-xs ${yearLocked ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{yearLocked ? (isZh ? '已硬锁' : 'Locked') : (isZh ? '未锁' : 'Unlocked')}</span><button onClick={() => void closeYear()} disabled={busy !== null || yearLocked} className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50">{isZh ? '锁定财年' : 'Lock year'}</button></div></div>
