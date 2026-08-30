@@ -649,6 +649,8 @@ if (benefitsLoyaltyPolicyOwnership) {
   const transitionalStorageDelegate =
     benefitsLoyaltyPolicyOwnership.transitionalStorageDelegate;
   const legacyStorageDelegate = benefitsLoyaltyPolicyOwnership.legacyStorageDelegate;
+  const implementationForbiddenSymbols =
+    benefitsLoyaltyPolicyOwnership.implementationForbiddenSymbols ?? [];
   const migratedLegacyConsumers =
     benefitsLoyaltyPolicyOwnership.migratedLegacyConsumers ?? [];
   const forbiddenBrandStoreContractFields =
@@ -695,6 +697,28 @@ if (benefitsLoyaltyPolicyOwnership) {
   const implementationPath = join(REPOSITORY_ROOT, implementation);
   if (existsSync(implementationPath)) {
     const source = readFileSync(implementationPath, 'utf8');
+    const legacyDelegatePattern = new RegExp(
+      `\\.\\s*${escapeRegExp(legacyStorageDelegate)}\\b`,
+    );
+    if (legacyDelegatePattern.test(source)) {
+      failures.push(
+        `Benefits loyalty policy implementation must not regress to ${legacyStorageDelegate}: ${implementation}`,
+      );
+    }
+    for (const symbol of implementationForbiddenSymbols) {
+      if (new RegExp(`\\b${escapeRegExp(symbol)}\\b`).test(source)) {
+        failures.push(
+          `Benefits loyalty policy implementation forbidden legacy symbol: ${implementation} -> ${symbol}`,
+        );
+      }
+    }
+    const transactionalPolicyReaderPattern =
+      /getLoyaltyPolicySnapshotWithTx\s*\([\s\S]{0,300}?Prisma\.TransactionClient[\s\S]{0,700}?\.brandConfig\.findUnique\s*\(/;
+    if (!transactionalPolicyReaderPattern.test(source)) {
+      failures.push(
+        `Benefits transaction-bound policy reader must use BrandConfig through the existing Prisma transaction client: ${implementation}`,
+      );
+    }
     const transitionalDelegatePattern = new RegExp(
       `\\.\\s*${escapeRegExp(transitionalStorageDelegate)}\\b`,
     );

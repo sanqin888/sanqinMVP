@@ -1,7 +1,6 @@
 // apps/api/src/loyalty/loyalty.service.ts
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
-  BusinessConfig,
   Channel,
   FulfillmentType,
   LoyaltyEntryType,
@@ -17,10 +16,7 @@ import type {
   LoyaltyPolicySnapshot,
   LoyaltyTier,
 } from './loyalty-policy.contract';
-import {
-  DEFAULT_LOYALTY_POLICY,
-  normalizeLoyaltyPolicy,
-} from './loyalty-policy';
+import { normalizeLoyaltyPolicy } from './loyalty-policy';
 
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 
@@ -31,25 +27,18 @@ const ledgerSourceAmend = (amendStableId: string) => `AMEND:${amendStableId}`;
 const LEDGER_SOURCE_TOPUP = 'TOPUP';
 const LEDGER_SOURCE_MANUAL = 'MANUAL';
 const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
-const DEFAULT_EARN_PT_PER_DOLLAR = DEFAULT_LOYALTY_POLICY.earnPtPerDollar;
-const DEFAULT_REDEEM_DOLLAR_PER_POINT =
-  DEFAULT_LOYALTY_POLICY.redeemDollarPerPoint;
-const DEFAULT_REFERRAL_PT_PER_DOLLAR =
-  DEFAULT_LOYALTY_POLICY.referralPtPerDollar;
-const DEFAULT_TIER_THRESHOLD_SILVER =
-  DEFAULT_LOYALTY_POLICY.tierThresholdCents.SILVER;
-const DEFAULT_TIER_THRESHOLD_GOLD =
-  DEFAULT_LOYALTY_POLICY.tierThresholdCents.GOLD;
-const DEFAULT_TIER_THRESHOLD_PLATINUM =
-  DEFAULT_LOYALTY_POLICY.tierThresholdCents.PLATINUM;
-const DEFAULT_TIER_MULTIPLIER_BRONZE =
-  DEFAULT_LOYALTY_POLICY.tierMultipliers.BRONZE;
-const DEFAULT_TIER_MULTIPLIER_SILVER =
-  DEFAULT_LOYALTY_POLICY.tierMultipliers.SILVER;
-const DEFAULT_TIER_MULTIPLIER_GOLD =
-  DEFAULT_LOYALTY_POLICY.tierMultipliers.GOLD;
-const DEFAULT_TIER_MULTIPLIER_PLATINUM =
-  DEFAULT_LOYALTY_POLICY.tierMultipliers.PLATINUM;
+const LOYALTY_POLICY_SELECT = {
+  earnPtPerDollar: true,
+  redeemDollarPerPoint: true,
+  referralPtPerDollar: true,
+  tierMultiplierBronze: true,
+  tierMultiplierSilver: true,
+  tierMultiplierGold: true,
+  tierMultiplierPlatinum: true,
+  tierThresholdSilver: true,
+  tierThresholdGold: true,
+  tierThresholdPlatinum: true,
+} as const;
 
 type Tier = LoyaltyTier;
 type LoyaltyConfig = LoyaltyPolicySnapshot;
@@ -163,92 +152,23 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     private readonly couponTriggerService: CouponProgramTriggerService,
   ) {}
 
-  private async ensureBusinessConfig(): Promise<BusinessConfig> {
-    return (
-      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
-      (await this.prisma.businessConfig.create({
-        data: {
-          id: 1,
-          storeName: '',
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          earnPtPerDollar: DEFAULT_EARN_PT_PER_DOLLAR,
-          redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
-          referralPtPerDollar: DEFAULT_REFERRAL_PT_PER_DOLLAR,
-          tierMultiplierBronze: DEFAULT_TIER_MULTIPLIER_BRONZE,
-          tierMultiplierSilver: DEFAULT_TIER_MULTIPLIER_SILVER,
-          tierMultiplierGold: DEFAULT_TIER_MULTIPLIER_GOLD,
-          tierMultiplierPlatinum: DEFAULT_TIER_MULTIPLIER_PLATINUM,
-          tierThresholdSilver: DEFAULT_TIER_THRESHOLD_SILVER,
-          tierThresholdGold: DEFAULT_TIER_THRESHOLD_GOLD,
-          tierThresholdPlatinum: DEFAULT_TIER_THRESHOLD_PLATINUM,
-        },
-      }))
-    );
-  }
-
-  private async ensureBusinessConfigWithTx(
-    tx: Prisma.TransactionClient,
-  ): Promise<BusinessConfig> {
-    return (
-      (await tx.businessConfig.findUnique({ where: { id: 1 } })) ??
-      (await tx.businessConfig.create({
-        data: {
-          id: 1,
-          storeName: '',
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          earnPtPerDollar: DEFAULT_EARN_PT_PER_DOLLAR,
-          redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
-          referralPtPerDollar: DEFAULT_REFERRAL_PT_PER_DOLLAR,
-          tierMultiplierBronze: DEFAULT_TIER_MULTIPLIER_BRONZE,
-          tierMultiplierSilver: DEFAULT_TIER_MULTIPLIER_SILVER,
-          tierMultiplierGold: DEFAULT_TIER_MULTIPLIER_GOLD,
-          tierMultiplierPlatinum: DEFAULT_TIER_MULTIPLIER_PLATINUM,
-          tierThresholdSilver: DEFAULT_TIER_THRESHOLD_SILVER,
-          tierThresholdGold: DEFAULT_TIER_THRESHOLD_GOLD,
-          tierThresholdPlatinum: DEFAULT_TIER_THRESHOLD_PLATINUM,
-        },
-      }))
-    );
-  }
-
-  private normalizeLoyaltyConfig(config: BusinessConfig): LoyaltyConfig {
-    return normalizeLoyaltyPolicy(config);
-  }
-
   // @compat benefits.business-config-loyalty-policy.v1
   async getLoyaltyPolicySnapshot(): Promise<LoyaltyPolicySnapshot> {
     const config = await this.prisma.brandConfig.findUnique({
       where: { id: 1 },
-      select: {
-        earnPtPerDollar: true,
-        redeemDollarPerPoint: true,
-        referralPtPerDollar: true,
-        tierMultiplierBronze: true,
-        tierMultiplierSilver: true,
-        tierMultiplierGold: true,
-        tierMultiplierPlatinum: true,
-        tierThresholdSilver: true,
-        tierThresholdGold: true,
-        tierThresholdPlatinum: true,
-      },
+      select: LOYALTY_POLICY_SELECT,
     });
     return normalizeLoyaltyPolicy(config);
   }
 
-  private async getLoyaltyConfig(): Promise<LoyaltyConfig> {
-    const config = await this.ensureBusinessConfig();
-    return this.normalizeLoyaltyConfig(config);
-  }
-
-  private async getLoyaltyConfigWithTx(
+  private async getLoyaltyPolicySnapshotWithTx(
     tx: Prisma.TransactionClient,
-  ): Promise<LoyaltyConfig> {
-    const config = await this.ensureBusinessConfigWithTx(tx);
-    return this.normalizeLoyaltyConfig(config);
+  ): Promise<LoyaltyPolicySnapshot> {
+    const config = await tx.brandConfig.findUnique({
+      where: { id: 1 },
+      select: LOYALTY_POLICY_SELECT,
+    });
+    return normalizeLoyaltyPolicy(config);
   }
 
   async getMembershipProgramRules() {
@@ -464,7 +384,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       const existing = await tx.loyaltyTenderReservation.findUnique({
         where: { attemptId },
       });
-      const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
+      const loyaltyConfig = await this.getLoyaltyPolicySnapshotWithTx(tx);
       const pointsMicro =
         pointsValueCents > 0
           ? toMicroPoints(
@@ -758,7 +678,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       earnMultiplier = 1,
     } = params;
     if (!userId) return; // 匿名单不处理
-    const loyaltyConfig = await this.getLoyaltyConfig();
+    const loyaltyConfig = await this.getLoyaltyPolicySnapshot();
 
     const settleResult = await this.prisma.$transaction(async (tx) => {
       const accRaw = await this.ensureAccountWithTx(tx, userId);
@@ -1072,7 +992,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       },
     });
     if (!order?.userId) return;
-    const loyaltyConfig = await this.getLoyaltyConfig();
+    const loyaltyConfig = await this.getLoyaltyPolicySnapshot();
 
     const netSubtotalCents = Math.max(
       0,
@@ -1316,7 +1236,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
 
   /** 工具：把“可抵扣的积分余额（micro）”换算成“最大可抵扣金额（分）” */
   async maxRedeemableCentsFromBalance(micro: bigint): Promise<number> {
-    const loyaltyConfig = await this.getLoyaltyConfig();
+    const loyaltyConfig = await this.getLoyaltyPolicySnapshot();
     return this.maxRedeemableCentsFromBalanceWithRate(
       micro,
       loyaltyConfig.redeemDollarPerPoint,
@@ -1380,7 +1300,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
         : LEDGER_SOURCE_ORDER;
 
     if (!userId || subtotalAfterCoupon <= 0) return 0;
-    const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
+    const loyaltyConfig = await this.getLoyaltyPolicySnapshotWithTx(tx);
 
     const account = await this.ensureAccountWithTx(tx, userId);
 
@@ -1509,7 +1429,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     const topupResult = await this.prisma.$transaction(async (tx) => {
       // 0) 解析 userId
       const userId = await this.resolveUserIdByStableIdWithTx(tx, userStableId);
-      const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
+      const loyaltyConfig = await this.getLoyaltyPolicySnapshotWithTx(tx);
 
       // 1) 确保账户存在
       const acc = await this.ensureAccountWithTx(tx, userId);
@@ -1768,7 +1688,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     } = params;
 
     const sourceKey = ledgerSourceAmend(amendmentStableId);
-    const loyaltyConfig = await this.getLoyaltyConfigWithTx(tx);
+    const loyaltyConfig = await this.getLoyaltyPolicySnapshotWithTx(tx);
 
     // 幂等锚点：同一 amendment 不重复做
     const existed = await tx.loyaltyLedger.findUnique({
