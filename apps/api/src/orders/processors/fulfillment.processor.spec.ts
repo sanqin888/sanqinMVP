@@ -1,5 +1,5 @@
 jest.mock(
-  '@shared/menu',
+  '@shared/foundation',
   () => ({
     isStableId: jest.fn(),
     normalizeStableId: jest.fn((value: string) => value),

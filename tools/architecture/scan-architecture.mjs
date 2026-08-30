@@ -89,6 +89,17 @@ const importSpecifiers = (source) => {
 const isPublicSurface = (targetPath) =>
   /(?:^|\/)(?:public-api|contracts?|ports?)(?:\/|\.|$)/.test(targetPath);
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const declaresSymbol = (source, symbol) =>
+  new RegExp(
+    `\\b(?:export\\s+)?(?:declare\\s+)?(?:async\\s+)?(?:function|class|const|let|var|type|interface|enum)\\s+${escapeRegExp(symbol)}\\b`,
+  ).test(source);
+const reexportsSymbol = (source, symbol) =>
+  new RegExp(
+    `\\bexport\\s*\\{[^}]*\\b${escapeRegExp(symbol)}\\b[^}]*\\}`,
+    's',
+  ).test(source);
+
 const resolveTarget = (sourcePath, specifier) =>
   toPosix(
     relative(
@@ -97,9 +108,17 @@ const resolveTarget = (sourcePath, specifier) =>
     ),
   );
 
+const sharedLibraryRoots = [
+  ...new Set(
+    contextPaths
+      .map(({ path }) => path)
+      .filter((path) => path.startsWith('libs/')),
+  ),
+];
 const roots = [
   join(REPOSITORY_ROOT, 'apps/api/src'),
   join(REPOSITORY_ROOT, 'apps/web/src'),
+  ...sharedLibraryRoots.map((path) => join(REPOSITORY_ROOT, path)),
 ];
 const sourceFiles = roots.flatMap(walk);
 const compositionRoots = new Set(config.baseline.compositionRootsExcluded);
@@ -165,6 +184,14 @@ for (const absolutePath of sourceFiles) {
 }
 
 const failures = [];
+
+for (const [edge, count] of publicCounts.entries()) {
+  if (edge.startsWith('architecture-foundation -> ')) {
+    failures.push(
+      `architecture-foundation must not depend on a business public surface: ${edge} (${count})`,
+    );
+  }
+}
 
 const validateDirectFetchLimits = ({ kind, counts, limits }) => {
   for (const [sourcePath, count] of [...counts.entries()].sort()) {
@@ -298,6 +325,84 @@ for (const boundary of config.dependencyBoundaries ?? []) {
             '] -> ' +
             forbidden,
         );
+      }
+    }
+  }
+}
+
+const foundationPrimitiveOwnership = config.foundationPrimitiveOwnership;
+if (foundationPrimitiveOwnership) {
+  const packageSpecifier = foundationPrimitiveOwnership.package;
+  const ownerPath = toPosix(foundationPrimitiveOwnership.ownerPath);
+  const symbols = foundationPrimitiveOwnership.symbols ?? [];
+  const businessPackagePaths = foundationPrimitiveOwnership.businessPackagePaths ?? [];
+
+  if (config.publicAliases[packageSpecifier] !== 'architecture-foundation') {
+    failures.push(
+      `foundation package must be registered as architecture-foundation public surface: ${packageSpecifier}`,
+    );
+  }
+  if (contextOf(ownerPath) !== 'architecture-foundation') {
+    failures.push(`foundation primitive owner path is not architecture-foundation: ${ownerPath}`);
+  }
+
+  const foundationManifestPath = join(REPOSITORY_ROOT, ownerPath, 'package.json');
+  if (!existsSync(foundationManifestPath)) {
+    failures.push(`foundation package.json missing: ${ownerPath}/package.json`);
+  } else {
+    const foundationManifest = JSON.parse(readFileSync(foundationManifestPath, 'utf8'));
+    if (foundationManifest.name !== packageSpecifier) {
+      failures.push(
+        `foundation package name mismatch: expected ${packageSpecifier}, got ${foundationManifest.name ?? '<missing>'}`,
+      );
+    }
+  }
+
+  const ownerFiles = walk(join(REPOSITORY_ROOT, ownerPath));
+  for (const symbol of symbols) {
+    const declarations = ownerFiles.filter((absolutePath) =>
+      declaresSymbol(readFileSync(absolutePath, 'utf8'), symbol),
+    );
+    if (declarations.length !== 1) {
+      failures.push(
+        `foundation primitive must have exactly one owner implementation: ${symbol} (${declarations.length})`,
+      );
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (sourcePath === ownerPath || sourcePath.startsWith(ownerPath + '/')) {
+      continue;
+    }
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const symbol of symbols) {
+      if (declaresSymbol(source, symbol)) {
+        failures.push(
+          `foundation primitive implementation outside ${ownerPath}: ${sourcePath} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  const exportAllPattern = new RegExp(
+    `\\bexport\\s*\\*\\s*from\\s*['\"]${escapeRegExp(packageSpecifier)}['\"]`,
+  );
+  for (const packagePath of businessPackagePaths) {
+    for (const absolutePath of walk(join(REPOSITORY_ROOT, packagePath))) {
+      const sourcePath = repositoryPath(absolutePath);
+      const source = readFileSync(absolutePath, 'utf8');
+      if (exportAllPattern.test(source)) {
+        failures.push(
+          `business package must not re-export foundation surface: ${sourcePath} -> ${packageSpecifier}`,
+        );
+      }
+      for (const symbol of symbols) {
+        if (reexportsSymbol(source, symbol)) {
+          failures.push(
+            `business package must not re-export foundation primitive: ${sourcePath} -> ${symbol}`,
+          );
+        }
       }
     }
   }

@@ -5,7 +5,7 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api/client';
 import { fetchOrderById } from '@/lib/api/pos';
-import { isStableId } from '@shared/menu';
+import { isStableId } from '@shared/foundation';
 import {
   ORDER_STATUS_SEQUENCE,
   OrderStatus,
