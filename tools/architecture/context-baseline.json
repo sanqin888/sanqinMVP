@@ -7,7 +7,8 @@
     "compositionRootsExcluded": [
       "apps/api/src/app.module.ts",
       "apps/api/src/app.bootstrap.ts",
-      "apps/api/src/main.ts"
+      "apps/api/src/main.ts",
+      "apps/api/src/ubereats-worker.main.ts"
     ]
   },
   "contexts": [
@@ -26,6 +27,7 @@
     {
       "id": "catalog-pricing-offers",
       "paths": [
+        "apps/api/src/application/menu",
         "apps/api/src/coupons",
         "apps/api/src/menu",
         "apps/api/src/promotions",
@@ -122,6 +124,7 @@
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> architecture-foundation": 12,
     "commerce-orders-fulfillment -> brand-store": 2,
+    "commerce-orders-fulfillment -> catalog-pricing-offers": 5,
     "commerce-orders-fulfillment -> identity-customer-benefits": 11,
     "commerce-orders-fulfillment -> messaging-notifications": 9,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 14,
@@ -133,7 +136,7 @@
     "external-channels -> runtime-data-ci-ops": 24,
     "identity-customer-benefits -> architecture-foundation": 17,
     "identity-customer-benefits -> brand-store": 4,
-    "identity-customer-benefits -> catalog-pricing-offers": 7,
+    "identity-customer-benefits -> catalog-pricing-offers": 10,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 2,
     "identity-customer-benefits -> messaging-notifications": 24,

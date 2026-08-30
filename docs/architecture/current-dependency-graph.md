@@ -14,7 +14,7 @@ allowance.
 |---:|---|---|
 | 1 | architecture-foundation | `apps/api/src/common` |
 | 2 | brand-store | `homepage`, `location`, `store` |
-| 3 | catalog-pricing-offers | `coupons`, `menu`, `promotions`, `libs/shared` |
+| 3 | catalog-pricing-offers | `application/menu`, `coupons`, `menu`, `promotions`, `libs/shared` |
 | 4 | identity-customer-benefits | `admin`, `auth`, `loyalty`, `membership`, `phone-verification` |
 | 5 | commerce-orders-fulfillment | `deliveries`, `orders`, `libs/order` |
 | 6 | payments-clover | `clover`, `orchestration`, `payments` |
@@ -35,8 +35,8 @@ those imports already use an approved public surface.
 | architecture-foundation | catalog-pricing-offers 1 |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 4; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 17; brand-store 4; catalog-pricing-offers 7; commerce-orders-fulfillment 1; external-channels 2 + 2 public; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 12; brand-store 2; identity-customer-benefits 11; messaging-notifications 9; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| identity-customer-benefits | architecture-foundation 17; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2 + 2 public; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 12; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 9; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 16; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 9; brand-store 2; commerce-orders-fulfillment 10; external-channels 1 + 3 public; identity-customer-benefits 14; runtime-data-ci-ops 10 |
 | external-channels | architecture-foundation 12; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
