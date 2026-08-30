@@ -475,6 +475,14 @@ Dependency direction for new or migrated code:
 * `infrastructure` implements application ports and contains Prisma, provider,
   worker, crypto, filesystem, and device adapters. Provider and database shapes
   are mapped at this boundary and must not leak inward or sideways.
+* During modularization, progressively remove direct dependencies on Prisma
+  Client, Prisma delegates, and Prisma-generated types from domain/application
+  and other business-layer code. Prefer application-owned ports or narrow
+  persistence capabilities, and map Prisma models/types inside infrastructure so
+  a later Prisma major-version upgrade is largely infrastructure-scoped. Do not
+  manufacture repository abstractions for simple L1 read models unless they
+  protect a real persistence boundary or provide concrete substitution/testing
+  value.
 * a module/composition root wires implementations to ports. Wiring is not a
   place for business logic.
 

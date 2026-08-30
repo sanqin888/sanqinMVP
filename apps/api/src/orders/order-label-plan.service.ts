@@ -249,61 +249,24 @@ export class OrderLabelPlanService {
         return;
       }
 
-      const targets = options.flatMap((group) =>
-        group.choices
-          .filter((choice) => Boolean(choice.targetItemStableId?.trim()))
-          .map((choice) => ({ group, choice })),
-      );
-
       for (
         let quantityIndex = 0;
         quantityIndex < quantity;
         quantityIndex += 1
       ) {
-        if (targets.length === 0) {
-          output.push({
-            instanceId: `${lineIndex}:${quantityIndex}:direct`,
-            productStableId: orderItem.productStableId,
-            nameEn: orderItem.nameEn ?? orderItem.displayName,
-            nameZh: orderItem.nameZh,
-            options,
-            specialInstructions:
-              orderItem.externalSpecialInstructions?.trim() || null,
-          });
-          continue;
-        }
-
-        targets.forEach(({ choice }, targetIndex) => {
-          const targetItemStableId = choice.targetItemStableId?.trim();
-          if (!targetItemStableId) return;
-          const nestedOptions = options.filter((group) =>
-            this.groupBelongsToTarget(group, choice.stableId),
-          );
-          output.push({
-            instanceId: `${lineIndex}:${quantityIndex}:target:${targetIndex}`,
-            productStableId: targetItemStableId,
-            nameEn: choice.nameEn ?? choice.displayName ?? null,
-            nameZh: choice.nameZh ?? null,
-            options: nestedOptions,
-            specialInstructions:
-              orderItem.externalSpecialInstructions?.trim() || null,
-          });
+        output.push({
+          instanceId: `${lineIndex}:${quantityIndex}:direct`,
+          productStableId: orderItem.productStableId,
+          nameEn: orderItem.nameEn ?? orderItem.displayName,
+          nameZh: orderItem.nameZh,
+          options,
+          specialInstructions:
+            orderItem.externalSpecialInstructions?.trim() || null,
         });
       }
     });
 
     return output;
-  }
-
-  private groupBelongsToTarget(
-    group: OrderItemOptionGroupSnapshot,
-    targetChoiceStableId: string,
-  ): boolean {
-    const groupKey = group.groupKey?.trim();
-    if (!groupKey) return false;
-    return groupKey
-      .split('__')
-      .some((segment) => segment === `option-${targetChoiceStableId}`);
   }
 
   private expandPackagingComponents(

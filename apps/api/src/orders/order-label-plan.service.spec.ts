@@ -251,12 +251,26 @@ describe('OrderLabelPlanService', () => {
     expect(plan.labels.every((label) => label.pairCode === null)).toBe(true);
   });
 
-  it('expands a combo target into the same physical-package decision pool as a direct item', async () => {
+  it('expands an immutable selectable-component snapshot into the same physical-package decision pool as a direct item', async () => {
     const comboTarget = optionGroup('noodle-slot-a', 'choose-hot-sour', {
       targetItemStableId: 'hot-sour',
     });
+    const selectableComponents = [
+      {
+        productStableId: 'hot-sour',
+        nameEn: 'Hot Sour Soup',
+        nameZh: '胡辣汤',
+        quantityPerParent: 1,
+        source: 'OPTION',
+        sourceOptionStableId: 'choose-hot-sour',
+        options: [],
+      },
+    ];
     const { service } = createService(
-      [orderLine('combo-single', [comboTarget]), orderLine('oil-splash')],
+      [
+        orderLine('combo-single', [comboTarget], 1, selectableComponents),
+        orderLine('oil-splash'),
+      ],
       [splitSoupNoodleConfig('hot-sour'), dryNoodleConfig('oil-splash')],
     );
 
@@ -267,6 +281,25 @@ describe('OrderLabelPlanService', () => {
       'hot-sour',
       'oil-splash',
     ]);
+  });
+
+  it('does not expand legacy target options when the component snapshot is missing', async () => {
+    const comboTarget = optionGroup('noodle-slot-a', 'choose-hot-sour', {
+      targetItemStableId: 'hot-sour',
+    });
+    const { service } = createService(
+      [orderLine('combo-single', [comboTarget])],
+      [
+        menuConfig('combo-single', { labelStrategy: 'ALWAYS' }),
+        splitSoupNoodleConfig('hot-sour'),
+      ],
+    );
+
+    const plan = await service.getByStableId('order-1');
+    expect(plan.labels).toHaveLength(1);
+    expect(plan.labels[0]).toEqual(
+      expect.objectContaining({ productStableId: 'combo-single' }),
+    );
   });
 
   it('uses immutable component snapshots for fixed combo label planning', async () => {

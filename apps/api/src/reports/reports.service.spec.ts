@@ -98,7 +98,7 @@ describe('ReportsService', () => {
     ]);
   });
 
-  it('套餐订单行不作为独立商品出现，且套餐内菜品按套餐数量累加', async () => {
+  it('套餐订单行不作为独立商品出现，且组件快照按套餐数量累加', async () => {
     const { service } = createService([
       {
         qty: 2,
@@ -106,7 +106,17 @@ describe('ReportsService', () => {
         displayName: 'Lunch Combo',
         nameEn: 'Lunch Combo',
         nameZh: '午餐套餐',
-        optionsJson: baseOptionGroup([{ stableId: 'choice_chicken' }]),
+        componentsJson: [
+          {
+            productStableId: 'item_chicken',
+            nameEn: 'Chicken',
+            nameZh: '鸡肉',
+            quantityPerParent: 1,
+            source: 'OPTION',
+            sourceOptionStableId: 'choice_chicken',
+            options: [],
+          },
+        ],
       },
     ]);
 
@@ -164,7 +174,7 @@ describe('ReportsService', () => {
     expect(prisma.menuOptionTemplateChoice.findMany).not.toHaveBeenCalled();
   });
 
-  it('同一套餐内重复目标菜品按出现次数乘以套餐数量累加', async () => {
+  it('同一套餐内重复组件按出现次数乘以套餐数量累加', async () => {
     const { service } = createService([
       {
         qty: 2,
@@ -172,11 +182,35 @@ describe('ReportsService', () => {
         displayName: 'Double Combo',
         nameEn: 'Double Combo',
         nameZh: '双拼套餐',
-        optionsJson: baseOptionGroup([
-          { stableId: 'choice_chicken' },
-          { stableId: 'choice_chicken' },
-          { stableId: 'choice_beef' },
-        ]),
+        componentsJson: [
+          {
+            productStableId: 'item_chicken',
+            nameEn: 'Chicken',
+            nameZh: '鸡肉',
+            quantityPerParent: 1,
+            source: 'OPTION',
+            sourceOptionStableId: 'choice_chicken_a',
+            options: [],
+          },
+          {
+            productStableId: 'item_chicken',
+            nameEn: 'Chicken',
+            nameZh: '鸡肉',
+            quantityPerParent: 1,
+            source: 'OPTION',
+            sourceOptionStableId: 'choice_chicken_b',
+            options: [],
+          },
+          {
+            productStableId: 'item_beef',
+            nameEn: 'Beef',
+            nameZh: '牛肉',
+            quantityPerParent: 1,
+            source: 'OPTION',
+            sourceOptionStableId: 'choice_beef',
+            options: [],
+          },
+        ],
       },
     ]);
 
@@ -191,15 +225,16 @@ describe('ReportsService', () => {
     ]);
   });
 
-  it('没有可拆分选项的订单项按原订单行回退统计', async () => {
-    const { service } = createService([
+  it('缺少组件快照时不再根据当前菜单反推历史套餐组成', async () => {
+    const { service, prisma } = createService([
       {
         qty: 5,
         productStableId: 'combo_unknown',
         displayName: 'Unknown Combo',
         nameEn: 'Unknown Combo',
         nameZh: '未知套餐',
-        optionsJson: baseOptionGroup([{ stableId: 'choice_without_target' }]),
+        optionsJson: baseOptionGroup([{ stableId: 'choice_chicken' }]),
+        componentsJson: null,
       },
     ]);
 
@@ -209,39 +244,7 @@ describe('ReportsService', () => {
     });
 
     expect(report.topItems).toEqual([{ name: 'Unknown Combo', quantity: 5 }]);
-  });
-
-  it('批量查询选项和目标菜品，避免按订单项逐条查询', async () => {
-    const { service, prisma } = createService([
-      {
-        qty: 1,
-        productStableId: 'combo_a',
-        displayName: 'Combo A',
-        nameEn: 'Combo A',
-        nameZh: null,
-        optionsJson: baseOptionGroup([{ stableId: 'choice_chicken' }]),
-      },
-      {
-        qty: 1,
-        productStableId: 'combo_b',
-        displayName: 'Combo B',
-        nameEn: 'Combo B',
-        nameZh: null,
-        optionsJson: baseOptionGroup([
-          { stableId: 'choice_chicken' },
-          { stableId: 'choice_beef' },
-        ]),
-      },
-    ]);
-
-    await service.getReport({ from: '2026-01-01', to: '2026-01-01' });
-
-    expect(prisma.menuOptionTemplateChoice.findMany).toHaveBeenCalledTimes(1);
-    expect(prisma.menuOptionTemplateChoice.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { stableId: { in: ['choice_chicken', 'choice_beef'] } },
-      }),
-    );
-    expect(prisma.menuItem.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.menuOptionTemplateChoice.findMany).not.toHaveBeenCalled();
+    expect(prisma.menuItem.findMany).not.toHaveBeenCalled();
   });
 });

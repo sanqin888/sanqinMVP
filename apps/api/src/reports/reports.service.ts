@@ -16,7 +16,6 @@ type ReportOrderItem = {
   displayName: string | null;
   nameEn: string | null;
   nameZh: string | null;
-  optionsJson: Prisma.JsonValue | null;
   componentsJson: Prisma.JsonValue | null;
 };
 
@@ -30,55 +29,7 @@ export type TopItemAggregate = {
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async buildTopItems(orderItems: ReportOrderItem[]) {
-    const legacyOrderItems = orderItems.filter(
-      (item) =>
-        readOrderItemComponentsSnapshot(item.componentsJson).length === 0,
-    );
-    const selectedChoiceStableIds = Array.from(
-      new Set(
-        legacyOrderItems.flatMap((item) => this.extractChoiceStableIds(item)),
-      ),
-    );
-
-    const choices = selectedChoiceStableIds.length
-      ? await this.prisma.menuOptionTemplateChoice.findMany({
-          where: { stableId: { in: selectedChoiceStableIds } },
-          select: { stableId: true, targetItemStableId: true },
-        })
-      : [];
-
-    const choiceTargetByStableId = new Map(
-      choices
-        .filter((choice) => choice.targetItemStableId)
-        .map((choice) => [
-          choice.stableId,
-          choice.targetItemStableId as string,
-        ]),
-    );
-
-    const targetItemStableIds = Array.from(
-      new Set(choiceTargetByStableId.values()),
-    );
-    const targetItems = targetItemStableIds.length
-      ? await this.prisma.menuItem.findMany({
-          where: { stableId: { in: targetItemStableIds }, deletedAt: null },
-          select: { stableId: true, nameEn: true, nameZh: true },
-        })
-      : [];
-
-    const targetNameByStableId = new Map(
-      targetItems.map((item) => [
-        item.stableId,
-        this.resolveItemName({
-          productStableId: item.stableId,
-          displayName: null,
-          nameEn: item.nameEn,
-          nameZh: item.nameZh,
-        }),
-      ]),
-    );
-
+  private buildTopItems(orderItems: ReportOrderItem[]) {
     const aggregate = new Map<string, TopItemAggregate>();
     const addItem = (key: string, name: string, quantity: number) => {
       const current = aggregate.get(key);
@@ -104,21 +55,6 @@ export class ReportsService {
         continue;
       }
 
-      const targetStableIds = this.extractChoiceStableIds(orderItem)
-        .map((choiceStableId) => choiceTargetByStableId.get(choiceStableId))
-        .filter((stableId): stableId is string => Boolean(stableId));
-
-      if (targetStableIds.length > 0) {
-        for (const targetStableId of targetStableIds) {
-          addItem(
-            targetStableId,
-            targetNameByStableId.get(targetStableId) ?? targetStableId,
-            orderItem.qty,
-          );
-        }
-        continue;
-      }
-
       addItem(
         orderItem.productStableId,
         this.resolveItemName(orderItem),
@@ -129,36 +65,6 @@ export class ReportsService {
     return Array.from(aggregate.values()).sort(
       (a, b) => b.quantity - a.quantity,
     );
-  }
-
-  private extractChoiceStableIds(
-    orderItem: Pick<ReportOrderItem, 'optionsJson'>,
-  ) {
-    if (!Array.isArray(orderItem.optionsJson)) {
-      return [];
-    }
-
-    const stableIds: string[] = [];
-    for (const group of orderItem.optionsJson) {
-      if (!group || typeof group !== 'object' || !('choices' in group)) {
-        continue;
-      }
-      const choices = (group as { choices?: unknown }).choices;
-      if (!Array.isArray(choices)) {
-        continue;
-      }
-      for (const choice of choices) {
-        if (!choice || typeof choice !== 'object' || !('stableId' in choice)) {
-          continue;
-        }
-        const stableId = (choice as { stableId?: unknown }).stableId;
-        if (typeof stableId === 'string' && stableId.trim().length > 0) {
-          stableIds.push(stableId);
-        }
-      }
-    }
-
-    return stableIds;
   }
 
   private resolveItemName(
@@ -199,7 +105,6 @@ export class ReportsService {
         displayName: true,
         nameEn: true,
         nameZh: true,
-        optionsJson: true,
         componentsJson: true,
       },
     });
