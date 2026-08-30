@@ -374,6 +374,6 @@ describe('StoreStatusService temporary pause expiry', () => {
     });
     expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
     expect(scheduleReader.listHolidays).toHaveBeenCalledTimes(1);
-    expect(scheduleReader.getBusinessHour).toHaveBeenCalledWith(1);
+    expect(scheduleReader.getBusinessHour).toHaveBeenCalledWith(2);
   });
 });
