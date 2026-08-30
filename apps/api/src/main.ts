@@ -53,6 +53,8 @@ async function bootstrap(): Promise<void> {
   configureApp(app);
 
   const cookieSecret = process.env.COOKIE_SIGNING_SECRET;
+  const otpSecret = process.env.OTP_SECRET;
+  const phoneVerificationSecret = process.env.PHONE_VERIFICATION_SECRET;
 
   if (!cookieSecret && process.env.NODE_ENV === 'production') {
     console.error(
@@ -62,6 +64,23 @@ async function bootstrap(): Promise<void> {
       '   Application cannot start in production without a secure cookie secret.\n',
     );
     process.exit(1);
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    const missingOtpSecrets = [
+      !otpSecret ? 'OTP_SECRET' : null,
+      !phoneVerificationSecret ? 'PHONE_VERIFICATION_SECRET' : null,
+    ].filter((name): name is string => Boolean(name));
+
+    if (missingOtpSecrets.length > 0) {
+      console.error(
+        `\n❌ FATAL ERROR: Missing required OTP secret(s): ${missingOtpSecrets.join(', ')}.`,
+      );
+      console.error(
+        '   Application cannot start in production with OTP secrets coupled to OAuth or development fallbacks.\n',
+      );
+      process.exit(1);
+    }
   }
 
   app.use(cookieParser(cookieSecret || 'dev-fallback-secret-key'));

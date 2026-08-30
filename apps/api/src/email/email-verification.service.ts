@@ -21,8 +21,7 @@ export class EmailVerificationService {
   }
 
   private hashCode(code: string): string {
-    const secret =
-      process.env.OTP_SECRET ?? process.env.OAUTH_STATE_SECRET ?? 'dev-secret';
+    const secret = process.env.OTP_SECRET ?? 'dev-secret';
     return createHmac('sha256', secret).update(code).digest('hex');
   }
 
