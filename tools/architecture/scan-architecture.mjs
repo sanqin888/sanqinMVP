@@ -435,6 +435,8 @@ if (brandStoreCanonicalConfigOwnership) {
     brandStoreCanonicalConfigOwnership.forbiddenLegacyDelegateRoots ?? [];
   const migratedLegacyConfigConsumers =
     brandStoreCanonicalConfigOwnership.migratedLegacyConfigConsumers ?? [];
+  const migratedConsumerForbiddenSymbols =
+    brandStoreCanonicalConfigOwnership.migratedConsumerForbiddenSymbols ?? {};
   const forbiddenLegacyPaths =
     brandStoreCanonicalConfigOwnership.forbiddenLegacyPaths ?? [];
 
@@ -571,6 +573,14 @@ if (brandStoreCanonicalConfigOwnership) {
       if (delegatePattern.test(source)) {
         failures.push(
           `migrated Brand/Store config consumer must not regress to legacy Prisma delegate: ${consumerPath} -> ${delegate}`,
+        );
+      }
+    }
+    for (const symbol of migratedConsumerForbiddenSymbols[consumerPath] ?? []) {
+      const symbolPattern = new RegExp(`\\b${escapeRegExp(symbol)}\\b`);
+      if (symbolPattern.test(source)) {
+        failures.push(
+          `migrated Brand/Store config consumer must not reintroduce legacy symbol: ${consumerPath} -> ${symbol}`,
         );
       }
     }
