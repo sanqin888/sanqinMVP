@@ -25,12 +25,21 @@ type Extraction = {
   suggestedCategoryName?: string | null;
   confidence?: 'HIGH' | 'MEDIUM' | 'LOW';
   requiresSplit?: boolean;
+  inputKind?: 'PDF' | 'IMAGE' | 'EMAIL_BODY';
+  reviewDisposition?: 'LIKELY_BILL' | 'UNRECOGNIZED' | 'LIKELY_NOT_BILL';
+  reviewReason?:
+    | 'BILL_SIGNALS'
+    | 'NO_READABLE_TEXT'
+    | 'NO_BILL_SIGNALS'
+    | 'INSUFFICIENT_BILL_SIGNALS';
+  ocrEngine?: 'TESSERACT';
+  ocrStatus?: 'SUCCESS' | 'ERROR';
 };
 
 type InboxDocument = {
   documentStableId: string;
   source: 'GMAIL' | 'MANUAL';
-  status: 'PENDING_REVIEW' | 'CONFIRMED' | 'DUPLICATE' | 'ERROR';
+  status: 'PENDING_REVIEW' | 'CONFIRMED' | 'DUPLICATE' | 'ERROR' | 'DISCARDED';
   occurredAt: string | null;
   subtotalCents: number | null;
   taxCents: number | null;
@@ -72,6 +81,7 @@ export default function AccountingInboxPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -185,6 +195,24 @@ export default function AccountingInboxPage() {
     }
   }
 
+  async function discard(document: InboxDocument) {
+    setDiscardingId(document.documentStableId);
+    setError(null);
+    try {
+      await apiFetch(`/accounting/inbox/${document.documentStableId}`, {
+        method: 'DELETE',
+      });
+      if (reviewing?.documentStableId === document.documentStableId) {
+        setReviewing(null);
+      }
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setDiscardingId(null);
+    }
+  }
+
   async function runNow() {
     setRunning(true);
     setError(null);
@@ -205,8 +233,8 @@ export default function AccountingInboxPage() {
           <h1 className="text-2xl font-bold">{isZh ? '财务收件箱' : 'Accounting inbox'}</h1>
           <p className="mt-1 text-sm text-slate-500">
             {isZh
-              ? '发往 bills@sanq.ca 或带 SanQ-Bills 标签的 Gmail 账单会先进入这里，支持 PDF 和邮件正文；确认后才正式入账。'
-              : 'Gmail bills sent to bills@sanq.ca or labeled SanQ-Bills enter review here, including PDF and body-only bills, before posting.'}
+              ? '发往 bills@sanq.ca 或带 SanQ-Bills 标签的 Gmail 账单会先进入这里，支持 PDF、图片和邮件正文；确认后才正式入账。'
+              : 'Gmail bills sent to bills@sanq.ca or labeled SanQ-Bills enter review here, including PDF, image, and body-only bills, before posting.'}
           </p>
         </div>
         <button onClick={() => void runNow()} disabled={running} className="rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50">
@@ -252,7 +280,7 @@ export default function AccountingInboxPage() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <button onClick={() => void confirm()} disabled={saving || calculated.differenceCents !== 0 || calculated.totalCents <= 0} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving ? (isZh ? '入账中…' : 'Posting…') : (isZh ? '确认入账' : 'Confirm & post')}</button>
-            {reviewing.attachmentUrls[0] ? <a className="rounded border bg-white px-4 py-2 text-sm text-blue-600" href={reviewing.attachmentUrls[0]} target="_blank" rel="noreferrer">{isZh ? '打开原始 PDF' : 'Open original PDF'}</a> : null}
+            {reviewing.attachmentUrls[0] ? <a className="rounded border bg-white px-4 py-2 text-sm text-blue-600" href={reviewing.attachmentUrls[0]} target="_blank" rel="noreferrer">{isZh ? '打开原始文件' : 'Open original file'}</a> : null}
           </div>
         </section>
       ) : null}
@@ -266,11 +294,35 @@ export default function AccountingInboxPage() {
         <div className="divide-y">
           {documents.map((document) => {
             const extraction = document.extraction ?? {};
+            const imageNeedsDecision =
+              extraction.inputKind === 'IMAGE' &&
+              extraction.reviewDisposition !== 'LIKELY_BILL';
+            const fallbackTitle =
+              extraction.inputKind === 'IMAGE'
+                ? isZh
+                  ? '邮件图片附件'
+                  : 'Email image attachment'
+                : isZh
+                  ? '账单附件'
+                  : 'Bill attachment';
+            const reviewQuestion =
+              extraction.ocrStatus === 'ERROR'
+                ? isZh
+                  ? '图片 OCR 失败，原图已保留。是否丢弃？'
+                  : 'Image OCR failed and the original was kept. Discard it?'
+                : extraction.reviewDisposition === 'LIKELY_NOT_BILL'
+                  ? isZh
+                    ? '识别到了文字，但看起来不像账单。是否丢弃？'
+                    : 'Text was recognized, but it does not look like a bill. Discard it?'
+                  : isZh
+                    ? '没有可靠识别出账单内容。是否丢弃？'
+                    : 'No reliable bill content was recognized. Discard it?';
             return (
-              <div key={document.documentStableId} className="grid gap-3 py-4 lg:grid-cols-[1.4fr_110px_120px_1fr_110px] lg:items-center">
+              <div key={document.documentStableId} className="grid gap-3 py-4 lg:grid-cols-[1.4fr_110px_120px_1fr_180px] lg:items-center">
                 <div>
-                  <p className="font-medium">{document.emailSubject || (isZh ? 'PDF 账单' : 'PDF bill')}</p>
+                  <p className="font-medium">{document.emailSubject || fallbackTitle}</p>
                   <p className="mt-1 text-xs text-slate-500">{new Date(document.createdAt).toLocaleString()}</p>
+                  {imageNeedsDecision ? <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-800">{reviewQuestion}</p> : null}
                 </div>
                 <div><p className="text-xs text-slate-500">{isZh ? '识别总额' : 'Detected total'}</p><p className="font-semibold">{money(document.totalCents ?? extraction.totalCents)}</p></div>
                 <div><p className="text-xs text-slate-500">HST</p><p>{money(document.taxCents ?? extraction.taxCents)}</p></div>
@@ -278,7 +330,10 @@ export default function AccountingInboxPage() {
                   <p className="text-sm">{extraction.suggestedCategoryName || (extraction.requiresSplit ? (isZh ? '建议拆分类别' : 'Likely multi-category') : (isZh ? '需要确认类别' : 'Category needs review'))}</p>
                   <p className="mt-1 text-xs text-slate-500">{isZh ? '识别可信度' : 'Confidence'}: {extraction.confidence ?? 'LOW'}</p>
                 </div>
-                <button onClick={() => startReview(document)} className="rounded bg-slate-900 px-3 py-2 text-sm text-white">{isZh ? '处理' : 'Review'}</button>
+                <div className="flex gap-2 lg:justify-end">
+                  <button onClick={() => startReview(document)} className="flex-1 rounded bg-slate-900 px-3 py-2 text-sm text-white lg:flex-none">{imageNeedsDecision ? (isZh ? '按账单处理' : 'Treat as bill') : (isZh ? '处理' : 'Review')}</button>
+                  {imageNeedsDecision ? <button onClick={() => void discard(document)} disabled={discardingId === document.documentStableId} className="flex-1 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 disabled:opacity-50 lg:flex-none">{discardingId === document.documentStableId ? (isZh ? '丢弃中…' : 'Discarding…') : (isZh ? '丢弃' : 'Discard')}</button> : null}
+                </div>
               </div>
             );
           })}
