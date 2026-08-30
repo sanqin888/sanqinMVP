@@ -144,6 +144,24 @@
       "reason": "legacy POS claim/login browser calls; migrate in dedicated POS slice"
     }
   },
+  "webServerDirectFetchLimits": {
+    "apps/web/src/app/api/[...path]/route.ts": {
+      "limit": 1,
+      "reason": "canonical browser-facing same-origin JSON API BFF transport"
+    },
+    "apps/web/src/server/api.ts": {
+      "limit": 1,
+      "reason": "canonical App Router server-side JSON API transport"
+    },
+    "apps/web/src/app/clover/oauth/start/route.ts": {
+      "limit": 1,
+      "reason": "frozen Clover OAuth protocol adapter"
+    },
+    "apps/web/src/app/clover/oauth/callback/route.ts": {
+      "limit": 1,
+      "reason": "frozen Clover OAuth protocol adapter"
+    }
+  },
   "legacyDirectImportLimits": {
     "accounting-reporting-analytics -> architecture-foundation": 3,
     "accounting-reporting-analytics -> commerce-orders-fulfillment": 1,
