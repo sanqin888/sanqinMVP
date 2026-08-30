@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": {
-    "commit": "dfdf7a36",
+    "commit": "a050d8b2",
     "capturedAt": "2026-08-30",
     "importUnit": "production source import statements",
     "compositionRootsExcluded": [
@@ -180,7 +180,7 @@
     "commerce-orders-fulfillment -> brand-store": 2,
     "commerce-orders-fulfillment -> catalog-pricing-offers": 5,
     "commerce-orders-fulfillment -> identity-customer-benefits": 11,
-    "commerce-orders-fulfillment -> messaging-notifications": 9,
+    "commerce-orders-fulfillment -> messaging-notifications": 8,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 14,
     "commerce-orders-fulfillment -> store-operations-pos-print": 6,
     "external-channels -> architecture-foundation": 12,

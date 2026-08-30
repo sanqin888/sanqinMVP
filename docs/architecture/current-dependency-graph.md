@@ -1,12 +1,16 @@
 # Current 12-context dependency graph
 
-Baseline: `origin/dev@dfdf7a36` (2026-08-30).
+Phase 1 closeout base: `origin/dev@a050d8b2` (2026-08-30).
 
-This is the pre-modularization baseline generated from production TypeScript import
-statements. Test files and the API composition root are excluded. Imports through
-`public-api`, `contracts`, `ports`, `@shared/menu`, or `@shared/order` are
-shown as public-contract traffic and do not consume the legacy direct-import
-allowance.
+This snapshot records the **remaining direct cross-context import debt** enforced
+by `tools/architecture/context-baseline.json` after the Phase 1 modularization
+slices. Test files and registered composition roots are excluded. Imports through
+`public-api`, `contracts`, `ports`, `@shared/menu`, or `@shared/order` are approved
+public-contract traffic and do not consume the debt counts below.
+
+The CI architecture scanner is authoritative for the exact source scan. This
+file is the human-readable closeout snapshot and must be refreshed again at the
+end of the next phase.
 
 ## Context map
 
@@ -25,35 +29,56 @@ allowance.
 | 11 | web-pwa | `apps/web/src` |
 | 12 | runtime-data-ci-ops | Prisma, data retention, CI, ops and architecture tooling |
 
-## Current edges
+## Remaining direct-import debt
 
-Counts are production import-statement occurrences. A `+N public` suffix means
-those imports already use an approved public surface.
+Counts are production import-statement occurrences. Absence from the table means
+there is no recorded direct-import allowance for that source context; any new
+pair fails CI.
 
-| Source | Targets |
+| Source | Remaining direct targets |
 |---|---|
-| architecture-foundation | catalog-pricing-offers 1 |
+| architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
-| catalog-pricing-offers | architecture-foundation 4; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 17; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2 + 2 public; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 12; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 9; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
+| identity-customer-benefits | architecture-foundation 16; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 11; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 16; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 9; brand-store 2; commerce-orders-fulfillment 10; external-channels 1 + 3 public; identity-customer-benefits 14; runtime-data-ci-ops 10 |
+| store-operations-pos-print | architecture-foundation 9; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 10 |
 | external-channels | architecture-foundation 12; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 11; store-operations-pos-print 1 |
-| accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1 + 2 public; identity-customer-benefits 11; runtime-data-ci-ops 9 |
-| web-pwa | catalog-pricing-offers 15 public; commerce-orders-fulfillment 6 public |
-| runtime-data-ci-ops | No business dependency is counted; composition-root wiring is excluded |
+| accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
+| web-pwa | none; cross-context shared contracts use registered public aliases |
+| runtime-data-ci-ops | none; registered composition-root wiring is excluded |
 
-## Reading the baseline
+## Phase 1 boundary changes reflected here
 
-- This graph records debt; it does not declare the current direction desirable.
-- The graph is cyclic. Examples include Orders/POS, Store/POS, and
-  Identity/Messaging. Removing those cycles is later modularization work.
-- CI rejects a new direct context pair and rejects any increase above the recorded
-  count for an existing direct pair.
-- A new cross-context import must target the owning context's `public-api`,
-  `contracts`, or `ports` surface. Reducing a baseline count is always safe; the
-  allowance should be lowered in the same PR so debt cannot return.
-- UberEats and Payments/Clover paths remain frozen except for non-behavioral
-  guardrails and externally required fixes.
+- `@shared/order` now owns Order contracts directly; `@shared/menu` no longer
+  re-exports Order contracts.
+- Daily-special policy now belongs to Promotions/Pricing instead of `common`.
+- The Phase 1 closeout removes the final `common -> @shared/menu` StableId helper
+  dependency, so `architecture-foundation` has no business-context import edge.
+- Web regular JSON transport is guarded separately: one browser client, one
+  App Router BFF, and one server-side API helper; raw/direct fetch exceptions are
+  explicit architecture allowances.
+- Existing cycles remain migration debt for later phases. Phase 1 did not create
+  a new direct context pair; CI rejects any such regression.
+
+## Carried debt outside this closeout
+
+- `web.api-envelope-direct-payload.v1` remains active because Checkout has six
+  legacy browser fetches and POS session/login has five. Their allowances are
+  frozen at the current counts and must fall to zero in dedicated risk-scoped
+  slices; the canonical clients themselves already require the strict global
+  envelope.
+- Payments/Clover legacy paths remain frozen by their compatibility entries.
+- Brand/Store configuration and implicit default-store identity are Phase 2 work.
+
+## Reading the graph
+
+- A count is debt, not permission to add more coupling.
+- When a PR removes a direct import, lower/remove the matching baseline in the
+  same PR so the dependency cannot return.
+- New cross-context work must target the owner's `public-api`, `contracts`, or
+  `ports` surface.
+- Recompute this snapshot at every phase boundary; a new cycle, new direct pair,
+  or ambiguous identity field blocks phase closure.

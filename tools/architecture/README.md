@@ -13,6 +13,10 @@ node tools/architecture/scan-architecture.mjs --report
 - no unclassified production source roots;
 - no new direct cross-context dependency pair;
 - no increase in a recorded direct-import allowance;
+- browser/server direct `fetch` only at canonical transports or explicitly
+  recorded raw/protocol exceptions, with stale allowances rejected;
+- one App Router `/api/v1` JSON BFF instead of a duplicate Next rewrite;
+- server-only Web API upstream configuration (`API_UPSTREAM`);
 - unique, complete compatibility entries;
 - no unregistered `@compat <compat_id>` annotation.
 

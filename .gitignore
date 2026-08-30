@@ -41,3 +41,8 @@ apps/api/prisma/seed/*.snapshot.json
 # sounds
 /apps/web/public/sounds/*.wav
 /apps/web/public/sounds/*.mp3
+
+# shared TypeScript source packages build into dist/; do not track root emit artifacts
+/libs/shared/*.js
+/libs/shared/*.js.map
+/libs/shared/*.d.ts
