@@ -1,7 +1,8 @@
 # Current ID inventory
 
-Baseline: `origin/dev@dfdf7a36` (2026-08-30). Source of truth:
-`apps/api/prisma/schema.prisma`.
+Phase 1 closeout snapshot: `origin/dev@a050d8b2` (2026-08-30). Source of truth:
+`apps/api/prisma/schema.prisma`. Phase 1 made no Prisma schema changes, so the
+model-family counts below remain unchanged from the initial baseline.
 
 The schema contains **75 models**: 66 UUID-backed primary keys, six integer
 primary keys, and three natural/token primary keys. This inventory describes
