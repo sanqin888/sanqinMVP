@@ -1,9 +1,8 @@
 import { DateTime } from 'luxon';
-import { SpecialPricingMode } from '@prisma/client';
-import { resolvePromotionLinePriceCents } from '../promotions/promotion-engine';
+import { resolvePromotionLinePriceCents } from './promotion-engine';
 
 export type DailySpecialLike = {
-  pricingMode: SpecialPricingMode;
+  pricingMode: 'OVERRIDE_PRICE' | 'DISCOUNT_DELTA' | 'DISCOUNT_PERCENT';
   overridePriceCents: number | null;
   discountDeltaCents: number | null;
   discountPercent: number | null;

@@ -65,7 +65,7 @@ import {
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
   resolveStoreNow,
-} from '../common/daily-specials';
+} from '../promotions/public-api';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
