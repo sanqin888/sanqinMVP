@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import { signOut, useSession } from "@/lib/auth-session";
-import { ApiError, apiFetch } from "@/lib/api/client";
+import { ApiError, apiFetch, getApiErrorMessage } from "@/lib/api/client";
 import { usePersistentCart } from "@/lib/cart";
 import {
   formatCanadianPhoneForApi,
@@ -129,6 +129,14 @@ type MemberProfile = {
   lifetimeSpendCents?: number;
 };
 
+type MemberProfileUpdate = {
+  firstName?: string | null;
+  lastName?: string | null;
+  birthdayMonth?: number | null;
+  birthdayDay?: number | null;
+  language?: "zh" | "en";
+};
+
 type ApiFulfillmentType = "pickup" | "dine_in" | "delivery";
 type ApiDeliveryType = "STANDARD" | "PRIORITY" | null;
 
@@ -167,14 +175,6 @@ type MembershipSummaryResponse = {
   recentOrders: MembershipSummaryOrderDto[];
 };
 
-type MembershipSummaryApiEnvelope =
-  | MembershipSummaryResponse
-  | {
-      code?: string;
-      message?: string;
-      details: MembershipSummaryResponse;
-    };
-
 // ====== 积分流水类型 ======
 
 type LoyaltyEntryType =
@@ -188,7 +188,7 @@ type LoyaltyEntryType =
 type LoyaltyTarget = "POINTS" | "BALANCE";
 
 type LoyaltyEntry = {
-  ledgerId: string;
+  ledgerStableId: string;
   createdAt: string;
   type: LoyaltyEntryType;
   target?: LoyaltyTarget;
@@ -351,19 +351,6 @@ export default function MembershipHomePage() {
     return trimmed.includes("@");
   }, []);
 
-  const readApiErrorMessage = useCallback((error: unknown) => {
-    if (!(error instanceof ApiError)) return null;
-    const payload = error.payload;
-    if (!payload || typeof payload !== "object") return null;
-    const maybe = payload as { message?: string | string[] };
-    if (Array.isArray(maybe.message)) {
-      return maybe.message.join(", ");
-    }
-    if (typeof maybe.message === "string") {
-      return maybe.message;
-    }
-    return null;
-  }, []);
   const [twoFactorSaving, setTwoFactorSaving] = useState(false);
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
 
@@ -419,59 +406,10 @@ export default function MembershipHomePage() {
       try {
         setSummaryLoading(true);
         setSummaryError(null);
-        const res = await fetch("/api/v1/membership/summary", {
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          let errorMessage = "";
-          try {
-            const errorBody = (await res.json()) as { message?: string };
-            if (errorBody?.message) {
-              errorMessage = errorBody.message;
-            }
-          } catch {
-            try {
-              const text = await res.text();
-              if (text) {
-                errorMessage = text;
-              }
-            } catch (readError) {
-              console.warn(
-                "Failed to read membership summary error response",
-                readError,
-              );
-            }
-          }
-
-          console.warn("Membership summary request failed", {
-            status: res.status,
-            message: errorMessage,
-          });
-          setSummaryError(
-            isZh
-              ? "加载会员信息失败，请稍后再试"
-              : "Failed to load membership info. Please try again later.",
-          );
-          return;
-        }
-
-        let raw: MembershipSummaryApiEnvelope;
-        try {
-          raw = (await res.json()) as MembershipSummaryApiEnvelope;
-        } catch (error) {
-          console.error("Failed to parse membership summary response", error);
-          setSummaryError(
-            isZh
-              ? "加载会员信息失败，请稍后再试"
-              : "Failed to load membership info. Please try again later.",
-          );
-          return;
-        }
-        const data =
-          "details" in raw && raw.details
-            ? raw.details
-            : (raw as MembershipSummaryResponse);
+        const data = await apiFetch<MembershipSummaryResponse>(
+          "/membership/summary",
+          { signal: controller.signal },
+        );
 
         const fallbackDisplayName =
           data.displayName ?? session.user?.name ?? "";
@@ -565,28 +503,12 @@ export default function MembershipHomePage() {
           ["userStableId", member.userStableId],
           ["locale", isZh ? "zh" : "en"],
         ]);
-        const res = await fetch(
-          `/api/v1/membership/coupons?${params.toString()}`,
+        const list = await apiFetch<Coupon[]>(
+          `/membership/coupons?${params.toString()}`,
           { signal: controller.signal },
         );
 
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
-        const raw = (await res.json()) as
-          | Coupon[]
-          | { code?: string; message?: string; details?: Coupon[] };
-
-        let list: Coupon[] = [];
-
-        if (Array.isArray(raw)) {
-          list = raw;
-        } else if (raw && Array.isArray(raw.details)) {
-          list = raw.details;
-        }
-
-        setCoupons(list);
+        setCoupons(list ?? []);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error(err);
@@ -665,32 +587,11 @@ export default function MembershipHomePage() {
           limit: "100",
         });
 
-        const res = await fetch(
-          `/api/v1/membership/loyalty-ledger?${params.toString()}`,
+        const data = await apiFetch<{ entries?: LoyaltyEntry[] }>(
+          `/membership/loyalty-ledger?${params.toString()}`,
         );
 
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
-        const raw = (await res.json()) as unknown;
-
-        let entries: LoyaltyEntry[] = [];
-
-        if (raw && typeof raw === "object") {
-          const maybe = raw as {
-            entries?: LoyaltyEntry[];
-            details?: { entries?: LoyaltyEntry[] };
-          };
-
-          if (maybe.details && Array.isArray(maybe.details.entries)) {
-            entries = maybe.details.entries;
-          } else if (Array.isArray(maybe.entries)) {
-            entries = maybe.entries;
-          }
-        }
-
-        setLoyaltyEntries(entries);
+        setLoyaltyEntries(data.entries ?? []);
         setLoyaltyLoadedOnce(true);
       } catch (err: unknown) {
         console.error(err);
@@ -731,7 +632,7 @@ export default function MembershipHomePage() {
       setMarketingError(null);
 
       try {
-        const res = await fetch("/api/v1/membership/marketing-consent", {
+        await apiFetch("/membership/marketing-consent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -740,28 +641,13 @@ export default function MembershipHomePage() {
           }),
         });
 
-        if (!res.ok) {
-          let errorMessage: string | null = null;
-          try {
-            const data = (await res.json()) as { message?: string | string[] };
-            if (Array.isArray(data.message)) {
-              errorMessage = data.message.join(", ");
-            } else if (typeof data.message === "string") {
-              errorMessage = data.message;
-            }
-          } catch (parseError) {
-            console.error(parseError);
-          }
-          if (errorMessage === "email_not_linked") {
-            throw new Error(errorMessage);
-          }
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
         setMarketingOptIn(next);
       } catch (err) {
         console.error(err);
-        if (err instanceof Error && err.message === "email_not_linked") {
+        if (
+          err instanceof ApiError &&
+          getApiErrorMessage(err, "") === "email_not_linked"
+        ) {
           setEmailEnrollVisible(true);
           setMarketingOptInPending(true);
           setMarketingError(
@@ -822,28 +708,16 @@ export default function MembershipHomePage() {
     }
 
     try {
-      const res = await fetch("/api/v1/membership/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const result = await apiFetch<{ user?: MemberProfileUpdate }>(
+        "/membership/profile",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
 
-      if (!res.ok) {
-        throw new Error(`Failed with status ${res.status}`);
-      }
-
-      const raw = (await res.json()) as {
-        success?: boolean;
-        user?: {
-          id?: string;
-          firstName?: string | null;
-          lastName?: string | null;
-          birthdayMonth?: number | null;
-          birthdayDay?: number | null;
-        };
-      };
-
-      const updated = raw?.user;
+      const updated = result.user;
 
       if (updated) {
         setMember((prev) =>
@@ -878,26 +752,18 @@ export default function MembershipHomePage() {
     setLanguageSaved(false);
 
     try {
-      const res = await fetch("/api/v1/membership/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          language: languagePreference,
-        }),
-      });
+      const result = await apiFetch<{ user?: MemberProfileUpdate }>(
+        "/membership/profile",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            language: languagePreference,
+          }),
+        },
+      );
 
-      if (!res.ok) {
-        throw new Error(`Failed with status ${res.status}`);
-      }
-
-      const raw = (await res.json()) as {
-        success?: boolean;
-        user?: {
-          language?: "zh" | "en";
-        };
-      };
-
-      const updated = raw?.user;
+      const updated = result.user;
 
       if (updated?.language) {
         setMember((prev) =>
@@ -975,28 +841,19 @@ export default function MembershipHomePage() {
     }
 
     try {
-      const res = await fetch("/api/v1/membership/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          birthdayMonth: parsedMonth,
-          birthdayDay: parsedDay,
-        }),
-      });
+      const result = await apiFetch<{ user?: MemberProfileUpdate }>(
+        "/membership/profile",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            birthdayMonth: parsedMonth,
+            birthdayDay: parsedDay,
+          }),
+        },
+      );
 
-      if (!res.ok) {
-        throw new Error(`Failed with status ${res.status}`);
-      }
-
-      const raw = (await res.json()) as {
-        success?: boolean;
-        user?: {
-          birthdayMonth?: number | null;
-          birthdayDay?: number | null;
-        };
-      };
-
-      const updated = raw?.user;
+      const updated = result.user;
 
       if (updated) {
         setMember((prev) =>
@@ -1055,7 +912,8 @@ export default function MembershipHomePage() {
       });
     } catch (err) {
       console.error(err);
-      const message = readApiErrorMessage(err);
+      const message =
+        err instanceof ApiError ? getApiErrorMessage(err, "") : null;
       if (message === "phone already in use") {
         setPhoneEnrollError(
           isZh ? "该手机号已被其他账户绑定。" : "That phone is already in use.",
@@ -1073,7 +931,6 @@ export default function MembershipHomePage() {
   }, [
     phoneEnrollInput,
     isZh,
-    readApiErrorMessage,
     session?.user?.mfaVerifiedAt,
     router,
     locale,
@@ -1122,7 +979,8 @@ export default function MembershipHomePage() {
       setPhoneEnrollVisible(false);
     } catch (err) {
       console.error(err);
-      const message = readApiErrorMessage(err);
+      const message =
+        err instanceof ApiError ? getApiErrorMessage(err, "") : null;
       if (message === "phone already in use") {
         setPhoneEnrollError(
           isZh ? "该手机号已被其他账户绑定。" : "That phone is already in use.",
@@ -1139,7 +997,6 @@ export default function MembershipHomePage() {
     phoneEnrollInput,
     phoneEnrollCode,
     isZh,
-    readApiErrorMessage,
     session?.user?.mfaVerifiedAt,
     router,
     locale,
@@ -1195,7 +1052,8 @@ export default function MembershipHomePage() {
       setEmailEnrollSent(true);
     } catch (err) {
       console.error(err);
-      const message = readApiErrorMessage(err);
+      const message =
+        err instanceof ApiError ? getApiErrorMessage(err, "") : null;
       if (message === "email_in_use") {
         setEmailEnrollError(
           isZh ? "该邮箱已被使用。" : "That email is already in use.",
@@ -1216,7 +1074,6 @@ export default function MembershipHomePage() {
     emailEnrollInput,
     isZh,
     isValidEmail,
-    readApiErrorMessage,
     session?.user?.mfaVerifiedAt,
     router,
     locale,
@@ -1264,7 +1121,8 @@ export default function MembershipHomePage() {
       setEmailEnrollVisible(false);
     } catch (err) {
       console.error(err);
-      const message = readApiErrorMessage(err);
+      const message =
+        err instanceof ApiError ? getApiErrorMessage(err, "") : null;
       if (message === "token_expired" || message === "token_not_found") {
         setEmailEnrollError(
           isZh ? "验证码无效或已过期。" : "The code is invalid or expired.",
@@ -1282,7 +1140,6 @@ export default function MembershipHomePage() {
   }, [
     emailEnrollCode,
     isZh,
-    readApiErrorMessage,
     session?.user?.mfaVerifiedAt,
     router,
     locale,
@@ -2239,7 +2096,7 @@ function PointsSection({
         <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
           {pointsEntries.map((entry, index) => (
             <div
-              key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
+              key={`${entry.ledgerStableId}-${entry.createdAt}-${index}`}
               className="py-2"
             >
               <div className="flex items-center justify-between">
@@ -2350,7 +2207,7 @@ function BalanceSection({
             );
             return (
               <div
-                key={`${entry.ledgerId}-${entry.createdAt}-${index}`}
+                key={`${entry.ledgerStableId}-${entry.createdAt}-${index}`}
                 className="py-2"
               >
                 <div className="flex items-center justify-between">

@@ -105,10 +105,16 @@ const sourceFiles = roots.flatMap(walk);
 const compositionRoots = new Set(config.baseline.compositionRootsExcluded);
 const directCounts = new Map();
 const publicCounts = new Map();
+const browserDirectFetchCounts = new Map();
+const serverDirectFetchCounts = new Map();
 const unknownSourceRoots = new Set();
 const compatAnnotations = new Set();
 
 const increment = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
+const hasUseClientDirective = (source) =>
+  /(?:^|\n)\s*['"]use client['"]\s*;/.test(source.slice(0, 1024));
+const countDirectFetchCalls = (source) =>
+  [...source.matchAll(/\bfetch\s*\(/g)].length;
 
 for (const absolutePath of sourceFiles) {
   const sourcePath = repositoryPath(absolutePath);
@@ -121,6 +127,20 @@ for (const absolutePath of sourceFiles) {
   const source = readFileSync(absolutePath, 'utf8');
   for (const match of source.matchAll(/@compat\s+([a-z0-9][a-z0-9.-]+(?:\.v\d+)?)/gi)) {
     compatAnnotations.add(match[1]);
+  }
+
+  if (sourcePath.startsWith('apps/web/src/')) {
+    const directFetchCount = countDirectFetchCalls(source);
+    if (directFetchCount > 0) {
+      const browserSource =
+        hasUseClientDirective(source) ||
+        sourcePath.startsWith('apps/web/src/lib/') ||
+        sourcePath.startsWith('apps/web/src/components/');
+      (browserSource ? browserDirectFetchCounts : serverDirectFetchCounts).set(
+        sourcePath,
+        directFetchCount,
+      );
+    }
   }
 
   if (compositionRoots.has(sourcePath)) continue;
@@ -145,6 +165,90 @@ for (const absolutePath of sourceFiles) {
 }
 
 const failures = [];
+
+const validateDirectFetchLimits = ({ kind, counts, limits }) => {
+  for (const [sourcePath, count] of [...counts.entries()].sort()) {
+    const allowance = limits[sourcePath];
+    if (!allowance) {
+      failures.push(
+        `new ${kind} direct fetch outside canonical/approved raw transport: ` +
+          sourcePath +
+          ' (' +
+          count +
+          ')',
+      );
+      continue;
+    }
+
+    if (!Number.isInteger(allowance.limit) || allowance.limit < 0) {
+      failures.push(`invalid ${kind} direct-fetch limit: ` + sourcePath);
+      continue;
+    }
+    if (typeof allowance.reason !== 'string' || allowance.reason.trim() === '') {
+      failures.push(`${kind} direct-fetch allowance missing reason: ` + sourcePath);
+    }
+
+    if (count > allowance.limit) {
+      failures.push(
+        `${kind} direct-fetch debt increased: ` +
+          sourcePath +
+          ' baseline=' +
+          allowance.limit +
+          ' current=' +
+          count,
+      );
+    } else if (count < allowance.limit) {
+      failures.push(
+        `${kind} direct-fetch baseline is stale; lower/remove the allowance: ` +
+          sourcePath +
+          ' baseline=' +
+          allowance.limit +
+          ' current=' +
+          count,
+      );
+    }
+  }
+
+  for (const sourcePath of Object.keys(limits)) {
+    if (!counts.has(sourcePath)) {
+      failures.push(
+        `${kind} direct-fetch allowance has no matching call; remove it: ` + sourcePath,
+      );
+    }
+  }
+};
+
+validateDirectFetchLimits({
+  kind: 'browser',
+  counts: browserDirectFetchCounts,
+  limits: config.webBrowserDirectFetchLimits ?? {},
+});
+validateDirectFetchLimits({
+  kind: 'server',
+  counts: serverDirectFetchCounts,
+  limits: config.webServerDirectFetchLimits ?? {},
+});
+
+const webNextConfigPath = join(REPOSITORY_ROOT, 'apps/web/next.config.ts');
+if (existsSync(webNextConfigPath)) {
+  const webNextConfig = readFileSync(webNextConfigPath, 'utf8');
+  if (/source\s*:\s*['"]\/api\/v1\//.test(webNextConfig)) {
+    failures.push(
+      'duplicate Web JSON API proxy detected: /api/v1 must be owned by the App Router BFF',
+    );
+  }
+  if (webNextConfig.includes('NEXT_PUBLIC_API_URL')) {
+    failures.push(
+      'Web API upstream must remain server-only; NEXT_PUBLIC_API_URL is forbidden in next.config.ts',
+    );
+  }
+  if (/process\.env\.API_URL\b/.test(webNextConfig)) {
+    failures.push(
+      'Web API upstream must use API_UPSTREAM; legacy API_URL is forbidden in next.config.ts',
+    );
+  }
+}
+
 const packageDependencyFields = [
   'dependencies',
   'devDependencies',
@@ -264,6 +368,12 @@ const report = {
   ),
   publicContractImports: Object.fromEntries(
     [...publicCounts.entries()].sort(),
+  ),
+  webBrowserDirectFetch: Object.fromEntries(
+    [...browserDirectFetchCounts.entries()].sort(),
+  ),
+  webServerDirectFetch: Object.fromEntries(
+    [...serverDirectFetchCounts.entries()].sort(),
   ),
   compatibility: {
     active: registry.active.length,

@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { ApiError, apiFetch } from '@/lib/api/client';
 
 export type SessionUser = {
   userStableId?: string;
@@ -36,31 +37,8 @@ type AuthContextValue = {
   refresh: () => Promise<void>;
 };
 
-type ApiEnvelope<T> = {
-  code: string;
-  message?: string;
-  details?: T;
-};
-
 const AuthContext = createContext<AuthContextValue | null>(null);
 const AUTH_EVENT = 'auth-session-change';
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === 'object';
-}
-
-function unwrapEnvelope<T>(payload: unknown): T | null {
-  if (!isRecord(payload)) return null;
-
-  // 信封结构：{ code, message, details }
-  if (typeof payload.code === 'string') {
-    const env = payload as ApiEnvelope<T>;
-    return (env.details ?? null) as T | null;
-  }
-
-  // 非信封结构：直接就是数据
-  return payload as T;
-}
 
 function syncMemberLocaleCookie(session: Session): void {
   if (typeof document === 'undefined') return;
@@ -76,19 +54,19 @@ function syncMemberLocaleCookie(session: Session): void {
 }
 
 async function fetchSession(): Promise<Session> {
-  const res = await fetch('/api/v1/auth/me', {
-    credentials: 'include',
-    cache: 'no-store',
-  });
-
-  if (!res.ok) return null;
-
-  const payload = (await res.json().catch(() => null)) as unknown;
-  const data = unwrapEnvelope<SessionUser | null>(payload);
+  let data: SessionUser | null;
+  try {
+    data = await apiFetch<SessionUser | null>('/auth/me', {
+      unauthorized: 'throw',
+    });
+  } catch (error) {
+    if (error instanceof ApiError) return null;
+    throw error;
+  }
 
   if (!data) return null;
-
   if (typeof data.userStableId !== 'string' || !data.userStableId) return null;
+
   const safeUser: SessionUser = { ...data };
   return {
     user: safeUser,
@@ -137,10 +115,15 @@ export function useSession(): { data: Session; status: SessionStatus } {
 }
 
 export async function signOut(): Promise<void> {
-  await fetch('/api/v1/auth/logout', {
-    method: 'POST',
-    credentials: 'include',
-  });
+  try {
+    await apiFetch<unknown>('/auth/logout', {
+      method: 'POST',
+      unauthorized: 'throw',
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+  }
+
   if (typeof document !== 'undefined') {
     document.cookie = 'member_locale=; path=/; max-age=0';
   }

@@ -3,6 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { ApiError, apiFetch } from '@/lib/api/client';
 import type { Locale } from '@/lib/i18n/locales';
 import type { ReactNode } from 'react';
 
@@ -42,10 +43,12 @@ export default function AdminLayoutClient({
 
   async function handleLogout() {
     try {
-      await fetch('/api/v1/auth/logout', {
+      await apiFetch<unknown>('/auth/logout', {
         method: 'POST',
-        credentials: 'include',
+        unauthorized: 'throw',
       });
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error;
     } finally {
       window.location.href = `/${locale}/admin/login`;
     }
