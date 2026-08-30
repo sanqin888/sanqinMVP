@@ -1,82 +1,22 @@
-export type ApiResponseEnvelope<T> = {
-  code: string;
-  message: string;
-  details: T;
-};
+import {
+  isApiEnvelope,
+  parseApiResponse,
+  readApiResponsePayload,
+  type PayloadParser,
+} from './protocol';
+
+export {
+  ApiError,
+  getApiErrorMessage,
+  type ApiResponseEnvelope,
+  type PayloadParser,
+} from './protocol';
 
 export type UnauthorizedBehavior = 'redirect' | 'throw';
 
 export type ApiFetchOptions = RequestInit & {
   unauthorized?: UnauthorizedBehavior;
 };
-
-export class ApiError extends Error {
-  status: number;
-  payload?: unknown;
-  apiMessage: string;
-
-  constructor(
-    message: string,
-    status: number,
-    payload?: unknown,
-    apiMessage = message,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.payload = payload;
-    this.apiMessage = apiMessage;
-  }
-}
-
-export function getApiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError && error.apiMessage.trim()) {
-    return error.apiMessage;
-  }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return fallback;
-}
-
-export type PayloadParser<T> = {
-  parse: (input: unknown) => T;
-};
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === 'object';
-}
-
-function isOperationStatusPayload(v: unknown): v is { ok: boolean; error?: string } {
-  if (!isRecord(v) || typeof v.ok !== 'boolean') return false;
-  if (v.error !== undefined && typeof v.error !== 'string') return false;
-  return true;
-}
-
-function isApiEnvelope(v: unknown): v is ApiResponseEnvelope<unknown> {
-  return (
-    isRecord(v) &&
-    typeof v.code === 'string' &&
-    typeof v.message === 'string' &&
-    'details' in v
-  );
-}
-
-function buildDetailsSnippet(details: unknown): string {
-  if (details === undefined || details === null) return '';
-  if (typeof details === 'string') return ` :: ${details.slice(0, 160)}`;
-  if (typeof details === 'number' || typeof details === 'boolean') {
-    return ` :: ${String(details)}`;
-  }
-  if (isRecord(details)) {
-    return ` :: ${JSON.stringify(details).slice(0, 160)}`;
-  }
-  try {
-    return ` :: ${JSON.stringify(details).slice(0, 160)}`;
-  } catch {
-    return '';
-  }
-}
 
 /**
  * Canonical browser API client.
@@ -107,10 +47,7 @@ export async function apiFetch<T>(
     headers,
   });
 
-  const contentType = response.headers.get('content-type') ?? '';
-  const payload: unknown = contentType.includes('application/json')
-    ? await response.json().catch(() => null)
-    : await response.text();
+  const payload = await readApiResponsePayload(response);
 
   // Only redirect when the caller explicitly accepts the shared session behavior.
   // Login/challenge screens use unauthorized="throw" so an expected 401 can be
@@ -120,10 +57,7 @@ export async function apiFetch<T>(
       const pathname = window.location.pathname;
       const locale = pathname.split('/')[1];
       const safeLocale = locale === 'zh' || locale === 'en' ? locale : 'en';
-      const message =
-        isRecord(payload) && typeof payload.message === 'string'
-          ? payload.message
-          : '';
+      const message = isApiEnvelope(payload) ? payload.message : '';
 
       if (pathname.includes('/admin') || pathname.includes('/accounting')) {
         if (message.includes('Admin MFA required')) {
@@ -138,66 +72,12 @@ export async function apiFetch<T>(
     }
   }
 
-  if (!response.ok) {
-    if (isApiEnvelope(payload)) {
-      const snippet = buildDetailsSnippet(payload.details);
-      const apiMessage = payload.message || 'API 错误';
-      throw new ApiError(
-        `${apiMessage} ${response.status}${snippet} (${method} ${url})`,
-        response.status,
-        payload,
-        apiMessage,
-      );
-    }
-
-    const rawSnippet =
-      typeof payload === 'string' && payload
-        ? ` :: ${payload.slice(0, 160)}`
-        : '';
-    const apiMessage = `API 错误 ${response.status}`;
-    throw new ApiError(
-      `${apiMessage}${rawSnippet} (${method} ${url})`,
-      response.status,
-      payload,
-      apiMessage,
-    );
-  }
-
-  if (!isApiEnvelope(payload)) {
-    const apiMessage = 'API response contract mismatch';
-    throw new ApiError(
-      `${apiMessage}: expected {code,message,details} (${method} ${url})`,
-      response.status,
-      payload,
-      apiMessage,
-    );
-  }
-
-  if (payload.code !== 'OK') {
-    const apiMessage = payload.message || 'API operation failed';
-    throw new ApiError(
-      `${apiMessage} ${response.status} (${method} ${url})`,
-      response.status,
-      payload,
-      apiMessage,
-    );
-  }
-
-  const data = payload.details;
-
-  if (isOperationStatusPayload(data) && !data.ok) {
-    const apiMessage = data.error || 'API operation failed';
-    throw new ApiError(
-      `${apiMessage} ${response.status} (${method} ${url})`,
-      response.status,
-      payload,
-      apiMessage,
-    );
-  }
-
-  if (parser) {
-    return parser.parse(data);
-  }
-
-  return data as T;
+  return parseApiResponse<T>({
+    ok: response.ok,
+    status: response.status,
+    method,
+    url,
+    payload,
+    parser,
+  });
 }

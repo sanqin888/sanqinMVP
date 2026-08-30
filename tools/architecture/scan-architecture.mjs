@@ -106,6 +106,7 @@ const compositionRoots = new Set(config.baseline.compositionRootsExcluded);
 const directCounts = new Map();
 const publicCounts = new Map();
 const browserDirectFetchCounts = new Map();
+const serverDirectFetchCounts = new Map();
 const unknownSourceRoots = new Set();
 const compatAnnotations = new Set();
 
@@ -128,15 +129,17 @@ for (const absolutePath of sourceFiles) {
     compatAnnotations.add(match[1]);
   }
 
-  if (
-    sourcePath.startsWith('apps/web/src/') &&
-    (hasUseClientDirective(source) ||
-      sourcePath.startsWith('apps/web/src/lib/') ||
-      sourcePath.startsWith('apps/web/src/components/'))
-  ) {
+  if (sourcePath.startsWith('apps/web/src/')) {
     const directFetchCount = countDirectFetchCalls(source);
     if (directFetchCount > 0) {
-      browserDirectFetchCounts.set(sourcePath, directFetchCount);
+      const browserSource =
+        hasUseClientDirective(source) ||
+        sourcePath.startsWith('apps/web/src/lib/') ||
+        sourcePath.startsWith('apps/web/src/components/');
+      (browserSource ? browserDirectFetchCounts : serverDirectFetchCounts).set(
+        sourcePath,
+        directFetchCount,
+      );
     }
   }
 
@@ -162,54 +165,86 @@ for (const absolutePath of sourceFiles) {
 }
 
 const failures = [];
-const webBrowserDirectFetchLimits = config.webBrowserDirectFetchLimits ?? {};
 
-for (const [sourcePath, count] of [...browserDirectFetchCounts.entries()].sort()) {
-  const allowance = webBrowserDirectFetchLimits[sourcePath];
-  if (!allowance) {
+const validateDirectFetchLimits = ({ kind, counts, limits }) => {
+  for (const [sourcePath, count] of [...counts.entries()].sort()) {
+    const allowance = limits[sourcePath];
+    if (!allowance) {
+      failures.push(
+        `new ${kind} direct fetch outside canonical/approved raw transport: ` +
+          sourcePath +
+          ' (' +
+          count +
+          ')',
+      );
+      continue;
+    }
+
+    if (!Number.isInteger(allowance.limit) || allowance.limit < 0) {
+      failures.push(`invalid ${kind} direct-fetch limit: ` + sourcePath);
+      continue;
+    }
+    if (typeof allowance.reason !== 'string' || allowance.reason.trim() === '') {
+      failures.push(`${kind} direct-fetch allowance missing reason: ` + sourcePath);
+    }
+
+    if (count > allowance.limit) {
+      failures.push(
+        `${kind} direct-fetch debt increased: ` +
+          sourcePath +
+          ' baseline=' +
+          allowance.limit +
+          ' current=' +
+          count,
+      );
+    } else if (count < allowance.limit) {
+      failures.push(
+        `${kind} direct-fetch baseline is stale; lower/remove the allowance: ` +
+          sourcePath +
+          ' baseline=' +
+          allowance.limit +
+          ' current=' +
+          count,
+      );
+    }
+  }
+
+  for (const sourcePath of Object.keys(limits)) {
+    if (!counts.has(sourcePath)) {
+      failures.push(
+        `${kind} direct-fetch allowance has no matching call; remove it: ` + sourcePath,
+      );
+    }
+  }
+};
+
+validateDirectFetchLimits({
+  kind: 'browser',
+  counts: browserDirectFetchCounts,
+  limits: config.webBrowserDirectFetchLimits ?? {},
+});
+validateDirectFetchLimits({
+  kind: 'server',
+  counts: serverDirectFetchCounts,
+  limits: config.webServerDirectFetchLimits ?? {},
+});
+
+const webNextConfigPath = join(REPOSITORY_ROOT, 'apps/web/next.config.ts');
+if (existsSync(webNextConfigPath)) {
+  const webNextConfig = readFileSync(webNextConfigPath, 'utf8');
+  if (/source\s*:\s*['"]\/api\/v1\//.test(webNextConfig)) {
     failures.push(
-      'new browser direct fetch outside canonical/approved raw transport: ' +
-        sourcePath +
-        ' (' +
-        count +
-        ')',
+      'duplicate Web JSON API proxy detected: /api/v1 must be owned by the App Router BFF',
     );
-    continue;
   }
-
-  if (!Number.isInteger(allowance.limit) || allowance.limit < 0) {
-    failures.push('invalid browser direct-fetch limit: ' + sourcePath);
-    continue;
-  }
-  if (typeof allowance.reason !== 'string' || allowance.reason.trim() === '') {
-    failures.push('browser direct-fetch allowance missing reason: ' + sourcePath);
-  }
-
-  if (count > allowance.limit) {
+  if (webNextConfig.includes('NEXT_PUBLIC_API_URL')) {
     failures.push(
-      'browser direct-fetch debt increased: ' +
-        sourcePath +
-        ' baseline=' +
-        allowance.limit +
-        ' current=' +
-        count,
-    );
-  } else if (count < allowance.limit) {
-    failures.push(
-      'browser direct-fetch baseline is stale; lower/remove the allowance: ' +
-        sourcePath +
-        ' baseline=' +
-        allowance.limit +
-        ' current=' +
-        count,
+      'Web API upstream must remain server-only; NEXT_PUBLIC_API_URL is forbidden in next.config.ts',
     );
   }
-}
-
-for (const sourcePath of Object.keys(webBrowserDirectFetchLimits)) {
-  if (!browserDirectFetchCounts.has(sourcePath)) {
+  if (/process\.env\.API_URL\b/.test(webNextConfig)) {
     failures.push(
-      'browser direct-fetch allowance has no matching call; remove it: ' + sourcePath,
+      'Web API upstream must use API_UPSTREAM; legacy API_URL is forbidden in next.config.ts',
     );
   }
 }
@@ -336,6 +371,9 @@ const report = {
   ),
   webBrowserDirectFetch: Object.fromEntries(
     [...browserDirectFetchCounts.entries()].sort(),
+  ),
+  webServerDirectFetch: Object.fromEntries(
+    [...serverDirectFetchCounts.entries()].sort(),
   ),
   compatibility: {
     active: registry.active.length,

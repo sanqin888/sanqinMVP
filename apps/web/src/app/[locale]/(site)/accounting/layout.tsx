@@ -1,47 +1,21 @@
 import { redirect } from 'next/navigation';
-import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { serverApiFetch } from '@/server/api';
 
 type Session = {
   role?: string;
   requiresTwoFactor?: boolean;
 };
 
-type ApiEnvelope<T> = { code: string; details?: T };
-
-function unwrap<T>(payload: unknown): T | null {
-  if (!payload || typeof payload !== 'object') return null;
-  if ('code' in payload) {
-    return ((payload as ApiEnvelope<T>).details ?? null) as T | null;
-  }
-  return payload as T;
-}
-
-async function getBaseUrl(): Promise<string | null> {
-  const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host');
-  if (!host) return null;
-  const proto = h.get('x-forwarded-proto') ?? 'http';
-  return `${proto}://${host}`;
-}
-
 async function getSession(): Promise<Session | null> {
-  const base = await getBaseUrl();
-  if (!base) return null;
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore
-    .getAll()
-    .map(({ name, value }) => `${name}=${value}`)
-    .join('; ');
-
-  const res = await fetch(`${base}/api/v1/auth/me`, {
-    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-    cache: 'no-store',
-  });
-
-  if (!res.ok) return null;
-  return unwrap<Session>(await res.json().catch(() => null));
+  try {
+    return await serverApiFetch<Session>('/auth/me', {
+      forwardCookies: true,
+    });
+  } catch {
+    return null;
+  }
 }
 
 export default async function AccountingLayout({
@@ -59,7 +33,6 @@ export default async function AccountingLayout({
   if (role !== 'ADMIN' && role !== 'ACCOUNTANT') {
     redirect(`/${safeLocale}/accounting/login`);
   }
-
 
   const isZh = safeLocale === 'zh';
   const nav = [

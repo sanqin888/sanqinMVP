@@ -1,9 +1,9 @@
 // apps/web/src/app/[locale]/membership/rules/page.tsx
 
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { isLocale } from "@/lib/i18n/locales";
 import type { Locale } from "@/lib/i18n/locales";
+import { serverApiFetch } from "@/server/api";
 import { notFound } from "next/navigation";
 
 type TierKey = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
@@ -24,11 +24,6 @@ type MembershipProgramRules = {
   tierRules: TierRule[];
 };
 
-type ApiEnvelope<T> = {
-  code: string;
-  details?: T;
-};
-
 const tierLabel: Record<TierKey, { zh: string; en: string }> = {
   BRONZE: { zh: "青铜", en: "Bronze" },
   SILVER: { zh: "白银", en: "Silver" },
@@ -36,35 +31,11 @@ const tierLabel: Record<TierKey, { zh: string; en: string }> = {
   PLATINUM: { zh: "铂金", en: "Platinum" },
 };
 
-async function getBaseUrl(): Promise<string | null> {
-  const headerStore = await headers();
-  const host =
-    headerStore.get("x-forwarded-host") ?? headerStore.get("host");
-  if (!host) return null;
-  const proto = headerStore.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
-
-function unwrapEnvelope<T>(payload: unknown): T | null {
-  if (!payload || typeof payload !== "object") return null;
-  if ("code" in payload) {
-    const envelope = payload as ApiEnvelope<T>;
-    return (envelope.details ?? null) as T | null;
-  }
-  return payload as T;
-}
-
 async function fetchMembershipProgramRules(): Promise<MembershipProgramRules | null> {
-  const baseUrl = await getBaseUrl();
-  if (!baseUrl) return null;
-
   try {
-    const response = await fetch(`${baseUrl}/api/v1/public/membership/rules`, {
-      cache: "no-store",
-    });
-    if (!response.ok) return null;
-    const payload = (await response.json().catch(() => null)) as unknown;
-    return unwrapEnvelope<MembershipProgramRules>(payload);
+    return await serverApiFetch<MembershipProgramRules>(
+      "/public/membership/rules",
+    );
   } catch {
     return null;
   }
