@@ -1,10 +1,14 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
-import { PrismaService } from '../prisma/prisma.service';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from '../store/public-api';
 
 const BANK_OF_CANADA_SERIES = 'FXCNYCAD';
 const BANK_OF_CANADA_LATEST_URL =
@@ -14,6 +18,7 @@ const BANK_OF_CANADA_CAD_CNY_MARKUP = 0.05;
 const DEFAULT_TIMEZONE = 'America/Toronto';
 const DAILY_REFRESH_HOUR = 17;
 
+// Keep the legacy fallback source label stable for existing POS/Web consumers.
 type ExchangeRateSource = 'BANK_OF_CANADA' | 'BUSINESS_CONFIG_FALLBACK';
 
 type CachedCadCnyRate = {
@@ -60,7 +65,10 @@ export class PosExchangeRateService {
   private lastDailyInitialAttemptDate: string | null = null;
   private lastPostCutoffAttemptDate: string | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+  ) {}
 
   async quoteCadToCny(cadAmountCents: number): Promise<PosExchangeRateQuote> {
     if (!Number.isSafeInteger(cadAmountCents) || cadAmountCents < 0) {
@@ -191,7 +199,7 @@ export class PosExchangeRateService {
           fetchedAt: new Date(),
         };
         this.logger.warn(
-          `[pos.fx] Bank of Canada lookup failed; using BusinessConfig fallback reason=${reason} storeDate=${storeDate} cadToCny=${this.formatRate(config.fallbackRateHundredths)} error=${this.describeError(error)}`,
+          `[pos.fx] Bank of Canada lookup failed; using configured fallback reason=${reason} storeDate=${storeDate} cadToCny=${this.formatRate(config.fallbackRateHundredths)} error=${this.describeError(error)}`,
         );
         return;
       }
@@ -205,16 +213,10 @@ export class PosExchangeRateService {
   private async getRuntimeConfig(force = false): Promise<RuntimeConfig> {
     if (!force && this.runtimeConfig) return this.runtimeConfig;
 
-    const config = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-      select: {
-        timezone: true,
-        wechatAlipayExchangeRate: true,
-      },
-    });
+    const config = await this.brandStoreConfigReader.getSnapshot();
 
-    const timezone = config?.timezone?.trim() || DEFAULT_TIMEZONE;
-    const manualRate = config?.wechatAlipayExchangeRate;
+    const timezone = config.store.timezone.trim() || DEFAULT_TIMEZONE;
+    const manualRate = config.brand.wechatAlipayExchangeRate;
     const fallbackRateHundredths =
       typeof manualRate === 'number' &&
       Number.isFinite(manualRate) &&
