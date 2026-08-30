@@ -1,11 +1,14 @@
 // apps/api/src/store/store-status.service.ts
 
-import { Injectable } from '@nestjs/common';
-import type { BusinessConfig } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
 import { DateTime } from 'luxon';
 import { parseAutoPauseReason } from '../pos/pos-store-status.service';
+import { PrismaStoreScheduleReader } from './brand-store-config.reader';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from './public-api';
 
 export type StoreStatus = {
   isOpenBySchedule: boolean;
@@ -51,17 +54,21 @@ type StoreClock = {
 export class StoreStatusService {
   private readonly logger = new AppLogger(StoreStatusService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly configReader: BrandStoreConfigReaderPort,
+    private readonly scheduleReader: PrismaStoreScheduleReader,
+  ) {}
 
   async getCurrentStatus(): Promise<StoreStatus> {
-    const config = await this.ensureConfig();
+    const config = await this.configReader.getStoreSnapshot();
     const tz = config.timezone || 'America/Toronto';
 
     const { nowIso, todayStr, weekday, minutesSinceMidnight, nowZ } =
       this.getStoreClock(tz);
 
     // Holiday：按“门店时区的 YYYY-MM-DD”来匹配
-    const holidays = await this.prisma.holiday.findMany();
+    const holidays = await this.scheduleReader.listHolidays();
     const todayHoliday = holidays.find((h) => {
       const hDateStr = DateTime.fromJSDate(h.date, { zone: 'utc' })
         .setZone(tz)
@@ -71,9 +78,7 @@ export class StoreStatusService {
     const todayHolidayName = todayHoliday?.name ?? null;
 
     // BusinessHour：weekday 是 unique，直接 findUnique
-    const todayHours = await this.prisma.businessHour.findUnique({
-      where: { weekday },
-    });
+    const todayHours = await this.scheduleReader.getBusinessHour(weekday);
 
     let ruleSource: StoreStatus['ruleSource'] = 'REGULAR_HOURS';
     let isClosed = true;
@@ -215,29 +220,5 @@ export class StoreStatusService {
       dt.toUTC().toISO({ includeOffset: true }) ??
       new Date().toISOString()
     );
-  }
-
-  private async ensureConfig(): Promise<BusinessConfig> {
-    const existing = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    if (existing) return existing;
-
-    this.logger.log(
-      'BusinessConfig not found when querying store status, creating default row (id=1)',
-    );
-
-    return this.prisma.businessConfig.create({
-      data: {
-        id: 1,
-        storeName: '',
-        timezone: 'America/Toronto',
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
-        publicNotice: null,
-        publicNoticeEn: null,
-      },
-    });
   }
 }

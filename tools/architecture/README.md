@@ -21,6 +21,12 @@ node tools/architecture/scan-architecture.mjs --report
   while architecture-foundation itself cannot depend on business public surfaces;
 - StableId foundation primitives have exactly one implementation owner and are not
   re-exported from Menu/Order business packages;
+- Brand/Store canonical configuration and configured stable store identity have
+  one registered public surface and Prisma reader implementation; `apps/api/src/store`
+  cannot regress to legacy `BusinessConfig`, the deleted `common/store-id.ts`
+  path cannot return, configured store identity has one implementation owner,
+  and cross-context consumers cannot deep-import the Prisma reader instead of
+  `store/public-api.ts`;
 - unique, complete compatibility entries;
 - no unregistered `@compat <compat_id>` annotation.
 

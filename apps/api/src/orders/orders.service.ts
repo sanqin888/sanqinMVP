@@ -72,7 +72,7 @@ import { EmailService } from '../email/email.service';
 import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
-import { resolveConfiguredStoreId } from '../common/store-id';
+import { resolveConfiguredStoreStableId } from '../store/public-api';
 import type { CouponPromotionLike } from '../promotions/coupon-promotion.adapter';
 import {
   evaluateOrderPromotions,
@@ -2914,7 +2914,7 @@ export class OrdersService {
     // legacy checkout flows use the deployment's controlled single-store config.
     const storeId =
       dto.channel === Channel.web
-        ? (verifiedCheckoutIntent?.storeId ?? resolveConfiguredStoreId())
+        ? (verifiedCheckoutIntent?.storeId ?? resolveConfiguredStoreStableId())
         : undefined;
 
     if (

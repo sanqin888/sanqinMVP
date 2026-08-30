@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 1 closeout base: `origin/dev@a050d8b2` (2026-08-30).
+Phase 2 Brand/Store start base: `origin/dev@7912deec` (2026-08-30).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -41,11 +41,11 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 16; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 11; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
-| payments-clover | architecture-foundation 16; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 9; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 10 |
-| external-channels | architecture-foundation 12; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
+| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 10 |
+| external-channels | architecture-foundation 11; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 11; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
@@ -65,6 +65,31 @@ pair fails CI.
   explicit architecture allowances.
 - Existing cycles remain migration debt for later phases. Phase 1 did not create
   a new direct context pair; CI rejects any such regression.
+
+## Phase 2 Brand/Store boundary started
+
+- `apps/api/src/store/public-api.ts` now defines the narrow canonical Brand/Store
+  configuration read contract. It exposes stable store identity and canonical
+  BrandConfig/StoreConfig facts, but not the Store database UUID and not Benefits
+  policy fields that happen to be duplicated in `BrandConfig` during transition.
+- `PrismaBrandStoreConfigReader` is the single registered Prisma reader for that
+  snapshot. It reads `BrandConfig` plus `Store`/`StoreConfig`, fails closed when
+  canonical rows are missing, and never creates fallback configuration.
+- Configured store stable identity now belongs to the Brand/Store public surface
+  as `resolveConfiguredStoreStableId()`. Existing Orders, Clover, POS, Admin and
+  Uber callers were moved off `common/store-id.ts`, lowering direct
+  architecture-foundation debt without changing the resolved store value.
+- `StoreStatusService` is the first canonical consumer and no longer reads or
+  creates `BusinessConfig`. BusinessHour/Holiday queries remain legacy global
+  store-scope debt for a later schema-safe slice.
+- The architecture scanner protects the new public surface from cross-context
+  deep imports and prevents the canonical reader from regressing to the legacy
+  `BusinessConfig` delegate.
+- Legacy `apps/api/src/admin/**` classification is intentionally unchanged in
+  this slice. Admin business/config routes still mix authentication adapters and
+  legacy writers; their more specific Brand/Store ownership should be registered
+  when that writer boundary is migrated, rather than reclassifying existing
+  direct-import debt without changing the implementation.
 
 ## Carried debt outside this closeout
 

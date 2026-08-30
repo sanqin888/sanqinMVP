@@ -343,32 +343,28 @@ describe('StoreStatusService temporary pause expiry', () => {
     jest.restoreAllMocks();
   });
 
-  it('treats an expired timed pause as open without mutating BusinessConfig', async () => {
-    const prisma = {
-      businessConfig: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 1,
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: true,
-          temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
-          publicNotice: null,
-          publicNoticeEn: null,
-        }),
-        update: jest.fn(),
-        create: jest.fn(),
-      },
-      holiday: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
-      businessHour: {
-        findUnique: jest.fn().mockResolvedValue({
-          isClosed: false,
-          openMinutes: 8 * 60,
-          closeMinutes: 22 * 60,
-        }),
-      },
+  it('treats an expired timed pause as open without mutating configuration', async () => {
+    const scheduleReader = {
+      listHolidays: jest.fn().mockResolvedValue([]),
+      getBusinessHour: jest.fn().mockResolvedValue({
+        isClosed: false,
+        openMinutes: 8 * 60,
+        closeMinutes: 22 * 60,
+      }),
     };
-    const service = new StoreStatusService(prisma as never);
+    const configReader = {
+      getStoreSnapshot: jest.fn().mockResolvedValue({
+        timezone: 'America/Toronto',
+        isTemporarilyClosed: true,
+        temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
+        publicNotice: null,
+        publicNoticeEn: null,
+      }),
+    };
+    const service = new StoreStatusService(
+      configReader as never,
+      scheduleReader as never,
+    );
 
     await expect(service.getCurrentStatus()).resolves.toMatchObject({
       isOpenBySchedule: true,
@@ -376,6 +372,8 @@ describe('StoreStatusService temporary pause expiry', () => {
       temporaryCloseReason: null,
       isOpen: true,
     });
-    expect(prisma.businessConfig.update).not.toHaveBeenCalled();
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(scheduleReader.listHolidays).toHaveBeenCalledTimes(1);
+    expect(scheduleReader.getBusinessHour).toHaveBeenCalledWith(2);
   });
 });

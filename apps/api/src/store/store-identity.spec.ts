@@ -1,6 +1,6 @@
-import { resolveConfiguredStoreId } from './store-id';
+import { resolveConfiguredStoreStableId } from './public-api';
 
-describe('resolveConfiguredStoreId', () => {
+describe('resolveConfiguredStoreStableId', () => {
   const originalStoreId = process.env.STORE_ID;
 
   afterEach(() => {
@@ -8,15 +8,15 @@ describe('resolveConfiguredStoreId', () => {
     else process.env.STORE_ID = originalStoreId;
   });
 
-  it('uses the cloud printer room ID as the single-store default', () => {
+  it('uses the stable single-store identity as the deployment default', () => {
     delete process.env.STORE_ID;
 
-    expect(resolveConfiguredStoreId()).toBe('4750_Yonge_Street');
+    expect(resolveConfiguredStoreStableId()).toBe('4750_Yonge_Street');
   });
 
   it('uses a trimmed server-controlled STORE_ID when configured', () => {
     process.env.STORE_ID = '  configured-store  ';
 
-    expect(resolveConfiguredStoreId()).toBe('configured-store');
+    expect(resolveConfiguredStoreStableId()).toBe('configured-store');
   });
 });

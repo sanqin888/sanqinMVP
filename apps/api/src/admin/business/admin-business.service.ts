@@ -4,7 +4,7 @@ import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import type { BusinessConfig, BusinessHour, StoreConfig } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
-import { resolveConfiguredStoreId } from '../../common/store-id';
+import { resolveConfiguredStoreStableId } from '../../store/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
@@ -828,12 +828,12 @@ export class AdminBusinessService {
 
   private async ensureStoreConfig(): Promise<StoreConfig> {
     const store = await this.prisma.store.findUnique({
-      where: { storeStableId: resolveConfiguredStoreId() },
+      where: { storeStableId: resolveConfiguredStoreStableId() },
       select: { id: true, config: true },
     });
     if (!store) {
       throw new BadRequestException(
-        `Configured store ${resolveConfiguredStoreId()} does not exist`,
+        `Configured store ${resolveConfiguredStoreStableId()} does not exist`,
       );
     }
     if (store.config) return store.config;
