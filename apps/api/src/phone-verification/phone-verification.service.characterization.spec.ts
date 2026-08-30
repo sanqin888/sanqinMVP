@@ -75,10 +75,7 @@ describe('PhoneVerificationService OTP characterization', () => {
     ).resolves.toEqual({ ok: true });
 
     expect(generateCodeSpy).toHaveBeenCalledWith('NON_ZERO_SIX_DIGIT');
-    expect(hashCodeSpy).toHaveBeenCalledWith(
-      '100000',
-      'PHONE_VERIFICATION',
-    );
+    expect(hashCodeSpy).toHaveBeenCalledWith('100000', 'PHONE_VERIFICATION');
     expect(prisma.authChallenge.create).toHaveBeenCalledWith({
       data: {
         type: AuthChallengeType.PHONE_VERIFY,
