@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -163,6 +164,8 @@ type AccountingDocumentRow = Prisma.AccountingExpenseDocumentGetPayload<{
 
 @Injectable()
 export class AccountingOperationsService {
+  private readonly logger = new Logger(AccountingOperationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
@@ -778,6 +781,55 @@ export class AccountingOperationsService {
     return this.getExpenseDocument(documentStableId);
   }
 
+  async discardInboxDocument(
+    documentStableId: string,
+    operatorUserStableId: string,
+  ) {
+    const existing = await this.prisma.accountingExpenseDocument.findUnique({
+      where: { documentStableId },
+      select: {
+        id: true,
+        status: true,
+        attachmentUrls: true,
+        extractionJson: true,
+      },
+    });
+    if (!existing) throw new NotFoundException('expense document not found');
+    if (existing.status !== AccountingDocumentStatus.PENDING_REVIEW) {
+      throw new ConflictException(
+        'only pending inbox documents can be discarded',
+      );
+    }
+
+    const discardedAt = new Date();
+    const previousExtraction =
+      existing.extractionJson &&
+      typeof existing.extractionJson === 'object' &&
+      !Array.isArray(existing.extractionJson)
+        ? existing.extractionJson
+        : {};
+    await this.prisma.accountingExpenseDocument.update({
+      where: { id: existing.id },
+      data: {
+        status: AccountingDocumentStatus.DISCARDED,
+        occurredAt: null,
+        subtotalCents: null,
+        taxCents: null,
+        totalCents: null,
+        attachmentUrls: [],
+        extractedText: null,
+        extractionJson: {
+          ...previousExtraction,
+          discarded: true,
+          discardedAt: discardedAt.toISOString(),
+          discardedByUserStableId: operatorUserStableId,
+        } as Prisma.InputJsonValue,
+      },
+    });
+    await this.deleteStoredAccountingFiles(existing.attachmentUrls);
+    return { documentStableId, discarded: true };
+  }
+
   async dashboard(from: string, to: string) {
     const fromDate = await this.accounting.clampAccountingFromDate(
       this.parseDate(from),
@@ -911,6 +963,27 @@ export class AccountingOperationsService {
   private assertMoney(value: number, name: string) {
     if (!Number.isInteger(value) || value < 0) {
       throw new BadRequestException(`${name} must be a non-negative integer`);
+    }
+  }
+
+  private async deleteStoredAccountingFiles(urls: string[]) {
+    for (const url of urls) {
+      const match =
+        /^\/api\/v1\/accounting\/files\/(bills|receipts)\/([^/]+)$/.exec(url);
+      if (!match) continue;
+      const [, kind, rawFileName] = match;
+      const fileName = path.basename(rawFileName);
+      if (fileName !== rawFileName) continue;
+      const filePath = path.join(getUploadsAccountingDir(), kind, fileName);
+      try {
+        await fs.promises.rm(filePath, { force: true });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to remove discarded accounting attachment ${filePath}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
   }
 

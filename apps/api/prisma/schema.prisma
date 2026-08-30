@@ -193,6 +193,7 @@ enum AccountingDocumentStatus {
   CONFIRMED
   DUPLICATE
   ERROR
+  DISCARDED
 }
 
 enum SettlementPlatform {

@@ -154,6 +154,17 @@ export class AccountingController {
     );
   }
 
+  @Delete('inbox/:documentStableId')
+  discardInboxDocument(
+    @Param('documentStableId') documentStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.discardInboxDocument(
+      documentStableId,
+      this.requireOperatorUserId(req),
+    );
+  }
+
   @Post('files/receipts')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -178,15 +189,17 @@ export class AccountingController {
     const contentType =
       kind === 'bills' && extension === '.pdf'
         ? 'application/pdf'
-        : kind === 'uber-reports' && extension === '.csv'
-          ? 'text/csv; charset=utf-8'
-          : kind === 'receipts' && extension === '.jpg'
-            ? 'image/jpeg'
-            : kind === 'receipts' && extension === '.png'
-              ? 'image/png'
-              : kind === 'receipts' && extension === '.webp'
-                ? 'image/webp'
-                : null;
+        : kind === 'bills' && extension === '.webp'
+          ? 'image/webp'
+          : kind === 'uber-reports' && extension === '.csv'
+            ? 'text/csv; charset=utf-8'
+            : kind === 'receipts' && extension === '.jpg'
+              ? 'image/jpeg'
+              : kind === 'receipts' && extension === '.png'
+                ? 'image/png'
+                : kind === 'receipts' && extension === '.webp'
+                  ? 'image/webp'
+                  : null;
     if (!contentType || safeName !== fileName) {
       throw new NotFoundException('accounting file not found');
     }
