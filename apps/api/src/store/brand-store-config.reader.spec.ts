@@ -43,14 +43,12 @@ const storeConfig = {
 
 function setup(input?: {
   brand?: typeof brandConfig | null;
-  store?:
-    | {
-        storeStableId: string;
-        name: string;
-        isActive: boolean;
-        config: typeof storeConfig | null;
-      }
-    | null;
+  store?: {
+    storeStableId: string;
+    name: string;
+    isActive: boolean;
+    config: typeof storeConfig | null;
+  } | null;
 }) {
   const resolvedBrand =
     input && Object.prototype.hasOwnProperty.call(input, 'brand')
@@ -95,11 +93,18 @@ describe('PrismaBrandStoreConfigReader', () => {
 
     expect(prisma.brandConfig.findUnique).toHaveBeenCalledWith({
       where: { id: 1 },
-      select: expect.objectContaining({
+      select: {
         brandNameZh: true,
+        brandNameEn: true,
+        siteUrl: true,
+        emailFromNameZh: true,
+        emailFromNameEn: true,
+        emailFromAddress: true,
+        smsSignature: true,
+        supportPhone: true,
         supportEmail: true,
         wechatAlipayExchangeRate: true,
-      }),
+      },
     });
     expect(prisma.store.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
