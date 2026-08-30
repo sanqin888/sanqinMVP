@@ -332,6 +332,7 @@ export class EmailService {
               item.productStableId);
         const safeName = this.escapeHtml(name);
         const options = Array.isArray(item.options) ? item.options : [];
+        const components = Array.isArray(item.components) ? item.components : [];
         const optionsHtml =
           options.length > 0
             ? `<div style="margin-top:4px;color:#64748b;font-size:12px;">${options
@@ -374,11 +375,67 @@ export class EmailService {
                 })
                 .join('')}</div>`
             : '';
+        const componentsHtml = components.length
+          ? `<div style="margin-top:6px;color:#475569;font-size:12px;"><div style="font-weight:600;color:#64748b;">${
+              locale === 'zh' ? '套餐包含' : 'Includes'
+            }</div><div style="margin-top:2px;padding-left:10px;border-left:2px solid #e2e8f0;">${components
+              .map((component) => {
+                const componentName =
+                  locale === 'zh'
+                    ? (component.nameZh ??
+                      component.nameEn ??
+                      component.productStableId)
+                    : (component.nameEn ??
+                      component.nameZh ??
+                      component.productStableId);
+                const componentPriceDelta = component.priceDeltaCents;
+                const componentPriceSuffix =
+                  componentPriceDelta !== 0
+                    ? ` (${componentPriceDelta > 0 ? '+' : '-'}${this.formatCurrency(
+                        Math.abs(componentPriceDelta),
+                        locale,
+                      )})`
+                    : '';
+                const componentOptions = component.options
+                  .flatMap((group) =>
+                    group.choices.map((choice) => {
+                      const choiceName =
+                        locale === 'zh'
+                          ? (choice.nameZh ??
+                            choice.displayName ??
+                            choice.nameEn ??
+                            choice.stableId)
+                          : (choice.nameEn ??
+                            choice.displayName ??
+                            choice.nameZh ??
+                            choice.stableId);
+                      const delta =
+                        choice.priceDeltaCents !== 0
+                          ? ` (${choice.priceDeltaCents > 0 ? '+' : '-'}${this.formatCurrency(
+                              Math.abs(choice.priceDeltaCents),
+                              locale,
+                            )})`
+                          : '';
+                      return `${this.escapeHtml(choiceName)}${delta}`;
+                    }),
+                  )
+                  .join(', ');
+                return `<div style="margin-top:2px;">↳ ${this.escapeHtml(
+                  componentName,
+                )} × ${component.quantity}${componentPriceSuffix}${
+                  componentOptions
+                    ? `<div style="padding-left:12px;color:#64748b;">${componentOptions}</div>`
+                    : ''
+                }</div>`;
+              })
+              .join('')}</div></div>`
+          : '';
         return `
           <tr>
             <td style="padding:8px 0;vertical-align:top;">
               <div style="font-weight:600;color:#0f172a;">${safeName}</div>
               ${optionsHtml}
+              ${componentsHtml}
             </td>
             <td style="padding:8px 0;text-align:center;vertical-align:top;color:#475569;">
               ${item.quantity}
@@ -596,6 +653,7 @@ export class EmailService {
               item.nameZh ??
               item.productStableId);
         const options = Array.isArray(item.options) ? item.options : [];
+        const components = Array.isArray(item.components) ? item.components : [];
         const optionLines = options
           .map((group) => {
             const groupName =
@@ -633,10 +691,61 @@ export class EmailService {
             return `  - ${groupName}: ${choices}`;
           })
           .join('\n');
+        const componentLines = components
+          .map((component) => {
+            const componentName =
+              locale === 'zh'
+                ? (component.nameZh ??
+                  component.nameEn ??
+                  component.productStableId)
+                : (component.nameEn ??
+                  component.nameZh ??
+                  component.productStableId);
+            const componentPriceDelta = component.priceDeltaCents;
+            const componentPriceSuffix =
+              componentPriceDelta !== 0
+                ? ` (${componentPriceDelta > 0 ? '+' : '-'}${this.formatCurrency(
+                    Math.abs(componentPriceDelta),
+                    locale,
+                  )})`
+                : '';
+            const nestedOptions = component.options
+              .flatMap((group) =>
+                group.choices.map((choice) => {
+                  const choiceName =
+                    locale === 'zh'
+                      ? (choice.nameZh ??
+                        choice.displayName ??
+                        choice.nameEn ??
+                        choice.stableId)
+                      : (choice.nameEn ??
+                        choice.displayName ??
+                        choice.nameZh ??
+                        choice.stableId);
+                  const delta =
+                    choice.priceDeltaCents !== 0
+                      ? ` (${choice.priceDeltaCents > 0 ? '+' : '-'}${this.formatCurrency(
+                          Math.abs(choice.priceDeltaCents),
+                          locale,
+                        )})`
+                      : '';
+                  return `${choiceName}${delta}`;
+                }),
+              )
+              .join(', ');
+            return `  ↳ ${componentName} x${component.quantity}${componentPriceSuffix}${
+              nestedOptions ? `: ${nestedOptions}` : ''
+            }`;
+          })
+          .join('\n');
         return `- ${name} x${item.quantity}: ${this.formatCurrency(
           item.lineTotalCents,
           locale,
-        )}${optionLines ? `\n${optionLines}` : ''}`;
+        )}${optionLines ? `\n${optionLines}` : ''}${
+          componentLines
+            ? `\n  ${locale === 'zh' ? '套餐包含' : 'Includes'}\n${componentLines}`
+            : ''
+        }`;
       })
       .join('\n');
 

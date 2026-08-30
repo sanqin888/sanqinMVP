@@ -383,6 +383,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         lineTotalCents: 0,
         specialInstructions: headerNote,
         options: null,
+        components: [],
       };
       const changedItems = payload.items.map((item) => {
         const isVoid = item.action === OrderAmendmentItemAction.VOID;
@@ -414,6 +415,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           options: Array.isArray(item.optionsJson)
             ? (item.optionsJson as OrderItemOptionsSnapshot)
             : null,
+          components: [],
         };
       });
       const amendmentPayload: PrintPosPayloadDto = {
@@ -610,6 +612,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
           lineTotalCents: (item.unitPriceCents ?? 0) * item.qty,
           specialInstructions: null,
           options: this.parseOrderItemOptions(item.optionsJson),
+          components: [],
         })),
         subtotalCents: order.subtotalCents ?? 0,
         displaySubtotalCents: order.subtotalCents ?? 0,

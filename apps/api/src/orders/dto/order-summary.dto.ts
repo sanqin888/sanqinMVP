@@ -3,6 +3,7 @@ import { FulfillmentType } from '@prisma/client';
 import { OrderItemOptionsSnapshot } from '../order-item-options';
 import type { OrderStatus } from '../order-status';
 import type { OrderDiscountDisplayEntry } from '@shared/order';
+import type { OrderItemComponentDisplaySnapshot } from '../order-item-components';
 export type OrderSummaryLineItemDto = {
   // ✅ 对外统一：引用菜品 stableId
   productStableId: string;
@@ -13,6 +14,8 @@ export type OrderSummaryLineItemDto = {
   unitPriceCents: number;
   totalPriceCents: number;
   optionsJson?: OrderItemOptionsSnapshot | null;
+  displayOptions?: OrderItemOptionsSnapshot | null;
+  components?: OrderItemComponentDisplaySnapshot[];
 };
 
 export type OrderSummaryDto = {

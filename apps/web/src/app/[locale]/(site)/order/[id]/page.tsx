@@ -17,6 +17,7 @@ import type {
 } from '@/lib/order/shared';
 import type { Locale } from '@/lib/i18n/locales';
 import type { OrderItemOptionsSnapshot } from '@/lib/order/order-item-options';
+import type { OrderItemComponentDisplaySnapshot } from '@/lib/order/order-item-components';
 import { formatOrderDiscountLabel } from '@/lib/order/discount-display';
 
 type FullOrderItem = {
@@ -27,6 +28,8 @@ type FullOrderItem = {
   qty: number;
   unitPriceCents: number | null;
   optionsJson: OrderItemOptionsSnapshot | Record<string, unknown> | null;
+  displayOptions?: OrderItemOptionsSnapshot | null;
+  components?: OrderItemComponentDisplaySnapshot[];
 };
 
 type FullOrder = {
@@ -72,6 +75,8 @@ type PublicSummaryItem = {
   unitPriceCents: number;
   totalPriceCents: number;
   optionsJson?: OrderItemOptionsSnapshot | null;
+  displayOptions?: OrderItemOptionsSnapshot | null;
+  components?: OrderItemComponentDisplaySnapshot[];
 };
 
 type PublicSummary = {
@@ -313,6 +318,44 @@ export default function OrderDetailPage({ params }: PageProps) {
             </ul>
           </div>
         ))}
+      </div>
+    );
+  };
+
+  const renderComponents = (
+    components: OrderItemComponentDisplaySnapshot[] | undefined,
+  ) => {
+    if (!components?.length) return null;
+
+    return (
+      <div className="mt-2 text-xs text-gray-600">
+        <div className="font-medium text-gray-500">
+          {isZh ? '套餐包含' : 'Includes'}
+        </div>
+        <ul className="mt-1 space-y-1 border-l border-[#87362E]/15 pl-3">
+          {components.map((component, index) => {
+            const componentName = isZh
+              ? component.nameZh ?? component.nameEn ?? component.productStableId
+              : component.nameEn ?? component.nameZh ?? component.productStableId;
+            const componentPriceDeltaCents = component.priceDeltaCents ?? 0;
+            return (
+              <li key={`${component.productStableId}-${component.source}-${index}`}>
+                <div className="flex items-center justify-between gap-2 font-medium text-gray-700">
+                  <span>
+                    ↳ {componentName} × {component.quantity}
+                  </span>
+                  {componentPriceDeltaCents !== 0 ? (
+                    <span className="whitespace-nowrap text-gray-500">
+                      {componentPriceDeltaCents > 0 ? '+' : '-'}
+                      {formatMoney(Math.abs(componentPriceDeltaCents))}
+                    </span>
+                  ) : null}
+                </div>
+                {renderOptions(component.options)}
+              </li>
+            );
+          })}
+        </ul>
       </div>
     );
   };
@@ -564,7 +607,10 @@ export default function OrderDetailPage({ params }: PageProps) {
                             小计：${(lineTotal / 100).toFixed(2)}
                           </div>
                         )}
-                        {renderOptions(item.optionsJson)}
+                        {renderOptions(
+                          item.displayOptions ?? item.optionsJson,
+                        )}
+                        {renderComponents(item.components)}
                       </li>
                     );
                   })}
@@ -597,7 +643,10 @@ export default function OrderDetailPage({ params }: PageProps) {
                         </div>
                       </div>
                       <div className="mt-1 text-xs text-gray-600">小计：${(item.totalPriceCents / 100).toFixed(2)}</div>
-                      {renderOptions(item.optionsJson)}
+                      {renderOptions(
+                        item.displayOptions ?? item.optionsJson,
+                      )}
+                      {renderComponents(item.components)}
                     </li>
                   );
                 })}

@@ -683,6 +683,32 @@ async function buildCustomerReceiptEscPos(params) {
         });
       }
 
+      if (Array.isArray(item.components) && item.components.length > 0) {
+        chunks.push(encLine("  套餐包含 / Includes:"));
+        item.components.forEach((component) => {
+          const componentNames = pickBilingualNames(component).join(" / ");
+          const componentQty = Number.isFinite(component?.quantity)
+            ? Math.max(1, Math.round(component.quantity))
+            : 1;
+          const componentPriceDelta = Number.isFinite(component?.priceDeltaCents)
+            ? Math.round(component.priceDeltaCents)
+            : 0;
+          const componentPriceSuffix =
+            componentPriceDelta !== 0
+              ? ` (${componentPriceDelta > 0 ? "+" : "-"}${money(Math.abs(componentPriceDelta))})`
+              : "";
+          wrapReceiptText(
+            `  > x${componentQty} `,
+            `${componentNames}${componentPriceSuffix}`,
+          ).forEach(
+            (line) => chunks.push(encLine(line)),
+          );
+          getOptionLines(component, { bilingual: true }).forEach((opt) => {
+            chunks.push(encLine(`    - ${opt}`));
+          });
+        });
+      }
+
       getItemSpecialInstructionLines(item, locale).forEach((line) => {
         chunks.push(encLine(line));
       });
@@ -869,6 +895,25 @@ function buildKitchenReceiptEscPos(params) {
           chunks.push(encLine(`  - ${opt}`));
         });
         chunks.push(cmd(GS, 0x21, 0x00));
+        chunks.push(cmd(ESC, 0x45, 0x00));
+      }
+      if (Array.isArray(item.components) && item.components.length > 0) {
+        chunks.push(cmd(ESC, 0x45, 0x01));
+        item.components.forEach((component) => {
+          const componentName = pickLocalizedName(component, locale);
+          const componentQty = Number.isFinite(component?.quantity)
+            ? Math.max(1, Math.round(component.quantity))
+            : 1;
+          if (componentName) {
+            chunks.push(encLine(`  > ${componentQty}  ${componentName}`));
+          }
+          getOptionLines(component, {
+            locale,
+            includePrice: false,
+          }).forEach((opt) => {
+            chunks.push(encLine(`    - ${opt}`));
+          });
+        });
         chunks.push(cmd(ESC, 0x45, 0x00));
       }
       const specialInstructionLines = getItemSpecialInstructionLines(

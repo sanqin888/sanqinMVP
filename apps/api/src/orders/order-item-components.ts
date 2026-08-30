@@ -19,6 +19,14 @@ export type OrderItemComponentSnapshot = {
 
 export type OrderItemComponentsSnapshot = OrderItemComponentSnapshot[];
 
+export type OrderItemComponentDisplaySnapshot = Omit<
+  OrderItemComponentSnapshot,
+  'quantityPerParent'
+> & {
+  quantity: number;
+  priceDeltaCents: number;
+};
+
 export function readOrderItemComponentsSnapshot(
   value: unknown,
 ): OrderItemComponentsSnapshot {
@@ -61,5 +69,68 @@ export function readOrderItemComponentsSnapshot(
           : [],
       } satisfies OrderItemComponentSnapshot,
     ];
+  });
+}
+
+export function buildOrderItemParentDisplayOptions(
+  optionsValue: unknown,
+  components: OrderItemComponentDisplaySnapshot[],
+): OrderItemOptionsSnapshot | null {
+  if (!Array.isArray(optionsValue)) return null;
+  const options = optionsValue as OrderItemOptionsSnapshot;
+  if (options.length === 0) return [];
+  if (components.length === 0) return options;
+
+  const componentSourceOptionIds = new Set(
+    components.flatMap((component) =>
+      component.sourceOptionStableId ? [component.sourceOptionStableId] : [],
+    ),
+  );
+
+  return options
+    .filter((group) => {
+      const groupKey = group.groupKey?.trim();
+      return (
+        !groupKey ||
+        (!groupKey.includes('__component-') &&
+          !groupKey.includes('__option-'))
+      );
+    })
+    .map((group) => ({
+      ...group,
+      choices: group.choices.filter(
+        (choice) => !componentSourceOptionIds.has(choice.stableId),
+      ),
+    }))
+    .filter((group) => group.choices.length > 0);
+}
+
+export function buildOrderItemComponentDisplaySnapshots(
+  value: unknown,
+  parentQuantity: number,
+  optionsValue?: unknown,
+): OrderItemComponentDisplaySnapshot[] {
+  const normalizedParentQuantity = Math.max(
+    1,
+    Math.trunc(parentQuantity || 1),
+  );
+  const optionPriceByStableId = new Map<string, number>();
+  if (Array.isArray(optionsValue)) {
+    for (const group of optionsValue as OrderItemOptionsSnapshot) {
+      for (const choice of group.choices ?? []) {
+        optionPriceByStableId.set(choice.stableId, choice.priceDeltaCents ?? 0);
+      }
+    }
+  }
+
+  return readOrderItemComponentsSnapshot(value).map((component) => {
+    const { quantityPerParent, ...rest } = component;
+    return {
+      ...rest,
+      quantity: normalizedParentQuantity * quantityPerParent,
+      priceDeltaCents: component.sourceOptionStableId
+        ? (optionPriceByStableId.get(component.sourceOptionStableId) ?? 0)
+        : 0,
+    };
   });
 }
