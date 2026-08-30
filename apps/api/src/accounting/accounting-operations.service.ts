@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getUploadsAccountingDir } from '../common/utils/uploads-path';
 import { PrismaService } from '../prisma/prisma.service';
+import { processAccountingReceiptImage } from './accounting-receipt-image';
 import { AccountingService } from './accounting.service';
 
 export type AccountingExpenseSplitInput = {
@@ -498,25 +499,11 @@ export class AccountingOperationsService {
   }
 
   async saveReceiptImage(file: { originalname: string; buffer: Buffer }) {
-    const extension = this.detectReceiptImageExtension(file.buffer);
-    if (!extension) {
-      throw new BadRequestException('Unsupported or invalid receipt image');
-    }
-    const originalExtension = path.extname(file.originalname).toLowerCase();
-    const allowedOriginalExtensions =
-      extension === '.jpg' ? new Set(['.jpg', '.jpeg']) : new Set([extension]);
-    if (
-      originalExtension &&
-      !allowedOriginalExtensions.has(originalExtension)
-    ) {
-      throw new BadRequestException(
-        'Receipt image extension does not match file type',
-      );
-    }
+    const processed = await processAccountingReceiptImage(file);
     const dir = path.join(getUploadsAccountingDir(), 'receipts');
     await fs.promises.mkdir(dir, { recursive: true });
-    const fileName = `${Date.now()}-${createId()}${extension}`;
-    await fs.promises.writeFile(path.join(dir, fileName), file.buffer, {
+    const fileName = `${Date.now()}-${createId()}${processed.extension}`;
+    await fs.promises.writeFile(path.join(dir, fileName), processed.buffer, {
       flag: 'wx',
     });
     return `/api/v1/accounting/files/receipts/${fileName}`;
@@ -901,26 +888,6 @@ export class AccountingOperationsService {
     if (!Number.isInteger(value) || value < 0) {
       throw new BadRequestException(`${name} must be a non-negative integer`);
     }
-  }
-
-  private detectReceiptImageExtension(
-    buffer: Buffer,
-  ): '.jpg' | '.png' | '.webp' | null {
-    if (buffer.length < 12) return null;
-    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-      return '.jpg';
-    }
-    const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-    if (pngSignature.every((byte, index) => buffer[index] === byte)) {
-      return '.png';
-    }
-    if (
-      buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
-      buffer.subarray(8, 12).toString('ascii') === 'WEBP'
-    ) {
-      return '.webp';
-    }
-    return null;
   }
 
   private normalizeUrls(urls?: string[]) {
