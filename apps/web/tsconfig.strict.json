@@ -4,6 +4,6 @@
     "skipLibCheck": false,
     "noEmit": true,
     "incremental": false,
-    "types": ["node", "react", "react-dom"]
+    "types": ["node", "react", "react-dom", "jest"]
   }
 }

@@ -4,12 +4,6 @@ import {
   getUberCancellationErrorMessage,
 } from "./uber-cancellation";
 
-declare const describe: (name: string, suite: () => void) => void;
-declare const it: (name: string, test: () => void) => void;
-declare const expect: (value: unknown) => {
-  toBe(expected: unknown): void;
-};
-
 describe("Uber order cancellation", () => {
   it("allows a pending Uber order to use the DENY action", () => {
     expect(canDenyUberOrder("pending")).toBe(true);
