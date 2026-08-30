@@ -1,10 +1,10 @@
 // apps/api/src/store/store-status.service.ts
 
 import { Inject, Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import { DateTime } from 'luxon';
 import { parseAutoPauseReason } from '../pos/pos-store-status.service';
+import { PrismaStoreScheduleReader } from './brand-store-config.reader';
 import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
@@ -55,9 +55,9 @@ export class StoreStatusService {
   private readonly logger = new AppLogger(StoreStatusService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly configReader: BrandStoreConfigReaderPort,
+    private readonly scheduleReader: PrismaStoreScheduleReader,
   ) {}
 
   async getCurrentStatus(): Promise<StoreStatus> {
@@ -68,7 +68,7 @@ export class StoreStatusService {
       this.getStoreClock(tz);
 
     // Holiday：按“门店时区的 YYYY-MM-DD”来匹配
-    const holidays = await this.prisma.holiday.findMany();
+    const holidays = await this.scheduleReader.listHolidays();
     const todayHoliday = holidays.find((h) => {
       const hDateStr = DateTime.fromJSDate(h.date, { zone: 'utc' })
         .setZone(tz)
@@ -78,9 +78,7 @@ export class StoreStatusService {
     const todayHolidayName = todayHoliday?.name ?? null;
 
     // BusinessHour：weekday 是 unique，直接 findUnique
-    const todayHours = await this.prisma.businessHour.findUnique({
-      where: { weekday },
-    });
+    const todayHours = await this.scheduleReader.getBusinessHour(weekday);
 
     let ruleSource: StoreStatus['ruleSource'] = 'REGULAR_HOURS';
     let isClosed = true;

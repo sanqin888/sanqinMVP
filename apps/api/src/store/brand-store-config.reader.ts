@@ -105,3 +105,16 @@ export class PrismaBrandStoreConfigReader implements BrandStoreConfigReaderPort 
     return { brand, store };
   }
 }
+
+@Injectable()
+export class PrismaStoreScheduleReader {
+  constructor(private readonly prisma: PrismaService) {}
+
+  listHolidays() {
+    return this.prisma.holiday.findMany();
+  }
+
+  getBusinessHour(weekday: number) {
+    return this.prisma.businessHour.findUnique({ where: { weekday } });
+  }
+}
