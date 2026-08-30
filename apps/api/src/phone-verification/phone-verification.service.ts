@@ -1,5 +1,6 @@
 // apps/api/src/phone-verification/phone-verification.service.ts
 import {
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -11,12 +12,15 @@ import {
   MessagingChannel,
   MessagingTemplateType,
 } from '@prisma/client';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/utils/phone';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
 import { TemplateRenderer } from '../messaging/template-renderer';
+import {
+  IDENTITY_CHALLENGE_ENGINE,
+  type IdentityChallengeEnginePort,
+} from '../auth/public-api';
 
 type SendCodeResult = {
   ok: boolean;
@@ -43,6 +47,8 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     private readonly smsService: SmsService,
     private readonly templateRenderer: TemplateRenderer,
     private readonly businessConfigService: BusinessConfigService,
+    @Inject(IDENTITY_CHALLENGE_ENGINE)
+    private readonly challengeEngine: IdentityChallengeEnginePort,
   ) {}
 
   onModuleInit(): void {
@@ -67,12 +73,6 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** 生成 6 位数字验证码 */
-  private generateCode(): string {
-    const n = Math.floor(100000 + Math.random() * 900000);
-    return String(n);
-  }
-
   private async buildVerificationMessage(
     code: string,
     locale?: string,
@@ -89,29 +89,6 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
         purpose: 'verify',
       },
     });
-  }
-
-  /** 生成验证 token（给前端存起来） */
-  private generateVerificationToken(): string {
-    return randomBytes(32).toString('hex');
-  }
-
-  private hashCode(code: string): string {
-    const secret = process.env.PHONE_VERIFICATION_SECRET ?? 'dev-secret';
-    return createHmac('sha256', secret).update(code).digest('hex');
-  }
-
-  private hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
-  }
-
-  private verifyCodeHash(code: string, codeHash: string): boolean {
-    const computed = this.hashCode(code);
-    if (computed.length !== codeHash.length) return false;
-    return timingSafeEqual(
-      Buffer.from(codeHash, 'hex'),
-      Buffer.from(computed, 'hex'),
-    );
   }
 
   private normalizePhoneAddress(raw?: string | null): string | null {
@@ -138,16 +115,21 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     const now = new Date();
     if (ip) {
       const timestamps = this.ipRequests.get(ip) ?? [];
-      const cutoff = now.getTime() - this.ipWindowMs;
+      const cutoff = this.challengeEngine
+        .windowStart(now, this.ipWindowMs)
+        .getTime();
       const recent = timestamps.filter((ts) => ts > cutoff);
-      if (recent.length >= this.ipLimit) {
+      if (this.challengeEngine.limitReached(recent.length, this.ipLimit)) {
         return { ok: false, error: 'too many requests, please try later' };
       }
       recent.push(now.getTime());
       this.ipRequests.set(ip, recent);
     }
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 分钟有效
+    const oneDayAgo = this.challengeEngine.windowStart(
+      now,
+      24 * 60 * 60 * 1000,
+    );
+    const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000); // 10 分钟有效
 
     const dailyCount = await this.prisma.authChallenge.count({
       where: {
@@ -158,12 +140,12 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    if (dailyCount >= 5) {
+    if (this.challengeEngine.limitReached(dailyCount, 5)) {
       return { ok: false, error: 'too many requests in a day' };
     }
 
-    const code = this.generateCode();
-    const codeHash = this.hashCode(code);
+    const code = this.challengeEngine.generateCode('NON_ZERO_SIX_DIGIT');
+    const codeHash = this.challengeEngine.hashCode(code, 'PHONE_VERIFICATION');
 
     const challenge = await this.prisma.authChallenge.create({
       data: {
@@ -240,42 +222,40 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     if (latest.expiresAt.getTime() < now.getTime()) {
       await this.prisma.authChallenge.update({
         where: { id: latest.id },
-        data: {
-          status: AuthChallengeStatus.EXPIRED,
-          consumedAt: now,
-        },
+        data: this.challengeEngine.expiredState(now),
       });
       return { ok: false, error: 'code_expired' };
     }
 
     // 不匹配
-    if (!this.verifyCodeHash(codeTrimmed, latest.codeHash ?? '')) {
-      const nextAttempts = latest.attempts + 1;
+    if (
+      !this.challengeEngine.verifyCodeHash(
+        codeTrimmed,
+        latest.codeHash ?? '',
+        'PHONE_VERIFICATION',
+      )
+    ) {
+      const failedState = this.challengeEngine.failedAttemptState({
+        attempts: latest.attempts,
+        maxAttempts: latest.maxAttempts,
+        now,
+      });
       await this.prisma.authChallenge.update({
         where: { id: latest.id },
-        data: {
-          attempts: nextAttempts,
-          status:
-            nextAttempts >= latest.maxAttempts
-              ? AuthChallengeStatus.REVOKED
-              : AuthChallengeStatus.PENDING,
-          consumedAt: nextAttempts >= latest.maxAttempts ? now : null,
-        },
+        data: failedState,
       });
       return { ok: false, error: 'code_invalid' };
     }
 
     // ✅ 验证成功：生成一次性 token
-    const verificationToken = this.generateVerificationToken();
-    const tokenHash = this.hashToken(verificationToken);
+    const verificationToken = this.challengeEngine.generateVerificationToken();
+    const tokenHash =
+      this.challengeEngine.hashVerificationToken(verificationToken);
 
     await this.prisma.$transaction([
       this.prisma.authChallenge.update({
         where: { id: latest.id },
-        data: {
-          status: AuthChallengeStatus.CONSUMED,
-          consumedAt: now,
-        },
+        data: this.challengeEngine.consumedState(now),
       }),
       this.prisma.authChallenge.create({
         data: {
@@ -312,7 +292,7 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
         status: AuthChallengeStatus.PENDING,
         addressNorm,
         purpose: 'checkout',
-        tokenHash: this.hashToken(token),
+        tokenHash: this.challengeEngine.hashVerificationToken(token),
         expiresAt: { gt: new Date() },
       },
       select: { id: true },

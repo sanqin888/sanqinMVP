@@ -2,18 +2,13 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  randomBytes,
-  randomInt,
-  timingSafeEqual,
-  createHash,
-  createHmac,
-} from 'crypto';
+import { randomBytes, timingSafeEqual, createHash } from 'crypto';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
@@ -33,6 +28,10 @@ import { BusinessConfigService } from '../messaging/business-config.service';
 import { TemplateRenderer } from '../messaging/template-renderer';
 import { NotificationService } from '../notifications/notification.service';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import {
+  IDENTITY_CHALLENGE_ENGINE,
+  type IdentityChallengeEnginePort,
+} from './challenge-engine.port';
 
 @Injectable()
 export class AuthService {
@@ -46,6 +45,8 @@ export class AuthService {
     private readonly businessConfigService: BusinessConfigService,
     private readonly notificationService: NotificationService,
     private readonly couponTriggerService: CouponProgramTriggerService,
+    @Inject(IDENTITY_CHALLENGE_ENGINE)
+    private readonly challengeEngine: IdentityChallengeEnginePort,
   ) {}
 
   private async triggerSignupCompletedPrograms(user: User) {
@@ -60,10 +61,6 @@ export class AuthService {
         (error as Error).stack,
       );
     }
-  }
-
-  private generateCode(): string {
-    return randomInt(0, 1_000_000).toString().padStart(6, '0');
   }
 
   private hashDeviceKey(value: string): string {
@@ -102,11 +99,6 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
-  }
-
-  private hashOtp(code: string): string {
-    const secret = process.env.OTP_SECRET ?? 'dev-secret';
-    return createHmac('sha256', secret).update(code).digest('hex');
   }
 
   private splitDisplayName(raw: string | null | undefined): {
@@ -585,8 +577,8 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
+    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
 
     const addressNorm = this.normalizePhoneAddress(user.phone);
     if (!addressNorm) {
@@ -617,13 +609,13 @@ export class AuthService {
         createdAt: { gt: oneHourAgo },
       },
     });
-    if (lastHourCount >= 5) {
+    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
       throw new BadRequestException('too many requests in an hour');
     }
 
-    const code = this.generateCode();
-    const codeHash: string = this.hashOtp(code);
-    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const code = this.challengeEngine.generateCode('ZERO_PADDED');
+    const codeHash: string = this.challengeEngine.hashCode(code, 'OTP');
+    const expiresAt = this.challengeEngine.expiresAt(now, 5 * 60 * 1000);
 
     const challenge = await this.prisma.authChallenge.create({
       data: {
@@ -701,8 +693,8 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
+    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
 
     const addressNorm = normalizeEmail(user.email);
     if (!addressNorm) {
@@ -733,13 +725,13 @@ export class AuthService {
         createdAt: { gt: oneHourAgo },
       },
     });
-    if (lastHourCount >= 5) {
+    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
       throw new BadRequestException('too many requests in an hour');
     }
 
-    const code = this.generateCode();
-    const codeHash: string = this.hashOtp(code);
-    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const code = this.challengeEngine.generateCode('ZERO_PADDED');
+    const codeHash: string = this.challengeEngine.hashCode(code, 'OTP');
+    const expiresAt = this.challengeEngine.expiresAt(now, 5 * 60 * 1000);
 
     const challenge = await this.prisma.authChallenge.create({
       data: {
@@ -822,19 +814,21 @@ export class AuthService {
       throw new BadRequestException('verification code is invalid or expired');
     }
 
-    const codeHash = this.hashOtp(params.code.trim());
-    if (codeHash !== challenge.codeHash) {
-      const nextAttempts = challenge.attempts + 1;
+    if (
+      !this.challengeEngine.verifyCodeHash(
+        params.code.trim(),
+        challenge.codeHash ?? '',
+        'OTP',
+      )
+    ) {
+      const failedState = this.challengeEngine.failedAttemptState({
+        attempts: challenge.attempts,
+        maxAttempts: challenge.maxAttempts,
+        now,
+      });
       await this.prisma.authChallenge.update({
         where: { id: challenge.id },
-        data: {
-          attempts: nextAttempts,
-          status:
-            nextAttempts >= challenge.maxAttempts
-              ? AuthChallengeStatus.REVOKED
-              : AuthChallengeStatus.PENDING,
-          consumedAt: nextAttempts >= challenge.maxAttempts ? now : null,
-        },
+        data: failedState,
       });
       throw new BadRequestException('verification code is invalid or expired');
     }
@@ -842,7 +836,7 @@ export class AuthService {
     await this.prisma.$transaction([
       this.prisma.authChallenge.update({
         where: { id: challenge.id },
-        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+        data: this.challengeEngine.consumedState(now),
       }),
       this.prisma.userSession.update({
         where: { id: session.id },
@@ -896,19 +890,21 @@ export class AuthService {
       throw new BadRequestException('verification code is invalid or expired');
     }
 
-    const codeHash = this.hashOtp(params.code.trim());
-    if (codeHash !== challenge.codeHash) {
-      const nextAttempts = challenge.attempts + 1;
+    if (
+      !this.challengeEngine.verifyCodeHash(
+        params.code.trim(),
+        challenge.codeHash ?? '',
+        'OTP',
+      )
+    ) {
+      const failedState = this.challengeEngine.failedAttemptState({
+        attempts: challenge.attempts,
+        maxAttempts: challenge.maxAttempts,
+        now,
+      });
       await this.prisma.authChallenge.update({
         where: { id: challenge.id },
-        data: {
-          attempts: nextAttempts,
-          status:
-            nextAttempts >= challenge.maxAttempts
-              ? AuthChallengeStatus.REVOKED
-              : AuthChallengeStatus.PENDING,
-          consumedAt: nextAttempts >= challenge.maxAttempts ? now : null,
-        },
+        data: failedState,
       });
       throw new BadRequestException('verification code is invalid or expired');
     }
@@ -916,7 +912,7 @@ export class AuthService {
     await this.prisma.$transaction([
       this.prisma.authChallenge.update({
         where: { id: challenge.id },
-        data: { status: AuthChallengeStatus.CONSUMED, consumedAt: now },
+        data: this.challengeEngine.consumedState(now),
       }),
       this.prisma.userSession.update({
         where: { id: session.id },
@@ -982,8 +978,8 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
+    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
 
     const recent = await this.prisma.authChallenge.findFirst({
       where: {
@@ -1011,13 +1007,13 @@ export class AuthService {
       },
     });
 
-    if (lastHourCount >= 5) {
+    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
       throw new BadRequestException('too many requests in an hour');
     }
 
-    const code = this.generateCode();
-    const codeHash: string = this.hashOtp(code);
-    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const code = this.challengeEngine.generateCode('ZERO_PADDED');
+    const codeHash: string = this.challengeEngine.hashCode(code, 'OTP');
+    const expiresAt = this.challengeEngine.expiresAt(now, 5 * 60 * 1000);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.authChallenge.updateMany({
@@ -1028,7 +1024,7 @@ export class AuthService {
           purpose: 'PHONE_ENROLL',
           status: AuthChallengeStatus.PENDING,
         },
-        data: { status: AuthChallengeStatus.REVOKED, consumedAt: now },
+        data: this.challengeEngine.revokedState(now),
       });
 
       await tx.authChallenge.create({
@@ -1099,7 +1095,7 @@ export class AuthService {
     }
 
     const now = new Date();
-    const codeHash = this.hashOtp(params.code);
+    const codeHash = this.challengeEngine.hashCode(params.code, 'OTP');
 
     const conflict = await this.prisma.user.findFirst({
       where: {
@@ -1123,10 +1119,7 @@ export class AuthService {
           expiresAt: { gt: now },
           codeHash,
         },
-        data: {
-          status: AuthChallengeStatus.CONSUMED,
-          consumedAt: now,
-        },
+        data: this.challengeEngine.consumedState(now),
       });
 
       if (updated.count === 0) {
@@ -1250,8 +1243,8 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
+    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
 
     const recent = await this.prisma.authChallenge.findFirst({
       where: {
@@ -1279,13 +1272,13 @@ export class AuthService {
       },
     });
 
-    if (lastHourCount >= 5) {
+    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
       throw new BadRequestException('too many requests in an hour');
     }
 
-    const code = this.generateCode();
-    const codeHash = this.hashOtp(code);
-    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const code = this.challengeEngine.generateCode('ZERO_PADDED');
+    const codeHash = this.challengeEngine.hashCode(code, 'OTP');
+    const expiresAt = this.challengeEngine.expiresAt(now, 5 * 60 * 1000);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.authChallenge.updateMany({
@@ -1296,7 +1289,7 @@ export class AuthService {
           purpose: 'membership-login',
           status: AuthChallengeStatus.PENDING,
         },
-        data: { status: AuthChallengeStatus.REVOKED, consumedAt: now },
+        data: this.challengeEngine.revokedState(now),
       });
 
       await tx.authChallenge.create({
@@ -1379,17 +1372,20 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const codeHash = this.hashOtp(params.code);
-    if (!record || record.codeHash !== codeHash) {
+    if (
+      !record ||
+      !this.challengeEngine.verifyCodeHash(
+        params.code,
+        record.codeHash ?? '',
+        'OTP',
+      )
+    ) {
       throw new BadRequestException('verification code is invalid or expired');
     }
 
     await this.prisma.authChallenge.update({
       where: { id: record.id },
-      data: {
-        status: AuthChallengeStatus.CONSUMED,
-        consumedAt: now,
-      },
+      data: this.challengeEngine.consumedState(now),
     });
 
     let isNewUser = false;

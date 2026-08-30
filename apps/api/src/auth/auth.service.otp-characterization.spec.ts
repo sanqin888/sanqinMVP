@@ -6,11 +6,7 @@ import {
   MessagingChannel,
 } from '@prisma/client';
 import { AuthService } from './auth.service';
-
-type AuthOtpInternals = {
-  generateCode(): string;
-  hashOtp(code: string): string;
-};
+import { ChallengeEngine } from './challenge-engine.service';
 
 describe('AuthService OTP characterization', () => {
   const originalOtpSecret = process.env.OTP_SECRET;
@@ -28,17 +24,33 @@ describe('AuthService OTP characterization', () => {
       },
       $transaction: jest.fn().mockResolvedValue([]),
     };
+    const challengeEngine = new ChallengeEngine();
+    const emailService = { sendEmail: jest.fn() };
+    const smsService = { sendSms: jest.fn() };
+    const templateRenderer = {
+      renderEmail: jest.fn(),
+      renderSms: jest.fn(),
+    };
+    const businessConfigService = { getMessagingSnapshot: jest.fn() };
     const service = new AuthService(
       prisma as never,
-      { sendEmail: jest.fn() } as never,
-      { sendSms: jest.fn() } as never,
-      { renderEmail: jest.fn(), renderSms: jest.fn() } as never,
-      { getMessagingSnapshot: jest.fn() } as never,
+      emailService as never,
+      smsService as never,
+      templateRenderer as never,
+      businessConfigService as never,
       {} as never,
       {} as never,
+      challengeEngine,
     );
 
-    return { service, prisma };
+    return {
+      service,
+      prisma,
+      challengeEngine,
+      smsService,
+      templateRenderer,
+      businessConfigService,
+    };
   };
 
   const session = {
@@ -68,29 +80,38 @@ describe('AuthService OTP characterization', () => {
     }
   });
 
-  it('uses OTP_SECRET and retains the non-production dev-secret fallback', () => {
-    const { service } = createService();
-    const internals = service as unknown as AuthOtpInternals;
+  it('selects the zero-padded OTP profile when creating an SMS challenge', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
+    const {
+      service,
+      prisma,
+      challengeEngine,
+      smsService,
+      templateRenderer,
+      businessConfigService,
+    } = createService();
+    jest.spyOn(service, 'getSession').mockResolvedValue(session as never);
+    prisma.authChallenge.findFirst.mockResolvedValue(null);
+    prisma.authChallenge.count.mockResolvedValue(0);
+    prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
+    prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
+    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('000042');
+    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+    businessConfigService.getMessagingSnapshot.mockResolvedValue({
+      baseVars: { storeName: 'SanQin' },
+    });
+    templateRenderer.renderSms.mockResolvedValue('verification message');
+    smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'send-1' });
 
-    process.env.OTP_SECRET = 'auth-secret';
-    expect(internals.hashOtp('000042')).toBe(
-      createHmac('sha256', 'auth-secret').update('000042').digest('hex'),
-    );
+    await expect(
+      service.requestTwoFactorSms({ sessionId: 'session-id' }),
+    ).resolves.toEqual({
+      success: true,
+      expiresAt: new Date('2026-08-30T12:05:00.000Z'),
+    });
 
-    delete process.env.OTP_SECRET;
-    expect(internals.hashOtp('000042')).toBe(
-      createHmac('sha256', 'dev-secret').update('000042').digest('hex'),
-    );
-  });
-
-  it('generates a zero-padded six-digit code and permits leading zeroes', () => {
-    const crypto = jest.requireActual<typeof import('crypto')>('crypto');
-    jest.spyOn(crypto, 'randomInt').mockReturnValue(42);
-    const { service } = createService();
-
-    expect((service as unknown as AuthOtpInternals).generateCode()).toBe(
-      '000042',
-    );
+    expect(challengeEngine.generateCode).toHaveBeenCalledWith('ZERO_PADDED');
+    expect(challengeEngine.hashCode).toHaveBeenCalledWith('000042', 'OTP');
   });
 
   it('blocks an SMS request when either SMS or email has a recent pending challenge', async () => {

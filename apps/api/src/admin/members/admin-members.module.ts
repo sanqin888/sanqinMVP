@@ -7,6 +7,7 @@ import { PhoneVerificationModule } from '../../phone-verification/phone-verifica
 import { EmailModule } from '../../email/email.module';
 import { AdminMembersController } from './admin-members.controller';
 import { AdminMembersService } from './admin-members.service';
+import { IdentityChallengeModule } from '../../auth/public-api';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AdminMembersService } from './admin-members.service';
     MembershipModule,
     PhoneVerificationModule,
     EmailModule,
+    IdentityChallengeModule,
   ],
   controllers: [AdminMembersController],
   providers: [AdminMembersService],
