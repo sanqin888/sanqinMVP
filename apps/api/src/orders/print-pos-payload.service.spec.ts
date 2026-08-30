@@ -261,6 +261,184 @@ describe('PrintPosPayloadService', () => {
     });
   });
 
+  it('固定套餐打印载荷按父项数量展开组成菜品并将子菜品选项归到子项', async () => {
+    const componentOptionGroup = {
+      templateGroupStableId: 'spice-group',
+      groupKey: 'root__breakfast-combo__component-hulatang__group-spice-group',
+      nameEn: 'Spice',
+      nameZh: '辣度',
+      minSelect: 1,
+      maxSelect: 1,
+      sortOrder: 0,
+      choices: [
+        {
+          stableId: 'mild',
+          templateGroupStableId: 'spice-group',
+          nameEn: 'Mild',
+          nameZh: '微辣',
+          priceDeltaCents: 0,
+          sortOrder: 0,
+        },
+      ],
+    };
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          orderStableId: 'ord_combo',
+          clientRequestId: 'REQ-combo',
+          deliveryFeeCents: 0,
+          deliveryCostCents: 0,
+          deliverySubsidyCents: 0,
+          items: [
+            {
+              productStableId: 'breakfast-combo',
+              displayName: 'Breakfast Combo',
+              nameEn: 'Breakfast Combo',
+              nameZh: '早点套餐',
+              qty: 2,
+              unitPriceCents: 1299,
+              optionsJson: [componentOptionGroup],
+              componentsJson: [
+                {
+                  productStableId: 'hulatang',
+                  nameEn: 'Hulatang',
+                  nameZh: '胡辣汤',
+                  quantityPerParent: 1,
+                  source: 'FIXED',
+                  options: [componentOptionGroup],
+                },
+                {
+                  productStableId: 'youtiao',
+                  nameEn: 'Youtiao',
+                  nameZh: '油条',
+                  quantityPerParent: 2,
+                  source: 'FIXED',
+                  options: [],
+                },
+              ],
+            },
+          ],
+          subtotalCents: 2598,
+          subtotalAfterDiscountCents: 2598,
+          paymentTotalCents: 2598,
+          totalCents: 2598,
+          paymentMethod: PaymentMethod.CARD,
+          channel: Channel.web,
+          pickupCode: null,
+          fulfillmentType: 'pickup',
+          taxCents: 0,
+          creditCardSurchargeCents: 0,
+        }),
+      },
+      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
+      checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    const payload = await new PrintPosPayloadService(
+      prisma as never,
+    ).getByStableId('ord_combo');
+
+    expect(payload.snapshot.items[0]).toMatchObject({
+      productStableId: 'breakfast-combo',
+      quantity: 2,
+      lineTotalCents: 2598,
+      options: [],
+      components: [
+        expect.objectContaining({
+          productStableId: 'hulatang',
+          quantity: 2,
+          options: [componentOptionGroup],
+        }),
+        expect.objectContaining({
+          productStableId: 'youtiao',
+          quantity: 4,
+          options: [],
+        }),
+      ],
+    });
+  });
+
+  it('可选套餐目标菜品只在组成项展示一次并保留选择加价', async () => {
+    const targetChoiceGroup = {
+      templateGroupStableId: 'noodle-group',
+      groupKey: 'root__combo__group-noodle-group',
+      nameEn: 'Noodle',
+      nameZh: '面食',
+      minSelect: 1,
+      maxSelect: 1,
+      sortOrder: 0,
+      choices: [
+        {
+          stableId: 'noodle-choice',
+          templateGroupStableId: 'noodle-group',
+          targetItemStableId: 'noodle-1',
+          nameEn: 'Noodle 1',
+          nameZh: '面食一',
+          priceDeltaCents: 150,
+          sortOrder: 0,
+        },
+      ],
+    };
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          orderStableId: 'ord_selectable_combo',
+          clientRequestId: 'REQ-selectable-combo',
+          deliveryFeeCents: 0,
+          deliveryCostCents: 0,
+          deliverySubsidyCents: 0,
+          items: [
+            {
+              productStableId: 'combo',
+              displayName: 'Combo',
+              nameEn: 'Combo',
+              nameZh: '套餐',
+              qty: 1,
+              unitPriceCents: 1599,
+              optionsJson: [targetChoiceGroup],
+              componentsJson: [
+                {
+                  productStableId: 'noodle-1',
+                  nameEn: 'Noodle 1',
+                  nameZh: '面食一',
+                  quantityPerParent: 1,
+                  source: 'OPTION',
+                  sourceOptionStableId: 'noodle-choice',
+                  options: [],
+                },
+              ],
+            },
+          ],
+          subtotalCents: 1599,
+          subtotalAfterDiscountCents: 1599,
+          paymentTotalCents: 1599,
+          totalCents: 1599,
+          paymentMethod: PaymentMethod.CARD,
+          channel: Channel.web,
+          pickupCode: null,
+          fulfillmentType: 'pickup',
+          taxCents: 0,
+          creditCardSurchargeCents: 0,
+        }),
+      },
+      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
+      checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    const payload = await new PrintPosPayloadService(
+      prisma as never,
+    ).getByStableId('ord_selectable_combo');
+
+    expect(payload.snapshot.items[0].options).toEqual([]);
+    expect(payload.snapshot.items[0].components).toEqual([
+      expect.objectContaining({
+        productStableId: 'noodle-1',
+        quantity: 1,
+        priceDeltaCents: 150,
+      }),
+    ]);
+  });
+
   it('Uber 餐品特殊要求会进入收银小票和厨房单共用的打印载荷', async () => {
     const prisma = {
       order: {

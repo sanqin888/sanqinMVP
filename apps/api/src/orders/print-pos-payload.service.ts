@@ -2,7 +2,10 @@ import { Channel, PaymentMethod, Prisma } from '@prisma/client';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
-import { OrderItemOptionsSnapshot } from './order-item-options';
+import {
+  buildOrderItemComponentDisplaySnapshots,
+  buildOrderItemParentDisplayOptions,
+} from './order-item-components';
 import { buildOrderPricingDisplay } from './order-pricing-display';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
@@ -36,9 +39,15 @@ export class PrintPosPayloadService {
         : Math.max(0, deliveryCostCents - deliveryFeeCents);
 
     const items = order.items.map((item) => {
-      const options = Array.isArray(item.optionsJson)
-        ? (item.optionsJson as OrderItemOptionsSnapshot)
-        : null;
+      const components = buildOrderItemComponentDisplaySnapshots(
+        item.componentsJson,
+        item.qty,
+        item.optionsJson,
+      );
+      const options = buildOrderItemParentDisplayOptions(
+        item.optionsJson,
+        components,
+      );
       const unitPriceCents = item.unitPriceCents ?? 0;
 
       return {
@@ -50,6 +59,7 @@ export class PrintPosPayloadService {
         lineTotalCents: unitPriceCents * item.qty,
         specialInstructions: item.externalSpecialInstructions?.trim() || null,
         options,
+        components,
       };
     });
 

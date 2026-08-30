@@ -54,9 +54,11 @@ import {
   OrderItemOptionGroupSnapshot,
   OrderItemOptionsSnapshot,
 } from './order-item-options';
-import type {
-  OrderItemComponentSnapshot,
-  OrderItemComponentsSnapshot,
+import {
+  buildOrderItemComponentDisplaySnapshots,
+  buildOrderItemParentDisplayOptions,
+  type OrderItemComponentSnapshot,
+  type OrderItemComponentsSnapshot,
 } from './order-item-components';
 import { isAvailableNow } from '@shared/menu';
 import {
@@ -139,6 +141,7 @@ const orderDetailSelect = {
       unitPriceCents: true,
       externalSpecialInstructions: true,
       optionsJson: true,
+      componentsJson: true,
     },
   },
 } satisfies Prisma.OrderSelect;
@@ -732,18 +735,34 @@ export class OrdersService {
     const rawItems: OrderItemSnapshot[] = Array.isArray(order.items)
       ? (order.items as OrderItemSnapshot[])
       : [];
-    const items: OrderItemDto[] = rawItems.map((it) => ({
-      productStableId: it.productStableId,
-      qty: it.qty,
-      displayName:
-        it.displayName || it.nameEn || it.nameZh || it.productStableId,
-      nameEn: it.nameEn ?? null,
-      nameZh: it.nameZh ?? null,
-      unitPriceCents: it.unitPriceCents ?? 0,
-      specialInstructions: it.externalSpecialInstructions?.trim() || null,
-      optionsJson: it.optionsJson ?? undefined,
-      componentsJson: it.componentsJson ?? undefined,
-    }));
+    const items: OrderItemDto[] = rawItems.map((it) => {
+      const components = buildOrderItemComponentDisplaySnapshots(
+        it.componentsJson,
+        it.qty,
+        it.optionsJson,
+      );
+      return {
+        productStableId: it.productStableId,
+        qty: it.qty,
+        displayName:
+          it.displayName || it.nameEn || it.nameZh || it.productStableId,
+        nameEn: it.nameEn ?? null,
+        nameZh: it.nameZh ?? null,
+        unitPriceCents: it.unitPriceCents ?? 0,
+        specialInstructions: it.externalSpecialInstructions?.trim() || null,
+        optionsJson: it.optionsJson ?? undefined,
+        componentsJson: it.componentsJson ?? undefined,
+        ...(components.length > 0
+          ? {
+              displayOptions: buildOrderItemParentDisplayOptions(
+                it.optionsJson,
+                components,
+              ),
+              components,
+            }
+          : {}),
+      };
+    });
     const subtotalCents = order.subtotalCents ?? 0;
     const loyaltyRedeemCents = order.loyaltyRedeemCents ?? 0;
     const subtotalAfterDiscountCents =
@@ -3600,6 +3619,11 @@ export class OrdersService {
 
       const display =
         item.displayName || item.nameEn || item.nameZh || item.productStableId;
+      const components = buildOrderItemComponentDisplaySnapshots(
+        item.componentsJson,
+        quantity,
+        item.optionsJson,
+      );
 
       return {
         productStableId: item.productStableId,
@@ -3610,6 +3634,15 @@ export class OrdersService {
         unitPriceCents,
         totalPriceCents,
         optionsJson: optionsSnapshot,
+        ...(components.length > 0
+          ? {
+              displayOptions: buildOrderItemParentDisplayOptions(
+                item.optionsJson,
+                components,
+              ),
+              components,
+            }
+          : {}),
       };
     });
 

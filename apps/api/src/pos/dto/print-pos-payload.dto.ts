@@ -10,6 +10,17 @@ type PrintPosPaymentMethod =
   | 'store_balance'
   | 'ubereats';
 
+type PrintPosComponentSnapshot = {
+  productStableId: string;
+  nameZh: string | null;
+  nameEn: string | null;
+  quantity: number;
+  priceDeltaCents: number;
+  source: 'FIXED' | 'OPTION';
+  sourceOptionStableId?: string | null;
+  options: OrderItemOptionsSnapshot;
+};
+
 type PrintPosItemSnapshot = {
   productStableId: string;
   nameZh: string | null;
@@ -19,6 +30,7 @@ type PrintPosItemSnapshot = {
   lineTotalCents: number;
   specialInstructions: string | null;
   options: OrderItemOptionsSnapshot | null;
+  components: PrintPosComponentSnapshot[];
 };
 
 type PrintPosUtensilsSnapshot = {
