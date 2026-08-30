@@ -106,4 +106,3 @@ export class ChallengeEngine implements IdentityChallengeEnginePort {
     return secret ?? 'dev-secret';
   }
 }
-

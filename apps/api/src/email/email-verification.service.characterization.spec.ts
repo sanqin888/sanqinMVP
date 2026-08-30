@@ -49,13 +49,16 @@ describe('EmailVerificationService OTP characterization', () => {
 
   it('selects the zero-padded OTP profile for checkout email challenges', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, emailService, challengeEngine } =
-      createService();
+    const { service, prisma, emailService, challengeEngine } = createService();
     prisma.authChallenge.count.mockResolvedValue(0);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
-    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('000042');
-    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+    const generateCodeSpy = jest
+      .spyOn(challengeEngine, 'generateCode')
+      .mockReturnValue('000042');
+    const hashCodeSpy = jest
+      .spyOn(challengeEngine, 'hashCode')
+      .mockReturnValue('code-hash');
     emailService.sendVerificationEmail.mockResolvedValue({
       ok: true,
       sendId: 'send-1',
@@ -68,8 +71,8 @@ describe('EmailVerificationService OTP characterization', () => {
       }),
     ).resolves.toEqual({ ok: true });
 
-    expect(challengeEngine.generateCode).toHaveBeenCalledWith('ZERO_PADDED');
-    expect(challengeEngine.hashCode).toHaveBeenCalledWith('000042', 'OTP');
+    expect(generateCodeSpy).toHaveBeenCalledWith('ZERO_PADDED');
+    expect(hashCodeSpy).toHaveBeenCalledWith('000042', 'OTP');
     expect(prisma.authChallenge.create).toHaveBeenCalledWith({
       data: {
         type: AuthChallengeType.EMAIL_VERIFY,

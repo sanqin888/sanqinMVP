@@ -181,7 +181,8 @@ export class EmailVerificationService {
           channel: MessagingChannel.EMAIL,
           addressNorm: record.addressNorm,
           addressRaw: record.addressRaw,
-          tokenHash: this.challengeEngine.hashVerificationToken(verificationToken),
+          tokenHash:
+            this.challengeEngine.hashVerificationToken(verificationToken),
           purpose: params.purpose ?? 'checkout',
           expiresAt: record.expiresAt,
         },

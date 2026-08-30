@@ -95,8 +95,12 @@ describe('AuthService OTP characterization', () => {
     prisma.authChallenge.count.mockResolvedValue(0);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
-    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('000042');
-    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+    const generateCodeSpy = jest
+      .spyOn(challengeEngine, 'generateCode')
+      .mockReturnValue('000042');
+    const hashCodeSpy = jest
+      .spyOn(challengeEngine, 'hashCode')
+      .mockReturnValue('code-hash');
     businessConfigService.getMessagingSnapshot.mockResolvedValue({
       baseVars: { storeName: 'SanQin' },
     });
@@ -110,8 +114,8 @@ describe('AuthService OTP characterization', () => {
       expiresAt: new Date('2026-08-30T12:05:00.000Z'),
     });
 
-    expect(challengeEngine.generateCode).toHaveBeenCalledWith('ZERO_PADDED');
-    expect(challengeEngine.hashCode).toHaveBeenCalledWith('000042', 'OTP');
+    expect(generateCodeSpy).toHaveBeenCalledWith('ZERO_PADDED');
+    expect(hashCodeSpy).toHaveBeenCalledWith('000042', 'OTP');
   });
 
   it('blocks an SMS request when either SMS or email has a recent pending challenge', async () => {

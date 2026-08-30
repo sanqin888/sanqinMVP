@@ -34,4 +34,3 @@ export interface IdentityChallengeEnginePort {
   expiredState(now: Date): ChallengeLifecycleState;
   consumedState(now: Date): ChallengeLifecycleState;
 }
-

@@ -59,8 +59,12 @@ describe('PhoneVerificationService OTP characterization', () => {
     prisma.authChallenge.count.mockResolvedValue(0);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
-    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('100000');
-    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+    const generateCodeSpy = jest
+      .spyOn(challengeEngine, 'generateCode')
+      .mockReturnValue('100000');
+    const hashCodeSpy = jest
+      .spyOn(challengeEngine, 'hashCode')
+      .mockReturnValue('code-hash');
     smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'send-1' });
 
     await expect(
@@ -70,10 +74,8 @@ describe('PhoneVerificationService OTP characterization', () => {
       }),
     ).resolves.toEqual({ ok: true });
 
-    expect(challengeEngine.generateCode).toHaveBeenCalledWith(
-      'NON_ZERO_SIX_DIGIT',
-    );
-    expect(challengeEngine.hashCode).toHaveBeenCalledWith(
+    expect(generateCodeSpy).toHaveBeenCalledWith('NON_ZERO_SIX_DIGIT');
+    expect(hashCodeSpy).toHaveBeenCalledWith(
       '100000',
       'PHONE_VERIFICATION',
     );

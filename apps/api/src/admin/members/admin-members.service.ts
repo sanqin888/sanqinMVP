@@ -1007,11 +1007,7 @@ export class AdminMembersService {
       }
 
       if (
-        !this.challengeEngine.verifyCodeHash(
-          code,
-          latest.codeHash ?? '',
-          'OTP',
-        )
+        !this.challengeEngine.verifyCodeHash(code, latest.codeHash ?? '', 'OTP')
       ) {
         const failedState = this.challengeEngine.failedAttemptState({
           attempts: latest.attempts,

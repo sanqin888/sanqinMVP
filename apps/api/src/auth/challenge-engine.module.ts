@@ -13,4 +13,3 @@ import { ChallengeEngine } from './challenge-engine.service';
   exports: [IDENTITY_CHALLENGE_ENGINE],
 })
 export class IdentityChallengeModule {}
-

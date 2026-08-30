@@ -81,8 +81,12 @@ describe('AdminMembersService recharge OTP characterization', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
     const { service, prisma, emailService, challengeEngine } = createService();
     mockMember(service, emailMember);
-    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('100000');
-    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+    const generateCodeSpy = jest
+      .spyOn(challengeEngine, 'generateCode')
+      .mockReturnValue('100000');
+    const hashCodeSpy = jest
+      .spyOn(challengeEngine, 'hashCode')
+      .mockReturnValue('code-hash');
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     emailService.sendEmail.mockResolvedValue({ ok: true, sendId: 'send-1' });
 
@@ -93,10 +97,8 @@ describe('AdminMembersService recharge OTP characterization', () => {
       }),
     ).resolves.toEqual({ ok: true });
 
-    expect(challengeEngine.generateCode).toHaveBeenCalledWith(
-      'NON_ZERO_SIX_DIGIT',
-    );
-    expect(challengeEngine.hashCode).toHaveBeenCalledWith('100000', 'OTP');
+    expect(generateCodeSpy).toHaveBeenCalledWith('NON_ZERO_SIX_DIGIT');
+    expect(hashCodeSpy).toHaveBeenCalledWith('100000', 'OTP');
     expect(prisma.authChallenge.create).toHaveBeenCalledWith({
       data: {
         userId: 'user-db-id',
