@@ -20,6 +20,7 @@ type AutomationSettings = {
   runMinute: number;
   gmailEnabled: boolean;
   uberReportsEnabled: boolean;
+  accountingStartDate: string | null;
 };
 
 @Injectable()
@@ -64,6 +65,17 @@ export class AccountingAutomationScheduler
     }
     const runHour = input.runHour ?? current.runHour;
     const runMinute = input.runMinute ?? current.runMinute;
+    const accountingStartDate =
+      input.accountingStartDate === undefined
+        ? current.accountingStartDate
+        : input.accountingStartDate?.trim() || null;
+    if (
+      accountingStartDate &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(accountingStartDate) ||
+        !DateTime.fromISO(accountingStartDate, { zone: timezone }).isValid)
+    ) {
+      throw new BadRequestException('accountingStartDate must use YYYY-MM-DD');
+    }
     if (!Number.isInteger(runHour) || runHour < 0 || runHour > 23) {
       throw new BadRequestException(
         'runHour must be an integer between 0 and 23',
@@ -85,6 +97,9 @@ export class AccountingAutomationScheduler
         gmailEnabled: input.gmailEnabled ?? current.gmailEnabled,
         uberReportsEnabled:
           input.uberReportsEnabled ?? current.uberReportsEnabled,
+        accountingStartDate: accountingStartDate
+          ? new Date(`${accountingStartDate}T00:00:00.000Z`)
+          : null,
       },
       update: {
         timezone,
@@ -95,6 +110,13 @@ export class AccountingAutomationScheduler
           : {}),
         ...(input.uberReportsEnabled !== undefined
           ? { uberReportsEnabled: input.uberReportsEnabled }
+          : {}),
+        ...(input.accountingStartDate !== undefined
+          ? {
+              accountingStartDate: accountingStartDate
+                ? new Date(`${accountingStartDate}T00:00:00.000Z`)
+                : null,
+            }
           : {}),
       },
     });
@@ -121,6 +143,7 @@ export class AccountingAutomationScheduler
         runMinute: 15,
         gmailEnabled: true,
         uberReportsEnabled: true,
+        accountingStartDate: null,
       },
       update: {},
       select: {
@@ -129,9 +152,14 @@ export class AccountingAutomationScheduler
         runMinute: true,
         gmailEnabled: true,
         uberReportsEnabled: true,
+        accountingStartDate: true,
       },
     });
-    return row;
+    return {
+      ...row,
+      accountingStartDate:
+        row.accountingStartDate?.toISOString().slice(0, 10) ?? null,
+    };
   }
 
   private nextRun(settings: AutomationSettings) {
@@ -180,7 +208,10 @@ export class AccountingAutomationScheduler
 
   private async runDailyJobs(settings: AutomationSettings) {
     const gmail = settings.gmailEnabled
-      ? await this.gmail.ingestBillsMailbox()
+      ? await this.gmail.ingestBillsMailbox({
+          accountingStartDate: settings.accountingStartDate,
+          timezone: settings.timezone,
+        })
       : {
           configured: true,
           disabled: true,
@@ -188,9 +219,13 @@ export class AccountingAutomationScheduler
           importedDocuments: 0,
           duplicateDocuments: 0,
           failedDocuments: 0,
+          skippedBeforeStartDate: 0,
         };
     const uber = settings.uberReportsEnabled
-      ? await this.requestUberReports(settings.timezone)
+      ? await this.requestUberReports(
+          settings.timezone,
+          settings.accountingStartDate,
+        )
       : [];
     this.logger.log(
       `Accounting automation completed: gmailImported=${gmail.importedDocuments} gmailDuplicates=${gmail.duplicateDocuments} uberRequested=${uber.length}`,
@@ -198,7 +233,10 @@ export class AccountingAutomationScheduler
     return { gmail, uber };
   }
 
-  private async requestUberReports(timezone: string) {
+  private async requestUberReports(
+    timezone: string,
+    accountingStartDate: string | null,
+  ) {
     const scopes = new Set(
       (process.env.UBER_EATS_APP_SCOPES ?? '')
         .split(/[\s,]+/)
@@ -216,9 +254,15 @@ export class AccountingAutomationScheduler
     if (!storeUuids.length) return [];
 
     const today = DateTime.now().setZone(timezone).startOf('day');
-    const startDate = today.minus({ days: 4 }).toISODate();
+    const rollingStartDate = today.minus({ days: 4 }).toISODate();
     const endDate = today.minus({ days: 1 }).toISODate();
-    if (!startDate || !endDate) return [];
+    const startDate =
+      accountingStartDate && rollingStartDate
+        ? accountingStartDate > rollingStartDate
+          ? accountingStartDate
+          : rollingStartDate
+        : rollingStartDate;
+    if (!startDate || !endDate || startDate > endDate) return [];
 
     return this.uberReporting.requestFinancialReports({
       storeUuids,

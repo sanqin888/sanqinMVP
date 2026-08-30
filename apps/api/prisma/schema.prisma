@@ -1738,14 +1738,15 @@ model AccountingPeriodClose {
 }
 
 model AccountingAutomationConfig {
-  id                   Int      @id @default(1)
-  timezone             String   @default("America/Toronto")
-  runHour              Int      @default(2)
-  runMinute            Int      @default(15)
-  gmailEnabled         Boolean  @default(true)
-  uberReportsEnabled   Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                   Int       @id @default(1)
+  timezone             String    @default("America/Toronto")
+  runHour              Int       @default(2)
+  runMinute            Int       @default(15)
+  gmailEnabled         Boolean   @default(true)
+  uberReportsEnabled   Boolean   @default(true)
+  accountingStartDate  DateTime? @db.Date
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }
 
 model AnalyticsEvent {

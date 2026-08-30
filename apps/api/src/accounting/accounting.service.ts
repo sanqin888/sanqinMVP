@@ -113,6 +113,36 @@ export class AccountingService {
     );
   }
 
+  async getAccountingStartDate(): Promise<string | null> {
+    const config = await this.prisma.accountingAutomationConfig.findUnique({
+      where: { id: 1 },
+      select: { accountingStartDate: true },
+    });
+    return config?.accountingStartDate?.toISOString().slice(0, 10) ?? null;
+  }
+
+  private async getAccountingStartAt(): Promise<Date | undefined> {
+    const startDate = await this.getAccountingStartDate();
+    if (!startDate) return undefined;
+    return new Date(`${startDate}T00:00:00.000Z`);
+  }
+
+  async assertOnOrAfterAccountingStartDate(occurredAt: Date) {
+    const startAt = await this.getAccountingStartAt();
+    if (startAt && occurredAt < startAt) {
+      throw new BadRequestException(
+        `occurredAt is before accounting start date ${startAt.toISOString().slice(0, 10)}`,
+      );
+    }
+  }
+
+  async clampAccountingFromDate(requested?: Date): Promise<Date | undefined> {
+    const startAt = await this.getAccountingStartAt();
+    if (!startAt) return requested;
+    if (!requested || requested < startAt) return startAt;
+    return requested;
+  }
+
   private parseDate(
     raw: string | undefined,
     endOfDay = false,
@@ -224,10 +254,12 @@ export class AccountingService {
     }
   }
 
-  private buildWhere(
+  private async buildWhere(
     filters: TxFilters,
-  ): Prisma.AccountingTransactionWhereInput {
-    const fromDate = this.parseDate(filters.from);
+  ): Promise<Prisma.AccountingTransactionWhereInput> {
+    const fromDate = await this.clampAccountingFromDate(
+      this.parseDate(filters.from),
+    );
     const toDate = this.parseDate(filters.to, true);
 
     const occurredAt =
@@ -417,6 +449,7 @@ export class AccountingService {
 
   async createTx(payload: UpsertTxDto, operatorUserId: string) {
     const normalized = await this.validatePayload(payload);
+    await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt);
     await this.assertEditableForPeriod(normalized.occurredAt, payload.type);
 
     if (normalized.idempotencyKey) {
@@ -467,7 +500,7 @@ export class AccountingService {
     const normalizedOffset = Math.max(filters.offset ?? 0, 0);
 
     return this.prisma.accountingTransaction.findMany({
-      where: this.buildWhere(filters),
+      where: await this.buildWhere(filters),
       select: ACCOUNTING_TX_PUBLIC_SELECT,
       ...(filters.cursor
         ? {
@@ -503,6 +536,8 @@ export class AccountingService {
     }
 
     const normalized = await this.validatePayload(payload);
+    await this.assertOnOrAfterAccountingStartDate(existing.occurredAt);
+    await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt);
     await this.assertEditableForPeriod(existing.occurredAt, existing.type);
     await this.assertEditableForPeriod(normalized.occurredAt, payload.type);
 
@@ -567,6 +602,7 @@ export class AccountingService {
       throw new NotFoundException('Transaction not found');
     }
 
+    await this.assertOnOrAfterAccountingStartDate(existing.occurredAt);
     await this.assertEditableForPeriod(existing.occurredAt, existing.type);
 
     const deleted = await this.prisma.accountingTransaction.update({
@@ -592,6 +628,12 @@ export class AccountingService {
 
   async closeMonth(periodKey: string, operatorUserId: string) {
     const timezone = await this.getBusinessTimezone();
+    const accountingStartDate = await this.getAccountingStartDate();
+    if (accountingStartDate && periodKey < accountingStartDate.slice(0, 7)) {
+      throw new BadRequestException(
+        `period ${periodKey} is before accounting start date ${accountingStartDate}`,
+      );
+    }
     const { startAt, endAt } = this.monthBounds(periodKey, timezone);
     const yearKey = periodKey.slice(0, 4);
     const yearLocked = await this.prisma.accountingPeriodClose.findUnique({
@@ -693,9 +735,21 @@ export class AccountingService {
   async closeYear(periodKey: string, operatorUserId: string) {
     const timezone = await this.getBusinessTimezone();
     const { startAt, endAt } = this.yearBounds(periodKey, timezone);
+    const accountingStartDate = await this.getAccountingStartDate();
+    const accountingStartYear = accountingStartDate?.slice(0, 4) ?? null;
+    if (accountingStartYear && periodKey < accountingStartYear) {
+      throw new BadRequestException(
+        `fiscal year ${periodKey} is before accounting start date ${accountingStartDate}`,
+      );
+    }
+    const firstRequiredMonth =
+      accountingStartDate && periodKey === accountingStartYear
+        ? Number(accountingStartDate.slice(5, 7))
+        : 1;
     const requiredMonths = Array.from(
-      { length: 12 },
-      (_, index) => `${periodKey}-${String(index + 1).padStart(2, '0')}`,
+      { length: 13 - firstRequiredMonth },
+      (_, index) =>
+        `${periodKey}-${String(firstRequiredMonth + index).padStart(2, '0')}`,
     );
     const monthRows = await this.prisma.accountingPeriodClose.findMany({
       where: { periodType: 'MONTH', periodKey: { in: requiredMonths } },
@@ -707,7 +761,7 @@ export class AccountingService {
     );
     if (missingMonths.length) {
       throw new ConflictException(
-        `年度硬锁前必须完成12个月月结；未月结：${missingMonths.join(', ')}`,
+        `年度硬锁前必须完成财务起始日期后的应结月份；未月结：${missingMonths.join(', ')}`,
       );
     }
 
@@ -791,7 +845,7 @@ export class AccountingService {
     const groupBy = query.groupBy ?? 'month';
     const timezone = await this.getBusinessTimezone();
     const rows = await this.prisma.accountingTransaction.findMany({
-      where: this.buildWhere({ from: query.from, to: query.to }),
+      where: await this.buildWhere({ from: query.from, to: query.to }),
       select: {
         txStableId: true,
         type: true,
@@ -1012,7 +1066,7 @@ export class AccountingService {
 
   async exportTxCsv(filters: TxFilters, operatorUserId: string) {
     const rows = await this.prisma.accountingTransaction.findMany({
-      where: this.buildWhere(filters),
+      where: await this.buildWhere(filters),
       include: {
         category: { select: { name: true } },
         account: { select: { name: true } },
@@ -1278,6 +1332,7 @@ export class AccountingService {
     if (!runDate) throw new BadRequestException('date is required');
     const startAt = new Date(runDate);
     startAt.setHours(0, 0, 0, 0);
+    await this.assertOnOrAfterAccountingStartDate(startAt);
     const endAt = new Date(runDate);
     endAt.setHours(23, 59, 59, 999);
 
@@ -1466,11 +1521,19 @@ export class AccountingService {
       };
     });
 
+    const startAt = await this.clampAccountingFromDate(undefined);
+    const acceptedData = startAt
+      ? data.filter((row) => row.payoutAt >= startAt)
+      : data;
     await this.prisma.platformSettlementRecord.createMany({
-      data,
+      data: acceptedData,
       skipDuplicates: true,
     });
-    return { importBatchId, count: data.length };
+    return {
+      importBatchId,
+      count: acceptedData.length,
+      skippedBeforeStartDate: data.length - acceptedData.length,
+    };
   }
 
   async reconcilePlatform(
@@ -1478,7 +1541,7 @@ export class AccountingService {
     from?: string,
     to?: string,
   ) {
-    const fromDate = this.parseDate(from);
+    const fromDate = await this.clampAccountingFromDate(this.parseDate(from));
     const toDate = this.parseDate(to, true);
     const settlements = await this.prisma.platformSettlementRecord.findMany({
       where: {
@@ -1500,7 +1563,11 @@ export class AccountingService {
       .filter((x): x is string => Boolean(x));
     const txRows = orderIds.length
       ? await this.prisma.accountingTransaction.findMany({
-          where: { orderId: { in: orderIds }, deletedAt: null },
+          where: {
+            orderId: { in: orderIds },
+            deletedAt: null,
+            ...(fromDate ? { occurredAt: { gte: fromDate } } : {}),
+          },
           select: { orderId: true, amountCents: true, source: true },
         })
       : [];
@@ -1547,7 +1614,7 @@ export class AccountingService {
   }
 
   async accountBalanceReport(from?: string, to?: string) {
-    const fromDate = this.parseDate(from);
+    const fromDate = await this.clampAccountingFromDate(this.parseDate(from));
     const toDate = this.parseDate(to, true);
     const txRows = await this.prisma.accountingTransaction.findMany({
       where: {
@@ -1639,7 +1706,9 @@ export class AccountingService {
   }
 
   async cashflowOverview(query: { from?: string; to?: string }) {
-    const fromDate = this.parseDate(query.from);
+    const fromDate = await this.clampAccountingFromDate(
+      this.parseDate(query.from),
+    );
     const toDate = this.parseDate(query.to, true);
     const txRows = await this.prisma.accountingTransaction.findMany({
       where: {
@@ -1688,7 +1757,9 @@ export class AccountingService {
   }
 
   async dimensionSlice(query: { from?: string; to?: string }) {
-    const fromDate = this.parseDate(query.from);
+    const fromDate = await this.clampAccountingFromDate(
+      this.parseDate(query.from),
+    );
     const toDate = this.parseDate(query.to, true);
     const orders = await this.prisma.order.findMany({
       where: {

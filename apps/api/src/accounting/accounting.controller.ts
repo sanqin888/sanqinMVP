@@ -219,6 +219,7 @@ export class AccountingController {
       runMinute?: number;
       gmailEnabled?: boolean;
       uberReportsEnabled?: boolean;
+      accountingStartDate?: string | null;
     },
   ) {
     return this.automation.updateSettings(body);
