@@ -12,7 +12,7 @@ import {
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
   resolveStoreNow,
-} from '../common/daily-specials';
+} from '../promotions/public-api';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;

@@ -20,7 +20,7 @@ import {
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
   resolveStoreNow,
-} from '../../common/daily-specials';
+} from '../../promotions/public-api';
 import type { Prisma } from '@prisma/client';
 import { SpecialPricingMode } from '@prisma/client';
 import {

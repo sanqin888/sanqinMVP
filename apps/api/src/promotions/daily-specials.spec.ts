@@ -1,9 +1,8 @@
 import { DateTime } from 'luxon';
-import { SpecialPricingMode } from '@prisma/client';
 import { isDailySpecialActiveNow } from './daily-specials';
 
 const baseSpecial = {
-  pricingMode: SpecialPricingMode.OVERRIDE_PRICE,
+  pricingMode: 'OVERRIDE_PRICE' as const,
   overridePriceCents: 599,
   discountDeltaCents: null,
   discountPercent: null,
