@@ -10,8 +10,9 @@ the safety, architecture, validation, or delivery rules in this file.
 * Preserve existing behavior unless the task explicitly requires changing it.
 * Fix root causes rather than hiding errors or weakening validation.
 * GitHub Actions is the authoritative validation standard for this repository.
-* Before completing a coding task, inspect the relevant files under `.github/workflows/**` and reproduce applicable CI checks as closely as possible.
-* If these instructions conflict with the actual GitHub workflow, follow the workflow for validation while continuing to respect the safety constraints below.
+* Before editing code, inspect the relevant files under `.github/workflows/**` so the implementation is compatible with the actual CI gates.
+* The default MCP workspace phase ends after implementation and diff/status review. Do not run local lint, build, test, or CI-reproduction commands before the user reviews the change unless the user explicitly asks for a local validation command.
+* After the user approves the change for remote delivery, GitHub Actions is the validation gate. If these instructions conflict with the actual GitHub workflow, follow the workflow for validation while continuing to respect the safety constraints below.
 
 ---
 
@@ -21,7 +22,9 @@ Prefer the repository's existing dependencies and platform APIs. Do not add a
 package for behavior that is already implemented safely in the workspace or can
 be expressed clearly with the current stack.
 
-When the requested change genuinely requires a dependency change:
+When the requested change genuinely requires adding, removing, or changing a dependency version, stop before editing any dependency manifest or lockfile. Explain why the dependency change is required, its impact, and reasonable alternatives, and obtain explicit user authorization.
+
+After authorization:
 
 * make the smallest compatible addition or version change;
 * use the repository package manager (`pnpm`) and the correct workspace filter;
@@ -40,13 +43,15 @@ package-lock.json
 yarn.lock
 ```
 
-For clean CI reproduction, run:
+If the user explicitly requests local dependency or CI reproduction, use the
+committed dependency state:
 
 ```bash
 pnpm install --frozen-lockfile --prefer-offline
 ```
 
-If the frozen install fails because the manifest and lockfile are inconsistent:
+If that explicitly requested frozen install fails because the manifest and
+lockfile are inconsistent:
 
 1. Do not bypass `--frozen-lockfile` or delete the lockfile merely to make CI
    proceed.
@@ -63,6 +68,11 @@ If the frozen install fails because the manifest and lockfile are inconsistent:
 Persisted schema changes must include a matching migration in the same change by
 default. Do not leave `schema.prisma` ahead of migration history unless the user
 explicitly requested a schema proposal only.
+
+Before creating, modifying, deleting, or generating anything under
+`apps/api/prisma/migrations/**`, obtain explicit user authorization. Authorization
+to edit `schema.prisma` does not by itself authorize migration generation. Once
+migration work is authorized, follow the rules below.
 
 Migration files live under:
 
@@ -135,55 +145,27 @@ Database primary keys and stable business identifiers are different identities a
 
 ## 4. CI validation
 
-Before declaring a coding task complete:
+GitHub Actions is the normal validation environment for repository changes.
+
+Before editing code:
 
 1. Inspect the relevant `.github/workflows/**` files.
-2. Determine which jobs and workspaces are affected by the changes.
-3. Match the CI environment and commands as closely as practical.
-4. Run every applicable CI check that can safely run in the current environment.
-5. Run validation against the final intended source state.
+2. Determine which jobs and workspaces will be affected by the intended change.
+3. Implement with those CI gates in mind, but do not run local lint, build, test,
+   or CI-reproduction commands during the default MCP workspace phase.
 
-Prefer the exact commands used by GitHub Actions rather than simplified equivalents.
+After implementation, review the final diff and workspace status, then stop and
+provide the change report to the user. The user reviews the source change before
+remote validation begins.
 
-For example, if CI runs:
+After the user authorizes remote delivery, push the feature branch, open a PR to
+`dev`, and track the actual GitHub Actions run. All required CI checks must be
+green before merge. Do not substitute an ad-hoc local command for a failed or
+missing GitHub check.
 
-```bash
-pnpm --filter api lint
-```
-
-do not treat a generic:
-
-```bash
-pnpm lint
-```
-
-as an exact substitute.
-
-The current repository CI validates the `web`, `api`, and affected shared packages. Inspect `.github/workflows/ci.yml` for the current commands rather than assuming this list remains unchanged.
-
-When appropriate, CI-equivalent validation currently includes:
-
-```bash
-pnpm install --frozen-lockfile --prefer-offline
-
-pnpm --filter web lint
-pnpm --filter web build
-pnpm --filter web exec tsc -p tsconfig.strict.json --pretty false
-
-pnpm --filter api prisma:generate
-pnpm --filter api lint
-pnpm --filter api build
-pnpm --filter api exec tsc -p tsconfig.strict.json --pretty false
-
-pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
-pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
-
-pnpm --filter api test
-```
-
-Only run checks applicable to the affected code during development, but before claiming full CI-equivalent validation, run all relevant CI commands.
-
-If additional edits are made after validation, rerun the checks affected by those edits.
+If the user explicitly requests local validation for a particular task, use the
+exact relevant commands from `.github/workflows/ci.yml` rather than simplified
+equivalents, and report exactly what was run and what passed.
 
 ---
 
@@ -312,29 +294,27 @@ Do not modify or weaken the CI workflow merely to make a failing code change app
 
 ## 9. Completion reporting
 
-Do not say that CI "should pass" unless the relevant reproducible CI checks actually passed against the final source state.
+Do not predict CI success. Report only the stage that has actually been reached.
 
-At completion, report results concisely using this structure when applicable:
-
-```text
-Validation passed:
-- <commands/checks that actually passed>
-
-Not locally verified:
-- <workflow/job/step>
-- Reason: <reason>
-
-Manual action required:
-- <action, if any>
-```
-
-If a clean frozen dependency installation was not reproduced, state that exact dependency-state equivalence with GitHub CI was not verified.
-
-If everything relevant was reproduced successfully, it is acceptable to say:
+At the end of the MCP workspace phase, report concisely:
 
 ```text
-All locally reproducible GitHub CI checks passed against the final source state using dependencies reproduced from the committed lockfile.
+Changed:
+- <files/behavior changed>
+
+Local validation:
+- Not run by repository workflow; lint/build/test are deferred to GitHub Actions after user review.
+
+Remote status:
+- Not pushed / no PR created.
 ```
+
+After the user authorizes remote delivery, report the actual PR target (`dev`),
+GitHub Actions results, and merge result. Never describe a check as passed unless
+that exact GitHub check completed successfully against the reviewed PR head.
+
+If the user explicitly requested local validation as an exception, separately
+report the exact commands that were run and their actual results.
 
 ---
 
@@ -359,14 +339,26 @@ Before editing code:
 
 Default delivery workflow:
 
-1. Make and validate the change locally.
-2. Stop and provide a change report for user review.
+1. Make the requested source changes only inside `mcp-workspace` on a feature
+   branch created from the latest `origin/dev`.
+2. Do not run lint, build, test, or CI-reproduction checks in the default local
+   phase. Review the final diff and workspace status, then stop and provide a
+   change report for user review.
 3. Do not push a branch, create a pull request, merge, deploy, execute a
-   production mutation, or run a production database migration until the user
-   explicitly authorizes that next action.
-4. When authorized to open a PR, target `dev` unless the user explicitly names
-   another branch. Track the actual CI run and only merge after all required
-   checks are green and the requested merge authorization is present.
+   production mutation, or run a production database migration before that user
+   review and explicit approval for remote delivery.
+4. After the user approves remote delivery, push the feature branch and create a
+   pull request targeting `dev`. Repository-change PRs must target `dev` only.
+   Never create a direct PR to `main` and never push repository changes directly
+   to `main`.
+5. Track the actual GitHub Actions run for the PR. Merge into `dev` only after all
+   required CI checks are green. The user's approval to "push/open a PR to dev
+   and track CI" includes authorization to merge that reviewed change into `dev`
+   once CI is fully green, unless the user explicitly asks for another review
+   before merge.
+6. Promotion from `dev` to `main`, if ever required, is outside the MCP/assistant
+   repository-change PR workflow. This workflow must never create a PR targeting
+   `main`; report the required release step for the user to control separately.
 
 Keep changes small and reviewable. Do not combine unrelated cleanup, renaming,
 dependency upgrades, schema changes, formatting sweeps, or architecture moves
@@ -390,9 +382,15 @@ authorizes a topology change:
 
 * Next.js Web/PWA/POS UI (`apps/web`)
 * NestJS API (`apps/api`)
-* dedicated UberEats worker
+* dedicated UberEats worker runtime process/container
 * Windows printer agent (`tools/printer-server`)
 * PostgreSQL as the system database
+
+The API and UberEats worker are separate runtime processes/containers but share
+the single `sanq-app-api:latest` image built from `Dockerfile.api` by the `api`
+service. Do not perform a second worker image build. After rebuilding the API
+image, recreate the API and/or worker containers only as required so they use the
+intended shared image version.
 
 Modularization means making ownership and dependency direction enforceable
 inside those deployment units. It does not mean a rewrite, creating network
@@ -622,8 +620,14 @@ Rules:
   domain. Accounting UI is an adapter to Accounting contracts. POS is a store
   operations adapter to Orders, Payments, Benefits, Store, and Print public
   capabilities.
-* Admin and Accounting redesigns are mobile-first and must intentionally support
-  narrow and wide layouts. Reuse accessible form, card, table/list, drawer,
+* Admin and Accounting must both support narrow and wide layouts, but their primary
+  design targets are different. Admin is **wide-screen/desktop-first**: optimize
+  information density, multi-column editing, tables, batch actions, and efficient
+  management workflows for desktop use, while keeping narrow-screen operation
+  complete and usable. Accounting is **narrow-screen/mobile-first**: optimize
+  receipt capture/upload, expense entry, review, and routine accounting workflows
+  for phone use, while using wider screens to enhance comparison, preview, tables,
+  and information density. Reuse accessible form, card, table/list, drawer,
   dialog, upload, feedback, and navigation primitives without forcing the
   customer-site header or customer navigation into staff consoles.
 * Preserve localization, keyboard access, visible focus, touch target size,
@@ -635,7 +639,12 @@ Rules:
 For hand-written production code, a new or materially expanded page/container
 over 500 lines requires an explicit decomposition review. A file over 800 lines
 must be split by cohesive responsibility or carry a documented, user-approved
-exception. Generated protocol code and fixed data tables may be exempt.
+exception. Existing oversized files are migration debt rather than a reason to
+expand scope: an unrelated scoped fix does not require splitting them, but the
+change must not materially increase their responsibility. Split them when the
+task is a redesign/modularization or when the requested change would
+substantially expand the file. Generated protocol code and fixed data tables may
+be exempt.
 
 ---
 
@@ -677,8 +686,18 @@ directories, or speculative compatibility facades.
 
 ### B. Expand-contract migration
 
-Required for Prisma data, public APIs, shared contracts, stable IDs, PWA clients,
-print protocols, and historical accounting facts:
+Required when persisted, public, external, or independently deployed consumers
+cannot be updated atomically, or when an existing field, route, identifier,
+meaning, protocol, or historical fact is renamed, removed, replaced, or
+semantically changed. Typical cases include Prisma data, stable IDs, PWA clients,
+print protocols, shared/public contracts, and historical accounting facts.
+
+A purely additive backward-compatible field or endpoint that requires no
+persisted backfill and does not force an independently deployed consumer to
+change may remain an ordinary compatible change rather than using the full
+expand-contract sequence.
+
+When expand-contract is required:
 
 1. audit current data/consumers and define invariants;
 2. add the new field/table/contract without removing the old one;

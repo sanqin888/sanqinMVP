@@ -9,6 +9,8 @@ import type {
 import type { OrderStatus } from '../order-status';
 import type { Prisma } from '@prisma/client';
 import type { OrderDiscountDisplayEntry } from '@shared/order';
+import type { OrderItemComponentDisplaySnapshot } from '../order-item-components';
+import type { OrderItemOptionsSnapshot } from '../order-item-options';
 
 export type OrderItemDto = {
   productStableId: string;
@@ -20,6 +22,8 @@ export type OrderItemDto = {
   specialInstructions: string | null;
   optionsJson?: Prisma.InputJsonValue;
   componentsJson?: Prisma.InputJsonValue;
+  displayOptions?: OrderItemOptionsSnapshot | null;
+  components?: OrderItemComponentDisplaySnapshot[];
 };
 
 export type OrderDto = {

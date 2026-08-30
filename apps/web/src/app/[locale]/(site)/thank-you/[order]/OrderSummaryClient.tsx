@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
 import type { OrderItemOptionsSnapshot } from "@/lib/order/order-item-options";
+import type { OrderItemComponentDisplaySnapshot } from "@/lib/order/order-item-components";
 import { formatOrderDiscountLabel } from "@/lib/order/discount-display";
 import { clampDisplayedPrepTimeMinutes } from "@/lib/prep-time";
 import type { OrderDiscountDisplayEntry } from "@shared/order";
@@ -19,6 +20,8 @@ type OrderSummaryLineItem = {
   unitPriceCents: number;
   totalPriceCents: number;
   optionsJson?: OrderItemOptionsSnapshot | Record<string, unknown> | null;
+  displayOptions?: OrderItemOptionsSnapshot | null;
+  components?: OrderItemComponentDisplaySnapshot[];
 };
 
 type OrderSummaryResponse = {
@@ -167,6 +170,45 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
           </li>
         ))}
       </ul>
+    );
+  };
+
+  const renderComponents = (
+    components: OrderItemComponentDisplaySnapshot[] | undefined,
+  ) => {
+    if (!components?.length) return null;
+
+    return (
+      <div className="mt-2 text-[11px] text-slate-600">
+        <div className="font-medium text-slate-500">
+          {locale === "zh" ? "套餐包含" : "Includes"}
+        </div>
+        <ul className="mt-1 space-y-1 border-l border-[#87362E]/15 pl-3">
+          {components.map((component, index) => {
+            const componentName =
+              locale === "zh"
+                ? component.nameZh ?? component.nameEn ?? component.productStableId
+                : component.nameEn ?? component.nameZh ?? component.productStableId;
+            const componentPriceDeltaCents = component.priceDeltaCents ?? 0;
+            return (
+              <li key={`${component.productStableId}-${component.source}-${index}`}>
+                <div className="flex items-center justify-between gap-2 font-medium text-slate-700">
+                  <span>
+                    ↳ {componentName} × {component.quantity}
+                  </span>
+                  {componentPriceDeltaCents !== 0 ? (
+                    <span className="whitespace-nowrap text-slate-500">
+                      {componentPriceDeltaCents > 0 ? "+" : "-"}
+                      {centsToMoney(Math.abs(componentPriceDeltaCents))}
+                    </span>
+                  ) : null}
+                </div>
+                {renderOptions(component.options)}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     );
   };
 
@@ -325,7 +367,10 @@ export function OrderSummaryClient({ orderStableId, locale }: Props) {
                           × {item.quantity}
                         </span>
                       </p>
-                      {renderOptions(item.optionsJson)}
+                      {renderOptions(
+                        item.displayOptions ?? item.optionsJson,
+                      )}
+                      {renderComponents(item.components)}
                     </div>
                     <div className="whitespace-nowrap text-right font-medium text-slate-900">
                       {centsToMoney(item.totalPriceCents)}
