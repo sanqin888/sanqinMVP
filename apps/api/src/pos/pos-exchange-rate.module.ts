@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../prisma/prisma.module';
+import { BrandStoreConfigModule } from '../store/public-api';
 import { PosExchangeRateService } from './pos-exchange-rate.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [BrandStoreConfigModule],
   providers: [PosExchangeRateService],
   exports: [PosExchangeRateService],
 })

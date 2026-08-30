@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Brand/Store low-risk reader base: `origin/dev@5522b946` (2026-08-30).
+Phase 2 Brand/Store POS exchange-rate reader base: `origin/dev@52ce22c0` (2026-08-30).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -44,7 +44,7 @@ pair fails CI.
 | identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 10 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 11; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
@@ -85,6 +85,11 @@ pair fails CI.
 - Accounting, Promotions, PublicMenu, and AdminMenu now read store-local timezone
   through the canonical Store snapshot. Public/Admin menu reads no longer create
   a default `BusinessConfig` row as a side effect.
+- POS exchange-rate configuration now uses the combined Brand/Store snapshot:
+  `StoreConfig.timezone` controls the store clock and
+  `BrandConfig.wechatAlipayExchangeRate` supplies the existing manual fallback.
+  The POS exchange-rate module no longer imports Prisma directly, while the
+  externally visible fallback source label remains unchanged for compatibility.
 - `BrandStoreConfigModule` is exported through `store/public-api.ts`; its token,
   identity implementation, contract implementation, composition module, and
   Prisma reader stay owner-internal. Cross-context consumers wire the public

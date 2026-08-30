@@ -139,7 +139,8 @@
       "apps/api/src/accounting/accounting.service.ts",
       "apps/api/src/promotions/promotions.service.ts",
       "apps/api/src/menu/public-menu.service.ts",
-      "apps/api/src/admin/menu/admin-menu.service.ts"
+      "apps/api/src/admin/menu/admin-menu.service.ts",
+      "apps/api/src/pos/pos-exchange-rate.service.ts"
     ],
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
   },
@@ -246,6 +247,6 @@
     "store-operations-pos-print -> commerce-orders-fulfillment": 10,
     "store-operations-pos-print -> external-channels": 1,
     "store-operations-pos-print -> identity-customer-benefits": 14,
-    "store-operations-pos-print -> runtime-data-ci-ops": 10
+    "store-operations-pos-print -> runtime-data-ci-ops": 8
   }
 }
