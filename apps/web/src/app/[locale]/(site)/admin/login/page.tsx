@@ -3,27 +3,13 @@
 
 import { useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { apiFetch, getApiErrorMessage } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
-
-type ApiEnvelope<T> = {
-  code: string;
-  message?: string;
-  details?: T;
-};
 
 type LoginPayload = {
   requiresTwoFactor?: boolean;
   role?: string;
 };
-
-function unwrapEnvelope<T>(payload: unknown): T | null {
-  if (!payload || typeof payload !== "object") return null;
-  if ("code" in payload) {
-    const env = payload as ApiEnvelope<T>;
-    return (env.details ?? null) as T | null;
-  }
-  return payload as T;
-}
 
 export default function AdminLoginPage() {
   const params = useParams();
@@ -54,24 +40,12 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/v1/auth/login", {
+      const data = await apiFetch<LoginPayload>("/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, purpose: "admin" }),
-        credentials: "include",
+        unauthorized: "throw",
       });
-
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        const message =
-          typeof payload?.message === "string"
-            ? payload.message
-            : `登录失败 (${res.status})`;
-        throw new Error(message);
-      }
-
-      const payload = await res.json().catch(() => null);
-      const data = unwrapEnvelope<LoginPayload>(payload);
 
       if (nextPath) {
         window.location.href = nextPath;
@@ -81,8 +55,7 @@ export default function AdminLoginPage() {
       const redirectPath = data?.role === "ACCOUNTANT" ? `/${locale}/accounting/dashboard` : `/${locale}/admin`;
       window.location.href = redirectPath;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "登录失败";
-      setError(message);
+      setError(getApiErrorMessage(err, "登录失败"));
     } finally {
       setLoading(false);
     }

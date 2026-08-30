@@ -1,19 +1,42 @@
 export type ApiResponseEnvelope<T> = {
   code: string;
-  message?: string;
-  details?: T;
+  message: string;
+  details: T;
+};
+
+export type UnauthorizedBehavior = 'redirect' | 'throw';
+
+export type ApiFetchOptions = RequestInit & {
+  unauthorized?: UnauthorizedBehavior;
 };
 
 export class ApiError extends Error {
   status: number;
   payload?: unknown;
+  apiMessage: string;
 
-  constructor(message: string, status: number, payload?: unknown) {
+  constructor(
+    message: string,
+    status: number,
+    payload?: unknown,
+    apiMessage = message,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.payload = payload;
+    this.apiMessage = apiMessage;
   }
+}
+
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.apiMessage.trim()) {
+    return error.apiMessage;
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
 }
 
 export type PayloadParser<T> = {
@@ -30,8 +53,13 @@ function isOperationStatusPayload(v: unknown): v is { ok: boolean; error?: strin
   return true;
 }
 
-function isEnvelopeLike(v: unknown): v is ApiResponseEnvelope<unknown> {
-  return isRecord(v) && typeof (v as Record<string, unknown>).code === 'string';
+function isApiEnvelope(v: unknown): v is ApiResponseEnvelope<unknown> {
+  return (
+    isRecord(v) &&
+    typeof v.code === 'string' &&
+    typeof v.message === 'string' &&
+    'details' in v
+  );
 }
 
 function buildDetailsSnippet(details: unknown): string {
@@ -51,47 +79,43 @@ function buildDetailsSnippet(details: unknown): string {
 }
 
 /**
- * 统一的 API 请求封装。
- * - 既兼容 {code,message,details} 信封结构，也兼容直接返回数据。
- * - 默认为同域 /api/v1 前缀；若 path 已经是 /api/... 则不再重复加前缀。
+ * Canonical browser API client.
+ * - Regular Nest API responses must use the global {code,message,details} envelope.
+ * - Binary/streaming/beacon/provider transports stay on explicit raw adapters instead.
+ * - Paths default to the same-origin /api/v1 BFF prefix.
  */
 export async function apiFetch<T>(
   path: string,
-  init: RequestInit = {},
+  init: ApiFetchOptions = {},
   parser?: PayloadParser<T>,
 ): Promise<T> {
-  // 如果传入的是 /api/... 就直接用；否则自动加 /api/v1 前缀
   const url = path.startsWith('/api/')
     ? path
     : path.startsWith('/')
       ? `/api/v1${path}`
       : `/api/v1/${path}`;
 
-  const headers = new Headers(init.headers);
+  const { unauthorized = 'redirect', ...requestInit } = init;
+  const headers = new Headers(requestInit.headers);
   if (!headers.has('Accept')) headers.set('Accept', 'application/json');
 
+  const method = requestInit.method ?? 'GET';
   const response = await fetch(url, {
     cache: 'no-store',
-    ...init,
+    ...requestInit,
     credentials: 'include',
     headers,
   });
 
   const contentType = response.headers.get('content-type') ?? '';
-  let payload: unknown;
+  const payload: unknown = contentType.includes('application/json')
+    ? await response.json().catch(() => null)
+    : await response.text();
 
-  if (contentType.includes('application/json')) {
-    payload = await response.json();
-  } else {
-    // 非 JSON 时尽量返回文本，便于错误定位
-    const text = await response.text();
-    payload = { code: response.ok ? 'OK' : 'ERROR', message: text };
-  }
-
-  // 仅在明确“未登录/会话失效(401)”时跳转登录页。
-  // 403 常见于“已登录但权限不足”，例如 staff 访问 admin-only 接口，
-  // 这种情况不应该被当作登出处理。
-  if (response.status === 401) {
+  // Only redirect when the caller explicitly accepts the shared session behavior.
+  // Login/challenge screens use unauthorized="throw" so an expected 401 can be
+  // rendered locally instead of causing a navigation loop.
+  if (response.status === 401 && unauthorized === 'redirect') {
     if (typeof window !== 'undefined') {
       const pathname = window.location.pathname;
       const locale = pathname.split('/')[1];
@@ -115,35 +139,59 @@ export async function apiFetch<T>(
   }
 
   if (!response.ok) {
-    if (isEnvelopeLike(payload)) {
-      const p = payload as ApiResponseEnvelope<unknown>;
-      const snippet = buildDetailsSnippet(p.details);
+    if (isApiEnvelope(payload)) {
+      const snippet = buildDetailsSnippet(payload.details);
+      const apiMessage = payload.message || 'API 错误';
       throw new ApiError(
-        `${p.message || 'API 错误'} ${response.status}${snippet} (${init.method ?? 'GET'} ${url})`,
+        `${apiMessage} ${response.status}${snippet} (${method} ${url})`,
         response.status,
         payload,
+        apiMessage,
       );
     }
 
+    const rawSnippet =
+      typeof payload === 'string' && payload
+        ? ` :: ${payload.slice(0, 160)}`
+        : '';
+    const apiMessage = `API 错误 ${response.status}`;
     throw new ApiError(
-      `API 错误 ${response.status}${
-        typeof payload === 'string' ? ` :: ${payload.slice(0, 160)}` : ''
-      } (${init.method ?? 'GET'} ${url})`,
+      `${apiMessage}${rawSnippet} (${method} ${url})`,
       response.status,
       payload,
+      apiMessage,
     );
   }
 
-  // 成功分支：兼容信封/直返
-  const data = isEnvelopeLike(payload)
-    ? (payload as ApiResponseEnvelope<unknown>).details
-    : payload;
-
-  if (isOperationStatusPayload(data) && !data.ok) {
+  if (!isApiEnvelope(payload)) {
+    const apiMessage = 'API response contract mismatch';
     throw new ApiError(
-      `${data.error || 'API operation failed'} ${response.status} (${init.method ?? 'GET'} ${url})`,
+      `${apiMessage}: expected {code,message,details} (${method} ${url})`,
       response.status,
       payload,
+      apiMessage,
+    );
+  }
+
+  if (payload.code !== 'OK') {
+    const apiMessage = payload.message || 'API operation failed';
+    throw new ApiError(
+      `${apiMessage} ${response.status} (${method} ${url})`,
+      response.status,
+      payload,
+      apiMessage,
+    );
+  }
+
+  const data = payload.details;
+
+  if (isOperationStatusPayload(data) && !data.ok) {
+    const apiMessage = data.error || 'API operation failed';
+    throw new ApiError(
+      `${apiMessage} ${response.status} (${method} ${url})`,
+      response.status,
+      payload,
+      apiMessage,
     );
   }
 

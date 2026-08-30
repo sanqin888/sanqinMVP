@@ -3,15 +3,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { ApiError, apiFetch, getApiErrorMessage } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
 
 type Method = "sms" | "email";
-
-type ApiEnvelope<T> = {
-  code: string;
-  message?: string;
-  details?: T;
-};
 
 type SessionPayload = {
   requiresTwoFactor?: boolean;
@@ -21,28 +16,6 @@ type OperationStatusPayload = {
   ok?: boolean;
   error?: string;
 };
-
-function readOperationFailure(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const envelope = payload as ApiEnvelope<OperationStatusPayload>;
-  const details =
-    "code" in envelope ? (envelope.details ?? null) : (payload as OperationStatusPayload);
-
-  if (details && typeof details.ok === "boolean" && !details.ok) {
-    return details.error ?? null;
-  }
-
-  return null;
-}
-
-function unwrapEnvelope<T>(payload: unknown): T | null {
-  if (!payload || typeof payload !== "object") return null;
-  if ("code" in payload) {
-    const env = payload as ApiEnvelope<T>;
-    return (env.details ?? null) as T | null;
-  }
-  return payload as T;
-}
 
 export default function AdminTwoFactorPage() {
   const router = useRouter();
@@ -66,15 +39,15 @@ export default function AdminTwoFactorPage() {
   useEffect(() => {
     let mounted = true;
     const checkSession = async () => {
-      const res = await fetch("/api/v1/auth/me", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!res.ok) return;
-      const payload = await res.json().catch(() => null);
-      const data = unwrapEnvelope<SessionPayload>(payload);
-      if (data?.requiresTwoFactor === false && mounted) {
-        router.replace(`/${locale}/admin`);
+      try {
+        const data = await apiFetch<SessionPayload>("/auth/me", {
+          unauthorized: "throw",
+        });
+        if (data.requiresTwoFactor === false && mounted) {
+          router.replace(`/${locale}/admin`);
+        }
+      } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
       }
     };
     void checkSession();
@@ -88,24 +61,13 @@ export default function AdminTwoFactorPage() {
     setMessage(null);
     setRequesting(true);
     try {
-      const res = await fetch(`/api/v1/auth/2fa/${method}/request`, {
+      await apiFetch<OperationStatusPayload>(`/auth/2fa/${method}/request`, {
         method: "POST",
-        credentials: "include",
+        unauthorized: "throw",
       });
-      const payload = await res.json().catch(() => null);
-      const operationError = readOperationFailure(payload);
-      if (!res.ok || operationError) {
-        const messageText =
-          operationError ??
-          (typeof payload?.message === "string"
-            ? payload.message
-            : `发送失败 (${res.status})`);
-        throw new Error(messageText);
-      }
       setMessage(`验证码已发送到${methodLabel}。`);
     } catch (err) {
-      const messageText = err instanceof Error ? err.message : "发送失败";
-      setError(messageText);
+      setError(getApiErrorMessage(err, "发送失败"));
     } finally {
       setRequesting(false);
     }
@@ -117,26 +79,15 @@ export default function AdminTwoFactorPage() {
     setMessage(null);
     setVerifying(true);
     try {
-      const res = await fetch(`/api/v1/auth/2fa/${method}/verify`, {
+      await apiFetch<OperationStatusPayload>(`/auth/2fa/${method}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
-        credentials: "include",
+        unauthorized: "throw",
       });
-      const payload = await res.json().catch(() => null);
-      const operationError = readOperationFailure(payload);
-      if (!res.ok || operationError) {
-        const messageText =
-          operationError ??
-          (typeof payload?.message === "string"
-            ? payload.message
-            : `验证失败 (${res.status})`);
-        throw new Error(messageText);
-      }
       router.push(`/${locale}/admin`);
     } catch (err) {
-      const messageText = err instanceof Error ? err.message : "验证失败";
-      setError(messageText);
+      setError(getApiErrorMessage(err, "验证失败"));
     } finally {
       setVerifying(false);
     }
