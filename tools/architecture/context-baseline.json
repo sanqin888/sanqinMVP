@@ -140,8 +140,15 @@
       "apps/api/src/promotions/promotions.service.ts",
       "apps/api/src/menu/public-menu.service.ts",
       "apps/api/src/admin/menu/admin-menu.service.ts",
-      "apps/api/src/pos/pos-exchange-rate.service.ts"
+      "apps/api/src/pos/pos-exchange-rate.service.ts",
+      "apps/api/src/messaging/business-config.service.ts"
     ],
+    "migratedConsumerForbiddenSymbols": {
+      "apps/api/src/messaging/business-config.service.ts": [
+        "BusinessConfig",
+        "PrismaService"
+      ]
+    },
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
   },
   "dependencyBoundaries": [
@@ -234,7 +241,7 @@
     "identity-customer-benefits -> runtime-data-ci-ops": 28,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
-    "messaging-notifications -> runtime-data-ci-ops": 11,
+    "messaging-notifications -> runtime-data-ci-ops": 10,
     "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
     "payments-clover -> commerce-orders-fulfillment": 10,

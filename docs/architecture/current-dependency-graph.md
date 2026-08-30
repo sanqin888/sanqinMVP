@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Brand/Store POS exchange-rate reader base: `origin/dev@52ce22c0` (2026-08-30).
+Phase 2 Brand/Store Messaging reader base: `origin/dev@386866c1` (2026-08-30).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -46,7 +46,7 @@ pair fails CI.
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
-| messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 11; store-operations-pos-print 1 |
+| messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
@@ -90,14 +90,20 @@ pair fails CI.
   `BrandConfig.wechatAlipayExchangeRate` supplies the existing manual fallback.
   The POS exchange-rate module no longer imports Prisma directly, while the
   externally visible fallback source label remains unchanged for compatibility.
+- Messaging configuration now caches the canonical Brand/Store snapshot instead
+  of a Prisma `BusinessConfig` model and no longer creates configuration on read.
+  Brand support contact fields feed message templates, while Store name/address/
+  phone feed invoice contact details so support and store-phone semantics are no
+  longer conflated.
 - `BrandStoreConfigModule` is exported through `store/public-api.ts`; its token,
   identity implementation, contract implementation, composition module, and
   Prisma reader stay owner-internal. Cross-context consumers wire the public
   module and inject the public reader token instead of deep-importing internals.
 - The architecture scanner protects the new public surface from cross-context
   deep imports, prevents the canonical reader from regressing to the legacy
-  `BusinessConfig` delegate, and freezes migrated consumers against reintroducing
-  direct `BusinessConfig` access.
+  `BusinessConfig` delegate, freezes migrated consumers against reintroducing
+  direct `BusinessConfig` access, and can forbid consumer-specific legacy Prisma
+  symbols after a service is fully de-Prisma'd.
 - Legacy `apps/api/src/admin/**` classification is intentionally unchanged in
   this slice. Admin business/config routes still mix authentication adapters and
   legacy writers; their more specific Brand/Store ownership should be registered
