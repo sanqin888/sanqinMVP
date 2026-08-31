@@ -145,10 +145,11 @@ pair fails CI.
 - Admin Members policy saves now use `/admin/benefits/loyalty-policy`, whose
   Benefits-owned writer preserves the established rounding/non-negative rules,
   while tightening `redeemDollarPerPoint` to the existing business invariant
-  `> 0`; it writes `BrandConfig` plus the `BusinessConfig` compatibility copy in one
-  transaction. The compatibility copy is still required because the existing DB
-  trigger is one-way (`BusinessConfig` -> canonical config); allowing it to become
-  stale could revert Benefits values on a later unrelated legacy config write.
+  `> 0`; Phase B writes `LoyaltyProgramPolicy`, the `BusinessConfig` compatibility
+  copy, and `BrandConfig` in one transaction. The compatibility copies are still
+  required because the existing DB trigger is one-way (`BusinessConfig` -> canonical
+  config); allowing either transitional copy to become stale could revert Benefits
+  values on a later unrelated legacy config write.
 - The general Admin Settings page no longer declares or resubmits Loyalty policy
   fields. Legacy `PATCH /admin/business/config` and compatibility
   `PUT /admin/business/temporary-close` now reject all ten Loyalty keys with HTTP
@@ -157,7 +158,7 @@ pair fails CI.
   `AdminBusinessService` no longer imports or invokes Benefits policy readers or
   writers. Repository-wide Web code remains gated from combining either legacy
   route with a Loyalty policy field. New direct BusinessConfig Loyalty persistence
-  consumers are also blocked outside the temporary Benefits dual-writer.
+  consumers are also blocked outside the registered Benefits Phase B triple-writer.
 - Admin Members now reads editable settings from `GET /admin/benefits/loyalty-policy`
   through the Benefits settings reader, while POS payment reads the runtime policy
   from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
@@ -170,15 +171,16 @@ pair fails CI.
   `BRAND_STORE_CONFIG_READER`; Orders no longer reads or creates `BusinessConfig`.
   The architecture scanner registers Orders as a migrated Brand/Store consumer and
   forbids reintroducing the `BusinessConfig` symbol or delegate there.
-- `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
-  state. Phase A now expands the dedicated `LoyaltyProgramPolicy` singleton and
-  backfills its ten fields from `BrandConfig(id=1)` with atomic source/count/parity
-  checks, but runtime readers and writers intentionally remain on the existing
-  BrandConfig plus BusinessConfig compatibility path. The remaining implementation
-  order is triple-write and shadow-read parity, dedicated read cutover, separate
-  trigger Loyalty split, removal of BusinessConfig then BrandConfig dual-writes,
-  and only then the final column contraction. Every later Prisma/trigger migration
-  remains separately authorized.
+- `benefits.business-config-loyalty-policy.v1` records this transitional compatibility
+  state. Phase A expanded and backfilled the dedicated `LoyaltyProgramPolicy`
+  singleton. Phase B now maintains `LoyaltyProgramPolicy + BusinessConfig +
+  BrandConfig` in one Benefits-owned transaction and shadow-compares the dedicated
+  row on settings, runtime, and transaction-bound reads while still returning
+  BrandConfig. Structured `loyalty_policy_shadow_mismatch` warnings make missing
+  rows or field drift observable. The remaining implementation order is dedicated
+  read cutover, separate trigger Loyalty split, removal of BusinessConfig then
+  BrandConfig dual-writes, and only then the final column contraction. Every later
+  Prisma/trigger migration remains separately authorized.
 
 ## Carried debt outside this closeout
 
