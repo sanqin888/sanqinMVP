@@ -7,6 +7,7 @@ import {
   computeTierEligibleSpendFromNetCents,
   LoyaltyService,
 } from '../loyalty/loyalty.service';
+import type { LoyaltyPolicyReaderPort } from '../loyalty/public-api';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -57,11 +58,15 @@ describe('OrdersService', () => {
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;
+    getAvailablePaymentTender: jest.Mock;
     maxRedeemableCentsFromBalance: jest.Mock;
     reserveRedeemForOrder: jest.Mock;
     resolveUserIdByStableId: jest.Mock;
     settleOnPaid: jest.Mock;
     rollbackOnRefund: jest.Mock;
+  };
+  let loyaltyPolicyReader: {
+    getLoyaltyPolicySnapshot: jest.Mock;
   };
   let membership: {
     validateCouponForOrder: jest.Mock;
@@ -179,11 +184,32 @@ describe('OrdersService', () => {
 
     loyalty = {
       peekBalanceMicro: jest.fn().mockResolvedValue(0n),
+      getAvailablePaymentTender: jest
+        .fn()
+        .mockResolvedValue({ pointsMicro: 0n, balanceCents: 0 }),
       maxRedeemableCentsFromBalance: jest.fn().mockResolvedValue(0),
       reserveRedeemForOrder: jest.fn().mockResolvedValue(0),
       resolveUserIdByStableId: jest.fn(),
       settleOnPaid: jest.fn(),
       rollbackOnRefund: jest.fn(),
+    };
+    loyaltyPolicyReader = {
+      getLoyaltyPolicySnapshot: jest.fn().mockResolvedValue({
+        earnPtPerDollar: 0.01,
+        redeemDollarPerPoint: 1,
+        referralPtPerDollar: 0.01,
+        tierThresholdCents: {
+          SILVER: 100000,
+          GOLD: 1000000,
+          PLATINUM: 3000000,
+        },
+        tierMultipliers: {
+          BRONZE: 1,
+          SILVER: 2,
+          GOLD: 3,
+          PLATINUM: 5,
+        },
+      }),
     };
 
     membership = {
@@ -238,6 +264,7 @@ describe('OrdersService', () => {
     service = new OrdersService(
       prisma as unknown as PrismaService,
       loyalty as unknown as LoyaltyService,
+      loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
       promotions as unknown as PromotionsService,
       uberDirect as unknown as UberDirectService,
@@ -345,6 +372,47 @@ describe('OrdersService', () => {
     );
 
     expect(prisma.userCoupon.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('uses the Benefits policy rate for loyalty redemption in order quotes', async () => {
+    const userStableId = 'c2234567890abcdefghijklmn';
+    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
+    loyalty.getAvailablePaymentTender.mockResolvedValue({
+      pointsMicro: 100_000_000n,
+      balanceCents: 0,
+    });
+    loyalty.maxRedeemableCentsFromBalance.mockResolvedValue(1000);
+    loyaltyPolicyReader.getLoyaltyPolicySnapshot.mockResolvedValue({
+      earnPtPerDollar: 0.01,
+      redeemDollarPerPoint: 0.5,
+      referralPtPerDollar: 0.01,
+      tierThresholdCents: {
+        SILVER: 100000,
+        GOLD: 1000000,
+        PLATINUM: 3000000,
+      },
+      tierMultipliers: {
+        BRONZE: 1,
+        SILVER: 2,
+        GOLD: 3,
+        PLATINUM: 5,
+      },
+    });
+
+    const quote = await service.quoteOrderPricing({
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      userStableId,
+      pointsToRedeem: 4,
+      items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
+    });
+
+    expect(quote.loyaltyRedeemCents).toBe(200);
+    expect(quote.taxCents).toBe(104);
+    expect(quote.totalCents).toBe(904);
+    expect(loyaltyPolicyReader.getLoyaltyPolicySnapshot).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it('keeps hidden menu items available to the in-store POS channel', async () => {

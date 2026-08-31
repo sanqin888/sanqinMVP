@@ -33,11 +33,15 @@ node tools/architecture/scan-architecture.mjs --report
   transaction-bound reads must stay on the existing Prisma transaction client,
   migrated Admin readers cannot return to `BusinessConfig`; Admin Members read/write
   and POS payment policy reads must use the registered Benefits endpoints through
-  the centralized Web Loyalty API client. The Benefits writer/settings reader must
-  read the existing canonical config, must not invent runtime defaults or create
-  missing config rows, and the writer must dual-write canonical plus registered
-  compatibility storage in one transaction while the one-way legacy trigger remains
-  active; general Admin Settings cannot declare or resubmit Loyalty policy fields.
+  the centralized Web Loyalty API client. Orders quote/create redemption conversion
+  must read `redeemDollarPerPoint` through `LOYALTY_POLICY_READER`, keep its
+  points/cents arithmetic in the registered characterized helper, and must not
+  reintroduce a BusinessConfig/default redemption-rate fallback. The Benefits
+  writer/settings reader must read the existing canonical config, must not invent
+  runtime defaults or create missing config rows, and the writer must dual-write
+  canonical plus registered compatibility storage in one transaction while the
+  one-way legacy trigger remains active; general Admin Settings cannot declare or
+  resubmit Loyalty policy fields.
   Legacy Loyalty reader
   helpers/types are forbidden, private policy implementations cannot be
   deep-imported outside the Loyalty owner, and policy fields cannot be added to the

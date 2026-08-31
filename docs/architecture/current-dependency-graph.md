@@ -129,13 +129,18 @@ pair fails CI.
   trigger is one-way (`BusinessConfig` -> canonical config); allowing it to become
   stale could revert Benefits values on a later unrelated legacy config write.
 - The general Admin Settings page no longer declares or resubmits Loyalty policy
-  fields. `/admin/business/config` still accepts those fields only as an explicit
-  rollback compatibility surface; no known Web Loyalty read/write path uses it.
+  fields. Legacy `PATCH /admin/business/config` and compatibility
+  `PUT /admin/business/temporary-close` can still accept those fields only as
+  rollback compatibility surfaces; no known Web Loyalty read/write path uses them.
 - Admin Members now reads editable settings from `GET /admin/benefits/loyalty-policy`
   through the Benefits settings reader, while POS payment reads the runtime policy
   from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
   Session/Role/PosDevice guards. Both browser consumers use the centralized Web
   Loyalty API client rather than the legacy Admin Business response.
+- Orders quote/create redemption conversion now reads `redeemDollarPerPoint`
+  through `LOYALTY_POLICY_READER`; the points/cents arithmetic is characterized in
+  an Orders-owned pure helper. Delivery, tax, timezone, and other remaining
+  `BusinessConfig` reads in Orders are separate Brand/Store migration debt.
 - `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
   state. Dedicated Benefits persistence and removal of the legacy Admin Business
   policy surface/trigger remain a later authorized Prisma expand-contract step.
