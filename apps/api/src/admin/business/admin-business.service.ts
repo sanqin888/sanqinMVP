@@ -250,6 +250,9 @@ export class AdminBusinessService {
    * - isTemporarilyClosed = false 时，自动清空 reason
    * - 可同时更新配送费/税率
    */
+  // @compat benefits.business-config-loyalty-policy.v1
+  // This shared writer still accepts Loyalty policy fields only for rollback.
+  // New Loyalty writes must use the Benefits-owned policy writer boundary.
   async updateConfig(payload: unknown): Promise<BusinessConfigResponse> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException(

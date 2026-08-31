@@ -3,6 +3,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -26,6 +27,10 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import {
+  LOYALTY_POLICY_READER,
+  type LoyaltyPolicyReaderPort,
+} from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
 import {
   CreateOrderInput,
@@ -82,6 +87,10 @@ import {
 import type { PromotionSource } from '../promotions/promotion-engine';
 import { PromotionsService } from '../promotions/promotions.service';
 import { buildOrderPricingDisplay } from './order-pricing-display';
+import {
+  resolveRequestedLoyaltyPoints,
+  resolveRequestedLoyaltyRedeemCents,
+} from './orders-loyalty-redemption';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -284,7 +293,6 @@ const DEFAULT_PRIORITY_PER_KM_CENTS = parseNumberEnv(
 );
 const DEFAULT_MAX_RANGE_KM = 10;
 const DEFAULT_PRIORITY_DISTANCE_KM = 6;
-const DEFAULT_REDEEM_DOLLAR_PER_POINT = 1;
 
 type DeliveryPricingConfig = {
   deliveryBaseFeeCents: number;
@@ -294,7 +302,6 @@ type DeliveryPricingConfig = {
   priorityDefaultDistanceKm: number;
   storeLatitude: number | null;
   storeLongitude: number | null;
-  redeemDollarPerPoint: number;
   enableUberDirect: boolean;
 };
 
@@ -390,6 +397,8 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
+    @Inject(LOYALTY_POLICY_READER)
+    private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
     private readonly promotions: PromotionsService,
     private readonly uberDirect: UberDirectService,
@@ -471,14 +480,16 @@ export class OrdersService {
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
-
-    const requestedPoints =
-      typeof dto.pointsToRedeem === 'number'
-        ? dto.pointsToRedeem
-        : typeof dto.redeemValueCents === 'number' &&
-            pricingConfig.redeemDollarPerPoint > 0
-          ? dto.redeemValueCents / (pricingConfig.redeemDollarPerPoint * 100)
-          : undefined;
+    const hasLoyaltyRedemptionInput =
+      Boolean(userId) &&
+      (typeof dto.pointsToRedeem === 'number' ||
+        typeof dto.redeemValueCents === 'number');
+    const loyaltyPolicy = hasLoyaltyRedemptionInput
+      ? await this.loyaltyPolicyReader.getLoyaltyPolicySnapshot()
+      : null;
+    const requestedPoints = loyaltyPolicy
+      ? resolveRequestedLoyaltyPoints(dto, loyaltyPolicy.redeemDollarPerPoint)
+      : undefined;
 
     const isDelivery =
       dto.fulfillmentType === 'delivery' ||
@@ -599,16 +610,21 @@ export class OrdersService {
     );
 
     let loyaltyRedeemCents = 0;
-    if (userId && typeof requestedPoints === 'number' && requestedPoints > 0) {
+    if (
+      loyaltyPolicy &&
+      userId &&
+      typeof requestedPoints === 'number' &&
+      requestedPoints > 0
+    ) {
       const availableTender =
         await this.loyalty.getAvailablePaymentTender(userId);
       const maxRedeemableCents =
         await this.loyalty.maxRedeemableCentsFromBalance(
           availableTender.pointsMicro,
         );
-      const requestedRedeemCents = Math.max(
-        0,
-        Math.round(requestedPoints * pricingConfig.redeemDollarPerPoint * 100),
+      const requestedRedeemCents = resolveRequestedLoyaltyRedeemCents(
+        requestedPoints,
+        loyaltyPolicy.redeemDollarPerPoint,
       );
       loyaltyRedeemCents = Math.min(
         subtotalAfterCoupon,
@@ -1418,7 +1434,6 @@ export class OrdersService {
           maxDeliveryRangeKm: DEFAULT_MAX_RANGE_KM,
           priorityDefaultDistanceKm: DEFAULT_PRIORITY_DISTANCE_KM,
           salesTaxRate: DEFAULT_TAX_RATE,
-          redeemDollarPerPoint: DEFAULT_REDEEM_DOLLAR_PER_POINT,
         },
       }))
     );
@@ -1457,12 +1472,6 @@ export class OrdersService {
     const storeLongitude = Number.isFinite(existing.storeLongitude ?? NaN)
       ? (existing.storeLongitude as number)
       : null;
-    const redeemDollarPerPoint =
-      typeof existing.redeemDollarPerPoint === 'number' &&
-      Number.isFinite(existing.redeemDollarPerPoint) &&
-      existing.redeemDollarPerPoint > 0
-        ? existing.redeemDollarPerPoint
-        : DEFAULT_REDEEM_DOLLAR_PER_POINT;
     const enableUberDirect =
       typeof existing.enableUberDirect === 'boolean'
         ? existing.enableUberDirect
@@ -1476,7 +1485,6 @@ export class OrdersService {
       priorityDefaultDistanceKm,
       storeLatitude,
       storeLongitude,
-      redeemDollarPerPoint,
       enableUberDirect,
     };
   }
@@ -1742,20 +1750,6 @@ export class OrdersService {
     });
 
     return refs;
-  }
-
-  private centsToRedeemMicro(
-    cents: number,
-    redeemDollarPerPoint: number,
-  ): bigint {
-    if (!Number.isFinite(cents) || cents <= 0) return 0n;
-    if (!Number.isFinite(redeemDollarPerPoint) || redeemDollarPerPoint <= 0)
-      return 0n;
-
-    // cents -> dollars -> points -> microPoints（四舍五入）
-    const pts = cents / 100 / redeemDollarPerPoint;
-    const micro = Math.round(pts * 1_000_000); // 1 pt = 1e6 micro
-    return BigInt(micro);
   }
 
   private async ensureLoyaltyAccountWithTx(
@@ -3000,14 +2994,16 @@ export class OrdersService {
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getBusinessPricingConfig();
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
-
-    const requestedPoints =
-      typeof dto.pointsToRedeem === 'number'
-        ? dto.pointsToRedeem
-        : typeof dto.redeemValueCents === 'number' &&
-            pricingConfig.redeemDollarPerPoint > 0
-          ? dto.redeemValueCents / (pricingConfig.redeemDollarPerPoint * 100)
-          : undefined;
+    const hasLoyaltyRedemptionInput =
+      Boolean(userId) &&
+      (typeof dto.pointsToRedeem === 'number' ||
+        typeof dto.redeemValueCents === 'number');
+    const loyaltyPolicy = hasLoyaltyRedemptionInput
+      ? await this.loyaltyPolicyReader.getLoyaltyPolicySnapshot()
+      : null;
+    const requestedPoints = loyaltyPolicy
+      ? resolveRequestedLoyaltyPoints(dto, loyaltyPolicy.redeemDollarPerPoint)
+      : undefined;
 
     // —— Step 2: 配送费与税费 (动态计算 & 距离复验)
     const isDelivery =

@@ -664,6 +664,18 @@ if (benefitsLoyaltyPolicyOwnership) {
   const webSettingsConsumer = toPosix(
     benefitsLoyaltyPolicyOwnership.webSettingsConsumer,
   );
+  const ordersPolicyConsumer = toPosix(
+    benefitsLoyaltyPolicyOwnership.ordersPolicyConsumer,
+  );
+  const ordersCompositionModule = toPosix(
+    benefitsLoyaltyPolicyOwnership.ordersCompositionModule,
+  );
+  const ordersRedemptionPolicy = toPosix(
+    benefitsLoyaltyPolicyOwnership.ordersRedemptionPolicy,
+  );
+  const ordersRedemptionCharacterization = toPosix(
+    benefitsLoyaltyPolicyOwnership.ordersRedemptionCharacterization,
+  );
   const publicSymbols = benefitsLoyaltyPolicyOwnership.publicSymbols ?? [];
   const transitionalStorageDelegate =
     benefitsLoyaltyPolicyOwnership.transitionalStorageDelegate;
@@ -674,6 +686,15 @@ if (benefitsLoyaltyPolicyOwnership) {
     benefitsLoyaltyPolicyOwnership.migratedLegacyConsumers ?? [];
   const forbiddenBrandStoreContractFields =
     benefitsLoyaltyPolicyOwnership.forbiddenBrandStoreContractFields ?? [];
+  const legacyAdminBusinessPolicyRoutes =
+    benefitsLoyaltyPolicyOwnership.legacyAdminBusinessPolicyRoutes ?? [];
+  const legacyAdminBusinessPolicyAdapters =
+    benefitsLoyaltyPolicyOwnership.legacyAdminBusinessPolicyAdapters ?? [];
+  const allowedBusinessConfigPolicyFiles = new Set(
+    (benefitsLoyaltyPolicyOwnership.allowedBusinessConfigPolicyFiles ?? []).map(
+      toPosix,
+    ),
+  );
 
   for (const boundaryPath of [
     publicSurface,
@@ -930,6 +951,127 @@ if (benefitsLoyaltyPolicyOwnership) {
           `Admin Settings must not own or resubmit Benefits loyalty policy field: ${webSettingsConsumer} -> ${field}`,
         );
       }
+    }
+  }
+
+  for (const adapter of legacyAdminBusinessPolicyAdapters) {
+    const adapterPath = toPosix(adapter);
+    const absoluteAdapterPath = join(REPOSITORY_ROOT, adapterPath);
+    if (!existsSync(absoluteAdapterPath)) {
+      failures.push(`legacy Admin Business Loyalty adapter missing: ${adapterPath}`);
+      continue;
+    }
+    const source = readFileSync(absoluteAdapterPath, 'utf8');
+    if (!source.includes('@compat benefits.business-config-loyalty-policy.v1')) {
+      failures.push(
+        `legacy Admin Business Loyalty adapter must stay explicitly registered until contraction: ${adapterPath}`,
+      );
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    const source = readFileSync(absolutePath, 'utf8');
+    if (sourcePath.startsWith('apps/web/src/')) {
+      const legacyRoute = legacyAdminBusinessPolicyRoutes.find((route) =>
+        source.includes(route),
+      );
+      if (legacyRoute) {
+        for (const field of forbiddenBrandStoreContractFields) {
+          if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+            failures.push(
+              `Web must not read or write Benefits policy through legacy Admin Business route ${legacyRoute}: ${sourcePath} -> ${field}`,
+            );
+          }
+        }
+      }
+    }
+
+    if (
+      sourcePath.startsWith('apps/api/src/') &&
+      /\.\s*businessConfig\b/.test(source) &&
+      !allowedBusinessConfigPolicyFiles.has(sourcePath)
+    ) {
+      const directDelegateMatches = [
+        ...source.matchAll(/\.\s*businessConfig\s*\./g),
+      ];
+      for (const match of directDelegateMatches) {
+        const start = match.index ?? 0;
+        const delegateWindow = source.slice(start, start + 5000);
+        for (const field of forbiddenBrandStoreContractFields) {
+          if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(delegateWindow)) {
+            failures.push(
+              `Benefits policy must not gain a new direct BusinessConfig persistence consumer: ${sourcePath} -> ${field}`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  for (const ordersPath of [
+    ordersPolicyConsumer,
+    ordersCompositionModule,
+    ordersRedemptionPolicy,
+    ordersRedemptionCharacterization,
+  ]) {
+    if (!existsSync(join(REPOSITORY_ROOT, ordersPath))) {
+      failures.push(`Orders Benefits policy migration path missing: ${ordersPath}`);
+    }
+  }
+
+  const ordersPolicyConsumerPath = join(REPOSITORY_ROOT, ordersPolicyConsumer);
+  if (existsSync(ordersPolicyConsumerPath)) {
+    const source = readFileSync(ordersPolicyConsumerPath, 'utf8');
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(ordersPolicyConsumerPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    const policyReadCount = (
+      source.match(/loyaltyPolicyReader\.getLoyaltyPolicySnapshot\s*\(\s*\)/g) ?? []
+    ).length;
+    const requestedPointsCallCount = (
+      source.match(/resolveRequestedLoyaltyPoints\s*\(\s*dto\s*,/g) ?? []
+    ).length;
+    const requestedRedeemCallCount = (
+      source.match(
+        /resolveRequestedLoyaltyRedeemCents\s*\(\s*requestedPoints\s*,/g,
+      ) ?? []
+    ).length;
+    if (
+      !importsPublicSurface ||
+      !source.includes('LOYALTY_POLICY_READER') ||
+      policyReadCount < 2 ||
+      requestedPointsCallCount < 2 ||
+      requestedRedeemCallCount < 1 ||
+      source.includes('DEFAULT_REDEEM_DOLLAR_PER_POINT') ||
+      source.includes('pricingConfig.redeemDollarPerPoint') ||
+      source.includes('existing.redeemDollarPerPoint')
+    ) {
+      failures.push(
+        `Orders loyalty redemption policy must read redeemDollarPerPoint through the Benefits public reader without BusinessConfig fallback: ${ordersPolicyConsumer}`,
+      );
+    }
+  }
+
+  const ordersCompositionModulePath = join(
+    REPOSITORY_ROOT,
+    ordersCompositionModule,
+  );
+  if (existsSync(ordersCompositionModulePath)) {
+    const source = readFileSync(ordersCompositionModulePath, 'utf8');
+    if (
+      !source.includes("../loyalty/public-api") ||
+      source.includes("../loyalty/loyalty.module")
+    ) {
+      failures.push(
+        `Orders composition must import LoyaltyModule through the Benefits public surface: ${ordersCompositionModule}`,
+      );
     }
   }
 
