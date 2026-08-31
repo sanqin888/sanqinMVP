@@ -296,4 +296,235 @@ describe('Loyalty policy characterization', () => {
       ]),
     );
   });
+
+  it('rolls back mixed points and store balance with distinct refund ledger identities', async () => {
+    type LedgerTarget = 'POINTS' | 'BALANCE';
+    type LedgerRow = {
+      id: string;
+      accountId: string;
+      orderId: string;
+      type: string;
+      target: LedgerTarget;
+      sourceKey: string;
+      deltaMicro: bigint;
+      balanceAfterMicro: bigint;
+      note?: string;
+    };
+    type LedgerWhere = Partial<
+      Pick<LedgerRow, 'orderId' | 'type' | 'target' | 'sourceKey'>
+    >;
+    type LedgerCreateArgs = {
+      data: Omit<LedgerRow, 'id' | 'target'> & { target?: LedgerTarget };
+    };
+    type AccountState = {
+      id: string;
+      userId: string;
+      pointsMicro: bigint;
+      balanceMicro: bigint;
+      tier: string;
+      lifetimeSpendCents: number;
+    };
+
+    const orderId = '22222222-2222-4222-8222-222222222222';
+    const account: AccountState = {
+      id: '11111111-1111-4111-8111-111111111111',
+      userId: 'member-db-id',
+      pointsMicro: 40_400_000n,
+      balanceMicro: 95_000_000n,
+      tier: 'BRONZE',
+      lifetimeSpendCents: 1500,
+    };
+    const ledgerRows: LedgerRow[] = [
+      {
+        id: 'redeem-points',
+        accountId: account.id,
+        orderId,
+        type: 'REDEEM_ON_ORDER',
+        target: 'POINTS',
+        sourceKey: 'ORDER',
+        deltaMicro: -10_000_000n,
+        balanceAfterMicro: 40_000_000n,
+      },
+      {
+        id: 'redeem-balance',
+        accountId: account.id,
+        orderId,
+        type: 'REDEEM_ON_ORDER',
+        target: 'BALANCE',
+        sourceKey: 'PAYMENT_BALANCE',
+        deltaMicro: -5_000_000n,
+        balanceAfterMicro: 95_000_000n,
+      },
+      {
+        id: 'earn',
+        accountId: account.id,
+        orderId,
+        type: 'EARN_ON_PURCHASE',
+        target: 'POINTS',
+        sourceKey: 'ORDER',
+        deltaMicro: 400_000n,
+        balanceAfterMicro: 40_400_000n,
+      },
+    ];
+
+    const matchesWhere = (row: LedgerRow, where: LedgerWhere) =>
+      (where.orderId === undefined || row.orderId === where.orderId) &&
+      (where.type === undefined || row.type === where.type) &&
+      (where.target === undefined || row.target === where.target) &&
+      (where.sourceKey === undefined || row.sourceKey === where.sourceKey);
+
+    const ledgerFindUnique = jest.fn().mockImplementation(
+      (args: {
+        where: {
+          orderId_type_sourceKey: {
+            orderId: string;
+            type: string;
+            sourceKey: string;
+          };
+        };
+      }) => {
+        const key = args.where.orderId_type_sourceKey;
+        return Promise.resolve(
+          ledgerRows.find(
+            (row) =>
+              row.orderId === key.orderId &&
+              row.type === key.type &&
+              row.sourceKey === key.sourceKey,
+          ) ?? null,
+        );
+      },
+    );
+    const ledgerFindFirst = jest
+      .fn()
+      .mockImplementation((args: { where: LedgerWhere }) =>
+        Promise.resolve(
+          ledgerRows.find((row) => matchesWhere(row, args.where)) ?? null,
+        ),
+      );
+    const ledgerCreate = jest
+      .fn()
+      .mockImplementation((args: LedgerCreateArgs) => {
+        const duplicate = ledgerRows.some(
+          (row) =>
+            row.orderId === args.data.orderId &&
+            row.type === args.data.type &&
+            row.sourceKey === args.data.sourceKey,
+        );
+        if (duplicate) {
+          throw new Error(
+            `duplicate loyalty ledger key: ${args.data.orderId}:${args.data.type}:${args.data.sourceKey}`,
+          );
+        }
+        const row: LedgerRow = {
+          id: `ledger-${ledgerRows.length + 1}`,
+          ...args.data,
+          target: args.data.target ?? 'POINTS',
+        };
+        ledgerRows.push(row);
+        return Promise.resolve(row);
+      });
+    const accountUpdate = jest.fn().mockImplementation(
+      (args: {
+        data: {
+          pointsMicro?: bigint;
+          balanceMicro?: bigint;
+          lifetimeSpendCents?: number;
+          tier?: string;
+        };
+      }) => {
+        if (args.data.pointsMicro !== undefined) {
+          account.pointsMicro = args.data.pointsMicro;
+        }
+        if (args.data.balanceMicro !== undefined) {
+          account.balanceMicro = args.data.balanceMicro;
+        }
+        if (args.data.lifetimeSpendCents !== undefined) {
+          account.lifetimeSpendCents = args.data.lifetimeSpendCents;
+        }
+        if (args.data.tier !== undefined) {
+          account.tier = args.data.tier;
+        }
+        return Promise.resolve({ ...account });
+      },
+    );
+    const tx = {
+      loyaltyAccount: {
+        upsert: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve({ ...account })),
+        update: accountUpdate,
+      },
+      loyaltyLedger: {
+        findUnique: ledgerFindUnique,
+        findFirst: ledgerFindFirst,
+        create: ledgerCreate,
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: account.id }]),
+    };
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          userId: account.userId,
+          subtotalCents: 3000,
+          subtotalAfterDiscountCents: 2000,
+          couponDiscountCents: 0,
+          loyaltyRedeemCents: 1000,
+        }),
+      },
+      brandConfig: {
+        findUnique: jest.fn().mockResolvedValue({
+          earnPtPerDollar: 0.01,
+          redeemDollarPerPoint: 1,
+          referralPtPerDollar: 0.01,
+          tierMultiplierBronze: 1,
+          tierMultiplierSilver: 2,
+          tierMultiplierGold: 3,
+          tierMultiplierPlatinum: 5,
+          tierThresholdSilver: 100000,
+          tierThresholdGold: 1000000,
+          tierThresholdPlatinum: 3000000,
+        }),
+      },
+      $transaction: jest
+        .fn()
+        .mockImplementation((callback: (client: typeof tx) => Promise<void>) =>
+          callback(tx),
+        ),
+    };
+    const service = new LoyaltyService(prisma as never, {} as never);
+
+    await expect(service.rollbackOnRefund(orderId)).resolves.toBeUndefined();
+
+    expect(
+      ledgerRows
+        .filter((row) => row.type.startsWith('REFUND_'))
+        .map((row) => `${row.type}:${row.target}:${row.sourceKey}`),
+    ).toEqual([
+      'REFUND_REVERSE_EARN:POINTS:FULL_REFUND',
+      'REFUND_RETURN_REDEEM:POINTS:FULL_REFUND',
+      'REFUND_RETURN_REDEEM:BALANCE:FULL_REFUND_BALANCE',
+    ]);
+    expect(account).toMatchObject({
+      pointsMicro: 50_000_000n,
+      balanceMicro: 100_000_000n,
+      lifetimeSpendCents: 0,
+      tier: 'BRONZE',
+    });
+    expect(ledgerFindFirst).toHaveBeenCalledWith({
+      where: {
+        orderId,
+        type: 'REFUND_RETURN_REDEEM',
+        target: 'BALANCE',
+      },
+    });
+
+    const createCountAfterFirstRefund = ledgerCreate.mock.calls.length;
+    await expect(service.rollbackOnRefund(orderId)).resolves.toBeUndefined();
+    expect(ledgerCreate).toHaveBeenCalledTimes(createCountAfterFirstRefund);
+    expect(account).toMatchObject({
+      pointsMicro: 50_000_000n,
+      balanceMicro: 100_000_000n,
+      lifetimeSpendCents: 0,
+    });
+  });
 });

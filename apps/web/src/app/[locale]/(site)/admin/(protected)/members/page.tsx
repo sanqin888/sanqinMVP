@@ -44,8 +44,8 @@ type MemberDetail = {
   status: StatusKey;
   createdAt: string;
   marketingEmailOptIn: boolean;
+  birthdayYear: number | null;
   birthdayMonth: number | null;
-  birthdayDay: number | null;
   account: {
     tier: TierKey;
     points: number;
@@ -854,8 +854,8 @@ export default function AdminMembersPage() {
                 <div className="rounded-md bg-slate-50 p-3">
                   <p className="text-xs text-slate-400">{isZh ? "生日" : "Birthday"}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-800">
-                    {memberDetail.birthdayMonth && memberDetail.birthdayDay
-                      ? `${memberDetail.birthdayMonth}/${memberDetail.birthdayDay}`
+                    {memberDetail.birthdayYear && memberDetail.birthdayMonth
+                      ? `${memberDetail.birthdayYear}/${String(memberDetail.birthdayMonth).padStart(2, "0")}`
                       : "-"}
                   </p>
                 </div>

@@ -23,6 +23,7 @@ const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
 const LEDGER_SOURCE_ORDER = 'ORDER';
 const LEDGER_SOURCE_PAYMENT_BALANCE = 'PAYMENT_BALANCE';
 const LEDGER_SOURCE_FULL_REFUND = 'FULL_REFUND';
+const LEDGER_SOURCE_FULL_REFUND_BALANCE = 'FULL_REFUND_BALANCE';
 const ledgerSourceAmend = (amendStableId: string) => `AMEND:${amendStableId}`;
 const LEDGER_SOURCE_TOPUP = 'TOPUP';
 const LEDGER_SOURCE_MANUAL = 'MANUAL';
@@ -1116,9 +1117,8 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
         const existedBalanceRefund = await tx.loyaltyLedger.findFirst({
           where: {
             orderId,
-            type: LoyaltyEntryType.REFUND_RETURN_REDEEM, // 复用类型
-            sourceKey: LEDGER_SOURCE_FULL_REFUND,
-            target: 'BALANCE', // ✅
+            type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
+            target: 'BALANCE',
           },
         });
 
@@ -1131,8 +1131,8 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
               accountId: acc.id,
               orderId,
               type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
-              target: 'BALANCE', // ✅ 标记
-              sourceKey: LEDGER_SOURCE_FULL_REFUND,
+              target: 'BALANCE',
+              sourceKey: LEDGER_SOURCE_FULL_REFUND_BALANCE,
               deltaMicro: back,
               balanceAfterMicro: storeBalance,
               note: 'return store balance on refund',

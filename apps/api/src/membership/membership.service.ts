@@ -366,7 +366,7 @@ export class MembershipService {
    * - userStableId 必填，供前后端识别
    * - firstName / lastName / email：可以更新
    * - referredByUserId：只在“当前为空且 referrerEmail 有效”时写入一次
-   * - birthdayMonth / birthdayDay：只在“当前为空且生日合法”时写入一次
+   * - 生日由会员 onboarding / profile 专用入口处理，不在概要读取时隐式写入
    */
   private async ensureUser(params: {
     userStableId: string;
@@ -374,8 +374,6 @@ export class MembershipService {
     lastName?: string | null;
     email?: string | null;
     referrerEmail?: string;
-    birthdayMonth?: number;
-    birthdayDay?: number;
     phone?: string;
     phoneVerificationToken?: string;
   }) {
@@ -385,8 +383,6 @@ export class MembershipService {
       lastName,
       email,
       referrerEmail: referrerEmailParam,
-      birthdayMonth,
-      birthdayDay,
       phone,
       phoneVerificationToken,
     } = params;
@@ -424,17 +420,6 @@ export class MembershipService {
       }
     }
 
-    // —— 校验生日（只要简单范围；月份和日期都存在才算）
-    const validBirthday =
-      typeof birthdayMonth === 'number' &&
-      typeof birthdayDay === 'number' &&
-      Number.isInteger(birthdayMonth) &&
-      Number.isInteger(birthdayDay) &&
-      birthdayMonth >= 1 &&
-      birthdayMonth <= 12 &&
-      birthdayDay >= 1 &&
-      birthdayDay <= 31;
-
     // 先查是否已有该 User
     let user = await this.prisma.user.findUnique({
       where: { userStableId },
@@ -447,7 +432,7 @@ export class MembershipService {
     }
 
     if (!user) {
-      // ⭐ 首次注册：可以一次性写入推荐人和生日
+      // ⭐ 首次注册：基础资料和推荐关系在此建立；生日由专用入口收集
       user = await this.prisma.user.create({
         data: {
           userStableId,
@@ -455,16 +440,10 @@ export class MembershipService {
           firstName: initialFirstName,
           lastName: normalizedLastName,
           ...(referrerId ? { referredByUserId: referrerId } : {}),
-          ...(validBirthday
-            ? {
-                birthdayMonth,
-                birthdayDay,
-              }
-            : {}),
         },
       });
     } else {
-      // ⭐ 已有用户：只在字段为空时补充 referrer / 生日；姓名/email 按需更新
+      // ⭐ 已有用户：只在字段为空时补充 referrer；姓名/email 按需更新
       const updateData: Prisma.UserUpdateInput = {};
 
       if (!user.firstName && normalizedFirstName) {
@@ -485,15 +464,6 @@ export class MembershipService {
 
       if (!user.referredByUserId && referrerId) {
         updateData.referredByUserId = referrerId;
-      }
-
-      if (
-        user.birthdayMonth == null &&
-        user.birthdayDay == null &&
-        validBirthday
-      ) {
-        updateData.birthdayMonth = birthdayMonth!;
-        updateData.birthdayDay = birthdayDay!;
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -528,8 +498,6 @@ export class MembershipService {
     lastName?: string | null;
     email?: string | null;
     referrerEmail?: string;
-    birthdayMonth?: number;
-    birthdayDay?: number;
     phone?: string;
     phoneVerificationToken?: string;
   }) {
@@ -539,8 +507,6 @@ export class MembershipService {
       lastName,
       email,
       referrerEmail: referrerEmailParam,
-      birthdayMonth,
-      birthdayDay,
       phone,
       phoneVerificationToken,
     } = params;
@@ -551,8 +517,6 @@ export class MembershipService {
       lastName,
       email,
       referrerEmail: referrerEmailParam,
-      birthdayMonth,
-      birthdayDay,
       phone,
       phoneVerificationToken,
     });
@@ -616,8 +580,8 @@ export class MembershipService {
       phoneVerified: !!user.phoneVerifiedAt,
       twoFactorEnabledAt: user.twoFactorEnabledAt,
       twoFactorMethod: user.twoFactorMethod,
+      birthdayYear: user.birthdayYear ?? null,
       birthdayMonth: user.birthdayMonth ?? null,
-      birthdayDay: user.birthdayDay ?? null,
       referrerEmail,
       language: user.language === UserLanguage.ZH ? 'zh' : 'en',
 
@@ -1869,16 +1833,16 @@ export class MembershipService {
     userStableId: string;
     firstName?: string | null;
     lastName?: string | null;
+    birthdayYear?: number | null;
     birthdayMonth?: number | null;
-    birthdayDay?: number | null;
     language?: string | null;
   }) {
     const {
       userStableId,
       firstName,
       lastName,
+      birthdayYear,
       birthdayMonth,
-      birthdayDay,
       language,
     } = params;
 
@@ -1912,26 +1876,41 @@ export class MembershipService {
       updateData.language = normalizedLanguage;
     }
 
-    const wantsBirthdayUpdate = birthdayMonth != null || birthdayDay != null;
+    const wantsBirthdayUpdate = birthdayYear != null || birthdayMonth != null;
 
     if (wantsBirthdayUpdate) {
       const validBirthday =
+        typeof birthdayYear === 'number' &&
         typeof birthdayMonth === 'number' &&
-        typeof birthdayDay === 'number' &&
+        Number.isInteger(birthdayYear) &&
         Number.isInteger(birthdayMonth) &&
-        Number.isInteger(birthdayDay) &&
+        birthdayYear >= 1900 &&
         birthdayMonth >= 1 &&
-        birthdayMonth <= 12 &&
-        birthdayDay >= 1 &&
-        birthdayDay <= 31;
+        birthdayMonth <= 12;
 
       if (!validBirthday) {
         throw new BadRequestException('invalid birthday');
       }
 
-      if (user.birthdayMonth == null && user.birthdayDay == null) {
+      const now = new Date();
+      const currentYear = now.getUTCFullYear();
+      const currentMonth = now.getUTCMonth() + 1;
+      const yearDifference = currentYear - birthdayYear;
+      const safelyAtLeastMinimumAge =
+        yearDifference > 13 ||
+        (yearDifference === 13 && currentMonth > birthdayMonth);
+
+      if (!safelyAtLeastMinimumAge) {
+        throw new BadRequestException(
+          'membership is not available under age 13',
+        );
+      }
+
+      const hasCompleteBirthday =
+        user.birthdayYear != null && user.birthdayMonth != null;
+      if (!hasCompleteBirthday) {
+        updateData.birthdayYear = birthdayYear;
         updateData.birthdayMonth = birthdayMonth;
-        updateData.birthdayDay = birthdayDay;
       }
     }
 
@@ -1939,8 +1918,8 @@ export class MembershipService {
       return {
         firstName: user.firstName,
         lastName: user.lastName,
+        birthdayYear: user.birthdayYear,
         birthdayMonth: user.birthdayMonth,
-        birthdayDay: user.birthdayDay,
         language: user.language === UserLanguage.ZH ? 'zh' : 'en',
       };
     }
@@ -1951,8 +1930,8 @@ export class MembershipService {
       select: {
         firstName: true,
         lastName: true,
+        birthdayYear: true,
         birthdayMonth: true,
-        birthdayDay: true,
         language: true,
       },
     });
@@ -1960,8 +1939,8 @@ export class MembershipService {
     return {
       firstName: updated.firstName,
       lastName: updated.lastName,
+      birthdayYear: updated.birthdayYear,
       birthdayMonth: updated.birthdayMonth,
-      birthdayDay: updated.birthdayDay,
       language: updated.language === UserLanguage.ZH ? 'zh' : 'en',
     };
   }

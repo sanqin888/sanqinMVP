@@ -127,8 +127,8 @@ export class AdminMembersController {
       lastName?: string | null;
       email?: string | null;
       phone?: string | null;
+      birthdayYear?: number | null;
       birthdayMonth?: number | null;
-      birthdayDay?: number | null;
     },
   ) {
     return this.service.updateMember(userStableId, body);

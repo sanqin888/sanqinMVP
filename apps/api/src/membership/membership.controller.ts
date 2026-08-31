@@ -278,7 +278,7 @@ export class MembershipController {
     return { success: true, ...result };
   }
 
-  // ✅ 更新姓名 / 生日（birthdayDay 保留为 legacy profile 字段）
+  // ✅ 更新姓名 / 生日（生日只收集出生年份和月份）
   @Post('profile')
   async updateProfile(
     @Req() req: AuthedRequest,
@@ -286,8 +286,8 @@ export class MembershipController {
     body: {
       firstName?: string | null;
       lastName?: string | null;
+      birthdayYear?: number | null;
       birthdayMonth?: number | null;
-      birthdayDay?: number | null;
       language?: string | null;
     },
   ) {
@@ -313,10 +313,10 @@ export class MembershipController {
       userStableId,
       firstName: body.firstName ?? null,
       lastName: body.lastName ?? null,
+      birthdayYear:
+        typeof body.birthdayYear === 'number' ? body.birthdayYear : null,
       birthdayMonth:
         typeof body.birthdayMonth === 'number' ? body.birthdayMonth : null,
-      birthdayDay:
-        typeof body.birthdayDay === 'number' ? body.birthdayDay : null,
       language: normalizedLanguage,
     });
 
