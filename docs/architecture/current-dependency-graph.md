@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Admin Business Brand/Store read cutover base: `origin/dev@fda5b080` (2026-08-31).
+Phase 2 Uber Brand/Store read cutover base: `origin/dev@c908bef8` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -106,6 +106,13 @@ pair fails CI.
   trigger and mixed Loyalty rollback semantics remain unchanged. Architecture CI
   allows only those compatibility update methods in this read-cutover consumer;
   `BusinessConfig` reads/creates cannot return.
+- Uber menu schedule/tax and store-status source reads now cross the Brand/Store
+  boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
+  sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
+  both HTTP and dedicated-worker runtimes; Uber persistence no longer reads or
+  creates `BusinessConfig`. Existing Uber response/source labels are preserved in
+  this cutover so the verified public/wire behavior does not change. Uber
+  architecture CI now rejects any production `.businessConfig` regression.
 - Messaging configuration now caches the canonical Brand/Store snapshot instead
   of a Prisma `BusinessConfig` model and no longer creates configuration on read.
   Brand support contact fields feed message templates, while Store name/address/

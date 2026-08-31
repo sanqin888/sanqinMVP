@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/shared/uber-application.error';
+import {
+  UBER_STORE_CONFIG_QUERY,
+  type UberStoreConfigQueryPort,
+} from '../../application/shared/uber-store-config.port';
 import type { UberMenuDraftReadPort } from '../../application/menu/uber-menu-draft.ports';
 import {
   UBER_PUBLIC_BASE_URL,
@@ -55,6 +59,8 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     private readonly prisma: PrismaService,
     @Inject(UBER_PUBLIC_BASE_URL)
     private readonly urls: UberPublicBaseUrlPort,
+    @Inject(UBER_STORE_CONFIG_QUERY)
+    private readonly storeConfig: UberStoreConfigQueryPort,
   ) {}
 
   async getUberMenuDraft(storeId?: string) {
@@ -257,13 +263,10 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
 
   private async readBusinessSchedule() {
     const [config, hours] = await Promise.all([
-      this.prisma.businessConfig.findUnique({
-        where: { id: 1 },
-        select: { timezone: true, salesTaxRate: true },
-      }),
+      this.storeConfig.getStoreConfig(),
       this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
     ]);
-    return config ? { ...config, hours } : null;
+    return { timezone: config.timezone, salesTaxRate: config.salesTaxRate, hours };
   }
 
   private async getUberMenuSchedule(): Promise<{

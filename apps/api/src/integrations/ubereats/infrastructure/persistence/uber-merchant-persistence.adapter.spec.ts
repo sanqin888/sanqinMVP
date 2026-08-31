@@ -92,12 +92,33 @@ describe('UberOperationsAlertPrismaAdapter store status alerts', () => {
         create: jest.fn().mockResolvedValue({}),
       },
     };
+    const storeConfig = {
+      getStoreConfig: jest.fn().mockResolvedValue({
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      }),
+    };
     const adapter = new UberOperationsAlertPrismaAdapter(
       prisma as never,
       {} as never,
+      storeConfig as never,
     );
-    return { adapter, prisma };
+    return { adapter, prisma, storeConfig };
   }
+
+  it('reads store status source from the canonical store config port', async () => {
+    const { adapter, storeConfig } = setup(null);
+    storeConfig.getStoreConfig.mockResolvedValue({
+      isTemporarilyClosed: true,
+      temporaryCloseReason: 'Kitchen maintenance',
+    });
+
+    await expect(adapter.getStoreStatusSource()).resolves.toEqual({
+      isTemporarilyClosed: true,
+      temporaryCloseReason: 'Kitchen maintenance',
+    });
+    expect(storeConfig.getStoreConfig).toHaveBeenCalledTimes(1);
+  });
 
   it('updates an existing open alert for the same store status target instead of duplicating it', async () => {
     const { adapter, prisma } = setup('ticket-1');

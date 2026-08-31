@@ -5,6 +5,11 @@ import { OrderEventsBus } from '../../messaging/order-events.bus';
 import { OrdersModule } from '../../orders/orders.module';
 import { OrderIngestionService } from '../../orders/order-ingestion.service';
 import { PrismaModule } from '../../prisma/prisma.module';
+import {
+  BRAND_STORE_CONFIG_READER,
+  BrandStoreConfigModule,
+  type BrandStoreConfigReaderPort,
+} from '../../store/public-api';
 import { UberEatsMenuController } from './api/menu.controller';
 import { UberEatsOAuthController } from './api/oauth.controller';
 import { UberEatsOperationsController } from './api/operations.controller';
@@ -14,6 +19,10 @@ import { ClaimAndExecuteUberOrderActionsUseCase } from './application/orders/cla
 import { ClaimAndProcessUberWebhookInboxUseCase } from './application/orders/claim-and-process-uber-webhook-inbox.use-case';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ExecuteUberOrderActionWorker } from './application/orders/uber-order.use-cases';
+import {
+  UBER_STORE_CONFIG_QUERY,
+  type UberStoreConfigQueryPort,
+} from './application/shared/uber-store-config.port';
 import {
   UBER_EATS_STARTUP_CONFIG,
   validateUberEatsStartupConfig,
@@ -37,6 +46,23 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
   {
     provide: UBER_EATS_STARTUP_CONFIG,
     useFactory: () => validateUberEatsStartupConfig(process.env),
+  },
+  {
+    provide: UBER_STORE_CONFIG_QUERY,
+    inject: [BRAND_STORE_CONFIG_READER],
+    useFactory: (
+      reader: BrandStoreConfigReaderPort,
+    ): UberStoreConfigQueryPort => ({
+      getStoreConfig: async () => {
+        const store = await reader.getStoreSnapshot();
+        return {
+          timezone: store.timezone,
+          salesTaxRate: store.salesTaxRate,
+          isTemporarilyClosed: store.isTemporarilyClosed,
+          temporaryCloseReason: store.temporaryCloseReason,
+        };
+      },
+    }),
   },
   ...createCommonWiring(),
   ...createMerchantWiring(),
@@ -73,7 +99,7 @@ export function createUberEatsWorkerRuntimeModule(
 ): DynamicModule {
   return {
     module: UberEatsWorkerRuntimeCompositionModule,
-    imports: [PrismaModule],
+    imports: [PrismaModule, BrandStoreConfigModule],
     providers: [
       OrderEventsBus,
       OrderIngestionService,
@@ -88,7 +114,13 @@ export function createUberEatsWorkerRuntimeModule(
  * explicit; worker dependencies remain exported only for the dedicated runtime.
  */
 @Module({
-  imports: [PrismaModule, AuthModule, MessagingModule, OrdersModule],
+  imports: [
+    PrismaModule,
+    BrandStoreConfigModule,
+    AuthModule,
+    MessagingModule,
+    OrdersModule,
+  ],
   controllers: [
     UberEatsOAuthController,
     UberEatsWebhookController,

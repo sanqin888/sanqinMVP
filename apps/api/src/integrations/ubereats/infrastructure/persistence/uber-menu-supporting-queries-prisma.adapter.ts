@@ -1,5 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_STORE_CONFIG_QUERY,
+  type UberStoreConfigQueryPort,
+} from '../../application/shared/uber-store-config.port';
 import type {
   MenuItemExistenceQueryPort,
   OptionChoiceExistenceQueryPort,
@@ -15,7 +19,11 @@ export class UberMenuSupportingQueriesPrismaAdapter
     ProvisionedUberStoreQueryPort,
     UberBusinessScheduleQueryPort
 {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(UBER_STORE_CONFIG_QUERY)
+    private readonly storeConfig: UberStoreConfigQueryPort,
+  ) {}
 
   async menuItemExists(stableId: string): Promise<boolean> {
     const item = await this.prisma.menuItem.findUnique({
@@ -54,12 +62,9 @@ export class UberMenuSupportingQueriesPrismaAdapter
 
   async readBusinessSchedule() {
     const [config, hours] = await Promise.all([
-      this.prisma.businessConfig.findUnique({
-        where: { id: 1 },
-        select: { timezone: true, salesTaxRate: true },
-      }),
+      this.storeConfig.getStoreConfig(),
       this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
     ]);
-    return config ? { ...config, hours } : null;
+    return { timezone: config.timezone, salesTaxRate: config.salesTaxRate, hours };
   }
 }
