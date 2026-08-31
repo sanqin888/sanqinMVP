@@ -1,8 +1,17 @@
+import type { ExecutionContext, INestApplication } from '@nestjs/common';
 import { ConflictException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import { PaymentMethod } from '@prisma/client';
+import type { Server } from 'node:http';
+import request from 'supertest';
 
+import { RolesGuard } from '../auth/roles.guard';
+import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { PosDeviceGuard } from '../pos/pos-device.guard';
 import type { PosOrdersService } from '../pos/pos-orders.service';
-import type { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
+import { PosCardRefundController } from './pos-card-refund.controller';
+import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
+import { PosFullRefundController } from './pos-full-refund.controller';
 import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestration.service';
 
 const input = {
@@ -146,5 +155,145 @@ describe('PosFullRefundOrchestrationService', () => {
       });
     }
     expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
+  });
+});
+
+const controllerOrderStableId = 'c1234567890abcdefghijklmn';
+const controllerStoreStableId = '4750_Yonge_Street';
+const controllerStoreDbId = '11111111-1111-4111-8111-111111111111';
+const controllerFullRefund =
+  jest.fn<PosFullRefundOrchestrationService['refundFullOrder']>();
+const controllerCardRefund =
+  jest.fn<PosCardRefundOrchestrationService['refundFullOrder']>();
+
+describe('POS refund controller validation boundaries', () => {
+  let app: INestApplication;
+  let httpServer: Server;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    controllerFullRefund.mockResolvedValue({
+      order: { orderStableId: controllerOrderStableId },
+      outcome: 'refunded',
+    } as never);
+    controllerCardRefund.mockResolvedValue({
+      mode: 'MANAGED',
+      status: 'SUCCEEDED',
+      operation: 'REFUND',
+      order: { orderStableId: controllerOrderStableId },
+      refundedCardBaseCents: 0,
+      refundedAdditionalChargeCents: 0,
+      refundedCustomerTotalCents: 0,
+      failureCode: null,
+      failureMessage: null,
+    } as never);
+
+    const moduleRef = await Test.createTestingModule({
+      controllers: [PosFullRefundController, PosCardRefundController],
+      providers: [
+        {
+          provide: PosFullRefundOrchestrationService,
+          useValue: { refundFullOrder: controllerFullRefund },
+        },
+        {
+          provide: PosCardRefundOrchestrationService,
+          useValue: { refundFullOrder: controllerCardRefund },
+        },
+      ],
+    })
+      .overrideGuard(SessionAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(PosDeviceGuard)
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          const httpRequest = context.switchToHttp().getRequest<{
+            posDevice?: { storeId: string; storeStableId: string };
+          }>();
+          httpRequest.posDevice = {
+            storeId: controllerStoreDbId,
+            storeStableId: controllerStoreStableId,
+          };
+          return true;
+        },
+      })
+      .compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+    httpServer = app.getHttpServer() as unknown as Server;
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('accepts a valid full-refund path parameter while validating only the request body', async () => {
+    const payload = {
+      reason: 'Customer cancellation',
+      operatorName: 'Staff',
+      refundAmountCents: 2031,
+      originalPaymentMethod: 'STORE_BALANCE',
+      refundMethod: 'STORE_BALANCE',
+    } as const;
+
+    const response = await request(httpServer)
+      .post(`/pos/orders/${controllerOrderStableId}/full-refund`)
+      .send(payload);
+
+    expect(response.status).toBe(201);
+    expect(controllerFullRefund).toHaveBeenCalledWith(
+      controllerStoreStableId,
+      controllerOrderStableId,
+      payload,
+    );
+  });
+
+  it('still rejects an invalid full-refund body', async () => {
+    const response = await request(httpServer)
+      .post(`/pos/orders/${controllerOrderStableId}/full-refund`)
+      .send({
+        reason: '',
+        operatorName: 'Staff',
+        refundAmountCents: 2031,
+        originalPaymentMethod: 'STORE_BALANCE',
+        refundMethod: 'STORE_BALANCE',
+      });
+
+    expect(response.status).toBe(400);
+    expect(controllerFullRefund).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid managed-card refund path parameter while validating only the request body', async () => {
+    const payload = {
+      reason: 'Customer cancellation',
+      operatorName: 'Staff',
+      refundMethod: 'CARD',
+    } as const;
+
+    const response = await request(httpServer)
+      .post(`/pos/payments/card/orders/${controllerOrderStableId}/full-refund`)
+      .send(payload);
+
+    expect(response.status).toBe(201);
+    expect(controllerCardRefund).toHaveBeenCalledWith(
+      controllerStoreStableId,
+      controllerOrderStableId,
+      payload,
+    );
+  });
+
+  it('still rejects an invalid managed-card refund body', async () => {
+    const response = await request(httpServer)
+      .post(`/pos/payments/card/orders/${controllerOrderStableId}/full-refund`)
+      .send({
+        reason: 'Customer cancellation',
+        operatorName: '',
+        refundMethod: 'CARD',
+      });
+
+    expect(response.status).toBe(400);
+    expect(controllerCardRefund).not.toHaveBeenCalled();
   });
 });
