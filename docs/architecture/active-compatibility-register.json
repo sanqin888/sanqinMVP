@@ -17,25 +17,30 @@
     {
       "compat_id": "brand-store.business-config.v1",
       "status": "active",
-      "old_owner": "BusinessConfig single-store compatibility model and the remaining POS pause/resume compatibility writer",
+      "old_owner": "BusinessConfig single-store compatibility model plus its one-way BusinessConfig-to-canonical trigger",
       "new_owner": "BrandConfig plus per-store StoreConfig behind the Brand/Store reader/writer boundary; Benefits loyalty policy is tracked separately",
       "dual_write_or_read": [
         "Orders delivery pricing, sales tax, store coordinates, Uber Direct enablement, and store-local timezone reads use BRAND_STORE_CONFIG_READER; Orders no longer reads or creates BusinessConfig",
-        "POS StoreStatus and Connectivity reads now use BRAND_STORE_CONFIG_READER, including the watchdog recovery race check; POS pause/resume persistence still writes BusinessConfig as an explicit compatibility write so the existing one-way BusinessConfig-to-StoreConfig trigger keeps legacy readers synchronized",
-        "Admin Business reads use BRAND_STORE_CONFIG_READER and Brand/Store writes use BRAND_STORE_CONFIG_WRITER; Admin no longer writes BusinessConfig, BrandConfig, or StoreConfig through Prisma directly. The Brand/Store owner writer persists canonical rows first and refreshes the complete overlapping BusinessConfig compatibility copy in the same transaction so later POS compatibility writes cannot replay stale Brand/Store values",
+        "POS StoreStatus reads and pause/resume writes now use BRAND_STORE_CONFIG_READER/WRITER. Timed auto-resume compare-and-set persistence is owned by the Brand/Store writer, so POS no longer reads or writes BusinessConfig directly while preserving the existing race protection",
+        "Admin Business reads use BRAND_STORE_CONFIG_READER and Brand/Store writes use BRAND_STORE_CONFIG_WRITER; Admin no longer writes BusinessConfig, BrandConfig, or StoreConfig through Prisma directly. The Brand/Store owner writer persists canonical rows first and refreshes the complete overlapping BusinessConfig compatibility copy in the same transaction",
         "Retained Loyalty fields on the legacy Admin Business rollback surface are delegated to LOYALTY_POLICY_WRITER rather than being mixed into Brand/Store persistence",
         "Uber menu schedule/tax and store-status source reads use an Uber application-owned store-config query port wired only in ubereats.module.ts to BRAND_STORE_CONFIG_READER; Uber production code no longer reads or creates BusinessConfig, while existing response source labels remain unchanged for compatibility",
-        "The BusinessConfig compatibility trigger remains active while the POS compatibility writer is migrated; the Brand/Store owner writer is the only Brand/Store boundary allowed to maintain the compatibility copy"
+        "The BusinessConfig compatibility trigger remains active because the Benefits Phase B writer still updates the legacy Loyalty copy. The Brand/Store owner therefore continues refreshing the complete overlapping BusinessConfig snapshot so a later Loyalty compatibility write cannot replay stale Brand/Store values"
       ],
-      "parity_metric": "Per-field BrandConfig/StoreConfig versus BusinessConfig difference report must remain zero for one complete business cycle; Admin direct BusinessConfig/BrandConfig/StoreConfig writes must remain zero",
-      "rollback": "Brand/Store production reads and Admin writes are canonical; keep the owner-maintained BusinessConfig compatibility copy and one-way trigger until the remaining POS writer is migrated and write parity is proven",
-      "exit_criteria": "All Brand/Store fields have one owner, POS and all other consumers no longer read or write BusinessConfig directly, then the Brand/Store compatibility copy and trigger can be contracted",
-      "remove_pr": "Phase 2 Brand/Store contraction PR (to be created after expand/backfill/cutover)",
+      "parity_metric": "Per-field BrandConfig/StoreConfig versus BusinessConfig difference report must remain zero for one complete business cycle; direct Admin and POS BusinessConfig/BrandConfig/StoreConfig writes must remain zero",
+      "rollback": "Brand/Store production reads and all application Brand/Store writes are canonical; keep the owner-maintained BusinessConfig compatibility copy and one-way trigger until Benefits removes its legacy BusinessConfig write dependency and Brand/Store write parity is proven",
+      "exit_criteria": "All Brand/Store fields have one owner, application consumers no longer read or write BusinessConfig directly, Benefits no longer depends on the legacy trigger, and the Brand/Store compatibility copy plus trigger can then be contracted",
+      "remove_pr": "POS writer cutover is implemented in this slice; final Brand/Store compatibility-copy and trigger contraction follows Benefits trigger split plus parity observation",
       "deadline": "Before Phase 2 Brand/Store exit",
       "evidence": [
         "apps/api/prisma/schema.prisma",
         "apps/api/src/store/brand-store-config.reader.ts",
+        "apps/api/src/store/brand-store-config.writer.spec.ts",
+        "apps/api/src/pos/pos-store-status.service.ts",
+        "apps/api/src/pos/pos-connectivity-watchdog.service.spec.ts",
         "apps/api/src/admin/business/admin-business.service.ts",
+        "tools/architecture/context-baseline.json",
+        "tools/architecture/scan-architecture.mjs",
         "SanQ full-site modularization audit section 3.3 and 6.2"
       ]
     },

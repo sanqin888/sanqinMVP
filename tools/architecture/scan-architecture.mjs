@@ -557,10 +557,12 @@ if (brandStoreCanonicalConfigOwnership) {
       !/\.\$transaction\s*\(/.test(writerSource) ||
       !/tx\.brandConfig\.update\s*\(/.test(writerSource) ||
       !/tx\.storeConfig\.update\s*\(/.test(writerSource) ||
+      !/tx\.storeConfig\.updateMany\s*\(/.test(writerSource) ||
+      !writerSource.includes('resumeTemporaryClosureIfMatches') ||
       !/tx\.businessConfig\.update\s*\(/.test(writerSource)
     ) {
       failures.push(
-        `Brand/Store writer must persist canonical config and keep the registered compatibility copy inside one transaction: ${writerImplementation}`,
+        `Brand/Store writer must own canonical config writes, preserve temporary-closure compare-and-set semantics, and keep the registered compatibility copy inside one transaction: ${writerImplementation}`,
       );
     }
     const legacyWriterMethods = [

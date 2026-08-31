@@ -1,6 +1,5 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { PrismaService } from '../prisma/prisma.service';
 import { PosGateway } from './pos.gateway';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
@@ -9,7 +8,9 @@ import {
 import { AppLogger } from '../common/app-logger';
 import {
   BRAND_STORE_CONFIG_READER,
+  BRAND_STORE_CONFIG_WRITER,
   type BrandStoreConfigReaderPort,
+  type BrandStoreConfigWriterPort,
 } from '../store/public-api';
 
 const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';
@@ -52,9 +53,10 @@ export class PosStoreStatusService {
   private readonly logger = new AppLogger(PosStoreStatusService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly configReader: BrandStoreConfigReaderPort,
+    @Inject(BRAND_STORE_CONFIG_WRITER)
+    private readonly configWriter: BrandStoreConfigWriterPort,
     private readonly posGateway: PosGateway,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uberEatsService: UberEatsStoreStatusSyncPort,
@@ -89,18 +91,10 @@ export class PosStoreStatusService {
     const resumeAt = DateTime.fromISO(parsed.autoResumeAt);
     if (!resumeAt.isValid || resumeAt > DateTime.now()) return false;
 
-    const result = await this.prisma.businessConfig.updateMany({
-      where: {
-        id: 1,
-        isTemporarilyClosed: true,
-        temporaryCloseReason: config.temporaryCloseReason,
-      },
-      data: {
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
-      },
-    });
-    if (result.count === 0) return false;
+    const resumed = await this.configWriter.resumeTemporaryClosureIfMatches(
+      config.temporaryCloseReason,
+    );
+    if (!resumed) return false;
 
     await this.finalizeResume('auto_resume', undefined, parsed.autoResumeAt);
     return true;
@@ -138,16 +132,15 @@ export class PosStoreStatusService {
       throw new BadRequestException('Failed to calculate auto-resume time');
     }
 
-    const updated = await this.prisma.businessConfig.update({
-      where: { id: 1 },
-      data: {
+    await this.configWriter.updateConfig({
+      store: {
         isTemporarilyClosed: true,
         temporaryCloseReason: buildAutoPauseReason(autoResumeAtIso),
       },
     });
 
     const status = {
-      isTemporarilyClosed: updated.isTemporarilyClosed,
+      isTemporarilyClosed: true,
       autoResumeAt: autoResumeAtIso,
     };
 
@@ -170,9 +163,8 @@ export class PosStoreStatusService {
   }
 
   async resumeCustomerOrdering(context?: PosStoreStatusActionContext) {
-    await this.prisma.businessConfig.update({
-      where: { id: 1 },
-      data: {
+    await this.configWriter.updateConfig({
+      store: {
         isTemporarilyClosed: false,
         temporaryCloseReason: null,
       },
