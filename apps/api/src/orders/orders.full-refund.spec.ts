@@ -18,6 +18,7 @@ describe('OrdersService.createFullRefund', () => {
   const amendmentUpdate = jest.fn();
   const orderUpdateMany = jest.fn();
   const rollbackOnRefund = jest.fn();
+  const getSettledBalancePaymentCentsForOrder = jest.fn();
   const tx = {
     order: { findUnique: orderFindUnique, updateMany: orderUpdateMany },
     orderAmendment: {
@@ -35,6 +36,7 @@ describe('OrdersService.createFullRefund', () => {
     amendmentUpsert.mockResolvedValue({ id: 'amendment_1' });
     orderUpdateMany.mockResolvedValue({ count: 1 });
     rollbackOnRefund.mockResolvedValue(undefined);
+    getSettledBalancePaymentCentsForOrder.mockResolvedValue(0);
     service = Object.create(OrdersService.prototype) as OrdersService;
     Object.assign(service, {
       prisma: {
@@ -42,7 +44,10 @@ describe('OrdersService.createFullRefund', () => {
         $transaction: (callback: (client: typeof tx) => unknown) =>
           callback(tx),
       },
-      loyalty: { rollbackOnRefund },
+      loyalty: {
+        rollbackOnRefund,
+        getSettledBalancePaymentCentsForOrder,
+      },
     });
     jest
       .spyOn(
@@ -151,6 +156,126 @@ describe('OrdersService.createFullRefund', () => {
     expect(rollbackOnRefund.mock.invocationCallOrder[0]).toBeLessThan(
       amendmentUpsert.mock.invocationCallOrder[0],
     );
+  });
+
+  it.each([
+    {
+      name: '纯积分',
+      totalCents: 0,
+      breakdown: { pointsCents: 699, balanceCents: 0, externalCents: 0 },
+    },
+    {
+      name: '积分加余额',
+      totalCents: 1599,
+      breakdown: {
+        pointsCents: 1000,
+        balanceCents: 1599,
+        externalCents: 0,
+      },
+    },
+  ])(
+    'Web $name external=0 直接完成 Benefits 退款',
+    async ({ totalCents, breakdown }) => {
+      const webOrder = {
+        ...baseOrder,
+        channel: Channel.web,
+        paymentMethod: PaymentMethod.STORE_BALANCE,
+        totalCents,
+        paymentBreakdownJson: breakdown,
+      };
+      orderFindUnique
+        .mockResolvedValueOnce(webOrder)
+        .mockResolvedValueOnce(webOrder)
+        .mockResolvedValueOnce({ ...webOrder, status: 'refunded' });
+
+      const result = await refund({
+        refundAmountCents: totalCents,
+        originalPaymentMethod: PaymentMethod.STORE_BALANCE,
+        refundMethod: PaymentMethod.STORE_BALANCE,
+      });
+
+      expect(rollbackOnRefund).toHaveBeenCalledWith(baseOrder.id);
+      expect(orderUpdateMany).toHaveBeenCalledWith({
+        where: { id: baseOrder.id, status: { not: 'refunded' } },
+        data: { status: 'refunded' },
+      });
+      expect(amendmentUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            refundCents: totalCents,
+            summaryJson: expect.objectContaining({
+              status: 'CONFIRMED',
+              externalPaymentCents: 0,
+              settlementScope: 'INTERNAL_BENEFITS',
+            }) as unknown,
+          }) as unknown,
+        }),
+      );
+      expect(result.outcome).toBe('refunded');
+    },
+  );
+
+  it('Web external>0 保持 pending_manual 且不提前回滚 Benefits', async () => {
+    const webOrder = {
+      ...baseOrder,
+      channel: Channel.web,
+      paymentMethod: PaymentMethod.CARD,
+      paymentBreakdownJson: {
+        pointsCents: 0,
+        balanceCents: 1599,
+        externalCents: 1000,
+      },
+    };
+    orderFindUnique.mockResolvedValue(webOrder);
+
+    const result = await refund({
+      originalPaymentMethod: PaymentMethod.CARD,
+      refundMethod: PaymentMethod.CARD,
+    });
+
+    expect(rollbackOnRefund).not.toHaveBeenCalled();
+    expect(orderUpdateMany).not.toHaveBeenCalled();
+    expect(result.outcome).toBe('pending_manual');
+  });
+
+  it('旧 Web 纯积分订单 total=0 时直接识别 external=0', async () => {
+    orderFindUnique.mockResolvedValue({
+      ...baseOrder,
+      channel: Channel.web,
+      paymentMethod: PaymentMethod.STORE_BALANCE,
+      totalCents: 0,
+      paymentBreakdownJson: null,
+    });
+
+    await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(0);
+    expect(getSettledBalancePaymentCentsForOrder).not.toHaveBeenCalled();
+  });
+
+  it('旧 Web 余额订单按实际余额 ledger 反推 external=0', async () => {
+    orderFindUnique.mockResolvedValue({
+      ...baseOrder,
+      channel: Channel.web,
+      paymentMethod: PaymentMethod.STORE_BALANCE,
+      paymentBreakdownJson: null,
+    });
+    getSettledBalancePaymentCentsForOrder.mockResolvedValue(2599);
+
+    await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(0);
+    expect(getSettledBalancePaymentCentsForOrder).toHaveBeenCalledWith(
+      baseOrder.id,
+    );
+  });
+
+  it('旧 Web 余额加外部支付订单按实际 ledger 保留 external>0', async () => {
+    orderFindUnique.mockResolvedValue({
+      ...baseOrder,
+      channel: Channel.web,
+      paymentMethod: PaymentMethod.CARD,
+      paymentBreakdownJson: null,
+    });
+    getSettledBalancePaymentCentsForOrder.mockResolvedValue(1599);
+
+    await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(1000);
   });
 
   it('已有历史 PENDING_MANUAL amendment 时原位确认而不新增记录', async () => {

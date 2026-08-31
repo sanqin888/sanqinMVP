@@ -19,10 +19,15 @@ import {
   createFullRefund,
   createManagedCardRefund,
   createOrderAmendment,
+  fetchOrderActions,
   fetchRecentOrders,
   printOrderCloud,
 } from "@/lib/api/pos";
-import type { CreateOrderAmendmentInput } from "@/lib/api/pos";
+import type {
+  CreateOrderAmendmentInput,
+  PosOrderActionCapability,
+  PosOrderManagementAction,
+} from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
@@ -407,6 +412,13 @@ function buildSwapOptionsSnapshot(selection: SwapSelection) {
 type OrderStatusKey = keyof (typeof COPY)["zh"]["status"];
 type ActionKey = keyof (typeof COPY)["zh"]["actionLabels"];
 type PaymentMethodKey = keyof (typeof COPY)["zh"]["paymentMethod"];
+
+const ACTION_CAPABILITY_KEY: Record<ActionKey, PosOrderManagementAction> = {
+  retender: "CHANGE_PAYMENT",
+  void_item: "VOID_ITEM",
+  swap_item: "SWAP_ITEM",
+  full_refund: "FULL_REFUND",
+};
 type AmendmentPaymentMethod = NonNullable<
   CreateOrderAmendmentInput["paymentMethod"]
 >;
@@ -1093,6 +1105,9 @@ export default function PosOrdersPage() {
   const [reason, setReason] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<AmendmentPaymentMethod | null>(null);
+  const [webActionCapabilities, setWebActionCapabilities] = useState<
+    PosOrderActionCapability[] | null
+  >(null);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [selectedItemQtyMap, setSelectedItemQtyMap] = useState<
     Record<string, number>
@@ -1309,6 +1324,32 @@ export default function PosOrdersPage() {
     () => orders.find((order) => order.stableId === selectedId) ?? null,
     [orders, selectedId],
   );
+  const selectedOrderStableId = selectedOrder?.stableId ?? null;
+  const selectedOrderChannel = selectedOrder?.channel ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedOrderStableId || selectedOrderChannel !== "web") {
+      setWebActionCapabilities(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setWebActionCapabilities(null);
+    void fetchOrderActions(selectedOrderStableId)
+      .then((response) => {
+        if (!cancelled) setWebActionCapabilities(response.actions);
+      })
+      .catch((error) => {
+        console.error("Failed to load Web order action capabilities:", error);
+        if (!cancelled) setWebActionCapabilities([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOrderChannel, selectedOrderStableId]);
 
   useEffect(() => {
     setSelectedPaymentMethod(null);
@@ -1535,20 +1576,34 @@ export default function PosOrdersPage() {
   const showItemSelection =
     selectedAction === "void_item" || selectedAction === "swap_item";
 
+  const canWebRefundWithoutExternalPayment =
+    selectedOrder?.channel === "web" &&
+    webActionCapabilities?.some(
+      (capability) =>
+        capability.action === "FULL_REFUND" && capability.available,
+    ) === true;
+
   const isActionDisabled = useCallback(
-    (_action: ActionKey) => {
+    (action: ActionKey) => {
       if (!selectedOrder) return true;
+      if (selectedOrder.channel === "web") {
+        const capability = webActionCapabilities?.find(
+          (item) => item.action === ACTION_CAPABILITY_KEY[action],
+        );
+        return capability?.available !== true;
+      }
       if (selectedOrder.channel !== "in_store") return true;
       return !["paid", "making", "ready", "completed"].includes(
         selectedOrder.status,
       );
     },
-    [selectedOrder],
+    [selectedOrder, webActionCapabilities],
   );
 
   const shouldShowPaymentMethodPicker =
     selectedAction === "retender" ||
-    selectedAction === "full_refund" ||
+    (selectedAction === "full_refund" &&
+      !canWebRefundWithoutExternalPayment) ||
     ((selectedAction === "void_item" || selectedAction === "swap_item") &&
       (summary?.refundCents ?? 0) > 0);
 
@@ -1666,13 +1721,20 @@ export default function PosOrdersPage() {
                 : selectedOrder.paymentMethod === "store_balance"
                   ? "STORE_BALANCE"
                   : "CARD";
-          if (originalPaymentMethod === "CARD") {
+          const refundMethod: AmendmentPaymentMethod =
+            canWebRefundWithoutExternalPayment
+              ? "STORE_BALANCE"
+              : selectedPaymentMethod!;
+          if (
+            originalPaymentMethod === "CARD" &&
+            !canWebRefundWithoutExternalPayment
+          ) {
             const managed = await createManagedCardRefund<BackendOrder>(
               selectedOrder.stableId,
               {
                 reason: reason.trim(),
                 operatorName: confirmedOperatorName,
-                refundMethod: selectedPaymentMethod!,
+                refundMethod,
               },
             );
             if (managed.mode === "MANAGED") {
@@ -1716,7 +1778,7 @@ export default function PosOrdersPage() {
               operatorName: confirmedOperatorName,
               refundAmountCents: selectedOrder.amountCents,
               originalPaymentMethod,
-              refundMethod: selectedPaymentMethod!,
+              refundMethod,
             },
           );
           const mapped = mapOrder(result.order, storeTimezone);

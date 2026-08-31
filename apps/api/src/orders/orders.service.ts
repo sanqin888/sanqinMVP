@@ -716,6 +716,59 @@ export class OrdersService {
     };
   }
 
+  async getExternalPaymentCents(
+    orderStableId: string,
+  ): Promise<number | null> {
+    const order = await this.prisma.order.findUnique({
+      where: { orderStableId },
+      select: {
+        id: true,
+        channel: true,
+        totalCents: true,
+        paymentBreakdownJson: true,
+      },
+    });
+    if (!order) throw new NotFoundException('order not found');
+    return this.resolveExternalPaymentCents(order);
+  }
+
+  private async resolveExternalPaymentCents(order: {
+    id: string;
+    channel: Channel;
+    totalCents: number;
+    paymentBreakdownJson?: Prisma.JsonValue | null;
+  }): Promise<number | null> {
+    const breakdown = order.paymentBreakdownJson;
+    if (
+      breakdown &&
+      typeof breakdown === 'object' &&
+      !Array.isArray(breakdown)
+    ) {
+      const externalCents = (breakdown as Prisma.JsonObject).externalCents;
+      if (
+        typeof externalCents === 'number' &&
+        Number.isInteger(externalCents) &&
+        externalCents >= 0
+      ) {
+        return externalCents;
+      }
+    }
+
+    if (order.channel !== Channel.web) return null;
+    if (order.totalCents === 0) return 0;
+
+    // Compatibility for Web orders created before externalCents was persisted.
+    // Reconstruct the tender split from financial facts: points are already
+    // reflected in totalCents, while committed Store Balance is a payment
+    // tender. Anything left after that balance tender is external payment.
+    const settledBalanceCents =
+      await this.loyalty.getSettledBalancePaymentCentsForOrder(order.id);
+    return Math.max(
+      0,
+      order.totalCents - Math.min(order.totalCents, settledBalanceCents),
+    );
+  }
+
   private getTotalDiscountCents(order: {
     subtotalCents?: number | null;
     subtotalAfterDiscountCents?: number | null;
@@ -3299,6 +3352,15 @@ export class OrdersService {
                   verifiedCheckoutIntent?.paymentTotalCents ?? totalCents,
                 creditCardSurchargeCents:
                   verifiedCheckoutIntent?.creditCardSurchargeCents ?? 0,
+                ...(dto.channel === Channel.web
+                  ? {
+                      paymentBreakdownJson: {
+                        pointsCents: loyaltyRedeemCents,
+                        balanceCents: Math.min(totalCents, balanceUsedCents),
+                        externalCents: externalPaymentCents,
+                      },
+                    }
+                  : {}),
                 deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
                 deliveryCostCents: 0,
                 deliverySubsidyCents: 0,
@@ -3790,9 +3852,10 @@ export class OrdersService {
   // =========================
 
   /**
-   * Uber refunds remain pending until platform/manual confirmation. In-store
-   * refunds are staff-confirmed at the POS and are therefore recorded as a
-   * completed financial amendment immediately.
+   * Uber and Web orders with external payment remain pending until their
+   * provider/manual reversal is confirmed. In-store orders and Web orders with
+   * external=0 can be finalized internally because there is no provider money
+   * to reverse.
    */
   async createFullRefund(params: {
     orderStableId: string;
@@ -3809,46 +3872,58 @@ export class OrdersService {
     }
     if (
       !Number.isInteger(params.refundAmountCents) ||
-      params.refundAmountCents <= 0
+      params.refundAmountCents < 0
     ) {
       throw new BadRequestException(
-        'refundAmountCents must be a positive integer',
+        'refundAmountCents must be a non-negative integer',
       );
     }
 
     // Restore loyalty effects (including actual STORE_BALANCE settlement)
-    // before recording the completed refund. rollbackOnRefund is ledger-
-    // idempotent, so a retry after a later database failure is safe.
-    const inStoreOrder = await this.prisma.order.findUnique({
+    // before recording any refund that can be finalized without a provider.
+    // rollbackOnRefund is ledger-idempotent, so a retry after a later database
+    // failure is safe.
+    const refundableOrder = await this.prisma.order.findUnique({
       where: { orderStableId: params.orderStableId },
       select: {
         id: true,
         channel: true,
         paymentMethod: true,
+        paymentBreakdownJson: true,
         status: true,
         totalCents: true,
       },
     });
-    if (inStoreOrder?.channel === Channel.in_store) {
-      if (inStoreOrder.status === 'refunded') {
+    const refundableExternalCents =
+      refundableOrder?.channel === Channel.web
+        ? await this.resolveExternalPaymentCents(refundableOrder)
+        : null;
+    const isWebZeroExternal =
+      refundableOrder?.channel === Channel.web && refundableExternalCents === 0;
+    const canFinalizeInternally =
+      refundableOrder?.channel === Channel.in_store || isWebZeroExternal;
+
+    if (canFinalizeInternally && refundableOrder) {
+      if (refundableOrder.status === 'refunded') {
         throw new ConflictException('order is already refunded');
       }
       if (
-        params.originalPaymentMethod !== inStoreOrder.paymentMethod ||
+        params.originalPaymentMethod !== refundableOrder.paymentMethod ||
         params.refundMethod === PaymentMethod.UBEREATS ||
-        params.refundAmountCents !== inStoreOrder.totalCents
+        params.refundAmountCents !== refundableOrder.totalCents
       ) {
-        throw new BadRequestException('invalid in-store full refund request');
+        throw new BadRequestException('invalid internal full refund request');
       }
       if (
-        inStoreOrder.paymentMethod === PaymentMethod.STORE_BALANCE &&
+        (refundableOrder.paymentMethod === PaymentMethod.STORE_BALANCE ||
+          isWebZeroExternal) &&
         params.refundMethod !== PaymentMethod.STORE_BALANCE
       ) {
         throw new BadRequestException(
-          'store balance refunds must return to STORE_BALANCE',
+          'zero-external benefits refunds must return through STORE_BALANCE',
         );
       }
-      await this.loyalty.rollbackOnRefund(inStoreOrder.id);
+      await this.loyalty.rollbackOnRefund(refundableOrder.id);
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -3871,6 +3946,9 @@ export class OrdersService {
       }
       const isUber = order.channel === Channel.ubereats;
       const isInStore = order.channel === Channel.in_store;
+      const isWebZeroExternal =
+        order.channel === Channel.web && refundableExternalCents === 0;
+      const canFinalizeInternally = isInStore || isWebZeroExternal;
       if (
         isUber &&
         (params.originalPaymentMethod !== PaymentMethod.UBEREATS ||
@@ -3885,6 +3963,14 @@ export class OrdersService {
           'UBEREATS refund method is only valid for UberEats orders',
         );
       }
+      if (
+        isWebZeroExternal &&
+        params.refundMethod !== PaymentMethod.STORE_BALANCE
+      ) {
+        throw new BadRequestException(
+          'zero-external Web refunds must return through STORE_BALANCE',
+        );
+      }
       if (params.refundAmountCents !== order.totalCents) {
         throw new BadRequestException(
           'full refund amount must equal order total',
@@ -3897,7 +3983,7 @@ export class OrdersService {
           summaryJson: { path: ['kind'], equals: 'FULL_REFUND' },
         },
       });
-      if (!isInStore) {
+      if (!canFinalizeInternally) {
         if (!existing) {
           await tx.orderAmendment.upsert({
             where: { amendmentStableId: `full_refund_${order.id}` },
@@ -3947,6 +4033,12 @@ export class OrdersService {
           originalPaymentMethod: params.originalPaymentMethod,
           refundMethod: params.refundMethod,
           originalChannel: order.channel,
+          ...(isWebZeroExternal
+            ? {
+                externalPaymentCents: 0,
+                settlementScope: 'INTERNAL_BENEFITS',
+              }
+            : {}),
         },
       } satisfies Prisma.OrderAmendmentUncheckedCreateInput;
       if (existing) {
@@ -3977,7 +4069,9 @@ export class OrdersService {
       outcome:
         updated.channel === Channel.ubereats
           ? 'pending_platform'
-          : updated.channel === Channel.in_store
+          : updated.channel === Channel.in_store ||
+              (updated.channel === Channel.web &&
+                refundableExternalCents === 0)
             ? 'refunded'
             : 'pending_manual',
     };
