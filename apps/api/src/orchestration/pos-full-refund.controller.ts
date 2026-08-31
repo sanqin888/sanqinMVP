@@ -7,7 +7,6 @@ import {
   Req,
   UnauthorizedException,
   UseGuards,
-  UsePipes,
 } from '@nestjs/common';
 import type { PaymentMethod } from '@prisma/client';
 import type { Request } from 'express';
@@ -58,11 +57,10 @@ export class PosFullRefundController {
 
   @Post(':orderStableId/full-refund')
   @HttpCode(201)
-  @UsePipes(new ZodValidationPipe(PosFullRefundSchema))
   fullRefund(
     @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body() body: PosFullRefundDto,
+    @Body(new ZodValidationPipe(PosFullRefundSchema)) body: PosFullRefundDto,
   ) {
     return this.refunds.refundFullOrder(
       this.requireStoreStableId(req),
