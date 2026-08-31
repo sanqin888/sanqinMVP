@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "a050d8b2",
-  "updatedAt": "2026-08-30",
+  "updatedAt": "2026-08-31",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -20,7 +20,8 @@
       "old_owner": "BusinessConfig single-store compatibility model and remaining direct readers/writers",
       "new_owner": "BrandConfig plus per-store StoreConfig for Brand/Store facts; Benefits loyalty policy is tracked separately",
       "dual_write_or_read": [
-        "Orders, POS StoreStatus/Connectivity, Admin Business and Uber tax/config paths still consume BusinessConfig for remaining Brand/Store facts",
+        "Orders delivery pricing, sales tax, store coordinates, Uber Direct enablement, and store-local timezone reads use BRAND_STORE_CONFIG_READER; Orders no longer reads or creates BusinessConfig",
+        "POS StoreStatus/Connectivity, Admin Business and Uber tax/config paths still consume BusinessConfig for remaining Brand/Store facts",
         "The BusinessConfig compatibility trigger mirrors overlapping Brand/Store facts into BrandConfig and StoreConfig while those readers and writers are migrated"
       ],
       "parity_metric": "Per-field BrandConfig/StoreConfig versus BusinessConfig difference report must remain zero for one complete business cycle",

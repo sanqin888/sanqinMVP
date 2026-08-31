@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Benefits loyalty policy reader base: `origin/dev@50edc208` (2026-08-30).
+Phase 2 Orders Brand/Store config cutover base: `origin/dev@aa377b18` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -82,9 +82,10 @@ pair fails CI.
 - `StoreStatusService` is the first canonical consumer and no longer reads or
   creates `BusinessConfig`. BusinessHour/Holiday queries remain legacy global
   store-scope debt for a later schema-safe slice.
-- Accounting, Promotions, PublicMenu, and AdminMenu now read store-local timezone
-  through the canonical Store snapshot. Public/Admin menu reads no longer create
-  a default `BusinessConfig` row as a side effect.
+- Accounting, Promotions, PublicMenu, AdminMenu, and Orders now read store-local
+  timezone through the canonical Store snapshot. Public/Admin menu reads no longer
+  create a default `BusinessConfig` row as a side effect; Orders also no longer
+  creates `BusinessConfig` while resolving pricing or daily-special time.
 - POS exchange-rate configuration now uses the combined Brand/Store snapshot:
   `StoreConfig.timezone` controls the store clock and
   `BrandConfig.wechatAlipayExchangeRate` supplies the existing manual fallback.
@@ -140,10 +141,13 @@ pair fails CI.
   from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
   Session/Role/PosDevice guards. Both browser consumers use the centralized Web
   Loyalty API client rather than the legacy Admin Business response.
-- Orders quote/create redemption conversion now reads `redeemDollarPerPoint`
-  through `LOYALTY_POLICY_READER`; the points/cents arithmetic is characterized in
-  an Orders-owned pure helper. Delivery, tax, timezone, and other remaining
-  `BusinessConfig` reads in Orders are separate Brand/Store migration debt.
+- Orders quote/create redemption conversion reads `redeemDollarPerPoint` through
+  `LOYALTY_POLICY_READER`; the points/cents arithmetic remains characterized in an
+  Orders-owned pure helper. Orders delivery pricing, sales tax, store coordinates,
+  Uber Direct enablement, and daily-special store-local timezone now read through
+  `BRAND_STORE_CONFIG_READER`; Orders no longer reads or creates `BusinessConfig`.
+  The architecture scanner registers Orders as a migrated Brand/Store consumer and
+  forbids reintroducing the `BusinessConfig` symbol or delegate there.
 - `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
   state. `docs/architecture/benefits-loyalty-policy-contraction-plan.md` now fixes
   the implementation order: business-day observation, Admin Business contract
