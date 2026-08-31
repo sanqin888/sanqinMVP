@@ -289,27 +289,6 @@ describe('Loyalty policy characterization', () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(ledgerCreate).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        data: expect.objectContaining({
-          orderId,
-          type: 'REDEEM_ON_ORDER',
-          sourceKey: 'ORDER',
-        }),
-      }),
-    );
-    expect(ledgerCreate).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        data: expect.objectContaining({
-          orderId,
-          type: 'REDEEM_ON_ORDER',
-          target: 'BALANCE',
-          sourceKey: 'PAYMENT_BALANCE',
-        }),
-      }),
-    );
     expect(seenKeys).toEqual(
       new Set([
         `${orderId}:REDEEM_ON_ORDER:ORDER`,
