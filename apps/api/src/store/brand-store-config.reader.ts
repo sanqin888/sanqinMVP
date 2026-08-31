@@ -483,4 +483,3 @@ export class PrismaStoreScheduleAdapter
     return store.id;
   }
 }
-

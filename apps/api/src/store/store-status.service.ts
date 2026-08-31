@@ -71,7 +71,9 @@ export class StoreStatusService {
       this.getStoreClock(tz);
 
     // Holiday：按“门店时区的 YYYY-MM-DD”来匹配，并显式限定门店。
-    const holidays = await this.scheduleReader.listHolidays(config.storeStableId);
+    const holidays = await this.scheduleReader.listHolidays(
+      config.storeStableId,
+    );
     const todayHoliday = holidays.find((holiday) => holiday.date === todayStr);
     const todayHolidayName = todayHoliday?.name ?? null;
 

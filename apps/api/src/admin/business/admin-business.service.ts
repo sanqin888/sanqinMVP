@@ -307,17 +307,18 @@ export class AdminBusinessService {
       };
     });
 
-    const storeStableId = (
-      await this.brandStoreConfigReader.getStoreSnapshot()
-    ).storeStableId;
+    const storeStableId = (await this.brandStoreConfigReader.getStoreSnapshot())
+      .storeStableId;
     await this.storeScheduleWriter.replaceBusinessHours(
       storeStableId,
-      sanitized.map((h): StoreBusinessHour => ({
-        weekday: h.weekday as StoreWeekday,
-        openMinutes: h.isClosed ? null : h.openMinutes,
-        closeMinutes: h.isClosed ? null : h.closeMinutes,
-        isClosed: h.isClosed,
-      })),
+      sanitized.map(
+        (h): StoreBusinessHour => ({
+          weekday: h.weekday as StoreWeekday,
+          openMinutes: h.isClosed ? null : h.openMinutes,
+          closeMinutes: h.isClosed ? null : h.closeMinutes,
+          isClosed: h.isClosed,
+        }),
+      ),
     );
 
     this.logger.log(
@@ -779,9 +780,8 @@ export class AdminBusinessService {
       });
     });
 
-    const storeStableId = (
-      await this.brandStoreConfigReader.getStoreSnapshot()
-    ).storeStableId;
+    const storeStableId = (await this.brandStoreConfigReader.getStoreSnapshot())
+      .storeStableId;
     await this.storeScheduleWriter.replaceHolidays(storeStableId, sanitized);
 
     this.logger.log(

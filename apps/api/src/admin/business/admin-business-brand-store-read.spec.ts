@@ -167,12 +167,8 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
   });
 
   it('uses the Brand/Store owner writer for reason-only compatibility routes', async () => {
-    const {
-      service,
-      brandStoreConfigReader,
-      brandStoreConfigWriter,
-      uber,
-    } = setup();
+    const { service, brandStoreConfigReader, brandStoreConfigWriter, uber } =
+      setup();
 
     await service.updateConfig({ reason: ' Updated reason ' });
 
