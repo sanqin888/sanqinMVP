@@ -71,11 +71,7 @@ export class PrismaLoyaltyPolicyWriter
         select: LOYALTY_POLICY_SETTINGS_SELECT,
       });
 
-    this.observeParity(
-      'settings-read',
-      brandConfig,
-      loyaltyProgramPolicy,
-    );
+    this.observeParity('settings-read', brandConfig, loyaltyProgramPolicy);
     return requireLoyaltyPolicySettings(brandConfig);
   }
 
@@ -95,11 +91,10 @@ export class PrismaLoyaltyPolicyWriter
           select: LOYALTY_POLICY_SETTINGS_SELECT,
         }),
       );
-      const loyaltyProgramPolicy =
-        await tx.loyaltyProgramPolicy.findUnique({
-          where: { id: 1 },
-          select: LOYALTY_POLICY_SETTINGS_SELECT,
-        });
+      const loyaltyProgramPolicy = await tx.loyaltyProgramPolicy.findUnique({
+        where: { id: 1 },
+        select: LOYALTY_POLICY_SETTINGS_SELECT,
+      });
       this.observeParity('writer-pre-write', current, loyaltyProgramPolicy);
       if (!loyaltyProgramPolicy) {
         throw new Error('LoyaltyProgramPolicy is not initialized');

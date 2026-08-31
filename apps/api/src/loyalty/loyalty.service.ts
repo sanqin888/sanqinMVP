@@ -204,11 +204,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       where: { id: 1 },
       select: LOYALTY_POLICY_SELECT,
     });
-    this.observePolicyParity(
-      'transaction-read',
-      config,
-      loyaltyProgramPolicy,
-    );
+    this.observePolicyParity('transaction-read', config, loyaltyProgramPolicy);
     return normalizeLoyaltyPolicy(config);
   }
 

@@ -146,7 +146,9 @@ describe('Loyalty policy writer characterization', () => {
 
   it('reads editable settings from BrandConfig while shadow-reading dedicated persistence', async () => {
     const brandConfigFindUnique = jest.fn().mockResolvedValue(settings);
-    const loyaltyProgramPolicyFindUnique = jest.fn().mockResolvedValue(settings);
+    const loyaltyProgramPolicyFindUnique = jest
+      .fn()
+      .mockResolvedValue(settings);
     const writer = new PrismaLoyaltyPolicyWriter({
       brandConfig: { findUnique: brandConfigFindUnique },
       loyaltyProgramPolicy: { findUnique: loyaltyProgramPolicyFindUnique },
@@ -186,7 +188,9 @@ describe('Loyalty policy writer characterization', () => {
 
   it('does not write for an empty patch and returns the current config value', async () => {
     const brandConfigFindUnique = jest.fn().mockResolvedValue(settings);
-    const loyaltyProgramPolicyFindUnique = jest.fn().mockResolvedValue(settings);
+    const loyaltyProgramPolicyFindUnique = jest
+      .fn()
+      .mockResolvedValue(settings);
     const transaction = jest.fn();
     const writer = new PrismaLoyaltyPolicyWriter({
       $transaction: transaction,
@@ -209,7 +213,9 @@ describe('Loyalty policy writer characterization', () => {
   it('fails instead of inventing defaults when canonical config is missing', async () => {
     const writer = new PrismaLoyaltyPolicyWriter({
       brandConfig: { findUnique: jest.fn().mockResolvedValue(null) },
-      loyaltyProgramPolicy: { findUnique: jest.fn().mockResolvedValue(settings) },
+      loyaltyProgramPolicy: {
+        findUnique: jest.fn().mockResolvedValue(settings),
+      },
     } as never);
 
     await expect(writer.updateLoyaltyPolicy({})).rejects.toThrow(
