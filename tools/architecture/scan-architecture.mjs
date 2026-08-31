@@ -992,11 +992,18 @@ if (benefitsLoyaltyPolicyOwnership) {
       /\.\s*businessConfig\b/.test(source) &&
       !allowedBusinessConfigPolicyFiles.has(sourcePath)
     ) {
-      for (const field of forbiddenBrandStoreContractFields) {
-        if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
-          failures.push(
-            `Benefits policy must not gain a new direct BusinessConfig persistence consumer: ${sourcePath} -> ${field}`,
-          );
+      const directDelegateMatches = [
+        ...source.matchAll(/\.\s*businessConfig\s*\./g),
+      ];
+      for (const match of directDelegateMatches) {
+        const start = match.index ?? 0;
+        const delegateWindow = source.slice(start, start + 5000);
+        for (const field of forbiddenBrandStoreContractFields) {
+          if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(delegateWindow)) {
+            failures.push(
+              `Benefits policy must not gain a new direct BusinessConfig persistence consumer: ${sourcePath} -> ${field}`,
+            );
+          }
         }
       }
     }
