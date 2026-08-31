@@ -61,11 +61,13 @@ export class PosDevicesController {
   }
 
   @Post('heartbeat')
-  @HttpCode(204)
+  @HttpCode(200)
   @UseGuards(PosDeviceGuard)
-  async heartbeat(@Req() req: PosDeviceRequest): Promise<void> {
+  async heartbeat(@Req() req: PosDeviceRequest): Promise<{ success: true }> {
     const deviceStableId = req.posDevice?.deviceStableId;
-    if (!deviceStableId) return;
-    await this.posDeviceService.recordConnectivityHeartbeat(deviceStableId);
+    if (deviceStableId) {
+      await this.posDeviceService.recordConnectivityHeartbeat(deviceStableId);
+    }
+    return { success: true };
   }
 }

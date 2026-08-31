@@ -245,14 +245,6 @@
     "apps/web/src/app/[locale]/(site)/wallet/apple-pay/page.tsx": {
       "limit": 1,
       "reason": "Clover Apple Pay telemetry sendBeacon fallback; frozen payment protocol adapter"
-    },
-    "apps/web/src/app/[locale]/(device)/store/pos/PosSessionKeepAlive.tsx": {
-      "limit": 3,
-      "reason": "legacy POS session/heartbeat browser calls; migrate in dedicated POS slice"
-    },
-    "apps/web/src/app/[locale]/(device)/store/pos/login/page.tsx": {
-      "limit": 2,
-      "reason": "legacy POS claim/login browser calls; migrate in dedicated POS slice"
     }
   },
   "webServerDirectFetchLimits": {

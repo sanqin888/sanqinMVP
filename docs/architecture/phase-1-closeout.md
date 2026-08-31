@@ -10,8 +10,9 @@ in this closeout branch.
 
 **Phase 1 low-risk cleanup is functionally complete except for one explicitly
 tracked Web compatibility item.** The remaining item is not hidden or widened:
-`web.api-envelope-direct-payload.v1` still records 11 legacy browser calls in
-Checkout/POS and therefore prevents claiming the compatibility register's formal
+`web.api-envelope-direct-payload.v1` now records only the 6 legacy browser calls in
+Checkout; the 5 POS session/login calls have moved to the canonical client. The
+remaining Checkout debt still prevents claiming the compatibility register's formal
 "Before Phase 1 exit" condition as fully satisfied.
 
 The canonical Web transports themselves are complete and strict. The remaining
@@ -51,18 +52,20 @@ architecture-foundation does not depend on a business context.
 
 ### `web.api-envelope-direct-payload.v1`
 
-Canonical `apiFetch` and `serverApiFetch` already reject direct payload drift and
-share one `code/message/details` parser. Remaining legacy browser calls are:
+Canonical `apiFetch` and `serverApiFetch` reject direct payload drift and share one
+`code/message/details` parser. POS `PosSessionKeepAlive` and POS login now route all
+five session/device calls through `apps/web/src/lib/api/pos-session.ts`; their direct
+fetch allowances are removed. The connectivity heartbeat returns a standard JSON
+success payload so it can participate in the same envelope contract.
+
+Remaining legacy browser calls are now only:
 
 - Checkout: 6 direct fetches.
-- POS `PosSessionKeepAlive`: 3 direct fetches.
-- POS login: 2 direct fetches.
 
-These 11 calls are pinned by the architecture scanner. Checkout is payment-adjacent
-and POS has device/session behavior, so this closeout does not broaden into those
-risk areas. Their dedicated migrations must reduce the allowances to zero and
-remove Checkout's page-local envelope/direct-payload reader before the compatibility
-entry can move to closed history.
+These 6 calls remain pinned by the architecture scanner. Checkout is payment-adjacent,
+so its dedicated migration must remove the final allowance and page-local
+envelope/direct-payload reader before the compatibility entry can move to closed
+history.
 
 ### Frozen Payments/Clover entries
 

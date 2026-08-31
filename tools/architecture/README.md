@@ -14,7 +14,9 @@ node tools/architecture/scan-architecture.mjs --report
 - no new direct cross-context dependency pair;
 - no increase in a recorded direct-import allowance;
 - browser/server direct `fetch` only at canonical transports or explicitly
-  recorded raw/protocol exceptions, with stale allowances rejected;
+  recorded raw/protocol exceptions, with stale allowances rejected; POS
+  session/login has no direct-fetch allowance after its canonical-client cutover,
+  leaving Checkout as the only regular JSON browser compatibility debt;
 - one App Router `/api/v1` JSON BFF instead of a duplicate Next rewrite;
 - server-only Web API upstream configuration (`API_UPSTREAM`);
 - `@shared/foundation` registered as the `architecture-foundation` public package,

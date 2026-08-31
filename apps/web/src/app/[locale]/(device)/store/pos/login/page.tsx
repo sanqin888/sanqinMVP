@@ -3,6 +3,12 @@
 
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { getApiErrorMessage } from "@/lib/api/client";
+import {
+  claimPosDevice,
+  loginPosSession,
+  type PosDeviceMetadata,
+} from "@/lib/api/pos-session";
 import type { Locale } from "@/lib/i18n/locales";
 
 export default function PosLoginPage() {
@@ -25,7 +31,7 @@ export default function PosLoginPage() {
     setBoundMessage(null);
     setBinding(true);
 
-    const meta = {
+    const meta: PosDeviceMetadata = {
       userAgent: navigator.userAgent,
       platform: navigator.platform,
       language: navigator.language,
@@ -37,27 +43,11 @@ export default function PosLoginPage() {
     };
 
     try {
-      const res = await fetch("/api/v1/pos/devices/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enrollmentCode, meta }),
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        const message =
-          typeof payload?.message === "string"
-            ? payload.message
-            : `绑定失败 (${res.status})`;
-        throw new Error(message);
-      }
-
+      await claimPosDevice({ enrollmentCode, meta });
       setBoundMessage("设备已绑定，可继续登录。");
       setEnrollmentCode("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "绑定失败";
-      setError(message);
+      setError(getApiErrorMessage(err, "绑定失败"));
     } finally {
       setBinding(false);
     }
@@ -69,26 +59,10 @@ export default function PosLoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/v1/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, purpose: "pos" }),
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        const message =
-          typeof payload?.message === "string"
-            ? payload.message
-            : `登录失败 (${res.status})`;
-        throw new Error(message);
-      }
-
+      await loginPosSession({ email, password });
       window.location.href = `/${locale}/store/pos`;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "登录失败";
-      setError(message);
+      setError(getApiErrorMessage(err, "登录失败"));
     } finally {
       setLoading(false);
     }

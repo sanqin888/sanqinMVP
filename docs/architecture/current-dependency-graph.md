@@ -154,11 +154,12 @@ pair fails CI.
 
 ## Carried debt outside this closeout
 
-- `web.api-envelope-direct-payload.v1` remains active because Checkout has six
-  legacy browser fetches and POS session/login has five. Their allowances are
-  frozen at the current counts and must fall to zero in dedicated risk-scoped
-  slices; the canonical clients themselves already require the strict global
-  envelope.
+- `web.api-envelope-direct-payload.v1` remains active only because Checkout still
+  has six legacy browser fetches. POS session/login claim, login, auth/me,
+  store-status and heartbeat calls now use the centralized POS session API adapter;
+  their five direct-fetch allowances are removed and cannot return without failing
+  the architecture scanner. The canonical clients continue to require the strict
+  global envelope.
 - Payments/Clover legacy paths remain frozen by their compatibility entries.
 - Brand/Store configuration and implicit default-store identity are Phase 2 work.
 
