@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Orders Brand/Store config cutover base: `origin/dev@aa377b18` (2026-08-31).
+Phase 2 POS Brand/Store read cutover base: `origin/dev@6fb7d951` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -91,6 +91,13 @@ pair fails CI.
   `BrandConfig.wechatAlipayExchangeRate` supplies the existing manual fallback.
   The POS exchange-rate module no longer imports Prisma directly, while the
   externally visible fallback source label remains unchanged for compatibility.
+- POS StoreStatus/Connectivity reads now use the canonical Store snapshot as well:
+  timed-pause status/timezone reads and the watchdog's recovery race re-check no
+  longer query `BusinessConfig`, and the watchdog is architecture-gated against
+  regressing to that delegate. POS pause/resume persistence intentionally remains
+  a `BusinessConfig` compatibility write in this slice so the existing one-way
+  trigger continues mirroring the same state into `StoreConfig` for canonical
+  readers while legacy Admin/Uber readers are still being migrated.
 - Messaging configuration now caches the canonical Brand/Store snapshot instead
   of a Prisma `BusinessConfig` model and no longer creates configuration on read.
   Brand support contact fields feed message templates, while Store name/address/

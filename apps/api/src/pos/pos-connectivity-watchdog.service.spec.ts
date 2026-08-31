@@ -57,9 +57,11 @@ describe('PosConnectivityWatchdogService', () => {
           .fn()
           .mockResolvedValue([{ uberStoreId: 'uber-store-1' }]),
       },
-      businessConfig: {
-        findUnique: jest.fn().mockResolvedValue({ isTemporarilyClosed: false }),
-      },
+    };
+    const configReader = {
+      getStoreSnapshot: jest.fn().mockResolvedValue({
+        isTemporarilyClosed: false,
+      }),
     };
     const uber = {
       syncStoreStatusToUber: jest
@@ -74,11 +76,19 @@ describe('PosConnectivityWatchdogService', () => {
     };
     const service = new PosConnectivityWatchdogService(
       prisma as never,
+      configReader as never,
       uber as never,
       storeStatus as never,
       posStoreStatus as never,
     );
-    return { service, prisma, uber, storeStatus, posStoreStatus };
+    return {
+      service,
+      prisma,
+      configReader,
+      uber,
+      storeStatus,
+      posStoreStatus,
+    };
   }
 
   it('reconciles an expired employee pause before evaluating store schedule', async () => {
@@ -176,6 +186,38 @@ describe('PosConnectivityWatchdogService', () => {
       pauseUntil: '2026-08-27T03:30:00.000Z',
     });
   });
+
+  it('re-checks canonical temporary-close state before resuming Uber after recovery', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { service, prisma, configReader, uber } = setup(
+      new Date(NOW - 120_000),
+    );
+
+    await service.runOnce();
+    nowSpy.mockReturnValue(NOW + 90_001);
+    await service.runOnce();
+    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+
+    const recoveredAt = NOW + 90_002;
+    prisma.posDevice.findMany.mockResolvedValue([
+      {
+        storeId: 'legacy-device-store-uuid',
+        lastSeenAt: new Date(recoveredAt),
+        meta: heartbeatMeta,
+      },
+    ]);
+    nowSpy.mockReturnValue(recoveredAt);
+    await service.runOnce();
+
+    configReader.getStoreSnapshot.mockResolvedValue({
+      isTemporarilyClosed: true,
+    });
+    nowSpy.mockReturnValue(recoveredAt + 30_001);
+    await service.runOnce();
+
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('PosStoreStatusService Uber pause synchronization', () => {
@@ -192,12 +234,6 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
   function setup() {
     const prisma = {
       businessConfig: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 1,
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-        }),
         update: jest
           .fn()
           .mockImplementation(
@@ -207,8 +243,14 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
               }),
           ),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        create: jest.fn(),
       },
+    };
+    const configReader = {
+      getStoreSnapshot: jest.fn().mockResolvedValue({
+        timezone: 'America/Toronto',
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      }),
     };
     const posGateway = {
       publishCustomerOrderingStatusUpdate: jest.fn(),
@@ -220,11 +262,29 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
     };
     const service = new PosStoreStatusService(
       prisma as never,
+      configReader as never,
       posGateway as never,
       uber as never,
     );
-    return { service, prisma, posGateway, uber };
+    return { service, prisma, configReader, posGateway, uber };
   }
+
+  it('reads customer ordering status from the canonical Store snapshot', async () => {
+    const { service, prisma, configReader } = setup();
+    const autoResumeAt = '2026-08-25T10:30:00-04:00';
+    configReader.getStoreSnapshot.mockResolvedValue({
+      timezone: 'America/Toronto',
+      isTemporarilyClosed: true,
+      temporaryCloseReason: `__AUTO_UNTIL__:${autoResumeAt}|`,
+    });
+
+    await expect(service.getCustomerOrderingStatus()).resolves.toEqual({
+      isTemporarilyClosed: true,
+      autoResumeAt,
+    });
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(2);
+    expect(prisma.businessConfig.updateMany).not.toHaveBeenCalled();
+  });
 
   it.each<[number, string]>([
     [15, '2026-08-25T09:15:00-04:00'],
@@ -282,10 +342,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
   });
 
   it('atomically auto-resumes an expired pause and propagates the open state', async () => {
-    const { service, prisma, posGateway, uber } = setup();
+    const { service, prisma, configReader, posGateway, uber } = setup();
     const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
-    prisma.businessConfig.findUnique.mockResolvedValue({
-      id: 1,
+    configReader.getStoreSnapshot.mockResolvedValue({
       timezone: 'America/Toronto',
       isTemporarilyClosed: true,
       temporaryCloseReason: pauseReason,
@@ -314,9 +373,8 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
   });
 
   it('does not clear or propagate when the pause changed during expiry reconciliation', async () => {
-    const { service, prisma, posGateway, uber } = setup();
-    prisma.businessConfig.findUnique.mockResolvedValue({
-      id: 1,
+    const { service, prisma, configReader, posGateway, uber } = setup();
+    configReader.getStoreSnapshot.mockResolvedValue({
       timezone: 'America/Toronto',
       isTemporarilyClosed: true,
       temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|',

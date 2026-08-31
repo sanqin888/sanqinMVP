@@ -27,9 +27,10 @@ node tools/architecture/scan-architecture.mjs --report
   Nest composition module are exposed through one registered `store/public-api.ts`
   surface; internal identity/contract/Prisma/module paths cannot be deep-imported
   across contexts, migrated consumers cannot regress to legacy `BusinessConfig`
-  delegates or consumer-specific forbidden Prisma symbols; Orders is registered as
-  a migrated Brand/Store consumer so `BusinessConfig` reads/types cannot return
-  there. The deleted `common/store-id.ts` path cannot return, and configured store
+  delegates or consumer-specific forbidden Prisma symbols; Orders and the POS
+  connectivity watchdog are registered migrated Brand/Store consumers so direct
+  `BusinessConfig` reads cannot return there. The deleted `common/store-id.ts` path
+  cannot return, and configured store
   identity has one implementation owner;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
