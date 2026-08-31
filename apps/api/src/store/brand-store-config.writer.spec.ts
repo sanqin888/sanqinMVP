@@ -49,6 +49,7 @@ type SelectShape = Record<string, boolean>;
 function setup(options?: {
   brand?: BrandRow | null;
   config?: StoreConfigRow | null;
+  casCount?: number;
 }) {
   const brandFindUnique = jest.fn(
     (args: { where: { id: number }; select: SelectShape }) => {
@@ -82,6 +83,14 @@ function setup(options?: {
       select?: SelectShape;
     }) => Promise.resolve({ ...storeConfig, ...args.data }),
   );
+  const storeUpdateMany = jest.fn().mockResolvedValue({
+    count: options?.casCount ?? 1,
+  });
+  const storeConfigFindUnique = jest.fn().mockResolvedValue({
+    ...(options?.config ?? storeConfig),
+    isTemporarilyClosed: false,
+    temporaryCloseReason: null,
+  });
   const businessUpdate = jest.fn(
     (args: { where: { id: number }; data: Record<string, unknown> }) => {
       void args;
@@ -98,7 +107,9 @@ function setup(options?: {
       findUnique: storeFindUnique,
     },
     storeConfig: {
+      findUnique: storeConfigFindUnique,
       update: storeUpdate,
+      updateMany: storeUpdateMany,
     },
     businessConfig: {
       update: businessUpdate,
@@ -174,6 +185,52 @@ describe('PrismaBrandStoreConfigWriter', () => {
       },
     });
     expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
+    expect(tx.businessConfig.update).not.toHaveBeenCalled();
+  });
+
+  it('atomically resumes only the matching canonical temporary closure and refreshes compatibility', async () => {
+    const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
+    const { tx, writer } = setup({
+      config: {
+        ...storeConfig,
+        isTemporarilyClosed: true,
+        temporaryCloseReason: pauseReason,
+      },
+    });
+
+    await expect(
+      writer.resumeTemporaryClosureIfMatches(pauseReason),
+    ).resolves.toBe(true);
+
+    expect(tx.storeConfig.updateMany).toHaveBeenCalledWith({
+      where: {
+        storeId: storeDbId,
+        isTemporarilyClosed: true,
+        temporaryCloseReason: pauseReason,
+      },
+      data: {
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      },
+    });
+    expect(tx.businessConfig.update).toHaveBeenCalledTimes(1);
+    expect(tx.businessConfig.update.mock.calls[0]?.[0].data).toMatchObject({
+      isTemporarilyClosed: false,
+      temporaryCloseReason: null,
+    });
+  });
+
+  it('preserves a changed pause when the canonical compare-and-set no longer matches', async () => {
+    const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
+    const { tx, writer } = setup({ casCount: 0 });
+
+    await expect(
+      writer.resumeTemporaryClosureIfMatches(pauseReason),
+    ).resolves.toBe(false);
+
+    expect(tx.storeConfig.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
+    expect(tx.storeConfig.findUnique).not.toHaveBeenCalled();
     expect(tx.businessConfig.update).not.toHaveBeenCalled();
   });
 
