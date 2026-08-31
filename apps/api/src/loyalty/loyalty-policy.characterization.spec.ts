@@ -208,4 +208,113 @@ describe('Loyalty policy characterization', () => {
     });
     expect('businessConfig' in prisma).toBe(false);
   });
+
+  it('keeps points and store balance redemption keys distinct for the same order', async () => {
+    const seenKeys = new Set<string>();
+    const ledgerCreate = jest.fn().mockImplementation(
+      (args: {
+        data: {
+          orderId: string;
+          type: string;
+          sourceKey: string;
+        };
+      }) => {
+        const key = `${args.data.orderId}:${args.data.type}:${args.data.sourceKey}`;
+        if (seenKeys.has(key)) {
+          throw new Error(`duplicate loyalty ledger key: ${key}`);
+        }
+        seenKeys.add(key);
+        return Promise.resolve({ id: `ledger-${seenKeys.size}` });
+      },
+    );
+    const account = {
+      id: '11111111-1111-4111-8111-111111111111',
+      userId: 'member-db-id',
+      pointsMicro: 5_000_000n,
+      balanceMicro: 20_000_000n,
+      tier: 'BRONZE',
+      lifetimeSpendCents: 0,
+    };
+    const tx = {
+      brandConfig: {
+        findUnique: jest.fn().mockResolvedValue({
+          earnPtPerDollar: 0.01,
+          redeemDollarPerPoint: 1,
+          referralPtPerDollar: 0.01,
+          tierMultiplierBronze: 1,
+          tierMultiplierSilver: 2,
+          tierMultiplierGold: 3,
+          tierMultiplierPlatinum: 5,
+          tierThresholdSilver: 100000,
+          tierThresholdGold: 1000000,
+          tierThresholdPlatinum: 3000000,
+        }),
+      },
+      loyaltyAccount: {
+        upsert: jest.fn().mockResolvedValue(account),
+        update: jest.fn().mockResolvedValue(account),
+      },
+      loyaltyLedger: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: ledgerCreate,
+      },
+      loyaltyTenderReservation: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { pointsMicro: 0n, balanceMicro: 0n },
+        }),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: account.id }]),
+    };
+    const service = new LoyaltyService({} as never, {} as never);
+    const orderId = '22222222-2222-4222-8222-222222222222';
+
+    await expect(
+      service.reserveRedeemForOrder({
+        tx: tx as never,
+        userId: account.userId,
+        orderId,
+        sourceKey: 'ORDER',
+        requestedPoints: 1,
+        subtotalAfterCoupon: 1000,
+      }),
+    ).resolves.toBe(100);
+
+    await expect(
+      service.deductBalanceForOrder({
+        tx: tx as never,
+        userId: account.userId,
+        orderId,
+        amountCents: 300,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(ledgerCreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          orderId,
+          type: 'REDEEM_ON_ORDER',
+          sourceKey: 'ORDER',
+        }),
+      }),
+    );
+    expect(ledgerCreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          orderId,
+          type: 'REDEEM_ON_ORDER',
+          target: 'BALANCE',
+          sourceKey: 'PAYMENT_BALANCE',
+        }),
+      }),
+    );
+    expect(seenKeys).toEqual(
+      new Set([
+        `${orderId}:REDEEM_ON_ORDER:ORDER`,
+        `${orderId}:REDEEM_ON_ORDER:PAYMENT_BALANCE`,
+      ]),
+    );
+  });
 });
