@@ -1901,7 +1901,9 @@ export class MembershipService {
         (yearDifference === 13 && currentMonth > birthdayMonth);
 
       if (!safelyAtLeastMinimumAge) {
-        throw new BadRequestException('membership is not available under age 13');
+        throw new BadRequestException(
+          'membership is not available under age 13',
+        );
       }
 
       const hasCompleteBirthday =

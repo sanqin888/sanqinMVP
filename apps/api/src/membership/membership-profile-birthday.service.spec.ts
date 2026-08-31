@@ -58,15 +58,20 @@ describe('MembershipService profile birthday', () => {
       birthdayMonth: 6,
     });
 
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { userStableId: 'member-legacy' },
-        data: expect.objectContaining({
-          birthdayYear: 1990,
-          birthdayMonth: 6,
-        }),
-      }),
-    );
+    expect(update).toHaveBeenCalledWith({
+      where: { userStableId: 'member-legacy' },
+      data: {
+        birthdayYear: 1990,
+        birthdayMonth: 6,
+      },
+      select: {
+        firstName: true,
+        lastName: true,
+        birthdayYear: true,
+        birthdayMonth: true,
+        language: true,
+      },
+    });
   });
 
   it('keeps a complete year-month birthday locked', async () => {
