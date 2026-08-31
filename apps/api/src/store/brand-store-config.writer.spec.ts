@@ -86,11 +86,13 @@ function setup(options?: {
       });
     },
   );
-  const storeFindFirst = jest.fn().mockResolvedValue(
-    options?.duplicateStoreStableId
-      ? { storeStableId: options.duplicateStoreStableId }
-      : null,
-  );
+  const storeFindFirst = jest
+    .fn()
+    .mockResolvedValue(
+      options?.duplicateStoreStableId
+        ? { storeStableId: options.duplicateStoreStableId }
+        : null,
+    );
   const storeCreate = jest.fn(
     (args: {
       data: {

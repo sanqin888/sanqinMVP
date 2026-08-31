@@ -464,7 +464,9 @@ export class AdminBusinessService {
     }
 
     const storeConfigSnapshot =
-      await this.brandStoreConfigReader.getStoreSnapshot(requestedStoreStableId);
+      await this.brandStoreConfigReader.getStoreSnapshot(
+        requestedStoreStableId,
+      );
 
     const trimmedReason =
       typeof reason === 'string' ? reason.trim() : undefined;
@@ -721,7 +723,9 @@ export class AdminBusinessService {
 
     if (autoAcceptOnlineOrders !== undefined) {
       if (typeof autoAcceptOnlineOrders !== 'boolean') {
-        throw new BadRequestException('autoAcceptOnlineOrders must be a boolean');
+        throw new BadRequestException(
+          'autoAcceptOnlineOrders must be a boolean',
+        );
       }
       storeUpdates.autoAcceptOnlineOrders = autoAcceptOnlineOrders;
     }

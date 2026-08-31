@@ -208,7 +208,9 @@ export class PrismaBrandStoreConfigWriter
     const hasCompatibilityPatch =
       hasBrandPatch ||
       (storeStableId === configuredStoreStableId &&
-        Object.keys(storePatch).some((key) => key in STORE_COMPATIBILITY_SELECT));
+        Object.keys(storePatch).some(
+          (key) => key in STORE_COMPATIBILITY_SELECT,
+        ));
 
     if (!hasCompatibilityPatch) {
       await this.prisma.$transaction(async (tx) => {
@@ -369,12 +371,11 @@ export class PrismaBrandStoreConfigWriter
       });
     } catch (error) {
       if (error instanceof StoreStableIdAlreadyExistsError) throw error;
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        error.code === 'P2002'
-      ) {
+      const prismaErrorCode =
+        error && typeof error === 'object' && 'code' in error
+          ? (error as { code?: unknown }).code
+          : undefined;
+      if (prismaErrorCode === 'P2002') {
         throw new StoreStableIdAlreadyExistsError(input.storeStableId);
       }
       throw error;
