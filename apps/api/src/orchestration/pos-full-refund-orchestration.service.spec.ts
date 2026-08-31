@@ -273,9 +273,7 @@ describe('POS refund controller validation boundaries', () => {
     } as const;
 
     const response = await request(httpServer)
-      .post(
-        `/pos/payments/card/orders/${controllerOrderStableId}/full-refund`,
-      )
+      .post(`/pos/payments/card/orders/${controllerOrderStableId}/full-refund`)
       .send(payload);
 
     expect(response.status).toBe(201);
@@ -288,9 +286,7 @@ describe('POS refund controller validation boundaries', () => {
 
   it('still rejects an invalid managed-card refund body', async () => {
     const response = await request(httpServer)
-      .post(
-        `/pos/payments/card/orders/${controllerOrderStableId}/full-refund`,
-      )
+      .post(`/pos/payments/card/orders/${controllerOrderStableId}/full-refund`)
       .send({
         reason: 'Customer cancellation',
         operatorName: '',
