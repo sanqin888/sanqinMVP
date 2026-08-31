@@ -8,6 +8,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
+COPY libs/foundation/package.json ./libs/foundation/
 COPY libs/order/package.json ./libs/order/
 COPY libs/shared/package.json ./libs/shared/
 
@@ -16,6 +17,7 @@ RUN pnpm install --frozen-lockfile
 
 # 3. 只复制 Web 及其实际共享源码，避免纯 API 改动使 Web 构建缓存失效
 COPY apps/web ./apps/web
+COPY libs/foundation ./libs/foundation
 COPY libs/order ./libs/order
 COPY libs/shared ./libs/shared
 
