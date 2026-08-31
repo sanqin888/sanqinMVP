@@ -21,6 +21,8 @@ import { EmailModule } from '../email/email.module';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { HomepageContentModule } from '../homepage/homepage-content.module';
 import { AdminHomepageController } from './homepage/admin-homepage.controller';
+import { LoyaltyModule } from '../loyalty/public-api';
+import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.controller';
 
 @Module({
   imports: [
@@ -36,12 +38,14 @@ import { AdminHomepageController } from './homepage/admin-homepage.controller';
     EmailModule,
     UberEatsModule,
     HomepageContentModule,
+    LoyaltyModule,
   ],
   controllers: [
     AdminBusinessController,
     AdminImageUploadController,
     AdminStaffController,
     AdminHomepageController,
+    AdminLoyaltyPolicyController,
   ],
   providers: [
     PrismaService,
