@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BrandStoreConfigUnavailableError,
@@ -142,15 +143,20 @@ const STORE_COMPATIBILITY_SELECT = {
   enableUberDirect: true,
 } as const;
 
+type StoreCompatibilitySnapshot = Pick<
+  StoreConfigSnapshot,
+  keyof typeof STORE_COMPATIBILITY_SELECT
+>;
+
 @Injectable()
 export class PrismaBrandStoreConfigWriter implements BrandStoreConfigWriterPort {
   constructor(private readonly prisma: PrismaService) {}
 
   // @compat brand-store.business-config.v1
   // Canonical BrandConfig/StoreConfig are the write targets. The complete
-  // overlapping Brand/Store snapshot is copied back to BusinessConfig only
-  // while POS still writes that compatibility model and its one-way trigger can
-  // replay the legacy row into canonical storage.
+  // overlapping Brand/Store snapshot is copied back to BusinessConfig while
+  // registered legacy writes can still fire the one-way compatibility trigger
+  // and replay that row into canonical storage.
   async updateConfig(input: BrandStoreConfigUpdateInput): Promise<void> {
     const brandPatch = input.brand ?? {};
     const storePatch = input.store ?? {};
@@ -236,40 +242,123 @@ export class PrismaBrandStoreConfigWriter implements BrandStoreConfigWriterPort 
           })
         : store.config;
 
-      await tx.businessConfig.update({
-        where: { id: 1 },
-        data: {
-          storeName: store.name,
-          timezone: nextStore.timezone,
-          isTemporarilyClosed: nextStore.isTemporarilyClosed,
-          temporaryCloseReason: nextStore.temporaryCloseReason,
-          publicNotice: nextStore.publicNotice,
-          publicNoticeEn: nextStore.publicNoticeEn,
-          deliveryBaseFeeCents: nextStore.deliveryBaseFeeCents,
-          priorityPerKmCents: nextStore.priorityPerKmCents,
-          maxDeliveryRangeKm: nextStore.maxDeliveryRangeKm,
-          priorityDefaultDistanceKm: nextStore.priorityDefaultDistanceKm,
-          storeLatitude: nextStore.latitude,
-          storeLongitude: nextStore.longitude,
-          storeAddressLine1: nextStore.addressLine1,
-          storeAddressLine2: nextStore.addressLine2,
-          storeCity: nextStore.city,
-          storeProvince: nextStore.province,
-          storePostalCode: nextStore.postalCode,
-          brandNameZh: nextBrand.brandNameZh,
-          brandNameEn: nextBrand.brandNameEn,
-          siteUrl: nextBrand.siteUrl,
-          emailFromNameZh: nextBrand.emailFromNameZh,
-          emailFromNameEn: nextBrand.emailFromNameEn,
-          emailFromAddress: nextBrand.emailFromAddress,
-          smsSignature: nextBrand.smsSignature,
-          supportPhone: nextBrand.supportPhone,
-          supportEmail: nextBrand.supportEmail,
-          salesTaxRate: nextStore.salesTaxRate,
-          wechatAlipayExchangeRate: nextBrand.wechatAlipayExchangeRate,
-          enableUberDirect: nextStore.enableUberDirect,
+      await this.refreshBusinessConfigCompatibility(
+        tx,
+        store.name,
+        nextBrand,
+        nextStore,
+      );
+    });
+  }
+
+  async resumeTemporaryClosureIfMatches(
+    expectedReason: string,
+  ): Promise<boolean> {
+    const storeStableId = resolveConfiguredStoreStableId();
+
+    return this.prisma.$transaction(async (tx) => {
+      const store = await tx.store.findUnique({
+        where: { storeStableId },
+        select: {
+          id: true,
+          name: true,
+          config: { select: STORE_COMPATIBILITY_SELECT },
         },
       });
+      if (!store) {
+        throw new BrandStoreConfigUnavailableError(
+          `Configured store ${storeStableId} is not provisioned`,
+        );
+      }
+      if (!store.config) {
+        throw new BrandStoreConfigUnavailableError(
+          `StoreConfig for ${storeStableId} is not provisioned`,
+        );
+      }
+
+      const result = await tx.storeConfig.updateMany({
+        where: {
+          storeId: store.id,
+          isTemporarilyClosed: true,
+          temporaryCloseReason: expectedReason,
+        },
+        data: {
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+        },
+      });
+      if (result.count === 0) return false;
+
+      const [brand, nextStore] = await Promise.all([
+        tx.brandConfig.findUnique({
+          where: { id: 1 },
+          select: BRAND_COMPATIBILITY_SELECT,
+        }),
+        tx.storeConfig.findUnique({
+          where: { storeId: store.id },
+          select: STORE_COMPATIBILITY_SELECT,
+        }),
+      ]);
+      if (!brand) {
+        throw new BrandStoreConfigUnavailableError(
+          'BrandConfig(id=1) is not provisioned',
+        );
+      }
+      if (!nextStore) {
+        throw new BrandStoreConfigUnavailableError(
+          `StoreConfig for ${storeStableId} is not provisioned`,
+        );
+      }
+
+      await this.refreshBusinessConfigCompatibility(
+        tx,
+        store.name,
+        brand,
+        nextStore,
+      );
+      return true;
+    });
+  }
+
+  private async refreshBusinessConfigCompatibility(
+    tx: Prisma.TransactionClient,
+    storeName: string,
+    brand: BrandConfigSnapshot,
+    store: StoreCompatibilitySnapshot,
+  ): Promise<void> {
+    await tx.businessConfig.update({
+      where: { id: 1 },
+      data: {
+        storeName,
+        timezone: store.timezone,
+        isTemporarilyClosed: store.isTemporarilyClosed,
+        temporaryCloseReason: store.temporaryCloseReason,
+        publicNotice: store.publicNotice,
+        publicNoticeEn: store.publicNoticeEn,
+        deliveryBaseFeeCents: store.deliveryBaseFeeCents,
+        priorityPerKmCents: store.priorityPerKmCents,
+        maxDeliveryRangeKm: store.maxDeliveryRangeKm,
+        priorityDefaultDistanceKm: store.priorityDefaultDistanceKm,
+        storeLatitude: store.latitude,
+        storeLongitude: store.longitude,
+        storeAddressLine1: store.addressLine1,
+        storeAddressLine2: store.addressLine2,
+        storeCity: store.city,
+        storeProvince: store.province,
+        storePostalCode: store.postalCode,
+        brandNameZh: brand.brandNameZh,
+        brandNameEn: brand.brandNameEn,
+        siteUrl: brand.siteUrl,
+        emailFromNameZh: brand.emailFromNameZh,
+        emailFromNameEn: brand.emailFromNameEn,
+        emailFromAddress: brand.emailFromAddress,
+        smsSignature: brand.smsSignature,
+        supportPhone: brand.supportPhone,
+        supportEmail: brand.supportEmail,
+        salesTaxRate: store.salesTaxRate,
+        wechatAlipayExchangeRate: brand.wechatAlipayExchangeRate,
+        enableUberDirect: store.enableUberDirect,
+      },
     });
   }
 }

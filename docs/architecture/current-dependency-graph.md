@@ -91,13 +91,12 @@ pair fails CI.
   `BrandConfig.wechatAlipayExchangeRate` supplies the existing manual fallback.
   The POS exchange-rate module no longer imports Prisma directly, while the
   externally visible fallback source label remains unchanged for compatibility.
-- POS StoreStatus/Connectivity reads now use the canonical Store snapshot as well:
-  timed-pause status/timezone reads and the watchdog's recovery race re-check no
-  longer query `BusinessConfig`, and the watchdog is architecture-gated against
-  regressing to that delegate. POS pause/resume persistence intentionally remains
-  a `BusinessConfig` compatibility write in this slice so the existing one-way
-  trigger continues mirroring the same state into `StoreConfig` for canonical
-  readers while the remaining legacy writers/readers are migrated.
+- POS StoreStatus/Connectivity now uses the canonical Brand/Store boundary for both
+  reads and writes. Timed-pause status/timezone reads, manual pause/resume, and the
+  watchdog's recovery race re-check no longer query or mutate `BusinessConfig`.
+  The timed auto-resume compare-and-set is implemented inside the Brand/Store
+  writer so an outdated expiry task cannot clear a newer pause. POS is now
+  architecture-gated against regressing to Prisma configuration delegates.
 - Admin Business now follows the owner boundaries for both reads and writes. Brand
   and Store reads use `BRAND_STORE_CONFIG_READER`; Brand/Store updates use
   `BRAND_STORE_CONFIG_WRITER`; retained Loyalty fields on the legacy PATCH/PUT
@@ -105,7 +104,7 @@ pair fails CI.
   `BusinessConfig`, `BrandConfig`, or `StoreConfig` through Prisma directly. The
   Brand/Store owner writer updates canonical rows first, then refreshes the full
   overlapping `BusinessConfig` compatibility copy in the same transaction while
-  the POS compatibility writer and one-way trigger still exist.
+  the one-way trigger can still be fired by registered Benefits compatibility writes.
 - Uber menu schedule/tax and store-status source reads now cross the Brand/Store
   boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
   sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
@@ -124,9 +123,9 @@ pair fails CI.
   the public module and inject the public tokens instead of deep-importing internals.
 - The architecture scanner protects the public surface from cross-context deep
   imports, prevents the canonical reader from regressing to legacy persistence,
-  requires the owner writer to keep canonical writes and its registered
-  `BusinessConfig` compatibility copy in one transaction, and forbids Admin from
-  directly writing `BusinessConfig`, `BrandConfig`, or `StoreConfig` again.
+  requires the owner writer to keep canonical writes, temporary-closure CAS, and
+  its registered `BusinessConfig` compatibility copy in one transaction, and
+  forbids Admin or POS StoreStatus from directly writing Prisma config delegates.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.

@@ -232,25 +232,16 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
   });
 
   function setup() {
-    const prisma = {
-      businessConfig: {
-        update: jest
-          .fn()
-          .mockImplementation(
-            ({ data }: { data: { isTemporarilyClosed: boolean } }) =>
-              Promise.resolve({
-                isTemporarilyClosed: data.isTemporarilyClosed,
-              }),
-          ),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      },
-    };
     const configReader = {
       getStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'America/Toronto',
         isTemporarilyClosed: false,
         temporaryCloseReason: null,
       }),
+    };
+    const configWriter = {
+      updateConfig: jest.fn().mockResolvedValue(undefined),
+      resumeTemporaryClosureIfMatches: jest.fn().mockResolvedValue(true),
     };
     const posGateway = {
       publishCustomerOrderingStatusUpdate: jest.fn(),
@@ -261,16 +252,16 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
         .mockResolvedValue({ outcome: 'SUCCEEDED', synchronizedStores: 1 }),
     };
     const service = new PosStoreStatusService(
-      prisma as never,
       configReader as never,
+      configWriter as never,
       posGateway as never,
       uber as never,
     );
-    return { service, prisma, configReader, posGateway, uber };
+    return { service, configReader, configWriter, posGateway, uber };
   }
 
   it('reads customer ordering status from the canonical Store snapshot', async () => {
-    const { service, prisma, configReader } = setup();
+    const { service, configReader, configWriter } = setup();
     const autoResumeAt = '2026-08-25T10:30:00-04:00';
     configReader.getStoreSnapshot.mockResolvedValue({
       timezone: 'America/Toronto',
@@ -283,7 +274,7 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       autoResumeAt,
     });
     expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(2);
-    expect(prisma.businessConfig.updateMany).not.toHaveBeenCalled();
+    expect(configWriter.resumeTemporaryClosureIfMatches).not.toHaveBeenCalled();
   });
 
   it.each<[number, string]>([
@@ -295,7 +286,7 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
   ])(
     'stores the selected %i-minute resume time before synchronizing Uber',
     async (durationMinutes, expectedAutoResumeAt) => {
-      const { service, prisma, posGateway, uber } = setup();
+      const { service, configWriter, posGateway, uber } = setup();
 
       await expect(
         service.pauseCustomerOrdering({ durationMinutes }),
@@ -304,9 +295,8 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
         autoResumeAt: expectedAutoResumeAt,
       });
 
-      expect(prisma.businessConfig.update).toHaveBeenCalledWith({
-        where: { id: 1 },
-        data: {
+      expect(configWriter.updateConfig).toHaveBeenCalledWith({
+        store: {
           isTemporarilyClosed: true,
           temporaryCloseReason: `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
         },
@@ -322,7 +312,7 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
   );
 
   it('keeps the existing until-tomorrow option on the same Uber sync path', async () => {
-    const { service, prisma, uber } = setup();
+    const { service, configWriter, uber } = setup();
 
     await expect(
       service.pauseCustomerOrdering({ untilTomorrow: true }),
@@ -331,9 +321,8 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       autoResumeAt: '2026-08-26T00:00:00-04:00',
     });
 
-    expect(prisma.businessConfig.update).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: {
+    expect(configWriter.updateConfig).toHaveBeenCalledWith({
+      store: {
         isTemporarilyClosed: true,
         temporaryCloseReason: '__AUTO_UNTIL__:2026-08-26T00:00:00-04:00|',
       },
@@ -341,8 +330,29 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
   });
 
+  it('resumes customer ordering through the canonical Brand/Store writer', async () => {
+    const { service, configWriter, posGateway, uber } = setup();
+
+    await expect(service.resumeCustomerOrdering()).resolves.toEqual({
+      isTemporarilyClosed: false,
+      autoResumeAt: null,
+    });
+
+    expect(configWriter.updateConfig).toHaveBeenCalledWith({
+      store: {
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      },
+    });
+    expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith({
+      isTemporarilyClosed: false,
+      autoResumeAt: null,
+    });
+    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+  });
+
   it('atomically auto-resumes an expired pause and propagates the open state', async () => {
-    const { service, prisma, configReader, posGateway, uber } = setup();
+    const { service, configReader, configWriter, posGateway, uber } = setup();
     const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
     configReader.getStoreSnapshot.mockResolvedValue({
       timezone: 'America/Toronto',
@@ -352,17 +362,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
 
     await expect(service.reconcileExpiredPause()).resolves.toBe(true);
 
-    expect(prisma.businessConfig.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: 1,
-        isTemporarilyClosed: true,
-        temporaryCloseReason: pauseReason,
-      },
-      data: {
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
-      },
-    });
+    expect(configWriter.resumeTemporaryClosureIfMatches).toHaveBeenCalledWith(
+      pauseReason,
+    );
     expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith(
       {
         isTemporarilyClosed: false,
@@ -373,13 +375,13 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
   });
 
   it('does not clear or propagate when the pause changed during expiry reconciliation', async () => {
-    const { service, prisma, configReader, posGateway, uber } = setup();
+    const { service, configReader, configWriter, posGateway, uber } = setup();
     configReader.getStoreSnapshot.mockResolvedValue({
       timezone: 'America/Toronto',
       isTemporarilyClosed: true,
       temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|',
     });
-    prisma.businessConfig.updateMany.mockResolvedValue({ count: 0 });
+    configWriter.resumeTemporaryClosureIfMatches.mockResolvedValue(false);
 
     await expect(service.reconcileExpiredPause()).resolves.toBe(false);
 

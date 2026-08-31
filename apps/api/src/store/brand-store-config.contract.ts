@@ -90,6 +90,7 @@ export interface BrandStoreConfigReaderPort {
 
 export interface BrandStoreConfigWriterPort {
   updateConfig(input: BrandStoreConfigUpdateInput): Promise<void>;
+  resumeTemporaryClosureIfMatches(expectedReason: string): Promise<boolean>;
 }
 
 export class BrandStoreConfigUnavailableError extends Error {
