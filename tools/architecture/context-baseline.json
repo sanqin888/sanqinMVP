@@ -118,12 +118,18 @@
     "context": "brand-store",
     "publicSurface": "apps/api/src/store/public-api.ts",
     "implementation": "apps/api/src/store/brand-store-config.reader.ts",
+    "writerImplementation": "apps/api/src/store/brand-store-config.reader.ts",
     "publicSymbols": [
       "DEFAULT_STORE_STABLE_ID",
       "resolveConfiguredStoreStableId",
       "BRAND_STORE_CONFIG_READER",
+      "BRAND_STORE_CONFIG_WRITER",
+      "BrandConfigUpdateInput",
       "BrandStoreConfigReaderPort",
       "BrandStoreConfigSnapshot",
+      "BrandStoreConfigUpdateInput",
+      "BrandStoreConfigWriterPort",
+      "StoreConfigUpdateInput",
       "BrandStoreConfigModule"
     ],
     "ownedIdentitySymbols": [
@@ -143,17 +149,24 @@
       "apps/api/src/pos/pos-exchange-rate.service.ts",
       "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
       "apps/api/src/messaging/business-config.service.ts",
-      "apps/api/src/orders/orders.service.ts"
-    ],
-    "legacyWriteOnlyConfigConsumers": [
+      "apps/api/src/orders/orders.service.ts",
       "apps/api/src/admin/business/admin-business.service.ts"
     ],
+    "canonicalConfigWriterConsumers": [
+      "apps/api/src/admin/business/admin-business.service.ts"
+    ],
+    "legacyWriteOnlyConfigConsumers": [],
     "migratedConsumerForbiddenSymbols": {
       "apps/api/src/messaging/business-config.service.ts": [
         "BusinessConfig",
         "PrismaService"
       ],
-      "apps/api/src/orders/orders.service.ts": ["BusinessConfig"]
+      "apps/api/src/orders/orders.service.ts": ["BusinessConfig"],
+      "apps/api/src/admin/business/admin-business.service.ts": [
+        "BusinessConfig",
+        "StoreConfig",
+        "resolveConfiguredStoreStableId"
+      ]
     },
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
   },
@@ -220,7 +233,6 @@
       "apps/api/src/admin/business/admin-business.service.ts"
     ],
     "allowedBusinessConfigPolicyFiles": [
-      "apps/api/src/admin/business/admin-business.service.ts",
       "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts"
     ]
   },

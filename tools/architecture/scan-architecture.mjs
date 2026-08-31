@@ -417,6 +417,9 @@ if (brandStoreCanonicalConfigOwnership) {
   const implementation = toPosix(
     brandStoreCanonicalConfigOwnership.implementation,
   );
+  const writerImplementation = toPosix(
+    brandStoreCanonicalConfigOwnership.writerImplementation ?? '',
+  );
   const publicSymbols = brandStoreCanonicalConfigOwnership.publicSymbols ?? [];
   const ownedIdentitySymbols =
     brandStoreCanonicalConfigOwnership.ownedIdentitySymbols ?? [];
@@ -435,6 +438,8 @@ if (brandStoreCanonicalConfigOwnership) {
     brandStoreCanonicalConfigOwnership.forbiddenLegacyDelegateRoots ?? [];
   const migratedLegacyConfigConsumers =
     brandStoreCanonicalConfigOwnership.migratedLegacyConfigConsumers ?? [];
+  const canonicalConfigWriterConsumers =
+    brandStoreCanonicalConfigOwnership.canonicalConfigWriterConsumers ?? [];
   const legacyWriteOnlyConfigConsumers =
     brandStoreCanonicalConfigOwnership.legacyWriteOnlyConfigConsumers ?? [];
   const migratedConsumerForbiddenSymbols =
@@ -450,6 +455,15 @@ if (brandStoreCanonicalConfigOwnership) {
   if (contextOf(implementation) !== ownerContext) {
     failures.push(
       `Brand/Store canonical config implementation must belong to ${ownerContext}: ${implementation}`,
+    );
+  }
+  if (!writerImplementation || contextOf(writerImplementation) !== ownerContext) {
+    failures.push(
+      `Brand/Store canonical config writer must belong to ${ownerContext}: ${writerImplementation || '<missing>'}`,
+    );
+  } else if (!existsSync(join(REPOSITORY_ROOT, writerImplementation))) {
+    failures.push(
+      `Brand/Store canonical config writer missing: ${writerImplementation}`,
     );
   }
   for (const internalPath of [
@@ -533,10 +547,42 @@ if (brandStoreCanonicalConfigOwnership) {
     }
   }
 
+  if (writerImplementation && existsSync(join(REPOSITORY_ROOT, writerImplementation))) {
+    const writerSource = readFileSync(
+      join(REPOSITORY_ROOT, writerImplementation),
+      'utf8',
+    );
+    if (
+      !writerSource.includes('@compat brand-store.business-config.v1') ||
+      !/\.\$transaction\s*\(/.test(writerSource) ||
+      !/tx\.brandConfig\.update\s*\(/.test(writerSource) ||
+      !/tx\.storeConfig\.update\s*\(/.test(writerSource) ||
+      !/tx\.businessConfig\.update\s*\(/.test(writerSource)
+    ) {
+      failures.push(
+        `Brand/Store writer must persist canonical config and keep the registered compatibility copy inside one transaction: ${writerImplementation}`,
+      );
+    }
+    const legacyWriterMethods = [
+      ...writerSource.matchAll(
+        /\.\s*businessConfig\s*\.\s*([A-Za-z][A-Za-z0-9_]*)/g,
+      ),
+    ].map((match) => match[1]);
+    if (
+      legacyWriterMethods.length !== 1 ||
+      legacyWriterMethods[0] !== 'update'
+    ) {
+      failures.push(
+        `Brand/Store owner implementation must contain exactly one registered BusinessConfig compatibility update: ${writerImplementation} -> ${legacyWriterMethods.join(',') || '<none>'}`,
+      );
+    }
+  }
+
   for (const root of forbiddenLegacyDelegateRoots) {
     const normalizedRoot = toPosix(root);
     for (const absolutePath of walk(join(REPOSITORY_ROOT, normalizedRoot))) {
       const sourcePath = repositoryPath(absolutePath);
+      if (sourcePath === writerImplementation) continue;
       const source = readFileSync(absolutePath, 'utf8');
       for (const delegate of forbiddenLegacyDelegates) {
         const delegatePattern = new RegExp(
@@ -602,6 +648,28 @@ if (brandStoreCanonicalConfigOwnership) {
     }
   }
 
+  for (const consumer of canonicalConfigWriterConsumers) {
+    const consumerPath = toPosix(consumer);
+    const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
+    if (!existsSync(absoluteConsumerPath)) {
+      failures.push(
+        `Brand/Store canonical writer consumer missing: ${consumerPath}`,
+      );
+      continue;
+    }
+    const source = readFileSync(absoluteConsumerPath, 'utf8');
+    if (!source.includes('BRAND_STORE_CONFIG_WRITER')) {
+      failures.push(
+        `Brand/Store canonical writer consumer must use the public writer boundary: ${consumerPath}`,
+      );
+    }
+    if (/\.\s*(?:businessConfig|brandConfig|storeConfig)\b/.test(source)) {
+      failures.push(
+        `Brand/Store canonical writer consumer must not write configuration through Prisma delegates: ${consumerPath}`,
+      );
+    }
+  }
+
   for (const consumer of legacyWriteOnlyConfigConsumers) {
     const consumerPath = toPosix(consumer);
     const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
@@ -642,6 +710,7 @@ if (brandStoreCanonicalConfigOwnership) {
   const privateTargets = new Set(
     [
       implementation,
+      writerImplementation,
       identityImplementation,
       contractImplementation,
       compositionModule,

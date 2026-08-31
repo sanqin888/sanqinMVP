@@ -1,17 +1,24 @@
 // apps/api/src/admin/business/admin-business.service.ts
 
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
-import type { BusinessConfig, BusinessHour, StoreConfig } from '@prisma/client';
+import type { BusinessHour } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
 import {
   BRAND_STORE_CONFIG_READER,
-  resolveConfiguredStoreStableId,
+  BRAND_STORE_CONFIG_WRITER,
+  type BrandConfigUpdateInput,
   type BrandStoreConfigReaderPort,
+  type BrandStoreConfigWriterPort,
+  type StoreConfigUpdateInput,
 } from '../../store/public-api';
 import {
   LOYALTY_POLICY_SETTINGS_READER,
+  LOYALTY_POLICY_WRITER,
+  LoyaltyPolicyValidationError,
   type LoyaltyPolicySettingsReaderPort,
+  type LoyaltyPolicyUpdateInput,
+  type LoyaltyPolicyWriterPort,
 } from '../../loyalty/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
@@ -86,8 +93,12 @@ export class AdminBusinessService {
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(BRAND_STORE_CONFIG_WRITER)
+    private readonly brandStoreConfigWriter: BrandStoreConfigWriterPort,
     @Inject(LOYALTY_POLICY_SETTINGS_READER)
     private readonly loyaltyPolicySettingsReader: LoyaltyPolicySettingsReaderPort,
+    @Inject(LOYALTY_POLICY_WRITER)
+    private readonly loyaltyPolicyWriter: LoyaltyPolicyWriterPort,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uberEatsService: UberEatsStoreStatusSyncPort,
   ) {}
@@ -371,10 +382,9 @@ export class AdminBusinessService {
     const trimmedReason =
       typeof reason === 'string' ? reason.trim() : undefined;
 
-    const updates: Partial<BusinessConfig> = {};
-    const storeConfigUpdates: Partial<
-      Pick<StoreConfig, 'allergyHandlingMode' | 'unsupportedAllergens'>
-    > = {};
+    const brandUpdates: BrandConfigUpdateInput = {};
+    const storeUpdates: StoreConfigUpdateInput = {};
+    const loyaltyUpdates: LoyaltyPolicyUpdateInput = {};
 
     if (allergyHandlingMode !== undefined) {
       if (
@@ -386,7 +396,7 @@ export class AdminBusinessService {
           'allergyHandlingMode must be RELAY_ALL, DENY_LIST, or DENY_ALL',
         );
       }
-      storeConfigUpdates.allergyHandlingMode = allergyHandlingMode;
+      storeUpdates.allergyHandlingMode = allergyHandlingMode;
     }
 
     if (unsupportedAllergens !== undefined) {
@@ -407,16 +417,16 @@ export class AdminBusinessService {
         }
         return code;
       });
-      storeConfigUpdates.unsupportedAllergens = [...new Set(normalized)];
+      storeUpdates.unsupportedAllergens = [...new Set(normalized)];
     }
 
     if (timezone !== undefined) {
-      updates.timezone = this.normalizeTimezone('timezone', timezone);
+      storeUpdates.timezone = this.normalizeTimezone('timezone', timezone);
     }
 
     if (typeof isTemporarilyClosed === 'boolean') {
-      updates.isTemporarilyClosed = isTemporarilyClosed;
-      updates.temporaryCloseReason = isTemporarilyClosed
+      storeUpdates.isTemporarilyClosed = isTemporarilyClosed;
+      storeUpdates.temporaryCloseReason = isTemporarilyClosed
         ? trimmedReason && trimmedReason.length > 0
           ? trimmedReason
           : null
@@ -426,283 +436,244 @@ export class AdminBusinessService {
       storeConfigSnapshot.isTemporarilyClosed
     ) {
       // 允许单独更新 reason（仅当当前是暂停状态）
-      updates.temporaryCloseReason =
+      storeUpdates.temporaryCloseReason =
         trimmedReason.length > 0 ? trimmedReason : null;
     }
 
     if (publicNotice !== undefined) {
-      updates.publicNotice = this.normalizeOptionalText(
+      storeUpdates.publicNotice = this.normalizeOptionalText(
         'publicNotice',
         publicNotice,
       );
     }
 
     if (publicNoticeEn !== undefined) {
-      updates.publicNoticeEn = this.normalizeOptionalText(
+      storeUpdates.publicNoticeEn = this.normalizeOptionalText(
         'publicNoticeEn',
         publicNoticeEn,
       );
     }
 
     if (deliveryBaseFeeCents !== undefined) {
-      updates.deliveryBaseFeeCents = this.normalizeFeeCents(
+      storeUpdates.deliveryBaseFeeCents = this.normalizeFeeCents(
         'deliveryBaseFeeCents',
         deliveryBaseFeeCents,
       );
     }
 
     if (priorityPerKmCents !== undefined) {
-      updates.priorityPerKmCents = this.normalizeFeeCents(
+      storeUpdates.priorityPerKmCents = this.normalizeFeeCents(
         'priorityPerKmCents',
         priorityPerKmCents,
       );
     }
 
     if (maxDeliveryRangeKm !== undefined) {
-      updates.maxDeliveryRangeKm = this.normalizePositiveNumber(
+      storeUpdates.maxDeliveryRangeKm = this.normalizePositiveNumber(
         'maxDeliveryRangeKm',
         maxDeliveryRangeKm,
       );
     }
 
     if (priorityDefaultDistanceKm !== undefined) {
-      updates.priorityDefaultDistanceKm = this.normalizePositiveNumber(
+      storeUpdates.priorityDefaultDistanceKm = this.normalizePositiveNumber(
         'priorityDefaultDistanceKm',
         priorityDefaultDistanceKm,
       );
     }
 
     if (storeLatitude !== undefined) {
-      updates.storeLatitude = this.normalizeOptionalNumber(
+      storeUpdates.latitude = this.normalizeOptionalNumber(
         'storeLatitude',
         storeLatitude,
       );
     }
 
     if (storeLongitude !== undefined) {
-      updates.storeLongitude = this.normalizeOptionalNumber(
+      storeUpdates.longitude = this.normalizeOptionalNumber(
         'storeLongitude',
         storeLongitude,
       );
     }
 
     if (storeAddressLine1 !== undefined) {
-      updates.storeAddressLine1 = this.normalizeOptionalText(
+      storeUpdates.addressLine1 = this.normalizeOptionalText(
         'storeAddressLine1',
         storeAddressLine1,
       );
     }
 
     if (storeAddressLine2 !== undefined) {
-      updates.storeAddressLine2 = this.normalizeOptionalText(
+      storeUpdates.addressLine2 = this.normalizeOptionalText(
         'storeAddressLine2',
         storeAddressLine2,
       );
     }
 
     if (storeCity !== undefined) {
-      updates.storeCity = this.normalizeOptionalText('storeCity', storeCity);
+      storeUpdates.city = this.normalizeOptionalText('storeCity', storeCity);
     }
 
     if (storeProvince !== undefined) {
-      updates.storeProvince = this.normalizeOptionalText(
+      storeUpdates.province = this.normalizeOptionalText(
         'storeProvince',
         storeProvince,
       );
     }
 
     if (storePostalCode !== undefined) {
-      updates.storePostalCode = this.normalizeOptionalText(
+      storeUpdates.postalCode = this.normalizeOptionalText(
         'storePostalCode',
         storePostalCode,
       );
     }
 
     if (brandNameZh !== undefined) {
-      updates.brandNameZh = this.normalizeOptionalText(
+      brandUpdates.brandNameZh = this.normalizeOptionalText(
         'brandNameZh',
         brandNameZh,
       );
     }
 
     if (brandNameEn !== undefined) {
-      updates.brandNameEn = this.normalizeOptionalText(
+      brandUpdates.brandNameEn = this.normalizeOptionalText(
         'brandNameEn',
         brandNameEn,
       );
     }
 
     if (siteUrl !== undefined) {
-      updates.siteUrl = this.normalizeOptionalText('siteUrl', siteUrl);
+      brandUpdates.siteUrl = this.normalizeOptionalText('siteUrl', siteUrl);
     }
 
     if (emailFromNameZh !== undefined) {
-      updates.emailFromNameZh = this.normalizeOptionalText(
+      brandUpdates.emailFromNameZh = this.normalizeOptionalText(
         'emailFromNameZh',
         emailFromNameZh,
       );
     }
 
     if (emailFromNameEn !== undefined) {
-      updates.emailFromNameEn = this.normalizeOptionalText(
+      brandUpdates.emailFromNameEn = this.normalizeOptionalText(
         'emailFromNameEn',
         emailFromNameEn,
       );
     }
 
     if (emailFromAddress !== undefined) {
-      updates.emailFromAddress = this.normalizeOptionalText(
+      brandUpdates.emailFromAddress = this.normalizeOptionalText(
         'emailFromAddress',
         emailFromAddress,
       );
     }
 
     if (smsSignature !== undefined) {
-      updates.smsSignature = this.normalizeOptionalText(
+      brandUpdates.smsSignature = this.normalizeOptionalText(
         'smsSignature',
         smsSignature,
       );
     }
 
     if (supportPhone !== undefined) {
-      updates.supportPhone = this.normalizeOptionalText(
+      brandUpdates.supportPhone = this.normalizeOptionalText(
         'supportPhone',
         supportPhone,
       );
     }
 
     if (supportEmail !== undefined) {
-      updates.supportEmail = this.normalizeOptionalText(
+      brandUpdates.supportEmail = this.normalizeOptionalText(
         'supportEmail',
         supportEmail,
       );
     }
 
     if (salesTaxRate !== undefined) {
-      updates.salesTaxRate = this.normalizeRate('salesTaxRate', salesTaxRate);
+      storeUpdates.salesTaxRate = this.normalizeRate(
+        'salesTaxRate',
+        salesTaxRate,
+      );
     }
 
     if (wechatAlipayExchangeRate !== undefined) {
-      updates.wechatAlipayExchangeRate = this.normalizeExchangeRate(
+      brandUpdates.wechatAlipayExchangeRate = this.normalizeExchangeRate(
         'wechatAlipayExchangeRate',
         wechatAlipayExchangeRate,
       );
     }
 
     if (earnPtPerDollar !== undefined) {
-      updates.earnPtPerDollar = this.normalizePositiveNumber(
-        'earnPtPerDollar',
-        earnPtPerDollar,
-      );
+      loyaltyUpdates.earnPtPerDollar = earnPtPerDollar;
     }
-
     if (redeemDollarPerPoint !== undefined) {
-      updates.redeemDollarPerPoint = this.normalizeStrictlyPositiveNumber(
-        'redeemDollarPerPoint',
-        redeemDollarPerPoint,
-      );
+      loyaltyUpdates.redeemDollarPerPoint = redeemDollarPerPoint;
     }
-
     if (referralPtPerDollar !== undefined) {
-      updates.referralPtPerDollar = this.normalizePositiveNumber(
-        'referralPtPerDollar',
-        referralPtPerDollar,
-      );
+      loyaltyUpdates.referralPtPerDollar = referralPtPerDollar;
     }
-
     if (tierMultiplierBronze !== undefined) {
-      updates.tierMultiplierBronze = this.normalizePositiveNumber(
-        'tierMultiplierBronze',
-        tierMultiplierBronze,
-      );
+      loyaltyUpdates.tierMultiplierBronze = tierMultiplierBronze;
     }
-
     if (tierMultiplierSilver !== undefined) {
-      updates.tierMultiplierSilver = this.normalizePositiveNumber(
-        'tierMultiplierSilver',
-        tierMultiplierSilver,
-      );
+      loyaltyUpdates.tierMultiplierSilver = tierMultiplierSilver;
     }
-
     if (tierMultiplierGold !== undefined) {
-      updates.tierMultiplierGold = this.normalizePositiveNumber(
-        'tierMultiplierGold',
-        tierMultiplierGold,
-      );
+      loyaltyUpdates.tierMultiplierGold = tierMultiplierGold;
     }
-
     if (tierMultiplierPlatinum !== undefined) {
-      updates.tierMultiplierPlatinum = this.normalizePositiveNumber(
-        'tierMultiplierPlatinum',
-        tierMultiplierPlatinum,
-      );
+      loyaltyUpdates.tierMultiplierPlatinum = tierMultiplierPlatinum;
     }
-
     if (tierThresholdSilver !== undefined) {
-      updates.tierThresholdSilver = this.normalizeTierThreshold(
-        'tierThresholdSilver',
-        tierThresholdSilver,
-      );
+      loyaltyUpdates.tierThresholdSilver = tierThresholdSilver;
     }
-
     if (tierThresholdGold !== undefined) {
-      updates.tierThresholdGold = this.normalizeTierThreshold(
-        'tierThresholdGold',
-        tierThresholdGold,
-      );
+      loyaltyUpdates.tierThresholdGold = tierThresholdGold;
     }
-
     if (tierThresholdPlatinum !== undefined) {
-      updates.tierThresholdPlatinum = this.normalizeTierThreshold(
-        'tierThresholdPlatinum',
-        tierThresholdPlatinum,
-      );
+      loyaltyUpdates.tierThresholdPlatinum = tierThresholdPlatinum;
     }
 
     if (enableUberDirect !== undefined) {
       if (typeof enableUberDirect !== 'boolean') {
         throw new BadRequestException('enableUberDirect must be a boolean');
       }
-      updates.enableUberDirect = enableUberDirect;
+      storeUpdates.enableUberDirect = enableUberDirect;
     }
 
-    const hasBusinessConfigUpdates = Object.keys(updates).length > 0;
-    const hasStoreConfigUpdates = Object.keys(storeConfigUpdates).length > 0;
-    if (!hasBusinessConfigUpdates && !hasStoreConfigUpdates) {
+    const hasBrandUpdates = Object.keys(brandUpdates).length > 0;
+    const hasStoreUpdates = Object.keys(storeUpdates).length > 0;
+    const hasLoyaltyUpdates = Object.keys(loyaltyUpdates).length > 0;
+    if (!hasBrandUpdates && !hasStoreUpdates && !hasLoyaltyUpdates) {
       return this.getConfig();
     }
 
     const temporaryPauseChanged =
-      (updates.isTemporarilyClosed !== undefined &&
-        updates.isTemporarilyClosed !==
+      (storeUpdates.isTemporarilyClosed !== undefined &&
+        storeUpdates.isTemporarilyClosed !==
           storeConfigSnapshot.isTemporarilyClosed) ||
-      (updates.temporaryCloseReason !== undefined &&
-        updates.temporaryCloseReason !==
+      (storeUpdates.temporaryCloseReason !== undefined &&
+        storeUpdates.temporaryCloseReason !==
           storeConfigSnapshot.temporaryCloseReason);
 
-    const currentStoreConfig = hasStoreConfigUpdates
-      ? await this.ensureStoreConfig()
-      : null;
-    if (currentStoreConfig && hasBusinessConfigUpdates) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.storeConfig.update({
-          where: { storeId: currentStoreConfig.storeId },
-          data: storeConfigUpdates,
-        });
-        await tx.businessConfig.update({
-          where: { id: 1 },
-          data: updates,
-        });
-      });
-    } else if (currentStoreConfig) {
-      await this.prisma.storeConfig.update({
-        where: { storeId: currentStoreConfig.storeId },
-        data: storeConfigUpdates,
-      });
-    } else {
-      await this.prisma.businessConfig.update({
-        where: { id: 1 },
-        data: updates,
+    // The legacy route can carry both retained Benefits fields and Brand/Store
+    // fields. Update Benefits first so its legacy compatibility copy is current
+    // before the Brand/Store writer fires the one-way compatibility trigger with
+    // a complete Brand/Store snapshot.
+    if (hasLoyaltyUpdates) {
+      try {
+        await this.loyaltyPolicyWriter.updateLoyaltyPolicy(loyaltyUpdates);
+      } catch (error) {
+        if (error instanceof LoyaltyPolicyValidationError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+    }
+
+    if (hasBrandUpdates || hasStoreUpdates) {
+      await this.brandStoreConfigWriter.updateConfig({
+        brand: hasBrandUpdates ? brandUpdates : undefined,
+        store: hasStoreUpdates ? storeUpdates : undefined,
       });
     }
 
@@ -711,11 +682,11 @@ export class AdminBusinessService {
     }
 
     this.logger.log(
-      `Business config updated: isTemporarilyClosed=${updates.isTemporarilyClosed ?? storeConfigSnapshot.isTemporarilyClosed} reason="${
-        updates.temporaryCloseReason ?? trimmedReason ?? ''
-      }" baseFee=${updates.deliveryBaseFeeCents ?? storeConfigSnapshot.deliveryBaseFeeCents} perKm=${
-        updates.priorityPerKmCents ?? storeConfigSnapshot.priorityPerKmCents
-      } taxRate=${updates.salesTaxRate ?? storeConfigSnapshot.salesTaxRate}`,
+      `Business config updated: isTemporarilyClosed=${storeUpdates.isTemporarilyClosed ?? storeConfigSnapshot.isTemporarilyClosed} reason="${
+        storeUpdates.temporaryCloseReason ?? trimmedReason ?? ''
+      }" baseFee=${storeUpdates.deliveryBaseFeeCents ?? storeConfigSnapshot.deliveryBaseFeeCents} perKm=${
+        storeUpdates.priorityPerKmCents ?? storeConfigSnapshot.priorityPerKmCents
+      } taxRate=${storeUpdates.salesTaxRate ?? storeConfigSnapshot.salesTaxRate}`,
     );
 
     return this.getConfig();
@@ -849,20 +820,6 @@ export class AdminBusinessService {
     return tz;
   }
 
-  private async ensureStoreConfig(): Promise<StoreConfig> {
-    const store = await this.prisma.store.findUnique({
-      where: { storeStableId: resolveConfiguredStoreStableId() },
-      select: { id: true, config: true },
-    });
-    if (!store) {
-      throw new BadRequestException(
-        `Configured store ${resolveConfiguredStoreStableId()} does not exist`,
-      );
-    }
-    if (store.config) return store.config;
-    return this.prisma.storeConfig.create({ data: { storeId: store.id } });
-  }
-
   /** 确保一周的 BusinessHour 至少有一组记录，没有的话初始化为“全部休息” */
   private async ensureHoursInitialized(): Promise<BusinessHour[]> {
     let hours = await this.prisma.businessHour.findMany({
@@ -972,21 +929,6 @@ export class AdminBusinessService {
     return Number(value.toFixed(4));
   }
 
-  private normalizeStrictlyPositiveNumber(
-    label: string,
-    value: unknown,
-  ): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new BadRequestException(`${label} must be a finite number`);
-    }
-
-    if (value <= 0) {
-      throw new BadRequestException(`${label} must be > 0`);
-    }
-
-    return Number(value.toFixed(4));
-  }
-
   private normalizeExchangeRate(label: string, value: unknown): number {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new BadRequestException(`${label} must be a finite number`);
@@ -1019,16 +961,4 @@ export class AdminBusinessService {
     return trimmed.length > 0 ? trimmed : null;
   }
 
-  private normalizeTierThreshold(label: string, value: unknown): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new BadRequestException(`${label} must be a finite number`);
-    }
-
-    const cents = Math.round(value);
-    if (cents < 0) {
-      throw new BadRequestException(`${label} must be >= 0`);
-    }
-
-    return cents;
-  }
 }
