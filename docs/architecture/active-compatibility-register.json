@@ -43,19 +43,20 @@
       "compat_id": "benefits.business-config-loyalty-policy.v1",
       "status": "active",
       "old_owner": "BusinessConfig still retains a synchronized Loyalty compatibility copy while its one-way trigger can replay those columns into BrandConfig; the legacy Admin Business Loyalty request/response contract has now been contracted and no longer owns policy reads or writes",
-      "new_owner": "Benefits-owned LoyaltyPolicy reader/writer boundary; BrandConfig columns are transitional canonical persistence until the separately authorized LoyaltyProgramPolicy expand/backfill/cutover",
+      "new_owner": "Benefits-owned LoyaltyPolicy reader/writer boundary plus the expanded LoyaltyProgramPolicy persistence table; BrandConfig remains transitional runtime canonical storage until the Phase B triple-write/shadow-read release and later read cutover",
       "dual_write_or_read": [
         "The Benefits writer validates policy patches, reads the existing BrandConfig policy as canonical state without runtime defaults, and updates BrandConfig plus the BusinessConfig compatibility copy in one transaction so later unrelated BusinessConfig-triggered syncs cannot restore stale Loyalty values",
+        "Phase A adds LoyaltyProgramPolicy(id=1) with no business-field defaults and backfills it from BrandConfig(id=1); the migration atomically rejects missing singleton rows and reports exact per-field parity differences against BrandConfig and the active BusinessConfig compatibility copy. Runtime code does not read or write the new table yet, so it is not a canonical source until Phase B begins maintaining it",
         "Admin Members reads and writes use /admin/benefits/loyalty-policy; Admin Settings no longer owns or resubmits Loyalty fields; the legacy Admin Business request DTOs and response no longer expose Loyalty fields, AdminBusinessService has no Benefits policy reader/writer dependency, and stale PATCH/PUT callers receive HTTP 400 directing them to the Benefits endpoint; repository-wide Web old Admin Business route plus Loyalty-field usage is gated at zero",
         "POS payment reads the runtime Benefits policy through /pos/loyalty-policy with Session, Role, and PosDevice guards instead of reading Admin Business config",
         "Orders quote/create redemption conversion reads redeemDollarPerPoint through the Benefits runtime policy reader; delivery, tax, timezone, and other remaining BusinessConfig reads are tracked separately as Brand/Store debt",
-        "All LoyaltyService transaction and non-transaction readers plus Admin member tier progress read Benefits policy from BrandConfig",
+        "All LoyaltyService transaction and non-transaction readers plus Admin member tier progress still read Benefits policy from BrandConfig during Phase A",
         "The implementation-ready persistence plan keeps trigger splitting separate from the initial Benefits table expand so rollback never depends on a prematurely removed BusinessConfig-to-BrandConfig Loyalty bridge"
       ],
       "parity_metric": "BusinessConfig and BrandConfig Loyalty fields must remain zero-diff while the one-way trigger and transitional Benefits dual-write remain active; Web old Admin Business route plus Loyalty-field consumers and unregistered direct BusinessConfig Loyalty persistence consumers must remain zero. After expand, LoyaltyProgramPolicy versus BrandConfig and BusinessConfig must also report zero diff before each cutover step.",
       "rollback": "Before trigger split, retain synchronized BusinessConfig and BrandConfig copies. After trigger split, rollback only to an application version that no longer requires BusinessConfig-triggered Loyalty propagation. Never rewrite Loyalty ledger or historical order redemption facts.",
       "exit_criteria": "Old Admin Business Loyalty request/response fields are removed, all runtime readers/writers use dedicated LoyaltyProgramPolicy persistence, the BusinessConfig trigger contains no Loyalty fields, duplicated BrandConfig/BusinessConfig Loyalty columns are dropped in an authorized contraction migration, parity is proven, and active compatibility annotations are removed",
-      "remove_pr": "Admin Business contract contraction completed; remaining work is the separately authorized Benefits persistence expand/backfill/cutover, trigger split, and final column contraction",
+      "remove_pr": "Admin Business contract contraction and Phase A persistence expand/backfill are implemented; remaining work is Phase B triple-write/shadow-read, dedicated read cutover, trigger split, dual-write removal, and final column contraction",
       "deadline": "Before Phase 2 Identity/Customer/Benefits exit",
       "evidence": [
         "apps/api/src/loyalty/public-api.ts",
@@ -70,7 +71,9 @@
         "apps/api/src/orders/orders.service.ts",
         "apps/api/src/orders/orders-loyalty-redemption.ts",
         "apps/api/src/orders/orders-loyalty-redemption.characterization.spec.ts",
+        "apps/api/prisma/schema.prisma",
         "apps/api/prisma/migrations/20260819233000_add_store_config_foundation/migration.sql",
+        "apps/api/prisma/migrations/20260831133000_add_loyalty_program_policy/migration.sql",
         "docs/architecture/benefits-loyalty-policy-contraction-plan.md",
         "tools/architecture/context-baseline.json",
         "tools/architecture/scan-architecture.mjs"

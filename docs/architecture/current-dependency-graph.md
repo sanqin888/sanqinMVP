@@ -171,12 +171,14 @@ pair fails CI.
   The architecture scanner registers Orders as a migrated Brand/Store consumer and
   forbids reintroducing the `BusinessConfig` symbol or delegate there.
 - `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
-  state. `docs/architecture/benefits-loyalty-policy-contraction-plan.md` now fixes
-  the implementation order: business-day observation, Admin Business contract
-  contraction, dedicated `LoyaltyProgramPolicy` expand/backfill, triple-write and
-  shadow-read parity, dedicated read cutover, separate trigger Loyalty split,
-  removal of BusinessConfig then BrandConfig dual-writes, and only then the final
-  column contraction. Every Prisma/trigger migration remains separately authorized.
+  state. Phase A now expands the dedicated `LoyaltyProgramPolicy` singleton and
+  backfills its ten fields from `BrandConfig(id=1)` with atomic source/count/parity
+  checks, but runtime readers and writers intentionally remain on the existing
+  BrandConfig plus BusinessConfig compatibility path. The remaining implementation
+  order is triple-write and shadow-read parity, dedicated read cutover, separate
+  trigger Loyalty split, removal of BusinessConfig then BrandConfig dual-writes,
+  and only then the final column contraction. Every later Prisma/trigger migration
+  remains separately authorized.
 
 ## Carried debt outside this closeout
 

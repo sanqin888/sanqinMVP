@@ -3,7 +3,7 @@
 Date: 2026-08-30
 Baseline: `origin/dev` at `483f675f`
 Compatibility entry: `benefits.business-config-loyalty-policy.v1`
-Status: Admin Business contract contraction implemented; dedicated Benefits persistence/trigger/schema phases remain pending and require separate Prisma authorization.
+Status: Admin Business contract contraction implemented; Phase A dedicated `LoyaltyProgramPolicy` expand/backfill is implemented in `20260831133000_add_loyalty_program_policy`, while runtime cutover, trigger split, dual-write removal, and final column contraction remain pending.
 
 ## 1. Scope and current ownership
 
@@ -148,11 +148,13 @@ Migration rules:
 - fail the migration if the canonical source row is absent instead of inventing a policy;
 - do not change rates, threshold semantics, tier ordering rules or rounding behavior in this migration.
 
-The exact schema and generated migration require separate explicit authorization before implementation.
+The Phase A schema and migration were implemented after explicit Prisma/migration authorization; every later trigger/schema migration in Phases D/G still requires its own explicit authorization.
 
 ## 7. Expand-backfill-cutover sequence
 
 ### Phase A — Expand migration
+
+Implementation status: **implemented** in `20260831133000_add_loyalty_program_policy`; this phase adds persistence only and intentionally leaves runtime readers/writers on the existing transitional storage.
 
 Authorized Prisma migration only:
 
@@ -162,6 +164,8 @@ Authorized Prisma migration only:
 4. Do **not** drop or rename BusinessConfig/BrandConfig fields.
 5. Do **not** alter the existing BusinessConfig trigger yet.
 
+The migration also verifies the active `BusinessConfig(id=1)` compatibility row before backfill and fails atomically if either singleton is missing.
+
 Post-migration report must include:
 
 - source BrandConfig row count;
@@ -169,6 +173,8 @@ Post-migration report must include:
 - exact per-field diff between LoyaltyProgramPolicy and BrandConfig;
 - exact per-field diff between BrandConfig and BusinessConfig;
 - all counts must be zero-diff before cutover work continues.
+
+The migration performs these zero-diff checks itself and raises the exact differing fields if parity is not clean; deployment verification should still record the observed counts/diffs in the rollout report.
 
 ### Phase B — Triple-write + shadow-read application release
 
