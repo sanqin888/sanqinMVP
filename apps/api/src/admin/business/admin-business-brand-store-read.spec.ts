@@ -48,41 +48,36 @@ const brandStoreConfig: BrandStoreConfigSnapshot = {
 };
 
 function setup() {
-  const prisma = {
-    businessConfig: {
-      findUnique: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn().mockResolvedValue({}),
-    },
-    businessHour: {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          weekday: 1,
-          openMinutes: 660,
-          closeMinutes: 1260,
-          isClosed: false,
-        },
-      ]),
-      createMany: jest.fn(),
-    },
-    holiday: {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          date: new Date('2026-12-25T00:00:00.000Z'),
-          name: 'Christmas',
-          isClosed: true,
-          openMinutes: null,
-          closeMinutes: null,
-        },
-      ]),
-    },
-  };
   const brandStoreConfigReader = {
     getSnapshot: jest.fn().mockResolvedValue(brandStoreConfig),
+    getBrandSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.brand),
     getStoreSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.store),
   };
   const brandStoreConfigWriter = {
     updateConfig: jest.fn().mockResolvedValue(undefined),
+  };
+  const storeScheduleReader = {
+    listBusinessHours: jest.fn().mockResolvedValue([
+      {
+        weekday: 1,
+        openMinutes: 660,
+        closeMinutes: 1260,
+        isClosed: false,
+      },
+    ]),
+    listHolidays: jest.fn().mockResolvedValue([
+      {
+        date: '2026-12-25',
+        name: 'Christmas',
+        isClosed: true,
+        openMinutes: null,
+        closeMinutes: null,
+      },
+    ]),
+  };
+  const storeScheduleWriter = {
+    replaceBusinessHours: jest.fn().mockResolvedValue(undefined),
+    replaceHolidays: jest.fn().mockResolvedValue(undefined),
   };
   const uber = {
     syncStoreStatusToUber: jest.fn().mockResolvedValue({
@@ -91,24 +86,26 @@ function setup() {
     }),
   };
   const service = new AdminBusinessService(
-    prisma as never,
     brandStoreConfigReader as never,
     brandStoreConfigWriter as never,
+    storeScheduleReader as never,
+    storeScheduleWriter as never,
     uber as never,
   );
 
   return {
     service,
-    prisma,
     brandStoreConfigReader,
     brandStoreConfigWriter,
+    storeScheduleReader,
+    storeScheduleWriter,
     uber,
   };
 }
 
 describe('AdminBusinessService canonical Brand/Store reads', () => {
   it('builds the admin response from owner readers only', async () => {
-    const { service, prisma, brandStoreConfigReader } = setup();
+    const { service, brandStoreConfigReader, storeScheduleReader } = setup();
 
     await expect(service.getConfig()).resolves.toEqual({
       timezone: 'America/Toronto',
@@ -161,18 +158,17 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
     });
 
     expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(1);
-    expect(prisma.businessConfig.findUnique).not.toHaveBeenCalled();
-    expect(prisma.businessConfig.create).not.toHaveBeenCalled();
+    expect(storeScheduleReader.listBusinessHours).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
+    expect(storeScheduleReader.listHolidays).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
   });
 
   it('uses the Brand/Store owner writer for reason-only compatibility routes', async () => {
-    const {
-      service,
-      prisma,
-      brandStoreConfigReader,
-      brandStoreConfigWriter,
-      uber,
-    } = setup();
+    const { service, brandStoreConfigReader, brandStoreConfigWriter, uber } =
+      setup();
 
     await service.updateConfig({ reason: ' Updated reason ' });
 
@@ -181,14 +177,11 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
       brand: undefined,
       store: { temporaryCloseReason: 'Updated reason' },
     });
-    expect(prisma.businessConfig.update).not.toHaveBeenCalled();
-    expect(prisma.businessConfig.findUnique).not.toHaveBeenCalled();
-    expect(prisma.businessConfig.create).not.toHaveBeenCalled();
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
   });
 
   it('routes Brand/Store writes to their owner boundary', async () => {
-    const { service, prisma, brandStoreConfigWriter, uber } = setup();
+    const { service, brandStoreConfigWriter, uber } = setup();
 
     await service.updateConfig({
       brandNameEn: ' SanQ Updated ',
@@ -199,7 +192,6 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
       brand: { brandNameEn: 'SanQ Updated' },
       store: { salesTaxRate: 0.15 },
     });
-    expect(prisma.businessConfig.update).not.toHaveBeenCalled();
     expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
   });
 

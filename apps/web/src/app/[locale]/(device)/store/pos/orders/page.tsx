@@ -29,6 +29,7 @@ import type {
   PosOrderManagementAction,
 } from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
+import { fetchStaffStoreConfig } from "@/lib/api/brand-store";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
 const COPY = {
@@ -1089,7 +1090,6 @@ function ActionContent({
 }
 
 export default function PosOrdersPage() {
-  type BusinessConfigLite = { timezone: string };
   const params = useParams<{ locale?: string }>();
   const searchParams = useSearchParams();
   const locale = (params?.locale === "zh" ? "zh" : "en") as Locale;
@@ -1228,9 +1228,7 @@ export default function PosOrdersPage() {
         setIsLoading(true);
         setErrorMessage(null);
         const [configRes, data] = await Promise.all([
-          apiFetch<BusinessConfigLite>("/admin/business/config").catch(
-            () => null,
-          ),
+          fetchStaffStoreConfig().catch(() => null),
           fetchRecentOrders<BackendOrder[]>(30),
         ]);
         if (cancelled) return;

@@ -30,7 +30,8 @@ export class AdminBusinessController {
   }
 
   /**
-   * 更新“临时暂停接单”状态（当前前端使用的接口）：
+   * Legacy compatibility adapter for older staff clients.
+   * Current staff Web clients use the Brand/Store-owned /staff/* contracts.
    * PATCH /admin/business/config
    * body:
    * {
