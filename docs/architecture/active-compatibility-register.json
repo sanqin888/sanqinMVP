@@ -104,7 +104,7 @@
       "evidence": [
         "apps/api/prisma/schema.prisma BusinessHour/Holiday and Uber*Config models",
         "apps/api/src/store/store-schedule.contract.ts",
-        "apps/api/src/store/store-schedule.prisma.ts",
+        "apps/api/src/store/brand-store-config.reader.ts",
         "apps/api/src/store/store-status.service.ts",
         "apps/web/src/lib/api/brand-store.ts",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"

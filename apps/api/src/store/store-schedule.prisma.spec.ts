@@ -1,4 +1,4 @@
-import { PrismaStoreScheduleAdapter } from './store-schedule.prisma';
+import { PrismaStoreScheduleAdapter } from './brand-store-config.reader';
 
 const storeStableId = '4750_Yonge_Street';
 const storeDbId = '8a3d4c0e-4750-4f6a-9138-000000000001';

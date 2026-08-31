@@ -3,6 +3,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import {
   PrismaBrandStoreConfigReader,
   PrismaBrandStoreConfigWriter,
+  PrismaStoreScheduleAdapter,
 } from './brand-store-config.reader';
 import {
   BRAND_STORE_CONFIG_READER,
@@ -12,7 +13,6 @@ import {
   STORE_SCHEDULE_READER,
   STORE_SCHEDULE_WRITER,
 } from './store-schedule.contract';
-import { PrismaStoreScheduleAdapter } from './store-schedule.prisma';
 
 @Module({
   imports: [PrismaModule],
