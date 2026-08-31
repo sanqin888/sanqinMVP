@@ -202,6 +202,7 @@
       "LoyaltyPolicyWriterPort",
       "LoyaltyModule"
     ],
+    "dedicatedStorageDelegate": "loyaltyProgramPolicy",
     "transitionalStorageDelegate": "brandConfig",
     "legacyStorageDelegate": "businessConfig",
     "implementationForbiddenSymbols": [
