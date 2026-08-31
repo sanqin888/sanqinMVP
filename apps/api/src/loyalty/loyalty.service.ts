@@ -911,7 +911,9 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     }
   }
 
-  async getSettledBalancePaymentCentsForOrder(orderId: string): Promise<number> {
+  async getSettledBalancePaymentCentsForOrder(
+    orderId: string,
+  ): Promise<number> {
     const settled = await this.prisma.loyaltyLedger.aggregate({
       where: {
         orderId,

@@ -275,7 +275,9 @@ describe('OrdersService.createFullRefund', () => {
     });
     getSettledBalancePaymentCentsForOrder.mockResolvedValue(1599);
 
-    await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(1000);
+    await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(
+      1000,
+    );
   });
 
   it('已有历史 PENDING_MANUAL amendment 时原位确认而不新增记录', async () => {

@@ -716,9 +716,7 @@ export class OrdersService {
     };
   }
 
-  async getExternalPaymentCents(
-    orderStableId: string,
-  ): Promise<number | null> {
+  async getExternalPaymentCents(orderStableId: string): Promise<number | null> {
     const order = await this.prisma.order.findUnique({
       where: { orderStableId },
       select: {
@@ -744,7 +742,7 @@ export class OrdersService {
       typeof breakdown === 'object' &&
       !Array.isArray(breakdown)
     ) {
-      const externalCents = (breakdown as Prisma.JsonObject).externalCents;
+      const externalCents = breakdown.externalCents;
       if (
         typeof externalCents === 'number' &&
         Number.isInteger(externalCents) &&
@@ -4070,8 +4068,7 @@ export class OrdersService {
         updated.channel === Channel.ubereats
           ? 'pending_platform'
           : updated.channel === Channel.in_store ||
-              (updated.channel === Channel.web &&
-                refundableExternalCents === 0)
+              (updated.channel === Channel.web && refundableExternalCents === 0)
             ? 'refunded'
             : 'pending_manual',
     };
