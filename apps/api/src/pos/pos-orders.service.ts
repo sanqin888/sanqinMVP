@@ -256,13 +256,35 @@ export class PosOrdersService {
     const order = await this.orders.getByStableId(orderStableId);
 
     if (order.channel === Channel.web) {
+      const externalPaymentCents =
+        await this.orders.getExternalPaymentCents(orderStableId);
+      const fullRefundAvailable =
+        externalPaymentCents === 0 && AMENDABLE_STATUSES.has(order.status);
+      const fullRefundReason: PosOrderActionCapability['reason'] | undefined =
+        fullRefundAvailable
+          ? undefined
+          : order.status === 'refunded'
+            ? 'ORDER_REFUNDED'
+            : externalPaymentCents === 0
+              ? order.status === 'pending'
+                ? 'ORDER_NOT_SETTLED'
+                : 'ORDER_STATUS_NOT_SUPPORTED'
+              : 'CLOVER_SYNC_PENDING';
+
       return {
         actions: IN_STORE_MANAGEMENT_ACTIONS.map(
-          (action): PosOrderActionCapability => ({
-            action,
-            available: false,
-            reason: 'CLOVER_SYNC_PENDING',
-          }),
+          (action): PosOrderActionCapability => {
+            if (action === 'FULL_REFUND') {
+              return fullRefundReason
+                ? { action, available: false, reason: fullRefundReason }
+                : { action, available: true };
+            }
+            return {
+              action,
+              available: false,
+              reason: 'CLOVER_SYNC_PENDING',
+            };
+          },
         ),
       };
     }
@@ -329,7 +351,7 @@ export class PosOrdersService {
     input: PosCreateFullRefundInput,
   ) {
     const order = await this.orders.getByStableId(orderStableId);
-    this.assertInStoreManagementOrder(order);
+    await this.assertFullRefundManagementOrder(order, orderStableId);
     const operatorName = this.requireOperatorName(input.operatorName);
     const reason = this.requireReason(input.reason);
 
@@ -380,6 +402,29 @@ export class PosOrdersService {
         })),
       };
     });
+  }
+
+  private async assertFullRefundManagementOrder(
+    order: OrderDto,
+    orderStableId: string,
+  ): Promise<void> {
+    if (order.channel === Channel.web) {
+      const externalPaymentCents =
+        await this.orders.getExternalPaymentCents(orderStableId);
+      if (externalPaymentCents !== 0) {
+        throw new BadRequestException(
+          'Web order refund is disabled while external payment reversal is not available',
+        );
+      }
+    } else if (order.channel === Channel.ubereats) {
+      throw new BadRequestException(
+        'Uber orders must use the integrated Uber action flow',
+      );
+    }
+
+    if (!AMENDABLE_STATUSES.has(order.status)) {
+      throw new BadRequestException('当前订单状态不允许改单或退款');
+    }
   }
 
   private assertInStoreManagementOrder(order: OrderDto): void {

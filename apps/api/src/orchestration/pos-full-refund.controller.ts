@@ -32,7 +32,7 @@ const PaymentMethodSchema = z.enum([
 const PosFullRefundSchema = z.object({
   reason: z.string().trim().min(1).max(500),
   operatorName: z.string().trim().min(1).max(120),
-  refundAmountCents: z.number().int().positive(),
+  refundAmountCents: z.number().int().nonnegative(),
   originalPaymentMethod: PaymentMethodSchema,
   refundMethod: PaymentMethodSchema,
 });

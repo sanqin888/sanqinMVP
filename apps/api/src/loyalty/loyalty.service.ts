@@ -911,6 +911,22 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     }
   }
 
+  async getSettledBalancePaymentCentsForOrder(
+    orderId: string,
+  ): Promise<number> {
+    const settled = await this.prisma.loyaltyLedger.aggregate({
+      where: {
+        orderId,
+        type: LoyaltyEntryType.REDEEM_ON_ORDER,
+        target: 'BALANCE',
+        deltaMicro: { lt: 0n },
+      },
+      _sum: { deltaMicro: true },
+    });
+    const settledMicro = -(settled._sum.deltaMicro ?? 0n);
+    return Number(settledMicro / 10_000n);
+  }
+
   // ✅ 新增方法：扣除储值余额
   async deductBalanceForOrder(params: {
     tx: Prisma.TransactionClient;

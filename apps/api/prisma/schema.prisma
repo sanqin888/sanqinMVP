@@ -483,6 +483,22 @@ model BrandConfig {
   updatedAt                DateTime @updatedAt
 }
 
+model LoyaltyProgramPolicy {
+  id                      Int      @id
+  earnPtPerDollar         Float
+  redeemDollarPerPoint    Float
+  referralPtPerDollar     Float
+  tierMultiplierBronze    Float
+  tierMultiplierSilver    Float
+  tierMultiplierGold      Float
+  tierMultiplierPlatinum  Float
+  tierThresholdSilver     Int
+  tierThresholdGold       Int
+  tierThresholdPlatinum   Int
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
 model PosDevice {
   id                String          @id @default(uuid()) @db.Uuid
   deviceStableId    String          @unique @default(cuid())

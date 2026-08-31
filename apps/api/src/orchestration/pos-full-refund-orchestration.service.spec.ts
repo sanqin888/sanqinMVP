@@ -250,6 +250,27 @@ describe('POS refund controller validation boundaries', () => {
     );
   });
 
+  it('accepts a zero refund amount for benefits-only Web orders', async () => {
+    const payload = {
+      reason: 'Customer cancellation',
+      operatorName: 'Staff',
+      refundAmountCents: 0,
+      originalPaymentMethod: 'STORE_BALANCE',
+      refundMethod: 'STORE_BALANCE',
+    } as const;
+
+    const response = await request(httpServer)
+      .post(`/pos/orders/${controllerOrderStableId}/full-refund`)
+      .send(payload);
+
+    expect(response.status).toBe(201);
+    expect(controllerFullRefund).toHaveBeenCalledWith(
+      controllerStoreStableId,
+      controllerOrderStableId,
+      payload,
+    );
+  });
+
   it('still rejects an invalid full-refund body', async () => {
     const response = await request(httpServer)
       .post(`/pos/orders/${controllerOrderStableId}/full-refund`)
