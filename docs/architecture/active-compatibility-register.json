@@ -92,19 +92,25 @@
     {
       "compat_id": "web.api-envelope-direct-payload.v1",
       "status": "active",
-      "old_owner": "Direct API payload readers and page-local response unwrap helpers",
+      "old_owner": "Checkout direct API payload readers and page-local response unwrap helpers",
       "new_owner": "One Web API client using the global code/message/details response envelope",
       "dual_write_or_read": [
-        "Canonical apiFetch and serverApiFetch now require the global code/message/details envelope",
-        "Legacy browser direct-fetch debt remains only in Checkout (6 calls) and POS session/login paths (5 calls); Checkout still owns page-local envelope/direct-payload compatibility"
+        "Canonical apiFetch and serverApiFetch require the global code/message/details envelope",
+        "POS session/login claim, login, auth/me, public store-status and connectivity heartbeat calls use the centralized POS session API adapter; their five browser direct-fetch allowances are removed",
+        "Legacy browser direct-fetch debt remains only in Checkout (6 calls), which still owns page-local envelope/direct-payload compatibility"
       ],
-      "parity_metric": "Architecture scanner browser direct-fetch debt must fall from 11 legacy calls to zero, and page-local Checkout envelope/direct-payload readers must be removed",
-      "rollback": "Keep the remaining Checkout/POS legacy calls isolated by architecture allowances until their dedicated risk-scoped migration; do not relax the strict canonical parser",
+      "parity_metric": "Architecture scanner browser direct-fetch debt is reduced from 11 to 6 and must reach zero; POS session/login direct fetches must remain zero, and page-local Checkout envelope/direct-payload readers must be removed",
+      "rollback": "Keep only the remaining Checkout legacy calls isolated by architecture allowances until its dedicated risk-scoped migration; POS session/login must stay on the canonical client and must not regain direct-fetch allowances",
       "exit_criteria": "All regular Web JSON API calls use the canonical client, remaining legacy browser direct fetches are zero, and duplicate/page-local ApiEnvelope readers are removed",
-      "remove_pr": "Dedicated Checkout and POS browser transport migration PRs",
+      "remove_pr": "POS session/login browser transport migration followed by the dedicated Checkout browser transport migration",
       "deadline": "Before Phase 1 low-risk cleanup exit",
       "evidence": [
-        "SanQ full-site modularization audit section 3.4"
+        "SanQ full-site modularization audit section 3.4",
+        "apps/web/src/lib/api/pos-session.ts",
+        "apps/web/src/app/[locale]/(device)/store/pos/PosSessionKeepAlive.tsx",
+        "apps/web/src/app/[locale]/(device)/store/pos/login/page.tsx",
+        "apps/api/src/pos/pos-devices.controller.ts",
+        "tools/architecture/context-baseline.json"
       ]
     },
     {
