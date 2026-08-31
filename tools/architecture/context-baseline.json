@@ -145,6 +145,9 @@
       "apps/api/src/messaging/business-config.service.ts",
       "apps/api/src/orders/orders.service.ts"
     ],
+    "legacyWriteOnlyConfigConsumers": [
+      "apps/api/src/admin/business/admin-business.service.ts"
+    ],
     "migratedConsumerForbiddenSymbols": {
       "apps/api/src/messaging/business-config.service.ts": [
         "BusinessConfig",

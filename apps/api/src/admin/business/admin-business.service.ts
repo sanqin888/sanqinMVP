@@ -4,7 +4,15 @@ import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import type { BusinessConfig, BusinessHour, StoreConfig } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
-import { resolveConfiguredStoreStableId } from '../../store/public-api';
+import {
+  BRAND_STORE_CONFIG_READER,
+  resolveConfiguredStoreStableId,
+  type BrandStoreConfigReaderPort,
+} from '../../store/public-api';
+import {
+  LOYALTY_POLICY_SETTINGS_READER,
+  type LoyaltyPolicySettingsReaderPort,
+} from '../../loyalty/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
@@ -76,6 +84,10 @@ export class AdminBusinessService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(LOYALTY_POLICY_SETTINGS_READER)
+    private readonly loyaltyPolicySettingsReader: LoyaltyPolicySettingsReaderPort,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uberEatsService: UberEatsStoreStatusSyncPort,
   ) {}
@@ -88,58 +100,58 @@ export class AdminBusinessService {
    * - 节假日列表
    */
   async getConfig(): Promise<BusinessConfigResponse> {
-    const [config, storeConfig] = await Promise.all([
-      this.ensureConfig(),
-      this.ensureStoreConfig(),
-    ]);
-    const hours = await this.ensureHoursInitialized();
-    const holidays = await this.prisma.holiday.findMany({
-      orderBy: { date: 'asc' },
-    });
+    const [brandStoreConfig, loyaltyPolicy, hours, holidays] =
+      await Promise.all([
+        this.brandStoreConfigReader.getSnapshot(),
+        this.loyaltyPolicySettingsReader.getLoyaltyPolicySettings(),
+        this.ensureHoursInitialized(),
+        this.prisma.holiday.findMany({ orderBy: { date: 'asc' } }),
+      ]);
+    const { brand, store } = brandStoreConfig;
 
     return {
-      timezone: config.timezone,
-      isTemporarilyClosed: config.isTemporarilyClosed,
-      temporaryCloseReason: config.temporaryCloseReason ?? null,
-      publicNotice: config.publicNotice ?? null,
-      publicNoticeEn: config.publicNoticeEn ?? null,
-      deliveryBaseFeeCents: config.deliveryBaseFeeCents,
-      priorityPerKmCents: config.priorityPerKmCents,
-      maxDeliveryRangeKm: config.maxDeliveryRangeKm,
-      priorityDefaultDistanceKm: config.priorityDefaultDistanceKm,
-      storeLatitude: config.storeLatitude ?? null,
-      storeLongitude: config.storeLongitude ?? null,
-      storeAddressLine1: config.storeAddressLine1 ?? null,
-      storeAddressLine2: config.storeAddressLine2 ?? null,
-      storeCity: config.storeCity ?? null,
-      storeProvince: config.storeProvince ?? null,
-      storePostalCode: config.storePostalCode ?? null,
-      brandNameZh: config.brandNameZh ?? null,
-      brandNameEn: config.brandNameEn ?? null,
-      siteUrl: config.siteUrl ?? null,
-      emailFromNameZh: config.emailFromNameZh ?? null,
-      emailFromNameEn: config.emailFromNameEn ?? null,
-      emailFromAddress: config.emailFromAddress ?? null,
-      smsSignature: config.smsSignature ?? null,
-      supportPhone: config.supportPhone ?? null,
-      supportEmail: config.supportEmail ?? null,
-      salesTaxRate: config.salesTaxRate,
+      timezone: store.timezone,
+      isTemporarilyClosed: store.isTemporarilyClosed,
+      temporaryCloseReason: store.temporaryCloseReason,
+      publicNotice: store.publicNotice,
+      publicNoticeEn: store.publicNoticeEn,
+      deliveryBaseFeeCents: store.deliveryBaseFeeCents,
+      priorityPerKmCents: store.priorityPerKmCents,
+      maxDeliveryRangeKm: store.maxDeliveryRangeKm,
+      priorityDefaultDistanceKm: store.priorityDefaultDistanceKm,
+      storeLatitude: store.latitude,
+      storeLongitude: store.longitude,
+      storeAddressLine1: store.addressLine1,
+      storeAddressLine2: store.addressLine2,
+      storeCity: store.city,
+      storeProvince: store.province,
+      storePostalCode: store.postalCode,
+      brandNameZh: brand.brandNameZh,
+      brandNameEn: brand.brandNameEn,
+      siteUrl: brand.siteUrl,
+      emailFromNameZh: brand.emailFromNameZh,
+      emailFromNameEn: brand.emailFromNameEn,
+      emailFromAddress: brand.emailFromAddress,
+      smsSignature: brand.smsSignature,
+      supportPhone: brand.supportPhone,
+      supportEmail: brand.supportEmail,
+      salesTaxRate: store.salesTaxRate,
       wechatAlipayExchangeRate: Number(
-        config.wechatAlipayExchangeRate.toFixed(2),
+        brand.wechatAlipayExchangeRate.toFixed(2),
       ),
-      earnPtPerDollar: config.earnPtPerDollar,
-      redeemDollarPerPoint: config.redeemDollarPerPoint,
-      referralPtPerDollar: config.referralPtPerDollar,
-      tierMultiplierBronze: config.tierMultiplierBronze,
-      tierMultiplierSilver: config.tierMultiplierSilver,
-      tierMultiplierGold: config.tierMultiplierGold,
-      tierMultiplierPlatinum: config.tierMultiplierPlatinum,
-      tierThresholdSilver: config.tierThresholdSilver,
-      tierThresholdGold: config.tierThresholdGold,
-      tierThresholdPlatinum: config.tierThresholdPlatinum,
-      enableUberDirect: config.enableUberDirect,
-      allergyHandlingMode: storeConfig.allergyHandlingMode,
-      unsupportedAllergens: storeConfig.unsupportedAllergens,
+      earnPtPerDollar: loyaltyPolicy.earnPtPerDollar,
+      redeemDollarPerPoint: loyaltyPolicy.redeemDollarPerPoint,
+      referralPtPerDollar: loyaltyPolicy.referralPtPerDollar,
+      tierMultiplierBronze: loyaltyPolicy.tierMultiplierBronze,
+      tierMultiplierSilver: loyaltyPolicy.tierMultiplierSilver,
+      tierMultiplierGold: loyaltyPolicy.tierMultiplierGold,
+      tierMultiplierPlatinum: loyaltyPolicy.tierMultiplierPlatinum,
+      tierThresholdSilver: loyaltyPolicy.tierThresholdSilver,
+      tierThresholdGold: loyaltyPolicy.tierThresholdGold,
+      tierThresholdPlatinum: loyaltyPolicy.tierThresholdPlatinum,
+      enableUberDirect: store.enableUberDirect,
+      allergyHandlingMode: store.allergyHandlingMode,
+      unsupportedAllergens: store.unsupportedAllergens,
       hours: hours.map((h) => ({
         weekday: h.weekday,
         openMinutes: h.openMinutes ?? 0,
@@ -353,7 +365,8 @@ export class AdminBusinessService {
       );
     }
 
-    const config = await this.ensureConfig();
+    const storeConfigSnapshot =
+      await this.brandStoreConfigReader.getStoreSnapshot();
 
     const trimmedReason =
       typeof reason === 'string' ? reason.trim() : undefined;
@@ -408,7 +421,10 @@ export class AdminBusinessService {
           ? trimmedReason
           : null
         : null;
-    } else if (trimmedReason !== undefined && config.isTemporarilyClosed) {
+    } else if (
+      trimmedReason !== undefined &&
+      storeConfigSnapshot.isTemporarilyClosed
+    ) {
       // 允许单独更新 reason（仅当当前是暂停状态）
       updates.temporaryCloseReason =
         trimmedReason.length > 0 ? trimmedReason : null;
@@ -656,18 +672,25 @@ export class AdminBusinessService {
       return this.getConfig();
     }
 
+    const temporaryPauseChanged =
+      (updates.isTemporarilyClosed !== undefined &&
+        updates.isTemporarilyClosed !==
+          storeConfigSnapshot.isTemporarilyClosed) ||
+      (updates.temporaryCloseReason !== undefined &&
+        updates.temporaryCloseReason !==
+          storeConfigSnapshot.temporaryCloseReason);
+
     const currentStoreConfig = hasStoreConfigUpdates
       ? await this.ensureStoreConfig()
       : null;
-    let updatedConfig: BusinessConfig = config;
     if (currentStoreConfig && hasBusinessConfigUpdates) {
-      updatedConfig = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx) => {
         await tx.storeConfig.update({
           where: { storeId: currentStoreConfig.storeId },
           data: storeConfigUpdates,
         });
-        return tx.businessConfig.update({
-          where: { id: config.id },
+        await tx.businessConfig.update({
+          where: { id: 1 },
           data: updates,
         });
       });
@@ -677,25 +700,22 @@ export class AdminBusinessService {
         data: storeConfigUpdates,
       });
     } else {
-      updatedConfig = await this.prisma.businessConfig.update({
-        where: { id: config.id },
+      await this.prisma.businessConfig.update({
+        where: { id: 1 },
         data: updates,
       });
     }
 
-    if (
-      updatedConfig.isTemporarilyClosed !== config.isTemporarilyClosed ||
-      updatedConfig.temporaryCloseReason !== config.temporaryCloseReason
-    ) {
+    if (temporaryPauseChanged) {
       await this.syncUberStoreStatusSafely('admin_business_config');
     }
 
     this.logger.log(
-      `Business config updated: isTemporarilyClosed=${updates.isTemporarilyClosed ?? config.isTemporarilyClosed} reason="${
+      `Business config updated: isTemporarilyClosed=${updates.isTemporarilyClosed ?? storeConfigSnapshot.isTemporarilyClosed} reason="${
         updates.temporaryCloseReason ?? trimmedReason ?? ''
-      }" baseFee=${updates.deliveryBaseFeeCents ?? config.deliveryBaseFeeCents} perKm=${
-        updates.priorityPerKmCents ?? config.priorityPerKmCents
-      } taxRate=${updates.salesTaxRate ?? config.salesTaxRate}`,
+      }" baseFee=${updates.deliveryBaseFeeCents ?? storeConfigSnapshot.deliveryBaseFeeCents} perKm=${
+        updates.priorityPerKmCents ?? storeConfigSnapshot.priorityPerKmCents
+      } taxRate=${updates.salesTaxRate ?? storeConfigSnapshot.salesTaxRate}`,
     );
 
     return this.getConfig();
@@ -841,28 +861,6 @@ export class AdminBusinessService {
     }
     if (store.config) return store.config;
     return this.prisma.storeConfig.create({ data: { storeId: store.id } });
-  }
-
-  /** 确保 BusinessConfig 存在（id 固定为 1） */
-  private async ensureConfig(): Promise<BusinessConfig> {
-    const existing = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    if (existing) return existing;
-
-    this.logger.log('BusinessConfig not found, creating default row (id=1)');
-    return this.prisma.businessConfig.create({
-      data: {
-        id: 1,
-        storeName: '',
-        timezone: 'America/Toronto',
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
-        publicNotice: null,
-        publicNoticeEn: null,
-      },
-    });
   }
 
   /** 确保一周的 BusinessHour 至少有一组记录，没有的话初始化为“全部休息” */

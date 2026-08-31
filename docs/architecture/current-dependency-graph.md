@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 POS Brand/Store read cutover base: `origin/dev@6fb7d951` (2026-08-31).
+Phase 2 Admin Business Brand/Store read cutover base: `origin/dev@fda5b080` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -97,7 +97,15 @@ pair fails CI.
   regressing to that delegate. POS pause/resume persistence intentionally remains
   a `BusinessConfig` compatibility write in this slice so the existing one-way
   trigger continues mirroring the same state into `StoreConfig` for canonical
-  readers while legacy Admin/Uber readers are still being migrated.
+  readers while the remaining legacy writers/readers are migrated.
+- Admin Business read composition now follows the owner boundaries too: Brand and
+  Store fields come from `BRAND_STORE_CONFIG_READER`, Loyalty settings come from
+  the Benefits settings reader, and update-time pause-state decisions use the
+  canonical Store snapshot. The legacy Admin PATCH/PUT routes still persist their
+  compatibility payload through `BusinessConfig.update` so the current one-way
+  trigger and mixed Loyalty rollback semantics remain unchanged. Architecture CI
+  allows only those compatibility update methods in this read-cutover consumer;
+  `BusinessConfig` reads/creates cannot return.
 - Messaging configuration now caches the canonical Brand/Store snapshot instead
   of a Prisma `BusinessConfig` model and no longer creates configuration on read.
   Brand support contact fields feed message templates, while Store name/address/
