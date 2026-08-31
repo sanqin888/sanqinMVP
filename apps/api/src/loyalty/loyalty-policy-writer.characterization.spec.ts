@@ -83,8 +83,8 @@ describe('Loyalty policy writer characterization', () => {
     };
     const transaction = jest
       .fn()
-      .mockImplementation(
-        async (callback: (client: typeof tx) => unknown) => callback(tx),
+      .mockImplementation((callback: (client: typeof tx) => unknown) =>
+        Promise.resolve(callback(tx)),
       );
     const prisma = {
       $transaction: transaction,
@@ -154,8 +154,8 @@ describe('Loyalty policy writer characterization', () => {
     };
     const transaction = jest
       .fn()
-      .mockImplementation(
-        async (callback: (client: typeof tx) => unknown) => callback(tx),
+      .mockImplementation((callback: (client: typeof tx) => unknown) =>
+        Promise.resolve(callback(tx)),
       );
     const writer = new PrismaLoyaltyPolicyWriter({
       $transaction: transaction,

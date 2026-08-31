@@ -22,7 +22,9 @@ describe('AdminLoyaltyPolicyController', () => {
     const controller = new AdminLoyaltyPolicyController(writer as never);
     const patch = { earnPtPerDollar: 0.01 };
 
-    await expect(controller.updateLoyaltyPolicy(patch)).resolves.toEqual(result);
+    await expect(controller.updateLoyaltyPolicy(patch)).resolves.toEqual(
+      result,
+    );
     expect(writer.updateLoyaltyPolicy).toHaveBeenCalledWith(patch);
   });
 

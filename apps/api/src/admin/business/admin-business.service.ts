@@ -971,7 +971,10 @@ export class AdminBusinessService {
     return Number(value.toFixed(4));
   }
 
-  private normalizeStrictlyPositiveNumber(label: string, value: unknown): number {
+  private normalizeStrictlyPositiveNumber(
+    label: string,
+    value: unknown,
+  ): number {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new BadRequestException(`${label} must be a finite number`);
     }
