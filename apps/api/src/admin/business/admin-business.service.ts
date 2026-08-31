@@ -685,7 +685,8 @@ export class AdminBusinessService {
       `Business config updated: isTemporarilyClosed=${storeUpdates.isTemporarilyClosed ?? storeConfigSnapshot.isTemporarilyClosed} reason="${
         storeUpdates.temporaryCloseReason ?? trimmedReason ?? ''
       }" baseFee=${storeUpdates.deliveryBaseFeeCents ?? storeConfigSnapshot.deliveryBaseFeeCents} perKm=${
-        storeUpdates.priorityPerKmCents ?? storeConfigSnapshot.priorityPerKmCents
+        storeUpdates.priorityPerKmCents ??
+        storeConfigSnapshot.priorityPerKmCents
       } taxRate=${storeUpdates.salesTaxRate ?? storeConfigSnapshot.salesTaxRate}`,
     );
 
@@ -960,5 +961,4 @@ export class AdminBusinessService {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
   }
-
 }

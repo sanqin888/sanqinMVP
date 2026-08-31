@@ -38,39 +38,73 @@ const storeConfig = {
   enableUberDirect: true,
 };
 
+type BrandRow = typeof brand;
+type StoreConfigRow = typeof storeConfig;
+type StoreUpdateData = Partial<StoreConfigRow> & {
+  allergyHandlingMode?: string;
+  unsupportedAllergens?: string[];
+};
+type SelectShape = Record<string, boolean>;
+
 function setup(options?: {
-  brand?: typeof brand | null;
-  config?: typeof storeConfig | null;
+  brand?: BrandRow | null;
+  config?: StoreConfigRow | null;
 }) {
-  const tx = {
-    brandConfig: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue(options?.brand === undefined ? brand : options.brand),
-      update: jest.fn().mockImplementation(async ({ data }) => ({
-        ...brand,
-        ...data,
-      })),
-    },
-    store: {
-      findUnique: jest.fn().mockResolvedValue({
+  const brandFindUnique = jest.fn(
+    (_args: { where: { id: number }; select: SelectShape }) =>
+      Promise.resolve(options?.brand === undefined ? brand : options.brand),
+  );
+  const brandUpdate = jest.fn(
+    (args: {
+      where: { id: number };
+      data: Partial<BrandRow>;
+      select: SelectShape;
+    }) => Promise.resolve({ ...brand, ...args.data }),
+  );
+  const storeFindUnique = jest.fn(
+    (_args: {
+      where: { storeStableId: string };
+      select: SelectShape;
+    }) =>
+      Promise.resolve({
         id: storeDbId,
         name: 'SanQ Roujiamo - Yonge',
         config: options?.config === undefined ? storeConfig : options.config,
       }),
+  );
+  const storeUpdate = jest.fn(
+    (args: {
+      where: { storeId: string };
+      data: StoreUpdateData;
+      select?: SelectShape;
+    }) => Promise.resolve({ ...storeConfig, ...args.data }),
+  );
+  const businessUpdate = jest.fn(
+    (_args: { where: { id: number }; data: Record<string, unknown> }) =>
+      Promise.resolve({}),
+  );
+
+  const tx = {
+    brandConfig: {
+      findUnique: brandFindUnique,
+      update: brandUpdate,
+    },
+    store: {
+      findUnique: storeFindUnique,
     },
     storeConfig: {
-      update: jest.fn().mockImplementation(async ({ data }) => ({
-        ...storeConfig,
-        ...data,
-      })),
+      update: storeUpdate,
     },
     businessConfig: {
-      update: jest.fn().mockResolvedValue({}),
+      update: businessUpdate,
     },
   };
+  const transaction = jest.fn(
+    (callback: (transactionClient: typeof tx) => Promise<unknown>) =>
+      callback(tx),
+  );
   const prisma = {
-    $transaction: jest.fn().mockImplementation(async (callback) => callback(tx)),
+    $transaction: transaction,
   };
 
   return {
@@ -92,33 +126,27 @@ describe('PrismaBrandStoreConfigWriter', () => {
       },
     });
 
-    expect(tx.store.findUnique).toHaveBeenCalledWith({
-      where: { storeStableId },
-      select: expect.any(Object),
+    expect(tx.store.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.store.findUnique.mock.calls[0]?.[0].where).toEqual({
+      storeStableId,
     });
-    expect(tx.brandConfig.update).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: { brandNameEn: 'SanQ Updated' },
-      select: expect.any(Object),
+    expect(tx.brandConfig.update).toHaveBeenCalledTimes(1);
+    expect(tx.brandConfig.update.mock.calls[0]?.[0].data).toEqual({
+      brandNameEn: 'SanQ Updated',
     });
-    expect(tx.storeConfig.update).toHaveBeenCalledWith({
-      where: { storeId: storeDbId },
-      data: {
-        isTemporarilyClosed: true,
-        temporaryCloseReason: 'Maintenance',
-        salesTaxRate: 0.15,
-      },
-      select: expect.any(Object),
+    expect(tx.storeConfig.update).toHaveBeenCalledTimes(1);
+    expect(tx.storeConfig.update.mock.calls[0]?.[0].data).toEqual({
+      isTemporarilyClosed: true,
+      temporaryCloseReason: 'Maintenance',
+      salesTaxRate: 0.15,
     });
-    expect(tx.businessConfig.update).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: expect.objectContaining({
-        storeName: 'SanQ Roujiamo - Yonge',
-        brandNameEn: 'SanQ Updated',
-        isTemporarilyClosed: true,
-        temporaryCloseReason: 'Maintenance',
-        salesTaxRate: 0.15,
-      }),
+    expect(tx.businessConfig.update).toHaveBeenCalledTimes(1);
+    expect(tx.businessConfig.update.mock.calls[0]?.[0].data).toMatchObject({
+      storeName: 'SanQ Roujiamo - Yonge',
+      brandNameEn: 'SanQ Updated',
+      isTemporarilyClosed: true,
+      temporaryCloseReason: 'Maintenance',
+      salesTaxRate: 0.15,
     });
   });
 
@@ -132,7 +160,8 @@ describe('PrismaBrandStoreConfigWriter', () => {
       },
     });
 
-    expect(tx.storeConfig.update).toHaveBeenCalledWith({
+    expect(tx.storeConfig.update).toHaveBeenCalledTimes(1);
+    expect(tx.storeConfig.update.mock.calls[0]?.[0]).toEqual({
       where: { storeId: storeDbId },
       data: {
         allergyHandlingMode: 'DENY_LIST',
