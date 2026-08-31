@@ -356,7 +356,15 @@ Default delivery workflow:
    and track CI" includes authorization to merge that reviewed change into `dev`
    once CI is fully green, unless the user explicitly asks for another review
    before merge.
-6. Promotion from `dev` to `main`, if ever required, is outside the MCP/assistant
+6. After a reviewed PR is merged into `dev` with all required GitHub Actions checks
+   green, if the broader user-requested task, migration phase, or work package is
+   not yet complete, conclude the handoff with a concise description of the
+   recommended next step, including its goal, scope, important prerequisites or
+   risks, and any user authorization or production verification required before
+   proceeding. If the broader task is complete, state that explicitly rather than
+   inventing additional work. Do not start the next step automatically unless it
+   has already been authorized by the user.
+7. Promotion from `dev` to `main`, if ever required, is outside the MCP/assistant
    repository-change PR workflow. This workflow must never create a PR targeting
    `main`; report the required release step for the user to control separately.
 
