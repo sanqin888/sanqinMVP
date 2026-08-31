@@ -270,6 +270,9 @@ function formatDateTime(value: string, isZh: boolean): string {
   return parsed.toLocaleString(isZh ? "zh-CN" : "en-US");
 }
 
+const memberCardClassName =
+  "rounded-3xl border border-[#87362E]/10 bg-white p-4 shadow-sm sm:p-5";
+
 function getBrowserLanguagePreference(): "zh" | "en" {
   if (typeof navigator === "undefined") return "en";
   const primary = navigator.languages?.[0] ?? navigator.language ?? "";
@@ -1540,7 +1543,7 @@ export default function MembershipHomePage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#fffdfa]">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-stone-500">
           {summaryError ??
             (isZh ? "加载会员信息中…" : "Loading membership info…")}
         </p>
@@ -1556,7 +1559,7 @@ export default function MembershipHomePage() {
   if (!member) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#fffdfa]">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-stone-500">
           {summaryError ??
             (isZh ? "未能获取会员信息" : "Unable to load membership info")}
         </p>
@@ -1565,37 +1568,37 @@ export default function MembershipHomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fffdfa]">
+    <div className="min-h-screen bg-[#fffdfa] text-stone-900">
       <header className="border-b border-[#87362E]/10 bg-[#fffaf5]">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 py-3">
           <Link
             href={`/${locale}`}
-            className="text-sm text-slate-600 hover:text-slate-900"
+            className="justify-self-start text-sm font-medium text-stone-600 transition hover:text-[#87362E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#87362E]/20"
           >
             ← {isZh ? "返回首页" : "Back to home"}
           </Link>
-          <div className="text-sm font-medium text-slate-900">
+          <div className="text-sm font-bold text-[#2d211d]">
             {isZh ? "会员中心" : "Member Center"}
           </div>
           <button
             onClick={handleLogout}
-            className="text-xs text-slate-500 hover:text-slate-900"
+            className="justify-self-end text-xs font-semibold text-[#87362E] transition hover:text-[#6f2c26] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#87362E]/20"
           >
             {isZh ? "退出登录" : "Log out"}
           </button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 py-6">
+      <main className="mx-auto w-full max-w-6xl py-6">
         {/* 顶部会员信息卡片 */}
-        <section className="mb-6 rounded-2xl bg-[#87362E] px-5 py-4 text-white shadow-sm">
+        <section className="mb-6 rounded-[2rem] border border-[#87362E]/10 bg-[#87362E] px-5 py-5 text-white shadow-[0_24px_60px_-36px_rgba(100,45,38,0.8)] sm:px-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-300">
+              <p className="text-xs uppercase tracking-wide text-white/70">
                 {isZh ? "当前会员等级" : "Current tier"}
               </p>
               <p className="mt-1 text-xl font-semibold">{tierDisplay}</p>
-              <p className="mt-2 text-xs text-slate-300">
+              <p className="mt-2 text-xs text-white/70">
                 {member.email
                   ? `${isZh ? "登录邮箱：" : "Email: "}${member.email}`
                   : isZh
@@ -1604,11 +1607,11 @@ export default function MembershipHomePage() {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-slate-300">
+              <p className="text-xs uppercase tracking-wide text-white/70">
                 {isZh ? "积分" : "Points"}
               </p>
               <p className="mt-1 text-2xl font-semibold">{member.points}</p>
-              <p className="mt-2 text-xs uppercase tracking-wide text-slate-300">
+              <p className="mt-2 text-xs uppercase tracking-wide text-white/70">
                 {isZh ? "储值余额" : "Store balance"}
               </p>
               <p className="mt-1 text-base font-semibold text-emerald-200">
@@ -1627,11 +1630,11 @@ export default function MembershipHomePage() {
           </div>
 
           <div className="mt-4">
-            <div className="flex items-center justify-between text-[11px] text-slate-300">
+            <div className="flex items-center justify-between text-[11px] text-white/70">
               <span>{isZh ? "升级进度" : "Progress to next tier"}</span>
               <span>{tierProgress.toFixed(0)}%</span>
             </div>
-            <div className="mt-1 h-1.5 w-full rounded-full bg-slate-700">
+            <div className="mt-1 h-1.5 w-full rounded-full bg-white/20">
               <div
                 className="h-1.5 rounded-full bg-amber-400"
                 style={{ width: `${tierProgress}%` }}
@@ -1641,16 +1644,16 @@ export default function MembershipHomePage() {
         </section>
 
         {/* Tab 导航 */}
-        <nav className="mb-4 flex gap-2 overflow-x-auto text-sm">
+        <nav className="mb-4 flex gap-2 overflow-x-auto pb-1 text-sm">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`whitespace-nowrap rounded-full px-3 py-1 ${
+              className={`whitespace-nowrap rounded-full px-3.5 py-1.5 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#87362E]/25 focus-visible:ring-offset-2 ${
                 activeTab === tab.key
-                  ? "bg-slate-900 text-white"
-                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                  ? "bg-[#87362E] text-white shadow-sm"
+                  : "border border-[#87362E]/15 bg-white text-stone-600 hover:border-[#87362E]/30 hover:bg-[#fff3ea] hover:text-[#87362E]"
               }`}
             >
               {tab.label}
@@ -1841,23 +1844,23 @@ function OrderLineItems({
         return (
           <div
             key={`${order.orderStableId}-${item.productStableId}-${index}`}
-            className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5"
+            className="rounded-lg border border-[#87362E]/15 bg-[#fffaf5] px-2 py-1.5"
           >
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px] text-slate-700">
+              <p className="text-[11px] text-stone-700">
                 {item.quantity} ×{" "}
-                <span className="font-medium text-slate-900">{itemName}</span>
+                <span className="font-medium text-stone-900">{itemName}</span>
               </p>
               <button
                 type="button"
                 onClick={() => onReorderItem(item)}
-                className="rounded-md border border-amber-300 px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
+                className="rounded-full border border-[#87362E]/20 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#87362E] transition hover:bg-[#fff3ea]"
               >
                 {isZh ? "复购" : "Reorder"}
               </button>
             </div>
             {optionLabels.length > 0 && (
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-stone-500">
                 {isZh ? "选项：" : "Options: "}
                 {optionLabels.join(" / ")}
               </p>
@@ -1884,15 +1887,15 @@ function OverviewSection({
 }) {
   return (
     <section className="grid gap-4 md:grid-cols-2">
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <h2 className="text-sm font-medium text-slate-900">
+      <div className={memberCardClassName}>
+        <h2 className="text-sm font-medium text-stone-900">
           {isZh ? "最近订单" : "Latest order"}
         </h2>
         {latestOrder ? (
-          <div className="mt-3 space-y-1 text-xs text-slate-600">
+          <div className="mt-3 space-y-1 text-xs text-stone-600">
             <p>
               {isZh ? "订单号：" : "Order ID: "}
-              <span className="font-mono text-slate-900">
+              <span className="font-mono text-stone-900">
                 {latestOrder.orderNumber}
               </span>
             </p>
@@ -1902,13 +1905,13 @@ function OverviewSection({
             </p>
             <p>
               {isZh ? "金额：" : "Total: "}
-              <span className="font-medium text-slate-900">
+              <span className="font-medium text-stone-900">
                 {formatCurrency(latestOrder.totalCents)}
               </span>
             </p>
             <p>
               {isZh ? "状态：" : "Status: "}{" "}
-              <span className="font-medium text-slate-900">
+              <span className="font-medium text-stone-900">
                 {formatOrderStatus(latestOrder.status, isZh)}
               </span>
             </p>
@@ -1920,14 +1923,14 @@ function OverviewSection({
             <p className="mt-2">
               <Link
                 href={`/${locale}/order/${latestOrder.orderStableId}`}
-                className="text-[11px] font-medium text-amber-600 hover:underline"
+                className="text-[11px] font-semibold text-[#87362E] hover:underline"
               >
                 {isZh ? "查看订单详情" : "View order details"}
               </Link>
             </p>
           </div>
         ) : (
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-stone-500">
             {isZh
               ? "还没有订单，快去下单吧。"
               : "No orders yet. Place your first order!"}
@@ -1935,11 +1938,11 @@ function OverviewSection({
         )}
       </div>
 
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <h2 className="text-sm font-medium text-slate-900">
+      <div className={memberCardClassName}>
+        <h2 className="text-sm font-medium text-stone-900">
           {isZh ? "账户小结" : "Account summary"}
         </h2>
-        <div className="mt-3 space-y-1 text-xs text-slate-600">
+        <div className="mt-3 space-y-1 text-xs text-stone-600">
           <p>
             {isZh ? "姓名：" : "Name: "}
             {[user.firstName, user.lastName].filter(Boolean).join(" ") ||
@@ -1951,11 +1954,11 @@ function OverviewSection({
           </p>
           <p>
             {isZh ? "当前积分：" : "Current points: "}
-            <span className="font-medium text-slate-900">{user.points}</span>
+            <span className="font-medium text-stone-900">{user.points}</span>
           </p>
           <p>
             {isZh ? "储值余额：" : "Store balance: "}
-            <span className="font-medium text-slate-900">
+            <span className="font-medium text-stone-900">
               {formatBalanceAmount(user.balance)}
             </span>
           </p>
@@ -1977,14 +1980,14 @@ function OrdersSection({
   onReorderItem: (item: OrderHistoryItem) => void;
 }) {
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+    <section className={memberCardClassName}>
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-slate-900">
+        <h2 className="text-sm font-medium text-stone-900">
           {isZh ? "订单记录" : "Order history"}
         </h2>
       </div>
 
-      <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
+      <div className="mt-3 divide-y divide-[#87362E]/10 text-xs text-stone-700">
         {orders.map((order, index) => (
           <div
             key={`${order.orderStableId}-${order.createdAt}-${index}`}
@@ -1992,19 +1995,19 @@ function OrdersSection({
           >
             <div className="flex items-center justify-between rounded-lg px-2">
               <div>
-                <p className="font-mono text-slate-900">{order.orderNumber}</p>
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="font-mono text-stone-900">{order.orderNumber}</p>
+                <p className="mt-1 text-[11px] text-stone-500">
                   {order.createdAt}
                 </p>
               </div>
               <div className="text-right">
-                <p className="font-medium text-slate-900">
+                <p className="font-medium text-stone-900">
                   {formatCurrency(order.totalCents)}
                 </p>
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-[11px] text-stone-500">
                   {formatOrderStatus(order.status, isZh)}
                 </p>
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-[11px] text-stone-500">
                   {isZh
                     ? order.deliveryType === "delivery"
                       ? "外送"
@@ -2022,7 +2025,7 @@ function OrdersSection({
             />
             <Link
               href={`/${locale}/order/${order.orderStableId}`}
-              className="mt-2 inline-block px-2 text-[11px] font-medium text-amber-600 hover:underline"
+              className="mt-2 inline-block px-2 text-[11px] font-semibold text-[#87362E] hover:underline"
             >
               {isZh ? "查看订单详情" : "View order details"}
             </Link>
@@ -2030,7 +2033,7 @@ function OrdersSection({
         ))}
 
         {orders.length === 0 && (
-          <p className="py-4 text-xs text-slate-500">
+          <p className="py-4 text-xs text-stone-500">
             {isZh ? "暂无订单记录。" : "No orders yet."}
           </p>
         )}
@@ -2068,13 +2071,13 @@ function PointsSection({
   );
 
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <h2 className="text-sm font-medium text-slate-900">
+    <section className={memberCardClassName}>
+      <h2 className="text-sm font-medium text-stone-900">
         {isZh ? "积分流水" : "Points history"}
       </h2>
 
       {loading && !loadedOnce && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-stone-500">
           {isZh ? "加载中…" : "Loading…"}
         </p>
       )}
@@ -2084,13 +2087,13 @@ function PointsSection({
       )}
 
       {loadedOnce && !error && pointsEntries.length === 0 && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-stone-500">
           {isZh ? "暂无积分记录。" : "No points records yet."}
         </p>
       )}
 
       {loadedOnce && !error && pointsEntries.length > 0 && (
-        <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
+        <div className="mt-3 divide-y divide-[#87362E]/10 text-xs text-stone-700">
           {pointsEntries.map((entry, index) => (
             <div
               key={`${entry.ledgerStableId}-${entry.createdAt}-${index}`}
@@ -2098,14 +2101,14 @@ function PointsSection({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium text-slate-900">
+                  <p className="font-medium text-stone-900">
                     {typeLabel[entry.type]}
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
+                  <p className="mt-1 text-[11px] text-stone-500">
                     {new Date(entry.createdAt).toLocaleString()}
                   </p>
                   {entry.note && (
-                    <p className="mt-1 text-[11px] text-slate-500">
+                    <p className="mt-1 text-[11px] text-stone-500">
                       {entry.note}
                     </p>
                   )}
@@ -2113,7 +2116,7 @@ function PointsSection({
                     <p className="mt-1 text-[11px]">
                       <Link
                         href={`/${locale}/order/${entry.orderStableId}`}
-                        className="text-amber-600 hover:underline"
+                        className="font-medium text-[#87362E] hover:underline"
                       >
                         {isZh ? "关联订单" : "Related order"}:{" "}
                         {entry.orderStableId}
@@ -2132,7 +2135,7 @@ function PointsSection({
                     {entry.deltaPoints >= 0 ? "+" : ""}
                     {entry.deltaPoints.toFixed(2)} pt
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
+                  <p className="mt-1 text-[11px] text-stone-500">
                     {isZh ? "余额：" : "Balance: "}
                     {entry.balanceAfterPoints.toFixed(2)} pt
                   </p>
@@ -2175,13 +2178,13 @@ function BalanceSection({
   );
 
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <h2 className="text-sm font-medium text-slate-900">
+    <section className={memberCardClassName}>
+      <h2 className="text-sm font-medium text-stone-900">
         {isZh ? "余额流水" : "Balance history"}
       </h2>
 
       {loading && !loadedOnce && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-stone-500">
           {isZh ? "加载中…" : "Loading…"}
         </p>
       )}
@@ -2191,13 +2194,13 @@ function BalanceSection({
       )}
 
       {loadedOnce && !error && balanceEntries.length === 0 && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-stone-500">
           {isZh ? "暂无余额记录。" : "No balance records yet."}
         </p>
       )}
 
       {loadedOnce && !error && balanceEntries.length > 0 && (
-        <div className="mt-3 divide-y divide-slate-100 text-xs text-slate-700">
+        <div className="mt-3 divide-y divide-[#87362E]/10 text-xs text-stone-700">
           {balanceEntries.map((entry, index) => {
             const deltaAmount = formatBalanceAmount(
               Math.abs(entry.deltaPoints),
@@ -2209,14 +2212,14 @@ function BalanceSection({
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-slate-900">
+                    <p className="font-medium text-stone-900">
                       {typeLabel[entry.type]}
                     </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
+                    <p className="mt-1 text-[11px] text-stone-500">
                       {new Date(entry.createdAt).toLocaleString()}
                     </p>
                     {entry.note && (
-                      <p className="mt-1 text-[11px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-stone-500">
                         {entry.note}
                       </p>
                     )}
@@ -2224,7 +2227,7 @@ function BalanceSection({
                       <p className="mt-1 text-[11px]">
                         <Link
                           href={`/${locale}/order/${entry.orderStableId}`}
-                          className="text-amber-600 hover:underline"
+                          className="font-medium text-[#87362E] hover:underline"
                         >
                           {isZh ? "关联订单" : "Related order"}:{" "}
                           {entry.orderStableId}
@@ -2243,7 +2246,7 @@ function BalanceSection({
                       {entry.deltaPoints >= 0 ? "+" : "-"}
                       {deltaAmount}
                     </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
+                    <p className="mt-1 text-[11px] text-stone-500">
                       {isZh ? "余额：" : "Balance: "}
                       {formatBalanceAmount(entry.balanceAfterPoints)}
                     </p>
@@ -2402,22 +2405,22 @@ function AddressesSection({
   };
 
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+    <section className={memberCardClassName}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-slate-900">
+        <h2 className="text-sm font-medium text-stone-900">
           {isZh ? "收货地址" : "Delivery addresses"}
         </h2>
       </div>
 
       {loading && (
-        <p className="mb-3 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-stone-500">
           {isZh ? "地址加载中…" : "Loading addresses…"}
         </p>
       )}
       {error && <p className="mb-3 text-xs text-rose-600">{error}</p>}
 
-      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-        <p className="mb-2 text-[11px] font-medium text-slate-500">
+      <div className="mb-4 rounded-xl border border-[#87362E]/15 bg-[#fffaf5] p-3 text-xs text-stone-700">
+        <p className="mb-2 text-[11px] font-medium text-stone-500">
           {editingId
             ? isZh
               ? "编辑地址"
@@ -2428,21 +2431,21 @@ function AddressesSection({
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"
             placeholder={isZh ? "地址标签（例如：家）" : "Label (e.g. Home)"}
             value={label}
             onChange={(event) => setLabel(event.target.value)}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"
             placeholder={isZh ? "收件人姓名" : "Receiver name"}
             value={receiver}
             onChange={(event) => setReceiver(event.target.value)}
           />
-          <div className="flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus-within:ring-1 focus-within:ring-slate-400">
-            <span className="mr-2 text-[10px] text-slate-500">+1</span>
+          <div className="flex items-center rounded-lg border border-[#87362E]/15 bg-white px-3 py-2 text-xs focus-within:ring-1 focus-within:ring-[#87362E]/20">
+            <span className="mr-2 text-[10px] text-stone-500">+1</span>
             <input
-              className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
+              className="w-full border-0 p-0 text-xs text-stone-900 focus:outline-none"
               placeholder={isZh ? "联系电话" : "Phone number"}
               value={phone}
               inputMode="numeric"
@@ -2501,7 +2504,7 @@ function AddressesSection({
             }}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"
             placeholder={
               isZh ? "地址行 2（可选）" : "Address line 2 (optional)"
             }
@@ -2509,7 +2512,7 @@ function AddressesSection({
             onChange={(event) => setAddressLine2(event.target.value)}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"
             placeholder={
               isZh ? "备注（如 Buzz Code）" : "Remark (e.g. Buzz Code)"
             }
@@ -2517,25 +2520,25 @@ function AddressesSection({
             onChange={(event) => setRemark(event.target.value)}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"
             placeholder={isZh ? "城市" : "City"}
             value={city}
             onChange={(event) => setCity(event.target.value)}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"
             placeholder={isZh ? "省份/州" : "Province/State"}
             value={province}
             onChange={(event) => setProvince(event.target.value)}
           />
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"
             placeholder={isZh ? "邮编" : "Postal code"}
             value={postalCode}
             onChange={(event) => setPostalCode(event.target.value)}
           />
         </div>
-        <label className="mt-3 flex items-center gap-2 text-[11px] text-slate-600">
+        <label className="mt-3 flex items-center gap-2 text-[11px] text-stone-600">
           <input
             type="checkbox"
             checked={setAsDefault}
@@ -2550,7 +2553,7 @@ function AddressesSection({
         <div className="mt-3 flex items-center gap-2">
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-[11px] font-medium text-white hover:bg-slate-800"
+            className="inline-flex items-center justify-center rounded-full bg-[#87362E] px-4 py-2 text-[11px] font-medium text-white hover:bg-[#6f2c26]"
             onClick={handleAdd}
           >
             {editingId
@@ -2564,7 +2567,7 @@ function AddressesSection({
           {editingId && (
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-[11px] font-medium text-slate-600 hover:text-slate-900"
+              className="inline-flex items-center justify-center rounded-full border border-[#87362E]/20 px-4 py-2 text-[11px] font-medium text-stone-600 hover:text-[#87362E]"
               onClick={resetForm}
             >
               {isZh ? "取消编辑" : "Cancel"}
@@ -2573,24 +2576,24 @@ function AddressesSection({
         </div>
       </div>
 
-      <div className="space-y-3 text-xs text-slate-700">
+      <div className="space-y-3 text-xs text-stone-700">
         {addresses.map((addr) => (
           <div
             key={addr.addressStableId}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+            className="rounded-xl border border-[#87362E]/15 bg-[#fffaf5] px-3 py-2"
           >
             <div className="flex items-center justify-between">
-              <div className="font-medium text-slate-900">{addr.label}</div>
+              <div className="font-medium text-stone-900">{addr.label}</div>
               <div className="flex items-center gap-2">
                 {addr.isDefault && (
-                  <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white">
+                  <span className="rounded-full bg-[#87362E] px-2 py-0.5 text-[10px] text-white">
                     {isZh ? "默认" : "Default"}
                   </span>
                 )}
                 {!addr.isDefault && (
                   <button
                     type="button"
-                    className="text-[10px] text-slate-500 hover:text-slate-900"
+                    className="text-[10px] text-stone-500 hover:text-[#87362E]"
                     onClick={() => onSetDefault(addr.addressStableId)}
                   >
                     {isZh ? "设为默认" : "Set default"}
@@ -2601,17 +2604,17 @@ function AddressesSection({
             <p className="mt-1">
               {addr.receiver} · {addr.phone}
             </p>
-            <p className="mt-1 text-slate-600">{formatMemberAddress(addr)}</p>
+            <p className="mt-1 text-stone-600">{formatMemberAddress(addr)}</p>
             {addr.remark && (
-              <p className="mt-1 text-slate-500">
+              <p className="mt-1 text-stone-500">
                 {isZh ? "备注：" : "Remark: "}
                 {addr.remark}
               </p>
             )}
-            <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
+            <div className="mt-2 flex items-center gap-3 text-[10px] text-stone-500">
               <button
                 type="button"
-                className="hover:text-slate-900"
+                className="hover:text-[#87362E]"
                 onClick={() => startEdit(addr)}
               >
                 {isZh ? "编辑" : "Edit"}
@@ -2628,7 +2631,7 @@ function AddressesSection({
         ))}
 
         {addresses.length === 0 && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-stone-500">
             {isZh ? "暂无保存地址。" : "No saved addresses."}
           </p>
         )}
@@ -2656,7 +2659,7 @@ function CouponsSection({
 
   const statusColor: Record<CouponStatus, string> = {
     active: "bg-emerald-100 text-emerald-800",
-    used: "bg-slate-100 text-slate-600",
+    used: "bg-stone-100 text-stone-600",
     expired: "bg-rose-100 text-rose-700",
   };
 
@@ -2693,13 +2696,13 @@ function CouponsSection({
   }, []);
 
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <h2 className="mb-3 text-sm font-medium text-slate-900">
+    <section className={memberCardClassName}>
+      <h2 className="mb-3 text-sm font-medium text-stone-900">
         {isZh ? "优惠券" : "Coupons"}
       </h2>
 
       {loading && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-stone-500">
           {isZh ? "优惠券加载中…" : "Loading coupons…"}
         </p>
       )}
@@ -2718,8 +2721,8 @@ function CouponsSection({
                 onClick={() => setSelectedStatus(status)}
                 className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
                   isActive
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                    ? "border-[#87362E] bg-[#87362E] text-white"
+                    : "border-[#87362E]/15 bg-white text-stone-600 hover:border-[#87362E]/20 hover:text-[#87362E]"
                 }`}
               >
                 {statusLabel[status]} ({couponsByStatus[status].length})
@@ -2729,7 +2732,7 @@ function CouponsSection({
         </div>
       )}
 
-      <div className="space-y-3 text-xs text-slate-700">
+      <div className="space-y-3 text-xs text-stone-700">
         {mergedCurrentCoupons.map(({ coupon, count }) => {
           const status = coupon.status ?? "active";
 
@@ -2740,10 +2743,10 @@ function CouponsSection({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">
+                  <p className="text-sm font-semibold text-stone-900">
                     {coupon.title} *{count}
                   </p>
-                  <p className="text-[11px] text-slate-500">{coupon.source}</p>
+                  <p className="text-[11px] text-stone-500">{coupon.source}</p>
                 </div>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -2763,14 +2766,14 @@ function CouponsSection({
                       : formatCurrency(coupon.discountCents)}
                   </p>
                   {coupon.minSpendCents && (
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-stone-500">
                       {isZh ? "满 " : "Min spend "}
                       {formatCurrency(coupon.minSpendCents)}
                       {isZh ? " 可用" : " to use"}
                     </p>
                   )}
                 </div>
-                <div className="text-right text-[11px] text-slate-500">
+                <div className="text-right text-[11px] text-stone-500">
                   <p>
                     {coupon.expiresAt
                       ? new Date(coupon.expiresAt).toLocaleDateString()
@@ -2785,7 +2788,7 @@ function CouponsSection({
         })}
 
         {coupons.length === 0 && !loading && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-stone-500">
             {isZh ? "暂无可用优惠券。" : "No coupons available right now."}
           </p>
         )}
@@ -2793,7 +2796,7 @@ function CouponsSection({
         {coupons.length > 0 &&
           mergedCurrentCoupons.length === 0 &&
           !loading && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-stone-500">
               {isZh ? "该分类暂无优惠券。" : "No coupons in this category yet."}
             </p>
           )}
@@ -2828,28 +2831,28 @@ function DeviceManagementSection({
   onRevokeTrustedDevice: (deviceId: string) => void;
 }) {
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+    <section className={memberCardClassName}>
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-slate-900">
+        <h2 className="text-sm font-medium text-stone-900">
           {isZh ? "设备管理" : "Device management"}
         </h2>
         <button
           type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="text-[11px] text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed"
+          className="text-[11px] text-stone-500 hover:text-[#87362E] disabled:cursor-not-allowed"
         >
           {isZh ? "刷新" : "Refresh"}
         </button>
       </div>
-      <p className="mt-2 text-[11px] text-slate-500">
+      <p className="mt-2 text-[11px] text-stone-500">
         {isZh
           ? "管理已登录设备与授信设备，及时移除异常登录。"
           : "Review signed-in devices and trusted devices, and remove anything unexpected."}
       </p>
 
       {loading && !loadedOnce && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-stone-500">
           {isZh ? "设备信息加载中…" : "Loading devices…"}
         </p>
       )}
@@ -2859,36 +2862,36 @@ function DeviceManagementSection({
       )}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="rounded-xl border border-[#87362E]/15 bg-[#fffaf5] px-3 py-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-slate-900">
+            <h3 className="text-xs font-semibold text-stone-900">
               {isZh ? "登录设备" : "Signed-in devices"}
             </h3>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-stone-400">
               {isZh ? "最多显示 20 条" : "Up to 20 items"}
             </span>
           </div>
-          <div className="mt-2 space-y-2 text-xs text-slate-600">
+          <div className="mt-2 space-y-2 text-xs text-stone-600">
             {sessions.map((session) => (
               <div
                 key={session.sessionId}
-                className="rounded-lg bg-white px-2 py-2 shadow-sm ring-1 ring-slate-200"
+                className="rounded-lg bg-white px-2 py-2 shadow-sm ring-1 ring-[#87362E]/10"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-[11px] font-medium text-slate-900">
+                    <p className="text-[11px] font-medium text-stone-900">
                       {session.deviceInfo ||
                         (isZh ? "未知设备" : "Unknown device")}
                     </p>
-                    <p className="mt-1 text-[10px] text-slate-500">
+                    <p className="mt-1 text-[10px] text-stone-500">
                       {isZh ? "登录时间：" : "Signed in: "}
                       {formatDateTime(session.createdAt, isZh)}
                     </p>
-                    <p className="mt-1 text-[10px] text-slate-500">
+                    <p className="mt-1 text-[10px] text-stone-500">
                       {isZh ? "登录地点：" : "Location: "}
                       {session.loginLocation || (isZh ? "未知地点" : "Unknown")}
                     </p>
-                    <p className="mt-1 text-[10px] text-slate-500">
+                    <p className="mt-1 text-[10px] text-stone-500">
                       {isZh ? "到期时间：" : "Expires: "}
                       {formatDateTime(session.expiresAt, isZh)}
                     </p>
@@ -2907,7 +2910,7 @@ function DeviceManagementSection({
                     {session.isCurrent && (
                       <button
                         type="button"
-                        className="text-[10px] text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed"
+                        className="text-[10px] text-stone-500 hover:text-[#87362E] disabled:cursor-not-allowed"
                         onClick={() => onTrustSessionDevice(session)}
                         disabled={trustingSessionId === session.sessionId}
                       >
@@ -2933,44 +2936,44 @@ function DeviceManagementSection({
             ))}
 
             {sessions.length === 0 && (
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-stone-500">
                 {isZh ? "暂无登录设备记录。" : "No devices found."}
               </p>
             )}
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="rounded-xl border border-[#87362E]/15 bg-[#fffaf5] px-3 py-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-slate-900">
+            <h3 className="text-xs font-semibold text-stone-900">
               {isZh ? "授信设备" : "Trusted devices"}
             </h3>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-stone-400">
               {isZh ? "用于免二次验证" : "Skip MFA when trusted"}
             </span>
           </div>
-          <div className="mt-2 space-y-2 text-xs text-slate-600">
+          <div className="mt-2 space-y-2 text-xs text-stone-600">
             {trustedDevices.map((device) => (
               <div
                 key={device.id}
-                className="rounded-lg bg-white px-2 py-2 shadow-sm ring-1 ring-slate-200"
+                className="rounded-lg bg-white px-2 py-2 shadow-sm ring-1 ring-[#87362E]/10"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-[11px] font-medium text-slate-900">
+                    <p className="text-[11px] font-medium text-stone-900">
                       {device.label || (isZh ? "已授信设备" : "Trusted device")}
                     </p>
-                    <p className="mt-1 text-[10px] text-slate-500">
+                    <p className="mt-1 text-[10px] text-stone-500">
                       {isZh ? "授信时间：" : "Trusted: "}
                       {formatDateTime(device.createdAt, isZh)}
                     </p>
                     {device.lastSeenAt && (
-                      <p className="mt-1 text-[10px] text-slate-500">
+                      <p className="mt-1 text-[10px] text-stone-500">
                         {isZh ? "最近使用：" : "Last used: "}
                         {formatDateTime(device.lastSeenAt, isZh)}
                       </p>
                     )}
-                    <p className="mt-1 text-[10px] text-slate-500">
+                    <p className="mt-1 text-[10px] text-stone-500">
                       {isZh ? "到期时间：" : "Expires: "}
                       {formatDateTime(device.expiresAt, isZh)}
                     </p>
@@ -2987,7 +2990,7 @@ function DeviceManagementSection({
             ))}
 
             {trustedDevices.length === 0 && (
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-stone-500">
                 {isZh ? "暂无授信设备。" : "No trusted devices."}
               </p>
             )}
@@ -3117,34 +3120,34 @@ function ProfileSection({
     !!user.twoFactorEnabledAt && user.twoFactorMethod === "SMS";
 
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <h2 className="text-sm font-medium text-slate-900">
+    <section className={memberCardClassName}>
+      <h2 className="text-sm font-medium text-stone-900">
         {isZh ? "账户信息" : "Account info"}
       </h2>
 
-      <div className="mt-3 space-y-3 text-xs text-slate-700">
+      <div className="mt-3 space-y-3 text-xs text-stone-700">
         <div>
-          <p className="text-slate-500">{isZh ? "姓名" : "Name"}</p>
+          <p className="text-stone-500">{isZh ? "姓名" : "Name"}</p>
           <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(160px,1fr)_minmax(160px,1fr)_auto] sm:items-center">
             <input
               type="text"
               value={profileFirstName}
               onChange={(event) => onProfileFirstNameChange(event.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+              className="w-full rounded-lg border border-[#87362E]/15 px-2.5 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:border-[#87362E]/45 focus:outline-none"
               placeholder={isZh ? "请输入名字" : "First name"}
             />
             <input
               type="text"
               value={profileLastName}
               onChange={(event) => onProfileLastNameChange(event.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+              className="w-full rounded-lg border border-[#87362E]/15 px-2.5 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:border-[#87362E]/45 focus:outline-none"
               placeholder={isZh ? "请输入姓" : "Last name"}
             />
             <button
               type="button"
               onClick={onSaveProfile}
               disabled={profileSaving}
-              className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className="rounded-full bg-[#87362E] px-3 py-1.5 text-[11px] font-medium text-white hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:bg-stone-300"
             >
               {profileSaving
                 ? isZh
@@ -3162,24 +3165,24 @@ function ProfileSection({
           </div>
         </div>
         <div>
-          <p className="text-slate-500">{isZh ? "生日" : "Birthday"}</p>
+          <p className="text-stone-500">{isZh ? "生日" : "Birthday"}</p>
           {hasBirthday ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <input
                 type="number"
                 value={user.birthdayYear ?? ""}
                 disabled
-                className="w-24 cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-xs text-slate-500"
+                className="w-24 cursor-not-allowed rounded-lg border border-[#87362E]/15 bg-stone-100 px-2 py-1.5 text-xs text-stone-500"
                 aria-label={isZh ? "出生年份" : "Birth year"}
               />
               <input
                 type="number"
                 value={user.birthdayMonth ?? ""}
                 disabled
-                className="w-20 cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-xs text-slate-500"
+                className="w-20 cursor-not-allowed rounded-lg border border-[#87362E]/15 bg-stone-100 px-2 py-1.5 text-xs text-stone-500"
                 aria-label={isZh ? "出生月份" : "Birth month"}
               />
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-stone-400">
                 {isZh ? "已设置，无法修改" : "Locked once set"}
               </span>
             </div>
@@ -3191,7 +3194,7 @@ function ProfileSection({
                 max={new Date().getUTCFullYear()}
                 value={birthdayYearInput}
                 onChange={(event) => onBirthdayYearChange(event.target.value)}
-                className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                className="w-24 rounded-lg border border-[#87362E]/15 px-2 py-1.5 text-xs text-stone-900 focus:border-[#87362E]/45 focus:outline-none"
                 placeholder={isZh ? "年" : "YYYY"}
               />
               <input
@@ -3200,14 +3203,14 @@ function ProfileSection({
                 max={12}
                 value={birthdayMonthInput}
                 onChange={(event) => onBirthdayMonthChange(event.target.value)}
-                className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                className="w-20 rounded-lg border border-[#87362E]/15 px-2 py-1.5 text-xs text-stone-900 focus:border-[#87362E]/45 focus:outline-none"
                 placeholder={isZh ? "月" : "MM"}
               />
               <button
                 type="button"
                 onClick={onSaveBirthday}
                 disabled={birthdaySaving}
-                className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                className="rounded-full bg-[#87362E] px-3 py-1.5 text-[11px] font-medium text-white hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:bg-stone-300"
               >
                 {birthdaySaving
                   ? isZh
@@ -3217,7 +3220,7 @@ function ProfileSection({
                     ? "保存生日"
                     : "Save birthday"}
               </button>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-stone-400">
                 {isZh ? "填写后不可修改" : "Once saved, cannot change"}
               </span>
             </div>
@@ -3229,12 +3232,12 @@ function ProfileSection({
           )}
         </div>
         <div>
-          <p className="text-slate-500">{isZh ? "邮箱" : "Email"}</p>
-          <p className="mt-0.5 text-slate-900">
+          <p className="text-stone-500">{isZh ? "邮箱" : "Email"}</p>
+          <p className="mt-0.5 text-stone-900">
             {user.email || (isZh ? "未绑定" : "Not linked")}
           </p>
           {user.email && (
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-stone-500">
               {isZh
                 ? "更换邮箱需先通过二次验证（2FA）。"
                 : "Changing email requires a completed 2FA check."}
@@ -3243,7 +3246,7 @@ function ProfileSection({
           <button
             type="button"
             onClick={onOpenEmailEnroll}
-            className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+            className="mt-2 inline-flex items-center rounded-full border border-[#87362E]/15 px-2.5 py-1 text-[11px] font-medium text-stone-700 hover:bg-[#fffaf5]"
           >
             {user.email
               ? isZh
@@ -3254,8 +3257,8 @@ function ProfileSection({
                 : "Link email"}
           </button>
           {emailEnrollVisible && (
-            <div className="mt-2 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <p className="text-[11px] font-medium text-slate-700">
+            <div className="mt-2 space-y-2 rounded-xl border border-[#87362E]/10 bg-[#fffaf5] p-3">
+              <p className="text-[11px] font-medium text-stone-700">
                 {user.email
                   ? isZh
                     ? "更换邮箱需邮箱验证码确认。"
@@ -3264,7 +3267,7 @@ function ProfileSection({
                     ? "绑定邮箱后可开启订阅"
                     : "Link an email to enable subscriptions"}
               </p>
-              <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
+              <div className="flex items-center rounded-lg border border-[#87362E]/15 bg-white px-2.5 py-1.5 text-xs text-stone-900 focus-within:ring-1 focus-within:ring-[#87362E]/20">
                 <input
                   type="email"
                   value={emailEnrollInput}
@@ -3272,7 +3275,7 @@ function ProfileSection({
                     onEmailEnrollInputChange(event.target.value)
                   }
                   placeholder={isZh ? "请输入邮箱地址" : "Enter your email"}
-                  className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
+                  className="w-full border-0 p-0 text-xs text-stone-900 focus:outline-none"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -3283,13 +3286,13 @@ function ProfileSection({
                     onEmailEnrollCodeChange(event.target.value)
                   }
                   placeholder={isZh ? "验证码" : "Code"}
-                  className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                  className="w-24 rounded-lg border border-[#87362E]/15 bg-white px-2.5 py-1.5 text-xs text-stone-900 focus:border-[#87362E]/45 focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={onRequestEmailEnroll}
                   disabled={emailEnrollSending}
-                  className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-full border border-[#87362E]/15 px-2.5 py-1 text-[11px] font-medium text-stone-700 hover:bg-[#fffaf5] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {emailEnrollSending
                     ? isZh
@@ -3303,7 +3306,7 @@ function ProfileSection({
                   type="button"
                   onClick={onVerifyEmailEnroll}
                   disabled={emailEnrollVerifying}
-                  className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  className="rounded-full bg-[#87362E] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:bg-stone-300"
                 >
                   {emailEnrollVerifying
                     ? isZh
@@ -3328,7 +3331,7 @@ function ProfileSection({
           )}
         </div>
         <div>
-          <p className="text-slate-500">
+          <p className="text-stone-500">
             {isZh ? "语言偏好" : "Language preference"}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -3339,7 +3342,7 @@ function ProfileSection({
                   event.target.value === "zh" ? "zh" : "en",
                 )
               }
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+              className="rounded-lg border border-[#87362E]/15 bg-white px-2.5 py-1.5 text-xs text-stone-900 focus:border-[#87362E]/45 focus:outline-none"
             >
               <option value="zh">{isZh ? "中文" : "Chinese"}</option>
               <option value="en">{isZh ? "英文" : "English"}</option>
@@ -3348,7 +3351,7 @@ function ProfileSection({
               type="button"
               onClick={onSaveLanguage}
               disabled={languageSaving}
-              className="rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className="rounded-full bg-[#87362E] px-3 py-1.5 text-[11px] font-medium text-white hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:bg-stone-300"
             >
               {languageSaving
                 ? isZh
@@ -3364,7 +3367,7 @@ function ProfileSection({
               </span>
             )}
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-[11px] text-stone-400">
             {isZh
               ? "短信、邮件将按照此语言发送。"
               : "SMS and emails will follow this language."}
@@ -3375,27 +3378,27 @@ function ProfileSection({
         </div>
         {user.referrerEmail ? (
           <div>
-            <p className="text-slate-500">
+            <p className="text-stone-500">
               {isZh ? "推荐人邮箱" : "Referrer email"}
             </p>
-            <p className="mt-0.5 text-slate-900">{user.referrerEmail}</p>
+            <p className="mt-0.5 text-stone-900">{user.referrerEmail}</p>
           </div>
         ) : null}
         <div>
-          <p className="text-slate-500">{isZh ? "安全设置" : "Security"}</p>
-          <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
-            <p className="text-[11px] font-medium text-slate-700">
+          <p className="text-stone-500">{isZh ? "安全设置" : "Security"}</p>
+          <div className="mt-2 rounded-xl border border-[#87362E]/10 bg-[#fffaf5] p-3">
+            <p className="text-[11px] font-medium text-stone-700">
               {isZh ? "手机号绑定" : "Phone verification"}
             </p>
             {user.phoneVerified ? (
               <div className="mt-2">
-                <p className="text-xs text-slate-900">
+                <p className="text-xs text-stone-900">
                   {user.phone}{" "}
                   <span className="ml-2 text-[11px] text-emerald-600">
                     {isZh ? "已验证" : "Verified"}
                   </span>
                 </p>
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-[11px] text-stone-500">
                   {isZh
                     ? "更换手机号需先通过二次验证（2FA）。"
                     : "Changing phone requires a completed 2FA check."}
@@ -3403,7 +3406,7 @@ function ProfileSection({
                 <button
                   type="button"
                   onClick={onOpenPhoneEnroll}
-                  className="mt-2 inline-flex items-center rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  className="mt-2 inline-flex items-center rounded-full border border-[#87362E]/15 px-2.5 py-1 text-[11px] font-medium text-stone-700 hover:bg-[#fffaf5]"
                 >
                   {isZh ? "更换手机号" : "Change phone"}
                 </button>
@@ -3412,8 +3415,8 @@ function ProfileSection({
 
             {(!user.phoneVerified || phoneEnrollVisible) && (
               <div className="mt-2 space-y-2">
-                <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus-within:ring-1 focus-within:ring-slate-400">
-                  <span className="mr-2 text-[10px] text-slate-500">+1</span>
+                <div className="flex items-center rounded-lg border border-[#87362E]/15 bg-white px-2.5 py-1.5 text-xs text-stone-900 focus-within:ring-1 focus-within:ring-[#87362E]/20">
+                  <span className="mr-2 text-[10px] text-stone-500">+1</span>
                   <input
                     type="tel"
                     inputMode="numeric"
@@ -3424,7 +3427,7 @@ function ProfileSection({
                     placeholder={
                       isZh ? "请输入手机号" : "Enter your phone number"
                     }
-                    className="w-full border-0 p-0 text-xs text-slate-900 focus:outline-none"
+                    className="w-full border-0 p-0 text-xs text-stone-900 focus:outline-none"
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3435,13 +3438,13 @@ function ProfileSection({
                       onPhoneEnrollCodeChange(event.target.value)
                     }
                     placeholder={isZh ? "验证码" : "Code"}
-                    className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                    className="w-24 rounded-lg border border-[#87362E]/15 bg-white px-2.5 py-1.5 text-xs text-stone-900 focus:border-[#87362E]/45 focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={onRequestPhoneEnroll}
                     disabled={phoneEnrollSending}
-                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-full border border-[#87362E]/15 px-2.5 py-1 text-[11px] font-medium text-stone-700 hover:bg-[#fffaf5] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {phoneEnrollSending
                       ? isZh
@@ -3455,7 +3458,7 @@ function ProfileSection({
                     type="button"
                     onClick={onVerifyPhoneEnroll}
                     disabled={phoneEnrollVerifying}
-                    className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    className="rounded-full bg-[#87362E] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#6f2c26] disabled:cursor-not-allowed disabled:bg-stone-300"
                   >
                     {phoneEnrollVerifying
                       ? isZh
@@ -3474,11 +3477,11 @@ function ProfileSection({
               </div>
             )}
 
-            <div className="mt-4 border-t border-slate-200 pt-3">
-              <p className="text-[11px] font-medium text-slate-700">
+            <div className="mt-4 border-t border-[#87362E]/15 pt-3">
+              <p className="text-[11px] font-medium text-stone-700">
                 {isZh ? "短信二次验证 (2FA)" : "SMS two-factor (2FA)"}
               </p>
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-stone-500">
                 {isZh
                   ? "登录或敏感操作时需要短信验证码。"
                   : "Require SMS codes for sign-ins and sensitive actions."}
@@ -3492,7 +3495,7 @@ function ProfileSection({
                 className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium ${
                   twoFactorEnabled
                     ? "bg-emerald-100 text-emerald-700"
-                    : "bg-slate-200 text-slate-700"
+                    : "bg-stone-200 text-stone-700"
                 } ${twoFactorSaving ? "opacity-60" : ""}`}
               >
                 {twoFactorSaving
@@ -3508,7 +3511,7 @@ function ProfileSection({
                       : "Enable 2FA"}
               </button>
               {!user.phoneVerified && !twoFactorEnabled && (
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-[11px] text-stone-500">
                   {isZh ? "请先完成手机号验证。" : "Verify your phone first."}
                 </p>
               )}
@@ -3521,18 +3524,18 @@ function ProfileSection({
           </div>
         </div>
         <div>
-          <p className="text-slate-500">
+          <p className="text-stone-500">
             {isZh ? "会员编号（Stable ID）" : "Member ID (Stable ID)"}
           </p>
-          <p className="mt-0.5 break-all font-mono text-[11px] text-slate-900">
+          <p className="mt-0.5 break-all font-mono text-[11px] text-stone-900">
             {user.userStableId || (isZh ? "未识别" : "Not available")}
           </p>
         </div>
 
         {/* 营销邮件订阅开关 */}
-        <div className="mt-4 border-t border-slate-100 pt-3">
+        <div className="mt-4 border-t border-[#87362E]/10 pt-3">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-slate-500">
+            <p className="text-stone-500">
               {isZh ? "营销邮件订阅" : "Marketing emails"}
             </p>
             <button
@@ -3540,7 +3543,7 @@ function ProfileSection({
               disabled={marketingSaving}
               onClick={() => onToggleMarketing(!effectiveOptIn)}
               className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${
-                effectiveOptIn ? "bg-emerald-500" : "bg-slate-300"
+                effectiveOptIn ? "bg-emerald-500" : "bg-stone-300"
               } ${marketingSaving ? "opacity-60" : ""}`}
             >
               <span
@@ -3551,21 +3554,21 @@ function ProfileSection({
             </button>
           </div>
           <div className="mt-2">
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-stone-500">
               {isZh
                 ? "勾选后，我们会不定期发送新品、优惠活动等邮件给你。勾选即表示你同意接收营销邮件，并可随时退订。我们将按《隐私政策》保护你的信息。"
                 : "Tick this box and we’ll occasionally email you new items and special offers. By subscribing, you agree to receive marketing emails, and you can unsubscribe at any time. We will protect your information in accordance with our Privacy Policy."}
             </p>
           </div>
           {!user.email && (
-            <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-stone-500">
               <span>
                 {isZh ? "开启前需先绑定邮箱。" : "Link an email first."}
               </span>
               <button
                 type="button"
                 onClick={onOpenEmailEnroll}
-                className="text-amber-600 hover:underline"
+                className="font-medium text-[#87362E] hover:underline"
               >
                 {isZh ? "去绑定" : "Bind now"}
               </button>
@@ -3583,24 +3586,24 @@ function ProfileSection({
         )}
 
         {/* 会员规则入口 */}
-        <div className="mt-4 border-t border-slate-100 pt-3">
-          <p className="text-slate-500">
+        <div className="mt-4 border-t border-[#87362E]/10 pt-3">
+          <p className="text-stone-500">
             {isZh ? "会员规则" : "Membership rules"}
           </p>
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="mt-1 text-[11px] text-stone-500">
             {isZh
               ? "查看积分如何累积、抵扣、退款时如何处理等详细说明。"
               : "See details on how points are earned, redeemed, and adjusted on refunds."}
           </p>
           <Link
             href={`/${locale}/membership/rules`}
-            className="mt-2 inline-flex items-center rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+            className="mt-2 inline-flex items-center rounded-full bg-[#87362E] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#6f2c26]"
           >
             {isZh ? "查看会员规则" : "View membership rules"}
           </Link>
         </div>
 
-        <p className="mt-3 text-[11px] text-slate-500">
+        <p className="mt-3 text-[11px] text-stone-500">
           {isZh
             ? "积分可在结算页直接抵扣餐品小计；不定期发送的优惠券会通过邮件发给你，请注意查收。"
             : "Points can be applied at checkout to reduce the food subtotal. Additional promo coupons will occasionally be sent via email."}

@@ -38,9 +38,6 @@ export class AdminBusinessController {
    *   "reason": "厨房维护"
    * }
    */
-  // @compat benefits.business-config-loyalty-policy.v1
-  // Loyalty fields remain accepted here only as a rollback surface until the
-  // dedicated Benefits contract contraction is authorized after observation.
   @Patch('config')
   async patchConfig(
     @Body()
@@ -66,16 +63,6 @@ export class AdminBusinessController {
       supportEmail?: string | null;
       salesTaxRate?: number;
       wechatAlipayExchangeRate?: number;
-      earnPtPerDollar?: number;
-      redeemDollarPerPoint?: number;
-      referralPtPerDollar?: number;
-      tierMultiplierBronze?: number;
-      tierMultiplierSilver?: number;
-      tierMultiplierGold?: number;
-      tierMultiplierPlatinum?: number;
-      tierThresholdSilver?: number;
-      tierThresholdGold?: number;
-      tierThresholdPlatinum?: number;
       enableUberDirect?: boolean;
       allergyHandlingMode?: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
       unsupportedAllergens?: string[];
@@ -88,7 +75,6 @@ export class AdminBusinessController {
    * 兼容旧接口：PUT /admin/business/temporary-close
    * body 结构同上
    */
-  // @compat benefits.business-config-loyalty-policy.v1
   @Put('temporary-close')
   async updateTemporaryClose(
     @Body()
@@ -114,16 +100,6 @@ export class AdminBusinessController {
       supportEmail?: string | null;
       salesTaxRate?: number;
       wechatAlipayExchangeRate?: number;
-      earnPtPerDollar?: number;
-      redeemDollarPerPoint?: number;
-      referralPtPerDollar?: number;
-      tierMultiplierBronze?: number;
-      tierMultiplierSilver?: number;
-      tierMultiplierGold?: number;
-      tierMultiplierPlatinum?: number;
-      tierThresholdSilver?: number;
-      tierThresholdGold?: number;
-      tierThresholdPlatinum?: number;
       enableUberDirect?: boolean;
       allergyHandlingMode?: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
       unsupportedAllergens?: string[];

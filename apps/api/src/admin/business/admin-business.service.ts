@@ -13,14 +13,6 @@ import {
   type StoreConfigUpdateInput,
 } from '../../store/public-api';
 import {
-  LOYALTY_POLICY_SETTINGS_READER,
-  LOYALTY_POLICY_WRITER,
-  LoyaltyPolicyValidationError,
-  type LoyaltyPolicySettingsReaderPort,
-  type LoyaltyPolicyUpdateInput,
-  type LoyaltyPolicyWriterPort,
-} from '../../loyalty/public-api';
-import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
 } from '../../integrations/ubereats/public-api';
@@ -39,6 +31,19 @@ export type HolidayDto = {
   openMinutes?: number | null;
   closeMinutes?: number | null;
 };
+
+const LEGACY_LOYALTY_POLICY_FIELDS = [
+  'earnPtPerDollar',
+  'redeemDollarPerPoint',
+  'referralPtPerDollar',
+  'tierMultiplierBronze',
+  'tierMultiplierSilver',
+  'tierMultiplierGold',
+  'tierMultiplierPlatinum',
+  'tierThresholdSilver',
+  'tierThresholdGold',
+  'tierThresholdPlatinum',
+] as const;
 
 export type BusinessConfigResponse = {
   timezone: string;
@@ -68,16 +73,6 @@ export type BusinessConfigResponse = {
   supportEmail: string | null;
   salesTaxRate: number;
   wechatAlipayExchangeRate: number;
-  earnPtPerDollar: number;
-  redeemDollarPerPoint: number;
-  referralPtPerDollar: number;
-  tierMultiplierBronze: number;
-  tierMultiplierSilver: number;
-  tierMultiplierGold: number;
-  tierMultiplierPlatinum: number;
-  tierThresholdSilver: number;
-  tierThresholdGold: number;
-  tierThresholdPlatinum: number;
   enableUberDirect: boolean;
   allergyHandlingMode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
   unsupportedAllergens: string[];
@@ -95,10 +90,6 @@ export class AdminBusinessService {
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
     @Inject(BRAND_STORE_CONFIG_WRITER)
     private readonly brandStoreConfigWriter: BrandStoreConfigWriterPort,
-    @Inject(LOYALTY_POLICY_SETTINGS_READER)
-    private readonly loyaltyPolicySettingsReader: LoyaltyPolicySettingsReaderPort,
-    @Inject(LOYALTY_POLICY_WRITER)
-    private readonly loyaltyPolicyWriter: LoyaltyPolicyWriterPort,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uberEatsService: UberEatsStoreStatusSyncPort,
   ) {}
@@ -111,13 +102,11 @@ export class AdminBusinessService {
    * - 节假日列表
    */
   async getConfig(): Promise<BusinessConfigResponse> {
-    const [brandStoreConfig, loyaltyPolicy, hours, holidays] =
-      await Promise.all([
-        this.brandStoreConfigReader.getSnapshot(),
-        this.loyaltyPolicySettingsReader.getLoyaltyPolicySettings(),
-        this.ensureHoursInitialized(),
-        this.prisma.holiday.findMany({ orderBy: { date: 'asc' } }),
-      ]);
+    const [brandStoreConfig, hours, holidays] = await Promise.all([
+      this.brandStoreConfigReader.getSnapshot(),
+      this.ensureHoursInitialized(),
+      this.prisma.holiday.findMany({ orderBy: { date: 'asc' } }),
+    ]);
     const { brand, store } = brandStoreConfig;
 
     return {
@@ -150,16 +139,6 @@ export class AdminBusinessService {
       wechatAlipayExchangeRate: Number(
         brand.wechatAlipayExchangeRate.toFixed(2),
       ),
-      earnPtPerDollar: loyaltyPolicy.earnPtPerDollar,
-      redeemDollarPerPoint: loyaltyPolicy.redeemDollarPerPoint,
-      referralPtPerDollar: loyaltyPolicy.referralPtPerDollar,
-      tierMultiplierBronze: loyaltyPolicy.tierMultiplierBronze,
-      tierMultiplierSilver: loyaltyPolicy.tierMultiplierSilver,
-      tierMultiplierGold: loyaltyPolicy.tierMultiplierGold,
-      tierMultiplierPlatinum: loyaltyPolicy.tierMultiplierPlatinum,
-      tierThresholdSilver: loyaltyPolicy.tierThresholdSilver,
-      tierThresholdGold: loyaltyPolicy.tierThresholdGold,
-      tierThresholdPlatinum: loyaltyPolicy.tierThresholdPlatinum,
       enableUberDirect: store.enableUberDirect,
       allergyHandlingMode: store.allergyHandlingMode,
       unsupportedAllergens: store.unsupportedAllergens,
@@ -273,13 +252,20 @@ export class AdminBusinessService {
    * - isTemporarilyClosed = false 时，自动清空 reason
    * - 可同时更新配送费/税率
    */
-  // @compat benefits.business-config-loyalty-policy.v1
-  // This shared writer still accepts Loyalty policy fields only for rollback.
-  // New Loyalty writes must use the Benefits-owned policy writer boundary.
   async updateConfig(payload: unknown): Promise<BusinessConfigResponse> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException(
         'payload must be an object with isTemporarilyClosed (boolean)',
+      );
+    }
+
+    const rejectedLoyaltyFields = LEGACY_LOYALTY_POLICY_FIELDS.filter((field) =>
+      Object.prototype.hasOwnProperty.call(payload, field),
+    );
+    if (rejectedLoyaltyFields.length > 0) {
+      throw new BadRequestException(
+        'Loyalty policy fields are no longer accepted by Admin Business config; ' +
+          `use /admin/benefits/loyalty-policy instead: ${rejectedLoyaltyFields.join(', ')}`,
       );
     }
 
@@ -311,16 +297,6 @@ export class AdminBusinessService {
       supportEmail,
       salesTaxRate,
       wechatAlipayExchangeRate,
-      earnPtPerDollar,
-      redeemDollarPerPoint,
-      referralPtPerDollar,
-      tierMultiplierBronze,
-      tierMultiplierSilver,
-      tierMultiplierGold,
-      tierMultiplierPlatinum,
-      tierThresholdSilver,
-      tierThresholdGold,
-      tierThresholdPlatinum,
       enableUberDirect,
       allergyHandlingMode,
       unsupportedAllergens,
@@ -352,16 +328,6 @@ export class AdminBusinessService {
       supportEmail?: unknown;
       salesTaxRate?: unknown;
       wechatAlipayExchangeRate?: unknown;
-      earnPtPerDollar?: unknown;
-      redeemDollarPerPoint?: unknown;
-      referralPtPerDollar?: unknown;
-      tierMultiplierBronze?: unknown;
-      tierMultiplierSilver?: unknown;
-      tierMultiplierGold?: unknown;
-      tierMultiplierPlatinum?: unknown;
-      tierThresholdSilver?: unknown;
-      tierThresholdGold?: unknown;
-      tierThresholdPlatinum?: unknown;
       enableUberDirect?: unknown;
       allergyHandlingMode?: unknown;
       unsupportedAllergens?: unknown;
@@ -384,7 +350,6 @@ export class AdminBusinessService {
 
     const brandUpdates: BrandConfigUpdateInput = {};
     const storeUpdates: StoreConfigUpdateInput = {};
-    const loyaltyUpdates: LoyaltyPolicyUpdateInput = {};
 
     if (allergyHandlingMode !== undefined) {
       if (
@@ -602,37 +567,6 @@ export class AdminBusinessService {
       );
     }
 
-    if (earnPtPerDollar !== undefined) {
-      loyaltyUpdates.earnPtPerDollar = earnPtPerDollar;
-    }
-    if (redeemDollarPerPoint !== undefined) {
-      loyaltyUpdates.redeemDollarPerPoint = redeemDollarPerPoint;
-    }
-    if (referralPtPerDollar !== undefined) {
-      loyaltyUpdates.referralPtPerDollar = referralPtPerDollar;
-    }
-    if (tierMultiplierBronze !== undefined) {
-      loyaltyUpdates.tierMultiplierBronze = tierMultiplierBronze;
-    }
-    if (tierMultiplierSilver !== undefined) {
-      loyaltyUpdates.tierMultiplierSilver = tierMultiplierSilver;
-    }
-    if (tierMultiplierGold !== undefined) {
-      loyaltyUpdates.tierMultiplierGold = tierMultiplierGold;
-    }
-    if (tierMultiplierPlatinum !== undefined) {
-      loyaltyUpdates.tierMultiplierPlatinum = tierMultiplierPlatinum;
-    }
-    if (tierThresholdSilver !== undefined) {
-      loyaltyUpdates.tierThresholdSilver = tierThresholdSilver;
-    }
-    if (tierThresholdGold !== undefined) {
-      loyaltyUpdates.tierThresholdGold = tierThresholdGold;
-    }
-    if (tierThresholdPlatinum !== undefined) {
-      loyaltyUpdates.tierThresholdPlatinum = tierThresholdPlatinum;
-    }
-
     if (enableUberDirect !== undefined) {
       if (typeof enableUberDirect !== 'boolean') {
         throw new BadRequestException('enableUberDirect must be a boolean');
@@ -642,8 +576,7 @@ export class AdminBusinessService {
 
     const hasBrandUpdates = Object.keys(brandUpdates).length > 0;
     const hasStoreUpdates = Object.keys(storeUpdates).length > 0;
-    const hasLoyaltyUpdates = Object.keys(loyaltyUpdates).length > 0;
-    if (!hasBrandUpdates && !hasStoreUpdates && !hasLoyaltyUpdates) {
+    if (!hasBrandUpdates && !hasStoreUpdates) {
       return this.getConfig();
     }
 
@@ -654,21 +587,6 @@ export class AdminBusinessService {
       (storeUpdates.temporaryCloseReason !== undefined &&
         storeUpdates.temporaryCloseReason !==
           storeConfigSnapshot.temporaryCloseReason);
-
-    // The legacy route can carry both retained Benefits fields and Brand/Store
-    // fields. Update Benefits first so its legacy compatibility copy is current
-    // before the Brand/Store writer fires the one-way compatibility trigger with
-    // a complete Brand/Store snapshot.
-    if (hasLoyaltyUpdates) {
-      try {
-        await this.loyaltyPolicyWriter.updateLoyaltyPolicy(loyaltyUpdates);
-      } catch (error) {
-        if (error instanceof LoyaltyPolicyValidationError) {
-          throw new BadRequestException(error.message);
-        }
-        throw error;
-      }
-    }
 
     if (hasBrandUpdates || hasStoreUpdates) {
       await this.brandStoreConfigWriter.updateConfig({

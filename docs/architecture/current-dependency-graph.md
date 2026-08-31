@@ -151,11 +151,13 @@ pair fails CI.
   stale could revert Benefits values on a later unrelated legacy config write.
 - The general Admin Settings page no longer declares or resubmits Loyalty policy
   fields. Legacy `PATCH /admin/business/config` and compatibility
-  `PUT /admin/business/temporary-close` can still accept those fields only as
-  explicitly annotated rollback compatibility surfaces; repository-wide Web code
-  is now gated from combining either legacy route with a Loyalty policy field.
-  New direct BusinessConfig Loyalty persistence consumers are also blocked outside
-  the registered rollback writer and temporary Benefits dual-writer.
+  `PUT /admin/business/temporary-close` now reject all ten Loyalty keys with HTTP
+  400 and direct stale callers to `/admin/benefits/loyalty-policy`; their request
+  shapes and `BusinessConfigResponse` no longer expose Loyalty fields, and
+  `AdminBusinessService` no longer imports or invokes Benefits policy readers or
+  writers. Repository-wide Web code remains gated from combining either legacy
+  route with a Loyalty policy field. New direct BusinessConfig Loyalty persistence
+  consumers are also blocked outside the temporary Benefits dual-writer.
 - Admin Members now reads editable settings from `GET /admin/benefits/loyalty-policy`
   through the Benefits settings reader, while POS payment reads the runtime policy
   from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
