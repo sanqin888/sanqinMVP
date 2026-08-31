@@ -204,6 +204,18 @@
       "tierThresholdSilver",
       "tierThresholdGold",
       "tierThresholdPlatinum"
+    ],
+    "legacyAdminBusinessPolicyRoutes": [
+      "/admin/business/config",
+      "/admin/business/temporary-close"
+    ],
+    "legacyAdminBusinessPolicyAdapters": [
+      "apps/api/src/admin/business/admin-business.controller.ts",
+      "apps/api/src/admin/business/admin-business.service.ts"
+    ],
+    "allowedBusinessConfigPolicyFiles": [
+      "apps/api/src/admin/business/admin-business.service.ts",
+      "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts"
     ]
   },
   "dependencyBoundaries": [

@@ -38,6 +38,9 @@ export class AdminBusinessController {
    *   "reason": "厨房维护"
    * }
    */
+  // @compat benefits.business-config-loyalty-policy.v1
+  // Loyalty fields remain accepted here only as a rollback surface until the
+  // dedicated Benefits contract contraction is authorized after observation.
   @Patch('config')
   async patchConfig(
     @Body()
@@ -85,6 +88,7 @@ export class AdminBusinessController {
    * 兼容旧接口：PUT /admin/business/temporary-close
    * body 结构同上
    */
+  // @compat benefits.business-config-loyalty-policy.v1
   @Put('temporary-close')
   async updateTemporaryClose(
     @Body()
