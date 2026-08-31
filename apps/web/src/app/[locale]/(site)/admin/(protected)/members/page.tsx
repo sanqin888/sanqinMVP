@@ -6,6 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
+import {
+  fetchAdminLoyaltyPolicySettings,
+  updateAdminLoyaltyPolicySettings,
+  type LoyaltyPolicySettingsDto,
+} from "@/lib/api/loyalty";
 
 type Member = {
   userStableId: string;
@@ -74,19 +79,6 @@ type TopPurchasedItem = {
   productStableId: string;
   displayName: string;
   purchaseCount: number;
-};
-
-type LoyaltyConfigDto = {
-  earnPtPerDollar: number;
-  redeemDollarPerPoint: number;
-  referralPtPerDollar: number;
-  tierMultiplierBronze: number;
-  tierMultiplierSilver: number;
-  tierMultiplierGold: number;
-  tierMultiplierPlatinum: number;
-  tierThresholdSilver: number;
-  tierThresholdGold: number;
-  tierThresholdPlatinum: number;
 };
 
 const tierLabels: Record<Locale, Record<TierKey, string>> = {
@@ -223,7 +215,8 @@ export default function AdminMembersPage() {
   const [memberBalanceLedger, setMemberBalanceLedger] = useState<LedgerEntry[]>([]);
   const [ledgerTab, setLedgerTab] = useState<"POINTS" | "BALANCE">("POINTS");
   const [banLoadingIds, setBanLoadingIds] = useState<Record<string, boolean>>({});
-  const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfigDto | null>(null);
+  const [loyaltyConfig, setLoyaltyConfig] =
+    useState<LoyaltyPolicySettingsDto | null>(null);
   const [loyaltySaving, setLoyaltySaving] = useState(false);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
   const [loyaltySuccess, setLoyaltySuccess] = useState<string | null>(null);
@@ -234,7 +227,7 @@ export default function AdminMembersPage() {
     async function loadConfig() {
       setLoyaltyError(null);
       try {
-        const config = await apiFetch<LoyaltyConfigDto>("/admin/business/config");
+        const config = await fetchAdminLoyaltyPolicySettings();
         if (!cancelled) {
           setLoyaltyConfig(config);
         }
@@ -364,7 +357,10 @@ export default function AdminMembersPage() {
   const balanceTotal = useMemo(() => members.reduce((sum, member) => sum + member.balance, 0), [members]);
   const activeLedger = ledgerTab === "POINTS" ? memberPointsLedger : memberBalanceLedger;
 
-  const handleLoyaltyConfigChange = (field: keyof LoyaltyConfigDto, value: string) => {
+  const handleLoyaltyConfigChange = (
+    field: keyof LoyaltyPolicySettingsDto,
+    value: string,
+  ) => {
     if (!loyaltyConfig) return;
     if (
       field === "tierThresholdSilver" ||
@@ -388,22 +384,7 @@ export default function AdminMembersPage() {
     setLoyaltyError(null);
     setLoyaltySuccess(null);
     try {
-      const updated = await apiFetch<LoyaltyConfigDto>("/admin/business/config", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          earnPtPerDollar: loyaltyConfig.earnPtPerDollar,
-          redeemDollarPerPoint: loyaltyConfig.redeemDollarPerPoint,
-          referralPtPerDollar: loyaltyConfig.referralPtPerDollar,
-          tierMultiplierBronze: loyaltyConfig.tierMultiplierBronze,
-          tierMultiplierSilver: loyaltyConfig.tierMultiplierSilver,
-          tierMultiplierGold: loyaltyConfig.tierMultiplierGold,
-          tierMultiplierPlatinum: loyaltyConfig.tierMultiplierPlatinum,
-          tierThresholdSilver: loyaltyConfig.tierThresholdSilver,
-          tierThresholdGold: loyaltyConfig.tierThresholdGold,
-          tierThresholdPlatinum: loyaltyConfig.tierThresholdPlatinum,
-        }),
-      });
+      const updated = await updateAdminLoyaltyPolicySettings(loyaltyConfig);
       setLoyaltyConfig(updated);
       setLoyaltySuccess(isZh ? "积分规则已保存。" : "Loyalty rules saved.");
     } catch (error) {

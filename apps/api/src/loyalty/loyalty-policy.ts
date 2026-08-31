@@ -1,5 +1,7 @@
 import type {
+  LoyaltyPolicySettings,
   LoyaltyPolicySnapshot,
+  LoyaltyPolicyUpdateInput,
   LoyaltyTier,
 } from './loyalty-policy.contract';
 
@@ -96,4 +98,88 @@ export function normalizeLoyaltyPolicy(
     },
     tierMultipliers,
   };
+}
+
+export class LoyaltyPolicyValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LoyaltyPolicyValidationError';
+  }
+}
+
+type LoyaltyPolicyStoragePatch = Partial<LoyaltyPolicySettings>;
+
+const NON_NEGATIVE_DECIMAL_POLICY_FIELDS = [
+  'earnPtPerDollar',
+  'referralPtPerDollar',
+  'tierMultiplierBronze',
+  'tierMultiplierSilver',
+  'tierMultiplierGold',
+  'tierMultiplierPlatinum',
+] as const;
+
+const THRESHOLD_POLICY_FIELDS = [
+  'tierThresholdSilver',
+  'tierThresholdGold',
+  'tierThresholdPlatinum',
+] as const;
+
+function normalizeNonNegativeDecimal(label: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new LoyaltyPolicyValidationError(`${label} must be a finite number`);
+  }
+  if (value < 0) {
+    throw new LoyaltyPolicyValidationError(`${label} must be >= 0`);
+  }
+  return Number(value.toFixed(4));
+}
+
+function normalizePositiveDecimal(label: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new LoyaltyPolicyValidationError(`${label} must be a finite number`);
+  }
+  if (value <= 0) {
+    throw new LoyaltyPolicyValidationError(`${label} must be > 0`);
+  }
+  return Number(value.toFixed(4));
+}
+
+function normalizeNonNegativeThreshold(label: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new LoyaltyPolicyValidationError(`${label} must be a finite number`);
+  }
+  const cents = Math.round(value);
+  if (cents < 0) {
+    throw new LoyaltyPolicyValidationError(`${label} must be >= 0`);
+  }
+  return cents;
+}
+
+export function normalizeLoyaltyPolicyUpdate(
+  input: LoyaltyPolicyUpdateInput,
+): LoyaltyPolicyStoragePatch {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new LoyaltyPolicyValidationError('payload must be an object');
+  }
+
+  const patch: LoyaltyPolicyStoragePatch = {};
+  for (const field of NON_NEGATIVE_DECIMAL_POLICY_FIELDS) {
+    const value = input[field];
+    if (value !== undefined) {
+      patch[field] = normalizeNonNegativeDecimal(field, value);
+    }
+  }
+  if (input.redeemDollarPerPoint !== undefined) {
+    patch.redeemDollarPerPoint = normalizePositiveDecimal(
+      'redeemDollarPerPoint',
+      input.redeemDollarPerPoint,
+    );
+  }
+  for (const field of THRESHOLD_POLICY_FIELDS) {
+    const value = input[field];
+    if (value !== undefined) {
+      patch[field] = normalizeNonNegativeThreshold(field, value);
+    }
+  }
+  return patch;
 }

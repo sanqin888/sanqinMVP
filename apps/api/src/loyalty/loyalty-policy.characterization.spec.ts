@@ -1,8 +1,13 @@
 import { LoyaltyService } from './loyalty.service';
+import type { LoyaltyPolicySnapshot } from './loyalty-policy.contract';
 import {
   DEFAULT_LOYALTY_POLICY,
   normalizeLoyaltyPolicy,
 } from './loyalty-policy';
+
+type LoyaltyTransactionalPolicyTestSeam = {
+  getLoyaltyPolicySnapshotWithTx(tx: unknown): Promise<LoyaltyPolicySnapshot>;
+};
 
 describe('Loyalty policy characterization', () => {
   it('preserves the existing default policy when config is absent', () => {
@@ -21,6 +26,80 @@ describe('Loyalty policy characterization', () => {
       DEFAULT_LOYALTY_POLICY,
     );
     expect('businessConfig' in prisma).toBe(false);
+  });
+
+  it('reads transaction policy from BrandConfig through tx', async () => {
+    const brandConfigFindUnique = jest.fn().mockResolvedValue({
+      earnPtPerDollar: 0.02,
+      redeemDollarPerPoint: 0.75,
+      referralPtPerDollar: 0.015,
+      tierMultiplierBronze: 1,
+      tierMultiplierSilver: 2,
+      tierMultiplierGold: 3,
+      tierMultiplierPlatinum: 5,
+      tierThresholdSilver: 100000,
+      tierThresholdGold: 1000000,
+      tierThresholdPlatinum: 3000000,
+    });
+    const tx = {
+      brandConfig: {
+        findUnique: brandConfigFindUnique,
+      },
+    };
+    const service = new LoyaltyService({} as never, {} as never);
+
+    await expect(
+      (
+        service as unknown as LoyaltyTransactionalPolicyTestSeam
+      ).getLoyaltyPolicySnapshotWithTx(tx),
+    ).resolves.toEqual({
+      earnPtPerDollar: 0.02,
+      redeemDollarPerPoint: 0.75,
+      referralPtPerDollar: 0.015,
+      tierThresholdCents: {
+        SILVER: 100000,
+        GOLD: 1000000,
+        PLATINUM: 3000000,
+      },
+      tierMultipliers: {
+        BRONZE: 1,
+        SILVER: 2,
+        GOLD: 3,
+        PLATINUM: 5,
+      },
+    });
+    expect(brandConfigFindUnique).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: {
+        earnPtPerDollar: true,
+        redeemDollarPerPoint: true,
+        referralPtPerDollar: true,
+        tierMultiplierBronze: true,
+        tierMultiplierSilver: true,
+        tierMultiplierGold: true,
+        tierMultiplierPlatinum: true,
+        tierThresholdSilver: true,
+        tierThresholdGold: true,
+        tierThresholdPlatinum: true,
+      },
+    });
+    expect('businessConfig' in tx).toBe(false);
+  });
+
+  it('returns default transaction policy when transitional config is missing', async () => {
+    const tx = {
+      brandConfig: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const service = new LoyaltyService({} as never, {} as never);
+
+    await expect(
+      (
+        service as unknown as LoyaltyTransactionalPolicyTestSeam
+      ).getLoyaltyPolicySnapshotWithTx(tx),
+    ).resolves.toEqual(DEFAULT_LOYALTY_POLICY);
+    expect('businessConfig' in tx).toBe(false);
   });
 
   it('preserves existing normalization rules for invalid loyalty policy values', () => {

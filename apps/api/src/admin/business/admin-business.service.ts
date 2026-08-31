@@ -578,7 +578,7 @@ export class AdminBusinessService {
     }
 
     if (redeemDollarPerPoint !== undefined) {
-      updates.redeemDollarPerPoint = this.normalizePositiveNumber(
+      updates.redeemDollarPerPoint = this.normalizeStrictlyPositiveNumber(
         'redeemDollarPerPoint',
         redeemDollarPerPoint,
       );
@@ -966,6 +966,21 @@ export class AdminBusinessService {
 
     if (value < 0) {
       throw new BadRequestException(`${label} must be >= 0`);
+    }
+
+    return Number(value.toFixed(4));
+  }
+
+  private normalizeStrictlyPositiveNumber(
+    label: string,
+    value: unknown,
+  ): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new BadRequestException(`${label} must be a finite number`);
+    }
+
+    if (value <= 0) {
+      throw new BadRequestException(`${label} must be > 0`);
     }
 
     return Number(value.toFixed(4));

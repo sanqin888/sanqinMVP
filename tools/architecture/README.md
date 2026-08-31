@@ -28,11 +28,20 @@ node tools/architecture/scan-architecture.mjs --report
   delegates or consumer-specific forbidden Prisma symbols, the deleted
   `common/store-id.ts` path cannot return, and configured store identity has one
   implementation owner;
-- Benefits loyalty policy is exposed through `loyalty/public-api.ts`; membership
-  rules must use the Benefits snapshot, migrated Admin readers cannot return to
-  `BusinessConfig`, private policy contracts cannot be deep-imported outside the
-  Loyalty owner, and loyalty policy fields cannot be added to the Brand/Store
-  public config contract;
+- Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
+  LoyaltyService policy readers must use transitional `BrandConfig` storage,
+  transaction-bound reads must stay on the existing Prisma transaction client,
+  migrated Admin readers cannot return to `BusinessConfig`; Admin Members read/write
+  and POS payment policy reads must use the registered Benefits endpoints through
+  the centralized Web Loyalty API client. The Benefits writer/settings reader must
+  read the existing canonical config, must not invent runtime defaults or create
+  missing config rows, and the writer must dual-write canonical plus registered
+  compatibility storage in one transaction while the one-way legacy trigger remains
+  active; general Admin Settings cannot declare or resubmit Loyalty policy fields.
+  Legacy Loyalty reader
+  helpers/types are forbidden, private policy implementations cannot be
+  deep-imported outside the Loyalty owner, and policy fields cannot be added to the
+  Brand/Store public config contract;
 - unique, complete compatibility entries;
 - no unregistered `@compat <compat_id>` annotation.
 

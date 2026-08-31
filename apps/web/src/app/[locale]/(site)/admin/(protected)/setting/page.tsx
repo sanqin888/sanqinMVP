@@ -57,16 +57,6 @@ type BusinessConfigDto = {
   smsSignature: string | null;
   salesTaxRate: number;
   wechatAlipayExchangeRate: number;
-  earnPtPerDollar: number;
-  redeemDollarPerPoint: number;
-  referralPtPerDollar: number;
-  tierMultiplierBronze: number;
-  tierMultiplierSilver: number;
-  tierMultiplierGold: number;
-  tierMultiplierPlatinum: number;
-  tierThresholdSilver: number;
-  tierThresholdGold: number;
-  tierThresholdPlatinum: number;
   enableUberDirect: boolean;
   allergyHandlingMode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
   unsupportedAllergens: string[];
@@ -676,12 +666,6 @@ await apiFetch('/admin/business/hours', {
           smsSignature: config.smsSignature ?? null,
           salesTaxRate: config.salesTaxRate,
           wechatAlipayExchangeRate: config.wechatAlipayExchangeRate,
-          earnPtPerDollar: config.earnPtPerDollar,
-          redeemDollarPerPoint: config.redeemDollarPerPoint,
-          referralPtPerDollar: config.referralPtPerDollar,
-          tierThresholdSilver: config.tierThresholdSilver,
-          tierThresholdGold: config.tierThresholdGold,
-          tierThresholdPlatinum: config.tierThresholdPlatinum,
           enableUberDirect: config.enableUberDirect,
           allergyHandlingMode: config.allergyHandlingMode,
           unsupportedAllergens: config.unsupportedAllergens,

@@ -36,20 +36,27 @@
     {
       "compat_id": "benefits.business-config-loyalty-policy.v1",
       "status": "active",
-      "old_owner": "BusinessConfig loyalty policy fields read directly by LoyaltyService and AdminMembersService",
-      "new_owner": "Benefits-owned LoyaltyPolicySnapshot; BrandConfig columns are transitional persistence until a dedicated Benefits schema migration",
+      "old_owner": "The legacy /admin/business/config surface can still accept Loyalty policy fields and BusinessConfig remains a compatibility copy while its one-way trigger is active",
+      "new_owner": "Benefits-owned LoyaltyPolicy reader/writer boundary; BrandConfig columns are transitional canonical persistence until a dedicated Benefits schema migration",
       "dual_write_or_read": [
-        "The existing BusinessConfig compatibility trigger mirrors loyalty policy writes into the transitional BrandConfig columns",
-        "Membership program rules and Admin member tier progress read the Benefits policy snapshot, while transaction-bound Loyalty paths continue reading BusinessConfig until their dedicated cutover"
+        "The Benefits writer validates policy patches, reads the existing BrandConfig policy as canonical state without runtime defaults, and updates BrandConfig plus the BusinessConfig compatibility copy in one transaction so later unrelated BusinessConfig-triggered syncs cannot restore stale Loyalty values",
+        "Admin Members reads and writes use /admin/benefits/loyalty-policy; Admin Settings no longer owns or resubmits Loyalty fields; the old Admin Business write surface remains rollback compatibility only",
+        "POS payment reads the runtime Benefits policy through /pos/loyalty-policy with Session, Role, and PosDevice guards instead of reading Admin Business config",
+        "All LoyaltyService transaction and non-transaction readers plus Admin member tier progress read Benefits policy from BrandConfig"
       ],
-      "parity_metric": "BusinessConfig and BrandConfig loyalty policy fields must remain zero-diff, and transaction-bound versus non-transaction Benefits policy values must match across one complete business cycle",
-      "rollback": "Revert only the non-transaction policy readers to BusinessConfig while retaining the compatibility trigger; never rewrite loyalty ledger history",
-      "exit_criteria": "All transaction and non-transaction Loyalty readers use the Benefits policy boundary, the Admin writer targets the Benefits owner, and dedicated Benefits persistence replaces duplicated BusinessConfig/BrandConfig loyalty columns before contraction",
-      "remove_pr": "Benefits loyalty policy transactional cutover followed by an authorized Benefits persistence contraction PR",
+      "parity_metric": "BusinessConfig and BrandConfig loyalty policy fields must remain zero-diff across one complete business cycle; known Web Loyalty reads and writes through /admin/business/config must remain zero",
+      "rollback": "Point Admin Members read/write or the POS payment policy read back to the legacy /admin/business/config surface only as a scoped cutback while retaining the compatibility copy and trigger; never rewrite loyalty ledger history",
+      "exit_criteria": "No active consumer reads or writes Loyalty policy through Admin Business, dedicated Benefits persistence replaces duplicated BusinessConfig/BrandConfig loyalty columns, parity is proven, and the compatibility writer/trigger can be contracted",
+      "remove_pr": "Authorized Benefits persistence expand/backfill/cutover followed by BusinessConfig compatibility contraction",
       "deadline": "Before Phase 2 Identity/Customer/Benefits exit",
       "evidence": [
         "apps/api/src/loyalty/public-api.ts",
         "apps/api/src/loyalty/loyalty-policy.contract.ts",
+        "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts",
+        "apps/api/src/admin/benefits/admin-loyalty-policy.controller.ts",
+        "apps/api/src/pos/pos-summary.controller.ts",
+        "apps/web/src/lib/api/loyalty.ts",
+        "apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx",
         "apps/api/prisma/migrations/20260819233000_add_store_config_foundation/migration.sql"
       ]
     },

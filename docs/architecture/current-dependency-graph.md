@@ -110,28 +110,35 @@ pair fails CI.
   when that writer boundary is migrated, rather than reclassifying existing
   direct-import debt without changing the implementation.
 
-## Phase 2 Benefits loyalty policy boundary started
+## Phase 2 Benefits loyalty policy reader/writer boundary active
 
-- `apps/api/src/loyalty/public-api.ts` exposes a narrow `LOYALTY_POLICY_READER`
-  contract owned by Identity/Customer/Benefits. Loyalty earn/redeem/referral
-  rates, tier multipliers, and tier thresholds are explicitly excluded from the
-  Brand/Store public configuration contract even though transitional columns
-  currently live in `BrandConfig`.
-- The existing BusinessConfig compatibility trigger already mirrors those policy
-  fields into `BrandConfig`. The first Benefits snapshot therefore reads those
-  transitional columns without a schema change, while the future dedicated
-  Benefits persistence migration remains a separate authorized step.
-- Membership program rules and Admin member tier-progress thresholds are the first
-  non-transaction consumers migrated to the Benefits snapshot. Admin Members can
-  no longer read `BusinessConfig` directly for tier thresholds.
-- Loyalty transaction-bound policy reads continue to use `BusinessConfig` for this
-  slice. Their data source and transaction boundaries are intentionally unchanged;
-  only the existing normalization/default rules were extracted into one pure
-  Benefits policy function shared by old and new read paths.
-- `benefits.business-config-loyalty-policy.v1` records the temporary split-read
-  state, parity requirement, rollback, and exit criteria. The architecture scanner
-  protects the public policy surface and prevents the migrated readers from
-  regressing or moving loyalty policy fields into Brand/Store public config.
+- `apps/api/src/loyalty/public-api.ts` exposes narrow `LOYALTY_POLICY_READER` and
+  `LOYALTY_POLICY_WRITER` contracts owned by Identity/Customer/Benefits. Loyalty
+  earn/redeem/referral rates, tier multipliers, and tier thresholds remain
+  explicitly excluded from the Brand/Store public configuration contract even
+  though transitional columns currently live in `BrandConfig`.
+- Membership program rules, Admin member tier-progress thresholds, and all
+  LoyaltyService policy reads use the Benefits snapshot backed by transitional
+  `BrandConfig` columns. Transaction-bound reads remain inside their existing
+  Prisma transaction through `getLoyaltyPolicySnapshotWithTx(tx)`.
+- Admin Members policy saves now use `/admin/benefits/loyalty-policy`, whose
+  Benefits-owned writer preserves the established rounding/non-negative rules,
+  while tightening `redeemDollarPerPoint` to the existing business invariant
+  `> 0`; it writes `BrandConfig` plus the `BusinessConfig` compatibility copy in one
+  transaction. The compatibility copy is still required because the existing DB
+  trigger is one-way (`BusinessConfig` -> canonical config); allowing it to become
+  stale could revert Benefits values on a later unrelated legacy config write.
+- The general Admin Settings page no longer declares or resubmits Loyalty policy
+  fields. `/admin/business/config` still accepts those fields only as an explicit
+  rollback compatibility surface; no known Web Loyalty read/write path uses it.
+- Admin Members now reads editable settings from `GET /admin/benefits/loyalty-policy`
+  through the Benefits settings reader, while POS payment reads the runtime policy
+  from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
+  Session/Role/PosDevice guards. Both browser consumers use the centralized Web
+  Loyalty API client rather than the legacy Admin Business response.
+- `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
+  state. Dedicated Benefits persistence and removal of the legacy Admin Business
+  policy surface/trigger remain a later authorized Prisma expand-contract step.
 
 ## Carried debt outside this closeout
 

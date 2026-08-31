@@ -1,5 +1,12 @@
 //apps/api/src/pos/pos-summary.controller.ts
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Inject,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { PosSummaryService } from './pos-summary.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -7,6 +14,11 @@ import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from './pos-device.guard';
 import { PosGateway } from './pos.gateway';
 import { resolveConfiguredStoreStableId } from '../store/public-api';
+import {
+  LOYALTY_POLICY_READER,
+  type LoyaltyPolicyReaderPort,
+  type LoyaltyPolicySnapshot,
+} from '../loyalty/public-api';
 
 @Controller('pos/summary')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
@@ -64,5 +76,20 @@ export class PosSummaryController {
     );
 
     return { success: true };
+  }
+}
+
+@Controller('pos/loyalty-policy')
+@UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
+@Roles('ADMIN', 'STAFF')
+export class PosLoyaltyPolicyController {
+  constructor(
+    @Inject(LOYALTY_POLICY_READER)
+    private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
+  ) {}
+
+  @Get()
+  getPolicy(): Promise<LoyaltyPolicySnapshot> {
+    return this.loyaltyPolicyReader.getLoyaltyPolicySnapshot();
   }
 }

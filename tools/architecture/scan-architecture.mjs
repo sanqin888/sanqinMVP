@@ -636,6 +636,9 @@ if (benefitsLoyaltyPolicyOwnership) {
   const ownerRoot = toPosix(benefitsLoyaltyPolicyOwnership.ownerRoot);
   const publicSurface = toPosix(benefitsLoyaltyPolicyOwnership.publicSurface);
   const implementation = toPosix(benefitsLoyaltyPolicyOwnership.implementation);
+  const writerImplementation = toPosix(
+    benefitsLoyaltyPolicyOwnership.writerImplementation,
+  );
   const contractImplementation = toPosix(
     benefitsLoyaltyPolicyOwnership.contractImplementation,
   );
@@ -645,10 +648,28 @@ if (benefitsLoyaltyPolicyOwnership) {
   const compositionModule = toPosix(
     benefitsLoyaltyPolicyOwnership.compositionModule,
   );
+  const adminWriterAdapter = toPosix(
+    benefitsLoyaltyPolicyOwnership.adminWriterAdapter,
+  );
+  const posReaderAdapter = toPosix(
+    benefitsLoyaltyPolicyOwnership.posReaderAdapter,
+  );
+  const webApiClient = toPosix(benefitsLoyaltyPolicyOwnership.webApiClient);
+  const webWriterConsumer = toPosix(
+    benefitsLoyaltyPolicyOwnership.webWriterConsumer,
+  );
+  const webPosReaderConsumer = toPosix(
+    benefitsLoyaltyPolicyOwnership.webPosReaderConsumer,
+  );
+  const webSettingsConsumer = toPosix(
+    benefitsLoyaltyPolicyOwnership.webSettingsConsumer,
+  );
   const publicSymbols = benefitsLoyaltyPolicyOwnership.publicSymbols ?? [];
   const transitionalStorageDelegate =
     benefitsLoyaltyPolicyOwnership.transitionalStorageDelegate;
   const legacyStorageDelegate = benefitsLoyaltyPolicyOwnership.legacyStorageDelegate;
+  const implementationForbiddenSymbols =
+    benefitsLoyaltyPolicyOwnership.implementationForbiddenSymbols ?? [];
   const migratedLegacyConsumers =
     benefitsLoyaltyPolicyOwnership.migratedLegacyConsumers ?? [];
   const forbiddenBrandStoreContractFields =
@@ -657,9 +678,11 @@ if (benefitsLoyaltyPolicyOwnership) {
   for (const boundaryPath of [
     publicSurface,
     implementation,
+    writerImplementation,
     contractImplementation,
     policyImplementation,
     compositionModule,
+    adminWriterAdapter,
   ]) {
     if (contextOf(boundaryPath) !== ownerContext) {
       failures.push(
@@ -695,6 +718,28 @@ if (benefitsLoyaltyPolicyOwnership) {
   const implementationPath = join(REPOSITORY_ROOT, implementation);
   if (existsSync(implementationPath)) {
     const source = readFileSync(implementationPath, 'utf8');
+    const legacyDelegatePattern = new RegExp(
+      `\\.\\s*${escapeRegExp(legacyStorageDelegate)}\\b`,
+    );
+    if (legacyDelegatePattern.test(source)) {
+      failures.push(
+        `Benefits loyalty policy implementation must not regress to ${legacyStorageDelegate}: ${implementation}`,
+      );
+    }
+    for (const symbol of implementationForbiddenSymbols) {
+      if (new RegExp(`\\b${escapeRegExp(symbol)}\\b`).test(source)) {
+        failures.push(
+          `Benefits loyalty policy implementation forbidden legacy symbol: ${implementation} -> ${symbol}`,
+        );
+      }
+    }
+    const transactionalPolicyReaderPattern =
+      /getLoyaltyPolicySnapshotWithTx\s*\([\s\S]{0,300}?Prisma\.TransactionClient[\s\S]{0,700}?\.brandConfig\.findUnique\s*\(/;
+    if (!transactionalPolicyReaderPattern.test(source)) {
+      failures.push(
+        `Benefits transaction-bound policy reader must use BrandConfig through the existing Prisma transaction client: ${implementation}`,
+      );
+    }
     const transitionalDelegatePattern = new RegExp(
       `\\.\\s*${escapeRegExp(transitionalStorageDelegate)}\\b`,
     );
@@ -730,6 +775,161 @@ if (benefitsLoyaltyPolicyOwnership) {
       failures.push(
         `membership program rules must not regress to legacy BusinessConfig policy reads: ${implementation}`,
       );
+    }
+  }
+
+  const writerImplementationPath = join(REPOSITORY_ROOT, writerImplementation);
+  if (existsSync(writerImplementationPath)) {
+    const writerSource = readFileSync(writerImplementationPath, 'utf8');
+    if (
+      !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
+      !writerSource.includes('getLoyaltyPolicySettings') ||
+      !/\.\$transaction\s*\(/.test(writerSource) ||
+      !/tx\.brandConfig\.findUnique\s*\(/.test(writerSource) ||
+      !/tx\.businessConfig\.update\s*\(/.test(writerSource) ||
+      !/tx\.brandConfig\.update\s*\(/.test(writerSource)
+    ) {
+      failures.push(
+        `Benefits loyalty policy writer must read canonical config and dual-write canonical plus compatibility storage in one transaction: ${writerImplementation}`,
+      );
+    }
+    if (
+      writerSource.includes('DEFAULT_LOYALTY_POLICY') ||
+      /(?:brandConfig|businessConfig)\.upsert\s*\(/.test(writerSource)
+    ) {
+      failures.push(
+        `Benefits loyalty policy writer must not invent runtime defaults or create missing policy config: ${writerImplementation}`,
+      );
+    }
+    if (!writerSource.includes('@compat benefits.business-config-loyalty-policy.v1')) {
+      failures.push(
+        `Benefits loyalty policy writer compatibility annotation missing: ${writerImplementation}`,
+      );
+    }
+  }
+
+  const adminWriterAdapterPath = join(REPOSITORY_ROOT, adminWriterAdapter);
+  if (existsSync(adminWriterAdapterPath)) {
+    const source = readFileSync(adminWriterAdapterPath, 'utf8');
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(adminWriterAdapterPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    if (
+      !importsPublicSurface ||
+      !source.includes('LOYALTY_POLICY_SETTINGS_READER') ||
+      !source.includes('LOYALTY_POLICY_WRITER') ||
+      !source.includes('getLoyaltyPolicySettings') ||
+      !source.includes("@Controller('admin/benefits/loyalty-policy')") ||
+      !source.includes("@Roles('ADMIN')") ||
+      !source.includes("@Roles('ADMIN', 'STAFF')") ||
+      !source.includes('AdminMfaGuard')
+    ) {
+      failures.push(
+        `Admin loyalty policy reads/writes must use the Benefits public settings boundary with ADMIN MFA: ${adminWriterAdapter}`,
+      );
+    }
+  }
+
+  const posReaderAdapterPath = join(REPOSITORY_ROOT, posReaderAdapter);
+  if (!existsSync(posReaderAdapterPath)) {
+    failures.push(`POS Benefits loyalty policy adapter missing: ${posReaderAdapter}`);
+  } else {
+    const source = readFileSync(posReaderAdapterPath, 'utf8');
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(posReaderAdapterPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    if (
+      !importsPublicSurface ||
+      !source.includes('LOYALTY_POLICY_READER') ||
+      !source.includes('getLoyaltyPolicySnapshot') ||
+      !source.includes("@Controller('pos/loyalty-policy')") ||
+      !source.includes("@Roles('ADMIN', 'STAFF')") ||
+      !source.includes('PosDeviceGuard')
+    ) {
+      failures.push(
+        `POS loyalty policy reads must use the Benefits public runtime reader with device auth: ${posReaderAdapter}`,
+      );
+    }
+  }
+
+  for (const webPath of [
+    webApiClient,
+    webWriterConsumer,
+    webPosReaderConsumer,
+    webSettingsConsumer,
+  ]) {
+    if (!existsSync(join(REPOSITORY_ROOT, webPath))) {
+      failures.push(`Benefits loyalty policy Web consumer missing: ${webPath}`);
+    }
+  }
+
+  const webApiClientPath = join(REPOSITORY_ROOT, webApiClient);
+  if (existsSync(webApiClientPath)) {
+    const source = readFileSync(webApiClientPath, 'utf8');
+    if (
+      !source.includes('/admin/benefits/loyalty-policy') ||
+      !source.includes('/pos/loyalty-policy') ||
+      !source.includes('fetchAdminLoyaltyPolicySettings') ||
+      !source.includes('updateAdminLoyaltyPolicySettings') ||
+      !source.includes('fetchPosLoyaltyPolicy')
+    ) {
+      failures.push(
+        `Web Loyalty API client must own the Admin and POS Benefits routes: ${webApiClient}`,
+      );
+    }
+  }
+
+  const webWriterConsumerPath = join(REPOSITORY_ROOT, webWriterConsumer);
+  if (existsSync(webWriterConsumerPath)) {
+    const source = readFileSync(webWriterConsumerPath, 'utf8');
+    if (
+      !source.includes('@/lib/api/loyalty') ||
+      !source.includes('fetchAdminLoyaltyPolicySettings') ||
+      !source.includes('updateAdminLoyaltyPolicySettings') ||
+      source.includes('/admin/business/config')
+    ) {
+      failures.push(
+        `Admin Members loyalty policy reads/writes must use the Web Benefits API client and not /admin/business/config: ${webWriterConsumer}`,
+      );
+    }
+  }
+
+  const webPosReaderConsumerPath = join(REPOSITORY_ROOT, webPosReaderConsumer);
+  if (existsSync(webPosReaderConsumerPath)) {
+    const source = readFileSync(webPosReaderConsumerPath, 'utf8');
+    if (
+      !source.includes('@/lib/api/loyalty') ||
+      !source.includes('fetchPosLoyaltyPolicy') ||
+      source.includes('BusinessConfigLite') ||
+      source.includes('/admin/business/config')
+    ) {
+      failures.push(
+        `POS payment loyalty policy reads must use the POS Benefits API client and not Admin Business config: ${webPosReaderConsumer}`,
+      );
+    }
+  }
+
+  const webSettingsConsumerPath = join(REPOSITORY_ROOT, webSettingsConsumer);
+  if (existsSync(webSettingsConsumerPath)) {
+    const source = readFileSync(webSettingsConsumerPath, 'utf8');
+    for (const field of forbiddenBrandStoreContractFields) {
+      if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+        failures.push(
+          `Admin Settings must not own or resubmit Benefits loyalty policy field: ${webSettingsConsumer} -> ${field}`,
+        );
+      }
     }
   }
 
@@ -770,8 +970,8 @@ if (benefitsLoyaltyPolicyOwnership) {
   }
 
   const privateTargets = new Set(
-    [contractImplementation, policyImplementation].map((path) =>
-      path.replace(/\.(?:[cm]?[jt]sx?)$/, ''),
+    [contractImplementation, policyImplementation, writerImplementation].map(
+      (path) => path.replace(/\.(?:[cm]?[jt]sx?)$/, ''),
     ),
   );
   for (const absolutePath of sourceFiles) {
