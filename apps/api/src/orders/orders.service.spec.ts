@@ -356,7 +356,12 @@ describe('OrdersService', () => {
 
       expect(prisma.menuDailySpecial.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ weekday: 7 }),
+          where: {
+            weekday: 7,
+            isEnabled: true,
+            deletedAt: null,
+            itemStableId: { in: [demoProductId] },
+          },
         }),
       );
       expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalled();

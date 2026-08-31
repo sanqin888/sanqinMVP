@@ -4498,7 +4498,8 @@ export class OrdersService {
       city: sanitize(config.city),
       province: sanitize(config.province),
       postalCode: sanitize(config.postalCode),
-      latitude: typeof config.latitude === 'number' ? config.latitude : undefined,
+      latitude:
+        typeof config.latitude === 'number' ? config.latitude : undefined,
       longitude:
         typeof config.longitude === 'number' ? config.longitude : undefined,
     };
