@@ -161,7 +161,7 @@
     "policyImplementation": "apps/api/src/loyalty/loyalty-policy.ts",
     "compositionModule": "apps/api/src/loyalty/loyalty.module.ts",
     "adminWriterAdapter": "apps/api/src/admin/benefits/admin-loyalty-policy.controller.ts",
-    "posReaderAdapter": "apps/api/src/pos/pos-loyalty-policy.controller.ts",
+    "posReaderAdapter": "apps/api/src/pos/pos-summary.controller.ts",
     "webApiClient": "apps/web/src/lib/api/loyalty.ts",
     "webWriterConsumer": "apps/web/src/app/[locale]/(site)/admin/(protected)/members/page.tsx",
     "webPosReaderConsumer": "apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx",

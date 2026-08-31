@@ -54,7 +54,7 @@
         "apps/api/src/loyalty/loyalty-policy.contract.ts",
         "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts",
         "apps/api/src/admin/benefits/admin-loyalty-policy.controller.ts",
-        "apps/api/src/pos/pos-loyalty-policy.controller.ts",
+        "apps/api/src/pos/pos-summary.controller.ts",
         "apps/web/src/lib/api/loyalty.ts",
         "apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx",
         "apps/api/prisma/migrations/20260819233000_add_store_config_foundation/migration.sql"

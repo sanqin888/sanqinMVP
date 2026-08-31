@@ -1,4 +1,4 @@
-import { PosLoyaltyPolicyController } from './pos-loyalty-policy.controller';
+import { PosLoyaltyPolicyController } from './pos-summary.controller';
 
 describe('PosLoyaltyPolicyController', () => {
   it('reads the runtime policy through the Benefits public reader', async () => {
