@@ -7,7 +7,6 @@ import {
   BRAND_STORE_CONFIG_WRITER,
   STORE_SCHEDULE_READER,
   STORE_SCHEDULE_WRITER,
-  resolveConfiguredStoreStableId,
   type BrandConfigSnapshot,
   type BrandConfigUpdateInput,
   type BrandStoreConfigReaderPort,
@@ -756,10 +755,16 @@ export class AdminBusinessService {
       }
     }
 
-    if (
-      temporaryPauseChanged &&
-      storeConfigSnapshot.storeStableId === resolveConfiguredStoreStableId()
-    ) {
+    let shouldSyncUberStoreStatus = false;
+    if (temporaryPauseChanged) {
+      const configuredStoreStableId = requestedStoreStableId
+        ? (await this.brandStoreConfigReader.getStoreSnapshot()).storeStableId
+        : storeConfigSnapshot.storeStableId;
+      shouldSyncUberStoreStatus =
+        storeConfigSnapshot.storeStableId === configuredStoreStableId;
+    }
+
+    if (shouldSyncUberStoreStatus) {
       await this.syncUberStoreStatusSafely('admin_business_config');
     }
 
