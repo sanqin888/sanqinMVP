@@ -51,8 +51,12 @@ function setup(options?: {
   config?: StoreConfigRow | null;
 }) {
   const brandFindUnique = jest.fn(
-    (_args: { where: { id: number }; select: SelectShape }) =>
-      Promise.resolve(options?.brand === undefined ? brand : options.brand),
+    (args: { where: { id: number }; select: SelectShape }) => {
+      void args;
+      return Promise.resolve(
+        options?.brand === undefined ? brand : options.brand,
+      );
+    },
   );
   const brandUpdate = jest.fn(
     (args: {
@@ -62,15 +66,14 @@ function setup(options?: {
     }) => Promise.resolve({ ...brand, ...args.data }),
   );
   const storeFindUnique = jest.fn(
-    (_args: {
-      where: { storeStableId: string };
-      select: SelectShape;
-    }) =>
-      Promise.resolve({
+    (args: { where: { storeStableId: string }; select: SelectShape }) => {
+      void args;
+      return Promise.resolve({
         id: storeDbId,
         name: 'SanQ Roujiamo - Yonge',
         config: options?.config === undefined ? storeConfig : options.config,
-      }),
+      });
+    },
   );
   const storeUpdate = jest.fn(
     (args: {
@@ -80,8 +83,10 @@ function setup(options?: {
     }) => Promise.resolve({ ...storeConfig, ...args.data }),
   );
   const businessUpdate = jest.fn(
-    (_args: { where: { id: number }; data: Record<string, unknown> }) =>
-      Promise.resolve({}),
+    (args: { where: { id: number }; data: Record<string, unknown> }) => {
+      void args;
+      return Promise.resolve({});
+    },
   );
 
   const tx = {
