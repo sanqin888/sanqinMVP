@@ -686,6 +686,15 @@ if (benefitsLoyaltyPolicyOwnership) {
     benefitsLoyaltyPolicyOwnership.migratedLegacyConsumers ?? [];
   const forbiddenBrandStoreContractFields =
     benefitsLoyaltyPolicyOwnership.forbiddenBrandStoreContractFields ?? [];
+  const legacyAdminBusinessPolicyRoutes =
+    benefitsLoyaltyPolicyOwnership.legacyAdminBusinessPolicyRoutes ?? [];
+  const legacyAdminBusinessPolicyAdapters =
+    benefitsLoyaltyPolicyOwnership.legacyAdminBusinessPolicyAdapters ?? [];
+  const allowedBusinessConfigPolicyFiles = new Set(
+    (benefitsLoyaltyPolicyOwnership.allowedBusinessConfigPolicyFiles ?? []).map(
+      toPosix,
+    ),
+  );
 
   for (const boundaryPath of [
     publicSurface,
@@ -941,6 +950,54 @@ if (benefitsLoyaltyPolicyOwnership) {
         failures.push(
           `Admin Settings must not own or resubmit Benefits loyalty policy field: ${webSettingsConsumer} -> ${field}`,
         );
+      }
+    }
+  }
+
+  for (const adapter of legacyAdminBusinessPolicyAdapters) {
+    const adapterPath = toPosix(adapter);
+    const absoluteAdapterPath = join(REPOSITORY_ROOT, adapterPath);
+    if (!existsSync(absoluteAdapterPath)) {
+      failures.push(`legacy Admin Business Loyalty adapter missing: ${adapterPath}`);
+      continue;
+    }
+    const source = readFileSync(absoluteAdapterPath, 'utf8');
+    if (!source.includes('@compat benefits.business-config-loyalty-policy.v1')) {
+      failures.push(
+        `legacy Admin Business Loyalty adapter must stay explicitly registered until contraction: ${adapterPath}`,
+      );
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    const source = readFileSync(absolutePath, 'utf8');
+    if (sourcePath.startsWith('apps/web/src/')) {
+      const legacyRoute = legacyAdminBusinessPolicyRoutes.find((route) =>
+        source.includes(route),
+      );
+      if (legacyRoute) {
+        for (const field of forbiddenBrandStoreContractFields) {
+          if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+            failures.push(
+              `Web must not read or write Benefits policy through legacy Admin Business route ${legacyRoute}: ${sourcePath} -> ${field}`,
+            );
+          }
+        }
+      }
+    }
+
+    if (
+      sourcePath.startsWith('apps/api/src/') &&
+      /\.\s*businessConfig\b/.test(source) &&
+      !allowedBusinessConfigPolicyFiles.has(sourcePath)
+    ) {
+      for (const field of forbiddenBrandStoreContractFields) {
+        if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+          failures.push(
+            `Benefits policy must not gain a new direct BusinessConfig persistence consumer: ${sourcePath} -> ${field}`,
+          );
+        }
       }
     }
   }

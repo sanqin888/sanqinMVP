@@ -131,7 +131,10 @@ pair fails CI.
 - The general Admin Settings page no longer declares or resubmits Loyalty policy
   fields. Legacy `PATCH /admin/business/config` and compatibility
   `PUT /admin/business/temporary-close` can still accept those fields only as
-  rollback compatibility surfaces; no known Web Loyalty read/write path uses them.
+  explicitly annotated rollback compatibility surfaces; repository-wide Web code
+  is now gated from combining either legacy route with a Loyalty policy field.
+  New direct BusinessConfig Loyalty persistence consumers are also blocked outside
+  the registered rollback writer and temporary Benefits dual-writer.
 - Admin Members now reads editable settings from `GET /admin/benefits/loyalty-policy`
   through the Benefits settings reader, while POS payment reads the runtime policy
   from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
@@ -142,8 +145,12 @@ pair fails CI.
   an Orders-owned pure helper. Delivery, tax, timezone, and other remaining
   `BusinessConfig` reads in Orders are separate Brand/Store migration debt.
 - `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
-  state. Dedicated Benefits persistence and removal of the legacy Admin Business
-  policy surface/trigger remain a later authorized Prisma expand-contract step.
+  state. `docs/architecture/benefits-loyalty-policy-contraction-plan.md` now fixes
+  the implementation order: business-day observation, Admin Business contract
+  contraction, dedicated `LoyaltyProgramPolicy` expand/backfill, triple-write and
+  shadow-read parity, dedicated read cutover, separate trigger Loyalty split,
+  removal of BusinessConfig then BrandConfig dual-writes, and only then the final
+  column contraction. Every Prisma/trigger migration remains separately authorized.
 
 ## Carried debt outside this closeout
 

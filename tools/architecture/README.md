@@ -41,7 +41,11 @@ node tools/architecture/scan-architecture.mjs --report
   runtime defaults or create missing config rows, and the writer must dual-write
   canonical plus registered compatibility storage in one transaction while the
   one-way legacy trigger remains active; general Admin Settings cannot declare or
-  resubmit Loyalty policy fields.
+  resubmit Loyalty policy fields. Repository-wide Web code cannot combine a legacy
+  Admin Business route with a Loyalty policy field, new direct BusinessConfig
+  Loyalty persistence consumers are forbidden, and the two remaining server-side
+  Admin Business rollback adapters must stay explicitly registered until contract
+  contraction.
   Legacy Loyalty reader
   helpers/types are forbidden, private policy implementations cannot be
   deep-imported outside the Loyalty owner, and policy fields cannot be added to the
