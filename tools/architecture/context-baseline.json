@@ -141,13 +141,19 @@
       "apps/api/src/menu/public-menu.service.ts",
       "apps/api/src/admin/menu/admin-menu.service.ts",
       "apps/api/src/pos/pos-exchange-rate.service.ts",
-      "apps/api/src/messaging/business-config.service.ts"
+      "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
+      "apps/api/src/messaging/business-config.service.ts",
+      "apps/api/src/orders/orders.service.ts"
+    ],
+    "legacyWriteOnlyConfigConsumers": [
+      "apps/api/src/admin/business/admin-business.service.ts"
     ],
     "migratedConsumerForbiddenSymbols": {
       "apps/api/src/messaging/business-config.service.ts": [
         "BusinessConfig",
         "PrismaService"
-      ]
+      ],
+      "apps/api/src/orders/orders.service.ts": ["BusinessConfig"]
     },
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
   },
@@ -245,14 +251,6 @@
     "apps/web/src/app/[locale]/(site)/wallet/apple-pay/page.tsx": {
       "limit": 1,
       "reason": "Clover Apple Pay telemetry sendBeacon fallback; frozen payment protocol adapter"
-    },
-    "apps/web/src/app/[locale]/(device)/store/pos/PosSessionKeepAlive.tsx": {
-      "limit": 3,
-      "reason": "legacy POS session/heartbeat browser calls; migrate in dedicated POS slice"
-    },
-    "apps/web/src/app/[locale]/(device)/store/pos/login/page.tsx": {
-      "limit": 2,
-      "reason": "legacy POS claim/login browser calls; migrate in dedicated POS slice"
     }
   },
   "webServerDirectFetchLimits": {

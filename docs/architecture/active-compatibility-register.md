@@ -11,9 +11,9 @@ safe default values unrelated to an old version) is not compatibility debt.
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `brand-store.business-config.v1` | active | BusinessConfig → BrandConfig + StoreConfig snapshot | All field owners assigned; difference report zero for one business cycle; old reads/writes zero | Before Phase 2 exit |
+| `brand-store.business-config.v1` | active | BusinessConfig → BrandConfig + StoreConfig snapshot; Brand/Store production reads are canonical, while POS/Admin compatibility writes remain | All field owners assigned; difference report zero for one business cycle; old reads/writes zero | Before Phase 2 exit |
 | `brand-store.default-store-identity.v1` | active | implicit `default` store → explicit `storeStableId` | Rows backfilled; implicit resolution metric zero; schema default removed | Before Phase 2 exit |
-| `web.api-envelope-direct-payload.v1` | active | remaining Checkout/POS legacy browser calls → strict canonical `apiFetch`/`serverApiFetch` | Checkout 6 + POS 5 legacy direct fetches reach zero; page-local Checkout envelope/direct-payload reader removed | Before Phase 1 exit |
+| `web.api-envelope-direct-payload.v1` | active | remaining Checkout legacy browser calls → strict canonical `apiFetch`/`serverApiFetch` | POS session/login direct fetches stay at zero; remaining Checkout 6 reach zero; page-local Checkout envelope/direct-payload reader removed | Before Phase 1 exit |
 | `payments.pos-card-legacy.v1` | frozen | direct paid Order → Unified Payment Core + Terminal + finalize | Clover support blocker resolved; real device accepted; one settlement cycle reconciled; legacy calls zero | Before Phase 5B exit |
 | `payments.web-checkout-v1.v1` | frozen | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | External validation unblocked; Web cutover accepted; one settlement cycle reconciled; old calls zero | Before Phase 5B exit |
 

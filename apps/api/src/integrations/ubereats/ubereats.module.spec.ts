@@ -3,6 +3,7 @@ import { AuthModule } from '../../auth/auth.module';
 import { MessagingModule } from '../../messaging/messaging.module';
 import { OrdersModule } from '../../orders/orders.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { BrandStoreConfigModule } from '../../store/public-api';
 import { UberEatsMenuController } from './api/menu.controller';
 import { UberEatsOAuthController } from './api/oauth.controller';
 import { UberEatsOperationsController } from './api/operations.controller';
@@ -68,7 +69,7 @@ describe('UberEats compositions', () => {
     );
     const imports = workerRuntime.imports ?? [];
 
-    expect(imports).toEqual([PrismaModule]);
+    expect(imports).toEqual([PrismaModule, BrandStoreConfigModule]);
     expect(imports).not.toContain(AuthModule);
     expect(imports).not.toContain(OrdersModule);
     expect(imports).not.toContain(MessagingModule);

@@ -435,6 +435,8 @@ if (brandStoreCanonicalConfigOwnership) {
     brandStoreCanonicalConfigOwnership.forbiddenLegacyDelegateRoots ?? [];
   const migratedLegacyConfigConsumers =
     brandStoreCanonicalConfigOwnership.migratedLegacyConfigConsumers ?? [];
+  const legacyWriteOnlyConfigConsumers =
+    brandStoreCanonicalConfigOwnership.legacyWriteOnlyConfigConsumers ?? [];
   const migratedConsumerForbiddenSymbols =
     brandStoreCanonicalConfigOwnership.migratedConsumerForbiddenSymbols ?? {};
   const forbiddenLegacyPaths =
@@ -596,6 +598,43 @@ if (brandStoreCanonicalConfigOwnership) {
     if (!importsPublicSurface || !source.includes('BRAND_STORE_CONFIG_READER')) {
       failures.push(
         `migrated Brand/Store config consumer must use ${publicSurface}: ${consumerPath}`,
+      );
+    }
+  }
+
+  for (const consumer of legacyWriteOnlyConfigConsumers) {
+    const consumerPath = toPosix(consumer);
+    const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
+    if (!existsSync(absoluteConsumerPath)) {
+      failures.push(
+        `Brand/Store legacy-write-only consumer missing: ${consumerPath}`,
+      );
+      continue;
+    }
+    const source = readFileSync(absoluteConsumerPath, 'utf8');
+    const legacyMethods = [
+      ...source.matchAll(
+        /\.\s*businessConfig\s*\.\s*([A-Za-z][A-Za-z0-9_]*)/g,
+      ),
+    ].map((match) => match[1]);
+    for (const method of legacyMethods) {
+      if (method === 'update' || method === 'updateMany') continue;
+      failures.push(
+        `Brand/Store read-cutover consumer may keep only compatibility writes to BusinessConfig: ${consumerPath} -> ${method}`,
+      );
+    }
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(absoluteConsumerPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    if (!importsPublicSurface || !source.includes('BRAND_STORE_CONFIG_READER')) {
+      failures.push(
+        `Brand/Store read-cutover consumer must use ${publicSurface}: ${consumerPath}`,
       );
     }
   }

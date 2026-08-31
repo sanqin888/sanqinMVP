@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   UberOpsTicketPriority,
   UberOpsTicketStatus,
@@ -13,6 +13,10 @@ import type {
   UberStoreMappingRepositoryPort,
 } from '../../application/merchant/uber-merchant-persistence.ports';
 import type { UberOperationsAlertRepositoryPort } from '../../application/operations/uber-operations-alert.ports';
+import {
+  UBER_STORE_CONFIG_QUERY,
+  type UberStoreConfigQueryPort,
+} from '../../application/shared/uber-store-config.port';
 import { redactUberLogText } from '../shared/uber-log.utils';
 import { UberCredentialVaultService } from '../crypto/uber-credential-vault.service';
 import { UberTelemetryService } from './uber-telemetry.service';
@@ -318,12 +322,15 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
   constructor(
     private readonly prisma: PrismaService,
     private readonly telemetry: UberTelemetryService,
+    @Inject(UBER_STORE_CONFIG_QUERY)
+    private readonly storeConfig: UberStoreConfigQueryPort,
   ) {}
   async getStoreStatusSource() {
-    return (
-      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
-      this.prisma.businessConfig.create({ data: { id: 1, storeName: '' } })
-    );
+    const config = await this.storeConfig.getStoreConfig();
+    return {
+      isTemporarilyClosed: config.isTemporarilyClosed,
+      temporaryCloseReason: config.temporaryCloseReason,
+    };
   }
   async recordStoreStatusResult(
     result: Record<string, unknown>,

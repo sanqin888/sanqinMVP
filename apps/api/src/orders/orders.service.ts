@@ -12,7 +12,6 @@ import { AppLogger } from '../common/app-logger';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 import {
-  BusinessConfig,
   Channel,
   DeliveryProvider,
   DeliveryType,
@@ -77,7 +76,12 @@ import { EmailService } from '../email/email.service';
 import { OrderEventsBus } from '../messaging/order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
-import { resolveConfiguredStoreStableId } from '../store/public-api';
+import {
+  BRAND_STORE_CONFIG_READER,
+  resolveConfiguredStoreStableId,
+  type BrandStoreConfigReaderPort,
+  type StoreConfigSnapshot,
+} from '../store/public-api';
 import type { CouponPromotionLike } from '../promotions/coupon-promotion.adapter';
 import {
   evaluateOrderPromotions,
@@ -396,6 +400,8 @@ export class OrdersService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
     private readonly loyalty: LoyaltyService,
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
@@ -478,7 +484,7 @@ export class OrdersService {
     );
 
     const subtotalCents = calculatedSubtotal;
-    const pricingConfig = await this.getBusinessPricingConfig();
+    const pricingConfig = await this.getStorePricingConfig();
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
     const hasLoyaltyRedemptionInput =
       Boolean(userId) &&
@@ -1419,28 +1425,8 @@ export class OrdersService {
     return PaymentMethod.CASH;
   }
 
-  private async ensureBusinessConfig(): Promise<BusinessConfig> {
-    return (
-      (await this.prisma.businessConfig.findUnique({ where: { id: 1 } })) ??
-      (await this.prisma.businessConfig.create({
-        data: {
-          id: 1,
-          storeName: '',
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          deliveryBaseFeeCents: DEFAULT_DELIVERY_BASE_FEE_CENTS,
-          priorityPerKmCents: DEFAULT_PRIORITY_PER_KM_CENTS,
-          maxDeliveryRangeKm: DEFAULT_MAX_RANGE_KM,
-          priorityDefaultDistanceKm: DEFAULT_PRIORITY_DISTANCE_KM,
-          salesTaxRate: DEFAULT_TAX_RATE,
-        },
-      }))
-    );
-  }
-
-  private async getBusinessPricingConfig(): Promise<DeliveryPricingConfig> {
-    const existing = await this.ensureBusinessConfig();
+  private async getStorePricingConfig(): Promise<DeliveryPricingConfig> {
+    const existing = await this.brandStoreConfigReader.getStoreSnapshot();
 
     const deliveryBaseFeeCents = Number.isFinite(existing.deliveryBaseFeeCents)
       ? Math.max(0, Math.round(existing.deliveryBaseFeeCents))
@@ -1466,11 +1452,11 @@ export class OrdersService {
       existing.priorityDefaultDistanceKm >= 0
         ? existing.priorityDefaultDistanceKm
         : DEFAULT_PRIORITY_DISTANCE_KM;
-    const storeLatitude = Number.isFinite(existing.storeLatitude ?? NaN)
-      ? (existing.storeLatitude as number)
+    const storeLatitude = Number.isFinite(existing.latitude ?? NaN)
+      ? (existing.latitude as number)
       : null;
-    const storeLongitude = Number.isFinite(existing.storeLongitude ?? NaN)
-      ? (existing.storeLongitude as number)
+    const storeLongitude = Number.isFinite(existing.longitude ?? NaN)
+      ? (existing.longitude as number)
       : null;
     const enableUberDirect =
       typeof existing.enableUberDirect === 'boolean'
@@ -1997,8 +1983,8 @@ export class OrdersService {
       }
     };
 
-    const businessConfig = await this.ensureBusinessConfig();
-    const now = resolveStoreNow(businessConfig.timezone);
+    const storeConfig = await this.brandStoreConfigReader.getStoreSnapshot();
+    const now = resolveStoreNow(storeConfig.timezone);
     const weekday = now.weekday;
     const productStableIds = dbProducts.map((product) => product.stableId);
 
@@ -2992,7 +2978,7 @@ export class OrdersService {
     );
 
     const subtotalCents = calculatedSubtotal;
-    const pricingConfig = await this.getBusinessPricingConfig();
+    const pricingConfig = await this.getStorePricingConfig();
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
     const hasLoyaltyRedemptionInput =
       Boolean(userId) &&
@@ -4495,7 +4481,7 @@ export class OrdersService {
   }
 
   private buildUberPickupOverride(
-    config: BusinessConfig,
+    config: StoreConfigSnapshot,
   ): UberDirectPickupDetails | undefined {
     const sanitize = (value?: string | null): string | undefined => {
       if (typeof value !== 'string') return undefined;
@@ -4505,21 +4491,17 @@ export class OrdersService {
 
     const pickup: UberDirectPickupDetails = {
       businessName: sanitize(config.storeName),
-      contactName: sanitize(config.storeName),
-      phone: sanitize(config.supportPhone),
-      addressLine1: sanitize(config.storeAddressLine1),
-      addressLine2: sanitize(config.storeAddressLine2),
-      city: sanitize(config.storeCity),
-      province: sanitize(config.storeProvince),
-      postalCode: sanitize(config.storePostalCode),
+      contactName: sanitize(config.contactName) ?? sanitize(config.storeName),
+      phone: sanitize(config.phone),
+      addressLine1: sanitize(config.addressLine1),
+      addressLine2: sanitize(config.addressLine2),
+      city: sanitize(config.city),
+      province: sanitize(config.province),
+      postalCode: sanitize(config.postalCode),
       latitude:
-        typeof config.storeLatitude === 'number'
-          ? config.storeLatitude
-          : undefined,
+        typeof config.latitude === 'number' ? config.latitude : undefined,
       longitude:
-        typeof config.storeLongitude === 'number'
-          ? config.storeLongitude
-          : undefined,
+        typeof config.longitude === 'number' ? config.longitude : undefined,
     };
 
     const hasOverrides = Object.values(pickup).some(

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
@@ -11,6 +11,10 @@ import type {
   UberMenuUnitOfWork,
 } from '../../application/menu/uber-menu-repositories.ports';
 import type { UberMenuDraftSource } from '../../domain/menu/uber-menu-draft-source';
+import {
+  UBER_STORE_CONFIG_QUERY,
+  type UberStoreConfigQueryPort,
+} from '../../application/shared/uber-store-config.port';
 import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
@@ -400,13 +404,13 @@ export class UberModifierConfigPrismaRepository implements ModifierConfigReposit
   }
 }
 export class UberBusinessSchedulePrismaRepository implements BusinessScheduleRepository {
-  constructor(private readonly db: MenuDb) {}
+  constructor(
+    private readonly db: MenuDb,
+    private readonly storeConfig: UberStoreConfigQueryPort,
+  ) {}
   async get() {
     const [config, rows] = await Promise.all([
-      this.db.businessConfig.findUnique({
-        where: { id: 1 },
-        select: { timezone: true, salesTaxRate: true },
-      }),
+      this.storeConfig.getStoreConfig(),
       this.db.businessHour.findMany({
         orderBy: { weekday: 'asc' },
         select: {
@@ -418,8 +422,8 @@ export class UberBusinessSchedulePrismaRepository implements BusinessScheduleRep
       }),
     ]);
     return {
-      timezone: config?.timezone ?? null,
-      salesTaxRate: config?.salesTaxRate ?? null,
+      timezone: config.timezone,
+      salesTaxRate: config.salesTaxRate,
       hours: rows.map((row) => ({
         weekday: row.weekday,
         openMinutes: row.openMinutes,
@@ -458,21 +462,26 @@ export class UberMenuStoreMappingPrismaRepository implements MenuStoreMappingRep
 
 export const createUberMenuRepositoryScope = (
   db: MenuDb,
+  storeConfig: UberStoreConfigQueryPort,
 ): UberMenuRepositoryScope => ({
   snapshots: new UberMenuSnapshotPrismaRepository(db),
   itemChannels: new UberItemChannelConfigPrismaRepository(db),
   modifiers: new UberModifierConfigPrismaRepository(db),
-  schedules: new UberBusinessSchedulePrismaRepository(db),
+  schedules: new UberBusinessSchedulePrismaRepository(db, storeConfig),
   storeMappings: new UberMenuStoreMappingPrismaRepository(db),
 });
 @Injectable()
 export class PrismaUberMenuUnitOfWork implements UberMenuUnitOfWork {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(UBER_STORE_CONFIG_QUERY)
+    private readonly storeConfig: UberStoreConfigQueryPort,
+  ) {}
   execute<T>(
     work: (repositories: UberMenuRepositoryScope) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction((tx) =>
-      work(createUberMenuRepositoryScope(tx)),
+      work(createUberMenuRepositoryScope(tx, this.storeConfig)),
     );
   }
 }

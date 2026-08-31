@@ -14,7 +14,11 @@ import {
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../common/pos-connectivity';
-import { resolveConfiguredStoreStableId } from '../store/public-api';
+import {
+  BRAND_STORE_CONFIG_READER,
+  resolveConfiguredStoreStableId,
+  type BrandStoreConfigReaderPort,
+} from '../store/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
@@ -56,6 +60,8 @@ export class PosConnectivityWatchdogService
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly configReader: BrandStoreConfigReaderPort,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uber: UberEatsStoreStatusSyncPort,
     private readonly storeStatus: StoreStatusService,
@@ -227,11 +233,8 @@ export class PosConnectivityWatchdogService
       return;
     }
 
-    const config = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-      select: { isTemporarilyClosed: true },
-    });
-    if (config?.isTemporarilyClosed) {
+    const config = await this.configReader.getStoreSnapshot();
+    if (config.isTemporarilyClosed) {
       previous.phase = 'ONLINE';
       previous.recoverySince = null;
       previous.pauseConfirmed = false;

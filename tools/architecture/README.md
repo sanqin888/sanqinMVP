@@ -14,7 +14,9 @@ node tools/architecture/scan-architecture.mjs --report
 - no new direct cross-context dependency pair;
 - no increase in a recorded direct-import allowance;
 - browser/server direct `fetch` only at canonical transports or explicitly
-  recorded raw/protocol exceptions, with stale allowances rejected;
+  recorded raw/protocol exceptions, with stale allowances rejected; POS
+  session/login has no direct-fetch allowance after its canonical-client cutover,
+  leaving Checkout as the only regular JSON browser compatibility debt;
 - one App Router `/api/v1` JSON BFF instead of a duplicate Next rewrite;
 - server-only Web API upstream configuration (`API_UPSTREAM`);
 - `@shared/foundation` registered as the `architecture-foundation` public package,
@@ -25,9 +27,13 @@ node tools/architecture/scan-architecture.mjs --report
   Nest composition module are exposed through one registered `store/public-api.ts`
   surface; internal identity/contract/Prisma/module paths cannot be deep-imported
   across contexts, migrated consumers cannot regress to legacy `BusinessConfig`
-  delegates or consumer-specific forbidden Prisma symbols, the deleted
-  `common/store-id.ts` path cannot return, and configured store identity has one
-  implementation owner;
+  delegates or consumer-specific forbidden Prisma symbols; Orders and the POS
+  connectivity watchdog are registered fully migrated consumers. Admin Business is
+  registered as a read-cutover/legacy-write-only consumer: it must use the canonical
+  reader and may retain only `BusinessConfig.update`/`updateMany` compatibility
+  writes, so legacy reads/creates cannot return while its writer migration remains
+  separately tracked. The deleted `common/store-id.ts` path cannot return, and
+  configured store identity has one implementation owner;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

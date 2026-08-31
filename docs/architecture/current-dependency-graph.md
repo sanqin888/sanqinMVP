@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Benefits loyalty policy reader base: `origin/dev@50edc208` (2026-08-30).
+Phase 2 Uber Brand/Store read cutover base: `origin/dev@c908bef8` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -82,14 +82,37 @@ pair fails CI.
 - `StoreStatusService` is the first canonical consumer and no longer reads or
   creates `BusinessConfig`. BusinessHour/Holiday queries remain legacy global
   store-scope debt for a later schema-safe slice.
-- Accounting, Promotions, PublicMenu, and AdminMenu now read store-local timezone
-  through the canonical Store snapshot. Public/Admin menu reads no longer create
-  a default `BusinessConfig` row as a side effect.
+- Accounting, Promotions, PublicMenu, AdminMenu, and Orders now read store-local
+  timezone through the canonical Store snapshot. Public/Admin menu reads no longer
+  create a default `BusinessConfig` row as a side effect; Orders also no longer
+  creates `BusinessConfig` while resolving pricing or daily-special time.
 - POS exchange-rate configuration now uses the combined Brand/Store snapshot:
   `StoreConfig.timezone` controls the store clock and
   `BrandConfig.wechatAlipayExchangeRate` supplies the existing manual fallback.
   The POS exchange-rate module no longer imports Prisma directly, while the
   externally visible fallback source label remains unchanged for compatibility.
+- POS StoreStatus/Connectivity reads now use the canonical Store snapshot as well:
+  timed-pause status/timezone reads and the watchdog's recovery race re-check no
+  longer query `BusinessConfig`, and the watchdog is architecture-gated against
+  regressing to that delegate. POS pause/resume persistence intentionally remains
+  a `BusinessConfig` compatibility write in this slice so the existing one-way
+  trigger continues mirroring the same state into `StoreConfig` for canonical
+  readers while the remaining legacy writers/readers are migrated.
+- Admin Business read composition now follows the owner boundaries too: Brand and
+  Store fields come from `BRAND_STORE_CONFIG_READER`, Loyalty settings come from
+  the Benefits settings reader, and update-time pause-state decisions use the
+  canonical Store snapshot. The legacy Admin PATCH/PUT routes still persist their
+  compatibility payload through `BusinessConfig.update` so the current one-way
+  trigger and mixed Loyalty rollback semantics remain unchanged. Architecture CI
+  allows only those compatibility update methods in this read-cutover consumer;
+  `BusinessConfig` reads/creates cannot return.
+- Uber menu schedule/tax and store-status source reads now cross the Brand/Store
+  boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
+  sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
+  both HTTP and dedicated-worker runtimes; Uber persistence no longer reads or
+  creates `BusinessConfig`. Existing Uber response/source labels are preserved in
+  this cutover so the verified public/wire behavior does not change. Uber
+  architecture CI now rejects any production `.businessConfig` regression.
 - Messaging configuration now caches the canonical Brand/Store snapshot instead
   of a Prisma `BusinessConfig` model and no longer creates configuration on read.
   Brand support contact fields feed message templates, while Store name/address/
@@ -140,10 +163,13 @@ pair fails CI.
   from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
   Session/Role/PosDevice guards. Both browser consumers use the centralized Web
   Loyalty API client rather than the legacy Admin Business response.
-- Orders quote/create redemption conversion now reads `redeemDollarPerPoint`
-  through `LOYALTY_POLICY_READER`; the points/cents arithmetic is characterized in
-  an Orders-owned pure helper. Delivery, tax, timezone, and other remaining
-  `BusinessConfig` reads in Orders are separate Brand/Store migration debt.
+- Orders quote/create redemption conversion reads `redeemDollarPerPoint` through
+  `LOYALTY_POLICY_READER`; the points/cents arithmetic remains characterized in an
+  Orders-owned pure helper. Orders delivery pricing, sales tax, store coordinates,
+  Uber Direct enablement, and daily-special store-local timezone now read through
+  `BRAND_STORE_CONFIG_READER`; Orders no longer reads or creates `BusinessConfig`.
+  The architecture scanner registers Orders as a migrated Brand/Store consumer and
+  forbids reintroducing the `BusinessConfig` symbol or delegate there.
 - `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
   state. `docs/architecture/benefits-loyalty-policy-contraction-plan.md` now fixes
   the implementation order: business-day observation, Admin Business contract
@@ -154,11 +180,12 @@ pair fails CI.
 
 ## Carried debt outside this closeout
 
-- `web.api-envelope-direct-payload.v1` remains active because Checkout has six
-  legacy browser fetches and POS session/login has five. Their allowances are
-  frozen at the current counts and must fall to zero in dedicated risk-scoped
-  slices; the canonical clients themselves already require the strict global
-  envelope.
+- `web.api-envelope-direct-payload.v1` remains active only because Checkout still
+  has six legacy browser fetches. POS session/login claim, login, auth/me,
+  store-status and heartbeat calls now use the centralized POS session API adapter;
+  their five direct-fetch allowances are removed and cannot return without failing
+  the architecture scanner. The canonical clients continue to require the strict
+  global envelope.
 - Payments/Clover legacy paths remain frozen by their compatibility entries.
 - Brand/Store configuration and implicit default-store identity are Phase 2 work.
 
