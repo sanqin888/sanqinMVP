@@ -1295,6 +1295,17 @@ describe('OrdersService', () => {
       orderStableId: 'cord-processing-intent',
     });
 
+    expect(prisma.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          paymentBreakdownJson: {
+            pointsCents: 0,
+            balanceCents: 0,
+            externalCents: 1130,
+          },
+        }) as unknown,
+      }),
+    );
     expect(prisma.checkoutIntent.updateMany).toHaveBeenCalled();
     const [firstUpdateManyCall] = prisma.checkoutIntent.updateMany.mock
       .calls as Array<[{ where?: { status?: { in?: string[] } } }]>;

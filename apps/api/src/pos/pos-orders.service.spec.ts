@@ -1,3 +1,4 @@
+import { PaymentMethod } from '@prisma/client';
 import type { OrderDto } from '../orders/dto/order.dto';
 import { PosOrdersService } from './pos-orders.service';
 
@@ -16,6 +17,8 @@ describe('PosOrdersService', () => {
   const setup = (current: OrderDto) => {
     const orders = {
       getByStableId: jest.fn().mockResolvedValue(current),
+      getExternalPaymentCents: jest.fn().mockResolvedValue(null),
+      createFullRefund: jest.fn(),
       advance: jest.fn().mockResolvedValue({ ...current, status: 'ready' }),
     };
     const uberEats = {
@@ -328,5 +331,112 @@ describe('PosOrdersService', () => {
       '只有 Uber 订单可以提交取消',
     );
     expect(uberEats.cancel).not.toHaveBeenCalled();
+  });
+
+  it('Web external=0 只开放 FULL_REFUND，其他管理动作继续锁定', async () => {
+    const webOrder = order({
+      channel: 'web',
+      paymentMethod: PaymentMethod.STORE_BALANCE,
+      status: 'making',
+    });
+    const { service, orders } = setup(webOrder);
+    orders.getExternalPaymentCents.mockResolvedValue(0);
+
+    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+      actions: [
+        {
+          action: 'SWAP_ITEM',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+        {
+          action: 'VOID_ITEM',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+        { action: 'FULL_REFUND', available: true },
+        {
+          action: 'CHANGE_PAYMENT',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+      ],
+    });
+  });
+
+  it('Web external>0 继续锁定 FULL_REFUND', async () => {
+    const webOrder = order({
+      channel: 'web',
+      paymentMethod: PaymentMethod.CARD,
+      status: 'making',
+    });
+    const { service, orders } = setup(webOrder);
+    orders.getExternalPaymentCents.mockResolvedValue(699);
+
+    const result = await service.getManagementActions('order_1');
+
+    expect(result.actions).toEqual(
+      expect.arrayContaining([
+        {
+          action: 'FULL_REFUND',
+          available: false,
+          reason: 'CLOVER_SYNC_PENDING',
+        },
+      ]),
+    );
+  });
+
+  it('Web external=0 可以提交零金额全额退款并保持 Benefits 原路返回', async () => {
+    const webOrder = order({
+      channel: 'web',
+      paymentMethod: PaymentMethod.STORE_BALANCE,
+      status: 'making',
+    });
+    const { service, orders } = setup(webOrder);
+    orders.getExternalPaymentCents.mockResolvedValue(0);
+    orders.createFullRefund.mockResolvedValue({
+      order: { ...webOrder, status: 'refunded' },
+      outcome: 'refunded',
+    });
+
+    await expect(
+      service.createFullRefund('order_1', {
+        reason: '顾客取消',
+        operatorName: 'Staff',
+        refundAmountCents: 0,
+        originalPaymentMethod: PaymentMethod.STORE_BALANCE,
+        refundMethod: PaymentMethod.STORE_BALANCE,
+      }),
+    ).resolves.toMatchObject({ outcome: 'refunded' });
+
+    expect(orders.createFullRefund).toHaveBeenCalledWith({
+      orderStableId: 'order_1',
+      reason: '顾客取消 · 操作人:Staff',
+      refundAmountCents: 0,
+      originalPaymentMethod: PaymentMethod.STORE_BALANCE,
+      refundMethod: PaymentMethod.STORE_BALANCE,
+    });
+  });
+
+  it('Web external>0 不允许绕过 Clover 同步锁直接全额退款', async () => {
+    const webOrder = order({
+      channel: 'web',
+      paymentMethod: PaymentMethod.CARD,
+      status: 'making',
+    });
+    const { service, orders } = setup(webOrder);
+    orders.getExternalPaymentCents.mockResolvedValue(699);
+
+    await expect(
+      service.createFullRefund('order_1', {
+        reason: '顾客取消',
+        operatorName: 'Staff',
+        refundAmountCents: 699,
+        originalPaymentMethod: PaymentMethod.CARD,
+        refundMethod: PaymentMethod.CARD,
+      }),
+    ).rejects.toThrow('external payment reversal is not available');
+
+    expect(orders.createFullRefund).not.toHaveBeenCalled();
   });
 });
