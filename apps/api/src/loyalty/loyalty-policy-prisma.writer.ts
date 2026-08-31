@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   LoyaltyPolicySettings,
@@ -6,6 +6,7 @@ import type {
   LoyaltyPolicyUpdateInput,
   LoyaltyPolicyWriterPort,
 } from './loyalty-policy.contract';
+import { compareLoyaltyPolicyPersistence } from './loyalty-policy-parity';
 import { normalizeLoyaltyPolicyUpdate } from './loyalty-policy';
 
 const LOYALTY_POLICY_SETTINGS_SELECT = {
@@ -34,15 +35,44 @@ function requireLoyaltyPolicySettings(
 export class PrismaLoyaltyPolicyWriter
   implements LoyaltyPolicySettingsReaderPort, LoyaltyPolicyWriterPort
 {
+  private readonly logger = new Logger(PrismaLoyaltyPolicyWriter.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
-  async getLoyaltyPolicySettings(): Promise<LoyaltyPolicySettings> {
-    return requireLoyaltyPolicySettings(
-      await this.prisma.brandConfig.findUnique({
-        where: { id: 1 },
-        select: LOYALTY_POLICY_SETTINGS_SELECT,
+  private observeParity(
+    context: string,
+    brandConfig: LoyaltyPolicySettings | null,
+    loyaltyProgramPolicy: LoyaltyPolicySettings | null,
+  ): void {
+    const differences = compareLoyaltyPolicyPersistence(
+      brandConfig,
+      loyaltyProgramPolicy,
+    );
+    if (differences.length === 0) return;
+
+    this.logger.warn(
+      JSON.stringify({
+        event: 'loyalty_policy_shadow_mismatch',
+        compatId: 'benefits.business-config-loyalty-policy.v1',
+        context,
+        differences,
       }),
     );
+  }
+
+  async getLoyaltyPolicySettings(): Promise<LoyaltyPolicySettings> {
+    const brandConfig = await this.prisma.brandConfig.findUnique({
+      where: { id: 1 },
+      select: LOYALTY_POLICY_SETTINGS_SELECT,
+    });
+    const loyaltyProgramPolicy =
+      await this.prisma.loyaltyProgramPolicy.findUnique({
+        where: { id: 1 },
+        select: LOYALTY_POLICY_SETTINGS_SELECT,
+      });
+
+    this.observeParity('settings-read', brandConfig, loyaltyProgramPolicy);
+    return requireLoyaltyPolicySettings(brandConfig);
   }
 
   // @compat benefits.business-config-loyalty-policy.v1
@@ -61,7 +91,21 @@ export class PrismaLoyaltyPolicyWriter
           select: LOYALTY_POLICY_SETTINGS_SELECT,
         }),
       );
+      const loyaltyProgramPolicy = await tx.loyaltyProgramPolicy.findUnique({
+        where: { id: 1 },
+        select: LOYALTY_POLICY_SETTINGS_SELECT,
+      });
+      this.observeParity('writer-pre-write', current, loyaltyProgramPolicy);
+      if (!loyaltyProgramPolicy) {
+        throw new Error('LoyaltyProgramPolicy is not initialized');
+      }
+
       const next: LoyaltyPolicySettings = { ...current, ...patch };
+
+      await tx.loyaltyProgramPolicy.update({
+        where: { id: 1 },
+        data: next,
+      });
 
       // Keep the legacy copy synchronized until the one-way BusinessConfig
       // compatibility trigger is removed. Writing the complete canonical

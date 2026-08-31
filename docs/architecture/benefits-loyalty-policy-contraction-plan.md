@@ -3,7 +3,7 @@
 Date: 2026-08-30
 Baseline: `origin/dev` at `483f675f`
 Compatibility entry: `benefits.business-config-loyalty-policy.v1`
-Status: Admin Business contract contraction implemented; Phase A dedicated `LoyaltyProgramPolicy` expand/backfill is implemented in `20260831133000_add_loyalty_program_policy`, while runtime cutover, trigger split, dual-write removal, and final column contraction remain pending.
+Status: Admin Business contract contraction plus Phase A dedicated persistence expand/backfill and Phase B triple-write/shadow-read are implemented; Phase C read cutover, trigger split, dual-write removal, and final column contraction remain pending.
 
 ## 1. Scope and current ownership
 
@@ -45,7 +45,7 @@ Therefore the pre-contraction target is:
 
 - known browser Loyalty use of the old Admin Business routes = **0**;
 - server rollback compatibility surfaces = **2**, explicitly registered and isolated;
-- new direct BusinessConfig Loyalty persistence consumers = **0** outside the registered Admin Business rollback writer and the temporary Benefits dual-writer.
+- new direct BusinessConfig Loyalty persistence consumers = **0** outside the registered Benefits Phase B triple-writer.
 
 The architecture scanner must keep these invariants from regressing before the actual contract contraction.
 
@@ -63,7 +63,7 @@ This creates a stale replay hazard:
 2. If BusinessConfig keeps an older Loyalty copy, an unrelated legacy Admin Business update later fires the trigger.
 3. The trigger can replay the stale BusinessConfig Loyalty values back into BrandConfig.
 
-For that reason `PrismaLoyaltyPolicyWriter` currently writes the complete next policy to both BusinessConfig and BrandConfig in one transaction. That dual-write is compatibility protection, not the desired final persistence model.
+For that reason `PrismaLoyaltyPolicyWriter` now writes the complete next policy to LoyaltyProgramPolicy, BusinessConfig, and BrandConfig in one transaction. BusinessConfig and BrandConfig remain compatibility copies during Phase B; LoyaltyProgramPolicy is maintained as the dedicated persistence target but is not yet the runtime return source.
 
 ## 4. Trigger Loyalty split readiness conditions
 
@@ -177,6 +177,8 @@ Post-migration report must include:
 The migration performs these zero-diff checks itself and raises the exact differing fields if parity is not clean; deployment verification should still record the observed counts/diffs in the rollout report.
 
 ### Phase B — Triple-write + shadow-read application release
+
+Implementation status: **implemented locally**. Public contracts remain unchanged; `BrandConfig` is still the returned runtime policy while `LoyaltyProgramPolicy` is shadow-read for parity and maintained on every policy write.
 
 Keep existing public contracts unchanged.
 

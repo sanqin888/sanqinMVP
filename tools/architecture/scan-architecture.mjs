@@ -785,6 +785,8 @@ if (benefitsLoyaltyPolicyOwnership) {
     benefitsLoyaltyPolicyOwnership.ordersRedemptionCharacterization,
   );
   const publicSymbols = benefitsLoyaltyPolicyOwnership.publicSymbols ?? [];
+  const dedicatedStorageDelegate =
+    benefitsLoyaltyPolicyOwnership.dedicatedStorageDelegate;
   const transitionalStorageDelegate =
     benefitsLoyaltyPolicyOwnership.transitionalStorageDelegate;
   const legacyStorageDelegate = benefitsLoyaltyPolicyOwnership.legacyStorageDelegate;
@@ -866,11 +868,12 @@ if (benefitsLoyaltyPolicyOwnership) {
         );
       }
     }
-    const transactionalPolicyReaderPattern =
-      /getLoyaltyPolicySnapshotWithTx\s*\([\s\S]{0,300}?Prisma\.TransactionClient[\s\S]{0,700}?\.brandConfig\.findUnique\s*\(/;
-    if (!transactionalPolicyReaderPattern.test(source)) {
+    const dedicatedDelegatePattern = new RegExp(
+      `\\.\\s*${escapeRegExp(dedicatedStorageDelegate)}\\b`,
+    );
+    if (!dedicatedDelegatePattern.test(source)) {
       failures.push(
-        `Benefits transaction-bound policy reader must use BrandConfig through the existing Prisma transaction client: ${implementation}`,
+        `Benefits loyalty policy reader must shadow-read dedicated ${dedicatedStorageDelegate} storage: ${implementation}`,
       );
     }
     const transitionalDelegatePattern = new RegExp(
@@ -878,14 +881,45 @@ if (benefitsLoyaltyPolicyOwnership) {
     );
     if (!transitionalDelegatePattern.test(source)) {
       failures.push(
-        `Benefits loyalty policy reader must use transitional ${transitionalStorageDelegate} storage: ${implementation}`,
+        `Benefits loyalty policy reader must keep transitional ${transitionalStorageDelegate} as the Phase B return source: ${implementation}`,
       );
     }
-    const policyReaderPattern =
-      /async\s+getLoyaltyPolicySnapshot\s*\(\s*\)\s*:[^{]+\{[\s\S]{0,1600}?\.brandConfig\.findUnique\s*\(/;
-    if (!policyReaderPattern.test(source)) {
+    const transactionalPolicyReaderStart = source.indexOf(
+      'getLoyaltyPolicySnapshotWithTx',
+    );
+    const transactionalPolicyReaderSource =
+      transactionalPolicyReaderStart >= 0
+        ? source.slice(transactionalPolicyReaderStart, transactionalPolicyReaderStart + 2400)
+        : '';
+    if (
+      !transactionalPolicyReaderSource.includes('Prisma.TransactionClient') ||
+      !transactionalPolicyReaderSource.includes(
+        `tx.${transitionalStorageDelegate}.findUnique`,
+      ) ||
+      !transactionalPolicyReaderSource.includes(
+        `tx.${dedicatedStorageDelegate}.findUnique`,
+      ) ||
+      !transactionalPolicyReaderSource.includes('observePolicyParity')
+    ) {
       failures.push(
-        `Benefits loyalty policy reader must read BrandConfig inside getLoyaltyPolicySnapshot(): ${implementation}`,
+        `Benefits transaction-bound policy reader must compare ${transitionalStorageDelegate} and ${dedicatedStorageDelegate} through the same Prisma transaction client: ${implementation}`,
+      );
+    }
+    const policyReaderStart = source.indexOf('async getLoyaltyPolicySnapshot()');
+    const policyReaderSource =
+      policyReaderStart >= 0 ? source.slice(policyReaderStart, policyReaderStart + 2200) : '';
+    if (
+      !policyReaderSource.includes(
+        `this.prisma.${transitionalStorageDelegate}.findUnique`,
+      ) ||
+      !policyReaderSource.includes(
+        `this.prisma.${dedicatedStorageDelegate}.findUnique`,
+      ) ||
+      !policyReaderSource.includes('observePolicyParity') ||
+      !policyReaderSource.includes('normalizeLoyaltyPolicy(config)')
+    ) {
+      failures.push(
+        `Benefits Phase B runtime policy reader must return ${transitionalStorageDelegate} while shadow-comparing ${dedicatedStorageDelegate}: ${implementation}`,
       );
     }
     const legacyPolicyReaderPattern =
@@ -917,18 +951,26 @@ if (benefitsLoyaltyPolicyOwnership) {
     if (
       !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
       !writerSource.includes('getLoyaltyPolicySettings') ||
+      !writerSource.includes(
+        `this.prisma.${dedicatedStorageDelegate}.findUnique`,
+      ) ||
+      !writerSource.includes('observeParity') ||
       !/\.\$transaction\s*\(/.test(writerSource) ||
-      !/tx\.brandConfig\.findUnique\s*\(/.test(writerSource) ||
+      !writerSource.includes(`tx.${transitionalStorageDelegate}.findUnique`) ||
+      !writerSource.includes(`tx.${dedicatedStorageDelegate}.findUnique`) ||
+      !writerSource.includes(`tx.${dedicatedStorageDelegate}.update`) ||
       !/tx\.businessConfig\.update\s*\(/.test(writerSource) ||
-      !/tx\.brandConfig\.update\s*\(/.test(writerSource)
+      !writerSource.includes(`tx.${transitionalStorageDelegate}.update`)
     ) {
       failures.push(
-        `Benefits loyalty policy writer must read canonical config and dual-write canonical plus compatibility storage in one transaction: ${writerImplementation}`,
+        `Benefits Phase B loyalty writer must shadow-read dedicated persistence and triple-write ${dedicatedStorageDelegate}, BusinessConfig compatibility, and ${transitionalStorageDelegate} in one transaction: ${writerImplementation}`,
       );
     }
     if (
       writerSource.includes('DEFAULT_LOYALTY_POLICY') ||
-      /(?:brandConfig|businessConfig)\.upsert\s*\(/.test(writerSource)
+      /(?:loyaltyProgramPolicy|brandConfig|businessConfig)\.upsert\s*\(/.test(
+        writerSource,
+      )
     ) {
       failures.push(
         `Benefits loyalty policy writer must not invent runtime defaults or create missing policy config: ${writerImplementation}`,
