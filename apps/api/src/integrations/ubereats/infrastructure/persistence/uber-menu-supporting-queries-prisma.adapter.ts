@@ -65,6 +65,10 @@ export class UberMenuSupportingQueriesPrismaAdapter
       this.storeConfig.getStoreConfig(),
       this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
     ]);
-    return { timezone: config.timezone, salesTaxRate: config.salesTaxRate, hours };
+    return {
+      timezone: config.timezone,
+      salesTaxRate: config.salesTaxRate,
+      hours,
+    };
   }
 }

@@ -266,7 +266,11 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       this.storeConfig.getStoreConfig(),
       this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
     ]);
-    return { timezone: config.timezone, salesTaxRate: config.salesTaxRate, hours };
+    return {
+      timezone: config.timezone,
+      salesTaxRate: config.salesTaxRate,
+      hours,
+    };
   }
 
   private async getUberMenuSchedule(): Promise<{
