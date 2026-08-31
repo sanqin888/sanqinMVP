@@ -118,8 +118,8 @@ type MemberProfile = {
   phoneVerified?: boolean;
   twoFactorEnabledAt?: string | null;
   twoFactorMethod?: "OFF" | "SMS";
+  birthdayYear?: number | null;
   birthdayMonth?: number | null;
-  birthdayDay?: number | null;
   referrerEmail?: string | null;
   language?: "zh" | "en";
   tier: MemberTier;
@@ -132,8 +132,8 @@ type MemberProfile = {
 type MemberProfileUpdate = {
   firstName?: string | null;
   lastName?: string | null;
+  birthdayYear?: number | null;
   birthdayMonth?: number | null;
-  birthdayDay?: number | null;
   language?: "zh" | "en";
 };
 
@@ -168,8 +168,8 @@ type MembershipSummaryResponse = {
   lifetimeSpendCents: number;
   availableDiscountCents: number;
   marketingEmailOptIn?: boolean;
+  birthdayYear?: number | null;
   birthdayMonth?: number | null;
-  birthdayDay?: number | null;
   referrerEmail?: string | null;
   language?: "zh" | "en";
   recentOrders: MembershipSummaryOrderDto[];
@@ -316,8 +316,8 @@ export default function MembershipHomePage() {
   // 账户信息编辑
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
+  const [birthdayYearInput, setBirthdayYearInput] = useState("");
   const [birthdayMonthInput, setBirthdayMonthInput] = useState("");
-  const [birthdayDayInput, setBirthdayDayInput] = useState("");
   const [languagePreference, setLanguagePreference] = useState<"zh" | "en">(
     browserLanguagePreference,
   );
@@ -430,8 +430,8 @@ export default function MembershipHomePage() {
           phoneVerified: data.phoneVerified ?? false,
           twoFactorEnabledAt: data.twoFactorEnabledAt ?? null,
           twoFactorMethod: data.twoFactorMethod ?? "OFF",
+          birthdayYear: data.birthdayYear ?? null,
           birthdayMonth: data.birthdayMonth ?? null,
-          birthdayDay: data.birthdayDay ?? null,
           referrerEmail: data.referrerEmail ?? null,
           language: data.language ?? browserLanguagePreference,
           tier: data.tier,
@@ -531,11 +531,11 @@ export default function MembershipHomePage() {
     if (!member) return;
     setProfileFirstName(member.firstName ?? "");
     setProfileLastName(member.lastName ?? "");
+    setBirthdayYearInput(
+      member.birthdayYear != null ? String(member.birthdayYear) : "",
+    );
     setBirthdayMonthInput(
       member.birthdayMonth != null ? String(member.birthdayMonth) : "",
-    );
-    setBirthdayDayInput(
-      member.birthdayDay != null ? String(member.birthdayDay) : "",
     );
     setLanguagePreference(member.language ?? browserLanguagePreference);
     setProfileSaved(false);
@@ -552,7 +552,7 @@ export default function MembershipHomePage() {
 
   useEffect(() => {
     setBirthdaySaved(false);
-  }, [birthdayMonthInput, birthdayDayInput]);
+  }, [birthdayYearInput, birthdayMonthInput]);
 
   useEffect(() => {
     if (member?.phoneVerified) {
@@ -694,8 +694,6 @@ export default function MembershipHomePage() {
       userStableId: string;
       firstName?: string | null;
       lastName?: string | null;
-      birthdayMonth?: number | null;
-      birthdayDay?: number | null;
     } = { userStableId: member.userStableId };
 
     const trimmedFirstName = profileFirstName.trim();
@@ -726,8 +724,6 @@ export default function MembershipHomePage() {
                 ...prev,
                 firstName: updated.firstName ?? prev.firstName,
                 lastName: updated.lastName ?? prev.lastName,
-                birthdayMonth: prev.birthdayMonth ?? null,
-                birthdayDay: prev.birthdayDay ?? null,
               }
             : prev,
         );
@@ -815,27 +811,28 @@ export default function MembershipHomePage() {
 
   const handleBirthdaySave = useCallback(async () => {
     if (!member) return;
-    if (member.birthdayMonth != null || member.birthdayDay != null) return;
+    if (member.birthdayYear != null && member.birthdayMonth != null) return;
 
     setBirthdaySaving(true);
     setBirthdayError(null);
     setBirthdaySaved(false);
 
+    const parsedYear = Number.parseInt(birthdayYearInput, 10);
     const parsedMonth = Number.parseInt(birthdayMonthInput, 10);
-    const parsedDay = Number.parseInt(birthdayDayInput, 10);
+    const currentYear = new Date().getUTCFullYear();
     if (
+      !Number.isFinite(parsedYear) ||
       !Number.isFinite(parsedMonth) ||
-      !Number.isFinite(parsedDay) ||
+      parsedYear < 1900 ||
+      parsedYear > currentYear ||
       parsedMonth < 1 ||
-      parsedMonth > 12 ||
-      parsedDay < 1 ||
-      parsedDay > 31
+      parsedMonth > 12
     ) {
       setBirthdaySaving(false);
       setBirthdayError(
         isZh
-          ? "生日格式不正确，请填写 1-12 月和 1-31 日。"
-          : "Invalid birthday. Please enter month 1-12 and day 1-31.",
+          ? `生日格式不正确，请填写 1900-${currentYear} 年和 1-12 月。`
+          : `Invalid birthday. Please enter year 1900-${currentYear} and month 1-12.`,
       );
       return;
     }
@@ -847,8 +844,8 @@ export default function MembershipHomePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            birthdayYear: parsedYear,
             birthdayMonth: parsedMonth,
-            birthdayDay: parsedDay,
           }),
         },
       );
@@ -860,9 +857,9 @@ export default function MembershipHomePage() {
           prev
             ? {
                 ...prev,
+                birthdayYear: updated.birthdayYear ?? prev.birthdayYear ?? null,
                 birthdayMonth:
                   updated.birthdayMonth ?? prev.birthdayMonth ?? null,
-                birthdayDay: updated.birthdayDay ?? prev.birthdayDay ?? null,
               }
             : prev,
         );
@@ -872,13 +869,13 @@ export default function MembershipHomePage() {
       console.error(err);
       setBirthdayError(
         isZh
-          ? "生日保存失败，请稍后再试。"
-          : "Failed to save birthday. Please try again later.",
+          ? "生日保存失败，请确认年龄符合会员要求后再试。"
+          : "Failed to save birthday. Please confirm the membership age requirement and try again.",
       );
     } finally {
       setBirthdaySaving(false);
     }
-  }, [member, birthdayMonthInput, birthdayDayInput, isZh]);
+  }, [member, birthdayYearInput, birthdayMonthInput, isZh]);
 
   const handleRequestPhoneEnroll = useCallback(async () => {
     if (!session?.user?.mfaVerifiedAt) {
@@ -1754,13 +1751,13 @@ export default function MembershipHomePage() {
               user={member}
               profileFirstName={profileFirstName}
               profileLastName={profileLastName}
+              birthdayYearInput={birthdayYearInput}
               birthdayMonthInput={birthdayMonthInput}
-              birthdayDayInput={birthdayDayInput}
               languagePreference={languagePreference}
               onProfileFirstNameChange={setProfileFirstName}
               onProfileLastNameChange={setProfileLastName}
+              onBirthdayYearChange={setBirthdayYearInput}
               onBirthdayMonthChange={setBirthdayMonthInput}
-              onBirthdayDayChange={setBirthdayDayInput}
               onLanguagePreferenceChange={setLanguagePreference}
               profileSaving={profileSaving}
               profileError={profileError}
@@ -3006,13 +3003,13 @@ function ProfileSection({
   user,
   profileFirstName,
   profileLastName,
+  birthdayYearInput,
   birthdayMonthInput,
-  birthdayDayInput,
   languagePreference,
   onProfileFirstNameChange,
   onProfileLastNameChange,
+  onBirthdayYearChange,
   onBirthdayMonthChange,
-  onBirthdayDayChange,
   onLanguagePreferenceChange,
   profileSaving,
   profileError,
@@ -3062,13 +3059,13 @@ function ProfileSection({
   user: MemberProfile;
   profileFirstName: string;
   profileLastName: string;
+  birthdayYearInput: string;
   birthdayMonthInput: string;
-  birthdayDayInput: string;
   languagePreference: "zh" | "en";
   onProfileFirstNameChange: (value: string) => void;
   onProfileLastNameChange: (value: string) => void;
+  onBirthdayYearChange: (value: string) => void;
   onBirthdayMonthChange: (value: string) => void;
-  onBirthdayDayChange: (value: string) => void;
   onLanguagePreferenceChange: (value: "zh" | "en") => void;
   profileSaving: boolean;
   profileError: string | null;
@@ -3115,14 +3112,9 @@ function ProfileSection({
   locale: Locale;
 }) {
   const effectiveOptIn = !!marketingOptIn;
-  const hasBirthday = user.birthdayMonth != null && user.birthdayDay != null;
+  const hasBirthday = user.birthdayYear != null && user.birthdayMonth != null;
   const twoFactorEnabled =
     !!user.twoFactorEnabledAt && user.twoFactorMethod === "SMS";
-  const birthdayDisplay = hasBirthday
-    ? isZh
-      ? `${user.birthdayMonth}月${user.birthdayDay}日`
-      : `${user.birthdayMonth}/${user.birthdayDay}`
-    : null;
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -3172,14 +3164,36 @@ function ProfileSection({
         <div>
           <p className="text-slate-500">{isZh ? "生日" : "Birthday"}</p>
           {hasBirthday ? (
-            <p className="mt-0.5 text-slate-900">
-              {birthdayDisplay}
-              <span className="ml-2 text-[11px] text-slate-400">
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                value={user.birthdayYear ?? ""}
+                disabled
+                className="w-24 cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-xs text-slate-500"
+                aria-label={isZh ? "出生年份" : "Birth year"}
+              />
+              <input
+                type="number"
+                value={user.birthdayMonth ?? ""}
+                disabled
+                className="w-20 cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-xs text-slate-500"
+                aria-label={isZh ? "出生月份" : "Birth month"}
+              />
+              <span className="text-[11px] text-slate-400">
                 {isZh ? "已设置，无法修改" : "Locked once set"}
               </span>
-            </p>
+            </div>
           ) : (
             <div className="mt-1 flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={1900}
+                max={new Date().getUTCFullYear()}
+                value={birthdayYearInput}
+                onChange={(event) => onBirthdayYearChange(event.target.value)}
+                className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
+                placeholder={isZh ? "年" : "YYYY"}
+              />
               <input
                 type="number"
                 min={1}
@@ -3188,15 +3202,6 @@ function ProfileSection({
                 onChange={(event) => onBirthdayMonthChange(event.target.value)}
                 className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
                 placeholder={isZh ? "月" : "MM"}
-              />
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={birthdayDayInput}
-                onChange={(event) => onBirthdayDayChange(event.target.value)}
-                className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-900 focus:border-slate-400 focus:outline-none"
-                placeholder={isZh ? "日" : "DD"}
               />
               <button
                 type="button"

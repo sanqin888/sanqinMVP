@@ -332,7 +332,6 @@ model User {
   updatedAt             DateTime        @updatedAt
   marketingEmailOptIn   Boolean         @default(false)
   marketingEmailOptInAt DateTime?
-  birthdayDay           Int?
   birthdayMonth         Int?
   birthdayYear          Int?
   referredByUserId      String?
