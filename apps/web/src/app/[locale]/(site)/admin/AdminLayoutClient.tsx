@@ -8,11 +8,13 @@ import type { Locale } from '@/lib/i18n/locales';
 type AdminLayoutClientProps = {
   children: ReactNode;
   locale: Locale;
+  role: 'ADMIN' | 'STAFF' | 'ACCOUNTANT';
 };
 
 export default function AdminLayoutClient({
   children,
   locale,
+  role,
 }: AdminLayoutClientProps) {
   async function handleLogout(): Promise<void> {
     try {
@@ -28,7 +30,7 @@ export default function AdminLayoutClient({
   }
 
   return (
-    <AdminShell locale={locale} onLogout={handleLogout}>
+    <AdminShell locale={locale} role={role} onLogout={handleLogout}>
       {children}
     </AdminShell>
   );

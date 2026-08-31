@@ -1,5 +1,7 @@
 export const BRAND_STORE_CONFIG_READER = Symbol('BRAND_STORE_CONFIG_READER');
 export const BRAND_STORE_CONFIG_WRITER = Symbol('BRAND_STORE_CONFIG_WRITER');
+export const STORE_DIRECTORY_READER = Symbol('STORE_DIRECTORY_READER');
+export const STORE_DIRECTORY_WRITER = Symbol('STORE_DIRECTORY_WRITER');
 
 export type BrandConfigSnapshot = {
   brandNameZh: string | null;
@@ -70,8 +72,12 @@ export type StoreConfigUpdateInput = Partial<
     | 'city'
     | 'province'
     | 'postalCode'
+    | 'countryCode'
+    | 'phone'
+    | 'contactName'
     | 'salesTaxRate'
     | 'enableUberDirect'
+    | 'autoAcceptOnlineOrders'
     | 'allergyHandlingMode'
     | 'unsupportedAllergens'
   >
@@ -82,15 +88,43 @@ export type BrandStoreConfigUpdateInput = {
   store?: StoreConfigUpdateInput;
 };
 
+export type StoreDirectoryEntry = Pick<
+  StoreConfigSnapshot,
+  'storeStableId' | 'storeName' | 'isActive'
+>;
+
+export type CreateStoreInput = {
+  storeStableId: string;
+  storeName: string;
+};
+
 export interface BrandStoreConfigReaderPort {
   getBrandSnapshot(): Promise<BrandConfigSnapshot>;
-  getStoreSnapshot(): Promise<StoreConfigSnapshot>;
+  getStoreSnapshot(storeStableId?: string): Promise<StoreConfigSnapshot>;
   getSnapshot(): Promise<BrandStoreConfigSnapshot>;
 }
 
 export interface BrandStoreConfigWriterPort {
-  updateConfig(input: BrandStoreConfigUpdateInput): Promise<void>;
+  updateConfig(
+    input: BrandStoreConfigUpdateInput,
+    storeStableId?: string,
+  ): Promise<void>;
   resumeTemporaryClosureIfMatches(expectedReason: string): Promise<boolean>;
+}
+
+export interface StoreDirectoryReaderPort {
+  listStores(): Promise<StoreDirectoryEntry[]>;
+}
+
+export interface StoreDirectoryWriterPort {
+  createStore(input: CreateStoreInput): Promise<StoreConfigSnapshot>;
+}
+
+export class StoreStableIdAlreadyExistsError extends Error {
+  constructor(storeStableId: string) {
+    super(`Store stable id already exists: ${storeStableId}`);
+    this.name = 'StoreStableIdAlreadyExistsError';
+  }
 }
 
 export class BrandStoreConfigUnavailableError extends Error {

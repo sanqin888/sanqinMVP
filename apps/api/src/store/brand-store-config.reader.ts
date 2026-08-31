@@ -3,12 +3,17 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BrandStoreConfigUnavailableError,
+  StoreStableIdAlreadyExistsError,
   type BrandConfigSnapshot,
   type BrandStoreConfigReaderPort,
   type BrandStoreConfigSnapshot,
   type BrandStoreConfigUpdateInput,
   type BrandStoreConfigWriterPort,
+  type CreateStoreInput,
   type StoreConfigSnapshot,
+  type StoreDirectoryEntry,
+  type StoreDirectoryReaderPort,
+  type StoreDirectoryWriterPort,
 } from './brand-store-config.contract';
 import { resolveConfiguredStoreStableId } from './store-identity';
 import type {
@@ -20,7 +25,9 @@ import type {
 } from './store-schedule.contract';
 
 @Injectable()
-export class PrismaBrandStoreConfigReader implements BrandStoreConfigReaderPort {
+export class PrismaBrandStoreConfigReader
+  implements BrandStoreConfigReaderPort, StoreDirectoryReaderPort
+{
   constructor(private readonly prisma: PrismaService) {}
 
   async getBrandSnapshot(): Promise<BrandConfigSnapshot> {
@@ -49,8 +56,11 @@ export class PrismaBrandStoreConfigReader implements BrandStoreConfigReaderPort 
     return brand;
   }
 
-  async getStoreSnapshot(): Promise<StoreConfigSnapshot> {
-    const storeStableId = resolveConfiguredStoreStableId();
+  async getStoreSnapshot(
+    requestedStoreStableId?: string,
+  ): Promise<StoreConfigSnapshot> {
+    const storeStableId =
+      requestedStoreStableId ?? resolveConfiguredStoreStableId();
     const store = await this.prisma.store.findUnique({
       where: { storeStableId },
       select: {
@@ -107,6 +117,22 @@ export class PrismaBrandStoreConfigReader implements BrandStoreConfigReaderPort 
     };
   }
 
+  async listStores(): Promise<StoreDirectoryEntry[]> {
+    const stores = await this.prisma.store.findMany({
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      select: {
+        storeStableId: true,
+        name: true,
+        isActive: true,
+      },
+    });
+    return stores.map((store) => ({
+      storeStableId: store.storeStableId,
+      storeName: store.name,
+      isActive: store.isActive,
+    }));
+  }
+
   async getSnapshot(): Promise<BrandStoreConfigSnapshot> {
     const [brand, store] = await Promise.all([
       this.getBrandSnapshot(),
@@ -156,7 +182,9 @@ type StoreCompatibilitySnapshot = Pick<
 >;
 
 @Injectable()
-export class PrismaBrandStoreConfigWriter implements BrandStoreConfigWriterPort {
+export class PrismaBrandStoreConfigWriter
+  implements BrandStoreConfigWriterPort, StoreDirectoryWriterPort
+{
   constructor(private readonly prisma: PrismaService) {}
 
   // @compat brand-store.business-config.v1
@@ -164,18 +192,25 @@ export class PrismaBrandStoreConfigWriter implements BrandStoreConfigWriterPort 
   // overlapping Brand/Store snapshot is copied back to BusinessConfig while
   // registered legacy writes can still fire the one-way compatibility trigger
   // and replay that row into canonical storage.
-  async updateConfig(input: BrandStoreConfigUpdateInput): Promise<void> {
+  async updateConfig(
+    input: BrandStoreConfigUpdateInput,
+    requestedStoreStableId?: string,
+  ): Promise<void> {
     const brandPatch = input.brand ?? {};
     const storePatch = input.store ?? {};
     const hasBrandPatch = Object.keys(brandPatch).length > 0;
     const hasStorePatch = Object.keys(storePatch).length > 0;
-    const hasCompatibilityPatch =
-      hasBrandPatch ||
-      Object.keys(storePatch).some((key) => key in STORE_COMPATIBILITY_SELECT);
 
     if (!hasBrandPatch && !hasStorePatch) return;
 
-    const storeStableId = resolveConfiguredStoreStableId();
+    const configuredStoreStableId = resolveConfiguredStoreStableId();
+    const storeStableId = requestedStoreStableId ?? configuredStoreStableId;
+    const hasCompatibilityPatch =
+      hasBrandPatch ||
+      (storeStableId === configuredStoreStableId &&
+        Object.keys(storePatch).some(
+          (key) => key in STORE_COMPATIBILITY_SELECT,
+        ));
 
     if (!hasCompatibilityPatch) {
       await this.prisma.$transaction(async (tx) => {
@@ -256,6 +291,95 @@ export class PrismaBrandStoreConfigWriter implements BrandStoreConfigWriterPort 
         nextStore,
       );
     });
+  }
+
+  async createStore(input: CreateStoreInput): Promise<StoreConfigSnapshot> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const duplicate = await tx.store.findFirst({
+          where: {
+            storeStableId: {
+              equals: input.storeStableId,
+              mode: 'insensitive',
+            },
+          },
+          select: { storeStableId: true },
+        });
+        if (duplicate) {
+          throw new StoreStableIdAlreadyExistsError(input.storeStableId);
+        }
+
+        const store = await tx.store.create({
+          data: {
+            storeStableId: input.storeStableId,
+            name: input.storeName,
+            config: { create: {} },
+            businessHours: {
+              create: Array.from({ length: 7 }, (_, weekday) => ({
+                weekday,
+                isClosed: true,
+                openMinutes: null,
+                closeMinutes: null,
+              })),
+            },
+          },
+          select: {
+            storeStableId: true,
+            name: true,
+            isActive: true,
+            config: {
+              select: {
+                timezone: true,
+                isTemporarilyClosed: true,
+                temporaryCloseReason: true,
+                publicNotice: true,
+                publicNoticeEn: true,
+                deliveryBaseFeeCents: true,
+                priorityPerKmCents: true,
+                maxDeliveryRangeKm: true,
+                priorityDefaultDistanceKm: true,
+                latitude: true,
+                longitude: true,
+                addressLine1: true,
+                addressLine2: true,
+                city: true,
+                province: true,
+                postalCode: true,
+                countryCode: true,
+                phone: true,
+                contactName: true,
+                salesTaxRate: true,
+                enableUberDirect: true,
+                autoAcceptOnlineOrders: true,
+                allergyHandlingMode: true,
+                unsupportedAllergens: true,
+              },
+            },
+          },
+        });
+        if (!store.config) {
+          throw new BrandStoreConfigUnavailableError(
+            `StoreConfig for ${input.storeStableId} was not provisioned`,
+          );
+        }
+        return {
+          storeStableId: store.storeStableId,
+          storeName: store.name,
+          isActive: store.isActive,
+          ...store.config,
+        };
+      });
+    } catch (error) {
+      if (error instanceof StoreStableIdAlreadyExistsError) throw error;
+      const prismaErrorCode =
+        error && typeof error === 'object' && 'code' in error
+          ? (error as { code?: unknown }).code
+          : undefined;
+      if (prismaErrorCode === 'P2002') {
+        throw new StoreStableIdAlreadyExistsError(input.storeStableId);
+      }
+      throw error;
+    }
   }
 
   async resumeTemporaryClosureIfMatches(

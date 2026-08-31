@@ -8,7 +8,10 @@ import {
 import {
   BRAND_STORE_CONFIG_READER,
   BRAND_STORE_CONFIG_WRITER,
+  STORE_DIRECTORY_READER,
+  STORE_DIRECTORY_WRITER,
 } from './brand-store-config.contract';
+import { StoreDirectoryService } from './store-directory.service';
 import {
   STORE_SCHEDULE_READER,
   STORE_SCHEDULE_WRITER,
@@ -20,12 +23,21 @@ import {
     PrismaBrandStoreConfigReader,
     PrismaBrandStoreConfigWriter,
     PrismaStoreScheduleAdapter,
+    StoreDirectoryService,
     {
       provide: BRAND_STORE_CONFIG_READER,
       useExisting: PrismaBrandStoreConfigReader,
     },
     {
       provide: BRAND_STORE_CONFIG_WRITER,
+      useExisting: PrismaBrandStoreConfigWriter,
+    },
+    {
+      provide: STORE_DIRECTORY_READER,
+      useExisting: PrismaBrandStoreConfigReader,
+    },
+    {
+      provide: STORE_DIRECTORY_WRITER,
       useExisting: PrismaBrandStoreConfigWriter,
     },
     {
@@ -40,6 +52,9 @@ import {
   exports: [
     BRAND_STORE_CONFIG_READER,
     BRAND_STORE_CONFIG_WRITER,
+    STORE_DIRECTORY_READER,
+    STORE_DIRECTORY_WRITER,
+    StoreDirectoryService,
     STORE_SCHEDULE_READER,
     STORE_SCHEDULE_WRITER,
   ],

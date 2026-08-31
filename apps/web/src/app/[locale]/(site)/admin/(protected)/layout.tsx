@@ -39,5 +39,9 @@ export default async function AdminLayout({
     redirect(`/${safeLocale}/admin/login`);
   }
 
-  return <AdminLayoutClient locale={safeLocale}>{children}</AdminLayoutClient>;
+  return (
+    <AdminLayoutClient locale={safeLocale} role={role}>
+      {children}
+    </AdminLayoutClient>
+  );
 }

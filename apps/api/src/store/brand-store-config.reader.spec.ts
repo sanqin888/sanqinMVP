@@ -69,6 +69,18 @@ function setup(input?: {
     },
     store: {
       findUnique: jest.fn().mockResolvedValue(resolvedStore),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          storeStableId: '4750_Yonge_Street',
+          name: '4750 Yonge St.',
+          isActive: true,
+        },
+        {
+          storeStableId: 'second_store',
+          name: 'Second Store',
+          isActive: false,
+        },
+      ]),
     },
   };
   return {
@@ -112,6 +124,43 @@ describe('PrismaBrandStoreConfigReader', () => {
       }),
     );
     expect('businessConfig' in prisma).toBe(false);
+  });
+
+  it('reads an explicitly selected StoreConfig by storeStableId', async () => {
+    const { prisma, reader } = setup();
+
+    await reader.getStoreSnapshot('second_store');
+
+    expect(prisma.store.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { storeStableId: 'second_store' },
+      }),
+    );
+  });
+
+  it('lists stable Store identities without exposing database ids', async () => {
+    const { prisma, reader } = setup();
+
+    await expect(reader.listStores()).resolves.toEqual([
+      {
+        storeStableId: '4750_Yonge_Street',
+        storeName: '4750 Yonge St.',
+        isActive: true,
+      },
+      {
+        storeStableId: 'second_store',
+        storeName: 'Second Store',
+        isActive: false,
+      },
+    ]);
+    expect(prisma.store.findMany).toHaveBeenCalledWith({
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      select: {
+        storeStableId: true,
+        name: true,
+        isActive: true,
+      },
+    });
   });
 
   it('reads StoreConfig independently from BrandConfig for store-only consumers', async () => {

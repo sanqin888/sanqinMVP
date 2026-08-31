@@ -26,12 +26,14 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { AdminStoreContextSelector } from '@/features/admin/brand-store/AdminStoreContextSelector';
 import type { Locale } from '@/lib/i18n/locales';
 import { isStaffRouteActive, type StaffNavigationMatch } from './navigation';
 
 type AdminShellProps = {
   children: ReactNode;
   locale: Locale;
+  role: 'ADMIN' | 'STAFF' | 'ACCOUNTANT';
   onLogout: () => Promise<void>;
 };
 
@@ -92,7 +94,7 @@ function buildCategories(locale: Locale): AdminCategory[] {
       items: [
         {
           href: `${adminRoot}/setting`,
-          labelZh: '门店信息设置',
+          labelZh: '门店配置',
           labelEn: 'Store settings',
           icon: Store,
         },
@@ -366,12 +368,16 @@ function LogoutButton({
   );
 }
 
-export function AdminShell({ children, locale, onLogout }: AdminShellProps) {
+export function AdminShell({ children, locale, role, onLogout }: AdminShellProps) {
   const pathname = usePathname();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const isZh = locale === 'zh';
   const categories = buildCategories(locale);
   const activeCategory = resolveActiveCategory(pathname, categories);
+  const showStoreContext =
+    role !== 'ACCOUNTANT' &&
+    (activeCategory.id === 'catalog' ||
+      (activeCategory.id === 'store' && pathname.endsWith('/setting')));
 
   return (
     <div data-staff-shell="admin" className="min-h-screen bg-slate-50 text-slate-950">
@@ -428,6 +434,14 @@ export function AdminShell({ children, locale, onLogout }: AdminShellProps) {
           </div>
         </nav>
       </header>
+
+      {showStoreContext ? (
+        <AdminStoreContextSelector
+          locale={locale}
+          context={activeCategory.id === 'catalog' ? 'catalog' : 'store'}
+          canCreateStore={role === 'ADMIN'}
+        />
+      ) : null}
 
       <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
         <aside className="hidden border-r border-slate-200 bg-white lg:sticky lg:top-[113px] lg:block lg:h-[calc(100vh-113px)] lg:overflow-y-auto">
