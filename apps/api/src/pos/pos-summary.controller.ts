@@ -1,5 +1,12 @@
 //apps/api/src/pos/pos-summary.controller.ts
-import { Controller, Get, Inject, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Inject,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { PosSummaryService } from './pos-summary.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';

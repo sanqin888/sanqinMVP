@@ -39,7 +39,9 @@ describe('AdminLoyaltyPolicyController', () => {
     );
     const patch = { earnPtPerDollar: 0.01 };
 
-    await expect(controller.updateLoyaltyPolicy(patch)).resolves.toEqual(settings);
+    await expect(controller.updateLoyaltyPolicy(patch)).resolves.toEqual(
+      settings,
+    );
     expect(writer.updateLoyaltyPolicy).toHaveBeenCalledWith(patch);
   });
 
