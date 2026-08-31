@@ -19,6 +19,7 @@ import { StoreStatusModule } from '../store/store-status.module';
 import { PosExchangeRateModule } from './pos-exchange-rate.module';
 import { PosExchangeRateController } from './pos-exchange-rate.controller';
 import { LoyaltyModule } from '../loyalty/public-api';
+import { BrandStoreConfigModule } from '../store/public-api';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { LoyaltyModule } from '../loyalty/public-api';
     StoreStatusModule,
     PosExchangeRateModule,
     LoyaltyModule,
+    BrandStoreConfigModule,
   ],
   controllers: [
     PosSummaryController,

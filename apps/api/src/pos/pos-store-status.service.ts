@@ -7,6 +7,10 @@ import {
   type UberEatsStoreStatusSyncPort,
 } from '../integrations/ubereats/public-api';
 import { AppLogger } from '../common/app-logger';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from '../store/public-api';
 
 const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';
 
@@ -49,6 +53,8 @@ export class PosStoreStatusService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly configReader: BrandStoreConfigReaderPort,
     private readonly posGateway: PosGateway,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uberEatsService: UberEatsStoreStatusSyncPort,
@@ -56,7 +62,7 @@ export class PosStoreStatusService {
 
   async getCustomerOrderingStatus() {
     await this.reconcileExpiredPause();
-    const config = await this.ensureConfig();
+    const config = await this.configReader.getStoreSnapshot();
 
     if (!config.isTemporarilyClosed) {
       return {
@@ -73,7 +79,7 @@ export class PosStoreStatusService {
   }
 
   async reconcileExpiredPause(): Promise<boolean> {
-    const config = await this.ensureConfig();
+    const config = await this.configReader.getStoreSnapshot();
     if (!config.isTemporarilyClosed || !config.temporaryCloseReason)
       return false;
 
@@ -107,7 +113,7 @@ export class PosStoreStatusService {
     },
     context?: PosStoreStatusActionContext,
   ) {
-    const config = await this.ensureConfig();
+    const config = await this.configReader.getStoreSnapshot();
     const timezone = config.timezone || 'America/Toronto';
     const nowInStoreTz = DateTime.now().setZone(timezone);
 
@@ -216,25 +222,6 @@ export class PosStoreStatusService {
     }
   }
 
-  private async ensureConfig() {
-    const existing = await this.prisma.businessConfig.findUnique({
-      where: { id: 1 },
-    });
-
-    if (existing) return existing;
-
-    return this.prisma.businessConfig.create({
-      data: {
-        id: 1,
-        storeName: '',
-        timezone: 'America/Toronto',
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
-        publicNotice: null,
-        publicNoticeEn: null,
-      },
-    });
-  }
 }
 
 export { parseAutoPauseReason };
