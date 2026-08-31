@@ -18,15 +18,47 @@ import { OrderEventsBus } from '../messaging/order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 import type { PrintPosPayloadService } from './print-pos-payload.service';
+import type {
+  BrandStoreConfigReaderPort,
+  StoreConfigSnapshot,
+} from '../store/public-api';
+
+const demoProductId = 'c1234567890abcdefghijklmn';
+
+const defaultStoreConfigSnapshot: StoreConfigSnapshot = {
+  storeStableId: '4750_Yonge_Street',
+  storeName: 'SanQ Roujiamo - Yonge',
+  isActive: true,
+  timezone: 'America/Toronto',
+  isTemporarilyClosed: false,
+  temporaryCloseReason: null,
+  publicNotice: null,
+  publicNoticeEn: null,
+  deliveryBaseFeeCents: 600,
+  priorityPerKmCents: 100,
+  maxDeliveryRangeKm: 10,
+  priorityDefaultDistanceKm: 6,
+  latitude: 43.760288,
+  longitude: -79.412167,
+  addressLine1: '4750 Yonge St.',
+  addressLine2: 'Unit 138',
+  city: 'Toronto',
+  province: 'ON',
+  postalCode: 'M2N 5M6',
+  countryCode: 'CA',
+  phone: '+1-437-808-6888',
+  contactName: 'San Qin',
+  salesTaxRate: 0.13,
+  enableUberDirect: true,
+  autoAcceptOnlineOrders: true,
+  allergyHandlingMode: 'RELAY_ALL',
+  unsupportedAllergens: [],
+};
 
 describe('OrdersService', () => {
   let service: OrdersService;
   let prisma: {
     $transaction: jest.Mock;
-    businessConfig: {
-      findUnique: jest.Mock;
-      create: jest.Mock;
-    };
     order: {
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -55,6 +87,9 @@ describe('OrdersService', () => {
       findFirst: jest.Mock;
       updateMany: jest.Mock;
     };
+  };
+  let brandStoreConfigReader: {
+    getStoreSnapshot: jest.Mock;
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;
@@ -92,8 +127,6 @@ describe('OrdersService', () => {
   >;
   beforeEach(() => {
     process.env.UBER_DIRECT_ENABLED = '1';
-    const demoProductId = 'c1234567890abcdefghijklmn';
-
     type MenuItemFindManyArgs = {
       where?: {
         OR?: Array<{
@@ -110,26 +143,6 @@ describe('OrdersService', () => {
         .mockImplementation((callback: (tx: unknown) => unknown) =>
           Promise.resolve(callback(prisma)),
         ),
-      businessConfig: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 1,
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          deliveryBaseFeeCents: 600,
-          priorityPerKmCents: 100,
-          salesTaxRate: 0.13,
-        }),
-        create: jest.fn().mockResolvedValue({
-          id: 1,
-          timezone: 'America/Toronto',
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-          deliveryBaseFeeCents: 600,
-          priorityPerKmCents: 100,
-          salesTaxRate: 0.13,
-        }),
-      },
       order: {
         findUnique: jest.fn(),
         update: jest.fn(),
@@ -180,6 +193,10 @@ describe('OrdersService', () => {
         findFirst: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+    };
+
+    brandStoreConfigReader = {
+      getStoreSnapshot: jest.fn().mockResolvedValue(defaultStoreConfigSnapshot),
     };
 
     loyalty = {
@@ -263,6 +280,7 @@ describe('OrdersService', () => {
 
     service = new OrdersService(
       prisma as unknown as PrismaService,
+      brandStoreConfigReader as unknown as BrandStoreConfigReaderPort,
       loyalty as unknown as LoyaltyService,
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
@@ -278,6 +296,73 @@ describe('OrdersService', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('reads delivery and tax pricing through the Brand/Store config boundary', async () => {
+    brandStoreConfigReader.getStoreSnapshot.mockResolvedValue({
+      ...defaultStoreConfigSnapshot,
+      deliveryBaseFeeCents: 725,
+      priorityPerKmCents: 135,
+      maxDeliveryRangeKm: 12.5,
+      priorityDefaultDistanceKm: 3,
+      latitude: 43.7,
+      longitude: -79.4,
+      salesTaxRate: 0.15,
+      enableUberDirect: false,
+    });
+    const internalService = service as unknown as {
+      getStorePricingConfig: () => Promise<{
+        deliveryBaseFeeCents: number;
+        priorityPerKmCents: number;
+        salesTaxRate: number;
+        maxDeliveryRangeKm: number;
+        priorityDefaultDistanceKm: number;
+        storeLatitude: number | null;
+        storeLongitude: number | null;
+        enableUberDirect: boolean;
+      }>;
+    };
+
+    await expect(internalService.getStorePricingConfig()).resolves.toEqual({
+      deliveryBaseFeeCents: 725,
+      priorityPerKmCents: 135,
+      salesTaxRate: 0.15,
+      maxDeliveryRangeKm: 12.5,
+      priorityDefaultDistanceKm: 3,
+      storeLatitude: 43.7,
+      storeLongitude: -79.4,
+      enableUberDirect: false,
+    });
+    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the canonical store timezone for daily-special pricing', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-31T04:30:00.000Z'));
+    brandStoreConfigReader.getStoreSnapshot.mockResolvedValue({
+      ...defaultStoreConfigSnapshot,
+      timezone: 'Pacific/Honolulu',
+    });
+    const internalService = service as unknown as {
+      calculateLineItems: (
+        items: Array<{ productId: string; qty: number }>,
+      ) => Promise<unknown>;
+    };
+
+    try {
+      await internalService.calculateLineItems([
+        { productId: demoProductId, qty: 1 },
+      ]);
+
+      expect(prisma.menuDailySpecial.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ weekday: 7 }),
+        }),
+      );
+      expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('keeps the same option stable id when selected in different component group paths', () => {

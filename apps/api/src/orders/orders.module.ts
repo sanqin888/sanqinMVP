@@ -5,6 +5,7 @@ import { OrdersController } from './orders.controller';
 import { ScheduledOrdersController } from './scheduled-orders.controller';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
+import { BrandStoreConfigModule } from '../store/public-api';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
 import { PromotionsModule } from '../promotions/promotions.module';
@@ -28,6 +29,7 @@ import { OrderLabelPlanService } from './order-label-plan.service';
     PrismaModule,
     PosDeviceModule,
     LoyaltyModule,
+    BrandStoreConfigModule,
     DeliveriesModule,
     MembershipModule,
     PromotionsModule,
