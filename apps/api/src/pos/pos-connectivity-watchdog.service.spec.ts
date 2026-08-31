@@ -187,40 +187,37 @@ describe('PosConnectivityWatchdogService', () => {
     });
   });
 
-  it(
-    're-checks canonical temporary-close state before resuming Uber after recovery',
-    async () => {
-      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
-      const { service, prisma, configReader, uber } = setup(
-        new Date(NOW - 120_000),
-      );
+  it('re-checks canonical temporary-close state before resuming Uber after recovery', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { service, prisma, configReader, uber } = setup(
+      new Date(NOW - 120_000),
+    );
 
-      await service.runOnce();
-      nowSpy.mockReturnValue(NOW + 90_001);
-      await service.runOnce();
-      expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+    await service.runOnce();
+    nowSpy.mockReturnValue(NOW + 90_001);
+    await service.runOnce();
+    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
 
-      const recoveredAt = NOW + 90_002;
-      prisma.posDevice.findMany.mockResolvedValue([
-        {
-          storeId: 'legacy-device-store-uuid',
-          lastSeenAt: new Date(recoveredAt),
-          meta: heartbeatMeta,
-        },
-      ]);
-      nowSpy.mockReturnValue(recoveredAt);
-      await service.runOnce();
+    const recoveredAt = NOW + 90_002;
+    prisma.posDevice.findMany.mockResolvedValue([
+      {
+        storeId: 'legacy-device-store-uuid',
+        lastSeenAt: new Date(recoveredAt),
+        meta: heartbeatMeta,
+      },
+    ]);
+    nowSpy.mockReturnValue(recoveredAt);
+    await service.runOnce();
 
-      configReader.getStoreSnapshot.mockResolvedValue({
-        isTemporarilyClosed: true,
-      });
-      nowSpy.mockReturnValue(recoveredAt + 30_001);
-      await service.runOnce();
+    configReader.getStoreSnapshot.mockResolvedValue({
+      isTemporarilyClosed: true,
+    });
+    nowSpy.mockReturnValue(recoveredAt + 30_001);
+    await service.runOnce();
 
-      expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
-      expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
-    },
-  );
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('PosStoreStatusService Uber pause synchronization', () => {
@@ -272,25 +269,22 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
     return { service, prisma, configReader, posGateway, uber };
   }
 
-  it(
-    'reads customer ordering status from the canonical Store snapshot',
-    async () => {
-      const { service, prisma, configReader } = setup();
-      const autoResumeAt = '2026-08-25T10:30:00-04:00';
-      configReader.getStoreSnapshot.mockResolvedValue({
-        timezone: 'America/Toronto',
-        isTemporarilyClosed: true,
-        temporaryCloseReason: `__AUTO_UNTIL__:${autoResumeAt}|`,
-      });
+  it('reads customer ordering status from the canonical Store snapshot', async () => {
+    const { service, prisma, configReader } = setup();
+    const autoResumeAt = '2026-08-25T10:30:00-04:00';
+    configReader.getStoreSnapshot.mockResolvedValue({
+      timezone: 'America/Toronto',
+      isTemporarilyClosed: true,
+      temporaryCloseReason: `__AUTO_UNTIL__:${autoResumeAt}|`,
+    });
 
-      await expect(service.getCustomerOrderingStatus()).resolves.toEqual({
-        isTemporarilyClosed: true,
-        autoResumeAt,
-      });
-      expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(2);
-      expect(prisma.businessConfig.updateMany).not.toHaveBeenCalled();
-    },
-  );
+    await expect(service.getCustomerOrderingStatus()).resolves.toEqual({
+      isTemporarilyClosed: true,
+      autoResumeAt,
+    });
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(2);
+    expect(prisma.businessConfig.updateMany).not.toHaveBeenCalled();
+  });
 
   it.each<[number, string]>([
     [15, '2026-08-25T09:15:00-04:00'],

@@ -221,7 +221,6 @@ export class PosStoreStatusService {
       );
     }
   }
-
 }
 
 export { parseAutoPauseReason };
