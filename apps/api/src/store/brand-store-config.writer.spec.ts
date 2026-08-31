@@ -1,4 +1,7 @@
-import { BrandStoreConfigUnavailableError } from './public-api';
+import {
+  BrandStoreConfigUnavailableError,
+  StoreStableIdAlreadyExistsError,
+} from './public-api';
 import { PrismaBrandStoreConfigWriter } from './brand-store-config.reader';
 
 const storeDbId = '8a3d4c0e-4750-4f6a-9138-000000000001';
@@ -34,8 +37,14 @@ const storeConfig = {
   city: 'Toronto',
   province: 'ON',
   postalCode: 'M2N 5M6',
+  countryCode: 'CA',
+  phone: '+1-437-808-6888',
+  contactName: 'San Qin',
   salesTaxRate: 0.13,
   enableUberDirect: true,
+  autoAcceptOnlineOrders: true,
+  allergyHandlingMode: 'RELAY_ALL',
+  unsupportedAllergens: [] as string[],
 };
 
 type BrandRow = typeof brand;
@@ -50,6 +59,7 @@ function setup(options?: {
   brand?: BrandRow | null;
   config?: StoreConfigRow | null;
   casCount?: number;
+  duplicateStoreStableId?: string | null;
 }) {
   const brandFindUnique = jest.fn(
     (args: { where: { id: number }; select: SelectShape }) => {
@@ -75,6 +85,28 @@ function setup(options?: {
         config: options?.config === undefined ? storeConfig : options.config,
       });
     },
+  );
+  const storeFindFirst = jest.fn().mockResolvedValue(
+    options?.duplicateStoreStableId
+      ? { storeStableId: options.duplicateStoreStableId }
+      : null,
+  );
+  const storeCreate = jest.fn(
+    (args: {
+      data: {
+        storeStableId: string;
+        name: string;
+        config?: { create: Record<string, never> };
+        businessHours?: { create: Array<Record<string, unknown>> };
+      };
+      select?: SelectShape;
+    }) =>
+      Promise.resolve({
+        storeStableId: args.data.storeStableId,
+        name: args.data.name,
+        isActive: true,
+        config: storeConfig,
+      }),
   );
   const storeUpdate = jest.fn(
     (args: {
@@ -105,6 +137,8 @@ function setup(options?: {
     },
     store: {
       findUnique: storeFindUnique,
+      findFirst: storeFindFirst,
+      create: storeCreate,
     },
     storeConfig: {
       findUnique: storeConfigFindUnique,
@@ -171,6 +205,10 @@ describe('PrismaBrandStoreConfigWriter', () => {
 
     await writer.updateConfig({
       store: {
+        phone: '+1 416 555 0100',
+        contactName: 'Front counter',
+        countryCode: 'CA',
+        autoAcceptOnlineOrders: false,
         allergyHandlingMode: 'DENY_LIST',
         unsupportedAllergens: ['PEANUTS'],
       },
@@ -180,12 +218,83 @@ describe('PrismaBrandStoreConfigWriter', () => {
     expect(tx.storeConfig.update.mock.calls[0]?.[0]).toEqual({
       where: { storeId: storeDbId },
       data: {
+        phone: '+1 416 555 0100',
+        contactName: 'Front counter',
+        countryCode: 'CA',
+        autoAcceptOnlineOrders: false,
         allergyHandlingMode: 'DENY_LIST',
         unsupportedAllergens: ['PEANUTS'],
       },
     });
     expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
     expect(tx.businessConfig.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps non-default StoreConfig updates out of the single-store compatibility copy', async () => {
+    const { tx, writer } = setup();
+
+    await writer.updateConfig(
+      { store: { salesTaxRate: 0.15 } },
+      'second_store',
+    );
+
+    expect(tx.store.findUnique.mock.calls[0]?.[0].where).toEqual({
+      storeStableId: 'second_store',
+    });
+    expect(tx.storeConfig.update).toHaveBeenCalledWith({
+      where: { storeId: storeDbId },
+      data: { salesTaxRate: 0.15 },
+    });
+    expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
+    expect(tx.businessConfig.update).not.toHaveBeenCalled();
+  });
+
+  it('provisions a new Store with StoreConfig and seven closed business days', async () => {
+    const { tx, writer } = setup();
+
+    await expect(
+      writer.createStore({
+        storeStableId: 'second_store',
+        storeName: 'Second Store',
+      }),
+    ).resolves.toMatchObject({
+      storeStableId: 'second_store',
+      storeName: 'Second Store',
+      isActive: true,
+    });
+
+    expect(tx.store.findFirst).toHaveBeenCalledWith({
+      where: {
+        storeStableId: { equals: 'second_store', mode: 'insensitive' },
+      },
+      select: { storeStableId: true },
+    });
+    const createArgs = tx.store.create.mock.calls[0]?.[0];
+    expect(createArgs?.data).toMatchObject({
+      storeStableId: 'second_store',
+      name: 'Second Store',
+      config: { create: {} },
+    });
+    expect(createArgs?.data.businessHours?.create).toHaveLength(7);
+    expect(createArgs?.data.businessHours?.create).toEqual(
+      expect.arrayContaining([
+        { weekday: 0, isClosed: true, openMinutes: null, closeMinutes: null },
+        { weekday: 6, isClosed: true, openMinutes: null, closeMinutes: null },
+      ]),
+    );
+  });
+
+  it('rejects a duplicate Store stable id before insert', async () => {
+    const { tx, writer } = setup({ duplicateStoreStableId: 'SECOND_STORE' });
+
+    await expect(
+      writer.createStore({
+        storeStableId: 'second_store',
+        storeName: 'Second Store',
+      }),
+    ).rejects.toEqual(expect.any(StoreStableIdAlreadyExistsError));
+
+    expect(tx.store.create).not.toHaveBeenCalled();
   });
 
   it('atomically resumes only the matching canonical temporary closure and refreshes compatibility', async () => {

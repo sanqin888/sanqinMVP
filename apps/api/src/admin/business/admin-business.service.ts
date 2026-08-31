@@ -1,12 +1,13 @@
 // apps/api/src/admin/business/admin-business.service.ts
 
-import { Injectable, BadRequestException, Inject } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { AppLogger } from '../../common/app-logger';
 import {
   BRAND_STORE_CONFIG_READER,
   BRAND_STORE_CONFIG_WRITER,
   STORE_SCHEDULE_READER,
   STORE_SCHEDULE_WRITER,
+  resolveConfiguredStoreStableId,
   type BrandConfigSnapshot,
   type BrandConfigUpdateInput,
   type BrandStoreConfigReaderPort,
@@ -108,8 +109,8 @@ export class AdminBusinessService {
     return this.brandStoreConfigReader.getBrandSnapshot();
   }
 
-  getStoreConfig(): Promise<StoreConfigSnapshot> {
-    return this.brandStoreConfigReader.getStoreSnapshot();
+  getStoreConfig(storeStableId?: string): Promise<StoreConfigSnapshot> {
+    return this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
   }
 
   async updateBrandConfig(payload: unknown): Promise<BrandConfigSnapshot> {
@@ -132,54 +133,72 @@ export class AdminBusinessService {
     return this.getBrandConfig();
   }
 
-  async updateStoreConfig(payload: unknown): Promise<StoreConfigSnapshot> {
+  async updateStoreConfig(
+    payload: unknown,
+    storeStableId?: string,
+  ): Promise<StoreConfigSnapshot> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException('store config payload must be an object');
     }
     const body = payload as Record<string, unknown>;
-    await this.updateConfig({
-      timezone: body.timezone,
-      isTemporarilyClosed: body.isTemporarilyClosed,
-      reason: body.temporaryCloseReason,
-      publicNotice: body.publicNotice,
-      publicNoticeEn: body.publicNoticeEn,
-      deliveryBaseFeeCents: body.deliveryBaseFeeCents,
-      priorityPerKmCents: body.priorityPerKmCents,
-      maxDeliveryRangeKm: body.maxDeliveryRangeKm,
-      priorityDefaultDistanceKm: body.priorityDefaultDistanceKm,
-      storeLatitude: body.latitude,
-      storeLongitude: body.longitude,
-      storeAddressLine1: body.addressLine1,
-      storeAddressLine2: body.addressLine2,
-      storeCity: body.city,
-      storeProvince: body.province,
-      storePostalCode: body.postalCode,
-      salesTaxRate: body.salesTaxRate,
-      enableUberDirect: body.enableUberDirect,
-      allergyHandlingMode: body.allergyHandlingMode,
-      unsupportedAllergens: body.unsupportedAllergens,
-    });
-    return this.getStoreConfig();
+    await this.updateConfig(
+      {
+        timezone: body.timezone,
+        isTemporarilyClosed: body.isTemporarilyClosed,
+        reason: body.temporaryCloseReason,
+        publicNotice: body.publicNotice,
+        publicNoticeEn: body.publicNoticeEn,
+        deliveryBaseFeeCents: body.deliveryBaseFeeCents,
+        priorityPerKmCents: body.priorityPerKmCents,
+        maxDeliveryRangeKm: body.maxDeliveryRangeKm,
+        priorityDefaultDistanceKm: body.priorityDefaultDistanceKm,
+        storeLatitude: body.latitude,
+        storeLongitude: body.longitude,
+        storeAddressLine1: body.addressLine1,
+        storeAddressLine2: body.addressLine2,
+        storeCity: body.city,
+        storeProvince: body.province,
+        storePostalCode: body.postalCode,
+        storeCountryCode: body.countryCode,
+        storePhone: body.phone,
+        storeContactName: body.contactName,
+        salesTaxRate: body.salesTaxRate,
+        enableUberDirect: body.enableUberDirect,
+        autoAcceptOnlineOrders: body.autoAcceptOnlineOrders,
+        allergyHandlingMode: body.allergyHandlingMode,
+        unsupportedAllergens: body.unsupportedAllergens,
+      },
+      storeStableId,
+    );
+    return this.getStoreConfig(storeStableId);
   }
 
-  async getStoreHours(): Promise<StoreBusinessHour[]> {
-    const store = await this.brandStoreConfigReader.getStoreSnapshot();
+  async getStoreHours(storeStableId?: string): Promise<StoreBusinessHour[]> {
+    const store =
+      await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
     return this.ensureHoursInitialized(store.storeStableId);
   }
 
-  async updateStoreHours(rawHours: unknown): Promise<StoreBusinessHour[]> {
-    await this.updateHours(rawHours);
-    return this.getStoreHours();
+  async updateStoreHours(
+    rawHours: unknown,
+    storeStableId?: string,
+  ): Promise<StoreBusinessHour[]> {
+    await this.updateHours(rawHours, storeStableId);
+    return this.getStoreHours(storeStableId);
   }
 
-  async getStoreHolidays(): Promise<StoreHoliday[]> {
-    const store = await this.brandStoreConfigReader.getStoreSnapshot();
+  async getStoreHolidays(storeStableId?: string): Promise<StoreHoliday[]> {
+    const store =
+      await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
     return this.storeScheduleReader.listHolidays(store.storeStableId);
   }
 
-  async updateStoreHolidays(raw: unknown): Promise<StoreHoliday[]> {
-    await this.saveHolidays(raw);
-    return this.getStoreHolidays();
+  async updateStoreHolidays(
+    raw: unknown,
+    storeStableId?: string,
+  ): Promise<StoreHoliday[]> {
+    await this.saveHolidays(raw, storeStableId);
+    return this.getStoreHolidays(storeStableId);
   }
 
   /**
@@ -252,7 +271,10 @@ export class AdminBusinessService {
    * - 如果 isClosed=true，open/closeMinutes 会被忽略
    * - 内部实现：deleteMany + createMany
    */
-  async updateHours(rawHours: unknown): Promise<BusinessConfigResponse> {
+  async updateHours(
+    rawHours: unknown,
+    requestedStoreStableId?: string,
+  ): Promise<BusinessConfigResponse> {
     if (!Array.isArray(rawHours)) {
       throw new BadRequestException('hours must be an array');
     }
@@ -307,8 +329,9 @@ export class AdminBusinessService {
       };
     });
 
-    const storeStableId = (await this.brandStoreConfigReader.getStoreSnapshot())
-      .storeStableId;
+    const storeStableId = (
+      await this.brandStoreConfigReader.getStoreSnapshot(requestedStoreStableId)
+    ).storeStableId;
     await this.storeScheduleWriter.replaceBusinessHours(
       storeStableId,
       sanitized.map(
@@ -340,7 +363,10 @@ export class AdminBusinessService {
    * - isTemporarilyClosed = false 时，自动清空 reason
    * - 可同时更新配送费/税率
    */
-  async updateConfig(payload: unknown): Promise<BusinessConfigResponse> {
+  async updateConfig(
+    payload: unknown,
+    requestedStoreStableId?: string,
+  ): Promise<BusinessConfigResponse> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException(
         'payload must be an object with isTemporarilyClosed (boolean)',
@@ -374,6 +400,9 @@ export class AdminBusinessService {
       storeCity,
       storeProvince,
       storePostalCode,
+      storeCountryCode,
+      storePhone,
+      storeContactName,
       brandNameZh,
       brandNameEn,
       siteUrl,
@@ -386,6 +415,7 @@ export class AdminBusinessService {
       salesTaxRate,
       wechatAlipayExchangeRate,
       enableUberDirect,
+      autoAcceptOnlineOrders,
       allergyHandlingMode,
       unsupportedAllergens,
     } = payload as {
@@ -405,6 +435,9 @@ export class AdminBusinessService {
       storeCity?: unknown;
       storeProvince?: unknown;
       storePostalCode?: unknown;
+      storeCountryCode?: unknown;
+      storePhone?: unknown;
+      storeContactName?: unknown;
       brandNameZh?: unknown;
       brandNameEn?: unknown;
       siteUrl?: unknown;
@@ -417,6 +450,7 @@ export class AdminBusinessService {
       salesTaxRate?: unknown;
       wechatAlipayExchangeRate?: unknown;
       enableUberDirect?: unknown;
+      autoAcceptOnlineOrders?: unknown;
       allergyHandlingMode?: unknown;
       unsupportedAllergens?: unknown;
     };
@@ -431,7 +465,7 @@ export class AdminBusinessService {
     }
 
     const storeConfigSnapshot =
-      await this.brandStoreConfigReader.getStoreSnapshot();
+      await this.brandStoreConfigReader.getStoreSnapshot(requestedStoreStableId);
 
     const trimmedReason =
       typeof reason === 'string' ? reason.trim() : undefined;
@@ -581,6 +615,30 @@ export class AdminBusinessService {
       );
     }
 
+    if (storeCountryCode !== undefined) {
+      if (typeof storeCountryCode !== 'string') {
+        throw new BadRequestException('storeCountryCode must be a string');
+      }
+      const normalizedCountryCode = storeCountryCode.trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(normalizedCountryCode)) {
+        throw new BadRequestException(
+          'storeCountryCode must be a two-letter country code',
+        );
+      }
+      storeUpdates.countryCode = normalizedCountryCode;
+    }
+
+    if (storePhone !== undefined) {
+      storeUpdates.phone = this.normalizeOptionalText('storePhone', storePhone);
+    }
+
+    if (storeContactName !== undefined) {
+      storeUpdates.contactName = this.normalizeOptionalText(
+        'storeContactName',
+        storeContactName,
+      );
+    }
+
     if (brandNameZh !== undefined) {
       brandUpdates.brandNameZh = this.normalizeOptionalText(
         'brandNameZh',
@@ -662,6 +720,13 @@ export class AdminBusinessService {
       storeUpdates.enableUberDirect = enableUberDirect;
     }
 
+    if (autoAcceptOnlineOrders !== undefined) {
+      if (typeof autoAcceptOnlineOrders !== 'boolean') {
+        throw new BadRequestException('autoAcceptOnlineOrders must be a boolean');
+      }
+      storeUpdates.autoAcceptOnlineOrders = autoAcceptOnlineOrders;
+    }
+
     const hasBrandUpdates = Object.keys(brandUpdates).length > 0;
     const hasStoreUpdates = Object.keys(storeUpdates).length > 0;
     if (!hasBrandUpdates && !hasStoreUpdates) {
@@ -677,13 +742,24 @@ export class AdminBusinessService {
           storeConfigSnapshot.temporaryCloseReason);
 
     if (hasBrandUpdates || hasStoreUpdates) {
-      await this.brandStoreConfigWriter.updateConfig({
+      const updateInput = {
         brand: hasBrandUpdates ? brandUpdates : undefined,
         store: hasStoreUpdates ? storeUpdates : undefined,
-      });
+      };
+      if (requestedStoreStableId) {
+        await this.brandStoreConfigWriter.updateConfig(
+          updateInput,
+          requestedStoreStableId,
+        );
+      } else {
+        await this.brandStoreConfigWriter.updateConfig(updateInput);
+      }
     }
 
-    if (temporaryPauseChanged) {
+    if (
+      temporaryPauseChanged &&
+      storeConfigSnapshot.storeStableId === resolveConfiguredStoreStableId()
+    ) {
       await this.syncUberStoreStatusSafely('admin_business_config');
     }
 
@@ -715,7 +791,10 @@ export class AdminBusinessService {
    * - 调用方传入的 holidays 会覆盖原有全部 Holiday 记录
    * - id 字段当前不参与 upsert，仅作为前端本地 key 用
    */
-  async saveHolidays(raw: unknown): Promise<BusinessConfigResponse> {
+  async saveHolidays(
+    raw: unknown,
+    requestedStoreStableId?: string,
+  ): Promise<BusinessConfigResponse> {
     if (!raw || typeof raw !== 'object') {
       throw new BadRequestException('payload must be an object with holidays');
     }
@@ -780,8 +859,9 @@ export class AdminBusinessService {
       });
     });
 
-    const storeStableId = (await this.brandStoreConfigReader.getStoreSnapshot())
-      .storeStableId;
+    const storeStableId = (
+      await this.brandStoreConfigReader.getStoreSnapshot(requestedStoreStableId)
+    ).storeStableId;
     await this.storeScheduleWriter.replaceHolidays(storeStableId, sanitized);
 
     this.logger.log(
