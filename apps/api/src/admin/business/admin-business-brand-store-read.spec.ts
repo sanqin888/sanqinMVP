@@ -93,8 +93,14 @@ function setup() {
     getSnapshot: jest.fn().mockResolvedValue(brandStoreConfig),
     getStoreSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.store),
   };
+  const brandStoreConfigWriter = {
+    updateConfig: jest.fn().mockResolvedValue(undefined),
+  };
   const loyaltyPolicySettingsReader = {
     getLoyaltyPolicySettings: jest.fn().mockResolvedValue(loyaltyPolicy),
+  };
+  const loyaltyPolicyWriter = {
+    updateLoyaltyPolicy: jest.fn().mockResolvedValue(loyaltyPolicy),
   };
   const uber = {
     syncStoreStatusToUber: jest.fn().mockResolvedValue({
@@ -105,7 +111,9 @@ function setup() {
   const service = new AdminBusinessService(
     prisma as never,
     brandStoreConfigReader as never,
+    brandStoreConfigWriter as never,
     loyaltyPolicySettingsReader as never,
+    loyaltyPolicyWriter as never,
     uber as never,
   );
 
@@ -113,7 +121,9 @@ function setup() {
     service,
     prisma,
     brandStoreConfigReader,
+    brandStoreConfigWriter,
     loyaltyPolicySettingsReader,
+    loyaltyPolicyWriter,
     uber,
   };
 }
@@ -186,18 +196,51 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
     expect(prisma.businessConfig.create).not.toHaveBeenCalled();
   });
 
-  it('uses canonical pause state for reason-only compatibility writes', async () => {
-    const { service, prisma, brandStoreConfigReader, uber } = setup();
+  it('uses the Brand/Store owner writer for reason-only compatibility routes', async () => {
+    const {
+      service,
+      prisma,
+      brandStoreConfigReader,
+      brandStoreConfigWriter,
+      uber,
+    } = setup();
 
     await service.updateConfig({ reason: ' Updated reason ' });
 
     expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
-    expect(prisma.businessConfig.update).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: { temporaryCloseReason: 'Updated reason' },
+    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith({
+      brand: undefined,
+      store: { temporaryCloseReason: 'Updated reason' },
     });
+    expect(prisma.businessConfig.update).not.toHaveBeenCalled();
     expect(prisma.businessConfig.findUnique).not.toHaveBeenCalled();
     expect(prisma.businessConfig.create).not.toHaveBeenCalled();
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes Brand/Store and retained Loyalty writes to their owner boundaries', async () => {
+    const {
+      service,
+      prisma,
+      brandStoreConfigWriter,
+      loyaltyPolicyWriter,
+      uber,
+    } = setup();
+
+    await service.updateConfig({
+      brandNameEn: ' SanQ Updated ',
+      salesTaxRate: 0.14999,
+      tierThresholdSilver: 123.6,
+    });
+
+    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith({
+      brand: { brandNameEn: 'SanQ Updated' },
+      store: { salesTaxRate: 0.15 },
+    });
+    expect(loyaltyPolicyWriter.updateLoyaltyPolicy).toHaveBeenCalledWith({
+      tierThresholdSilver: 123.6,
+    });
+    expect(prisma.businessConfig.update).not.toHaveBeenCalled();
+    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Uber Brand/Store read cutover base: `origin/dev@c908bef8` (2026-08-31).
+Phase 2 Admin Brand/Store writer cutover base: `origin/dev@e8a0fec8` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -98,14 +98,14 @@ pair fails CI.
   a `BusinessConfig` compatibility write in this slice so the existing one-way
   trigger continues mirroring the same state into `StoreConfig` for canonical
   readers while the remaining legacy writers/readers are migrated.
-- Admin Business read composition now follows the owner boundaries too: Brand and
-  Store fields come from `BRAND_STORE_CONFIG_READER`, Loyalty settings come from
-  the Benefits settings reader, and update-time pause-state decisions use the
-  canonical Store snapshot. The legacy Admin PATCH/PUT routes still persist their
-  compatibility payload through `BusinessConfig.update` so the current one-way
-  trigger and mixed Loyalty rollback semantics remain unchanged. Architecture CI
-  allows only those compatibility update methods in this read-cutover consumer;
-  `BusinessConfig` reads/creates cannot return.
+- Admin Business now follows the owner boundaries for both reads and writes. Brand
+  and Store reads use `BRAND_STORE_CONFIG_READER`; Brand/Store updates use
+  `BRAND_STORE_CONFIG_WRITER`; retained Loyalty fields on the legacy PATCH/PUT
+  rollback surfaces delegate to `LOYALTY_POLICY_WRITER`. Admin no longer writes
+  `BusinessConfig`, `BrandConfig`, or `StoreConfig` through Prisma directly. The
+  Brand/Store owner writer updates canonical rows first, then refreshes the full
+  overlapping `BusinessConfig` compatibility copy in the same transaction while
+  the POS compatibility writer and one-way trigger still exist.
 - Uber menu schedule/tax and store-status source reads now cross the Brand/Store
   boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
   sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
@@ -118,20 +118,18 @@ pair fails CI.
   Brand support contact fields feed message templates, while Store name/address/
   phone feed invoice contact details so support and store-phone semantics are no
   longer conflated.
-- `BrandStoreConfigModule` is exported through `store/public-api.ts`; its token,
-  identity implementation, contract implementation, composition module, and
-  Prisma reader stay owner-internal. Cross-context consumers wire the public
-  module and inject the public reader token instead of deep-importing internals.
-- The architecture scanner protects the new public surface from cross-context
-  deep imports, prevents the canonical reader from regressing to the legacy
-  `BusinessConfig` delegate, freezes migrated consumers against reintroducing
-  direct `BusinessConfig` access, and can forbid consumer-specific legacy Prisma
-  symbols after a service is fully de-Prisma'd.
-- Legacy `apps/api/src/admin/**` classification is intentionally unchanged in
-  this slice. Admin business/config routes still mix authentication adapters and
-  legacy writers; their more specific Brand/Store ownership should be registered
-  when that writer boundary is migrated, rather than reclassifying existing
-  direct-import debt without changing the implementation.
+- `BrandStoreConfigModule` is exported through `store/public-api.ts`; its reader
+  and writer tokens, identity/contract implementation, composition module, and
+  shared Prisma implementation stay owner-internal. Cross-context consumers wire
+  the public module and inject the public tokens instead of deep-importing internals.
+- The architecture scanner protects the public surface from cross-context deep
+  imports, prevents the canonical reader from regressing to legacy persistence,
+  requires the owner writer to keep canonical writes and its registered
+  `BusinessConfig` compatibility copy in one transaction, and forbids Admin from
+  directly writing `BusinessConfig`, `BrandConfig`, or `StoreConfig` again.
+- Admin remains an Identity/Customer/Benefits adapter path for dependency-map
+  accounting, but its Business configuration persistence now crosses the
+  Brand/Store public writer boundary. No new direct context edge is introduced.
 
 ## Phase 2 Benefits loyalty policy reader/writer boundary active
 

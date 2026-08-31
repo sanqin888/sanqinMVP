@@ -1,4 +1,5 @@
 export const BRAND_STORE_CONFIG_READER = Symbol('BRAND_STORE_CONFIG_READER');
+export const BRAND_STORE_CONFIG_WRITER = Symbol('BRAND_STORE_CONFIG_WRITER');
 
 export type BrandConfigSnapshot = {
   brandNameZh: string | null;
@@ -48,10 +49,47 @@ export type BrandStoreConfigSnapshot = {
   store: StoreConfigSnapshot;
 };
 
+export type BrandConfigUpdateInput = Partial<BrandConfigSnapshot>;
+
+export type StoreConfigUpdateInput = Partial<
+  Pick<
+    StoreConfigSnapshot,
+    | 'timezone'
+    | 'isTemporarilyClosed'
+    | 'temporaryCloseReason'
+    | 'publicNotice'
+    | 'publicNoticeEn'
+    | 'deliveryBaseFeeCents'
+    | 'priorityPerKmCents'
+    | 'maxDeliveryRangeKm'
+    | 'priorityDefaultDistanceKm'
+    | 'latitude'
+    | 'longitude'
+    | 'addressLine1'
+    | 'addressLine2'
+    | 'city'
+    | 'province'
+    | 'postalCode'
+    | 'salesTaxRate'
+    | 'enableUberDirect'
+    | 'allergyHandlingMode'
+    | 'unsupportedAllergens'
+  >
+>;
+
+export type BrandStoreConfigUpdateInput = {
+  brand?: BrandConfigUpdateInput;
+  store?: StoreConfigUpdateInput;
+};
+
 export interface BrandStoreConfigReaderPort {
   getBrandSnapshot(): Promise<BrandConfigSnapshot>;
   getStoreSnapshot(): Promise<StoreConfigSnapshot>;
   getSnapshot(): Promise<BrandStoreConfigSnapshot>;
+}
+
+export interface BrandStoreConfigWriterPort {
+  updateConfig(input: BrandStoreConfigUpdateInput): Promise<void>;
 }
 
 export class BrandStoreConfigUnavailableError extends Error {

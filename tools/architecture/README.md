@@ -28,11 +28,12 @@ node tools/architecture/scan-architecture.mjs --report
   surface; internal identity/contract/Prisma/module paths cannot be deep-imported
   across contexts, migrated consumers cannot regress to legacy `BusinessConfig`
   delegates or consumer-specific forbidden Prisma symbols; Orders and the POS
-  connectivity watchdog are registered fully migrated consumers. Admin Business is
-  registered as a read-cutover/legacy-write-only consumer: it must use the canonical
-  reader and may retain only `BusinessConfig.update`/`updateMany` compatibility
-  writes, so legacy reads/creates cannot return while its writer migration remains
-  separately tracked. The deleted `common/store-id.ts` path cannot return, and
+  connectivity watchdog are registered fully migrated readers. Admin Business is
+  now a canonical reader/writer consumer: it must use the Brand/Store public writer
+  boundary and cannot write `BusinessConfig`, `BrandConfig`, or `StoreConfig`
+  through Prisma directly. The owner writer is the sole registered Brand/Store
+  compatibility writer and must update canonical storage plus the compatibility
+  copy transactionally. The deleted `common/store-id.ts` path cannot return, and
   configured store identity has one implementation owner;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
