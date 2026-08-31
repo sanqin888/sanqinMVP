@@ -1,3 +1,6 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PersistentCartProvider, usePersistentCart } from "@/lib/cart";
 import {
   createNewAddressState,
   isNewAddressActivationKey,
@@ -52,5 +55,32 @@ describe("使用新地址", () => {
 
   it("忽略其他按键", () => {
     expect(isNewAddressActivationKey("Escape")).toBe(false);
+  });
+});
+
+describe("PersistentCartProvider", () => {
+  it("shares one cart state instance across customer-site consumers", () => {
+    const captured: Array<ReturnType<typeof usePersistentCart>> = [];
+
+    function Consumer() {
+      captured.push(usePersistentCart());
+      return null;
+    }
+
+    renderToStaticMarkup(
+      createElement(
+        PersistentCartProvider,
+        null,
+        createElement(
+          "div",
+          null,
+          createElement(Consumer),
+          createElement(Consumer),
+        ),
+      ),
+    );
+
+    expect(captured).toHaveLength(2);
+    expect(captured[0]).toBe(captured[1]);
   });
 });
