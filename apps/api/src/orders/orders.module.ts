@@ -4,7 +4,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersController } from './orders.controller';
 import { ScheduledOrdersController } from './scheduled-orders.controller';
 import { OrdersService } from './orders.service';
-import { LoyaltyModule } from '../loyalty/loyalty.module';
+import { LoyaltyModule } from '../loyalty/public-api';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
 import { PromotionsModule } from '../promotions/promotions.module';

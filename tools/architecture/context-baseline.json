@@ -166,6 +166,10 @@
     "webWriterConsumer": "apps/web/src/app/[locale]/(site)/admin/(protected)/members/page.tsx",
     "webPosReaderConsumer": "apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx",
     "webSettingsConsumer": "apps/web/src/app/[locale]/(site)/admin/(protected)/setting/page.tsx",
+    "ordersPolicyConsumer": "apps/api/src/orders/orders.service.ts",
+    "ordersCompositionModule": "apps/api/src/orders/orders.module.ts",
+    "ordersRedemptionPolicy": "apps/api/src/orders/orders-loyalty-redemption.ts",
+    "ordersRedemptionCharacterization": "apps/api/src/orders/orders-loyalty-redemption.characterization.spec.ts",
     "publicSymbols": [
       "LOYALTY_POLICY_READER",
       "LOYALTY_POLICY_SETTINGS_READER",

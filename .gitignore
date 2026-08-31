@@ -34,7 +34,7 @@ apps/web/nest/
 /api@*
 /eslint
 
-# DB seed
+# Legacy DB seed snapshots may contain sensitive data; keep them ignored even though the tooling is retired.
 apps/api/prisma/seed/menu.snapshot.json
 apps/api/prisma/seed/*.snapshot.json
 

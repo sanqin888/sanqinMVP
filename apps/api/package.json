@@ -5,9 +5,6 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
-  "prisma": {
-    "seed": "node prisma/seed/seed-menu.cjs"
-  },
   "scripts": {
     "build": "pnpm --filter @shared/foundation build && pnpm --filter @shared/menu build && pnpm --filter @shared/order build && pnpm run prisma:generate && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
