@@ -120,8 +120,12 @@ function setup() {
 
 describe('AdminBusinessService canonical Brand/Store reads', () => {
   it('builds the admin response from owner readers only', async () => {
-    const { service, prisma, brandStoreConfigReader, loyaltyPolicySettingsReader } =
-      setup();
+    const {
+      service,
+      prisma,
+      brandStoreConfigReader,
+      loyaltyPolicySettingsReader,
+    } = setup();
 
     await expect(service.getConfig()).resolves.toEqual({
       timezone: 'America/Toronto',

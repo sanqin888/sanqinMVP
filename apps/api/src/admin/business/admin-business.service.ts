@@ -100,12 +100,13 @@ export class AdminBusinessService {
    * - 节假日列表
    */
   async getConfig(): Promise<BusinessConfigResponse> {
-    const [brandStoreConfig, loyaltyPolicy, hours, holidays] = await Promise.all([
-      this.brandStoreConfigReader.getSnapshot(),
-      this.loyaltyPolicySettingsReader.getLoyaltyPolicySettings(),
-      this.ensureHoursInitialized(),
-      this.prisma.holiday.findMany({ orderBy: { date: 'asc' } }),
-    ]);
+    const [brandStoreConfig, loyaltyPolicy, hours, holidays] =
+      await Promise.all([
+        this.brandStoreConfigReader.getSnapshot(),
+        this.loyaltyPolicySettingsReader.getLoyaltyPolicySettings(),
+        this.ensureHoursInitialized(),
+        this.prisma.holiday.findMany({ orderBy: { date: 'asc' } }),
+      ]);
     const { brand, store } = brandStoreConfig;
 
     return {
@@ -676,7 +677,8 @@ export class AdminBusinessService {
         updates.isTemporarilyClosed !==
           storeConfigSnapshot.isTemporarilyClosed) ||
       (updates.temporaryCloseReason !== undefined &&
-        updates.temporaryCloseReason !== storeConfigSnapshot.temporaryCloseReason);
+        updates.temporaryCloseReason !==
+          storeConfigSnapshot.temporaryCloseReason);
 
     const currentStoreConfig = hasStoreConfigUpdates
       ? await this.ensureStoreConfig()
