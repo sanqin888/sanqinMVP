@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSelectedLayoutSegments } from "next/navigati
 import type { MouseEvent, ReactNode } from "react";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import { useSession } from "@/lib/auth-session";
-import { usePersistentCart } from "@/lib/cart";
+import { PersistentCartProvider, usePersistentCart } from "@/lib/cart";
 
 type Props = {
   locale: "zh" | "en";
@@ -33,16 +33,18 @@ export function CustomerSiteShellBoundary({
   }
 
   return (
-    <div className="min-h-screen bg-[#fffdfa] text-stone-900">
-      {localePreferenceSync}
-      {customerHeader}
+    <PersistentCartProvider>
+      <div className="min-h-screen bg-[#fffdfa] text-stone-900">
+        {localePreferenceSync}
+        {customerHeader}
 
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-0 sm:px-6 lg:px-8">
-        {children}
-      </main>
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-0 sm:px-6 lg:px-8">
+          {children}
+        </main>
 
-      {customerFooter}
-    </div>
+        {customerFooter}
+      </div>
+    </PersistentCartProvider>
   );
 }
 

@@ -1,7 +1,16 @@
 //Users/apple/sanqinMVP/apps/web/src/lib/cart.ts
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { CartEntry, SelectedOptionSnapshot } from "@/lib/order/shared";
 
 type CartItemOptions = CartEntry["options"];
@@ -216,7 +225,7 @@ function readInitialCart(): CartEntry[] {
   }
 }
 
-export function usePersistentCart() {
+function usePersistentCartState() {
   const [items, setItems] = useState<CartEntry[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -224,6 +233,19 @@ export function usePersistentCart() {
   useEffect(() => {
     setItems(readInitialCart());
     setIsInitialized(true);
+  }, []);
+
+  // 同步其他标签页对同一购物车的修改；当前标签页由共享 Context 实时同步。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY) return;
+      setItems(readInitialCart());
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
   // 每次 items 变化，写回 localStorage（首帧未初始化时不写）
@@ -302,6 +324,13 @@ export function usePersistentCart() {
   }, []);
 
   const clearCart = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // ignore write errors (e.g. private mode)
+      }
+    }
     setItems([]);
   }, []);
 
@@ -327,4 +356,21 @@ export function usePersistentCart() {
     removeItemsByStableId,
     totalQuantity,
   };
+}
+
+type PersistentCartContextValue = ReturnType<typeof usePersistentCartState>;
+
+const PersistentCartContext = createContext<PersistentCartContextValue | null>(null);
+
+export function PersistentCartProvider({ children }: { children: ReactNode }) {
+  const value = usePersistentCartState();
+  return createElement(PersistentCartContext.Provider, { value }, children);
+}
+
+export function usePersistentCart() {
+  const context = useContext(PersistentCartContext);
+  if (!context) {
+    throw new Error("usePersistentCart must be used within PersistentCartProvider");
+  }
+  return context;
 }
