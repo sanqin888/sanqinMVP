@@ -796,8 +796,12 @@ if (benefitsLoyaltyPolicyOwnership) {
     benefitsLoyaltyPolicyOwnership.forbiddenBrandStoreContractFields ?? [];
   const legacyAdminBusinessPolicyRoutes =
     benefitsLoyaltyPolicyOwnership.legacyAdminBusinessPolicyRoutes ?? [];
-  const legacyAdminBusinessPolicyAdapters =
-    benefitsLoyaltyPolicyOwnership.legacyAdminBusinessPolicyAdapters ?? [];
+  const contractedAdminBusinessController = toPosix(
+    benefitsLoyaltyPolicyOwnership.contractedAdminBusinessController,
+  );
+  const contractedAdminBusinessService = toPosix(
+    benefitsLoyaltyPolicyOwnership.contractedAdminBusinessService,
+  );
   const allowedBusinessConfigPolicyFiles = new Set(
     (benefitsLoyaltyPolicyOwnership.allowedBusinessConfigPolicyFiles ?? []).map(
       toPosix,
@@ -1062,17 +1066,96 @@ if (benefitsLoyaltyPolicyOwnership) {
     }
   }
 
-  for (const adapter of legacyAdminBusinessPolicyAdapters) {
-    const adapterPath = toPosix(adapter);
-    const absoluteAdapterPath = join(REPOSITORY_ROOT, adapterPath);
-    if (!existsSync(absoluteAdapterPath)) {
-      failures.push(`legacy Admin Business Loyalty adapter missing: ${adapterPath}`);
-      continue;
+  const contractedAdminBusinessControllerPath = join(
+    REPOSITORY_ROOT,
+    contractedAdminBusinessController,
+  );
+  if (!existsSync(contractedAdminBusinessControllerPath)) {
+    failures.push(
+      `contracted Admin Business controller missing: ${contractedAdminBusinessController}`,
+    );
+  } else {
+    const source = readFileSync(contractedAdminBusinessControllerPath, 'utf8');
+    for (const field of forbiddenBrandStoreContractFields) {
+      if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+        failures.push(
+          `contracted Admin Business request DTO must not expose Benefits policy field: ${contractedAdminBusinessController} -> ${field}`,
+        );
+      }
     }
-    const source = readFileSync(absoluteAdapterPath, 'utf8');
-    if (!source.includes('@compat benefits.business-config-loyalty-policy.v1')) {
+    if (source.includes('@compat benefits.business-config-loyalty-policy.v1')) {
       failures.push(
-        `legacy Admin Business Loyalty adapter must stay explicitly registered until contraction: ${adapterPath}`,
+        `contracted Admin Business controller must not retain the Loyalty compatibility annotation: ${contractedAdminBusinessController}`,
+      );
+    }
+  }
+
+  const contractedAdminBusinessServicePath = join(
+    REPOSITORY_ROOT,
+    contractedAdminBusinessService,
+  );
+  if (!existsSync(contractedAdminBusinessServicePath)) {
+    failures.push(
+      `contracted Admin Business service missing: ${contractedAdminBusinessService}`,
+    );
+  } else {
+    const source = readFileSync(contractedAdminBusinessServicePath, 'utf8');
+    const responseMatch = source.match(
+      /export type BusinessConfigResponse = \{([\s\S]*?)\n\};/,
+    );
+    if (!responseMatch) {
+      failures.push(
+        `contracted Admin Business response contract missing: ${contractedAdminBusinessService}`,
+      );
+    } else {
+      for (const field of forbiddenBrandStoreContractFields) {
+        if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(responseMatch[1])) {
+          failures.push(
+            `contracted Admin Business response must not expose Benefits policy field: ${contractedAdminBusinessService} -> ${field}`,
+          );
+        }
+      }
+    }
+
+    const rejectionListMatch = source.match(
+      /const LEGACY_LOYALTY_POLICY_FIELDS = \[([\s\S]*?)\]\s+as const;/,
+    );
+    if (!rejectionListMatch) {
+      failures.push(
+        `contracted Admin Business service must keep an explicit stale-client Loyalty rejection list: ${contractedAdminBusinessService}`,
+      );
+    } else {
+      for (const field of forbiddenBrandStoreContractFields) {
+        if (
+          !new RegExp(`['\"]${escapeRegExp(field)}['\"]`).test(
+            rejectionListMatch[1],
+          )
+        ) {
+          failures.push(
+            `contracted Admin Business stale-client rejection list missing Benefits field: ${contractedAdminBusinessService} -> ${field}`,
+          );
+        }
+      }
+    }
+
+    if (
+      source.includes('../../loyalty/') ||
+      source.includes('LOYALTY_POLICY_WRITER') ||
+      source.includes('LOYALTY_POLICY_SETTINGS_READER') ||
+      source.includes('updateLoyaltyPolicy') ||
+      source.includes('getLoyaltyPolicySettings') ||
+      source.includes('@compat benefits.business-config-loyalty-policy.v1')
+    ) {
+      failures.push(
+        `contracted Admin Business service must not read or write Benefits policy through the old Business config boundary: ${contractedAdminBusinessService}`,
+      );
+    }
+    if (
+      !source.includes('BadRequestException') ||
+      !source.includes('/admin/benefits/loyalty-policy')
+    ) {
+      failures.push(
+        `contracted Admin Business service must reject stale Loyalty payloads with the dedicated Benefits route: ${contractedAdminBusinessService}`,
       );
     }
   }

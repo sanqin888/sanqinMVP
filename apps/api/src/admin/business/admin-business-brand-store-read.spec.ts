@@ -1,5 +1,6 @@
+import { BadRequestException } from '@nestjs/common';
 import type { BrandStoreConfigSnapshot } from '../../store/public-api';
-import type { LoyaltyPolicySettings } from '../../loyalty/public-api';
+import { AdminBusinessController } from './admin-business.controller';
 import { AdminBusinessService } from './admin-business.service';
 
 const brandStoreConfig: BrandStoreConfigSnapshot = {
@@ -46,19 +47,6 @@ const brandStoreConfig: BrandStoreConfigSnapshot = {
   },
 };
 
-const loyaltyPolicy: LoyaltyPolicySettings = {
-  earnPtPerDollar: 0.01,
-  redeemDollarPerPoint: 1,
-  referralPtPerDollar: 0.01,
-  tierMultiplierBronze: 1,
-  tierMultiplierSilver: 2,
-  tierMultiplierGold: 3,
-  tierMultiplierPlatinum: 5,
-  tierThresholdSilver: 100000,
-  tierThresholdGold: 1000000,
-  tierThresholdPlatinum: 3000000,
-};
-
 function setup() {
   const prisma = {
     businessConfig: {
@@ -96,12 +84,6 @@ function setup() {
   const brandStoreConfigWriter = {
     updateConfig: jest.fn().mockResolvedValue(undefined),
   };
-  const loyaltyPolicySettingsReader = {
-    getLoyaltyPolicySettings: jest.fn().mockResolvedValue(loyaltyPolicy),
-  };
-  const loyaltyPolicyWriter = {
-    updateLoyaltyPolicy: jest.fn().mockResolvedValue(loyaltyPolicy),
-  };
   const uber = {
     syncStoreStatusToUber: jest.fn().mockResolvedValue({
       outcome: 'SUCCEEDED',
@@ -112,8 +94,6 @@ function setup() {
     prisma as never,
     brandStoreConfigReader as never,
     brandStoreConfigWriter as never,
-    loyaltyPolicySettingsReader as never,
-    loyaltyPolicyWriter as never,
     uber as never,
   );
 
@@ -122,20 +102,13 @@ function setup() {
     prisma,
     brandStoreConfigReader,
     brandStoreConfigWriter,
-    loyaltyPolicySettingsReader,
-    loyaltyPolicyWriter,
     uber,
   };
 }
 
 describe('AdminBusinessService canonical Brand/Store reads', () => {
   it('builds the admin response from owner readers only', async () => {
-    const {
-      service,
-      prisma,
-      brandStoreConfigReader,
-      loyaltyPolicySettingsReader,
-    } = setup();
+    const { service, prisma, brandStoreConfigReader } = setup();
 
     await expect(service.getConfig()).resolves.toEqual({
       timezone: 'America/Toronto',
@@ -165,7 +138,6 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
       supportEmail: 'support@sanq.ca',
       salesTaxRate: 0.13,
       wechatAlipayExchangeRate: 5.12,
-      ...loyaltyPolicy,
       enableUberDirect: true,
       allergyHandlingMode: 'DENY_LIST',
       unsupportedAllergens: ['PEANUTS'],
@@ -189,9 +161,6 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
     });
 
     expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(1);
-    expect(
-      loyaltyPolicySettingsReader.getLoyaltyPolicySettings,
-    ).toHaveBeenCalledTimes(1);
     expect(prisma.businessConfig.findUnique).not.toHaveBeenCalled();
     expect(prisma.businessConfig.create).not.toHaveBeenCalled();
   });
@@ -218,29 +187,43 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
   });
 
-  it('routes Brand/Store and retained Loyalty writes to their owner boundaries', async () => {
-    const {
-      service,
-      prisma,
-      brandStoreConfigWriter,
-      loyaltyPolicyWriter,
-      uber,
-    } = setup();
+  it('routes Brand/Store writes to their owner boundary', async () => {
+    const { service, prisma, brandStoreConfigWriter, uber } = setup();
 
     await service.updateConfig({
       brandNameEn: ' SanQ Updated ',
       salesTaxRate: 0.14999,
-      tierThresholdSilver: 123.6,
     });
 
     expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith({
       brand: { brandNameEn: 'SanQ Updated' },
       store: { salesTaxRate: 0.15 },
     });
-    expect(loyaltyPolicyWriter.updateLoyaltyPolicy).toHaveBeenCalledWith({
-      tierThresholdSilver: 123.6,
-    });
     expect(prisma.businessConfig.update).not.toHaveBeenCalled();
     expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
+  });
+
+  it('rejects Loyalty policy fields through both legacy Admin Business routes', async () => {
+    const { service, brandStoreConfigReader, brandStoreConfigWriter } = setup();
+    const controller = new AdminBusinessController(service);
+    const legacyPayload = { earnPtPerDollar: 0.02 } as never;
+    const expectRejected = async (request: Promise<unknown>) => {
+      try {
+        await request;
+        throw new Error('expected Admin Business Loyalty contract rejection');
+      } catch (error) {
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getStatus()).toBe(400);
+        expect((error as Error).message).toContain(
+          '/admin/benefits/loyalty-policy',
+        );
+      }
+    };
+
+    await expectRejected(controller.patchConfig(legacyPayload));
+    await expectRejected(controller.updateTemporaryClose(legacyPayload));
+
+    expect(brandStoreConfigReader.getStoreSnapshot).not.toHaveBeenCalled();
+    expect(brandStoreConfigWriter.updateConfig).not.toHaveBeenCalled();
   });
 });
