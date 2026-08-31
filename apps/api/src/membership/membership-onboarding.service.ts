@@ -100,7 +100,6 @@ export class MembershipOnboardingService {
       data: {
         birthdayYear,
         birthdayMonth,
-        birthdayDay: null,
         referredByUserId: referrerId,
         referralFinalizedAt: finalizedAt,
       },

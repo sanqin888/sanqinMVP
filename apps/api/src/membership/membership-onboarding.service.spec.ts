@@ -66,7 +66,6 @@ describe('MembershipOnboardingService', () => {
       data: {
         birthdayYear,
         birthdayMonth: 1,
-        birthdayDay: null,
         referredByUserId: 'referrer-id',
         referralFinalizedAt: expect.any(Date) as unknown as Date,
       },
@@ -151,7 +150,6 @@ describe('MembershipOnboardingService', () => {
       data: {
         birthdayYear,
         birthdayMonth: 6,
-        birthdayDay: null,
         referredByUserId: undefined,
         referralFinalizedAt: expect.any(Date) as unknown as Date,
       },

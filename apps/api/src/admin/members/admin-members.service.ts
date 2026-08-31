@@ -492,8 +492,8 @@ export class AdminMembersService {
       status: user.status,
       createdAt: user.createdAt.toISOString(),
       marketingEmailOptIn: user.marketingEmailOptIn ?? false,
+      birthdayYear: user.birthdayYear ?? null,
       birthdayMonth: user.birthdayMonth ?? null,
-      birthdayDay: user.birthdayDay ?? null,
       referrer: referrer
         ? {
             userStableId: referrer.userStableId,
@@ -733,8 +733,8 @@ export class AdminMembersService {
       lastName?: string | null;
       email?: string | null;
       phone?: string | null;
+      birthdayYear?: number | null;
       birthdayMonth?: number | null;
-      birthdayDay?: number | null;
     },
   ) {
     const user = await this.getUserByStableId(userStableId);
@@ -783,28 +783,29 @@ export class AdminMembersService {
     }
 
     const wantsBirthdayUpdate =
-      body.birthdayMonth !== undefined || body.birthdayDay !== undefined;
+      body.birthdayYear !== undefined || body.birthdayMonth !== undefined;
     if (wantsBirthdayUpdate) {
-      if (body.birthdayMonth == null && body.birthdayDay == null) {
+      if (body.birthdayYear == null && body.birthdayMonth == null) {
+        updateData.birthdayYear = null;
         updateData.birthdayMonth = null;
-        updateData.birthdayDay = null;
       } else {
+        const year = body.birthdayYear;
         const month = body.birthdayMonth;
-        const day = body.birthdayDay;
+        const currentYear = new Date().getUTCFullYear();
         const validBirthday =
+          typeof year === 'number' &&
           typeof month === 'number' &&
-          typeof day === 'number' &&
+          Number.isInteger(year) &&
           Number.isInteger(month) &&
-          Number.isInteger(day) &&
+          year >= 1900 &&
+          year <= currentYear &&
           month >= 1 &&
-          month <= 12 &&
-          day >= 1 &&
-          day <= 31;
+          month <= 12;
         if (!validBirthday) {
           throw new BadRequestException('invalid birthday');
         }
+        updateData.birthdayYear = year;
         updateData.birthdayMonth = month;
-        updateData.birthdayDay = day;
       }
     }
 
@@ -815,8 +816,8 @@ export class AdminMembersService {
         lastName: user.lastName,
         email: user.email,
         phone: user.phone,
+        birthdayYear: user.birthdayYear,
         birthdayMonth: user.birthdayMonth,
-        birthdayDay: user.birthdayDay,
       };
     }
 
@@ -829,8 +830,8 @@ export class AdminMembersService {
         lastName: true,
         email: true,
         phone: true,
+        birthdayYear: true,
         birthdayMonth: true,
-        birthdayDay: true,
         phoneVerifiedAt: true,
       },
     });

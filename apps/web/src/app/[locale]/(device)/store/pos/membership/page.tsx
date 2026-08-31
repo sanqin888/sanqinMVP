@@ -220,8 +220,8 @@ type MemberDetail = {
   status: string;
   createdAt: string;
   marketingEmailOptIn: boolean;
+  birthdayYear: number | null;
   birthdayMonth: number | null;
-  birthdayDay: number | null;
   account: {
     tier: string;
     points: number;
