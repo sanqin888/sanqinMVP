@@ -25,8 +25,5 @@ export function resolveRequestedLoyaltyRedeemCents(
   requestedPoints: number,
   redeemDollarPerPoint: number,
 ): number {
-  return Math.max(
-    0,
-    Math.round(requestedPoints * redeemDollarPerPoint * 100),
-  );
+  return Math.max(0, Math.round(requestedPoints * redeemDollarPerPoint * 100));
 }

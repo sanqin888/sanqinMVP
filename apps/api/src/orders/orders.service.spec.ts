@@ -410,7 +410,9 @@ describe('OrdersService', () => {
     expect(quote.loyaltyRedeemCents).toBe(200);
     expect(quote.taxCents).toBe(104);
     expect(quote.totalCents).toBe(904);
-    expect(loyaltyPolicyReader.getLoyaltyPolicySnapshot).toHaveBeenCalledTimes(1);
+    expect(loyaltyPolicyReader.getLoyaltyPolicySnapshot).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it('keeps hidden menu items available to the in-store POS channel', async () => {

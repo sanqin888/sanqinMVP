@@ -14,9 +14,9 @@ describe('Orders loyalty redemption characterization', () => {
   });
 
   it('converts redeem cents to points with a non-default dollar-per-point rate', () => {
-    expect(
-      resolveRequestedLoyaltyPoints({ redeemValueCents: 250 }, 0.5),
-    ).toBe(5);
+    expect(resolveRequestedLoyaltyPoints({ redeemValueCents: 250 }, 0.5)).toBe(
+      5,
+    );
   });
 
   it('preserves the existing no-conversion behavior for a non-positive rate', () => {
