@@ -651,8 +651,15 @@ if (benefitsLoyaltyPolicyOwnership) {
   const adminWriterAdapter = toPosix(
     benefitsLoyaltyPolicyOwnership.adminWriterAdapter,
   );
+  const posReaderAdapter = toPosix(
+    benefitsLoyaltyPolicyOwnership.posReaderAdapter,
+  );
+  const webApiClient = toPosix(benefitsLoyaltyPolicyOwnership.webApiClient);
   const webWriterConsumer = toPosix(
     benefitsLoyaltyPolicyOwnership.webWriterConsumer,
+  );
+  const webPosReaderConsumer = toPosix(
+    benefitsLoyaltyPolicyOwnership.webPosReaderConsumer,
   );
   const webSettingsConsumer = toPosix(
     benefitsLoyaltyPolicyOwnership.webSettingsConsumer,
@@ -776,6 +783,7 @@ if (benefitsLoyaltyPolicyOwnership) {
     const writerSource = readFileSync(writerImplementationPath, 'utf8');
     if (
       !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
+      !writerSource.includes('getLoyaltyPolicySettings') ||
       !/\.\$transaction\s*\(/.test(writerSource) ||
       !/tx\.brandConfig\.findUnique\s*\(/.test(writerSource) ||
       !/tx\.businessConfig\.update\s*\(/.test(writerSource) ||
@@ -814,36 +822,101 @@ if (benefitsLoyaltyPolicyOwnership) {
     });
     if (
       !importsPublicSurface ||
+      !source.includes('LOYALTY_POLICY_SETTINGS_READER') ||
       !source.includes('LOYALTY_POLICY_WRITER') ||
+      !source.includes('getLoyaltyPolicySettings') ||
       !source.includes("@Controller('admin/benefits/loyalty-policy')") ||
       !source.includes("@Roles('ADMIN')") ||
+      !source.includes("@Roles('ADMIN', 'STAFF')") ||
       !source.includes('AdminMfaGuard')
     ) {
       failures.push(
-        `Admin loyalty policy writes must use the Benefits public writer boundary with ADMIN MFA: ${adminWriterAdapter}`,
+        `Admin loyalty policy reads/writes must use the Benefits public settings boundary with ADMIN MFA: ${adminWriterAdapter}`,
       );
     }
   }
 
-  for (const webPath of [webWriterConsumer, webSettingsConsumer]) {
+  const posReaderAdapterPath = join(REPOSITORY_ROOT, posReaderAdapter);
+  if (!existsSync(posReaderAdapterPath)) {
+    failures.push(`POS Benefits loyalty policy adapter missing: ${posReaderAdapter}`);
+  } else {
+    const source = readFileSync(posReaderAdapterPath, 'utf8');
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(posReaderAdapterPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    if (
+      !importsPublicSurface ||
+      !source.includes('LOYALTY_POLICY_READER') ||
+      !source.includes('getLoyaltyPolicySnapshot') ||
+      !source.includes("@Controller('pos/loyalty-policy')") ||
+      !source.includes("@Roles('ADMIN', 'STAFF')") ||
+      !source.includes('PosDeviceGuard')
+    ) {
+      failures.push(
+        `POS loyalty policy reads must use the Benefits public runtime reader with device auth: ${posReaderAdapter}`,
+      );
+    }
+  }
+
+  for (const webPath of [
+    webApiClient,
+    webWriterConsumer,
+    webPosReaderConsumer,
+    webSettingsConsumer,
+  ]) {
     if (!existsSync(join(REPOSITORY_ROOT, webPath))) {
       failures.push(`Benefits loyalty policy Web consumer missing: ${webPath}`);
+    }
+  }
+
+  const webApiClientPath = join(REPOSITORY_ROOT, webApiClient);
+  if (existsSync(webApiClientPath)) {
+    const source = readFileSync(webApiClientPath, 'utf8');
+    if (
+      !source.includes('/admin/benefits/loyalty-policy') ||
+      !source.includes('/pos/loyalty-policy') ||
+      !source.includes('fetchAdminLoyaltyPolicySettings') ||
+      !source.includes('updateAdminLoyaltyPolicySettings') ||
+      !source.includes('fetchPosLoyaltyPolicy')
+    ) {
+      failures.push(
+        `Web Loyalty API client must own the Admin and POS Benefits routes: ${webApiClient}`,
+      );
     }
   }
 
   const webWriterConsumerPath = join(REPOSITORY_ROOT, webWriterConsumer);
   if (existsSync(webWriterConsumerPath)) {
     const source = readFileSync(webWriterConsumerPath, 'utf8');
-    if (!source.includes('/admin/benefits/loyalty-policy')) {
+    if (
+      !source.includes('@/lib/api/loyalty') ||
+      !source.includes('fetchAdminLoyaltyPolicySettings') ||
+      !source.includes('updateAdminLoyaltyPolicySettings') ||
+      source.includes('/admin/business/config')
+    ) {
       failures.push(
-        `Admin Members loyalty policy save must use the Benefits endpoint: ${webWriterConsumer}`,
+        `Admin Members loyalty policy reads/writes must use the Web Benefits API client and not /admin/business/config: ${webWriterConsumer}`,
       );
     }
-    const legacyWriterPattern =
-      /apiFetch<LoyaltyConfigDto>\(\s*["']\/admin\/business\/config["']\s*,\s*\{[\s\S]{0,300}?method:\s*["']PATCH["']/;
-    if (legacyWriterPattern.test(source)) {
+  }
+
+  const webPosReaderConsumerPath = join(REPOSITORY_ROOT, webPosReaderConsumer);
+  if (existsSync(webPosReaderConsumerPath)) {
+    const source = readFileSync(webPosReaderConsumerPath, 'utf8');
+    if (
+      !source.includes('@/lib/api/loyalty') ||
+      !source.includes('fetchPosLoyaltyPolicy') ||
+      source.includes('BusinessConfigLite') ||
+      source.includes('/admin/business/config')
+    ) {
       failures.push(
-        `Admin Members loyalty policy save must not regress to /admin/business/config: ${webWriterConsumer}`,
+        `POS payment loyalty policy reads must use the POS Benefits API client and not Admin Business config: ${webPosReaderConsumer}`,
       );
     }
   }

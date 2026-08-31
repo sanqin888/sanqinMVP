@@ -7,6 +7,7 @@ import { TAX_RATE } from "@/lib/order/shared";
 import type { CreateOrderInput } from "@shared/order";
 import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
+import { fetchPosLoyaltyPolicy } from "@/lib/api/loyalty";
 import {
   advanceOrder,
   cancelPosCardPayment,
@@ -29,13 +30,6 @@ import type { PaymentMethod } from "@/lib/api/pos";
 
 type FulfillmentType = "pickup" | "dine_in";
 type PosOrderChannel = "in_store" | "ubereats";
-type BusinessConfigLite = {
-  earnPtPerDollar: number;
-  tierMultiplierBronze: number;
-  tierMultiplierSilver: number;
-  tierMultiplierGold: number;
-  tierMultiplierPlatinum: number;
-};
 
 type CreatePosOrderResponse = {
   orderStableId: string;
@@ -508,21 +502,16 @@ export default function StorePosPaymentPage() {
 
   useEffect(() => {
     let active = true;
-    apiFetch<BusinessConfigLite>("/admin/business/config")
-      .then((config) => {
+    void fetchPosLoyaltyPolicy()
+      .then((policy) => {
         if (!active) return;
-        if (typeof config.earnPtPerDollar === "number") setEarnRate(config.earnPtPerDollar);
-        if (typeof config.tierMultiplierBronze === "number") {
-          setTierMultipliers({
-            BRONZE: config.tierMultiplierBronze,
-            SILVER: config.tierMultiplierSilver,
-            GOLD: config.tierMultiplierGold,
-            PLATINUM: config.tierMultiplierPlatinum,
-          });
-        }
+        setEarnRate(policy.earnPtPerDollar);
+        setTierMultipliers(policy.tierMultipliers);
       })
-      .catch((err) => console.warn("Failed to load POS business config:", err));
-    return () => { active = false; };
+      .catch((err) => console.warn("Failed to load POS loyalty policy:", err));
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {

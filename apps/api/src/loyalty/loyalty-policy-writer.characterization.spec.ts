@@ -116,6 +116,19 @@ describe('Loyalty policy writer characterization', () => {
     });
   });
 
+  it('reads editable settings directly from canonical config without defaults', async () => {
+    const brandConfigFindUnique = jest.fn().mockResolvedValue(settings);
+    const writer = new PrismaLoyaltyPolicyWriter({
+      brandConfig: { findUnique: brandConfigFindUnique },
+    } as never);
+
+    await expect(writer.getLoyaltyPolicySettings()).resolves.toEqual(settings);
+    expect(brandConfigFindUnique).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: settingsSelect,
+    });
+  });
+
   it('does not write for an empty patch and returns the current config value', async () => {
     const brandConfigFindUnique = jest.fn().mockResolvedValue(settings);
     const transaction = jest.fn();

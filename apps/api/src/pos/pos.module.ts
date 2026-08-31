@@ -15,6 +15,8 @@ import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.serv
 import { StoreStatusModule } from '../store/store-status.module';
 import { PosExchangeRateModule } from './pos-exchange-rate.module';
 import { PosExchangeRateController } from './pos-exchange-rate.controller';
+import { LoyaltyModule } from '../loyalty/public-api';
+import { PosLoyaltyPolicyController } from './pos-loyalty-policy.controller';
 
 @Module({
   imports: [
@@ -25,12 +27,14 @@ import { PosExchangeRateController } from './pos-exchange-rate.controller';
     UberEatsModule,
     StoreStatusModule,
     PosExchangeRateModule,
+    LoyaltyModule,
   ],
   controllers: [
     PosSummaryController,
     PosOrdersController,
     PosStoreStatusController,
     PosExchangeRateController,
+    PosLoyaltyPolicyController,
   ],
   providers: [
     PosSummaryService,

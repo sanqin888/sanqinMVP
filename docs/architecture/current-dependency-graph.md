@@ -130,11 +130,12 @@ pair fails CI.
   stale could revert Benefits values on a later unrelated legacy config write.
 - The general Admin Settings page no longer declares or resubmits Loyalty policy
   fields. `/admin/business/config` still accepts those fields only as an explicit
-  rollback compatibility surface; no known Web Loyalty save path uses it.
-- The POS payment page still reads earn rate and tier multipliers from the legacy
-  combined `/admin/business/config` response. That payment-adjacent reader remains
-  outside this writer slice and must move before BusinessConfig Loyalty fields can
-  be contracted.
+  rollback compatibility surface; no known Web Loyalty read/write path uses it.
+- Admin Members now reads editable settings from `GET /admin/benefits/loyalty-policy`
+  through the Benefits settings reader, while POS payment reads the runtime policy
+  from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
+  Session/Role/PosDevice guards. Both browser consumers use the centralized Web
+  Loyalty API client rather than the legacy Admin Business response.
 - `benefits.business-config-loyalty-policy.v1` records this transitional dual-write
   state. Dedicated Benefits persistence and removal of the legacy Admin Business
   policy surface/trigger remain a later authorized Prisma expand-contract step.

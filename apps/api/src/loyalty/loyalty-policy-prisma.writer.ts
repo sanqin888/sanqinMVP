@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   LoyaltyPolicySettings,
+  LoyaltyPolicySettingsReaderPort,
   LoyaltyPolicyUpdateInput,
   LoyaltyPolicyWriterPort,
 } from './loyalty-policy.contract';
@@ -30,8 +31,19 @@ function requireLoyaltyPolicySettings(
 }
 
 @Injectable()
-export class PrismaLoyaltyPolicyWriter implements LoyaltyPolicyWriterPort {
+export class PrismaLoyaltyPolicyWriter
+  implements LoyaltyPolicySettingsReaderPort, LoyaltyPolicyWriterPort
+{
   constructor(private readonly prisma: PrismaService) {}
+
+  async getLoyaltyPolicySettings(): Promise<LoyaltyPolicySettings> {
+    return requireLoyaltyPolicySettings(
+      await this.prisma.brandConfig.findUnique({
+        where: { id: 1 },
+        select: LOYALTY_POLICY_SETTINGS_SELECT,
+      }),
+    );
+  }
 
   // @compat benefits.business-config-loyalty-policy.v1
   async updateLoyaltyPolicy(
@@ -39,12 +51,7 @@ export class PrismaLoyaltyPolicyWriter implements LoyaltyPolicyWriterPort {
   ): Promise<LoyaltyPolicySettings> {
     const patch = normalizeLoyaltyPolicyUpdate(input);
     if (Object.keys(patch).length === 0) {
-      return requireLoyaltyPolicySettings(
-        await this.prisma.brandConfig.findUnique({
-          where: { id: 1 },
-          select: LOYALTY_POLICY_SETTINGS_SELECT,
-        }),
-      );
+      return this.getLoyaltyPolicySettings();
     }
 
     return this.prisma.$transaction(async (tx) => {

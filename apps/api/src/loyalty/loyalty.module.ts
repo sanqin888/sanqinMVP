@@ -8,6 +8,7 @@ import { LoyaltyController } from './loyalty.controller';
 import { LoyaltyEventProcessor } from './loyalty-event.processor';
 import {
   LOYALTY_POLICY_READER,
+  LOYALTY_POLICY_SETTINGS_READER,
   LOYALTY_POLICY_WRITER,
 } from './loyalty-policy.contract';
 import { PrismaLoyaltyPolicyWriter } from './loyalty-policy-prisma.writer';
@@ -22,12 +23,21 @@ import { PrismaLoyaltyPolicyWriter } from './loyalty-policy-prisma.writer';
       useExisting: LoyaltyService,
     },
     {
+      provide: LOYALTY_POLICY_SETTINGS_READER,
+      useExisting: PrismaLoyaltyPolicyWriter,
+    },
+    {
       provide: LOYALTY_POLICY_WRITER,
       useExisting: PrismaLoyaltyPolicyWriter,
     },
     LoyaltyEventProcessor,
   ],
   controllers: [LoyaltyController],
-  exports: [LoyaltyService, LOYALTY_POLICY_READER, LOYALTY_POLICY_WRITER],
+  exports: [
+    LoyaltyService,
+    LOYALTY_POLICY_READER,
+    LOYALTY_POLICY_SETTINGS_READER,
+    LOYALTY_POLICY_WRITER,
+  ],
 })
 export class LoyaltyModule {}

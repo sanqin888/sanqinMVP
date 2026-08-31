@@ -1,4 +1,7 @@
 export const LOYALTY_POLICY_READER = Symbol('LOYALTY_POLICY_READER');
+export const LOYALTY_POLICY_SETTINGS_READER = Symbol(
+  'LOYALTY_POLICY_SETTINGS_READER',
+);
 export const LOYALTY_POLICY_WRITER = Symbol('LOYALTY_POLICY_WRITER');
 
 export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
@@ -39,6 +42,10 @@ export type LoyaltyPolicyUpdateInput = {
 
 export interface LoyaltyPolicyReaderPort {
   getLoyaltyPolicySnapshot(): Promise<LoyaltyPolicySnapshot>;
+}
+
+export interface LoyaltyPolicySettingsReaderPort {
+  getLoyaltyPolicySettings(): Promise<LoyaltyPolicySettings>;
 }
 
 export interface LoyaltyPolicyWriterPort {
