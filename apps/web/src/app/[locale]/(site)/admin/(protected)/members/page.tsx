@@ -388,7 +388,7 @@ export default function AdminMembersPage() {
     setLoyaltyError(null);
     setLoyaltySuccess(null);
     try {
-      const updated = await apiFetch<LoyaltyConfigDto>("/admin/business/config", {
+      const updated = await apiFetch<LoyaltyConfigDto>("/admin/benefits/loyalty-policy", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

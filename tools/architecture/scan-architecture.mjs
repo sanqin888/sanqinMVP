@@ -636,6 +636,9 @@ if (benefitsLoyaltyPolicyOwnership) {
   const ownerRoot = toPosix(benefitsLoyaltyPolicyOwnership.ownerRoot);
   const publicSurface = toPosix(benefitsLoyaltyPolicyOwnership.publicSurface);
   const implementation = toPosix(benefitsLoyaltyPolicyOwnership.implementation);
+  const writerImplementation = toPosix(
+    benefitsLoyaltyPolicyOwnership.writerImplementation,
+  );
   const contractImplementation = toPosix(
     benefitsLoyaltyPolicyOwnership.contractImplementation,
   );
@@ -644,6 +647,15 @@ if (benefitsLoyaltyPolicyOwnership) {
   );
   const compositionModule = toPosix(
     benefitsLoyaltyPolicyOwnership.compositionModule,
+  );
+  const adminWriterAdapter = toPosix(
+    benefitsLoyaltyPolicyOwnership.adminWriterAdapter,
+  );
+  const webWriterConsumer = toPosix(
+    benefitsLoyaltyPolicyOwnership.webWriterConsumer,
+  );
+  const webSettingsConsumer = toPosix(
+    benefitsLoyaltyPolicyOwnership.webSettingsConsumer,
   );
   const publicSymbols = benefitsLoyaltyPolicyOwnership.publicSymbols ?? [];
   const transitionalStorageDelegate =
@@ -659,9 +671,11 @@ if (benefitsLoyaltyPolicyOwnership) {
   for (const boundaryPath of [
     publicSurface,
     implementation,
+    writerImplementation,
     contractImplementation,
     policyImplementation,
     compositionModule,
+    adminWriterAdapter,
   ]) {
     if (contextOf(boundaryPath) !== ownerContext) {
       failures.push(
@@ -757,6 +771,95 @@ if (benefitsLoyaltyPolicyOwnership) {
     }
   }
 
+  const writerImplementationPath = join(REPOSITORY_ROOT, writerImplementation);
+  if (existsSync(writerImplementationPath)) {
+    const writerSource = readFileSync(writerImplementationPath, 'utf8');
+    if (
+      !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
+      !/\.\$transaction\s*\(/.test(writerSource) ||
+      !/tx\.brandConfig\.findUnique\s*\(/.test(writerSource) ||
+      !/tx\.businessConfig\.update\s*\(/.test(writerSource) ||
+      !/tx\.brandConfig\.update\s*\(/.test(writerSource)
+    ) {
+      failures.push(
+        `Benefits loyalty policy writer must read canonical config and dual-write canonical plus compatibility storage in one transaction: ${writerImplementation}`,
+      );
+    }
+    if (
+      writerSource.includes('DEFAULT_LOYALTY_POLICY') ||
+      /(?:brandConfig|businessConfig)\.upsert\s*\(/.test(writerSource)
+    ) {
+      failures.push(
+        `Benefits loyalty policy writer must not invent runtime defaults or create missing policy config: ${writerImplementation}`,
+      );
+    }
+    if (!writerSource.includes('@compat benefits.business-config-loyalty-policy.v1')) {
+      failures.push(
+        `Benefits loyalty policy writer compatibility annotation missing: ${writerImplementation}`,
+      );
+    }
+  }
+
+  const adminWriterAdapterPath = join(REPOSITORY_ROOT, adminWriterAdapter);
+  if (existsSync(adminWriterAdapterPath)) {
+    const source = readFileSync(adminWriterAdapterPath, 'utf8');
+    const importsPublicSurface = importSpecifiers(source).some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      return (
+        resolveTarget(adminWriterAdapterPath, specifier).replace(
+          /\.(?:[cm]?[jt]sx?)$/,
+          '',
+        ) === publicSurface.replace(/\.(?:[cm]?[jt]sx?)$/, '')
+      );
+    });
+    if (
+      !importsPublicSurface ||
+      !source.includes('LOYALTY_POLICY_WRITER') ||
+      !source.includes("@Controller('admin/benefits/loyalty-policy')") ||
+      !source.includes("@Roles('ADMIN')") ||
+      !source.includes('AdminMfaGuard')
+    ) {
+      failures.push(
+        `Admin loyalty policy writes must use the Benefits public writer boundary with ADMIN MFA: ${adminWriterAdapter}`,
+      );
+    }
+  }
+
+  for (const webPath of [webWriterConsumer, webSettingsConsumer]) {
+    if (!existsSync(join(REPOSITORY_ROOT, webPath))) {
+      failures.push(`Benefits loyalty policy Web consumer missing: ${webPath}`);
+    }
+  }
+
+  const webWriterConsumerPath = join(REPOSITORY_ROOT, webWriterConsumer);
+  if (existsSync(webWriterConsumerPath)) {
+    const source = readFileSync(webWriterConsumerPath, 'utf8');
+    if (!source.includes('/admin/benefits/loyalty-policy')) {
+      failures.push(
+        `Admin Members loyalty policy save must use the Benefits endpoint: ${webWriterConsumer}`,
+      );
+    }
+    const legacyWriterPattern =
+      /apiFetch<LoyaltyConfigDto>\(\s*["']\/admin\/business\/config["']\s*,\s*\{[\s\S]{0,300}?method:\s*["']PATCH["']/;
+    if (legacyWriterPattern.test(source)) {
+      failures.push(
+        `Admin Members loyalty policy save must not regress to /admin/business/config: ${webWriterConsumer}`,
+      );
+    }
+  }
+
+  const webSettingsConsumerPath = join(REPOSITORY_ROOT, webSettingsConsumer);
+  if (existsSync(webSettingsConsumerPath)) {
+    const source = readFileSync(webSettingsConsumerPath, 'utf8');
+    for (const field of forbiddenBrandStoreContractFields) {
+      if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+        failures.push(
+          `Admin Settings must not own or resubmit Benefits loyalty policy field: ${webSettingsConsumer} -> ${field}`,
+        );
+      }
+    }
+  }
+
   for (const consumer of migratedLegacyConsumers) {
     const consumerPath = toPosix(consumer);
     const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
@@ -794,8 +897,8 @@ if (benefitsLoyaltyPolicyOwnership) {
   }
 
   const privateTargets = new Set(
-    [contractImplementation, policyImplementation].map((path) =>
-      path.replace(/\.(?:[cm]?[jt]sx?)$/, ''),
+    [contractImplementation, policyImplementation, writerImplementation].map(
+      (path) => path.replace(/\.(?:[cm]?[jt]sx?)$/, ''),
     ),
   );
   for (const absolutePath of sourceFiles) {
