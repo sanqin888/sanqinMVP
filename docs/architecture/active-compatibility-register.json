@@ -40,13 +40,13 @@
       "new_owner": "Benefits-owned LoyaltyPolicy reader/writer boundary; BrandConfig columns are transitional canonical persistence until a dedicated Benefits schema migration",
       "dual_write_or_read": [
         "The Benefits writer validates policy patches, reads the existing BrandConfig policy as canonical state without runtime defaults, and updates BrandConfig plus the BusinessConfig compatibility copy in one transaction so later unrelated BusinessConfig-triggered syncs cannot restore stale Loyalty values",
-        "Admin Members writes use /admin/benefits/loyalty-policy and Admin Settings no longer owns or resubmits Loyalty fields; the old Admin Business write surface remains rollback compatibility only",
-        "All LoyaltyService transaction and non-transaction readers plus Admin member tier progress read Benefits policy from BrandConfig",
-        "The POS payment page still reads earn rate and tier multipliers from the legacy /admin/business/config response and remains a separate payment-adjacent compatibility reader"
+        "Admin Members reads and writes use /admin/benefits/loyalty-policy; Admin Settings no longer owns or resubmits Loyalty fields; the old Admin Business write surface remains rollback compatibility only",
+        "POS payment reads the runtime Benefits policy through /pos/loyalty-policy with Session, Role, and PosDevice guards instead of reading Admin Business config",
+        "All LoyaltyService transaction and non-transaction readers plus Admin member tier progress read Benefits policy from BrandConfig"
       ],
-      "parity_metric": "BusinessConfig and BrandConfig loyalty policy fields must remain zero-diff across one complete business cycle, and known Web Loyalty writes through /admin/business/config must remain zero",
-      "rollback": "Point the Admin Members save action back to the legacy /admin/business/config surface while retaining the compatibility copy and trigger; never rewrite loyalty ledger history",
-      "exit_criteria": "No active consumer writes Loyalty policy through Admin Business, remaining legacy readers such as POS payment no longer depend on BusinessConfig Loyalty fields, dedicated Benefits persistence replaces duplicated BusinessConfig/BrandConfig loyalty columns, parity is proven, and the compatibility writer/trigger can be contracted",
+      "parity_metric": "BusinessConfig and BrandConfig loyalty policy fields must remain zero-diff across one complete business cycle; known Web Loyalty reads and writes through /admin/business/config must remain zero",
+      "rollback": "Point Admin Members read/write or the POS payment policy read back to the legacy /admin/business/config surface only as a scoped cutback while retaining the compatibility copy and trigger; never rewrite loyalty ledger history",
+      "exit_criteria": "No active consumer reads or writes Loyalty policy through Admin Business, dedicated Benefits persistence replaces duplicated BusinessConfig/BrandConfig loyalty columns, parity is proven, and the compatibility writer/trigger can be contracted",
       "remove_pr": "Authorized Benefits persistence expand/backfill/cutover followed by BusinessConfig compatibility contraction",
       "deadline": "Before Phase 2 Identity/Customer/Benefits exit",
       "evidence": [
@@ -54,6 +54,8 @@
         "apps/api/src/loyalty/loyalty-policy.contract.ts",
         "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts",
         "apps/api/src/admin/benefits/admin-loyalty-policy.controller.ts",
+        "apps/api/src/pos/pos-summary.controller.ts",
+        "apps/web/src/lib/api/loyalty.ts",
         "apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx",
         "apps/api/prisma/migrations/20260819233000_add_store_config_foundation/migration.sql"
       ]
