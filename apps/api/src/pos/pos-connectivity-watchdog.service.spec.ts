@@ -344,7 +344,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
         temporaryCloseReason: null,
       },
     });
-    expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith({
+    expect(
+      posGateway.publishCustomerOrderingStatusUpdate,
+    ).toHaveBeenCalledWith({
       isTemporarilyClosed: false,
       autoResumeAt: null,
     });
