@@ -3210,7 +3210,6 @@ export class OrdersService {
                 userId,
                 orderId,
                 amountCents: balanceUsedCents,
-                sourceKey: 'ORDER',
               });
             }
 

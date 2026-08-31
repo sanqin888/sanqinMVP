@@ -916,9 +916,8 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     userId: string;
     orderId: string;
     amountCents: number;
-    sourceKey?: string;
   }): Promise<void> {
-    const { tx, userId, orderId, amountCents, sourceKey } = params;
+    const { tx, userId, orderId, amountCents } = params;
     if (amountCents <= 0) return;
 
     const account = await this.ensureAccountWithTx(tx, userId);
@@ -944,8 +943,9 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     }
 
     const newBalance = account.balanceMicro - deductMicro;
-    const sk = sourceKey || LEDGER_SOURCE_ORDER;
+    const sk = LEDGER_SOURCE_PAYMENT_BALANCE;
 
+    // 储值余额使用独立 sourceKey，允许与同一订单的积分抵扣账本并存。
     // 检查是否已经扣过（幂等）
     const existed = await tx.loyaltyLedger.findFirst({
       where: {
