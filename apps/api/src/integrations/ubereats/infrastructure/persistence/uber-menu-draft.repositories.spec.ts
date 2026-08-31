@@ -110,15 +110,14 @@ describe('split Uber menu repositories field mapping', () => {
   });
 
   it('maps business schedule', async () => {
+    const storeConfig = {
+      getStoreConfig: jest.fn().mockResolvedValue({
+        timezone: 'Asia/Shanghai',
+        salesTaxRate: 0.1,
+      }),
+    };
     const repository = new UberBusinessSchedulePrismaRepository(
       db({
-        businessConfig: {
-          findUnique: jest.fn().mockResolvedValue({
-            timezone: 'Asia/Shanghai',
-            salesTaxRate: 0.1,
-            id: 1,
-          }),
-        },
         businessHour: {
           findMany: jest.fn().mockResolvedValue([
             {
@@ -131,6 +130,7 @@ describe('split Uber menu repositories field mapping', () => {
           ]),
         },
       }),
+      storeConfig as never,
     );
     expect(await repository.get()).toEqual({
       timezone: 'Asia/Shanghai',

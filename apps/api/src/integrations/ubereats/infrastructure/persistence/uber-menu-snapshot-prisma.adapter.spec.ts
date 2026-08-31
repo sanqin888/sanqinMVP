@@ -13,18 +13,15 @@ type SnapshotRows = {
 
 describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
   const setup = (
-    businessConfig: {
-      timezone: string | null;
-      salesTaxRate: number | null;
+    storeConfig: {
+      timezone: string;
+      salesTaxRate: number;
     },
     rows: SnapshotRows = {},
   ) => {
     const prisma = {
       uberStoreMapping: {
         findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber-store' }),
-      },
-      businessConfig: {
-        findUnique: jest.fn().mockResolvedValue(businessConfig),
       },
       menuCategory: {
         findMany: jest.fn().mockResolvedValue(rows.categories ?? []),
@@ -51,9 +48,16 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
         findMany: jest.fn().mockResolvedValue(rows.restoreEvents ?? []),
       },
     };
+    const storeConfigQuery = {
+      getStoreConfig: jest.fn().mockResolvedValue(storeConfig),
+    };
     return {
       prisma,
-      adapter: new UberMenuSnapshotPrismaAdapter(prisma as never),
+      storeConfigQuery,
+      adapter: new UberMenuSnapshotPrismaAdapter(
+        prisma as never,
+        storeConfigQuery as never,
+      ),
     };
   };
 
@@ -101,7 +105,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     ],
   };
 
-  it('loads timezone and converts BusinessConfig.salesTaxRate to Uber percentage', async () => {
+  it('loads canonical store timezone and converts salesTaxRate to Uber percentage', async () => {
     const x = setup({ timezone: ' America/Toronto ', salesTaxRate: 0.13 });
 
     const snapshot = await x.adapter.loadPublishSnapshot(
@@ -109,10 +113,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
       'uber-store',
     );
 
-    expect(x.prisma.businessConfig.findUnique).toHaveBeenCalledWith({
-      where: { id: 1 },
-      select: { timezone: true, salesTaxRate: true },
-    });
+    expect(x.storeConfigQuery.getStoreConfig).toHaveBeenCalledTimes(1);
     expect(snapshot).toMatchObject({
       timezone: 'America/Toronto',
       taxRate: 13,
@@ -409,7 +410,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     );
   });
 
-  it('rejects percentage-formatted BusinessConfig.salesTaxRate', async () => {
+  it('rejects percentage-formatted canonical salesTaxRate', async () => {
     const x = setup({ timezone: 'America/Toronto', salesTaxRate: 13 });
 
     await expect(

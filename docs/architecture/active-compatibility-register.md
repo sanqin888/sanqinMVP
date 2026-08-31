@@ -11,7 +11,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `brand-store.business-config.v1` | active | BusinessConfig → BrandConfig + StoreConfig snapshot; POS and Admin Business reads are canonical, POS/Admin compatibility writes plus Uber legacy reads remain | All field owners assigned; difference report zero for one business cycle; old reads/writes zero | Before Phase 2 exit |
+| `brand-store.business-config.v1` | active | BusinessConfig → BrandConfig + StoreConfig snapshot; Brand/Store production reads are canonical, while POS/Admin compatibility writes remain | All field owners assigned; difference report zero for one business cycle; old reads/writes zero | Before Phase 2 exit |
 | `brand-store.default-store-identity.v1` | active | implicit `default` store → explicit `storeStableId` | Rows backfilled; implicit resolution metric zero; schema default removed | Before Phase 2 exit |
 | `web.api-envelope-direct-payload.v1` | active | remaining Checkout legacy browser calls → strict canonical `apiFetch`/`serverApiFetch` | POS session/login direct fetches stay at zero; remaining Checkout 6 reach zero; page-local Checkout envelope/direct-payload reader removed | Before Phase 1 exit |
 | `payments.pos-card-legacy.v1` | frozen | direct paid Order → Unified Payment Core + Terminal + finalize | Clover support blocker resolved; real device accepted; one settlement cycle reconciled; legacy calls zero | Before Phase 5B exit |

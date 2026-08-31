@@ -1,5 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_STORE_CONFIG_QUERY,
+  type UberStoreConfigQueryPort,
+} from '../../application/shared/uber-store-config.port';
 import type {
   UberMenuPublishSnapshot,
   UberMenuSnapshotRepositoryPort,
@@ -55,7 +59,11 @@ const restoredItemIds = (
 /** Prisma rows are translated here; the application boundary only sees stable menu DTOs. */
 @Injectable()
 export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepositoryPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(UBER_STORE_CONFIG_QUERY)
+    private readonly storeConfig: UberStoreConfigQueryPort,
+  ) {}
 
   async loadPublishSnapshot(
     posStoreId: string,
@@ -67,7 +75,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     );
     const [
       mapping,
-      businessConfig,
+      storeConfig,
       categories,
       menuItems,
       templates,
@@ -85,10 +93,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
         select: { uberStoreId: true },
       }),
-      this.prisma.businessConfig.findUnique({
-        where: { id: 1 },
-        select: { timezone: true, salesTaxRate: true },
-      }),
+      this.storeConfig.getStoreConfig(),
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null, isActive: true },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
@@ -193,7 +198,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     ]);
     if (!mapping) return null;
 
-    const timezone = businessConfig?.timezone?.trim();
+    const timezone = storeConfig.timezone.trim();
     if (!timezone) {
       throw new UberValidationError({
         code: 'UBER_MENU_SCHEDULE_INVALID',
@@ -201,7 +206,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         operation: 'uber.menu.publish',
       });
     }
-    const salesTaxRate = businessConfig?.salesTaxRate;
+    const salesTaxRate = storeConfig.salesTaxRate;
     if (
       typeof salesTaxRate !== 'number' ||
       !Number.isFinite(salesTaxRate) ||

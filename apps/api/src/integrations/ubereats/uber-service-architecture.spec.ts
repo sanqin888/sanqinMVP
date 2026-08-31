@@ -119,6 +119,20 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(unexpected).toEqual([]);
   });
 
+  it('keeps Brand/Store configuration behind the canonical owner boundary', () => {
+    const legacyConfigConsumers = boundedContextFiles
+      .filter((file) => /\.\s*businessConfig\b/.test(file.source))
+      .map((file) => relative(BOUNDED_CONTEXT_ROOT, file.path));
+    const compositionRoot = boundedContextFiles.find(
+      (file) => file.path === join(BOUNDED_CONTEXT_ROOT, 'ubereats.module.ts'),
+    )?.source;
+
+    expect(legacyConfigConsumers).toEqual([]);
+    expect(compositionRoot).toContain('BrandStoreConfigModule');
+    expect(compositionRoot).toContain('BRAND_STORE_CONFIG_READER');
+    expect(compositionRoot).toContain('UBER_STORE_CONFIG_QUERY');
+  });
+
   it('reserves cross-layer production imports for ubereats.module.ts', () => {
     const violations = boundedContextFiles.flatMap((file) => {
       const importedLayers = new Set(
