@@ -401,26 +401,28 @@ describe('Loyalty policy characterization', () => {
           ledgerRows.find((row) => matchesWhere(row, args.where)) ?? null,
         ),
       );
-    const ledgerCreate = jest.fn().mockImplementation((args: LedgerCreateArgs) => {
-      const duplicate = ledgerRows.some(
-        (row) =>
-          row.orderId === args.data.orderId &&
-          row.type === args.data.type &&
-          row.sourceKey === args.data.sourceKey,
-      );
-      if (duplicate) {
-        throw new Error(
-          `duplicate loyalty ledger key: ${args.data.orderId}:${args.data.type}:${args.data.sourceKey}`,
+    const ledgerCreate = jest
+      .fn()
+      .mockImplementation((args: LedgerCreateArgs) => {
+        const duplicate = ledgerRows.some(
+          (row) =>
+            row.orderId === args.data.orderId &&
+            row.type === args.data.type &&
+            row.sourceKey === args.data.sourceKey,
         );
-      }
-      const row: LedgerRow = {
-        id: `ledger-${ledgerRows.length + 1}`,
-        ...args.data,
-        target: args.data.target ?? 'POINTS',
-      };
-      ledgerRows.push(row);
-      return Promise.resolve(row);
-    });
+        if (duplicate) {
+          throw new Error(
+            `duplicate loyalty ledger key: ${args.data.orderId}:${args.data.type}:${args.data.sourceKey}`,
+          );
+        }
+        const row: LedgerRow = {
+          id: `ledger-${ledgerRows.length + 1}`,
+          ...args.data,
+          target: args.data.target ?? 'POINTS',
+        };
+        ledgerRows.push(row);
+        return Promise.resolve(row);
+      });
     const accountUpdate = jest.fn().mockImplementation(
       (args: {
         data: {
@@ -447,7 +449,9 @@ describe('Loyalty policy characterization', () => {
     );
     const tx = {
       loyaltyAccount: {
-        upsert: jest.fn().mockImplementation(() => Promise.resolve({ ...account })),
+        upsert: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve({ ...account })),
         update: accountUpdate,
       },
       loyaltyLedger: {
@@ -483,8 +487,8 @@ describe('Loyalty policy characterization', () => {
       },
       $transaction: jest
         .fn()
-        .mockImplementation(
-          (callback: (client: typeof tx) => Promise<void>) => callback(tx),
+        .mockImplementation((callback: (client: typeof tx) => Promise<void>) =>
+          callback(tx),
         ),
     };
     const service = new LoyaltyService(prisma as never, {} as never);
