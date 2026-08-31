@@ -21,8 +21,9 @@
       "new_owner": "BrandConfig plus per-store StoreConfig for Brand/Store facts; Benefits loyalty policy is tracked separately",
       "dual_write_or_read": [
         "Orders delivery pricing, sales tax, store coordinates, Uber Direct enablement, and store-local timezone reads use BRAND_STORE_CONFIG_READER; Orders no longer reads or creates BusinessConfig",
-        "POS StoreStatus and Connectivity reads now use BRAND_STORE_CONFIG_READER, including the watchdog recovery race check; POS pause/resume persistence still writes BusinessConfig as an explicit compatibility write so the existing one-way BusinessConfig-to-StoreConfig trigger keeps legacy Admin/Uber readers synchronized",
-        "Admin Business and Uber tax/config/status-source paths still consume BusinessConfig for remaining Brand/Store facts",
+        "POS StoreStatus and Connectivity reads now use BRAND_STORE_CONFIG_READER, including the watchdog recovery race check; POS pause/resume persistence still writes BusinessConfig as an explicit compatibility write so the existing one-way BusinessConfig-to-StoreConfig trigger keeps legacy readers synchronized",
+        "Admin Business GET and update-time current-state reads now compose Brand/Store facts from BRAND_STORE_CONFIG_READER and Loyalty settings from the Benefits reader; its legacy PATCH/PUT persistence still uses BusinessConfig update writes as registered rollback/compatibility infrastructure, while allergy settings continue writing StoreConfig",
+        "Uber tax/config/status-source paths still read BusinessConfig for remaining Brand/Store facts",
         "The BusinessConfig compatibility trigger mirrors overlapping Brand/Store facts into BrandConfig and StoreConfig while those remaining readers and writers are migrated"
       ],
       "parity_metric": "Per-field BrandConfig/StoreConfig versus BusinessConfig difference report must remain zero for one complete business cycle",
@@ -42,7 +43,7 @@
       "new_owner": "Benefits-owned LoyaltyPolicy reader/writer boundary; BrandConfig columns are transitional canonical persistence until the separately authorized LoyaltyProgramPolicy expand/backfill/cutover",
       "dual_write_or_read": [
         "The Benefits writer validates policy patches, reads the existing BrandConfig policy as canonical state without runtime defaults, and updates BrandConfig plus the BusinessConfig compatibility copy in one transaction so later unrelated BusinessConfig-triggered syncs cannot restore stale Loyalty values",
-        "Admin Members reads and writes use /admin/benefits/loyalty-policy; Admin Settings no longer owns or resubmits Loyalty fields; repository-wide Web old Admin Business route plus Loyalty-field usage is gated at zero while the two server rollback adapters remain registered",
+        "Admin Members reads and writes use /admin/benefits/loyalty-policy; Admin Settings no longer owns or resubmits Loyalty fields; the legacy Admin Business response now obtains its retained Loyalty response fields from LOYALTY_POLICY_SETTINGS_READER rather than BusinessConfig, while its PATCH/PUT request fields remain registered rollback compatibility; repository-wide Web old Admin Business route plus Loyalty-field usage is gated at zero",
         "POS payment reads the runtime Benefits policy through /pos/loyalty-policy with Session, Role, and PosDevice guards instead of reading Admin Business config",
         "Orders quote/create redemption conversion reads redeemDollarPerPoint through the Benefits runtime policy reader; delivery, tax, timezone, and other remaining BusinessConfig reads are tracked separately as Brand/Store debt",
         "All LoyaltyService transaction and non-transaction readers plus Admin member tier progress read Benefits policy from BrandConfig",

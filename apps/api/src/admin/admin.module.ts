@@ -22,6 +22,7 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { HomepageContentModule } from '../homepage/homepage-content.module';
 import { AdminHomepageController } from './homepage/admin-homepage.controller';
 import { LoyaltyModule } from '../loyalty/public-api';
+import { BrandStoreConfigModule } from '../store/public-api';
 import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.controller';
 
 @Module({
@@ -39,6 +40,7 @@ import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.co
     UberEatsModule,
     HomepageContentModule,
     LoyaltyModule,
+    BrandStoreConfigModule,
   ],
   controllers: [
     AdminBusinessController,
