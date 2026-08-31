@@ -17,7 +17,9 @@ const productStableId = 'c1234567890abcdefghijklmn';
 const forgedUserStableId = 'c2234567890abcdefghijklmn';
 const sessionUserStableId = 'c3234567890abcdefghijklmn';
 
-function createDto(): CreatePaymentSessionDto {
+function createDto(options?: {
+  loyaltyRedeemCents?: number;
+}): CreatePaymentSessionDto {
   return {
     paymentMethod: 'CARD',
     checkoutIntentId: 'checkout-intent-1',
@@ -38,6 +40,9 @@ function createDto(): CreatePaymentSessionDto {
       ],
       subtotalCents: 1000,
       taxCents: 130,
+      ...(options?.loyaltyRedeemCents
+        ? { loyaltyRedeemCents: options.loyaltyRedeemCents }
+        : {}),
       loyaltyUserStableId: forgedUserStableId,
     },
   };
@@ -73,7 +78,11 @@ function createHarness() {
       balanceCents: 0,
       externalCents: 1130,
     });
-  const orders = { quoteWebPaymentTender };
+  const createImmediatePaid = jest.fn<
+    ReturnType<OrdersService['createImmediatePaid']>,
+    Parameters<OrdersService['createImmediatePaid']>
+  >();
+  const orders = { quoteWebPaymentTender, createImmediatePaid };
   const pricingTokens = {
     issue: jest.fn().mockReturnValue({
       pricingToken: 'pricing-token',
@@ -123,5 +132,50 @@ describe('CloverPayController member identity boundary', () => {
     expect(recordedIntent?.metadata.loyaltyUserStableId).toBe(
       sessionUserStableId,
     );
+  });
+
+  it('completes a zero-external member checkout without creating a Clover payment intent', async () => {
+    const { controller, checkoutIntents, orders } = createHarness();
+    orders.quoteWebPaymentTender.mockResolvedValue({
+      pricing: {
+        subtotalCents: 1000,
+        displaySubtotalCents: 1000,
+        couponDiscountCents: 0,
+        automaticPromotionDiscountCents: 0,
+        posManualDiscountCents: 0,
+        loyaltyRedeemCents: 1000,
+        taxCents: 0,
+        deliveryFeeCents: 0,
+        totalCents: 0,
+        appliedDiscounts: [],
+      },
+      balanceCents: 0,
+      externalCents: 0,
+    });
+    orders.createImmediatePaid.mockResolvedValue({
+      orderStableId: 'c4234567890abcdefghijklmn',
+    } as never);
+    const req = {
+      user: { userStableId: sessionUserStableId },
+    } as AuthedRequest;
+
+    const response = await controller.createPaymentSession(
+      req,
+      createDto({ loyaltyRedeemCents: 1000 }),
+    );
+
+    expect(orders.createImmediatePaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userStableId: sessionUserStableId,
+        paymentMethod: 'STORE_BALANCE',
+        redeemValueCents: 1000,
+      }),
+      'checkout-intent-1',
+    );
+    expect(checkoutIntents.recordIntent).not.toHaveBeenCalled();
+    expect(response).toMatchObject({
+      completedOrderStableId: 'c4234567890abcdefghijklmn',
+      externalPaymentCents: 0,
+    });
   });
 });
