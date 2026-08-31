@@ -3,7 +3,7 @@
 Date: 2026-08-30
 Baseline: `origin/dev` at `483f675f`
 Compatibility entry: `benefits.business-config-loyalty-policy.v1`
-Status: implementation-ready preparation only; no Prisma schema or migration change is authorized by this document.
+Status: Admin Business contract contraction implemented; dedicated Benefits persistence/trigger/schema phases remain pending and require separate Prisma authorization.
 
 ## 1. Scope and current ownership
 
