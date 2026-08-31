@@ -244,11 +244,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-type LoyaltyOrderResponse = {
-  orderStableId: string;
-  clientRequestId: string | null;
-};
-
 type GooglePaySessionContext = {
   locale: Locale;
   checkoutIntentId: string;
@@ -2877,49 +2872,20 @@ export default function CheckoutPage() {
     totalCentsForOrder =
       discountedSubtotalForOrder + deliveryFeeCentsForOrder + taxCentsForOrder;
 
-    const formattedCustomerPhone = isValidCanadianPhone(customer.phone)
-      ? formatCanadianPhoneForApi(customer.phone)
-      : undefined;
-
-    const loyaltyOrderPayload = {
-      fulfillmentType: fulfillment,
-      deliveryType: isDeliveryFulfillment ? deliveryType : undefined,
-      deliveryDestination: isDeliveryFulfillment
-        ? {
-            name: formatCustomerFullName(customer),
-            phone: formattedCustomerPhone,
-            addressLine1: customer.addressLine1,
-            addressLine2: customer.addressLine2 || undefined,
-            city: customer.city,
-            province: customer.province,
-            postalCode: customer.postalCode,
-            country: DELIVERY_COUNTRY,
-            instructions: customer.notes || undefined,
-            addressStableId: selectedAddressStableId ?? undefined,
-            placeId: selectedPlaceId ?? undefined,
-          }
-        : undefined,
-      items: cartItemsWithPricing.map((cartItem) => ({
-        productStableId: cartItem.productStableId,
-        qty: cartItem.quantity,
-        options: stripOptionSnapshots(cartItem.options),
-        notes: cartItem.notes || undefined,
-      })),
-    };
-
     try {
-      // 1️⃣ 纯积分订单：抵扣后总价为 0 -> 不走 Clover
+      // 纯积分订单仍走统一 Web checkout session；服务端确认 external=0 后
+      // 会直接创建已支付订单，不进入 Clover 扣款流程。
       if (totalCentsForOrder <= 0) {
-        const response = await apiFetch<LoyaltyOrderResponse>(
-          "/orders/loyalty-only",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(loyaltyOrderPayload),
-          },
-        );
+        const session = await createPaymentSession("CARD");
+        if (!session.completedOrderStableId) {
+          throw new Error(
+            locale === "zh"
+              ? "订单金额已重新计算，请重新确认后提交。"
+              : "The order total changed after recalculation. Please review and submit again.",
+          );
+        }
 
-        router.push(`/${locale}/thank-you/${response.orderStableId}`);
+        router.push(`/${locale}/thank-you/${session.completedOrderStableId}`);
         return;
       }
 
