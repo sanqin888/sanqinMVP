@@ -1374,21 +1374,22 @@ model BusinessConfig {
 
 model BusinessHour {
   id           Int      @id @default(autoincrement())
-  storeId      String   @default(dbgenerated("'8a3d4c0e-4750-4f6a-9138-000000000001'::uuid")) @db.Uuid
-  weekday      Int      @unique
+  storeDbId    String   @map("storeId") @db.Uuid
+  weekday      Int
   openMinutes  Int?
   closeMinutes Int?
   isClosed     Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store        Store    @relation(fields: [storeDbId], references: [id], onDelete: Cascade)
 
-  @@index([storeId, weekday])
+  @@unique([storeDbId, weekday])
+  @@index([storeDbId, weekday])
 }
 
 model Holiday {
   id           Int      @id @default(autoincrement())
-  storeId      String   @default(dbgenerated("'8a3d4c0e-4750-4f6a-9138-000000000001'::uuid")) @db.Uuid
+  storeDbId    String   @map("storeId") @db.Uuid
   date         DateTime
   name         String?
   isClosed     Boolean  @default(true)
@@ -1396,9 +1397,9 @@ model Holiday {
   closeMinutes Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store        Store    @relation(fields: [storeDbId], references: [id], onDelete: Cascade)
 
-  @@index([storeId, date])
+  @@index([storeDbId, date])
 }
 
 model MenuCategory {

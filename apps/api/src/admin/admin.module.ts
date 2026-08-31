@@ -2,6 +2,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminBusinessController } from './business/admin-business.controller';
+import { StaffBrandStoreController } from './business/staff-brand-store.controller';
 import { AdminBusinessService } from './business/admin-business.service';
 import { AdminMenuModule } from './menu/admin-menu.module';
 import { AdminImageUploadController } from './upload/image/admin-image-upload.controller';
@@ -43,6 +44,7 @@ import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.co
     BrandStoreConfigModule,
   ],
   controllers: [
+    StaffBrandStoreController,
     AdminBusinessController,
     AdminImageUploadController,
     AdminStaffController,

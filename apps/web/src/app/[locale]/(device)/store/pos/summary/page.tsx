@@ -5,10 +5,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
+import { fetchStaffStoreConfig } from "@/lib/api/brand-store";
 import { printSummaryCloud } from "@/lib/api/pos";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
-
-type BusinessConfigLite = { timezone: string };
 
 const COPY = {
   zh: {
@@ -335,7 +334,7 @@ export default function PosDailySummaryPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const cfg = await apiFetch<BusinessConfigLite>("/admin/business/config").catch(() => null);
+      const cfg = await fetchStaffStoreConfig().catch(() => null);
       if (cancelled) return;
       const tz =
         cfg?.timezone?.trim() ||

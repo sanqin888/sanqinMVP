@@ -405,6 +405,51 @@ describe('StoreStatusService temporary pause expiry', () => {
     jest.restoreAllMocks();
   });
 
+  it('matches store-local holiday dates without shifting the persisted date', async () => {
+    const scheduleReader = {
+      listHolidays: jest.fn().mockResolvedValue([
+        {
+          date: '2026-08-25',
+          name: 'Special closure',
+          isClosed: true,
+          openMinutes: null,
+          closeMinutes: null,
+        },
+      ]),
+      getBusinessHour: jest.fn().mockResolvedValue({
+        weekday: 2,
+        isClosed: false,
+        openMinutes: 8 * 60,
+        closeMinutes: 22 * 60,
+      }),
+    };
+    const configReader = {
+      getStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+        timezone: 'America/Toronto',
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+        publicNotice: null,
+        publicNoticeEn: null,
+      }),
+    };
+    const service = new StoreStatusService(
+      configReader as never,
+      scheduleReader as never,
+    );
+
+    await expect(service.getCurrentStatus()).resolves.toMatchObject({
+      ruleSource: 'HOLIDAY',
+      isOpenBySchedule: false,
+      today: {
+        date: '2026-08-25',
+        isHoliday: true,
+        holidayName: 'Special closure',
+        isClosed: true,
+      },
+    });
+  });
+
   it('treats an expired timed pause as open without mutating configuration', async () => {
     const scheduleReader = {
       listHolidays: jest.fn().mockResolvedValue([]),
@@ -416,6 +461,7 @@ describe('StoreStatusService temporary pause expiry', () => {
     };
     const configReader = {
       getStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
         timezone: 'America/Toronto',
         isTemporarilyClosed: true,
         temporaryCloseReason: '__AUTO_UNTIL__:2026-08-25T09:30:00-04:00|',
@@ -435,7 +481,12 @@ describe('StoreStatusService temporary pause expiry', () => {
       isOpen: true,
     });
     expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
-    expect(scheduleReader.listHolidays).toHaveBeenCalledTimes(1);
-    expect(scheduleReader.getBusinessHour).toHaveBeenCalledWith(2);
+    expect(scheduleReader.listHolidays).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
+    expect(scheduleReader.getBusinessHour).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+      2,
+    );
   });
 });

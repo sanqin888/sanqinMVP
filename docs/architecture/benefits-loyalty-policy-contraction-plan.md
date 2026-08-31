@@ -39,7 +39,7 @@ Two Admin Business endpoints still accept the ten Loyalty fields because both de
 - `PATCH /admin/business/config`
 - `PUT /admin/business/temporary-close`
 
-No known Web consumer currently sends or reads Loyalty fields through either route. The general Admin Settings page still uses `/admin/business/config` for Brand/Store settings only, while POS pages still read non-Benefits fields such as timezone from the same legacy BusinessConfig surface.
+No known Web consumer currently sends or reads Loyalty fields through either route. Staff Web consumers have now moved Brand/Store configuration and timezone reads to the Brand/Store-owned `/staff/brand/*` and `/staff/store/*` contracts; `/admin/business/*` remains a server-side compatibility adapter only.
 
 Therefore the pre-contraction target is:
 
@@ -262,7 +262,7 @@ The current deployed cutover should be observed before removing the old Admin wr
 3. Open POS payment and confirm the policy loads without Admin Business dependency/error.
 4. Exercise an Orders quote/checkout path that evaluates points redemption and confirm the configured `redeemDollarPerPoint` is honored.
 5. Open the public membership rules page and confirm current earn/referral/tier values render correctly.
-6. Save an unrelated Admin Settings value through `/admin/business/config`, then re-open Loyalty settings and confirm no Loyalty value changed. This specifically validates that the compatibility copies are synchronized and the current one-way trigger cannot replay stale policy.
+6. Save an unrelated Brand/Store value through the staff Brand/Store contract, then re-open Loyalty settings and confirm no Loyalty value changed. This specifically validates that the owner-maintained compatibility copy is synchronized and the current one-way trigger cannot replay stale policy.
 7. Review application logs for Benefits/Admin/POS/Orders errors around these actions. No database mutation or manual trigger change is required for this observation.
 
 Only after this checklist is clean should the contract contraction PR in section 5 begin.

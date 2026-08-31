@@ -4,72 +4,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
-import { apiFetch } from '@/lib/api/client';
+import {
+  fetchAdminBusinessSettingsView,
+  updateAdminBusinessSettingsView,
+  updateAdminStoreHolidays,
+  updateAdminStoreHours,
+  type AdminBusinessSettingsView,
+  type StoreBusinessHourView,
+  type StoreHolidayView,
+} from '@/lib/api/brand-store';
 
 /** ===== 类型定义 ===== */
 
-type BusinessHourDto = {
-  weekday: number; // 0=Sunday ... 6=Saturday
-  openMinutes: number | null;
-  closeMinutes: number | null;
-  isClosed: boolean;
-};
-
-type BusinessHoursResponse = {
-  hours: BusinessHourDto[];
-};
-
-// 后端 BusinessConfigResponse 中我们只用到这些字段
-type HolidayApiDto = {
-  date: string; // 'YYYY-MM-DD'
-  name?: string;
-  isClosed: boolean;
-  openMinutes: number | null;
-  closeMinutes: number | null;
-};
+type BusinessHourDto = StoreBusinessHourView;
+type HolidayApiDto = StoreHolidayView;
 type HolidayUiDto = HolidayApiDto & {
   clientKey: string;
-};
-
-type BusinessConfigDto = {
-  timezone: string;
-  isTemporarilyClosed: boolean;
-  temporaryCloseReason: string | null;
-  deliveryBaseFeeCents: number;
-  priorityPerKmCents: number;
-  maxDeliveryRangeKm: number;
-  priorityDefaultDistanceKm: number;
-  storeLatitude: number | null;
-  storeLongitude: number | null;
-  storeAddressLine1: string | null;
-  storeAddressLine2: string | null;
-  storeCity: string | null;
-  storeProvince: string | null;
-  storePostalCode: string | null;
-  supportPhone: string | null;
-  supportEmail: string | null;
-  brandNameZh: string | null;
-  brandNameEn: string | null;
-  siteUrl: string | null;
-  emailFromNameZh: string | null;
-  emailFromNameEn: string | null;
-  emailFromAddress: string | null;
-  smsSignature: string | null;
-  salesTaxRate: number;
-  wechatAlipayExchangeRate: number;
-  enableUberDirect: boolean;
-  allergyHandlingMode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
-  unsupportedAllergens: string[];
-  holidays: HolidayApiDto[];
-};
-
-type SaveHoursPayload = {
-  hours: {
-    weekday: number;
-    openMinutes: number | null;
-    closeMinutes: number | null;
-    isClosed: boolean;
-  }[];
 };
 
 const WEEKDAY_LABELS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -189,7 +139,7 @@ export default function AdminHoursPage() {
   const { locale } = useParams<{ locale: Locale }>();
   const isZh = locale === 'zh';
 
-  const [config, setConfig] = useState<BusinessConfigDto | null>(null);
+  const [config, setConfig] = useState<AdminBusinessSettingsView | null>(null);
   const [hours, setHours] = useState<BusinessHourDto[]>([]);
   const [holidays, setHolidays] = useState<HolidayUiDto[]>([]);
 
@@ -213,10 +163,8 @@ export default function AdminHoursPage() {
       setSuccess(null);
 
       try {
-        const [configRes, hoursRes] = await Promise.all([
-          apiFetch<BusinessConfigDto>('/admin/business/config'),
-          apiFetch<BusinessHoursResponse>('/admin/business/hours'),
-        ]);
+        const { config: configRes, hours: hoursRes } =
+          await fetchAdminBusinessSettingsView();
 
         if (cancelled) return;
 
@@ -227,7 +175,7 @@ export default function AdminHoursPage() {
           ),
         });
 
-        const sortedHours = [...hoursRes.hours].sort(
+        const sortedHours = [...hoursRes].sort(
           (a, b) => a.weekday - b.weekday,
         );
         setHours(sortedHours);
@@ -619,103 +567,46 @@ if (badHolidayIndex >= 0) {
     setSuccess(null);
 
     try {
-      // 1. 保存每周营业时间（/admin/business/hours）
-const hoursPayload: SaveHoursPayload = {
-  hours: hours.map((h) => ({
-    weekday: h.weekday,
-    openMinutes: h.isClosed ? null : (h.openMinutes ?? 0),
-    closeMinutes: h.isClosed ? null : (h.closeMinutes ?? 0),
-    isClosed: h.isClosed,
-  })),
-};
+      const normalizedHours = hours.map((h) => ({
+        weekday: h.weekday,
+        openMinutes: h.isClosed ? null : (h.openMinutes ?? 0),
+        closeMinutes: h.isClosed ? null : (h.closeMinutes ?? 0),
+        isClosed: h.isClosed,
+      }));
+      const normalizedHolidays: StoreHolidayView[] = holidays.map((h) => ({
+        date: h.date,
+        name:
+          typeof h.name === 'string' && h.name.trim().length > 0
+            ? h.name.trim()
+            : null,
+        isClosed: h.isClosed,
+        openMinutes: h.isClosed ? null : (h.openMinutes ?? 0),
+        closeMinutes: h.isClosed ? null : (h.closeMinutes ?? 0),
+      }));
 
-await apiFetch('/admin/business/hours', {
-  method: 'PUT',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(hoursPayload),
-});
+      const [hoursResponse, holidaysResponse] = await Promise.all([
+        updateAdminStoreHours(normalizedHours),
+        updateAdminStoreHolidays(normalizedHolidays),
+        updateAdminBusinessSettingsView(config),
+      ]);
 
-      // 2. 保存门店临时关闭状态（/admin/business/config）
-      await apiFetch<BusinessConfigDto>('/admin/business/config', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timezone: config.timezone,
-          isTemporarilyClosed: config.isTemporarilyClosed,
-          // 和后端 updateTemporaryClose 保持一致，用 reason
-          reason: config.temporaryCloseReason ?? null,
-          deliveryBaseFeeCents: config.deliveryBaseFeeCents,
-          priorityPerKmCents: config.priorityPerKmCents,
-          maxDeliveryRangeKm: config.maxDeliveryRangeKm,
-          priorityDefaultDistanceKm: config.priorityDefaultDistanceKm,
-          storeLatitude: config.storeLatitude,
-          storeLongitude: config.storeLongitude,
-          storeAddressLine1: config.storeAddressLine1 ?? null,
-          storeAddressLine2: config.storeAddressLine2 ?? null,
-          storeCity: config.storeCity ?? null,
-          storeProvince: config.storeProvince ?? null,
-          storePostalCode: config.storePostalCode ?? null,
-          supportPhone: config.supportPhone ?? null,
-          supportEmail: config.supportEmail ?? null,
-          brandNameZh: config.brandNameZh ?? null,
-          brandNameEn: config.brandNameEn ?? null,
-          siteUrl: config.siteUrl ?? null,
-          emailFromNameZh: config.emailFromNameZh ?? null,
-          emailFromNameEn: config.emailFromNameEn ?? null,
-          emailFromAddress: config.emailFromAddress ?? null,
-          smsSignature: config.smsSignature ?? null,
-          salesTaxRate: config.salesTaxRate,
-          wechatAlipayExchangeRate: config.wechatAlipayExchangeRate,
-          enableUberDirect: config.enableUberDirect,
-          allergyHandlingMode: config.allergyHandlingMode,
-          unsupportedAllergens: config.unsupportedAllergens,
-        }),
-      });
-
-      // 3. 保存节假日（/admin/business/holidays，覆盖式）
-const holidaysPayload = {
-  holidays: holidays.map((h) => {
-    // ✅ 明确剥离 clientKey，避免未来误带字段
-    const { clientKey, ...rest } = h;
-    void clientKey;
-
-    const name =
-      typeof rest.name === 'string' && rest.name.trim().length > 0
-        ? rest.name.trim()
-        : undefined;
-
-    return {
-      date: rest.date,
-      ...(name ? { name } : {}),
-      isClosed: rest.isClosed,
-      // ✅ 闭店日也带字段（null）；避免后端校验“缺字段”
-      openMinutes: rest.isClosed ? null : (rest.openMinutes ?? 0),
-      closeMinutes: rest.isClosed ? null : (rest.closeMinutes ?? 0),
-    };
-  }),
-};
-
-const updatedConfig = await apiFetch<BusinessConfigDto>(
-  '/admin/business/holidays',
-  {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(holidaysPayload),
-  },
-);
-
-      // 用后端返回的最新 holidays 覆盖本地
-setConfig(updatedConfig);
-setHolidays(
-  toHolidayUi(updatedConfig.holidays ?? []).slice().sort((a, b) => {
-    if (!a.date && b.date) return 1;
-    if (a.date && !b.date) return -1;
-
-    if (a.date < b.date) return -1;
-    if (a.date > b.date) return 1;
-    return a.clientKey.localeCompare(b.clientKey);
-  }),
-);
+      setHours([...hoursResponse.hours].sort((a, b) => a.weekday - b.weekday));
+      const updatedConfig = {
+        ...config,
+        holidays: holidaysResponse.holidays,
+      };
+      setConfig(updatedConfig);
+      setHolidays(
+        toHolidayUi(holidaysResponse.holidays)
+          .slice()
+          .sort((a, b) => {
+            if (!a.date && b.date) return 1;
+            if (a.date && !b.date) return -1;
+            if (a.date < b.date) return -1;
+            if (a.date > b.date) return 1;
+            return a.clientKey.localeCompare(b.clientKey);
+          }),
+      );
 
       setSuccess(isZh ? '保存成功。' : 'Saved successfully.');
     } catch (e) {

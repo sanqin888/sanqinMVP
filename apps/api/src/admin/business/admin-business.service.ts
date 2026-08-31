@@ -1,16 +1,23 @@
 // apps/api/src/admin/business/admin-business.service.ts
 
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
-import type { BusinessHour } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
 import { AppLogger } from '../../common/app-logger';
 import {
   BRAND_STORE_CONFIG_READER,
   BRAND_STORE_CONFIG_WRITER,
+  STORE_SCHEDULE_READER,
+  STORE_SCHEDULE_WRITER,
+  type BrandConfigSnapshot,
   type BrandConfigUpdateInput,
   type BrandStoreConfigReaderPort,
   type BrandStoreConfigWriterPort,
+  type StoreBusinessHour,
+  type StoreConfigSnapshot,
   type StoreConfigUpdateInput,
+  type StoreHoliday,
+  type StoreScheduleReaderPort,
+  type StoreScheduleWriterPort,
+  type StoreWeekday,
 } from '../../store/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
@@ -85,14 +92,95 @@ export class AdminBusinessService {
   private readonly logger = new AppLogger(AdminBusinessService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
     @Inject(BRAND_STORE_CONFIG_WRITER)
     private readonly brandStoreConfigWriter: BrandStoreConfigWriterPort,
+    @Inject(STORE_SCHEDULE_READER)
+    private readonly storeScheduleReader: StoreScheduleReaderPort,
+    @Inject(STORE_SCHEDULE_WRITER)
+    private readonly storeScheduleWriter: StoreScheduleWriterPort,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uberEatsService: UberEatsStoreStatusSyncPort,
   ) {}
+
+  getBrandConfig(): Promise<BrandConfigSnapshot> {
+    return this.brandStoreConfigReader.getBrandSnapshot();
+  }
+
+  getStoreConfig(): Promise<StoreConfigSnapshot> {
+    return this.brandStoreConfigReader.getStoreSnapshot();
+  }
+
+  async updateBrandConfig(payload: unknown): Promise<BrandConfigSnapshot> {
+    if (!payload || typeof payload !== 'object') {
+      throw new BadRequestException('brand config payload must be an object');
+    }
+    const body = payload as Record<string, unknown>;
+    await this.updateConfig({
+      brandNameZh: body.brandNameZh,
+      brandNameEn: body.brandNameEn,
+      siteUrl: body.siteUrl,
+      emailFromNameZh: body.emailFromNameZh,
+      emailFromNameEn: body.emailFromNameEn,
+      emailFromAddress: body.emailFromAddress,
+      smsSignature: body.smsSignature,
+      supportPhone: body.supportPhone,
+      supportEmail: body.supportEmail,
+      wechatAlipayExchangeRate: body.wechatAlipayExchangeRate,
+    });
+    return this.getBrandConfig();
+  }
+
+  async updateStoreConfig(payload: unknown): Promise<StoreConfigSnapshot> {
+    if (!payload || typeof payload !== 'object') {
+      throw new BadRequestException('store config payload must be an object');
+    }
+    const body = payload as Record<string, unknown>;
+    await this.updateConfig({
+      timezone: body.timezone,
+      isTemporarilyClosed: body.isTemporarilyClosed,
+      reason: body.temporaryCloseReason,
+      publicNotice: body.publicNotice,
+      publicNoticeEn: body.publicNoticeEn,
+      deliveryBaseFeeCents: body.deliveryBaseFeeCents,
+      priorityPerKmCents: body.priorityPerKmCents,
+      maxDeliveryRangeKm: body.maxDeliveryRangeKm,
+      priorityDefaultDistanceKm: body.priorityDefaultDistanceKm,
+      storeLatitude: body.latitude,
+      storeLongitude: body.longitude,
+      storeAddressLine1: body.addressLine1,
+      storeAddressLine2: body.addressLine2,
+      storeCity: body.city,
+      storeProvince: body.province,
+      storePostalCode: body.postalCode,
+      salesTaxRate: body.salesTaxRate,
+      enableUberDirect: body.enableUberDirect,
+      allergyHandlingMode: body.allergyHandlingMode,
+      unsupportedAllergens: body.unsupportedAllergens,
+    });
+    return this.getStoreConfig();
+  }
+
+  async getStoreHours(): Promise<StoreBusinessHour[]> {
+    const store = await this.brandStoreConfigReader.getStoreSnapshot();
+    return this.ensureHoursInitialized(store.storeStableId);
+  }
+
+  async updateStoreHours(rawHours: unknown): Promise<StoreBusinessHour[]> {
+    await this.updateHours(rawHours);
+    return this.getStoreHours();
+  }
+
+  async getStoreHolidays(): Promise<StoreHoliday[]> {
+    const store = await this.brandStoreConfigReader.getStoreSnapshot();
+    return this.storeScheduleReader.listHolidays(store.storeStableId);
+  }
+
+  async updateStoreHolidays(raw: unknown): Promise<StoreHoliday[]> {
+    await this.saveHolidays(raw);
+    return this.getStoreHolidays();
+  }
 
   /**
    * 统一返回给前端的配置：
@@ -102,12 +190,12 @@ export class AdminBusinessService {
    * - 节假日列表
    */
   async getConfig(): Promise<BusinessConfigResponse> {
-    const [brandStoreConfig, hours, holidays] = await Promise.all([
-      this.brandStoreConfigReader.getSnapshot(),
-      this.ensureHoursInitialized(),
-      this.prisma.holiday.findMany({ orderBy: { date: 'asc' } }),
-    ]);
+    const brandStoreConfig = await this.brandStoreConfigReader.getSnapshot();
     const { brand, store } = brandStoreConfig;
+    const [hours, holidays] = await Promise.all([
+      this.ensureHoursInitialized(store.storeStableId),
+      this.storeScheduleReader.listHolidays(store.storeStableId),
+    ]);
 
     return {
       timezone: store.timezone,
@@ -149,7 +237,7 @@ export class AdminBusinessService {
         isClosed: h.isClosed,
       })),
       holidays: holidays.map((h) => ({
-        date: this.dateToIsoDate(h.date),
+        date: h.date,
         name: h.name ?? undefined,
         isClosed: h.isClosed,
         openMinutes: h.openMinutes ?? null,
@@ -219,19 +307,18 @@ export class AdminBusinessService {
       };
     });
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.businessHour.deleteMany({});
-      if (sanitized.length > 0) {
-        await tx.businessHour.createMany({
-          data: sanitized.map((h) => ({
-            weekday: h.weekday,
-            openMinutes: h.openMinutes,
-            closeMinutes: h.closeMinutes,
-            isClosed: h.isClosed,
-          })),
-        });
-      }
-    });
+    const storeStableId = (
+      await this.brandStoreConfigReader.getStoreSnapshot()
+    ).storeStableId;
+    await this.storeScheduleWriter.replaceBusinessHours(
+      storeStableId,
+      sanitized.map((h): StoreBusinessHour => ({
+        weekday: h.weekday as StoreWeekday,
+        openMinutes: h.isClosed ? null : h.openMinutes,
+        closeMinutes: h.isClosed ? null : h.closeMinutes,
+        isClosed: h.isClosed,
+      })),
+    );
 
     this.logger.log(
       `Business hours updated: ${sanitized
@@ -638,13 +725,7 @@ export class AdminBusinessService {
       throw new BadRequestException('holidays must be an array');
     }
 
-    const sanitized: {
-      date: Date;
-      name: string | null;
-      isClosed: boolean;
-      openMinutes: number | null;
-      closeMinutes: number | null;
-    }[] = [];
+    const sanitized: StoreHoliday[] = [];
 
     holidays.forEach((entry, index) => {
       if (!entry || typeof entry !== 'object') {
@@ -690,7 +771,7 @@ export class AdminBusinessService {
       }
 
       sanitized.push({
-        date,
+        date: this.dateToIsoDate(date),
         name,
         isClosed,
         openMinutes,
@@ -698,18 +779,14 @@ export class AdminBusinessService {
       });
     });
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.holiday.deleteMany({});
-      if (sanitized.length > 0) {
-        await tx.holiday.createMany({
-          data: sanitized,
-        });
-      }
-    });
+    const storeStableId = (
+      await this.brandStoreConfigReader.getStoreSnapshot()
+    ).storeStableId;
+    await this.storeScheduleWriter.replaceHolidays(storeStableId, sanitized);
 
     this.logger.log(
       `Holidays updated: count=${sanitized.length} dates=${sanitized
-        .map((h) => this.dateToIsoDate(h.date))
+        .map((h) => h.date)
         .join(', ')}`,
     );
 
@@ -739,31 +816,28 @@ export class AdminBusinessService {
     return tz;
   }
 
-  /** 确保一周的 BusinessHour 至少有一组记录，没有的话初始化为“全部休息” */
-  private async ensureHoursInitialized(): Promise<BusinessHour[]> {
-    let hours = await this.prisma.businessHour.findMany({
-      orderBy: [{ weekday: 'asc' }, { openMinutes: 'asc' }],
-    });
+  /** 确保当前门店至少有一组 BusinessHour；没有时初始化为“全部休息”。 */
+  private async ensureHoursInitialized(
+    storeStableId: string,
+  ): Promise<StoreBusinessHour[]> {
+    let hours = await this.storeScheduleReader.listBusinessHours(storeStableId);
 
     if (hours.length === 0) {
       this.logger.log(
-        'BusinessHour table is empty, initializing 7 closed days by default',
+        `BusinessHour is empty for store=${storeStableId}, initializing 7 closed days by default`,
       );
 
-      const data = Array.from({ length: 7 }).map((_, weekday) => ({
-        weekday,
-        openMinutes: 0,
-        closeMinutes: 0,
-        isClosed: true,
-      }));
+      const data: StoreBusinessHour[] = Array.from({ length: 7 }).map(
+        (_, weekday) => ({
+          weekday: weekday as StoreWeekday,
+          openMinutes: null,
+          closeMinutes: null,
+          isClosed: true,
+        }),
+      );
 
-      await this.prisma.businessHour.createMany({
-        data,
-        skipDuplicates: true,
-      });
-      hours = await this.prisma.businessHour.findMany({
-        orderBy: [{ weekday: 'asc' }, { openMinutes: 'asc' }],
-      });
+      await this.storeScheduleWriter.replaceBusinessHours(storeStableId, data);
+      hours = await this.storeScheduleReader.listBusinessHours(storeStableId);
     }
 
     return hours;

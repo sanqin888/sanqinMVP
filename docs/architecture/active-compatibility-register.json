@@ -22,7 +22,7 @@
       "dual_write_or_read": [
         "Orders delivery pricing, sales tax, store coordinates, Uber Direct enablement, and store-local timezone reads use BRAND_STORE_CONFIG_READER; Orders no longer reads or creates BusinessConfig",
         "POS StoreStatus reads and pause/resume writes now use BRAND_STORE_CONFIG_READER/WRITER. Timed auto-resume compare-and-set persistence is owned by the Brand/Store writer, so POS no longer reads or writes BusinessConfig directly while preserving the existing race protection",
-        "Admin Business reads use BRAND_STORE_CONFIG_READER and Brand/Store writes use BRAND_STORE_CONFIG_WRITER; Admin no longer writes BusinessConfig, BrandConfig, or StoreConfig through Prisma directly. The Brand/Store owner writer persists canonical rows first and refreshes the complete overlapping BusinessConfig compatibility copy in the same transaction",
+        "Admin Business compatibility reads use BRAND_STORE_CONFIG_READER and Brand/Store writes use BRAND_STORE_CONFIG_WRITER; Admin no longer writes BusinessConfig, BrandConfig, or StoreConfig through Prisma directly. Staff Web consumers use the Brand/Store-owned /staff/brand and /staff/store contracts instead of /admin/business/*, while the legacy routes remain only as compatibility adapters. The Brand/Store owner writer persists canonical rows first and refreshes the complete overlapping BusinessConfig compatibility copy in the same transaction",
         "Retained Loyalty fields on the legacy Admin Business rollback surface are delegated to LOYALTY_POLICY_WRITER rather than being mixed into Brand/Store persistence",
         "Uber menu schedule/tax and store-status source reads use an Uber application-owned store-config query port wired only in ubereats.module.ts to BRAND_STORE_CONFIG_READER; Uber production code no longer reads or creates BusinessConfig, while existing response source labels remain unchanged for compatibility",
         "The BusinessConfig compatibility trigger remains active because the Benefits Phase B writer still updates the legacy Loyalty copy. The Brand/Store owner therefore continues refreshing the complete overlapping BusinessConfig snapshot so a later Loyalty compatibility write cannot replay stale Brand/Store values"
@@ -88,11 +88,13 @@
     {
       "compat_id": "brand-store.default-store-identity.v1",
       "status": "active",
-      "old_owner": "Implicit literal default store identity in Uber channel tables and single-store helpers",
-      "new_owner": "Explicit Store.storeStableId at public boundaries with repository-local DB UUID conversion",
+      "old_owner": "Implicit literal default store identity in Uber channel tables, BusinessHour/Holiday persistence defaults, and single-store helpers",
+      "new_owner": "Explicit Store.storeStableId at public boundaries with owner-local storeDbId conversion at persistence boundaries",
       "dual_write_or_read": [
-        "Uber channel configuration rows still default storeId to the literal default identity",
-        "Existing rows and callers may omit an explicit store identity"
+        "Staff Brand/Store schedule reads and writes plus StoreStatus now pass storeStableId through STORE_SCHEDULE_READER/WRITER and resolve storeDbId only inside the Store Prisma adapter",
+        "BusinessHour and Holiday no longer carry hard-coded store DB UUID defaults in Prisma; the store-scope migration keeps the physical storeId column, exposes it as storeDbId in Prisma, and changes BusinessHour uniqueness to storeDbId + weekday",
+        "Uber channel configuration rows still default storeId to the literal default identity, and frozen Uber menu schedule readers still require their later scoped cutover",
+        "Other existing rows and callers may still omit an explicit store identity"
       ],
       "parity_metric": "Count of rows using the default literal and count of requests resolved through implicit-store fallback; both must reach zero",
       "rollback": "Retain the old nullable/default columns during expand-backfill-cutover; do not reinterpret historical IDs",
@@ -100,8 +102,12 @@
       "remove_pr": "Phase 2 store identity contraction PR",
       "deadline": "Before Phase 2 Brand/Store exit",
       "evidence": [
-        "apps/api/prisma/schema.prisma Uber*Config models",
-        "SanQ full-site modularization audit section 3.3 and 6.8"
+        "apps/api/prisma/schema.prisma BusinessHour/Holiday and Uber*Config models",
+        "apps/api/src/store/store-schedule.contract.ts",
+        "apps/api/src/store/store-schedule.prisma.ts",
+        "apps/api/src/store/store-status.service.ts",
+        "apps/web/src/lib/api/brand-store.ts",
+        "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
       ]
     },
     {

@@ -16,4 +16,13 @@ export {
   type StoreConfigSnapshot,
   type StoreConfigUpdateInput,
 } from './brand-store-config.contract';
+export {
+  STORE_SCHEDULE_READER,
+  STORE_SCHEDULE_WRITER,
+  type StoreBusinessHour,
+  type StoreHoliday,
+  type StoreScheduleReaderPort,
+  type StoreScheduleWriterPort,
+  type StoreWeekday,
+} from './store-schedule.contract';
 export { BrandStoreConfigModule } from './brand-store-config.module';

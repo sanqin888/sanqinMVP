@@ -79,9 +79,12 @@ pair fails CI.
   as `resolveConfiguredStoreStableId()`. Existing Orders, Clover, POS, Admin and
   Uber callers were moved off `common/store-id.ts`, lowering direct
   architecture-foundation debt without changing the resolved store value.
-- `StoreStatusService` is the first canonical consumer and no longer reads or
-  creates `BusinessConfig`. BusinessHour/Holiday queries remain legacy global
-  store-scope debt for a later schema-safe slice.
+- `StoreStatusService` no longer reads or creates `BusinessConfig`. Store schedule
+  reads now go through the Brand/Store-owned `STORE_SCHEDULE_READER`, with
+  `storeStableId` resolved to `storeDbId` only inside the Prisma adapter. The
+  BusinessHour/Holiday hard-coded store UUID defaults are removed by the
+  store-scope migration, and BusinessHour uniqueness is scoped to
+  `(storeDbId, weekday)` instead of weekday globally.
 - Accounting, Promotions, PublicMenu, AdminMenu, and Orders now read store-local
   timezone through the canonical Store snapshot. Public/Admin menu reads no longer
   create a default `BusinessConfig` row as a side effect; Orders also no longer
@@ -97,14 +100,15 @@ pair fails CI.
   The timed auto-resume compare-and-set is implemented inside the Brand/Store
   writer so an outdated expiry task cannot clear a newer pause. POS is now
   architecture-gated against regressing to Prisma configuration delegates.
-- Admin Business now follows the owner boundaries for both reads and writes. Brand
-  and Store reads use `BRAND_STORE_CONFIG_READER`; Brand/Store updates use
-  `BRAND_STORE_CONFIG_WRITER`; retained Loyalty fields on the legacy PATCH/PUT
-  rollback surfaces delegate to `LOYALTY_POLICY_WRITER`. Admin no longer writes
-  `BusinessConfig`, `BrandConfig`, or `StoreConfig` through Prisma directly. The
-  Brand/Store owner writer updates canonical rows first, then refreshes the full
-  overlapping `BusinessConfig` compatibility copy in the same transaction while
-  the one-way trigger can still be fired by registered Benefits compatibility writes.
+- Admin Business compatibility routes now follow the owner boundaries for both reads
+  and writes. Current staff Web consumers use `/staff/brand/*` and `/staff/store/*`
+  transport adapters backed by `BRAND_STORE_CONFIG_READER/WRITER` and the Store
+  schedule ports; `/admin/business/*` remains server-side compatibility only.
+  Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
+  `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
+  updates canonical config rows first, then refreshes the full overlapping
+  `BusinessConfig` compatibility copy in the same transaction while the one-way
+  trigger can still be fired by registered Benefits compatibility writes.
 - Uber menu schedule/tax and store-status source reads now cross the Brand/Store
   boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
   sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
