@@ -39,7 +39,6 @@ import {
 } from '@prisma/client';
 import type { OrderStatus } from '@shared/order';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
-import { StableIdPipe } from './pos-http-validation';
 import {
   POS_ORDER_OPERATIONS,
   type PosOrderDto,
@@ -47,7 +46,7 @@ import {
   type PosOrderJsonInput,
   type PosOrderOperationsPort,
 } from '../orders/public-api';
-import type { AuthenticatedPosIdentity } from './public-api';
+import { StableIdPipe, type AuthenticatedPosIdentity } from './public-api';
 import { PosDeviceGuard } from './pos-device.guard';
 
 type PosDeviceRequest = Request & {

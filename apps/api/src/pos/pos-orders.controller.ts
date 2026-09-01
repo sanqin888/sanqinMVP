@@ -23,9 +23,12 @@ import type { Request } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import type { AuthenticatedPosIdentity } from './pos-device-management.contract';
+import {
+  StableIdPipe,
+  ZodValidationPipe,
+  type AuthenticatedPosIdentity,
+} from './public-api';
 import { PosDeviceGuard } from './pos-device.guard';
-import { StableIdPipe, ZodValidationPipe } from './pos-http-validation';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput, OrderStatus } from '@shared/order';
 import {
