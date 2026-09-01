@@ -31,6 +31,10 @@ type PosDeviceRequest = Request & {
   posDevice?: AuthenticatedPosIdentity;
 };
 
+type PosDeviceRequest = Request & {
+  posDevice?: AuthenticatedPosIdentity;
+};
+
 @Controller('pos/summary')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('ADMIN', 'STAFF')
