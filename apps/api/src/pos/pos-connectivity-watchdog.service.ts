@@ -105,14 +105,14 @@ export class PosConnectivityWatchdogService
 
   private async poll(): Promise<void> {
     const now = Date.now();
-    const storeId = resolveConfiguredStoreStableId();
+    const storeStableId = resolveConfiguredStoreStableId();
 
-    await this.posStoreStatus.reconcileExpiredPause();
-    const schedule = await this.storeStatus.getCurrentStatus();
+    await this.posStoreStatus.reconcileExpiredPause(storeStableId);
+    const schedule = await this.storeStatus.getCurrentStatus(storeStableId);
     if (!schedule.isOpenBySchedule) {
       this.scheduleOpen = false;
       this.openingGraceUntil = 0;
-      this.states.delete(storeId);
+      this.states.delete(storeStableId);
       return;
     }
 
@@ -127,7 +127,10 @@ export class PosConnectivityWatchdogService
     if (schedule.isTemporarilyClosed) return;
 
     const devices = await this.prisma.posDevice.findMany({
-      where: { status: 'ACTIVE' },
+      where: {
+        status: 'ACTIVE',
+        store: { storeStableId },
+      },
       select: { lastSeenAt: true, meta: true },
     });
     const connectivity = resolvePosConnectivityStatus(
@@ -141,7 +144,7 @@ export class PosConnectivityWatchdogService
       if (!pauseUntil) {
         this.logger.error({
           event: 'pos_connectivity_uber_pause_until_unavailable',
-          storeId,
+          storeStableId,
           scheduleDate: schedule.today.date,
           closeMinutes: schedule.today.closeMinutes,
           timezone: schedule.timezone,
@@ -149,25 +152,25 @@ export class PosConnectivityWatchdogService
         return;
       }
       await this.handleOffline(
-        storeId,
+        storeStableId,
         connectivity.lastHeartbeatAt,
         now,
         pauseUntil,
       );
     } else {
-      await this.handleOnline(storeId, now);
+      await this.handleOnline(storeStableId, now);
     }
   }
 
   private async handleOffline(
-    storeId: string,
+    storeStableId: string,
     lastHeartbeatAt: Date | null,
     now: number,
     pauseUntil: string,
   ): Promise<void> {
-    const previous = this.states.get(storeId);
+    const previous = this.states.get(storeStableId);
     if (!previous || previous.phase !== 'OFFLINE') {
-      this.states.set(storeId, {
+      this.states.set(storeStableId, {
         phase: 'OFFLINE',
         recoverySince: null,
         pauseConfirmed: false,
@@ -176,15 +179,15 @@ export class PosConnectivityWatchdogService
       });
       this.logger.warn({
         event: 'pos_connectivity_offline',
-        storeId,
+        storeStableId,
         lastHeartbeatAt: lastHeartbeatAt?.toISOString() ?? null,
       });
     }
 
-    const state = this.states.get(storeId)!;
+    const state = this.states.get(storeStableId)!;
     if (state.pauseConfirmed || now < state.nextSyncAttemptAt) return;
     const synced = await this.syncMappedUberStores(
-      storeId,
+      storeStableId,
       'PAUSED',
       pauseUntil,
     );
@@ -198,15 +201,18 @@ export class PosConnectivityWatchdogService
     state.nextSyncAttemptAt = now + this.retryDelayMs(state.syncFailures);
     this.logger.error({
       event: 'pos_connectivity_uber_pause_failed',
-      storeId,
+      storeStableId,
       retryInMs: state.nextSyncAttemptAt - now,
     });
   }
 
-  private async handleOnline(storeId: string, now: number): Promise<void> {
-    const previous = this.states.get(storeId);
+  private async handleOnline(
+    storeStableId: string,
+    now: number,
+  ): Promise<void> {
+    const previous = this.states.get(storeStableId);
     if (!previous) {
-      this.states.set(storeId, {
+      this.states.set(storeStableId, {
         phase: 'ONLINE',
         recoverySince: null,
         pauseConfirmed: false,
@@ -233,27 +239,27 @@ export class PosConnectivityWatchdogService
       return;
     }
 
-    const config = await this.configReader.getStoreSnapshot();
+    const config = await this.configReader.getStoreSnapshot(storeStableId);
     if (config.isTemporarilyClosed) {
       previous.phase = 'ONLINE';
       previous.recoverySince = null;
       previous.pauseConfirmed = false;
       this.logger.log({
         event: 'pos_connectivity_restored',
-        storeId,
+        storeStableId,
         uberStatus: 'UNCHANGED_MANUAL_PAUSE',
       });
       return;
     }
 
-    const synced = await this.syncMappedUberStores(storeId, 'ONLINE');
+    const synced = await this.syncMappedUberStores(storeStableId, 'ONLINE');
     if (!synced) {
       previous.syncFailures += 1;
       previous.nextSyncAttemptAt =
         now + this.retryDelayMs(previous.syncFailures);
       this.logger.error({
         event: 'pos_connectivity_uber_resume_failed',
-        storeId,
+        storeStableId,
         retryInMs: previous.nextSyncAttemptAt - now,
       });
       return;
@@ -265,18 +271,18 @@ export class PosConnectivityWatchdogService
     previous.syncFailures = 0;
     this.logger.log({
       event: 'pos_connectivity_restored',
-      storeId,
+      storeStableId,
       uberStatus: 'ONLINE',
     });
   }
 
   private async syncMappedUberStores(
-    posStoreId: string,
+    storeStableId: string,
     targetStatus: 'ONLINE' | 'PAUSED',
     pauseUntil?: string,
   ): Promise<boolean> {
     const mappings = await this.prisma.uberStoreMapping.findMany({
-      where: { posExternalStoreId: posStoreId, isProvisioned: true },
+      where: { posExternalStoreId: storeStableId, isProvisioned: true },
       select: { uberStoreId: true },
     });
     for (const mapping of mappings) {

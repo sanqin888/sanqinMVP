@@ -112,7 +112,10 @@ export interface BrandStoreConfigWriterPort {
     input: BrandStoreConfigUpdateInput,
     storeStableId?: string,
   ): Promise<void>;
-  resumeTemporaryClosureIfMatches(expectedReason: string): Promise<boolean>;
+  resumeTemporaryClosureIfMatches(
+    storeStableId: string,
+    expectedReason: string,
+  ): Promise<boolean>;
 }
 
 export interface StoreDirectoryReaderPort {

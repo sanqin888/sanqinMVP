@@ -63,8 +63,8 @@ export class StoreStatusService {
     private readonly scheduleReader: StoreScheduleReaderPort,
   ) {}
 
-  async getCurrentStatus(): Promise<StoreStatus> {
-    const config = await this.configReader.getStoreSnapshot();
+  async getCurrentStatus(storeStableId: string): Promise<StoreStatus> {
+    const config = await this.configReader.getStoreSnapshot(storeStableId);
     const tz = config.timezone || 'America/Toronto';
 
     const { nowIso, todayStr, weekday, minutesSinceMidnight, nowZ } =

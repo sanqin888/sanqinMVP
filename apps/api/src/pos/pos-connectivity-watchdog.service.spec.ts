@@ -4,6 +4,7 @@ import { StoreStatusService } from '../store/store-status.service';
 
 const heartbeatMeta = { connectivityHeartbeatV1: true };
 const NOW = Date.parse('2026-08-25T12:00:00.000Z');
+const STORE_STABLE_ID = 'store-1';
 const ORIGINAL_STORE_ID = process.env.STORE_ID;
 
 const openSchedule = (
@@ -32,7 +33,7 @@ const closedSchedule = (date = '2026-08-25') => ({
 
 describe('PosConnectivityWatchdogService', () => {
   beforeEach(() => {
-    process.env.STORE_ID = 'store-1';
+    process.env.STORE_ID = STORE_STABLE_ID;
   });
 
   afterEach(() => {
@@ -97,8 +98,10 @@ describe('PosConnectivityWatchdogService', () => {
 
     await service.runOnce();
 
-    expect(posStoreStatus.reconcileExpiredPause).toHaveBeenCalledTimes(1);
-    expect(storeStatus.getCurrentStatus).toHaveBeenCalledTimes(1);
+    expect(posStoreStatus.reconcileExpiredPause).toHaveBeenCalledWith(
+      STORE_STABLE_ID,
+    );
+    expect(storeStatus.getCurrentStatus).toHaveBeenCalledWith(STORE_STABLE_ID);
     expect(
       posStoreStatus.reconcileExpiredPause.mock.invocationCallOrder[0],
     ).toBeLessThan(storeStatus.getCurrentStatus.mock.invocationCallOrder[0]);
@@ -127,6 +130,13 @@ describe('PosConnectivityWatchdogService', () => {
     nowSpy.mockReturnValue(NOW + 90_001);
     await service.runOnce();
 
+    expect(prisma.posDevice.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'ACTIVE',
+        store: { storeStableId: STORE_STABLE_ID },
+      },
+      select: { lastSeenAt: true, meta: true },
+    });
     expect(prisma.uberStoreMapping.findMany).toHaveBeenCalledWith({
       where: { posExternalStoreId: 'store-1', isProvisioned: true },
       select: { uberStoreId: true },
@@ -269,11 +279,14 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       temporaryCloseReason: `__AUTO_UNTIL__:${autoResumeAt}|`,
     });
 
-    await expect(service.getCustomerOrderingStatus()).resolves.toEqual({
+    await expect(
+      service.getCustomerOrderingStatus(STORE_STABLE_ID),
+    ).resolves.toEqual({
       isTemporarilyClosed: true,
       autoResumeAt,
     });
     expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(2);
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledWith(STORE_STABLE_ID);
     expect(configWriter.resumeTemporaryClosureIfMatches).not.toHaveBeenCalled();
   });
 
@@ -289,18 +302,21 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       const { service, configWriter, posGateway, uber } = setup();
 
       await expect(
-        service.pauseCustomerOrdering({ durationMinutes }),
+        service.pauseCustomerOrdering(STORE_STABLE_ID, { durationMinutes }),
       ).resolves.toEqual({
         isTemporarilyClosed: true,
         autoResumeAt: expectedAutoResumeAt,
       });
 
-      expect(configWriter.updateConfig).toHaveBeenCalledWith({
-        store: {
-          isTemporarilyClosed: true,
-          temporaryCloseReason: `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
+      expect(configWriter.updateConfig).toHaveBeenCalledWith(
+        {
+          store: {
+            isTemporarilyClosed: true,
+            temporaryCloseReason: `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
+          },
         },
-      });
+        STORE_STABLE_ID,
+      );
       expect(
         posGateway.publishCustomerOrderingStatusUpdate,
       ).toHaveBeenCalledWith({
@@ -315,35 +331,43 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
     const { service, configWriter, uber } = setup();
 
     await expect(
-      service.pauseCustomerOrdering({ untilTomorrow: true }),
+      service.pauseCustomerOrdering(STORE_STABLE_ID, { untilTomorrow: true }),
     ).resolves.toEqual({
       isTemporarilyClosed: true,
       autoResumeAt: '2026-08-26T00:00:00-04:00',
     });
 
-    expect(configWriter.updateConfig).toHaveBeenCalledWith({
-      store: {
-        isTemporarilyClosed: true,
-        temporaryCloseReason: '__AUTO_UNTIL__:2026-08-26T00:00:00-04:00|',
+    expect(configWriter.updateConfig).toHaveBeenCalledWith(
+      {
+        store: {
+          isTemporarilyClosed: true,
+          temporaryCloseReason: '__AUTO_UNTIL__:2026-08-26T00:00:00-04:00|',
+        },
       },
-    });
+      STORE_STABLE_ID,
+    );
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
   });
 
   it('resumes customer ordering through the canonical Brand/Store writer', async () => {
     const { service, configWriter, posGateway, uber } = setup();
 
-    await expect(service.resumeCustomerOrdering()).resolves.toEqual({
+    await expect(
+      service.resumeCustomerOrdering(STORE_STABLE_ID),
+    ).resolves.toEqual({
       isTemporarilyClosed: false,
       autoResumeAt: null,
     });
 
-    expect(configWriter.updateConfig).toHaveBeenCalledWith({
-      store: {
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
+    expect(configWriter.updateConfig).toHaveBeenCalledWith(
+      {
+        store: {
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+        },
       },
-    });
+      STORE_STABLE_ID,
+    );
     expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith(
       {
         isTemporarilyClosed: false,
@@ -362,9 +386,12 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       temporaryCloseReason: pauseReason,
     });
 
-    await expect(service.reconcileExpiredPause()).resolves.toBe(true);
+    await expect(service.reconcileExpiredPause(STORE_STABLE_ID)).resolves.toBe(
+      true,
+    );
 
     expect(configWriter.resumeTemporaryClosureIfMatches).toHaveBeenCalledWith(
+      STORE_STABLE_ID,
       pauseReason,
     );
     expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith(
@@ -385,7 +412,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
     });
     configWriter.resumeTemporaryClosureIfMatches.mockResolvedValue(false);
 
-    await expect(service.reconcileExpiredPause()).resolves.toBe(false);
+    await expect(service.reconcileExpiredPause(STORE_STABLE_ID)).resolves.toBe(
+      false,
+    );
 
     expect(
       posGateway.publishCustomerOrderingStatusUpdate,
@@ -438,7 +467,9 @@ describe('StoreStatusService temporary pause expiry', () => {
       scheduleReader as never,
     );
 
-    await expect(service.getCurrentStatus()).resolves.toMatchObject({
+    await expect(
+      service.getCurrentStatus('4750_Yonge_Street'),
+    ).resolves.toMatchObject({
       ruleSource: 'HOLIDAY',
       isOpenBySchedule: false,
       today: {
@@ -448,6 +479,9 @@ describe('StoreStatusService temporary pause expiry', () => {
         isClosed: true,
       },
     });
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
   });
 
   it('treats an expired timed pause as open without mutating configuration', async () => {
@@ -474,13 +508,17 @@ describe('StoreStatusService temporary pause expiry', () => {
       scheduleReader as never,
     );
 
-    await expect(service.getCurrentStatus()).resolves.toMatchObject({
+    await expect(
+      service.getCurrentStatus('4750_Yonge_Street'),
+    ).resolves.toMatchObject({
       isOpenBySchedule: true,
       isTemporarilyClosed: false,
       temporaryCloseReason: null,
       isOpen: true,
     });
-    expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(configReader.getStoreSnapshot).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
     expect(scheduleReader.listHolidays).toHaveBeenCalledWith(
       '4750_Yonge_Street',
     );
