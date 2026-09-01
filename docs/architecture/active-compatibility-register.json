@@ -107,7 +107,7 @@
         "apps/api/src/store/store-schedule.contract.ts",
         "apps/api/src/store/brand-store-config.reader.ts",
         "apps/api/src/store/store-status.service.ts",
-        "apps/api/src/pos/pos-store-context.controller.ts",
+        "apps/api/src/pos/pos-summary.controller.ts",
         "apps/web/src/lib/api/pos-session.ts",
         "apps/web/src/lib/api/brand-store.ts",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"

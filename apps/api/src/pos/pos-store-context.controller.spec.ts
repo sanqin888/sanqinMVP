@@ -1,4 +1,4 @@
-import { PosStoreContextController } from './pos-store-context.controller';
+import { PosStoreContextController } from './pos-summary.controller';
 
 const configuredStore = {
   storeStableId: '4750_Yonge_Street',

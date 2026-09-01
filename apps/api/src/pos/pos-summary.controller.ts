@@ -22,6 +22,10 @@ import {
   type LoyaltyPolicyReaderPort,
   type LoyaltyPolicySnapshot,
 } from '../loyalty/public-api';
+import {
+  BRAND_STORE_CONFIG_READER,
+  type BrandStoreConfigReaderPort,
+} from '../store/public-api';
 
 type PosDeviceRequest = Request & {
   posDevice?: AuthenticatedPosIdentity;
@@ -93,6 +97,41 @@ export class PosSummaryController {
     });
 
     return { success: true };
+  }
+}
+
+type PosStoreContextResponse = {
+  storeStableId: string;
+  storeName: string;
+  timezone: string;
+};
+
+@Controller('pos/store-context')
+@UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
+@Roles('ADMIN', 'STAFF')
+export class PosStoreContextController {
+  constructor(
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+  ) {}
+
+  @Get()
+  async getStoreContext(
+    @Req() req: PosDeviceRequest,
+  ): Promise<PosStoreContextResponse> {
+    const storeStableId = req.posDevice?.storeStableId;
+    if (!storeStableId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+
+    const store = await this.brandStoreConfigReader.getStoreSnapshot(
+      storeStableId,
+    );
+    return {
+      storeStableId: store.storeStableId,
+      storeName: store.storeName,
+      timezone: store.timezone,
+    };
   }
 }
 
