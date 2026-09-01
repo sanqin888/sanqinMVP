@@ -1,11 +1,16 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { CreateOrderInput } from '@shared/order';
 
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { PosCardPaymentController } from './pos-card-payment.controller';
 import type { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
 
-const storeDbId = '8a3d4c0e-4750-4f6a-9138-000000000001';
 const storeStableId = '4750_Yonge_Street';
+const posIdentity: AuthenticatedPosIdentity = {
+  deviceStableId: 'device-1',
+  storeStableId,
+  name: 'Front POS',
+};
 
 const order: CreateOrderInput = {
   channel: 'in_store',
@@ -39,14 +44,9 @@ const createHarness = () => {
 };
 
 describe('PosCardPaymentController store identity', () => {
-  it('uses Store.storeStableId for every Phase D boundary call, never PosDevice.storeId', async () => {
+  it('uses the authenticated POS store stable id for every Phase D boundary call', async () => {
     const { controller, cardPayments } = createHarness();
-    const req = {
-      posDevice: {
-        storeId: storeDbId,
-        storeStableId,
-      },
-    } as never;
+    const req = { posDevice: posIdentity } as never;
 
     controller.getConfig(req);
     await controller.getAvailability(req);
@@ -59,21 +59,12 @@ describe('PosCardPaymentController store identity', () => {
     expect(cardPayments.start).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.recover).toHaveBeenCalledWith(storeStableId, body);
     expect(cardPayments.cancel).toHaveBeenCalledWith(storeStableId, body);
-
-    expect(cardPayments.getConfig).not.toHaveBeenCalledWith(storeDbId);
-    expect(cardPayments.getAvailability).not.toHaveBeenCalledWith(storeDbId);
-    expect(cardPayments.start).not.toHaveBeenCalledWith(storeDbId, body);
-    expect(cardPayments.recover).not.toHaveBeenCalledWith(storeDbId, body);
-    expect(cardPayments.cancel).not.toHaveBeenCalledWith(storeDbId, body);
   });
 
-  it('does not fall back to the database UUID when storeStableId is unavailable', () => {
+  it('rejects an authenticated POS identity without a usable storeStableId', () => {
     const { controller, cardPayments } = createHarness();
     const req = {
-      posDevice: {
-        storeId: storeDbId,
-        storeStableId: '   ',
-      },
+      posDevice: { ...posIdentity, storeStableId: '   ' },
     } as never;
 
     expect(() => controller.getConfig(req)).toThrow(UnauthorizedException);

@@ -5,7 +5,7 @@ function hashDeviceKey(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-describe('PosDeviceService.verifyDevice', () => {
+describe('PosDeviceService.verifyCredentials', () => {
   function setup(device: Record<string, unknown> | null) {
     const posDevice = {
       findUnique: jest.fn().mockResolvedValue(device),
@@ -32,7 +32,7 @@ describe('PosDeviceService.verifyDevice', () => {
     const { service, posDevice } = setup(device);
 
     await expect(
-      service.verifyDevice({ deviceStableId: 'device-1', deviceKey }),
+      service.verifyCredentials({ deviceStableId: 'device-1', deviceKey }),
     ).resolves.toEqual({
       deviceStableId: 'device-1',
       storeStableId: 'store-a',
@@ -65,7 +65,7 @@ describe('PosDeviceService.verifyDevice', () => {
     });
 
     await expect(
-      service.verifyDevice({
+      service.verifyCredentials({
         deviceStableId: 'device-1',
         deviceKey: 'wrong-secret',
       }),
@@ -84,7 +84,7 @@ describe('PosDeviceService.verifyDevice', () => {
     });
 
     await expect(
-      service.verifyDevice({ deviceStableId: 'device-1', deviceKey }),
+      service.verifyCredentials({ deviceStableId: 'device-1', deviceKey }),
     ).resolves.toBeNull();
     expect(posDevice.update).not.toHaveBeenCalled();
   });
@@ -93,7 +93,7 @@ describe('PosDeviceService.verifyDevice', () => {
     const { service, posDevice } = setup(null);
 
     await expect(
-      service.verifyDevice({
+      service.verifyCredentials({
         deviceStableId: 'missing-device',
         deviceKey: 'device-secret',
       }),

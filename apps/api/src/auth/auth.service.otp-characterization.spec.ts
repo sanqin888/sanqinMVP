@@ -5,6 +5,7 @@ import {
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
+import type { PosDeviceCredentialVerifierPort } from '../pos/public-api';
 import { AuthService } from './auth.service';
 import { ChallengeEngine } from './challenge-engine.service';
 
@@ -41,6 +42,7 @@ describe('AuthService OTP characterization', () => {
       {} as never,
       {} as never,
       challengeEngine,
+      { verifyCredentials: jest.fn() } as never,
     );
 
     return {
@@ -234,5 +236,64 @@ describe('AuthService OTP characterization', () => {
         consumedAt: new Date('2026-08-30T12:00:00.000Z'),
       },
     });
+  });
+});
+
+describe('AuthService POS device authentication boundary', () => {
+  function createPosLoginService(
+    verifyCredentials: jest.MockedFunction<
+      PosDeviceCredentialVerifierPort['verifyCredentials']
+    > = jest.fn().mockResolvedValue(null),
+  ) {
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ role: 'STAFF' }),
+      },
+    };
+    const service = new AuthService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { verifyCredentials } as never,
+    );
+    return { service, verifyCredentials };
+  }
+
+  it('delegates POS device credentials to the POS-owned verifier', async () => {
+    const { service, verifyCredentials } = createPosLoginService();
+
+    await expect(
+      service.loginWithPassword({
+        email: 'staff@example.com',
+        password: 'staff-password',
+        purpose: 'pos',
+        posDeviceStableId: 'device-1',
+        posDeviceKey: 'device-secret',
+      }),
+    ).rejects.toThrow('POS device not authorized');
+
+    expect(verifyCredentials).toHaveBeenCalledWith({
+      deviceStableId: 'device-1',
+      deviceKey: 'device-secret',
+    });
+  });
+
+  it('rejects missing POS credentials before calling the POS verifier', async () => {
+    const { service, verifyCredentials } = createPosLoginService();
+
+    await expect(
+      service.loginWithPassword({
+        email: 'staff@example.com',
+        password: 'staff-password',
+        purpose: 'pos',
+      }),
+    ).rejects.toThrow('Missing POS device credentials');
+
+    expect(verifyCredentials).not.toHaveBeenCalled();
   });
 });

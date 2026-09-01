@@ -18,6 +18,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
 import { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
 
@@ -30,7 +31,7 @@ const PosCardPaymentStartSchema = z.object({
 type PosCardPaymentStartDto = z.infer<typeof PosCardPaymentStartSchema>;
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeId: string; storeStableId: string };
+  posDevice?: AuthenticatedPosIdentity;
 };
 
 @Controller('pos/payments/card')

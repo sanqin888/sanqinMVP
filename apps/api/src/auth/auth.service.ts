@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { randomBytes, timingSafeEqual, createHash } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
@@ -32,6 +32,10 @@ import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
 } from './challenge-engine.port';
+import {
+  POS_DEVICE_CREDENTIAL_VERIFIER,
+  type PosDeviceCredentialVerifierPort,
+} from '../pos/public-api';
 
 @Injectable()
 export class AuthService {
@@ -47,6 +51,8 @@ export class AuthService {
     private readonly couponTriggerService: CouponProgramTriggerService,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
+    @Inject(POS_DEVICE_CREDENTIAL_VERIFIER)
+    private readonly posDeviceCredentialVerifier: PosDeviceCredentialVerifierPort,
   ) {}
 
   private async triggerSignupCompletedPrograms(user: User) {
@@ -61,19 +67,6 @@ export class AuthService {
         (error as Error).stack,
       );
     }
-  }
-
-  private hashDeviceKey(value: string): string {
-    return createHash('sha256').update(value).digest('hex');
-  }
-
-  private verifyDeviceKey(value: string, hash: string): boolean {
-    const computed = this.hashDeviceKey(value);
-    if (computed.length !== hash.length) return false;
-    return timingSafeEqual(
-      Buffer.from(hash, 'hex'),
-      Buffer.from(computed, 'hex'),
-    );
   }
 
   private getSessionTtlMs(): number {
@@ -477,22 +470,14 @@ export class AuthService {
         throw new ForbiddenException('Missing POS device credentials');
       }
 
-      const device = await this.prisma.posDevice.findUnique({
-        where: { deviceStableId },
-      });
-
-      if (!device || device.status !== 'ACTIVE') {
+      const authenticatedPosIdentity =
+        await this.posDeviceCredentialVerifier.verifyCredentials({
+          deviceStableId,
+          deviceKey,
+        });
+      if (!authenticatedPosIdentity) {
         throw new ForbiddenException('POS device not authorized');
       }
-
-      if (!this.verifyDeviceKey(deviceKey, device.deviceKeyHash)) {
-        throw new ForbiddenException('POS device not authorized');
-      }
-
-      await this.prisma.posDevice.update({
-        where: { id: device.id },
-        data: { lastSeenAt: new Date() },
-      });
     }
 
     if (user.status === 'DISABLED') {

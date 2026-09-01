@@ -10,6 +10,10 @@ import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import type {
+  AuthenticatedPosIdentity,
+  PosDeviceCredentials,
+} from './pos-device-management.contract';
 import { PosDeviceService } from './pos-device.service';
 import {
   POS_DEVICE_ID_COOKIE,
@@ -23,18 +27,8 @@ export const POS_CARD_PAYMENT_STATUS_UPDATED_EVENT =
 export const POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED_EVENT =
   'POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED';
 
-type PosSocketDeviceIdentity = {
-  deviceStableId: string;
-  storeStableId: string;
-};
-
 type PosSocketData = {
-  posDevice?: PosSocketDeviceIdentity;
-};
-
-type PosSocketCredentials = {
-  deviceStableId: string;
-  deviceKey: string;
+  posDevice?: AuthenticatedPosIdentity;
 };
 
 type PosPrintTarget = 'customer' | 'kitchen' | 'label';
@@ -108,7 +102,7 @@ export class PosGateway
       return false;
     }
 
-    const device = await this.posDeviceService.verifyDevice(credentials);
+    const device = await this.posDeviceService.verifyCredentials(credentials);
     if (!device) {
       this.logger.warn({
         event: 'pos_socket_auth_failed',
@@ -120,14 +114,11 @@ export class PosGateway
     }
 
     const data = client.data as PosSocketData;
-    data.posDevice = {
-      deviceStableId: device.deviceStableId,
-      storeStableId: device.storeStableId,
-    };
+    data.posDevice = device;
     return true;
   }
 
-  private readSocketCredentials(client: Socket): PosSocketCredentials | null {
+  private readSocketCredentials(client: Socket): PosDeviceCredentials | null {
     const cookieHeader = client.handshake.headers.cookie;
     const cookieDeviceStableId = this.readCookieValue(
       cookieHeader,
@@ -187,7 +178,7 @@ export class PosGateway
 
   private getAuthenticatedDevice(
     client: Socket,
-  ): PosSocketDeviceIdentity | null {
+  ): AuthenticatedPosIdentity | null {
     const data = client.data as PosSocketData;
     return data.posDevice ?? null;
   }

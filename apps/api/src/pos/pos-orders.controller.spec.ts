@@ -82,7 +82,13 @@ describe('PosOrdersController Uber orders', () => {
 
     await expect(
       controller.board(
-        { posDevice: { storeStableId: '4750_Yonge_Street' } } as never,
+        {
+          posDevice: {
+            deviceStableId: 'device-1',
+            storeStableId: '4750_Yonge_Street',
+            name: 'Front POS',
+          },
+        } as never,
         'pending,paid,making,ready',
         undefined,
         80,
@@ -116,7 +122,13 @@ describe('PosOrdersController Uber orders', () => {
 
     await expect(
       controller.board(
-        { posDevice: { storeStableId: '4750_Yonge_Street' } } as never,
+        {
+          posDevice: {
+            deviceStableId: 'device-1',
+            storeStableId: '4750_Yonge_Street',
+            name: 'Front POS',
+          },
+        } as never,
         'pending,paid,making,ready',
         undefined,
         80,
@@ -146,7 +158,13 @@ describe('PosOrdersController Uber orders', () => {
   it('POS 自动接单设置按设备所属门店读写', async () => {
     posOrders.getAutoAcceptOnlineOrders.mockResolvedValue({ enabled: false });
     posOrders.setAutoAcceptOnlineOrders.mockResolvedValue({ enabled: true });
-    const req = { posDevice: { storeStableId: '4750_Yonge_Street' } } as never;
+    const req = {
+      posDevice: {
+        deviceStableId: 'device-1',
+        storeStableId: '4750_Yonge_Street',
+        name: 'Front POS',
+      },
+    } as never;
 
     await expect(controller.getAutoAcceptOnlineOrders(req)).resolves.toEqual({
       enabled: false,

@@ -10,7 +10,11 @@ describe('PosDevicesController heartbeat', () => {
 
     await expect(
       controller.heartbeat({
-        posDevice: { deviceStableId: 'pos_device_1' },
+        posDevice: {
+          deviceStableId: 'pos_device_1',
+          storeStableId: '4750_Yonge_Street',
+          name: 'Front POS',
+        },
       } as never),
     ).resolves.toEqual({ success: true });
 
