@@ -599,8 +599,8 @@ export class PosGateway
     });
   }
 
-  sendPrintSummary(storeId: string, data: unknown) {
-    const roomName = `store:${storeId}`;
+  sendPrintSummary(storeStableId: string, data: unknown) {
+    const roomName = `store:${storeStableId}`;
     this.logger.log(`🚀 Sending PRINT_SUMMARY to ${roomName}`);
     this.server.to(roomName).emit('PRINT_SUMMARY', data);
   }
