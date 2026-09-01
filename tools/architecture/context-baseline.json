@@ -178,6 +178,9 @@
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"],
     "authenticatedPosStoreContext": {
       "apiAdapter": "apps/api/src/pos/pos-summary.controller.ts",
+      "ordersApiAdapter": "apps/api/src/pos/pos-orders.controller.ts",
+      "legacyOrdersApiAdapter": "apps/api/src/orders/orders.controller.ts",
+      "scheduledOrdersApiAdapter": "apps/api/src/orders/scheduled-orders.controller.ts",
       "compositionModule": "apps/api/src/pos/pos.module.ts",
       "webApiClient": "apps/web/src/lib/api/pos-session.ts",
       "webConsumers": [

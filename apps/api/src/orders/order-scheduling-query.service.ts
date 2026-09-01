@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { OrderFulfillmentTiming, OrderStatus } from '@prisma/client';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveConfiguredStoreStableId } from '../store/public-api';
 import type { OrderFulfillmentTimingDto } from './dto/order-fulfillment-timing.dto';
 import type { ScheduledOrderSummaryDto } from './dto/scheduled-order-summary.dto';
 
@@ -8,11 +9,31 @@ import type { ScheduledOrderSummaryDto } from './dto/scheduled-order-summary.dto
 export class OrderSchedulingQueryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByStableId(
+  private storeWhere(storeStableId: string): Prisma.OrderWhereInput {
+    const normalizedStoreStableId = storeStableId.trim();
+    if (!normalizedStoreStableId) {
+      throw new BadRequestException('storeStableId is required');
+    }
+    const canonicalScope: Prisma.OrderWhereInput = {
+      storeId: normalizedStoreStableId,
+    };
+    if (normalizedStoreStableId !== resolveConfiguredStoreStableId()) {
+      return canonicalScope;
+    }
+
+    // @compat brand-store.default-store-identity.v1
+    return { OR: [canonicalScope, { storeId: null }] };
+  }
+
+  async findByStableIdForStore(
     orderStableId: string,
+    storeStableId: string,
   ): Promise<OrderFulfillmentTimingDto | null> {
-    const order = await this.prisma.order.findUnique({
-      where: { orderStableId },
+    const order = await this.prisma.order.findFirst({
+      where: {
+        orderStableId,
+        ...this.storeWhere(storeStableId),
+      },
       select: {
         orderStableId: true,
         status: true,
@@ -38,8 +59,9 @@ export class OrderSchedulingQueryService {
     };
   }
 
-  async findTimingsByStableIds(
+  async findTimingsByStableIdsForStore(
     orderStableIds: string[],
+    storeStableId: string,
   ): Promise<Map<string, OrderFulfillmentTiming>> {
     const stableIds = [
       ...new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
@@ -47,7 +69,10 @@ export class OrderSchedulingQueryService {
     if (stableIds.length === 0) return new Map();
 
     const orders = await this.prisma.order.findMany({
-      where: { orderStableId: { in: stableIds } },
+      where: {
+        orderStableId: { in: stableIds },
+        ...this.storeWhere(storeStableId),
+      },
       select: { orderStableId: true, fulfillmentTiming: true },
     });
 

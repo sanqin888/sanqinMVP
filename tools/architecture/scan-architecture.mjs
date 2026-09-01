@@ -451,6 +451,15 @@ if (brandStoreCanonicalConfigOwnership) {
   const posStoreContextApiAdapter = toPosix(
     authenticatedPosStoreContext?.apiAdapter ?? '',
   );
+  const posOrdersApiAdapter = toPosix(
+    authenticatedPosStoreContext?.ordersApiAdapter ?? '',
+  );
+  const legacyPosOrdersApiAdapter = toPosix(
+    authenticatedPosStoreContext?.legacyOrdersApiAdapter ?? '',
+  );
+  const scheduledPosOrdersApiAdapter = toPosix(
+    authenticatedPosStoreContext?.scheduledOrdersApiAdapter ?? '',
+  );
   const posStoreContextCompositionModule = toPosix(
     authenticatedPosStoreContext?.compositionModule ?? '',
   );
@@ -742,6 +751,9 @@ if (brandStoreCanonicalConfigOwnership) {
   if (authenticatedPosStoreContext) {
     for (const boundaryPath of [
       posStoreContextApiAdapter,
+      posOrdersApiAdapter,
+      legacyPosOrdersApiAdapter,
+      scheduledPosOrdersApiAdapter,
       posStoreContextCompositionModule,
       posStoreContextWebApiClient,
     ]) {
@@ -771,6 +783,76 @@ if (brandStoreCanonicalConfigOwnership) {
       ) {
         failures.push(
           `authenticated POS store context must derive storeStableId from PosDeviceGuard identity and read Brand/Store through its public boundary: ${posStoreContextApiAdapter}`,
+        );
+      }
+    }
+
+    const posOrdersApiPath = join(REPOSITORY_ROOT, posOrdersApiAdapter);
+    if (posOrdersApiAdapter && existsSync(posOrdersApiPath)) {
+      const source = readFileSync(posOrdersApiPath, 'utf8');
+      if (
+        !source.includes("@Controller('pos/orders')") ||
+        !source.includes('PosDeviceGuard') ||
+        !source.includes('AuthenticatedPosIdentity') ||
+        !source.includes('requireStoreStableId') ||
+        !source.includes(
+          'createForStore(dto, this.requireStoreStableId(req))',
+        ) ||
+        !source.includes(
+          'this.orders.recent(this.requireStoreStableId(req), limit)',
+        ) ||
+        !source.includes('this.orders.board(storeStableId, {') ||
+        !source.includes('getByStableIdForStore') ||
+        !source.includes('updateStatusForStore') ||
+        source.includes('this.orders.getByStableId(orderStableId)')
+      ) {
+        failures.push(
+          `canonical POS Orders API must derive storeStableId from PosDeviceGuard identity and use store-scoped Orders operations: ${posOrdersApiAdapter}`,
+        );
+      }
+    }
+
+    const legacyPosOrdersApiPath = join(
+      REPOSITORY_ROOT,
+      legacyPosOrdersApiAdapter,
+    );
+    if (legacyPosOrdersApiAdapter && existsSync(legacyPosOrdersApiPath)) {
+      const source = readFileSync(legacyPosOrdersApiPath, 'utf8');
+      if (
+        !source.includes('PosDeviceGuard') ||
+        !source.includes('AuthenticatedPosIdentity') ||
+        !source.includes('requirePosStoreStableId') ||
+        !source.includes(
+          'this.ordersService.recent(this.requirePosStoreStableId(req), limit)',
+        ) ||
+        !source.includes(
+          'this.ordersService.board(this.requirePosStoreStableId(req), {',
+        ) ||
+        !source.includes('updateStatusForStore') ||
+        !source.includes('advanceForStore')
+      ) {
+        failures.push(
+          `legacy POS Orders compatibility routes must not bypass authenticated store scope: ${legacyPosOrdersApiAdapter}`,
+        );
+      }
+    }
+
+    const scheduledPosOrdersApiPath = join(
+      REPOSITORY_ROOT,
+      scheduledPosOrdersApiAdapter,
+    );
+    if (scheduledPosOrdersApiAdapter && existsSync(scheduledPosOrdersApiPath)) {
+      const source = readFileSync(scheduledPosOrdersApiPath, 'utf8');
+      if (
+        !source.includes('PosDeviceGuard') ||
+        !source.includes('AuthenticatedPosIdentity') ||
+        !source.includes('requireStoreStableId') ||
+        !source.includes('listUpcomingForStoreStableId(storeStableId)') ||
+        !source.includes('findByStableIdForStore') ||
+        !source.includes('activateScheduledOrderByStableId')
+      ) {
+        failures.push(
+          `scheduled POS Orders routes must carry authenticated storeStableId through reads and manual preparation: ${scheduledPosOrdersApiAdapter}`,
         );
       }
     }

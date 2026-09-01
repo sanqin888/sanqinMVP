@@ -16,10 +16,12 @@ const order = (overrides: Partial<OrderDto> = {}): OrderDto =>
 describe('PosOrdersService', () => {
   const setup = (current: OrderDto) => {
     const orders = {
-      getByStableId: jest.fn().mockResolvedValue(current),
+      getByStableIdForStore: jest.fn().mockResolvedValue(current),
       getExternalPaymentCents: jest.fn().mockResolvedValue(null),
       createFullRefund: jest.fn(),
-      advance: jest.fn().mockResolvedValue({ ...current, status: 'ready' }),
+      advanceForStore: jest
+        .fn()
+        .mockResolvedValue({ ...current, status: 'ready' }),
     };
     const uberEats = {
       execute: jest.fn().mockResolvedValue({
@@ -87,9 +89,12 @@ describe('PosOrdersService', () => {
   it('普通订单仅使用本地状态推进', async () => {
     const { service, orders, uberEats } = setup(order());
 
-    await service.advance('order_1');
+    await service.advance('4750_Yonge_Street', 'order_1');
 
-    expect(orders.advance).toHaveBeenCalledWith('order_1');
+    expect(orders.advanceForStore).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
     expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
@@ -105,14 +110,16 @@ describe('PosOrdersService', () => {
       status: 'making',
     });
     const { service, orders, uberEats } = setup(pending);
-    orders.getByStableId
+    orders.getByStableIdForStore
       .mockResolvedValueOnce(pending)
       .mockResolvedValueOnce(making);
 
-    await expect(service.advance('order_1')).resolves.toMatchObject(making);
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(making);
 
     expect(uberEats.accept).toHaveBeenCalledWith('external-123');
-    expect(orders.advance).not.toHaveBeenCalled();
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
   });
 
   it('Uber ACCEPT 失败时不提前推进本地 pending 状态', async () => {
@@ -124,10 +131,12 @@ describe('PosOrdersService', () => {
     const { service, orders, uberEats } = setup(pending);
     uberEats.accept.mockResolvedValue({ ok: false });
 
-    await expect(service.advance('order_1')).resolves.toMatchObject(pending);
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(pending);
 
-    expect(orders.getByStableId).toHaveBeenCalledTimes(1);
-    expect(orders.advance).not.toHaveBeenCalled();
+    expect(orders.getByStableIdForStore).toHaveBeenCalledTimes(1);
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
   });
 
   it('两个终端同时点击时都复用 Uber ACCEPT/outbox 而不走通用推进', async () => {
@@ -138,15 +147,18 @@ describe('PosOrdersService', () => {
     });
     const making = { ...pending, status: 'making' } as OrderDto;
     const { service, orders, uberEats } = setup(pending);
-    orders.getByStableId
+    orders.getByStableIdForStore
       .mockResolvedValueOnce(pending)
       .mockResolvedValueOnce(pending)
       .mockResolvedValue(making);
 
-    await Promise.all([service.advance('order_1'), service.advance('order_1')]);
+    await Promise.all([
+      service.advance('4750_Yonge_Street', 'order_1'),
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ]);
 
     expect(uberEats.accept).toHaveBeenCalledTimes(2);
-    expect(orders.advance).not.toHaveBeenCalled();
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
   });
 
   it('Uber webhook 订单从 making 到 ready 时委托原子 outbox 同步', async () => {
@@ -158,15 +170,17 @@ describe('PosOrdersService', () => {
     const { service, orders, uberEats } = setup(
       order({ channel: 'ubereats', clientRequestId: 'ubereats:external-123' }),
     );
-    orders.getByStableId.mockResolvedValueOnce(
+    orders.getByStableIdForStore.mockResolvedValueOnce(
       order({ channel: 'ubereats', clientRequestId: 'ubereats:external-123' }),
     );
-    orders.getByStableId.mockResolvedValueOnce(ready);
+    orders.getByStableIdForStore.mockResolvedValueOnce(ready);
 
-    await expect(service.advance('order_1')).resolves.toMatchObject(ready);
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(ready);
 
     expect(uberEats.execute).toHaveBeenCalledWith('external-123', 'ready');
-    expect(orders.advance).not.toHaveBeenCalled();
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
   });
 
   it('重复 ready 点击复用 Uber 服务的幂等动作键', async () => {
@@ -174,11 +188,11 @@ describe('PosOrdersService', () => {
       order({ channel: 'ubereats', clientRequestId: 'ubereats:external-123' }),
     );
 
-    await service.advance('order_1');
-    await service.advance('order_1');
+    await service.advance('4750_Yonge_Street', 'order_1');
+    await service.advance('4750_Yonge_Street', 'order_1');
 
     expect(uberEats.execute).toHaveBeenCalledTimes(2);
-    expect(orders.advance).not.toHaveBeenCalled();
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
   });
 
   it('Uber 临时失败返回部分成功契约而不是通用 502', async () => {
@@ -194,7 +208,7 @@ describe('PosOrdersService', () => {
         errorSummary: 'Uber 返回 HTTP 500',
       },
     });
-    orders.getByStableId
+    orders.getByStableIdForStore
       .mockResolvedValueOnce(
         order({
           channel: 'ubereats',
@@ -210,13 +224,15 @@ describe('PosOrdersService', () => {
         }),
       );
 
-    await expect(service.advance('order_1')).resolves.toMatchObject({
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject({
       status: 'ready',
       uberActionStatus: 'FAILED',
       retryable: true,
       actionId: 'ready_action',
     });
-    expect(orders.advance).not.toHaveBeenCalled();
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
   });
 
   it('Uber ready 到 completed 与 Uber action 状态完全脱钩', async () => {
@@ -227,7 +243,7 @@ describe('PosOrdersService', () => {
     });
     const completed = { ...ready, status: 'completed' } as OrderDto;
     const { service, orders, uberEats } = setup(ready);
-    orders.advance.mockResolvedValue(completed);
+    orders.advanceForStore.mockResolvedValue(completed);
     uberEats.getReadyForPickupAction.mockResolvedValue({
       ok: false,
       actionId: 'ready_action',
@@ -240,11 +256,16 @@ describe('PosOrdersService', () => {
       },
     });
 
-    await expect(service.advance('order_1')).resolves.toMatchObject({
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject({
       status: 'completed',
     });
 
-    expect(orders.advance).toHaveBeenCalledWith('order_1');
+    expect(orders.advanceForStore).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
     expect(uberEats.getReadyForPickupAction).not.toHaveBeenCalled();
     expect(uberEats.execute).not.toHaveBeenCalled();
   });
@@ -258,9 +279,12 @@ describe('PosOrdersService', () => {
       }),
     );
 
-    await service.advance('order_1');
+    await service.advance('4750_Yonge_Street', 'order_1');
 
-    expect(orders.advance).toHaveBeenCalledWith('order_1');
+    expect(orders.advanceForStore).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
     expect(uberEats.execute).not.toHaveBeenCalled();
   });
 
@@ -274,7 +298,12 @@ describe('PosOrdersService', () => {
     );
 
     await expect(
-      service.denyUberOrder('order_1', 'ITEM_ISSUE', '商品售罄'),
+      service.denyUberOrder(
+        '4750_Yonge_Street',
+        'order_1',
+        'ITEM_ISSUE',
+        '商品售罄',
+      ),
     ).resolves.toMatchObject({
       orderStableId: 'order_1',
       uberActionStatus: 'QUEUED',
@@ -284,7 +313,9 @@ describe('PosOrdersService', () => {
       'ITEM_ISSUE',
       '商品售罄',
     );
-    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+    await expect(
+      service.getManagementActions('4750_Yonge_Street', 'order_1'),
+    ).resolves.toEqual({
       actions: [{ action: 'UBER_DENY', available: true }],
     });
   });
@@ -298,9 +329,9 @@ describe('PosOrdersService', () => {
       }),
     );
 
-    await expect(service.denyUberOrder('order_1', 'OTHER')).rejects.toThrow(
-      '只有待接单的 Uber 订单可以拒单',
-    );
+    await expect(
+      service.denyUberOrder('4750_Yonge_Street', 'order_1', 'OTHER'),
+    ).rejects.toThrow('只有待接单的 Uber 订单可以拒单');
     expect(uberEats.deny).not.toHaveBeenCalled();
   });
 
@@ -314,7 +345,12 @@ describe('PosOrdersService', () => {
     );
 
     await expect(
-      service.cancelUberOrder('order_1', ' ITEM_ISSUE ', ' 商品售罄 '),
+      service.cancelUberOrder(
+        '4750_Yonge_Street',
+        'order_1',
+        ' ITEM_ISSUE ',
+        ' 商品售罄 ',
+      ),
     ).resolves.toMatchObject({
       orderStableId: 'order_1',
       uberActionStatus: null,
@@ -335,9 +371,9 @@ describe('PosOrdersService', () => {
       }),
     );
 
-    await expect(service.cancelUberOrder('order_1', '   ')).rejects.toThrow(
-      '取消原因不能为空',
-    );
+    await expect(
+      service.cancelUberOrder('4750_Yonge_Street', 'order_1', '   '),
+    ).rejects.toThrow('取消原因不能为空');
     expect(uberEats.cancel).not.toHaveBeenCalled();
   });
 
@@ -349,10 +385,12 @@ describe('PosOrdersService', () => {
     });
     const { service, uberEats } = setup(ready);
 
-    await expect(service.cancelUberOrder('order_1', 'OTHER')).rejects.toThrow(
-      '当前 Uber 订单状态不允许取消',
-    );
-    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+    await expect(
+      service.cancelUberOrder('4750_Yonge_Street', 'order_1', 'OTHER'),
+    ).rejects.toThrow('当前 Uber 订单状态不允许取消');
+    await expect(
+      service.getManagementActions('4750_Yonge_Street', 'order_1'),
+    ).resolves.toEqual({
       actions: [
         {
           action: 'UBER_CANCEL',
@@ -367,9 +405,9 @@ describe('PosOrdersService', () => {
   it('POS 拒绝为非 Uber 订单提交 CANCEL', async () => {
     const { service, uberEats } = setup(order());
 
-    await expect(service.cancelUberOrder('order_1', 'OTHER')).rejects.toThrow(
-      '只有 Uber 订单可以提交取消',
-    );
+    await expect(
+      service.cancelUberOrder('4750_Yonge_Street', 'order_1', 'OTHER'),
+    ).rejects.toThrow('只有 Uber 订单可以提交取消');
     expect(uberEats.cancel).not.toHaveBeenCalled();
   });
 
@@ -382,7 +420,9 @@ describe('PosOrdersService', () => {
     const { service, orders } = setup(webOrder);
     orders.getExternalPaymentCents.mockResolvedValue(0);
 
-    await expect(service.getManagementActions('order_1')).resolves.toEqual({
+    await expect(
+      service.getManagementActions('4750_Yonge_Street', 'order_1'),
+    ).resolves.toEqual({
       actions: [
         {
           action: 'SWAP_ITEM',
@@ -413,7 +453,10 @@ describe('PosOrdersService', () => {
     const { service, orders } = setup(webOrder);
     orders.getExternalPaymentCents.mockResolvedValue(699);
 
-    const result = await service.getManagementActions('order_1');
+    const result = await service.getManagementActions(
+      '4750_Yonge_Street',
+      'order_1',
+    );
 
     expect(result.actions).toEqual(
       expect.arrayContaining([
@@ -440,7 +483,7 @@ describe('PosOrdersService', () => {
     });
 
     await expect(
-      service.createFullRefund('order_1', {
+      service.createFullRefund('4750_Yonge_Street', 'order_1', {
         reason: '顾客取消',
         operatorName: 'Staff',
         refundAmountCents: 0,
@@ -468,7 +511,7 @@ describe('PosOrdersService', () => {
     orders.getExternalPaymentCents.mockResolvedValue(699);
 
     await expect(
-      service.createFullRefund('order_1', {
+      service.createFullRefund('4750_Yonge_Street', 'order_1', {
         reason: '顾客取消',
         operatorName: 'Staff',
         refundAmountCents: 699,

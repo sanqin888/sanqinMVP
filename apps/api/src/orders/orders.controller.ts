@@ -13,6 +13,7 @@ import {
   ParseIntPipe,
   BadRequestException,
   ForbiddenException,
+  UnauthorizedException,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -54,11 +55,13 @@ import { OptionalSessionAuthGuard } from '../auth/optional-session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string; email?: string | null };
+  posDevice?: AuthenticatedPosIdentity;
 };
 
 class UpdateStatusDto {
@@ -346,9 +349,10 @@ export class OrdersController {
   @Get('recent')
   @UseGuards(PosDeviceGuard)
   recent(
+    @Req() req: AuthedRequest,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ): Promise<OrderDto[]> {
-    return this.ordersService.recent(limit);
+    return this.ordersService.recent(this.requirePosStoreStableId(req), limit);
   }
 
   /**
@@ -358,6 +362,7 @@ export class OrdersController {
   @Get('board')
   @UseGuards(PosDeviceGuard)
   board(
+    @Req() req: AuthedRequest,
     @Query('status') statusRaw?: string,
     @Query('channel') channelRaw?: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
@@ -378,7 +383,7 @@ export class OrdersController {
           .filter(Boolean) as Array<'web' | 'in_store' | 'ubereats'>)
       : undefined;
 
-    return this.ordersService.board({
+    return this.ordersService.board(this.requirePosStoreStableId(req), {
       statusIn,
       channelIn,
       limit,
@@ -472,10 +477,15 @@ export class OrdersController {
   @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
   @Roles('ADMIN', 'STAFF')
   updateStatus(
+    @Req() req: AuthedRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: UpdateStatusDto,
   ): Promise<OrderDto> {
-    return this.ordersService.updateStatus(orderStableId, body.status);
+    return this.ordersService.updateStatusForStore(
+      orderStableId,
+      this.requirePosStoreStableId(req),
+      body.status,
+    );
   }
 
   /**
@@ -486,10 +496,15 @@ export class OrdersController {
   @HttpCode(201)
   @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
   @Roles('ADMIN', 'STAFF')
-  createAmendment(
+  async createAmendment(
+    @Req() req: AuthedRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CreateOrderAmendmentDto,
   ): Promise<OrderDto> {
+    await this.ordersService.getByStableIdForStore(
+      orderStableId,
+      this.requirePosStoreStableId(req),
+    );
     return this.ordersService.createAmendment({
       orderStableId,
       type: body.type,
@@ -510,9 +525,13 @@ export class OrdersController {
   @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
   @Roles('ADMIN', 'STAFF')
   advance(
+    @Req() req: AuthedRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderDto> {
-    return this.ordersService.advance(orderStableId);
+    return this.ordersService.advanceForStore(
+      orderStableId,
+      this.requirePosStoreStableId(req),
+    );
   }
 
   /**
@@ -560,5 +579,13 @@ export class OrdersController {
       email: req.user?.email ?? null,
       locale: body?.locale,
     });
+  }
+
+  private requirePosStoreStableId(req: AuthedRequest): string {
+    const storeStableId = req.posDevice?.storeStableId?.trim();
+    if (!storeStableId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+    return storeStableId;
   }
 }

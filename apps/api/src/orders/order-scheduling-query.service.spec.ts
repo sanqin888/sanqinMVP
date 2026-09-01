@@ -62,11 +62,10 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
       order: { findMany: orderFindMany },
     } as never);
 
-    const result = await service.findTimingsByStableIds([
-      'scheduled-1',
-      'immediate-1',
-      'scheduled-1',
-    ]);
+    const result = await service.findTimingsByStableIdsForStore(
+      ['scheduled-1', 'immediate-1', 'scheduled-1'],
+      '4750_Yonge_Street',
+    );
 
     expect(result).toEqual(
       new Map([
@@ -77,6 +76,7 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
     expect(orderFindMany).toHaveBeenCalledWith({
       where: {
         orderStableId: { in: ['scheduled-1', 'immediate-1'] },
+        OR: [{ storeId: '4750_Yonge_Street' }, { storeId: null }],
       },
       select: { orderStableId: true, fulfillmentTiming: true },
     });
