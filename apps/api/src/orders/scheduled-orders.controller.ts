@@ -16,6 +16,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
 import type { OrderFulfillmentTimingDto } from './dto/order-fulfillment-timing.dto';
 import type { ScheduledOrdersQueueDto } from './dto/scheduled-order-summary.dto';
@@ -23,7 +24,7 @@ import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeId: string };
+  posDevice?: AuthenticatedPosIdentity;
 };
 
 @Controller('orders')
@@ -39,12 +40,12 @@ export class ScheduledOrdersController {
   async listScheduledOrders(
     @Req() req: PosDeviceRequest,
   ): Promise<ScheduledOrdersQueueDto> {
-    const deviceStoreId = req.posDevice?.storeId;
-    if (!deviceStoreId) {
+    const storeStableId = req.posDevice?.storeStableId;
+    if (!storeStableId) {
       throw new UnauthorizedException('POS device store unavailable');
     }
     return {
-      orders: await this.query.listUpcomingForDeviceStore(deviceStoreId),
+      orders: await this.query.listUpcomingForStoreStableId(storeStableId),
     };
   }
 

@@ -18,6 +18,7 @@ import { SmsModule } from '../sms/sms.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { IdentityChallengeModule } from './challenge-engine.module';
+import { PosDeviceModule } from '../pos/public-api';
 
 @Global()
 @Module({
@@ -29,6 +30,7 @@ import { IdentityChallengeModule } from './challenge-engine.module';
     MessagingModule,
     NotificationModule,
     IdentityChallengeModule,
+    PosDeviceModule,
   ],
   providers: [
     AuthService,

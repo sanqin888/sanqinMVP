@@ -11,7 +11,10 @@ import {
   type StoreLegacyDbIdResolverPort,
 } from '../store/public-api';
 import {
+  type AuthenticatedPosIdentity,
   type PosDeviceAdminCompatibilityPort,
+  type PosDeviceCredentialVerifierPort,
+  type PosDeviceCredentials,
   type PosDeviceEnrollmentResult,
   type PosDeviceManagementPort,
   type PosDeviceManagementSnapshot,
@@ -41,7 +44,10 @@ function toJsonObject(value: Record<string, unknown>): Prisma.JsonObject {
 
 @Injectable()
 export class PosDeviceService
-  implements PosDeviceManagementPort, PosDeviceAdminCompatibilityPort
+  implements
+    PosDeviceManagementPort,
+    PosDeviceAdminCompatibilityPort,
+    PosDeviceCredentialVerifierPort
 {
   constructor(
     private readonly prisma: PrismaService,
@@ -157,7 +163,9 @@ export class PosDeviceService
     return { device: updated, deviceKey };
   }
 
-  async verifyDevice(params: { deviceStableId: string; deviceKey: string }) {
+  async verifyCredentials(
+    params: PosDeviceCredentials,
+  ): Promise<AuthenticatedPosIdentity | null> {
     const device = await this.prisma.posDevice.findUnique({
       where: { deviceStableId: params.deviceStableId },
       select: {
@@ -165,9 +173,8 @@ export class PosDeviceService
         deviceKeyHash: true,
         status: true,
         deviceStableId: true,
-        storeId: true,
+        name: true,
         store: { select: { storeStableId: true } },
-        meta: true,
       },
     });
 
@@ -184,8 +191,11 @@ export class PosDeviceService
       data: { lastSeenAt: new Date() },
     });
 
-    const { store, ...verifiedDevice } = device;
-    return { ...verifiedDevice, storeStableId: store.storeStableId };
+    return {
+      deviceStableId: device.deviceStableId,
+      storeStableId: device.store.storeStableId,
+      name: device.name,
+    };
   }
 
   async recordConnectivityHeartbeat(deviceStableId: string): Promise<void> {

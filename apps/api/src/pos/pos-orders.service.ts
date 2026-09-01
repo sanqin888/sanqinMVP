@@ -24,6 +24,12 @@ import {
   type UberEatsOrderStatusSyncPort,
 } from '../integrations/ubereats/public-api';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  BRAND_STORE_CONFIG_READER,
+  BRAND_STORE_CONFIG_WRITER,
+  type BrandStoreConfigReaderPort,
+  type BrandStoreConfigWriterPort,
+} from '../store/public-api';
 
 const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 const POS_OPERATOR_REASON_MARKER = ' · 操作人:';
@@ -118,6 +124,10 @@ export class PosOrdersService {
     @Inject(UBER_EATS_ORDER_STATUS_SYNC)
     private readonly uberOrderStatusSync: UberEatsOrderStatusSyncPort,
     private readonly prisma: PrismaService,
+    @Inject(BRAND_STORE_CONFIG_READER)
+    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(BRAND_STORE_CONFIG_WRITER)
+    private readonly brandStoreConfigWriter: BrandStoreConfigWriterPort,
   ) {}
 
   async advance(orderStableId: string): Promise<PosOrderAdvanceResult> {
@@ -171,26 +181,22 @@ export class PosOrdersService {
   }
 
   async getAutoAcceptOnlineOrders(
-    storeId: string,
+    storeStableId: string,
   ): Promise<{ enabled: boolean }> {
-    const config = await this.prisma.storeConfig.findUnique({
-      where: { storeId },
-      select: { autoAcceptOnlineOrders: true },
-    });
-    return { enabled: config?.autoAcceptOnlineOrders ?? true };
+    const store =
+      await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
+    return { enabled: store.autoAcceptOnlineOrders };
   }
 
   async setAutoAcceptOnlineOrders(
-    storeId: string,
+    storeStableId: string,
     enabled: boolean,
   ): Promise<{ enabled: boolean }> {
-    const config = await this.prisma.storeConfig.upsert({
-      where: { storeId },
-      create: { storeId, autoAcceptOnlineOrders: enabled },
-      update: { autoAcceptOnlineOrders: enabled },
-      select: { autoAcceptOnlineOrders: true },
-    });
-    return { enabled: config.autoAcceptOnlineOrders };
+    await this.brandStoreConfigWriter.updateConfig(
+      { store: { autoAcceptOnlineOrders: enabled } },
+      storeStableId,
+    );
+    return { enabled };
   }
 
   async denyUberOrder(

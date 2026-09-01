@@ -1,10 +1,7 @@
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 
 describe('OrderSchedulingQueryService scheduled queue', () => {
-  it('resolves the POS device Store UUID before querying Order.storeId', async () => {
-    const storeFindUnique = jest.fn().mockResolvedValue({
-      storeStableId: '4750_Yonge_Street',
-    });
+  it('queries scheduled Orders directly by the authenticated store stable ID', async () => {
     const orderFindMany = jest.fn().mockResolvedValue([
       {
         orderStableId: 'stable-1',
@@ -17,14 +14,11 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
       },
     ]);
     const service = new OrderSchedulingQueryService({
-      store: { findUnique: storeFindUnique },
       order: { findMany: orderFindMany },
     } as never);
 
     await expect(
-      service.listUpcomingForDeviceStore(
-        '8a3d4c0e-4750-4f6a-9138-000000000001',
-      ),
+      service.listUpcomingForStoreStableId('4750_Yonge_Street'),
     ).resolves.toEqual([
       {
         orderStableId: 'stable-1',
@@ -36,10 +30,6 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
       },
     ]);
 
-    expect(storeFindUnique).toHaveBeenCalledWith({
-      where: { id: '8a3d4c0e-4750-4f6a-9138-000000000001' },
-      select: { storeStableId: true },
-    });
     expect(orderFindMany).toHaveBeenCalledWith({
       where: {
         storeId: '4750_Yonge_Street',
@@ -90,18 +80,5 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
       },
       select: { orderStableId: true, fulfillmentTiming: true },
     });
-  });
-
-  it('returns an empty queue when the authenticated device store no longer exists', async () => {
-    const orderFindMany = jest.fn();
-    const service = new OrderSchedulingQueryService({
-      store: { findUnique: jest.fn().mockResolvedValue(null) },
-      order: { findMany: orderFindMany },
-    } as never);
-
-    await expect(
-      service.listUpcomingForDeviceStore('missing-store-id'),
-    ).resolves.toEqual([]);
-    expect(orderFindMany).not.toHaveBeenCalled();
   });
 });

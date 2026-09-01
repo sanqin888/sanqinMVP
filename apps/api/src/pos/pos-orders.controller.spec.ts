@@ -14,7 +14,7 @@ describe('PosOrdersController Uber orders', () => {
     setAutoAcceptOnlineOrders: jest.fn(),
   };
   const schedulingQuery = {
-    listUpcomingForDeviceStore: jest.fn(),
+    listUpcomingForStoreStableId: jest.fn(),
     findTimingsByStableIds: jest.fn(),
   };
   const posCardPaymentFeature = {
@@ -70,7 +70,7 @@ describe('PosOrdersController Uber orders', () => {
       { orderStableId: 'scheduled_1' },
       { orderStableId: 'immediate_1' },
     ]);
-    schedulingQuery.listUpcomingForDeviceStore.mockResolvedValue([
+    schedulingQuery.listUpcomingForStoreStableId.mockResolvedValue([
       { orderStableId: 'scheduled_1' },
     ]);
     schedulingQuery.findTimingsByStableIds.mockResolvedValue(
@@ -82,7 +82,13 @@ describe('PosOrdersController Uber orders', () => {
 
     await expect(
       controller.board(
-        { posDevice: { storeId: 'store-uuid-1' } } as never,
+        {
+          posDevice: {
+            deviceStableId: 'device-1',
+            storeStableId: '4750_Yonge_Street',
+            name: 'Front POS',
+          },
+        } as never,
         'pending,paid,making,ready',
         undefined,
         80,
@@ -92,8 +98,8 @@ describe('PosOrdersController Uber orders', () => {
       { orderStableId: 'immediate_1', fulfillmentTiming: 'IMMEDIATE' },
     ]);
 
-    expect(schedulingQuery.listUpcomingForDeviceStore).toHaveBeenCalledWith(
-      'store-uuid-1',
+    expect(schedulingQuery.listUpcomingForStoreStableId).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
     );
     expect(schedulingQuery.findTimingsByStableIds).toHaveBeenCalledWith([
       'scheduled_1',
@@ -109,14 +115,20 @@ describe('PosOrdersController Uber orders', () => {
 
   it('已激活预约单进入右侧看板后仍保留预约身份', async () => {
     orders.board.mockResolvedValue([{ orderStableId: 'scheduled_active' }]);
-    schedulingQuery.listUpcomingForDeviceStore.mockResolvedValue([]);
+    schedulingQuery.listUpcomingForStoreStableId.mockResolvedValue([]);
     schedulingQuery.findTimingsByStableIds.mockResolvedValue(
       new Map([['scheduled_active', 'SCHEDULED']]),
     );
 
     await expect(
       controller.board(
-        { posDevice: { storeId: 'store-uuid-1' } } as never,
+        {
+          posDevice: {
+            deviceStableId: 'device-1',
+            storeStableId: '4750_Yonge_Street',
+            name: 'Front POS',
+          },
+        } as never,
         'pending,paid,making,ready',
         undefined,
         80,
@@ -146,7 +158,13 @@ describe('PosOrdersController Uber orders', () => {
   it('POS 自动接单设置按设备所属门店读写', async () => {
     posOrders.getAutoAcceptOnlineOrders.mockResolvedValue({ enabled: false });
     posOrders.setAutoAcceptOnlineOrders.mockResolvedValue({ enabled: true });
-    const req = { posDevice: { storeId: 'store-uuid-1' } } as never;
+    const req = {
+      posDevice: {
+        deviceStableId: 'device-1',
+        storeStableId: '4750_Yonge_Street',
+        name: 'Front POS',
+      },
+    } as never;
 
     await expect(controller.getAutoAcceptOnlineOrders(req)).resolves.toEqual({
       enabled: false,
@@ -155,10 +173,10 @@ describe('PosOrdersController Uber orders', () => {
       controller.setAutoAcceptOnlineOrders(req, { enabled: true }),
     ).resolves.toEqual({ enabled: true });
     expect(posOrders.getAutoAcceptOnlineOrders).toHaveBeenCalledWith(
-      'store-uuid-1',
+      '4750_Yonge_Street',
     );
     expect(posOrders.setAutoAcceptOnlineOrders).toHaveBeenCalledWith(
-      'store-uuid-1',
+      '4750_Yonge_Street',
       true,
     );
   });

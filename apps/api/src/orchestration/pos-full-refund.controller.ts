@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
 import type { PosCreateFullRefundInput } from '../pos/pos-orders.service';
 import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestration.service';
@@ -46,7 +47,7 @@ type PosFullRefundDto = Omit<
 };
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeId: string; storeStableId: string };
+  posDevice?: AuthenticatedPosIdentity;
 };
 
 @Controller('pos/orders')

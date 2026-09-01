@@ -2,6 +2,26 @@ export const POS_DEVICE_MANAGEMENT = Symbol('POS_DEVICE_MANAGEMENT');
 export const POS_DEVICE_ADMIN_COMPATIBILITY = Symbol(
   'POS_DEVICE_ADMIN_COMPATIBILITY',
 );
+export const POS_DEVICE_CREDENTIAL_VERIFIER = Symbol(
+  'POS_DEVICE_CREDENTIAL_VERIFIER',
+);
+
+export type PosDeviceCredentials = {
+  deviceStableId: string;
+  deviceKey: string;
+};
+
+export type AuthenticatedPosIdentity = Readonly<{
+  deviceStableId: string;
+  storeStableId: string;
+  name: string | null;
+}>;
+
+export interface PosDeviceCredentialVerifierPort {
+  verifyCredentials(
+    credentials: PosDeviceCredentials,
+  ): Promise<AuthenticatedPosIdentity | null>;
+}
 
 export type PosDeviceManagementStatus = 'ACTIVE' | 'DISABLED';
 
