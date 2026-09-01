@@ -11,6 +11,7 @@ import { PosDeviceModule } from './pos-device.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PosStoreStatusController } from './pos-store-status.controller';
+import { PosStoreContextController } from './pos-store-context.controller';
 import { PosStoreStatusService } from './pos-store-status.service';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { PosOrdersService } from './pos-orders.service';
@@ -36,6 +37,7 @@ import { BrandStoreConfigModule } from '../store/public-api';
   controllers: [
     PosSummaryController,
     PosOrdersController,
+    PosStoreContextController,
     PosStoreStatusController,
     PosExchangeRateController,
     PosLoyaltyPolicyController,

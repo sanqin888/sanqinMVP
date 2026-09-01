@@ -20,6 +20,12 @@ export type PosDeviceClaimResult = {
   deviceStableId: string;
 };
 
+export type PosStoreContext = {
+  storeStableId: string;
+  storeName: string;
+  timezone: string;
+};
+
 export async function claimPosDevice(input: {
   enrollmentCode: string;
   meta: PosDeviceMetadata;
@@ -63,6 +69,12 @@ export async function fetchPosSessionSnapshot(): Promise<PosSessionSnapshot | nu
     }
     throw error;
   }
+}
+
+export async function fetchPosStoreContext(): Promise<PosStoreContext> {
+  return apiFetch<PosStoreContext>("/pos/store-context", {
+    unauthorized: "throw",
+  });
 }
 
 export async function fetchPosHeartbeatSchedule(): Promise<boolean> {

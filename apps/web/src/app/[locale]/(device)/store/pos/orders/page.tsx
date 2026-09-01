@@ -29,7 +29,7 @@ import type {
   PosOrderManagementAction,
 } from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
-import { fetchStaffStoreConfig } from "@/lib/api/brand-store";
+import { fetchPosStoreContext } from "@/lib/api/pos-session";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
 const COPY = {
@@ -1227,13 +1227,13 @@ export default function PosOrdersPage() {
       try {
         setIsLoading(true);
         setErrorMessage(null);
-        const [configRes, data] = await Promise.all([
-          fetchStaffStoreConfig().catch(() => null),
+        const [storeContext, data] = await Promise.all([
+          fetchPosStoreContext().catch(() => null),
           fetchRecentOrders<BackendOrder[]>(30),
         ]);
         if (cancelled) return;
         const tz =
-          configRes?.timezone?.trim() ||
+          storeContext?.timezone?.trim() ||
           Intl.DateTimeFormat().resolvedOptions().timeZone ||
           "UTC";
         setStoreTimezone(tz);

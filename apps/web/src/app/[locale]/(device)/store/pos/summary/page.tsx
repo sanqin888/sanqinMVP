@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import { apiFetch } from "@/lib/api/client";
-import { fetchStaffStoreConfig } from "@/lib/api/brand-store";
+import { fetchPosStoreContext } from "@/lib/api/pos-session";
 import { printSummaryCloud } from "@/lib/api/pos";
 import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
 
@@ -334,10 +334,10 @@ export default function PosDailySummaryPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const cfg = await fetchStaffStoreConfig().catch(() => null);
+      const storeContext = await fetchPosStoreContext().catch(() => null);
       if (cancelled) return;
       const tz =
-        cfg?.timezone?.trim() ||
+        storeContext?.timezone?.trim() ||
         (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
       setStoreTimezone(tz);
       const todayYmd = ymdInTimeZone(new Date(), tz);

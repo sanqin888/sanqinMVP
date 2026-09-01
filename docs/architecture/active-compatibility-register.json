@@ -93,6 +93,7 @@
       "dual_write_or_read": [
         "Staff Brand/Store schedule reads and writes plus StoreStatus now pass storeStableId through STORE_SCHEDULE_READER/WRITER and resolve storeDbId only inside the Store Prisma adapter",
         "BusinessHour and Holiday no longer carry hard-coded store DB UUID defaults in Prisma; the store-scope migration keeps the physical storeId column, exposes it as storeDbId in Prisma, and changes BusinessHour uniqueness to storeDbId + weekday",
+        "Authenticated POS Orders and Daily Summary browser timezone context now comes from /pos/store-context: PosDeviceGuard supplies the authenticated device storeStableId and the POS adapter reads that exact Store snapshot through BRAND_STORE_CONFIG_READER instead of falling back to /staff/store/config",
         "Uber channel configuration rows still default storeId to the literal default identity, and frozen Uber menu schedule readers still require their later scoped cutover",
         "Other existing rows and callers may still omit an explicit store identity"
       ],
@@ -106,6 +107,8 @@
         "apps/api/src/store/store-schedule.contract.ts",
         "apps/api/src/store/brand-store-config.reader.ts",
         "apps/api/src/store/store-status.service.ts",
+        "apps/api/src/pos/pos-store-context.controller.ts",
+        "apps/web/src/lib/api/pos-session.ts",
         "apps/web/src/lib/api/brand-store.ts",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
       ]
