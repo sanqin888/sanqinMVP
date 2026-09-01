@@ -84,7 +84,9 @@ describe('POS device authentication boundary', () => {
   });
 
   it('threads authenticated POS store identity through store-status operations', () => {
-    const controller = read(resolve(POS_ROOT, 'pos-store-status.controller.ts'));
+    const controller = read(
+      resolve(POS_ROOT, 'pos-store-status.controller.ts'),
+    );
     const service = read(resolve(POS_ROOT, 'pos-store-status.service.ts'));
     const watchdog = read(
       resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),

@@ -386,9 +386,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       temporaryCloseReason: pauseReason,
     });
 
-    await expect(
-      service.reconcileExpiredPause(STORE_STABLE_ID),
-    ).resolves.toBe(true);
+    await expect(service.reconcileExpiredPause(STORE_STABLE_ID)).resolves.toBe(
+      true,
+    );
 
     expect(configWriter.resumeTemporaryClosureIfMatches).toHaveBeenCalledWith(
       STORE_STABLE_ID,
@@ -412,9 +412,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
     });
     configWriter.resumeTemporaryClosureIfMatches.mockResolvedValue(false);
 
-    await expect(
-      service.reconcileExpiredPause(STORE_STABLE_ID),
-    ).resolves.toBe(false);
+    await expect(service.reconcileExpiredPause(STORE_STABLE_ID)).resolves.toBe(
+      false,
+    );
 
     expect(
       posGateway.publishCustomerOrderingStatusUpdate,
