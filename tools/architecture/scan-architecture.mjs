@@ -446,6 +446,36 @@ if (brandStoreCanonicalConfigOwnership) {
     brandStoreCanonicalConfigOwnership.migratedConsumerForbiddenSymbols ?? {};
   const forbiddenLegacyPaths =
     brandStoreCanonicalConfigOwnership.forbiddenLegacyPaths ?? [];
+  const authenticatedPosStoreContext =
+    brandStoreCanonicalConfigOwnership.authenticatedPosStoreContext ?? null;
+  const posStoreContextApiAdapter = toPosix(
+    authenticatedPosStoreContext?.apiAdapter ?? '',
+  );
+  const posStoreContextCompositionModule = toPosix(
+    authenticatedPosStoreContext?.compositionModule ?? '',
+  );
+  const posStoreContextWebApiClient = toPosix(
+    authenticatedPosStoreContext?.webApiClient ?? '',
+  );
+  const posStoreContextWebConsumers =
+    authenticatedPosStoreContext?.webConsumers ?? [];
+  const adminExplicitStoreContext =
+    brandStoreCanonicalConfigOwnership.adminExplicitStoreContext ?? null;
+  const adminStoreContextApiAdapter = toPosix(
+    adminExplicitStoreContext?.apiAdapter ?? '',
+  );
+  const adminStoreContextService = toPosix(
+    adminExplicitStoreContext?.service ?? '',
+  );
+  const adminStoreContextWebApiClient = toPosix(
+    adminExplicitStoreContext?.webApiClient ?? '',
+  );
+  const adminStoreContextWebSelector = toPosix(
+    adminExplicitStoreContext?.webSelector ?? '',
+  );
+  const adminStoreContextWebSettings = toPosix(
+    adminExplicitStoreContext?.webStoreSettings ?? '',
+  );
 
   if (contextOf(publicSurface) !== ownerContext) {
     failures.push(
@@ -709,6 +739,196 @@ if (brandStoreCanonicalConfigOwnership) {
     }
   }
 
+  if (authenticatedPosStoreContext) {
+    for (const boundaryPath of [
+      posStoreContextApiAdapter,
+      posStoreContextCompositionModule,
+      posStoreContextWebApiClient,
+    ]) {
+      if (!boundaryPath || !existsSync(join(REPOSITORY_ROOT, boundaryPath))) {
+        failures.push(
+          `authenticated POS store context boundary path missing: ${boundaryPath || '<missing>'}`,
+        );
+      }
+    }
+
+    const posStoreContextApiPath = join(
+      REPOSITORY_ROOT,
+      posStoreContextApiAdapter,
+    );
+    if (posStoreContextApiAdapter && existsSync(posStoreContextApiPath)) {
+      const source = readFileSync(posStoreContextApiPath, 'utf8');
+      if (
+        !source.includes("@Controller('pos/store-context')") ||
+        !source.includes('SessionAuthGuard') ||
+        !source.includes('RolesGuard') ||
+        !source.includes("@Roles('ADMIN', 'STAFF')") ||
+        !source.includes('PosDeviceGuard') ||
+        !source.includes('AuthenticatedPosIdentity') ||
+        !source.includes('BRAND_STORE_CONFIG_READER') ||
+        !/getStoreSnapshot\s*\(\s*storeStableId\s*,?\s*\)/.test(source) ||
+        source.includes('resolveConfiguredStoreStableId')
+      ) {
+        failures.push(
+          `authenticated POS store context must derive storeStableId from PosDeviceGuard identity and read Brand/Store through its public boundary: ${posStoreContextApiAdapter}`,
+        );
+      }
+    }
+
+    const posStoreContextModulePath = join(
+      REPOSITORY_ROOT,
+      posStoreContextCompositionModule,
+    );
+    if (
+      posStoreContextCompositionModule &&
+      existsSync(posStoreContextModulePath) &&
+      !readFileSync(posStoreContextModulePath, 'utf8').includes(
+        'PosStoreContextController',
+      )
+    ) {
+      failures.push(
+        `authenticated POS store context controller must be mounted in the POS composition module: ${posStoreContextCompositionModule}`,
+      );
+    }
+
+    const posStoreContextWebApiPath = join(
+      REPOSITORY_ROOT,
+      posStoreContextWebApiClient,
+    );
+    if (posStoreContextWebApiClient && existsSync(posStoreContextWebApiPath)) {
+      const source = readFileSync(posStoreContextWebApiPath, 'utf8');
+      if (
+        !source.includes('fetchPosStoreContext') ||
+        !source.includes('/pos/store-context') ||
+        source.includes('fetchStaffStoreConfig')
+      ) {
+        failures.push(
+          `POS Web adapter must expose the authenticated /pos/store-context contract without falling back to staff Store config: ${posStoreContextWebApiClient}`,
+        );
+      }
+    }
+
+    for (const consumer of posStoreContextWebConsumers) {
+      const consumerPath = toPosix(consumer);
+      const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
+      if (!existsSync(absoluteConsumerPath)) {
+        failures.push(
+          `authenticated POS store context Web consumer missing: ${consumerPath}`,
+        );
+        continue;
+      }
+      const source = readFileSync(absoluteConsumerPath, 'utf8');
+      if (
+        !source.includes('fetchPosStoreContext') ||
+        source.includes('fetchStaffStoreConfig') ||
+        source.includes('@/lib/api/brand-store')
+      ) {
+        failures.push(
+          `POS Web consumer must use authenticated POS store context instead of implicit /staff/store config: ${consumerPath}`,
+        );
+      }
+    }
+  }
+
+  if (adminExplicitStoreContext) {
+    for (const boundaryPath of [
+      adminStoreContextApiAdapter,
+      adminStoreContextService,
+      adminStoreContextWebApiClient,
+      adminStoreContextWebSelector,
+      adminStoreContextWebSettings,
+    ]) {
+      if (!boundaryPath || !existsSync(join(REPOSITORY_ROOT, boundaryPath))) {
+        failures.push(
+          `Admin explicit Store context boundary path missing: ${boundaryPath || '<missing>'}`,
+        );
+      }
+    }
+
+    const webApiPath = join(REPOSITORY_ROOT, adminStoreContextWebApiClient);
+    if (adminStoreContextWebApiClient && existsSync(webApiPath)) {
+      const source = readFileSync(webApiPath, 'utf8');
+      if (
+        source.includes('/staff/store/') ||
+        source.includes('storeStableId?: string') ||
+        !source.includes('staffStorePath(storeStableId: string') ||
+        !source.includes('/staff/stores/${encodeURIComponent(storeStableId)}/${suffix}')
+      ) {
+        failures.push(
+          `canonical Admin Store Web API must require explicit storeStableId and must not fall back to /staff/store/*: ${adminStoreContextWebApiClient}`,
+        );
+      }
+    }
+
+    const selectorPath = join(REPOSITORY_ROOT, adminStoreContextWebSelector);
+    if (adminStoreContextWebSelector && existsSync(selectorPath)) {
+      const source = readFileSync(selectorPath, 'utf8');
+      if (
+        !source.includes('fetchStaffStores') ||
+        source.includes('fetchStaffStoreConfig') ||
+        source.includes('configuredStoreStableId') ||
+        !source.includes("nextParams.set('store', selectedStoreStableId)") ||
+        !source.includes("return stores[0]?.storeStableId ?? ''")
+      ) {
+        failures.push(
+          `Admin Store selector must establish explicit ?store= context from the Store directory without reading implicit Store config: ${adminStoreContextWebSelector}`,
+        );
+      }
+    }
+
+    const settingsPath = join(REPOSITORY_ROOT, adminStoreContextWebSettings);
+    if (adminStoreContextWebSettings && existsSync(settingsPath)) {
+      const source = readFileSync(settingsPath, 'utf8');
+      if (
+        source.includes("searchParams.get('store')?.trim() || undefined") ||
+        !source.includes('if (!requestedStoreStableId)') ||
+        !source.includes('fetchStaffStoreConfig(requestedStoreStableId)') ||
+        !source.includes('fetchStaffStoreHours(requestedStoreStableId)') ||
+        !source.includes('fetchStaffStoreHolidays(requestedStoreStableId)')
+      ) {
+        failures.push(
+          `Admin Store settings must wait for explicit ?store= identity before loading Store config, hours, or holidays: ${adminStoreContextWebSettings}`,
+        );
+      }
+    }
+
+    const servicePath = join(REPOSITORY_ROOT, adminStoreContextService);
+    if (adminStoreContextService && existsSync(servicePath)) {
+      const source = readFileSync(servicePath, 'utf8');
+      const requiredSignatures = [
+        'getStoreConfig(storeStableId: string)',
+        'storeStableId: string,\n  ): Promise<StoreConfigSnapshot>',
+        'getStoreHours(storeStableId: string)',
+        'storeStableId: string,\n  ): Promise<StoreBusinessHour[]>',
+        'getStoreHolidays(storeStableId: string)',
+        'storeStableId: string,\n  ): Promise<StoreHoliday[]>',
+      ];
+      if (
+        source.includes('storeStableId?: string') ||
+        requiredSignatures.some((signature) => !source.includes(signature))
+      ) {
+        failures.push(
+          `canonical Admin Business Store methods must require explicit storeStableId: ${adminStoreContextService}`,
+        );
+      }
+    }
+
+    const apiPath = join(REPOSITORY_ROOT, adminStoreContextApiAdapter);
+    if (adminStoreContextApiAdapter && existsSync(apiPath)) {
+      const source = readFileSync(apiPath, 'utf8');
+      if (
+        !source.includes('@compat brand-store.default-store-identity.v1') ||
+        !source.includes('resolveConfiguredStoreStableId') ||
+        !source.includes("@Get('stores/:storeStableId/config')") ||
+        /service\.getStore(?:Config|Hours|Holidays)\s*\(\s*\)/.test(source)
+      ) {
+        failures.push(
+          `legacy /staff/store/* fallback must stay isolated and annotated in the staff transport adapter while canonical routes remain storeStableId-scoped: ${adminStoreContextApiAdapter}`,
+        );
+      }
+    }
+  }
+
   const privateTargets = new Set(
     [
       implementation,
@@ -883,7 +1103,7 @@ if (benefitsLoyaltyPolicyOwnership) {
     );
     if (!transitionalDelegatePattern.test(source)) {
       failures.push(
-        `Benefits loyalty policy reader must keep transitional ${transitionalStorageDelegate} as the Phase B return source: ${implementation}`,
+        `Benefits loyalty policy reader must keep transitional ${transitionalStorageDelegate} available for Phase C parity/rollback observation: ${implementation}`,
       );
     }
     const transactionalPolicyReaderStart = source.indexOf(
@@ -901,10 +1121,13 @@ if (benefitsLoyaltyPolicyOwnership) {
       !transactionalPolicyReaderSource.includes(
         `tx.${dedicatedStorageDelegate}.findUnique`,
       ) ||
-      !transactionalPolicyReaderSource.includes('observePolicyParity')
+      !transactionalPolicyReaderSource.includes('observePolicyParity') ||
+      !transactionalPolicyReaderSource.includes(
+        'normalizeLoyaltyPolicy(loyaltyProgramPolicy)',
+      )
     ) {
       failures.push(
-        `Benefits transaction-bound policy reader must compare ${transitionalStorageDelegate} and ${dedicatedStorageDelegate} through the same Prisma transaction client: ${implementation}`,
+        `Benefits Phase C transaction-bound policy reader must return ${dedicatedStorageDelegate} while comparing ${transitionalStorageDelegate} through the same Prisma transaction client: ${implementation}`,
       );
     }
     const policyReaderStart = source.indexOf('async getLoyaltyPolicySnapshot()');
@@ -918,10 +1141,12 @@ if (benefitsLoyaltyPolicyOwnership) {
         `this.prisma.${dedicatedStorageDelegate}.findUnique`,
       ) ||
       !policyReaderSource.includes('observePolicyParity') ||
-      !policyReaderSource.includes('normalizeLoyaltyPolicy(config)')
+      !policyReaderSource.includes(
+        'normalizeLoyaltyPolicy(loyaltyProgramPolicy)',
+      )
     ) {
       failures.push(
-        `Benefits Phase B runtime policy reader must return ${transitionalStorageDelegate} while shadow-comparing ${dedicatedStorageDelegate}: ${implementation}`,
+        `Benefits Phase C runtime policy reader must return ${dedicatedStorageDelegate} while shadow-comparing ${transitionalStorageDelegate}: ${implementation}`,
       );
     }
     const legacyPolicyReaderPattern =
@@ -950,22 +1175,41 @@ if (benefitsLoyaltyPolicyOwnership) {
   const writerImplementationPath = join(REPOSITORY_ROOT, writerImplementation);
   if (existsSync(writerImplementationPath)) {
     const writerSource = readFileSync(writerImplementationPath, 'utf8');
+    const settingsReaderStart = writerSource.indexOf(
+      'async getLoyaltyPolicySettings()',
+    );
+    const settingsReaderSource =
+      settingsReaderStart >= 0
+        ? writerSource.slice(settingsReaderStart, settingsReaderStart + 1800)
+        : '';
     if (
-      !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
-      !writerSource.includes('getLoyaltyPolicySettings') ||
-      !writerSource.includes(
+      !settingsReaderSource.includes(
         `this.prisma.${dedicatedStorageDelegate}.findUnique`,
       ) ||
-      !writerSource.includes('observeParity') ||
+      !settingsReaderSource.includes(
+        `this.prisma.${transitionalStorageDelegate}.findUnique`,
+      ) ||
+      !settingsReaderSource.includes('observeParity') ||
+      !settingsReaderSource.includes(
+        'return requireLoyaltyPolicySettings(loyaltyProgramPolicy)',
+      )
+    ) {
+      failures.push(
+        `Benefits Phase C editable policy reader must return ${dedicatedStorageDelegate} while shadow-comparing ${transitionalStorageDelegate}: ${writerImplementation}`,
+      );
+    }
+    if (
+      !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
       !/\.\$transaction\s*\(/.test(writerSource) ||
       !writerSource.includes(`tx.${transitionalStorageDelegate}.findUnique`) ||
       !writerSource.includes(`tx.${dedicatedStorageDelegate}.findUnique`) ||
+      !writerSource.includes('const current = loyaltyProgramPolicy;') ||
       !writerSource.includes(`tx.${dedicatedStorageDelegate}.update`) ||
       !/tx\.businessConfig\.update\s*\(/.test(writerSource) ||
       !writerSource.includes(`tx.${transitionalStorageDelegate}.update`)
     ) {
       failures.push(
-        `Benefits Phase B loyalty writer must shadow-read dedicated persistence and triple-write ${dedicatedStorageDelegate}, BusinessConfig compatibility, and ${transitionalStorageDelegate} in one transaction: ${writerImplementation}`,
+        `Benefits Phase C loyalty writer must merge from ${dedicatedStorageDelegate}, shadow-compare ${transitionalStorageDelegate}, and triple-write ${dedicatedStorageDelegate}, BusinessConfig compatibility, and ${transitionalStorageDelegate} in one transaction: ${writerImplementation}`,
       );
     }
     if (

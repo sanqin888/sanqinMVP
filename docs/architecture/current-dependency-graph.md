@@ -100,10 +100,17 @@ pair fails CI.
   The timed auto-resume compare-and-set is implemented inside the Brand/Store
   writer so an outdated expiry task cannot clear a newer pause. POS is now
   architecture-gated against regressing to Prisma configuration delegates.
+- POS Orders and Daily Summary browser timezone context now comes from the guarded
+  `/pos/store-context` adapter. `PosDeviceGuard` supplies the authenticated device
+  `storeStableId`, and the adapter requests that exact Store snapshot through
+  `BRAND_STORE_CONFIG_READER`; the POS browser no longer uses the implicit
+  `/staff/store/config` fallback for its own store context.
 - Admin Business compatibility routes now follow the owner boundaries for both reads
-  and writes. Current staff Web consumers use `/staff/brand/*` and `/staff/store/*`
-  transport adapters backed by `BRAND_STORE_CONFIG_READER/WRITER` and the Store
-  schedule ports; `/admin/business/*` remains server-side compatibility only.
+  and writes. Canonical staff Web Store consumers require an explicit `storeStableId`
+  and use `/staff/stores/:storeStableId/*` adapters backed by
+  `BRAND_STORE_CONFIG_READER/WRITER` and the Store schedule ports. The selector writes
+  a valid `?store=` context before Store settings load; singular `/staff/store/*` and
+  `/admin/business/*` remain compatibility-only transport paths.
   Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
   `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
   updates canonical config rows first, then refreshes the full overlapping
@@ -128,8 +135,11 @@ pair fails CI.
 - The architecture scanner protects the public surface from cross-context deep
   imports, prevents the canonical reader from regressing to legacy persistence,
   requires the owner writer to keep canonical writes, temporary-closure CAS, and
-  its registered `BusinessConfig` compatibility copy in one transaction, and
-  forbids Admin or POS StoreStatus from directly writing Prisma config delegates.
+  its registered `BusinessConfig` compatibility copy in one transaction, forbids
+  Admin or POS StoreStatus from directly writing Prisma config delegates, pins POS
+  Orders/Summary browser store context to the guarded POS endpoint, and prevents
+  canonical Admin Store clients/settings from returning to implicit `/staff/store/*`
+  routes or optional `storeStableId` contracts.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.
@@ -182,14 +192,16 @@ pair fails CI.
   forbids reintroducing the `BusinessConfig` symbol or delegate there.
 - `benefits.business-config-loyalty-policy.v1` records this transitional compatibility
   state. Phase A expanded and backfilled the dedicated `LoyaltyProgramPolicy`
-  singleton. Phase B now maintains `LoyaltyProgramPolicy + BusinessConfig +
-  BrandConfig` in one Benefits-owned transaction and shadow-compares the dedicated
-  row on settings, runtime, and transaction-bound reads while still returning
-  BrandConfig. Structured `loyalty_policy_shadow_mismatch` warnings make missing
-  rows or field drift observable. The remaining implementation order is dedicated
-  read cutover, separate trigger Loyalty split, removal of BusinessConfig then
-  BrandConfig dual-writes, and only then the final column contraction. Every later
-  Prisma/trigger migration remains separately authorized.
+  singleton, and Phase B established one-transaction triple-write plus parity
+  telemetry. Phase C now returns `LoyaltyProgramPolicy` for editable settings,
+  runtime reads, and transaction-bound reads while continuing to shadow-compare
+  BrandConfig; partial policy updates also merge against the dedicated row before
+  synchronizing `BusinessConfig + BrandConfig` rollback copies. Structured
+  `loyalty_policy_shadow_mismatch` warnings still expose missing rows or field drift.
+  The remaining implementation order is the separate trigger Loyalty split,
+  removal of BusinessConfig then BrandConfig dual-writes, and only then the final
+  column contraction. Every later Prisma/trigger migration remains separately
+  authorized.
 
 ## Carried debt outside this closeout
 

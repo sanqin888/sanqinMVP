@@ -3,7 +3,7 @@
 Date: 2026-08-30
 Baseline: `origin/dev` at `483f675f`
 Compatibility entry: `benefits.business-config-loyalty-policy.v1`
-Status: Admin Business contract contraction plus Phase A dedicated persistence expand/backfill and Phase B triple-write/shadow-read are implemented; Phase C read cutover, trigger split, dual-write removal, and final column contraction remain pending.
+Status: Admin Business contract contraction plus Phase A dedicated persistence expand/backfill and Phase B triple-write/shadow-read are implemented; Phase C dedicated read cutover is implemented locally; trigger split, dual-write removal, and final column contraction remain pending.
 
 ## 1. Scope and current ownership
 
@@ -196,15 +196,18 @@ Transaction-bound Loyalty reads must compare/read through the same existing Pris
 
 ### Phase C — Read cutover
 
+Implementation status: **implemented locally** after production parity was rechecked: the three singleton copies are currently zero-diff and the API logs show no `loyalty_policy_shadow_mismatch` events in the inspected last-24-hour window.
+
 After zero-diff observation:
 
-- `getLoyaltyPolicySnapshot()` reads LoyaltyProgramPolicy;
-- `getLoyaltyPolicySnapshotWithTx(tx)` reads LoyaltyProgramPolicy through `tx`;
-- `getLoyaltyPolicySettings()` reads LoyaltyProgramPolicy;
+- `getLoyaltyPolicySnapshot()` returns LoyaltyProgramPolicy while continuing to compare BrandConfig for parity telemetry;
+- `getLoyaltyPolicySnapshotWithTx(tx)` returns LoyaltyProgramPolicy through the same `tx` while comparing BrandConfig through that same transaction client;
+- `getLoyaltyPolicySettings()` returns LoyaltyProgramPolicy while keeping BrandConfig as a shadow/rollback copy;
+- partial policy writes merge the patch against LoyaltyProgramPolicy rather than BrandConfig, preventing stale transitional values from being replayed into the dedicated fact source;
 - public API contracts remain unchanged;
-- writes continue to all three copies temporarily for rollback safety.
+- writes continue to LoyaltyProgramPolicy + BusinessConfig + BrandConfig temporarily for rollback safety.
 
-Observe at least one complete business cycle with zero policy mismatch.
+Observe at least one complete business cycle after deployment with zero policy mismatch before Phase D trigger work begins.
 
 ### Phase D — Split the Loyalty portion from the BusinessConfig trigger
 

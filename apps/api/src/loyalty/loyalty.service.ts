@@ -180,32 +180,36 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
 
   // @compat benefits.business-config-loyalty-policy.v1
   async getLoyaltyPolicySnapshot(): Promise<LoyaltyPolicySnapshot> {
-    const config = await this.prisma.brandConfig.findUnique({
-      where: { id: 1 },
-      select: LOYALTY_POLICY_SELECT,
-    });
     const loyaltyProgramPolicy =
       await this.prisma.loyaltyProgramPolicy.findUnique({
         where: { id: 1 },
         select: LOYALTY_POLICY_SELECT,
       });
-    this.observePolicyParity('runtime-read', config, loyaltyProgramPolicy);
-    return normalizeLoyaltyPolicy(config);
+    const brandConfig = await this.prisma.brandConfig.findUnique({
+      where: { id: 1 },
+      select: LOYALTY_POLICY_SELECT,
+    });
+    this.observePolicyParity('runtime-read', brandConfig, loyaltyProgramPolicy);
+    return normalizeLoyaltyPolicy(loyaltyProgramPolicy);
   }
 
   private async getLoyaltyPolicySnapshotWithTx(
     tx: Prisma.TransactionClient,
   ): Promise<LoyaltyPolicySnapshot> {
-    const config = await tx.brandConfig.findUnique({
-      where: { id: 1 },
-      select: LOYALTY_POLICY_SELECT,
-    });
     const loyaltyProgramPolicy = await tx.loyaltyProgramPolicy.findUnique({
       where: { id: 1 },
       select: LOYALTY_POLICY_SELECT,
     });
-    this.observePolicyParity('transaction-read', config, loyaltyProgramPolicy);
-    return normalizeLoyaltyPolicy(config);
+    const brandConfig = await tx.brandConfig.findUnique({
+      where: { id: 1 },
+      select: LOYALTY_POLICY_SELECT,
+    });
+    this.observePolicyParity(
+      'transaction-read',
+      brandConfig,
+      loyaltyProgramPolicy,
+    );
+    return normalizeLoyaltyPolicy(loyaltyProgramPolicy);
   }
 
   async getMembershipProgramRules() {

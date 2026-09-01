@@ -3,6 +3,7 @@ import {
   claimPosDevice,
   fetchPosHeartbeatSchedule,
   fetchPosSessionSnapshot,
+  fetchPosStoreContext,
   loginPosSession,
   postPosConnectivityHeartbeat,
 } from "./pos-session";
@@ -102,6 +103,33 @@ describe("POS session API adapter", () => {
     );
 
     await expect(fetchPosSessionSnapshot()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("loads the authenticated POS store context from the POS-owned endpoint", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        code: "OK",
+        message: "success",
+        details: {
+          storeStableId: "store_b",
+          storeName: "Store B",
+          timezone: "America/Vancouver",
+        },
+      }),
+    );
+
+    await expect(fetchPosStoreContext()).resolves.toEqual({
+      storeStableId: "store_b",
+      storeName: "Store B",
+      timezone: "America/Vancouver",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/pos/store-context",
+      expect.objectContaining({
+        credentials: "include",
+        cache: "no-store",
+      }),
+    );
   });
 
   it("uses the canonical envelope for schedule and connectivity heartbeat", async () => {

@@ -198,22 +198,28 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
   it('writes StoreConfig contact and online-order settings through the owner writer', async () => {
     const { service, brandStoreConfigWriter } = setup();
 
-    await service.updateStoreConfig({
-      countryCode: ' ca ',
-      phone: ' +1 416 555 0100 ',
-      contactName: ' Front counter ',
-      autoAcceptOnlineOrders: false,
-    });
-
-    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith({
-      brand: undefined,
-      store: {
-        countryCode: 'CA',
-        phone: '+1 416 555 0100',
-        contactName: 'Front counter',
+    await service.updateStoreConfig(
+      {
+        countryCode: ' ca ',
+        phone: ' +1 416 555 0100 ',
+        contactName: ' Front counter ',
         autoAcceptOnlineOrders: false,
       },
-    });
+      brandStoreConfig.store.storeStableId,
+    );
+
+    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith(
+      {
+        brand: undefined,
+        store: {
+          countryCode: 'CA',
+          phone: '+1 416 555 0100',
+          contactName: 'Front counter',
+          autoAcceptOnlineOrders: false,
+        },
+      },
+      brandStoreConfig.store.storeStableId,
+    );
   });
 
   it('targets the selected storeStableId when updating StoreConfig', async () => {

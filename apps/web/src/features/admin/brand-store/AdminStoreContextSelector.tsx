@@ -5,7 +5,6 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
   createAdminStore,
-  fetchStaffStoreConfig,
   fetchStaffStores,
   type StoreDirectoryEntryView,
 } from '@/lib/api/brand-store';
@@ -27,7 +26,6 @@ export function AdminStoreContextSelector({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [stores, setStores] = useState<StoreDirectoryEntryView[]>([]);
-  const [configuredStoreStableId, setConfiguredStoreStableId] = useState('');
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -41,11 +39,10 @@ export function AdminStoreContextSelector({
     setLoading(true);
     setFailed(false);
 
-    void Promise.all([fetchStaffStores(), fetchStaffStoreConfig()])
-      .then(([storeList, configuredStore]) => {
+    void fetchStaffStores()
+      .then((storeList) => {
         if (cancelled) return;
         setStores(storeList);
-        setConfiguredStoreStableId(configuredStore.storeStableId);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -67,14 +64,8 @@ export function AdminStoreContextSelector({
     ) {
       return requestedStoreStableId;
     }
-    if (
-      configuredStoreStableId &&
-      stores.some((store) => store.storeStableId === configuredStoreStableId)
-    ) {
-      return configuredStoreStableId;
-    }
     return stores[0]?.storeStableId ?? '';
-  }, [configuredStoreStableId, requestedStoreStableId, stores]);
+  }, [requestedStoreStableId, stores]);
   const stableIdDuplicate = useMemo(() => {
     const candidate = storeStableId.trim().toLowerCase();
     if (!candidate) return false;
@@ -85,9 +76,7 @@ export function AdminStoreContextSelector({
 
   useEffect(() => {
     const shouldFillMissingStore =
-      context === 'operations' &&
-      !requestedStoreStableId &&
-      Boolean(selectedStoreStableId);
+      !requestedStoreStableId && Boolean(selectedStoreStableId);
     const shouldReplaceInvalidStore =
       Boolean(requestedStoreStableId) &&
       Boolean(selectedStoreStableId) &&
@@ -105,7 +94,6 @@ export function AdminStoreContextSelector({
     nextParams.set('store', selectedStoreStableId);
     router.replace(`${pathname}?${nextParams.toString()}`);
   }, [
-    context,
     failed,
     loading,
     pathname,

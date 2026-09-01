@@ -30,15 +30,23 @@ type StoreSettingsData = {
 export function StoreSettingsPageClient({ locale }: { locale: Locale }) {
   const isZh = locale === 'zh';
   const searchParams = useSearchParams();
-  const requestedStoreStableId = searchParams.get('store')?.trim() || undefined;
+  const requestedStoreStableId = searchParams.get('store')?.trim() ?? '';
   const [data, setData] = useState<StoreSettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const cancel = () => {
+      cancelled = true;
+    };
     setLoading(true);
     setError(null);
+
+    if (!requestedStoreStableId) {
+      setData(null);
+      return cancel;
+    }
 
     void Promise.all([
       fetchStaffStoreConfig(requestedStoreStableId),
@@ -66,9 +74,7 @@ export function StoreSettingsPageClient({ locale }: { locale: Locale }) {
         if (!cancelled) setLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return cancel;
   }, [isZh, requestedStoreStableId]);
 
   return (

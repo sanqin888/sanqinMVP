@@ -175,7 +175,23 @@
         "resolveConfiguredStoreStableId"
       ]
     },
-    "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
+    "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"],
+    "authenticatedPosStoreContext": {
+      "apiAdapter": "apps/api/src/pos/pos-summary.controller.ts",
+      "compositionModule": "apps/api/src/pos/pos.module.ts",
+      "webApiClient": "apps/web/src/lib/api/pos-session.ts",
+      "webConsumers": [
+        "apps/web/src/app/[locale]/(device)/store/pos/orders/page.tsx",
+        "apps/web/src/app/[locale]/(device)/store/pos/summary/page.tsx"
+      ]
+    },
+    "adminExplicitStoreContext": {
+      "apiAdapter": "apps/api/src/admin/business/staff-brand-store.controller.ts",
+      "service": "apps/api/src/admin/business/admin-business.service.ts",
+      "webApiClient": "apps/web/src/lib/api/brand-store.ts",
+      "webSelector": "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
+      "webStoreSettings": "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx"
+    }
   },
   "benefitsLoyaltyPolicyOwnership": {
     "context": "identity-customer-benefits",
