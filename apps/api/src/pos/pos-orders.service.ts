@@ -8,10 +8,7 @@ import {
 } from '@prisma/client';
 import type { OrderJsonValue } from '@shared/order';
 import { OrdersService } from '../orders/orders.service';
-import {
-  POS_ORDER_READ,
-  type PosOrderReadPort,
-} from '../orders/public-api';
+import { POS_ORDER_READ, type PosOrderReadPort } from '../orders/public-api';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   type OrderStatus,
