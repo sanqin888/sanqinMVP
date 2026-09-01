@@ -19,7 +19,9 @@ describe('PosOrdersService', () => {
       getByStableIdForStore: jest.fn().mockResolvedValue(current),
       getExternalPaymentCents: jest.fn().mockResolvedValue(null),
       createFullRefund: jest.fn(),
-      advanceForStore: jest.fn().mockResolvedValue({ ...current, status: 'ready' }),
+      advanceForStore: jest
+        .fn()
+        .mockResolvedValue({ ...current, status: 'ready' }),
     };
     const uberEats = {
       execute: jest.fn().mockResolvedValue({

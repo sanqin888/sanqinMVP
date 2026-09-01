@@ -105,7 +105,9 @@ describe('ScheduledOrdersController', () => {
   it('rejects early-start for an immediate order', async () => {
     const controller = new ScheduledOrdersController(
       {
-        findByStableIdForStore: jest.fn().mockResolvedValue(timing('IMMEDIATE')),
+        findByStableIdForStore: jest
+          .fn()
+          .mockResolvedValue(timing('IMMEDIATE')),
       } as never,
       { activateScheduledOrderByStableId: jest.fn() } as never,
     );

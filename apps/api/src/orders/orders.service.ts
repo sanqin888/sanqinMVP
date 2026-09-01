@@ -1013,7 +1013,9 @@ export class OrdersService {
     );
   }
 
-  private trustedStoreOrderWhere(storeStableId: string): Prisma.OrderWhereInput {
+  private trustedStoreOrderWhere(
+    storeStableId: string,
+  ): Prisma.OrderWhereInput {
     const normalizedStoreStableId = storeStableId.trim();
     if (!normalizedStoreStableId) {
       throw new BadRequestException('storeStableId is required');
@@ -3603,13 +3605,16 @@ export class OrdersService {
     return orders.map((o) => this.toOrderDto(o));
   }
 
-  async board(storeStableId: string, params: {
-    statusIn?: OrderStatus[];
-    channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
-    limit?: number;
-    sinceMinutes?: number;
-    requireItems?: boolean;
-  }): Promise<OrderDto[]> {
+  async board(
+    storeStableId: string,
+    params: {
+      statusIn?: OrderStatus[];
+      channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
+      limit?: number;
+      sinceMinutes?: number;
+      requireItems?: boolean;
+    },
+  ): Promise<OrderDto[]> {
     const {
       statusIn,
       channelIn,
@@ -3617,7 +3622,8 @@ export class OrdersService {
       sinceMinutes = 24 * 60,
       requireItems = true,
     } = params;
-    const where: Prisma.OrderWhereInput = this.trustedStoreOrderWhere(storeStableId);
+    const where: Prisma.OrderWhereInput =
+      this.trustedStoreOrderWhere(storeStableId);
     if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
     if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
     if (requireItems) {

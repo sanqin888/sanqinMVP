@@ -104,7 +104,9 @@ describe('PosOrdersController Uber orders', () => {
   });
 
   it('POS 订单详情始终把 authenticated store identity 传入 Orders 边界', async () => {
-    orders.getByStableIdForStore.mockResolvedValue({ orderStableId: 'order_1' });
+    orders.getByStableIdForStore.mockResolvedValue({
+      orderStableId: 'order_1',
+    });
 
     await expect(controller.findOne(posRequest, 'order_1')).resolves.toEqual({
       orderStableId: 'order_1',
@@ -158,9 +160,7 @@ describe('PosOrdersController Uber orders', () => {
     expect(schedulingQuery.listUpcomingForStoreStableId).toHaveBeenCalledWith(
       '4750_Yonge_Street',
     );
-    expect(
-      schedulingQuery.findTimingsByStableIdsForStore,
-    ).toHaveBeenCalledWith(
+    expect(schedulingQuery.findTimingsByStableIdsForStore).toHaveBeenCalledWith(
       ['scheduled_1', 'immediate_1'],
       '4750_Yonge_Street',
     );
