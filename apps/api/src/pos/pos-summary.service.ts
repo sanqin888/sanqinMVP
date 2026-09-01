@@ -71,6 +71,7 @@ export type PosDailySummaryResponse = {
 };
 
 type SummaryQuery = {
+  storeStableId: string;
   timeMin: string; // ISO
   timeMax: string; // ISO (exclusive)
   fulfillmentType?: string;
@@ -190,6 +191,7 @@ export class PosSummaryService {
 
     // 1) 先取 paidAt 落在区间内的订单（timeMax 用 lt，和前端 end+1day 的设计对齐）
     const where: Prisma.OrderWhereInput = {
+      storeId: q.storeStableId,
       paidAt: { gte: start, lt: end },
       ...(fulfillmentFilter ? { fulfillmentType: fulfillmentFilter } : {}),
     };

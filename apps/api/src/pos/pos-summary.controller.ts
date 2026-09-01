@@ -40,13 +40,20 @@ export class PosSummaryController {
    */
   @Get()
   getSummary(
+    @Req() req: PosDeviceRequest,
     @Query('timeMin') timeMin: string,
     @Query('timeMax') timeMax: string,
     @Query('fulfillmentType') fulfillmentType?: string,
     @Query('status') statusBucket?: string,
     @Query('payment') paymentBucket?: string,
   ) {
+    const storeStableId = req.posDevice?.storeStableId;
+    if (!storeStableId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+
     return this.service.summary({
+      storeStableId,
       timeMin,
       timeMax,
       fulfillmentType,
@@ -71,6 +78,7 @@ export class PosSummaryController {
     }
 
     const data = await this.service.summary({
+      storeStableId,
       timeMin,
       timeMax,
       fulfillmentType,

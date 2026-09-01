@@ -22,6 +22,34 @@ describe('PosSummaryController print routing', () => {
     orders: [],
   };
 
+  it('scopes the summary query to the authenticated device store stable id', async () => {
+    const service = {
+      summary: jest.fn().mockResolvedValue(summary),
+    };
+    const controller = new PosSummaryController(service as never, {} as never);
+
+    const result = await controller.getSummary(
+      {
+        posDevice: { storeStableId: '4750_Yonge_Street' },
+      } as never,
+      timeMin,
+      timeMax,
+      'pickup',
+      'paid',
+      'cash',
+    );
+
+    expect(service.summary).toHaveBeenCalledWith({
+      storeStableId: '4750_Yonge_Street',
+      timeMin,
+      timeMax,
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      payment: 'cash',
+    });
+    expect(result).toBe(summary);
+  });
+
   it('routes summary printing to the authenticated device store stable id', async () => {
     const service = {
       summary: jest.fn().mockResolvedValue(summary),
@@ -47,6 +75,7 @@ describe('PosSummaryController print routing', () => {
     );
 
     expect(service.summary).toHaveBeenCalledWith({
+      storeStableId: '4750_Yonge_Street',
       timeMin,
       timeMax,
       fulfillmentType: 'pickup',

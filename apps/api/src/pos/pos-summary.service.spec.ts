@@ -38,6 +38,7 @@ describe('PosSummaryService financial amendments', () => {
 
   it('默认小结将 Uber 全额取消计入退款并冲减净额', async () => {
     const result = await setup(1130).summary({
+      storeStableId: '4750_Yonge_Street',
       timeMin: '2026-08-05T00:00:00.000Z',
       timeMax: '2026-08-06T00:00:00.000Z',
     });
@@ -48,9 +49,35 @@ describe('PosSummaryService financial amendments', () => {
 
   it('部分退款及补收使用 原净额 - 退款 + 补收', async () => {
     const result = await setup(300, 50).summary({
+      storeStableId: '4750_Yonge_Street',
       timeMin: '2026-08-05T00:00:00.000Z',
       timeMax: '2026-08-06T00:00:00.000Z',
     });
     expect(result.orders[0].netCents).toBe(880);
+  });
+
+  it('仅查询认证 POS 门店的订单', async () => {
+    const prisma = {
+      order: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new PosSummaryService(prisma as never);
+
+    await service.summary({
+      storeStableId: '4750_Yonge_Street',
+      timeMin: '2026-08-05T00:00:00.000Z',
+      timeMax: '2026-08-06T00:00:00.000Z',
+    });
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          storeId: '4750_Yonge_Street',
+          paidAt: {
+            gte: new Date('2026-08-05T00:00:00.000Z'),
+            lt: new Date('2026-08-06T00:00:00.000Z'),
+          },
+        },
+      }),
+    );
   });
 });
