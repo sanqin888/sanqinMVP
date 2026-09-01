@@ -292,5 +292,4 @@ export class OrdersController {
       locale: body?.locale,
     });
   }
-
 }

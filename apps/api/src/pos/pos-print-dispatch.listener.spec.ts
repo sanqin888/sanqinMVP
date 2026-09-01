@@ -16,7 +16,9 @@ describe('PosPrintDispatchListener', () => {
     const sendPrintJob = jest.fn().mockResolvedValue({ jobId: 'job-1' });
     const listener = new PosPrintDispatchListener({ sendPrintJob } as never);
 
-    await expect(listener.dispatch(request)).resolves.toEqual({ jobId: 'job-1' });
+    await expect(listener.dispatch(request)).resolves.toEqual({
+      jobId: 'job-1',
+    });
     expect(sendPrintJob).toHaveBeenCalledWith(request);
     expect(POS_PRINT_JOB_DISPATCH_REQUESTED).toBe(
       'orders.pos-print-job.dispatch-requested',

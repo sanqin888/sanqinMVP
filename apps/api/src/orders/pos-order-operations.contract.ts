@@ -69,10 +69,7 @@ export interface PosOrderOperationsPort {
     storeStableId: string,
   ): Promise<OrderDto>;
   recent(storeStableId: string, limit?: number): Promise<OrderDto[]>;
-  board(
-    storeStableId: string,
-    query: PosOrderBoardQuery,
-  ): Promise<OrderDto[]>;
+  board(storeStableId: string, query: PosOrderBoardQuery): Promise<OrderDto[]>;
   getByStableIdForStore(
     orderStableId: string,
     storeStableId: string,

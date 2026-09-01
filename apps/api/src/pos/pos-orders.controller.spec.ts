@@ -225,7 +225,10 @@ describe('PosOrdersController Uber orders', () => {
     await expect(
       controller.startPreparationEarly(posRequest, 'scheduled_1'),
     ).resolves.toEqual(
-      expect.objectContaining({ orderStableId: 'scheduled_1', status: 'making' }),
+      expect.objectContaining({
+        orderStableId: 'scheduled_1',
+        status: 'making',
+      }),
     );
     expect(orders.activateScheduledPreparation).toHaveBeenCalledWith(
       'scheduled_1',

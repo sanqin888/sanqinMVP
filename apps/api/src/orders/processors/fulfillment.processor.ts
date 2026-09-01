@@ -466,9 +466,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       request,
     );
     if (results.length !== 1) {
-      throw new Error(
-        `POS_PRINT_JOB_DISPATCH_HANDLER_COUNT:${results.length}`,
-      );
+      throw new Error(`POS_PRINT_JOB_DISPATCH_HANDLER_COUNT:${results.length}`);
     }
     const result = results[0] as unknown;
     if (

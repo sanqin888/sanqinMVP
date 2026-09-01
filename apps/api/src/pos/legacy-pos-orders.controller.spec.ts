@@ -92,7 +92,10 @@ describe('LegacyPosOrdersController compatibility transport', () => {
     await expect(
       controller.startPreparationEarly(request, 'scheduled_1'),
     ).resolves.toEqual(
-      expect.objectContaining({ orderStableId: 'scheduled_1', status: 'making' }),
+      expect.objectContaining({
+        orderStableId: 'scheduled_1',
+        status: 'making',
+      }),
     );
     expect(orders.activateScheduledPreparation).toHaveBeenCalledWith(
       'scheduled_1',

@@ -21,9 +21,10 @@ describe('FulfillmentProcessor reprint store routing', () => {
 
   function setup(storeId: string | null) {
     const sendPrintJob = jest.fn().mockResolvedValue({ jobId: 'job-1' });
-    const emitAsync = jest.fn(async (_event: string, input: unknown) => [
-      await sendPrintJob(input),
-    ]);
+    const emitAsync = jest.fn(async (_event: string, input: unknown) => {
+      await sendPrintJob(input);
+      return [{ jobId: 'job-1' }];
+    });
     const processor = new FulfillmentProcessor(
       {} as never,
       {
@@ -105,9 +106,10 @@ describe('FulfillmentProcessor accepted web order printing', () => {
       ),
     };
     const sendPrintJob = jest.fn().mockResolvedValue({ jobId: 'auto-job-1' });
-    const emitAsync = jest.fn(async (_event: string, input: unknown) => [
-      await sendPrintJob(input),
-    ]);
+    const emitAsync = jest.fn(async (_event: string, input: unknown) => {
+      await sendPrintJob(input);
+      return [{ jobId: 'auto-job-1' }];
+    });
     const getByStableId = jest
       .fn()
       .mockResolvedValue({ orderNumber: 'SQ2608110001' });

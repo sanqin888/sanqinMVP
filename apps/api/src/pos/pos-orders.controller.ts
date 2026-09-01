@@ -323,7 +323,10 @@ export class PosOrdersController {
     if (current.fulfillmentTiming !== 'SCHEDULED') {
       throw new BadRequestException('order is not scheduled');
     }
-    await this.orders.activateScheduledPreparation(orderStableId, storeStableId);
+    await this.orders.activateScheduledPreparation(
+      orderStableId,
+      storeStableId,
+    );
     return this.requireFulfillmentTiming(storeStableId, orderStableId);
   }
 

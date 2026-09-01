@@ -65,14 +65,8 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
     return this.scheduling.listUpcomingForStoreStableId(storeStableId);
   }
 
-  getFulfillmentTimingForStore(
-    orderStableId: string,
-    storeStableId: string,
-  ) {
-    return this.scheduling.findByStableIdForStore(
-      orderStableId,
-      storeStableId,
-    );
+  getFulfillmentTimingForStore(orderStableId: string, storeStableId: string) {
+    return this.scheduling.findByStableIdForStore(orderStableId, storeStableId);
   }
 
   getFulfillmentTimingsForStore(

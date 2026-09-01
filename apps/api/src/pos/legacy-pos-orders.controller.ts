@@ -90,10 +90,11 @@ class LegacyCreateOrderAmendmentItemDto {
   optionsJson?: PosOrderJsonInput;
 }
 
-@ValidatorConstraint({ name: 'LegacyAmendmentRequestConsistency', async: false })
-class LegacyAmendmentRequestConsistency
-  implements ValidatorConstraintInterface
-{
+@ValidatorConstraint({
+  name: 'LegacyAmendmentRequestConsistency',
+  async: false,
+})
+class LegacyAmendmentRequestConsistency implements ValidatorConstraintInterface {
   validate(type: OrderAmendmentType, args: ValidationArguments): boolean {
     const dto = args.object as LegacyCreateOrderAmendmentDto;
     const items = Array.isArray(dto.items) ? dto.items : [];
@@ -116,7 +117,9 @@ class LegacyAmendmentRequestConsistency
       case OrderAmendmentType.RETENDER:
         return items.length === 0 && (refund > 0 || charge > 0);
       case OrderAmendmentType.VOID_ITEM:
-        return items.length > 0 && hasVoid && !hasAdd && refund > 0 && charge === 0;
+        return (
+          items.length > 0 && hasVoid && !hasAdd && refund > 0 && charge === 0
+        );
       case OrderAmendmentType.SWAP_ITEM:
         return items.length > 0 && hasVoid && hasAdd;
       case OrderAmendmentType.ADDITIONAL_CHARGE:
@@ -321,7 +324,10 @@ export class LegacyPosOrdersController {
     if (current.fulfillmentTiming !== 'SCHEDULED') {
       throw new BadRequestException('order is not scheduled');
     }
-    await this.orders.activateScheduledPreparation(orderStableId, storeStableId);
+    await this.orders.activateScheduledPreparation(
+      orderStableId,
+      storeStableId,
+    );
     return this.requireTiming(storeStableId, orderStableId);
   }
 
