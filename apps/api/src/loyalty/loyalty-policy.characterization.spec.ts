@@ -36,7 +36,7 @@ describe('Loyalty policy characterization', () => {
     expect('businessConfig' in prisma).toBe(false);
   });
 
-  it('reports a dedicated persistence mismatch while returning BrandConfig policy', async () => {
+  it('reports a BrandConfig mismatch while returning the dedicated policy', async () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const brandConfig = {
       earnPtPerDollar: 0.02,
@@ -50,13 +50,14 @@ describe('Loyalty policy characterization', () => {
       tierThresholdGold: 1000000,
       tierThresholdPlatinum: 3000000,
     };
+    const dedicatedPolicy = {
+      ...brandConfig,
+      tierMultiplierGold: 4,
+    };
     const prisma = {
       brandConfig: { findUnique: jest.fn().mockResolvedValue(brandConfig) },
       loyaltyProgramPolicy: {
-        findUnique: jest.fn().mockResolvedValue({
-          ...brandConfig,
-          tierMultiplierGold: 4,
-        }),
+        findUnique: jest.fn().mockResolvedValue(dedicatedPolicy),
       },
     };
     const service = new LoyaltyService(prisma as never, {} as never);
@@ -73,7 +74,7 @@ describe('Loyalty policy characterization', () => {
       tierMultipliers: {
         BRONZE: 1,
         SILVER: 2,
-        GOLD: 3,
+        GOLD: 4,
         PLATINUM: 5,
       },
     });
@@ -108,7 +109,8 @@ describe('Loyalty policy characterization', () => {
     });
   });
 
-  it('reads transaction policy from BrandConfig and shadow-compares dedicated persistence through the same tx', async () => {
+  it('reads transaction policy from dedicated persistence and shadow-compares BrandConfig through the same tx', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const persistedPolicy = {
       earnPtPerDollar: 0.02,
       redeemDollarPerPoint: 0.75,
@@ -121,7 +123,10 @@ describe('Loyalty policy characterization', () => {
       tierThresholdGold: 1000000,
       tierThresholdPlatinum: 3000000,
     };
-    const brandConfigFindUnique = jest.fn().mockResolvedValue(persistedPolicy);
+    const brandConfigFindUnique = jest.fn().mockResolvedValue({
+      ...persistedPolicy,
+      redeemDollarPerPoint: 1,
+    });
     const loyaltyProgramPolicyFindUnique = jest
       .fn()
       .mockResolvedValue(persistedPolicy);
@@ -185,10 +190,13 @@ describe('Loyalty policy characterization', () => {
         tierThresholdPlatinum: true,
       },
     });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('loyalty_policy_shadow_mismatch'),
+    );
     expect('businessConfig' in tx).toBe(false);
   });
 
-  it('returns default transaction policy when transitional config is missing', async () => {
+  it('returns default transaction policy when dedicated persistence is missing', async () => {
     const tx = {
       brandConfig: {
         findUnique: jest.fn().mockResolvedValue(null),

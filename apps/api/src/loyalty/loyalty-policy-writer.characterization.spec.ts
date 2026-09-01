@@ -70,16 +70,23 @@ describe('Loyalty policy writer characterization', () => {
     ).toThrow(new LoyaltyPolicyValidationError(message));
   });
 
-  it('merges a patch and triple-writes dedicated, legacy compatibility, then transitional canonical storage in one transaction', async () => {
-    const currentSettings = {
+  it('merges a patch from dedicated persistence and triple-writes the rollback copies in one transaction', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const dedicatedSettings = {
       ...settings,
       earnPtPerDollar: 0.01,
       tierThresholdSilver: 100000,
     };
-    const brandConfigFindUnique = jest.fn().mockResolvedValue(currentSettings);
+    const brandCompatibilitySettings = {
+      ...dedicatedSettings,
+      referralPtPerDollar: 0.5,
+    };
+    const brandConfigFindUnique = jest
+      .fn()
+      .mockResolvedValue(brandCompatibilitySettings);
     const loyaltyProgramPolicyFindUnique = jest
       .fn()
-      .mockResolvedValue(currentSettings);
+      .mockResolvedValue(dedicatedSettings);
     const loyaltyProgramPolicyUpdate = jest.fn().mockResolvedValue(settings);
     const businessConfigUpdate = jest.fn().mockResolvedValue({ id: 1 });
     const brandConfigUpdate = jest.fn().mockResolvedValue(settings);
@@ -114,6 +121,9 @@ describe('Loyalty policy writer characterization', () => {
       }),
     ).resolves.toEqual(settings);
 
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('loyalty_policy_shadow_mismatch'),
+    );
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(brandConfigFindUnique).toHaveBeenCalledWith({
       where: { id: 1 },
@@ -126,6 +136,7 @@ describe('Loyalty policy writer characterization', () => {
     expect(loyaltyProgramPolicyUpdate).toHaveBeenCalledWith({
       where: { id: 1 },
       data: settings,
+      select: settingsSelect,
     });
     expect(businessConfigUpdate).toHaveBeenCalledWith({
       where: { id: 1 },
@@ -144,7 +155,7 @@ describe('Loyalty policy writer characterization', () => {
     );
   });
 
-  it('reads editable settings from BrandConfig while shadow-reading dedicated persistence', async () => {
+  it('reads editable settings from dedicated persistence while shadow-comparing BrandConfig', async () => {
     const brandConfigFindUnique = jest.fn().mockResolvedValue(settings);
     const loyaltyProgramPolicyFindUnique = jest
       .fn()
@@ -165,19 +176,22 @@ describe('Loyalty policy writer characterization', () => {
     });
   });
 
-  it('reports shadow mismatch without changing the BrandConfig settings result', async () => {
+  it('reports shadow mismatch without changing the dedicated settings result', async () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const dedicatedSettings = {
+      ...settings,
+      redeemDollarPerPoint: 0.75,
+    };
     const writer = new PrismaLoyaltyPolicyWriter({
       brandConfig: { findUnique: jest.fn().mockResolvedValue(settings) },
       loyaltyProgramPolicy: {
-        findUnique: jest.fn().mockResolvedValue({
-          ...settings,
-          redeemDollarPerPoint: 0.75,
-        }),
+        findUnique: jest.fn().mockResolvedValue(dedicatedSettings),
       },
     } as never);
 
-    await expect(writer.getLoyaltyPolicySettings()).resolves.toEqual(settings);
+    await expect(writer.getLoyaltyPolicySettings()).resolves.toEqual(
+      dedicatedSettings,
+    );
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('loyalty_policy_shadow_mismatch'),
     );
@@ -186,8 +200,12 @@ describe('Loyalty policy writer characterization', () => {
     );
   });
 
-  it('does not write for an empty patch and returns the current config value', async () => {
-    const brandConfigFindUnique = jest.fn().mockResolvedValue(settings);
+  it('does not write for an empty patch and returns the dedicated policy value', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const brandConfigFindUnique = jest.fn().mockResolvedValue({
+      ...settings,
+      referralPtPerDollar: 0.5,
+    });
     const loyaltyProgramPolicyFindUnique = jest
       .fn()
       .mockResolvedValue(settings);
@@ -199,6 +217,9 @@ describe('Loyalty policy writer characterization', () => {
     } as never);
 
     await expect(writer.updateLoyaltyPolicy({})).resolves.toEqual(settings);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('loyalty_policy_shadow_mismatch'),
+    );
     expect(transaction).not.toHaveBeenCalled();
     expect(brandConfigFindUnique).toHaveBeenCalledWith({
       where: { id: 1 },
@@ -210,11 +231,12 @@ describe('Loyalty policy writer characterization', () => {
     });
   });
 
-  it('fails instead of inventing defaults when canonical config is missing', async () => {
+  it('fails instead of inventing editable settings when dedicated persistence is missing', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const writer = new PrismaLoyaltyPolicyWriter({
-      brandConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      brandConfig: { findUnique: jest.fn().mockResolvedValue(settings) },
       loyaltyProgramPolicy: {
-        findUnique: jest.fn().mockResolvedValue(settings),
+        findUnique: jest.fn().mockResolvedValue(null),
       },
     } as never);
 
@@ -223,13 +245,14 @@ describe('Loyalty policy writer characterization', () => {
     );
   });
 
-  it('fails before compatibility writes when canonical config is missing for a patch', async () => {
+  it('fails before compatibility writes when the BrandConfig rollback copy is missing', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const loyaltyProgramPolicyUpdate = jest.fn();
     const businessConfigUpdate = jest.fn();
     const brandConfigUpdate = jest.fn();
     const tx = {
       loyaltyProgramPolicy: {
-        findUnique: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(settings),
         update: loyaltyProgramPolicyUpdate,
       },
       businessConfig: { update: businessConfigUpdate },
@@ -249,13 +272,16 @@ describe('Loyalty policy writer characterization', () => {
 
     await expect(
       writer.updateLoyaltyPolicy({ redeemDollarPerPoint: 1 }),
-    ).rejects.toThrow('Loyalty policy config is not initialized');
+    ).rejects.toThrow(
+      'BrandConfig loyalty compatibility copy is not initialized',
+    );
     expect(loyaltyProgramPolicyUpdate).not.toHaveBeenCalled();
     expect(businessConfigUpdate).not.toHaveBeenCalled();
     expect(brandConfigUpdate).not.toHaveBeenCalled();
   });
 
   it('fails before any policy write when the dedicated singleton is missing', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const loyaltyProgramPolicyUpdate = jest.fn();
     const businessConfigUpdate = jest.fn();
     const brandConfigUpdate = jest.fn();

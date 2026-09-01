@@ -883,7 +883,7 @@ if (benefitsLoyaltyPolicyOwnership) {
     );
     if (!transitionalDelegatePattern.test(source)) {
       failures.push(
-        `Benefits loyalty policy reader must keep transitional ${transitionalStorageDelegate} as the Phase B return source: ${implementation}`,
+        `Benefits loyalty policy reader must keep transitional ${transitionalStorageDelegate} available for Phase C parity/rollback observation: ${implementation}`,
       );
     }
     const transactionalPolicyReaderStart = source.indexOf(
@@ -901,10 +901,13 @@ if (benefitsLoyaltyPolicyOwnership) {
       !transactionalPolicyReaderSource.includes(
         `tx.${dedicatedStorageDelegate}.findUnique`,
       ) ||
-      !transactionalPolicyReaderSource.includes('observePolicyParity')
+      !transactionalPolicyReaderSource.includes('observePolicyParity') ||
+      !transactionalPolicyReaderSource.includes(
+        'normalizeLoyaltyPolicy(loyaltyProgramPolicy)',
+      )
     ) {
       failures.push(
-        `Benefits transaction-bound policy reader must compare ${transitionalStorageDelegate} and ${dedicatedStorageDelegate} through the same Prisma transaction client: ${implementation}`,
+        `Benefits Phase C transaction-bound policy reader must return ${dedicatedStorageDelegate} while comparing ${transitionalStorageDelegate} through the same Prisma transaction client: ${implementation}`,
       );
     }
     const policyReaderStart = source.indexOf('async getLoyaltyPolicySnapshot()');
@@ -918,10 +921,12 @@ if (benefitsLoyaltyPolicyOwnership) {
         `this.prisma.${dedicatedStorageDelegate}.findUnique`,
       ) ||
       !policyReaderSource.includes('observePolicyParity') ||
-      !policyReaderSource.includes('normalizeLoyaltyPolicy(config)')
+      !policyReaderSource.includes(
+        'normalizeLoyaltyPolicy(loyaltyProgramPolicy)',
+      )
     ) {
       failures.push(
-        `Benefits Phase B runtime policy reader must return ${transitionalStorageDelegate} while shadow-comparing ${dedicatedStorageDelegate}: ${implementation}`,
+        `Benefits Phase C runtime policy reader must return ${dedicatedStorageDelegate} while shadow-comparing ${transitionalStorageDelegate}: ${implementation}`,
       );
     }
     const legacyPolicyReaderPattern =
@@ -950,22 +955,41 @@ if (benefitsLoyaltyPolicyOwnership) {
   const writerImplementationPath = join(REPOSITORY_ROOT, writerImplementation);
   if (existsSync(writerImplementationPath)) {
     const writerSource = readFileSync(writerImplementationPath, 'utf8');
+    const settingsReaderStart = writerSource.indexOf(
+      'async getLoyaltyPolicySettings()',
+    );
+    const settingsReaderSource =
+      settingsReaderStart >= 0
+        ? writerSource.slice(settingsReaderStart, settingsReaderStart + 1800)
+        : '';
     if (
-      !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
-      !writerSource.includes('getLoyaltyPolicySettings') ||
-      !writerSource.includes(
+      !settingsReaderSource.includes(
         `this.prisma.${dedicatedStorageDelegate}.findUnique`,
       ) ||
-      !writerSource.includes('observeParity') ||
+      !settingsReaderSource.includes(
+        `this.prisma.${transitionalStorageDelegate}.findUnique`,
+      ) ||
+      !settingsReaderSource.includes('observeParity') ||
+      !settingsReaderSource.includes(
+        'return requireLoyaltyPolicySettings(loyaltyProgramPolicy)',
+      )
+    ) {
+      failures.push(
+        `Benefits Phase C editable policy reader must return ${dedicatedStorageDelegate} while shadow-comparing ${transitionalStorageDelegate}: ${writerImplementation}`,
+      );
+    }
+    if (
+      !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
       !/\.\$transaction\s*\(/.test(writerSource) ||
       !writerSource.includes(`tx.${transitionalStorageDelegate}.findUnique`) ||
       !writerSource.includes(`tx.${dedicatedStorageDelegate}.findUnique`) ||
+      !writerSource.includes('const current = loyaltyProgramPolicy;') ||
       !writerSource.includes(`tx.${dedicatedStorageDelegate}.update`) ||
       !/tx\.businessConfig\.update\s*\(/.test(writerSource) ||
       !writerSource.includes(`tx.${transitionalStorageDelegate}.update`)
     ) {
       failures.push(
-        `Benefits Phase B loyalty writer must shadow-read dedicated persistence and triple-write ${dedicatedStorageDelegate}, BusinessConfig compatibility, and ${transitionalStorageDelegate} in one transaction: ${writerImplementation}`,
+        `Benefits Phase C loyalty writer must merge from ${dedicatedStorageDelegate}, shadow-compare ${transitionalStorageDelegate}, and triple-write ${dedicatedStorageDelegate}, BusinessConfig compatibility, and ${transitionalStorageDelegate} in one transaction: ${writerImplementation}`,
       );
     }
     if (
