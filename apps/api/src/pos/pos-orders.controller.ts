@@ -193,7 +193,10 @@ export class PosOrdersController {
   @Post()
   @HttpCode(201)
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
-  async create(@Body() dto: CreateOrderInput): Promise<OrderDto> {
+  async create(
+    @Req() req: PosDeviceRequest,
+    @Body() dto: CreateOrderInput,
+  ): Promise<OrderDto> {
     if (dto.channel !== 'in_store' && dto.channel !== 'ubereats') {
       throw new BadRequestException(
         'POS orders must use channel=in_store|ubereats',
@@ -218,14 +221,16 @@ export class PosOrdersController {
           'Legacy POS card order creation is disabled while Clover Terminal payments are enabled.',
       });
     }
-    return this.orders.create(dto);
+
+    return this.orders.createForStore(dto, this.requireStoreStableId(req));
   }
 
   @Get('recent')
   recent(
+    @Req() req: PosDeviceRequest,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ): Promise<OrderDto[]> {
-    return this.orders.recent(limit);
+    return this.orders.recent(this.requireStoreStableId(req), limit);
   }
 
   @Get('board')
@@ -251,17 +256,20 @@ export class PosOrdersController {
           .filter(Boolean) as Array<'web' | 'in_store' | 'ubereats'>)
       : undefined;
 
-    const storeStableId = req.posDevice?.storeStableId;
-    if (!storeStableId) {
-      throw new UnauthorizedException('POS device store unavailable');
-    }
+    const storeStableId = this.requireStoreStableId(req);
 
     const [boardOrders, upcomingScheduledOrders] = await Promise.all([
-      this.orders.board({ statusIn, channelIn, limit, sinceMinutes }),
+      this.orders.board(storeStableId, {
+        statusIn,
+        channelIn,
+        limit,
+        sinceMinutes,
+      }),
       this.schedulingQuery.listUpcomingForStoreStableId(storeStableId),
     ]);
-    const timings = await this.schedulingQuery.findTimingsByStableIds(
+    const timings = await this.schedulingQuery.findTimingsByStableIdsForStore(
       boardOrders.map((order) => order.orderStableId),
+      storeStableId,
     );
 
     const upcomingScheduledIds = new Set(
@@ -303,37 +311,66 @@ export class PosOrdersController {
 
   @Get(':orderStableId')
   findOne(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderDto> {
-    return this.orders.getByStableId(orderStableId);
+    return this.orders.getByStableIdForStore(
+      orderStableId,
+      this.requireStoreStableId(req),
+    );
   }
 
   @Get(':orderStableId/actions')
-  getActions(@Param('orderStableId', StableIdPipe) orderStableId: string) {
-    return this.posOrders.getManagementActions(orderStableId);
+  getActions(
+    @Req() req: PosDeviceRequest,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ) {
+    return this.posOrders.getManagementActions(
+      this.requireStoreStableId(req),
+      orderStableId,
+    );
   }
 
   @Get(':orderStableId/amendments')
-  listAmendments(@Param('orderStableId', StableIdPipe) orderStableId: string) {
-    return this.posOrders.listAmendments(orderStableId);
+  listAmendments(
+    @Req() req: PosDeviceRequest,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ) {
+    return this.posOrders.listAmendments(
+      this.requireStoreStableId(req),
+      orderStableId,
+    );
   }
 
   @Get(':orderStableId/print-payload')
-  getPrintPayload(
+  async getPrintPayload(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Query('locale') locale?: string,
   ): Promise<PrintPosPayloadDto> {
+    await this.orders.getByStableIdForStore(
+      orderStableId,
+      this.requireStoreStableId(req),
+    );
     return this.printPosPayloadService.getByStableId(orderStableId, locale);
   }
 
   @Get(':orderStableId/print-status')
-  getPrintStatus(@Param('orderStableId', StableIdPipe) orderStableId: string) {
+  async getPrintStatus(
+    @Req() req: PosDeviceRequest,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ) {
+    await this.orders.getByStableIdForStore(
+      orderStableId,
+      this.requireStoreStableId(req),
+    );
     return this.posGateway.getOrderPrintStatus(orderStableId);
   }
 
   @Post(':orderStableId/print')
   @HttpCode(200)
-  reprint(
+  async reprint(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body()
     body?: {
@@ -343,6 +380,10 @@ export class PosOrdersController {
       cashChangeCents?: number;
     },
   ) {
+    await this.orders.getByStableIdForStore(
+      orderStableId,
+      this.requireStoreStableId(req),
+    );
     this.eventEmitter.emit('order.reprint', {
       orderStableId,
       locale: body?.locale === 'en' ? 'en' : 'zh',
@@ -363,31 +404,50 @@ export class PosOrdersController {
 
   @Patch(':orderStableId/status')
   updateStatus(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: { status: OrderStatus },
   ): Promise<OrderDto> {
-    return this.orders.updateStatus(orderStableId, body.status);
+    return this.orders.updateStatusForStore(
+      orderStableId,
+      this.requireStoreStableId(req),
+      body.status,
+    );
   }
 
   @Post(':orderStableId/advance')
   @HttpCode(200)
-  advance(@Param('orderStableId', StableIdPipe) orderStableId: string) {
-    return this.posOrders.advance(orderStableId);
+  advance(
+    @Req() req: PosDeviceRequest,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ) {
+    return this.posOrders.advance(
+      this.requireStoreStableId(req),
+      orderStableId,
+    );
   }
 
   @Post(':orderStableId/uber-sync/retry')
   @HttpCode(200)
-  retryUberSync(@Param('orderStableId', StableIdPipe) orderStableId: string) {
-    return this.posOrders.retryUberSync(orderStableId);
+  retryUberSync(
+    @Req() req: PosDeviceRequest,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ) {
+    return this.posOrders.retryUberSync(
+      this.requireStoreStableId(req),
+      orderStableId,
+    );
   }
 
   @Post(':orderStableId/uber-deny')
   @HttpCode(202)
   denyUberOrder(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: DenyUberOrderDto,
   ) {
     return this.posOrders.denyUberOrder(
+      this.requireStoreStableId(req),
       orderStableId,
       body.reasonCode,
       body.reasonDetail,
@@ -397,10 +457,12 @@ export class PosOrdersController {
   @Post(':orderStableId/uber-cancel')
   @HttpCode(202)
   cancelUberOrder(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CancelUberOrderDto,
   ) {
     return this.posOrders.cancelUberOrder(
+      this.requireStoreStableId(req),
       orderStableId,
       body.reasonCode,
       body.reasonDetail,
@@ -410,19 +472,24 @@ export class PosOrdersController {
   @Post(':orderStableId/amendments')
   @HttpCode(201)
   async createAmendment(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CreatePosAmendmentDto,
   ): Promise<OrderDto> {
     const items = body.items ?? [];
-    const updated = await this.posOrders.createAmendment(orderStableId, {
-      type: body.type,
-      reason: body.reason,
-      operatorName: body.operatorName,
-      paymentMethod: body.paymentMethod ?? null,
-      refundGrossCents: body.refundGrossCents ?? 0,
-      additionalChargeCents: body.additionalChargeCents ?? 0,
-      items,
-    });
+    const updated = await this.posOrders.createAmendment(
+      this.requireStoreStableId(req),
+      orderStableId,
+      {
+        type: body.type,
+        reason: body.reason,
+        operatorName: body.operatorName,
+        paymentMethod: body.paymentMethod ?? null,
+        refundGrossCents: body.refundGrossCents ?? 0,
+        additionalChargeCents: body.additionalChargeCents ?? 0,
+        items,
+      },
+    );
 
     if (
       body.type === OrderAmendmentType.VOID_ITEM ||
@@ -438,5 +505,13 @@ export class PosOrdersController {
     }
 
     return updated;
+  }
+
+  private requireStoreStableId(req: PosDeviceRequest): string {
+    const storeStableId = req.posDevice?.storeStableId?.trim();
+    if (!storeStableId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+    return storeStableId;
   }
 }

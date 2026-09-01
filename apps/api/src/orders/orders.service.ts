@@ -1013,6 +1013,54 @@ export class OrdersService {
     );
   }
 
+  private trustedStoreOrderWhere(
+    storeStableId: string,
+  ): Prisma.OrderWhereInput {
+    const normalizedStoreStableId = storeStableId.trim();
+    if (!normalizedStoreStableId) {
+      throw new BadRequestException('storeStableId is required');
+    }
+
+    const canonicalScope: Prisma.OrderWhereInput = {
+      storeId: normalizedStoreStableId,
+    };
+    if (normalizedStoreStableId !== resolveConfiguredStoreStableId()) {
+      return canonicalScope;
+    }
+
+    // @compat brand-store.default-store-identity.v1
+    // Historical in-store orders created before authenticated POS store routing
+    // can have storeId=NULL. Only the configured original store may see those
+    // rows until the deterministic backfill/contraction removes this fallback.
+    return {
+      OR: [canonicalScope, { storeId: null }],
+    };
+  }
+
+  private async resolveInternalOrderIdByStableIdForStoreOrThrow(
+    orderStableId: string,
+    storeStableId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<{
+    id: string;
+    orderStableId: string;
+    clientRequestId: string | null;
+  }> {
+    const value = (orderStableId ?? '').trim();
+    if (!value) throw new NotFoundException('order not found');
+    if (value.includes('-')) throw new BadRequestException('stableId only');
+
+    const found = await client.order.findFirst({
+      where: {
+        orderStableId: value,
+        ...this.trustedStoreOrderWhere(storeStableId),
+      },
+      select: { id: true, orderStableId: true, clientRequestId: true },
+    });
+    if (!found) throw new NotFoundException('order not found');
+    return found;
+  }
+
   // ✅ public/controller：只接受 stableId（cuid v1），不再接受 UUID
   private async resolveInternalOrderIdByStableIdOrThrow(
     orderStableId: string,
@@ -2741,6 +2789,12 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderDto> {
+    if (dto.channel !== Channel.web) {
+      throw new BadRequestException(
+        'Non-web order creation requires explicit authenticated store context',
+      );
+    }
+
     if (dto.channel === Channel.web) {
       const paymentMethod = this.resolvePaymentMethod(dto);
       if (paymentMethod === PaymentMethod.CARD) {
@@ -2841,9 +2895,32 @@ export class OrdersService {
     return this.toOrderDto(order);
   }
 
+  async createForStore(
+    dto: CreateOrderInput,
+    storeStableId: string,
+  ): Promise<OrderDto> {
+    const normalizedStoreStableId = storeStableId.trim();
+    if (!normalizedStoreStableId) {
+      throw new BadRequestException('storeStableId is required');
+    }
+    if (dto.channel === Channel.web) {
+      throw new BadRequestException(
+        'Store-scoped order creation does not accept channel=web',
+      );
+    }
+
+    const order = await this.createInternal(
+      dto,
+      undefined,
+      normalizedStoreStableId,
+    );
+    return this.toOrderDto(order);
+  }
+
   async createInternal(
     dto: CreateOrderInput,
     idempotencyKey?: string,
+    authenticatedStoreStableId?: string,
   ): Promise<OrderWithItems> {
     const contactPolicy = this.resolveContactPolicy(dto);
     const paymentMethod = this.resolvePaymentMethod(dto);
@@ -2941,12 +3018,14 @@ export class OrdersService {
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
     const paidAt = new Date();
     // Website orders never take their routing identity from the request DTO.
-    // Prefer the store stamped into the verified checkout context; cash and
-    // legacy checkout flows use the deployment's controlled single-store config.
+    // Prefer the store stamped into the verified checkout context; legacy web
+    // checkout flows use the deployment's controlled single-store config.
+    // Authenticated store-channel callers must pass their trusted store identity
+    // explicitly rather than relying on the deployment default.
     const storeId =
       dto.channel === Channel.web
         ? (verifiedCheckoutIntent?.storeId ?? resolveConfiguredStoreStableId())
-        : undefined;
+        : authenticatedStoreStableId?.trim() || undefined;
 
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
@@ -3515,8 +3594,9 @@ export class OrdersService {
     return this.updateStatusByInternalId(created.id, 'paid');
   }
 
-  async recent(limit = 10): Promise<OrderDto[]> {
+  async recent(storeStableId: string, limit = 10): Promise<OrderDto[]> {
     const orders = (await this.prisma.order.findMany({
+      where: this.trustedStoreOrderWhere(storeStableId),
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: { items: true },
@@ -3525,13 +3605,16 @@ export class OrdersService {
     return orders.map((o) => this.toOrderDto(o));
   }
 
-  async board(params: {
-    statusIn?: OrderStatus[];
-    channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
-    limit?: number;
-    sinceMinutes?: number;
-    requireItems?: boolean;
-  }): Promise<OrderDto[]> {
+  async board(
+    storeStableId: string,
+    params: {
+      statusIn?: OrderStatus[];
+      channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
+      limit?: number;
+      sinceMinutes?: number;
+      requireItems?: boolean;
+    },
+  ): Promise<OrderDto[]> {
     const {
       statusIn,
       channelIn,
@@ -3539,7 +3622,8 @@ export class OrdersService {
       sinceMinutes = 24 * 60,
       requireItems = true,
     } = params;
-    const where: Prisma.OrderWhereInput = {};
+    const where: Prisma.OrderWhereInput =
+      this.trustedStoreOrderWhere(storeStableId);
     if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
     if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
     if (requireItems) {
@@ -3563,6 +3647,33 @@ export class OrdersService {
   async getByStableId(orderStableId: string): Promise<OrderDto> {
     const order = (await this.prisma.order.findUnique({
       where: { orderStableId: orderStableId.trim() },
+      select: orderDetailSelect,
+    })) as OrderDetail | null;
+
+    if (!order) throw new NotFoundException('order not found');
+    const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
+      order.orderStableId,
+    );
+    const dto = this.toOrderDto(order);
+    return {
+      ...dto,
+      ...loyaltyUsage,
+      externalPaidCents: Math.max(
+        0,
+        dto.totalCents - loyaltyUsage.balancePaidCents,
+      ),
+    };
+  }
+
+  async getByStableIdForStore(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<OrderDto> {
+    const order = (await this.prisma.order.findFirst({
+      where: {
+        orderStableId: orderStableId.trim(),
+        ...this.trustedStoreOrderWhere(storeStableId),
+      },
       select: orderDetailSelect,
     })) as OrderDetail | null;
 
@@ -3831,6 +3942,19 @@ export class OrdersService {
   ): Promise<OrderDto> {
     const resolved =
       await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+    const updated = await this.updateStatusByInternalId(resolved.id, next);
+    return this.toOrderDto(updated);
+  }
+
+  async updateStatusForStore(
+    orderStableId: string,
+    storeStableId: string,
+    next: OrderStatus,
+  ): Promise<OrderDto> {
+    const resolved = await this.resolveInternalOrderIdByStableIdForStoreOrThrow(
+      orderStableId,
+      storeStableId,
+    );
     const updated = await this.updateStatusByInternalId(resolved.id, next);
     return this.toOrderDto(updated);
   }
@@ -4507,6 +4631,34 @@ export class OrdersService {
   async advance(orderStableId: string): Promise<OrderDto> {
     const resolved =
       await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: resolved.id },
+      select: { status: true },
+    });
+    if (!order) throw new NotFoundException('order not found');
+
+    const next = ORDER_STATUS_ADVANCE_FLOW[order.status];
+    if (!next) {
+      const current = (await this.prisma.order.findUnique({
+        where: { id: resolved.id },
+        include: { items: true },
+      })) as OrderWithItems;
+      return this.toOrderDto(current);
+    }
+
+    const updated = await this.updateStatusByInternalId(resolved.id, next);
+    return this.toOrderDto(updated);
+  }
+
+  async advanceForStore(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<OrderDto> {
+    const resolved = await this.resolveInternalOrderIdByStableIdForStoreOrThrow(
+      orderStableId,
+      storeStableId,
+    );
 
     const order = await this.prisma.order.findUnique({
       where: { id: resolved.id },

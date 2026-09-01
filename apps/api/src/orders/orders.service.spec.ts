@@ -61,6 +61,7 @@ describe('OrdersService', () => {
     $transaction: jest.Mock;
     order: {
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
       create: jest.Mock;
@@ -145,6 +146,7 @@ describe('OrdersService', () => {
         ),
       order: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn(),
@@ -1091,6 +1093,100 @@ describe('OrdersService', () => {
       expect(prisma.order.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ storeId: 'server-store' }) as unknown,
+        }),
+      );
+    } finally {
+      if (originalStoreId === undefined) delete process.env.STORE_ID;
+      else process.env.STORE_ID = originalStoreId;
+    }
+  });
+
+  it('POS 门店建单持久化 authenticated storeStableId 而不是 deployment default', async () => {
+    const originalStoreId = process.env.STORE_ID;
+    process.env.STORE_ID = 'deployment-default-store';
+    prisma.order.create.mockResolvedValue({
+      id: 'pos-store-order',
+      orderStableId: 'pos-store-order-stable',
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: new Date(),
+      paymentMethod: 'CASH',
+      items: [],
+    });
+
+    try {
+      await service.createForStore(
+        {
+          channel: 'in_store',
+          fulfillmentType: 'pickup',
+          contactName: 'POS Customer',
+          paymentMethod: 'CASH',
+          items: [],
+        },
+        ' authenticated-store ',
+      );
+
+      expect(prisma.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            storeId: 'authenticated-store',
+          }) as unknown,
+        }),
+      );
+    } finally {
+      if (originalStoreId === undefined) delete process.env.STORE_ID;
+      else process.env.STORE_ID = originalStoreId;
+    }
+  });
+
+  it('通用 create 不允许非 Web 调用绕过 authenticated store context', async () => {
+    await expect(
+      service.create({
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        paymentMethod: 'CASH',
+        items: [],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.order.create).not.toHaveBeenCalled();
+  });
+
+  it('POS 第二门店 recent 只查询自己的 canonical storeStableId', async () => {
+    const originalStoreId = process.env.STORE_ID;
+    process.env.STORE_ID = 'original-store';
+    prisma.order.findMany.mockResolvedValue([]);
+
+    try {
+      await service.recent('second-store', 10);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { storeId: 'second-store' },
+          take: 10,
+        }),
+      );
+    } finally {
+      if (originalStoreId === undefined) delete process.env.STORE_ID;
+      else process.env.STORE_ID = originalStoreId;
+    }
+  });
+
+  it('configured 原门店 recent 临时兼容历史 storeId=NULL 订单', async () => {
+    const originalStoreId = process.env.STORE_ID;
+    process.env.STORE_ID = 'original-store';
+    prisma.order.findMany.mockResolvedValue([]);
+
+    try {
+      await service.recent('original-store', 10);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [{ storeId: 'original-store' }, { storeId: null }],
+          },
+          take: 10,
         }),
       );
     } finally {

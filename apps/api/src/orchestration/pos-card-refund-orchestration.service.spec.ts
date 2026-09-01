@@ -152,7 +152,7 @@ const createHarness = () => {
     findByAttemptId: jest.fn(),
   };
   const orders = {
-    getByStableId: jest.fn(),
+    getByStableIdForStore: jest.fn(),
     createFullRefund: jest.fn(),
   };
   const service = new PosCardRefundOrchestrationService(
@@ -169,7 +169,7 @@ describe('PosCardRefundOrchestrationService', () => {
     const harness = createHarness();
     const currentOrder = order();
     const refundedOrder = order({ status: 'refunded' });
-    harness.orders.getByStableId.mockResolvedValue(currentOrder);
+    harness.orders.getByStableIdForStore.mockResolvedValue(currentOrder);
     harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
     harness.transactions.findById.mockResolvedValue(successfulSale());
     harness.transactions.findByAttemptId.mockResolvedValue(null);
@@ -221,7 +221,7 @@ describe('PosCardRefundOrchestrationService', () => {
       status: 'refunded',
       loyaltyRedeemCents: 2000,
     });
-    harness.orders.getByStableId.mockResolvedValue(currentOrder);
+    harness.orders.getByStableIdForStore.mockResolvedValue(currentOrder);
     harness.checkouts.findByOrderStableId.mockResolvedValue({
       ...checkout(),
       externalAmountCents: 0,
@@ -257,7 +257,7 @@ describe('PosCardRefundOrchestrationService', () => {
   it('starts a fresh idempotent reversal only after a previous managed attempt is definitively failed', async () => {
     const harness = createHarness();
     const previous = failedReversal();
-    harness.orders.getByStableId.mockResolvedValue(order());
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
     harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
     harness.transactions.findById.mockResolvedValue(successfulSale());
     harness.transactions.findByAttemptId
@@ -292,7 +292,7 @@ describe('PosCardRefundOrchestrationService', () => {
     const harness = createHarness();
     const currentOrder = order();
     const refundedOrder = order({ status: 'refunded' });
-    harness.orders.getByStableId
+    harness.orders.getByStableIdForStore
       .mockResolvedValueOnce(currentOrder)
       .mockResolvedValueOnce(refundedOrder);
     harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
@@ -325,7 +325,7 @@ describe('PosCardRefundOrchestrationService', () => {
 
   it('does not mutate Order or loyalty while Clover refund truth is UNKNOWN', async () => {
     const harness = createHarness();
-    harness.orders.getByStableId.mockResolvedValue(order());
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
     harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
     harness.transactions.findById.mockResolvedValue(successfulSale());
     harness.transactions.findByAttemptId.mockResolvedValue(null);
@@ -347,7 +347,7 @@ describe('PosCardRefundOrchestrationService', () => {
 
   it('never falls back to legacy when a unified checkout exists but finalization is incomplete', async () => {
     const harness = createHarness();
-    harness.orders.getByStableId.mockResolvedValue(order());
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
     harness.checkouts.findByOrderStableId.mockResolvedValue({
       ...checkout(),
       status: 'FINALIZING',
@@ -372,7 +372,7 @@ describe('PosCardRefundOrchestrationService', () => {
 
   it('returns an explicit legacy decision only when the order has no unified checkout', async () => {
     const harness = createHarness();
-    harness.orders.getByStableId.mockResolvedValue(order());
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
     harness.checkouts.findByOrderStableId.mockResolvedValue(null);
 
     await expect(
@@ -390,7 +390,7 @@ describe('PosCardRefundOrchestrationService', () => {
 
   it('does not allow a unified Clover card order to fall back to another refund method', async () => {
     const harness = createHarness();
-    harness.orders.getByStableId.mockResolvedValue(order());
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
     harness.checkouts.findByOrderStableId.mockResolvedValue(checkout());
 
     await expect(

@@ -40,10 +40,7 @@ export class ScheduledOrdersController {
   async listScheduledOrders(
     @Req() req: PosDeviceRequest,
   ): Promise<ScheduledOrdersQueueDto> {
-    const storeStableId = req.posDevice?.storeStableId;
-    if (!storeStableId) {
-      throw new UnauthorizedException('POS device store unavailable');
-    }
+    const storeStableId = this.requireStoreStableId(req);
     return {
       orders: await this.query.listUpcomingForStoreStableId(storeStableId),
     };
@@ -53,9 +50,10 @@ export class ScheduledOrdersController {
   @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
   @Roles('ADMIN', 'STAFF')
   async getFulfillmentTiming(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderFulfillmentTimingDto> {
-    return this.requireTiming(orderStableId);
+    return this.requireTiming(this.requireStoreStableId(req), orderStableId);
   }
 
   /** Manual early-start uses the same command as the durable scheduler. */
@@ -64,21 +62,38 @@ export class ScheduledOrdersController {
   @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
   @Roles('ADMIN', 'STAFF')
   async startPreparationEarly(
+    @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderFulfillmentTimingDto> {
-    const current = await this.requireTiming(orderStableId);
+    const storeStableId = this.requireStoreStableId(req);
+    const current = await this.requireTiming(storeStableId, orderStableId);
     if (current.fulfillmentTiming !== OrderFulfillmentTiming.SCHEDULED) {
       throw new BadRequestException('order is not scheduled');
     }
-    await this.preparation.activateScheduledOrderByStableId(orderStableId);
-    return this.requireTiming(orderStableId);
+    await this.preparation.activateScheduledOrderByStableId(
+      orderStableId,
+      storeStableId,
+    );
+    return this.requireTiming(storeStableId, orderStableId);
   }
 
   private async requireTiming(
+    storeStableId: string,
     orderStableId: string,
   ): Promise<OrderFulfillmentTimingDto> {
-    const timing = await this.query.findByStableId(orderStableId);
+    const timing = await this.query.findByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     if (!timing) throw new NotFoundException('order not found');
     return timing;
+  }
+
+  private requireStoreStableId(req: PosDeviceRequest): string {
+    const storeStableId = req.posDevice?.storeStableId?.trim();
+    if (!storeStableId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+    return storeStableId;
   }
 }
