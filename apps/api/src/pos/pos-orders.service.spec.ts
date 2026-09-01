@@ -1,8 +1,8 @@
 import { PaymentMethod } from '@prisma/client';
-import type { OrderDto } from '../orders/dto/order.dto';
+import type { PosOrderDto } from '../orders/public-api';
 import { PosOrdersService } from './pos-orders.service';
 
-const order = (overrides: Partial<OrderDto> = {}): OrderDto =>
+const order = (overrides: Partial<PosOrderDto> = {}): PosOrderDto =>
   ({
     orderStableId: 'order_1',
     orderNumber: 'SQ1',
@@ -11,10 +11,10 @@ const order = (overrides: Partial<OrderDto> = {}): OrderDto =>
     channel: 'in_store',
     items: [],
     ...overrides,
-  }) as OrderDto;
+  }) as PosOrderDto;
 
 describe('PosOrdersService', () => {
-  const setup = (current: OrderDto) => {
+  const setup = (current: PosOrderDto) => {
     const orders = {
       getByStableIdForStore: jest.fn().mockResolvedValue(current),
       getExternalPaymentCents: jest.fn().mockResolvedValue(null),
@@ -149,7 +149,7 @@ describe('PosOrdersService', () => {
       clientRequestId: 'ubereats:external-123',
       status: 'pending',
     });
-    const making = { ...pending, status: 'making' } as OrderDto;
+    const making = { ...pending, status: 'making' } as PosOrderDto;
     const { service, orders, uberEats } = setup(pending);
     orders.getByStableIdForStore
       .mockResolvedValueOnce(pending)
@@ -245,7 +245,7 @@ describe('PosOrdersService', () => {
       clientRequestId: 'ubereats:external-123',
       status: 'ready',
     });
-    const completed = { ...ready, status: 'completed' } as OrderDto;
+    const completed = { ...ready, status: 'completed' } as PosOrderDto;
     const { service, orders, uberEats } = setup(ready);
     orders.advanceForStore.mockResolvedValue(completed);
     uberEats.getReadyForPickupAction.mockResolvedValue({

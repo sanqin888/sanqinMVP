@@ -7,6 +7,8 @@ import {
   DefaultValuePipe,
   Get,
   HttpCode,
+  Inject,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -21,24 +23,27 @@ import type { Request } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import type { AuthenticatedPosIdentity } from './pos-device-management.contract';
+import {
+  StableIdPipe,
+  ZodValidationPipe,
+  type AuthenticatedPosIdentity,
+} from './public-api';
 import { PosDeviceGuard } from './pos-device.guard';
-import { OrdersService } from '../orders/orders.service';
-import { OrderSchedulingQueryService } from '../orders/order-scheduling-query.service';
-import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { CreateOrderSchema } from '@shared/order';
-import type { CreateOrderInput } from '@shared/order';
-import type { OrderStatus } from '../orders/order-status';
+import type { CreateOrderInput, OrderStatus } from '@shared/order';
+import {
+  POS_ORDER_OPERATIONS,
+  type PosOrderDto,
+  type PosOrderFulfillmentTimingDto,
+  type PosOrderJsonInput,
+  type PosOrderOperationsPort,
+} from '../orders/public-api';
 import {
   OrderAmendmentItemAction,
   OrderAmendmentType,
-  OrderFulfillmentTiming,
   PaymentMethod,
-  Prisma,
 } from '@prisma/client';
-import type { OrderDto } from '../orders/dto/order.dto';
 import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
-import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
@@ -61,8 +66,8 @@ type PosDeviceRequest = Request & {
   posDevice?: AuthenticatedPosIdentity;
 };
 
-type PosBoardOrderDto = OrderDto & {
-  fulfillmentTiming: OrderFulfillmentTiming;
+type PosBoardOrderDto = PosOrderDto & {
+  fulfillmentTiming: 'IMMEDIATE' | 'SCHEDULED';
 };
 
 class CancelUberOrderDto {
@@ -136,7 +141,7 @@ class CreateAmendmentItemDto {
   nameZh?: string | null;
 
   @IsOptional()
-  optionsJson?: Prisma.InputJsonValue;
+  optionsJson?: PosOrderJsonInput;
 }
 
 class CreatePosAmendmentDto {
@@ -181,12 +186,12 @@ class CreatePosAmendmentDto {
 @Roles('ADMIN', 'STAFF')
 export class PosOrdersController {
   constructor(
-    private readonly orders: OrdersService,
+    @Inject(POS_ORDER_OPERATIONS)
+    private readonly orders: PosOrderOperationsPort,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly eventEmitter: EventEmitter2,
     private readonly posGateway: PosGateway,
     private readonly posOrders: PosOrdersService,
-    private readonly schedulingQuery: OrderSchedulingQueryService,
     private readonly posCardPaymentFeature: PosCardPaymentFeatureConfig,
   ) {}
 
@@ -196,7 +201,7 @@ export class PosOrdersController {
   async create(
     @Req() req: PosDeviceRequest,
     @Body() dto: CreateOrderInput,
-  ): Promise<OrderDto> {
+  ): Promise<PosOrderDto> {
     if (dto.channel !== 'in_store' && dto.channel !== 'ubereats') {
       throw new BadRequestException(
         'POS orders must use channel=in_store|ubereats',
@@ -229,7 +234,7 @@ export class PosOrdersController {
   recent(
     @Req() req: PosDeviceRequest,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
-  ): Promise<OrderDto[]> {
+  ): Promise<PosOrderDto[]> {
     return this.orders.recent(this.requireStoreStableId(req), limit);
   }
 
@@ -265,9 +270,9 @@ export class PosOrdersController {
         limit,
         sinceMinutes,
       }),
-      this.schedulingQuery.listUpcomingForStoreStableId(storeStableId),
+      this.orders.listUpcomingScheduledForStore(storeStableId),
     ]);
-    const timings = await this.schedulingQuery.findTimingsByStableIdsForStore(
+    const timings = await this.orders.getFulfillmentTimingsForStore(
       boardOrders.map((order) => order.orderStableId),
       storeStableId,
     );
@@ -280,9 +285,49 @@ export class PosOrdersController {
       .filter((order) => !upcomingScheduledIds.has(order.orderStableId))
       .map((order) => ({
         ...order,
-        fulfillmentTiming:
-          timings.get(order.orderStableId) ?? OrderFulfillmentTiming.IMMEDIATE,
+        fulfillmentTiming: timings.get(order.orderStableId) ?? 'IMMEDIATE',
       }));
+  }
+
+  @Get('scheduled')
+  async listScheduledOrders(@Req() req: PosDeviceRequest) {
+    return {
+      orders: await this.orders.listUpcomingScheduledForStore(
+        this.requireStoreStableId(req),
+      ),
+    };
+  }
+
+  @Get(':orderStableId/fulfillment-timing')
+  getFulfillmentTiming(
+    @Req() req: PosDeviceRequest,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ): Promise<PosOrderFulfillmentTimingDto> {
+    return this.requireFulfillmentTiming(
+      this.requireStoreStableId(req),
+      orderStableId,
+    );
+  }
+
+  @Post(':orderStableId/preparation/start')
+  @HttpCode(200)
+  async startPreparationEarly(
+    @Req() req: PosDeviceRequest,
+    @Param('orderStableId', StableIdPipe) orderStableId: string,
+  ): Promise<PosOrderFulfillmentTimingDto> {
+    const storeStableId = this.requireStoreStableId(req);
+    const current = await this.requireFulfillmentTiming(
+      storeStableId,
+      orderStableId,
+    );
+    if (current.fulfillmentTiming !== 'SCHEDULED') {
+      throw new BadRequestException('order is not scheduled');
+    }
+    await this.orders.activateScheduledPreparation(
+      orderStableId,
+      storeStableId,
+    );
+    return this.requireFulfillmentTiming(storeStableId, orderStableId);
   }
 
   @Get('settings/auto-accept')
@@ -313,7 +358,7 @@ export class PosOrdersController {
   findOne(
     @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
-  ): Promise<OrderDto> {
+  ): Promise<PosOrderDto> {
     return this.orders.getByStableIdForStore(
       orderStableId,
       this.requireStoreStableId(req),
@@ -407,7 +452,7 @@ export class PosOrdersController {
     @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: { status: OrderStatus },
-  ): Promise<OrderDto> {
+  ): Promise<PosOrderDto> {
     return this.orders.updateStatusForStore(
       orderStableId,
       this.requireStoreStableId(req),
@@ -475,7 +520,7 @@ export class PosOrdersController {
     @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CreatePosAmendmentDto,
-  ): Promise<OrderDto> {
+  ): Promise<PosOrderDto> {
     const items = body.items ?? [];
     const updated = await this.posOrders.createAmendment(
       this.requireStoreStableId(req),
@@ -505,6 +550,20 @@ export class PosOrdersController {
     }
 
     return updated;
+  }
+
+  private async requireFulfillmentTiming(
+    storeStableId: string,
+    orderStableId: string,
+  ): Promise<PosOrderFulfillmentTimingDto> {
+    const timing = await this.orders.getFulfillmentTimingForStore(
+      orderStableId,
+      storeStableId,
+    );
+    if (!timing) {
+      throw new NotFoundException('order not found');
+    }
+    return timing;
   }
 
   private requireStoreStableId(req: PosDeviceRequest): string {

@@ -9,16 +9,16 @@ describe('PosOrdersController Uber orders', () => {
     createForStore: jest.fn(),
     getByStableIdForStore: jest.fn(),
     updateStatusForStore: jest.fn(),
+    listUpcomingScheduledForStore: jest.fn(),
+    getFulfillmentTimingsForStore: jest.fn(),
+    getFulfillmentTimingForStore: jest.fn(),
+    activateScheduledPreparation: jest.fn(),
   };
   const posOrders = {
     cancelUberOrder: jest.fn(),
     denyUberOrder: jest.fn(),
     getAutoAcceptOnlineOrders: jest.fn(),
     setAutoAcceptOnlineOrders: jest.fn(),
-  };
-  const schedulingQuery = {
-    listUpcomingForStoreStableId: jest.fn(),
-    findTimingsByStableIdsForStore: jest.fn(),
   };
   const posCardPaymentFeature = {
     isEnabled: jest.fn(() => false),
@@ -36,7 +36,6 @@ describe('PosOrdersController Uber orders', () => {
     {} as never,
     {} as never,
     posOrders as never,
-    schedulingQuery as never,
     posCardPaymentFeature as never,
   );
 
@@ -129,10 +128,10 @@ describe('PosOrdersController Uber orders', () => {
       { orderStableId: 'scheduled_1' },
       { orderStableId: 'immediate_1' },
     ]);
-    schedulingQuery.listUpcomingForStoreStableId.mockResolvedValue([
+    orders.listUpcomingScheduledForStore.mockResolvedValue([
       { orderStableId: 'scheduled_1' },
     ]);
-    schedulingQuery.findTimingsByStableIdsForStore.mockResolvedValue(
+    orders.getFulfillmentTimingsForStore.mockResolvedValue(
       new Map([
         ['scheduled_1', 'SCHEDULED'],
         ['immediate_1', 'IMMEDIATE'],
@@ -157,10 +156,10 @@ describe('PosOrdersController Uber orders', () => {
       { orderStableId: 'immediate_1', fulfillmentTiming: 'IMMEDIATE' },
     ]);
 
-    expect(schedulingQuery.listUpcomingForStoreStableId).toHaveBeenCalledWith(
+    expect(orders.listUpcomingScheduledForStore).toHaveBeenCalledWith(
       '4750_Yonge_Street',
     );
-    expect(schedulingQuery.findTimingsByStableIdsForStore).toHaveBeenCalledWith(
+    expect(orders.getFulfillmentTimingsForStore).toHaveBeenCalledWith(
       ['scheduled_1', 'immediate_1'],
       '4750_Yonge_Street',
     );
@@ -174,8 +173,8 @@ describe('PosOrdersController Uber orders', () => {
 
   it('已激活预约单进入右侧看板后仍保留预约身份', async () => {
     orders.board.mockResolvedValue([{ orderStableId: 'scheduled_active' }]);
-    schedulingQuery.listUpcomingForStoreStableId.mockResolvedValue([]);
-    schedulingQuery.findTimingsByStableIdsForStore.mockResolvedValue(
+    orders.listUpcomingScheduledForStore.mockResolvedValue([]);
+    orders.getFulfillmentTimingsForStore.mockResolvedValue(
       new Map([['scheduled_active', 'SCHEDULED']]),
     );
 
@@ -196,6 +195,45 @@ describe('PosOrdersController Uber orders', () => {
     ).resolves.toEqual([
       { orderStableId: 'scheduled_active', fulfillmentTiming: 'SCHEDULED' },
     ]);
+  });
+
+  it('POS scheduled queue uses the authenticated store through Orders public API', async () => {
+    const scheduledOrders = [{ orderStableId: 'scheduled_1' }];
+    orders.listUpcomingScheduledForStore.mockResolvedValue(scheduledOrders);
+
+    await expect(controller.listScheduledOrders(posRequest)).resolves.toEqual({
+      orders: scheduledOrders,
+    });
+    expect(orders.listUpcomingScheduledForStore).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
+  });
+
+  it('POS manual scheduled preparation delegates through Orders public API', async () => {
+    orders.getFulfillmentTimingForStore
+      .mockResolvedValueOnce({
+        orderStableId: 'scheduled_1',
+        fulfillmentTiming: 'SCHEDULED',
+        status: 'paid',
+      })
+      .mockResolvedValueOnce({
+        orderStableId: 'scheduled_1',
+        fulfillmentTiming: 'SCHEDULED',
+        status: 'making',
+      });
+
+    await expect(
+      controller.startPreparationEarly(posRequest, 'scheduled_1'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        orderStableId: 'scheduled_1',
+        status: 'making',
+      }),
+    );
+    expect(orders.activateScheduledPreparation).toHaveBeenCalledWith(
+      'scheduled_1',
+      '4750_Yonge_Street',
+    );
   });
 
   it('POS 将人工拒单提交到 Uber DENY 应用边界', async () => {

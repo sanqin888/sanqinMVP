@@ -5,15 +5,10 @@ import {
   Get,
   HttpCode,
   Param,
-  Patch,
   Post,
-  Query,
   Req,
-  DefaultValuePipe,
-  ParseIntPipe,
   BadRequestException,
   ForbiddenException,
-  UnauthorizedException,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -30,44 +25,21 @@ import {
   IsString,
   Min,
   ValidateNested,
-  Validate,
-  ValidatorConstraint,
-  ValidatorConstraintInterface,
-  ValidationArguments,
 } from 'class-validator';
-import {
-  OrderAmendmentType,
-  OrderAmendmentItemAction,
-  PaymentMethod,
-  Prisma,
-  OrderStatus as PrismaOrderStatus,
-  FulfillmentType,
-  DeliveryType,
-} from '@prisma/client';
+import { FulfillmentType, DeliveryType } from '@prisma/client';
 import { OrdersService } from './orders.service';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
-import type { OrderStatus } from './order-status';
 import type { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { OptionalSessionAuthGuard } from '../auth/optional-session-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
-import { PosDeviceGuard } from '../pos/pos-device.guard';
-import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string; email?: string | null };
-  posDevice?: AuthenticatedPosIdentity;
 };
-
-class UpdateStatusDto {
-  @IsEnum(PrismaOrderStatus)
-  status!: OrderStatus;
-}
 
 class LoyaltyOrderItemDto {
   @IsString()
@@ -150,152 +122,6 @@ class CreateLoyaltyOnlyOrderDto {
   items!: LoyaltyOrderItemDto[];
 }
 
-class CreateOrderAmendmentItemDto {
-  @IsEnum(OrderAmendmentItemAction)
-  action!: OrderAmendmentItemAction;
-
-  @IsString()
-  productStableId!: string;
-
-  @IsInt()
-  @Min(1)
-  qty!: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  unitPriceCents?: number | null;
-
-  @IsOptional()
-  @IsString()
-  displayName?: string | null;
-
-  @IsOptional()
-  @IsString()
-  nameEn?: string | null;
-
-  @IsOptional()
-  @IsString()
-  nameZh?: string | null;
-
-  // optionsJson 允许任意 JSON（dev 环境不做深校验）
-  @IsOptional()
-  optionsJson?: Prisma.InputJsonValue;
-}
-
-@ValidatorConstraint({ name: 'AmendmentRequestConsistency', async: false })
-class AmendmentRequestConsistency implements ValidatorConstraintInterface {
-  validate(type: OrderAmendmentType, args: ValidationArguments): boolean {
-    const dto = args.object as CreateOrderAmendmentDto;
-
-    const items = Array.isArray(dto.items) ? dto.items : [];
-    const refund = Number.isFinite(dto.refundGrossCents)
-      ? Math.max(0, Math.round(dto.refundGrossCents as number))
-      : 0;
-    const charge = Number.isFinite(dto.additionalChargeCents)
-      ? Math.max(0, Math.round(dto.additionalChargeCents as number))
-      : 0;
-
-    const hasVoid = items.some(
-      (i) => i.action === OrderAmendmentItemAction.VOID,
-    );
-    const hasAdd = items.some((i) => i.action === OrderAmendmentItemAction.ADD);
-
-    if (refund > 0 && charge > 0) return false;
-
-    switch (type) {
-      case OrderAmendmentType.RETENDER: {
-        if (items.length > 0) return false;
-        if (refund <= 0 && charge <= 0) return false;
-        return true;
-      }
-
-      case OrderAmendmentType.VOID_ITEM: {
-        if (items.length === 0) return false;
-        if (!hasVoid || hasAdd) return false;
-        if (refund <= 0) return false;
-        if (charge > 0) return false;
-        return true;
-      }
-
-      case OrderAmendmentType.SWAP_ITEM: {
-        if (items.length === 0) return false;
-        if (!(hasVoid && hasAdd)) return false;
-        return true;
-      }
-
-      case OrderAmendmentType.ADDITIONAL_CHARGE: {
-        if (hasVoid) return false;
-        if (charge <= 0) return false;
-        if (refund > 0) return false;
-        return true;
-      }
-
-      default:
-        return false;
-    }
-  }
-
-  defaultMessage(args: ValidationArguments): string {
-    const dto = args.object as CreateOrderAmendmentDto;
-    const items = Array.isArray(dto.items) ? dto.items : [];
-    const refund = Number.isFinite(dto.refundGrossCents)
-      ? Math.max(0, Math.round(dto.refundGrossCents as number))
-      : 0;
-    const charge = Number.isFinite(dto.additionalChargeCents)
-      ? Math.max(0, Math.round(dto.additionalChargeCents as number))
-      : 0;
-
-    if (refund > 0 && charge > 0) {
-      return 'refundGrossCents and additionalChargeCents cannot both be > 0';
-    }
-
-    switch (dto.type) {
-      case OrderAmendmentType.RETENDER:
-        return 'RETENDER requires items to be empty, and refundGrossCents > 0 OR additionalChargeCents > 0';
-      case OrderAmendmentType.VOID_ITEM:
-        return 'VOID_ITEM requires non-empty items with action=VOID only, and refundGrossCents > 0';
-      case OrderAmendmentType.SWAP_ITEM:
-        return 'SWAP_ITEM requires non-empty items including both action=VOID and action=ADD';
-      case OrderAmendmentType.ADDITIONAL_CHARGE:
-        return 'ADDITIONAL_CHARGE requires additionalChargeCents > 0, and items must not include action=VOID';
-      default:
-        return `invalid amendment request: type=${String(dto.type)} items=${items.length} refund=${refund} charge=${charge}`;
-    }
-  }
-}
-
-class CreateOrderAmendmentDto {
-  @IsEnum(OrderAmendmentType)
-  @Validate(AmendmentRequestConsistency)
-  type!: OrderAmendmentType;
-
-  @IsString()
-  reason!: string;
-
-  @IsOptional()
-  @IsEnum(PaymentMethod)
-  paymentMethod?: PaymentMethod | null;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  refundGrossCents?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  additionalChargeCents?: number;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateOrderAmendmentItemDto)
-  items?: CreateOrderAmendmentItemDto[];
-}
-
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
@@ -339,55 +165,6 @@ export class OrdersController {
       ...dto,
       userStableId: req.user?.userStableId?.trim() || undefined,
       discountCents: undefined,
-    });
-  }
-
-  /**
-   * 最近订单
-   * GET /api/v1/orders/recent?limit=10
-   */
-  @Get('recent')
-  @UseGuards(PosDeviceGuard)
-  recent(
-    @Req() req: AuthedRequest,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
-  ): Promise<OrderDto[]> {
-    return this.ordersService.recent(this.requirePosStoreStableId(req), limit);
-  }
-
-  /**
-   * 门店订单看板：
-   * GET /api/v1/orders/board
-   */
-  @Get('board')
-  @UseGuards(PosDeviceGuard)
-  board(
-    @Req() req: AuthedRequest,
-    @Query('status') statusRaw?: string,
-    @Query('channel') channelRaw?: string,
-    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
-    @Query('sinceMinutes', new DefaultValuePipe(1440), ParseIntPipe)
-    sinceMinutes?: number,
-  ): Promise<OrderDto[]> {
-    const statusIn = statusRaw
-      ? (statusRaw
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean) as OrderStatus[])
-      : undefined;
-
-    const channelIn = channelRaw
-      ? (channelRaw
-          .split(',')
-          .map((c) => c.trim())
-          .filter(Boolean) as Array<'web' | 'in_store' | 'ubereats'>)
-      : undefined;
-
-    return this.ordersService.board(this.requirePosStoreStableId(req), {
-      statusIn,
-      channelIn,
-      limit,
-      sinceMinutes,
     });
   }
 
@@ -470,71 +247,6 @@ export class OrdersController {
   }
 
   /**
-   * 更新订单状态
-   * PATCH /api/v1/orders/:orderStableId/status
-   */
-  @Patch(':orderStableId/status')
-  @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
-  @Roles('ADMIN', 'STAFF')
-  updateStatus(
-    @Req() req: AuthedRequest,
-    @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body() body: UpdateStatusDto,
-  ): Promise<OrderDto> {
-    return this.ordersService.updateStatusForStore(
-      orderStableId,
-      this.requirePosStoreStableId(req),
-      body.status,
-    );
-  }
-
-  /**
-   * 创建订单修订（方案 B）
-   * POST /api/v1/orders/:orderStableId/amendments
-   */
-  @Post(':orderStableId/amendments')
-  @HttpCode(201)
-  @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
-  @Roles('ADMIN', 'STAFF')
-  async createAmendment(
-    @Req() req: AuthedRequest,
-    @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body() body: CreateOrderAmendmentDto,
-  ): Promise<OrderDto> {
-    await this.ordersService.getByStableIdForStore(
-      orderStableId,
-      this.requirePosStoreStableId(req),
-    );
-    return this.ordersService.createAmendment({
-      orderStableId,
-      type: body.type,
-      reason: body.reason,
-      paymentMethod: body.paymentMethod ?? null,
-      refundGrossCents: body.refundGrossCents ?? 0,
-      additionalChargeCents: body.additionalChargeCents ?? 0,
-      items: body.items ?? [],
-    });
-  }
-
-  /**
-   * 推进订单状态
-   * POST /api/v1/orders/:orderStableId/advance
-   */
-  @Post(':orderStableId/advance')
-  @HttpCode(200)
-  @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
-  @Roles('ADMIN', 'STAFF')
-  advance(
-    @Req() req: AuthedRequest,
-    @Param('orderStableId', StableIdPipe) orderStableId: string,
-  ): Promise<OrderDto> {
-    return this.ordersService.advanceForStore(
-      orderStableId,
-      this.requirePosStoreStableId(req),
-    );
-  }
-
-  /**
    * GET /orders/:orderStableId/summary
    * thank-you 页面小结组件
    */
@@ -579,13 +291,5 @@ export class OrdersController {
       email: req.user?.email ?? null,
       locale: body?.locale,
     });
-  }
-
-  private requirePosStoreStableId(req: AuthedRequest): string {
-    const storeStableId = req.posDevice?.storeStableId?.trim();
-    if (!storeStableId) {
-      throw new UnauthorizedException('POS device store unavailable');
-    }
-    return storeStableId;
   }
 }
