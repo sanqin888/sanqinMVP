@@ -193,7 +193,10 @@ export class PosOrdersController {
   @Post()
   @HttpCode(201)
   @UsePipes(new ZodValidationPipe(CreateOrderSchema))
-  async create(@Body() dto: CreateOrderInput): Promise<OrderDto> {
+  async create(
+    @Req() req: PosDeviceRequest,
+    @Body() dto: CreateOrderInput,
+  ): Promise<OrderDto> {
     if (dto.channel !== 'in_store' && dto.channel !== 'ubereats') {
       throw new BadRequestException(
         'POS orders must use channel=in_store|ubereats',
@@ -218,7 +221,12 @@ export class PosOrdersController {
           'Legacy POS card order creation is disabled while Clover Terminal payments are enabled.',
       });
     }
-    return this.orders.create(dto);
+
+    const storeStableId = req.posDevice?.storeStableId?.trim();
+    if (!storeStableId) {
+      throw new UnauthorizedException('POS device store unavailable');
+    }
+    return this.orders.createForStore(dto, storeStableId);
   }
 
   @Get('recent')

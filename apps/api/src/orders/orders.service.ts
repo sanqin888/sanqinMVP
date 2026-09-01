@@ -2741,6 +2741,12 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
   ): Promise<OrderDto> {
+    if (dto.channel !== Channel.web) {
+      throw new BadRequestException(
+        'Non-web order creation requires explicit authenticated store context',
+      );
+    }
+
     if (dto.channel === Channel.web) {
       const paymentMethod = this.resolvePaymentMethod(dto);
       if (paymentMethod === PaymentMethod.CARD) {
@@ -2841,9 +2847,32 @@ export class OrdersService {
     return this.toOrderDto(order);
   }
 
+  async createForStore(
+    dto: CreateOrderInput,
+    storeStableId: string,
+  ): Promise<OrderDto> {
+    const normalizedStoreStableId = storeStableId.trim();
+    if (!normalizedStoreStableId) {
+      throw new BadRequestException('storeStableId is required');
+    }
+    if (dto.channel === Channel.web) {
+      throw new BadRequestException(
+        'Store-scoped order creation does not accept channel=web',
+      );
+    }
+
+    const order = await this.createInternal(
+      dto,
+      undefined,
+      normalizedStoreStableId,
+    );
+    return this.toOrderDto(order);
+  }
+
   async createInternal(
     dto: CreateOrderInput,
     idempotencyKey?: string,
+    authenticatedStoreStableId?: string,
   ): Promise<OrderWithItems> {
     const contactPolicy = this.resolveContactPolicy(dto);
     const paymentMethod = this.resolvePaymentMethod(dto);
@@ -2941,12 +2970,14 @@ export class OrdersService {
     // ✅ 你的业务前提：只在“已收款/支付成功”后才创建订单记录
     const paidAt = new Date();
     // Website orders never take their routing identity from the request DTO.
-    // Prefer the store stamped into the verified checkout context; cash and
-    // legacy checkout flows use the deployment's controlled single-store config.
+    // Prefer the store stamped into the verified checkout context; legacy web
+    // checkout flows use the deployment's controlled single-store config.
+    // Authenticated store-channel callers must pass their trusted store identity
+    // explicitly rather than relying on the deployment default.
     const storeId =
       dto.channel === Channel.web
         ? (verifiedCheckoutIntent?.storeId ?? resolveConfiguredStoreStableId())
-        : undefined;
+        : authenticatedStoreStableId?.trim() || undefined;
 
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
