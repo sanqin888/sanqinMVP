@@ -294,7 +294,10 @@ export class PosOrdersController {
     if (!storeStableId) {
       throw new UnauthorizedException('POS device store unavailable');
     }
-    return this.posOrders.setAutoAcceptOnlineOrders(storeStableId, body.enabled);
+    return this.posOrders.setAutoAcceptOnlineOrders(
+      storeStableId,
+      body.enabled,
+    );
   }
 
   @Get(':orderStableId')

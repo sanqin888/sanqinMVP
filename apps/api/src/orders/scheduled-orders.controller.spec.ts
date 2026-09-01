@@ -26,7 +26,9 @@ describe('ScheduledOrdersController', () => {
       },
     ];
     const query = {
-      listUpcomingForStoreStableId: jest.fn().mockResolvedValue(scheduledOrders),
+      listUpcomingForStoreStableId: jest
+        .fn()
+        .mockResolvedValue(scheduledOrders),
     };
     const controller = new ScheduledOrdersController(
       query as never,
