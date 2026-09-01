@@ -868,14 +868,17 @@ function buildKitchenReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
   chunks.push(encLine(makeLine("=")));
 
-  // ==== 菜品（放大 + 加粗） ====
+  // ==== 菜品标题：普通单品放大，套餐主标题保持普通字号 ====
   if (Array.isArray(snapshot.items)) {
     snapshot.items.forEach((item) => {
       const itemName = pickLocalizedName(item, locale);
       const qty = item.quantity ?? 0;
+      const hasComponents =
+        Array.isArray(item.components) && item.components.length > 0;
 
       chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
-      chunks.push(cmd(GS, 0x21, 0x11)); // 双倍高度
+      // 套餐主标题普通字号；普通单品双宽双高。
+      chunks.push(cmd(GS, 0x21, hasComponents ? 0x00 : 0x11));
 
       if (itemName) {
         chunks.push(encLine(`${qty}  ${itemName}`));
@@ -897,8 +900,9 @@ function buildKitchenReceiptEscPos(params) {
         chunks.push(cmd(GS, 0x21, 0x00));
         chunks.push(cmd(ESC, 0x45, 0x00));
       }
-      if (Array.isArray(item.components) && item.components.length > 0) {
-        chunks.push(cmd(ESC, 0x45, 0x01));
+      if (hasComponents) {
+        chunks.push(cmd(ESC, 0x45, 0x01)); // 加粗
+        chunks.push(cmd(GS, 0x21, 0x01)); // 套餐菜品名和选项双高、非双宽
         item.components.forEach((component) => {
           const componentName = pickLocalizedName(component, locale);
           const componentQty = Number.isFinite(component?.quantity)
@@ -914,6 +918,7 @@ function buildKitchenReceiptEscPos(params) {
             chunks.push(encLine(`    - ${opt}`));
           });
         });
+        chunks.push(cmd(GS, 0x21, 0x00));
         chunks.push(cmd(ESC, 0x45, 0x00));
       }
       const specialInstructionLines = getItemSpecialInstructionLines(
