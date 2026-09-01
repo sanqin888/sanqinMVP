@@ -9,7 +9,7 @@ import { PosSummaryService } from './pos-summary.service';
 import { AuthModule } from '../auth/auth.module';
 import { RolesGuard } from '../auth/roles.guard';
 import { PosDeviceModule } from './pos-device.module';
-import { OrdersModule } from '../orders/orders.module';
+import { OrdersModule } from '../orders/public-api';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PosStoreStatusController } from './pos-store-status.controller';
 import { PosStoreStatusService } from './pos-store-status.service';

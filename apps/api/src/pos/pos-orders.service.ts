@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   Channel,
   OrderAmendmentItemAction,
@@ -11,7 +6,9 @@ import {
   PaymentMethod,
   Prisma,
 } from '@prisma/client';
+import type { OrderJsonValue } from '@shared/order';
 import { OrdersService } from '../orders/orders.service';
+import { POS_ORDER_READ, type PosOrderReadPort } from '../orders/public-api';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   type OrderStatus,
@@ -23,7 +20,6 @@ import {
   type UberEatsOrderActionsPort,
   type UberEatsOrderStatusSyncPort,
 } from '../integrations/ubereats/public-api';
-import { PrismaService } from '../prisma/prisma.service';
 import {
   BRAND_STORE_CONFIG_READER,
   BRAND_STORE_CONFIG_WRITER,
@@ -102,7 +98,7 @@ export type PosOrderAmendmentHistory = {
   deltaCents: number;
   refundCents: number;
   additionalChargeCents: number;
-  summaryJson: Prisma.JsonValue | null;
+  summaryJson: OrderJsonValue | null;
   items: Array<{
     action: OrderAmendmentItemAction;
     productStableId: string;
@@ -111,7 +107,7 @@ export type PosOrderAmendmentHistory = {
     nameZh: string | null;
     qty: number;
     unitPriceCents: number | null;
-    optionsJson: Prisma.JsonValue | null;
+    optionsJson: OrderJsonValue | null;
   }>;
 };
 
@@ -123,7 +119,8 @@ export class PosOrdersService {
     private readonly uberOrderActions: UberEatsOrderActionsPort,
     @Inject(UBER_EATS_ORDER_STATUS_SYNC)
     private readonly uberOrderStatusSync: UberEatsOrderStatusSyncPort,
-    private readonly prisma: PrismaService,
+    @Inject(POS_ORDER_READ)
+    private readonly orderRead: PosOrderReadPort,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
     @Inject(BRAND_STORE_CONFIG_WRITER)
@@ -414,17 +411,10 @@ export class PosOrdersService {
     storeStableId: string,
     orderStableId: string,
   ): Promise<PosOrderAmendmentHistory[]> {
-    await this.orders.getByStableIdForStore(orderStableId, storeStableId);
-    const order = await this.prisma.order.findUnique({
-      where: { orderStableId },
-      select: { id: true },
-    });
-    if (!order) throw new NotFoundException('order not found');
-
-    const amendments = await this.prisma.orderAmendment.findMany({
-      where: { orderId: order.id },
-      include: { items: true },
-    });
+    const amendments = await this.orderRead.listAmendmentsForStore(
+      orderStableId,
+      storeStableId,
+    );
 
     return amendments.map((amendment) => {
       const parsedReason = this.parseManualReason(amendment.reason);
