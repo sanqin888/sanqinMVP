@@ -39,10 +39,12 @@ const authenticatedStore = {
 
 describe('PosStoreContextController', () => {
   it('reads the context for the authenticated POS device store instead of the configured default store', async () => {
-    const getStoreSnapshot = jest.fn(async (storeStableId?: string) =>
-      storeStableId === authenticatedStore.storeStableId
-        ? authenticatedStore
-        : configuredStore,
+    const getStoreSnapshot = jest.fn((storeStableId?: string) =>
+      Promise.resolve(
+        storeStableId === authenticatedStore.storeStableId
+          ? authenticatedStore
+          : configuredStore,
+      ),
     );
     const controller = new PosStoreContextController({
       getStoreSnapshot,

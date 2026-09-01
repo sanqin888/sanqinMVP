@@ -124,9 +124,8 @@ export class PosStoreContextController {
       throw new UnauthorizedException('POS device store unavailable');
     }
 
-    const store = await this.brandStoreConfigReader.getStoreSnapshot(
-      storeStableId,
-    );
+    const store =
+      await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
     return {
       storeStableId: store.storeStableId,
       storeName: store.storeName,
