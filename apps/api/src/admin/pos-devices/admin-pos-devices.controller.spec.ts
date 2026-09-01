@@ -32,10 +32,7 @@ describe('AdminPosDevicesController stable identity adapter', () => {
       resolveStoreStableId: jest.fn().mockResolvedValue(storeStableId),
       resolveDeviceStableId: jest.fn().mockResolvedValue(deviceStableId),
     };
-    const controller = new AdminPosDevicesController(
-      management,
-      compatibility,
-    );
+    const controller = new AdminPosDevicesController(management, compatibility);
     return { controller, management, compatibility };
   }
 
@@ -100,7 +97,9 @@ describe('AdminPosDevicesController stable identity adapter', () => {
 
     await controller.resetEnrollmentCode(deviceDbId);
 
-    expect(compatibility.resolveDeviceStableId).toHaveBeenCalledWith(deviceDbId);
+    expect(compatibility.resolveDeviceStableId).toHaveBeenCalledWith(
+      deviceDbId,
+    );
     expect(management.resetEnrollmentCode).toHaveBeenCalledWith(deviceStableId);
   });
 

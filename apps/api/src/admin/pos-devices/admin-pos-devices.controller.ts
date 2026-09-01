@@ -55,7 +55,9 @@ export class AdminPosDevicesController {
     throw error;
   }
 
-  private async resolveDeviceStableId(deviceIdentifier: string): Promise<string> {
+  private async resolveDeviceStableId(
+    deviceIdentifier: string,
+  ): Promise<string> {
     if (!UUID_PATTERN.test(deviceIdentifier)) return deviceIdentifier;
 
     // @compat pos-device.admin-db-id.v1

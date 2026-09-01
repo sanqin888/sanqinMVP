@@ -2,12 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const POS_ROOT = resolve(__dirname);
-const ADMIN_POS_DEVICE_ROOT = resolve(
-  POS_ROOT,
-  '..',
-  'admin',
-  'pos-devices',
-);
+const ADMIN_POS_DEVICE_ROOT = resolve(POS_ROOT, '..', 'admin', 'pos-devices');
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
