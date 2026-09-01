@@ -70,7 +70,9 @@ describe('POS device authentication boundary', () => {
   });
 
   it('defines one authenticated POS identity with no DB UUID or credential fields', () => {
-    const contract = read(resolve(POS_ROOT, 'pos-device-management.contract.ts'));
+    const contract = read(
+      resolve(POS_ROOT, 'pos-device-management.contract.ts'),
+    );
 
     expect(contract).toContain('AuthenticatedPosIdentity');
     expect(contract).toContain('deviceStableId: string');
