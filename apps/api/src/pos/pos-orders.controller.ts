@@ -57,7 +57,7 @@ import {
 } from 'class-validator';
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeId: string };
+  posDevice?: { storeStableId: string };
 };
 
 type PosBoardOrderDto = OrderDto & {
@@ -250,14 +250,14 @@ export class PosOrdersController {
           .filter(Boolean) as Array<'web' | 'in_store' | 'ubereats'>)
       : undefined;
 
-    const deviceStoreId = req.posDevice?.storeId;
-    if (!deviceStoreId) {
+    const storeStableId = req.posDevice?.storeStableId;
+    if (!storeStableId) {
       throw new UnauthorizedException('POS device store unavailable');
     }
 
     const [boardOrders, upcomingScheduledOrders] = await Promise.all([
       this.orders.board({ statusIn, channelIn, limit, sinceMinutes }),
-      this.schedulingQuery.listUpcomingForDeviceStore(deviceStoreId),
+      this.schedulingQuery.listUpcomingForStoreStableId(storeStableId),
     ]);
     const timings = await this.schedulingQuery.findTimingsByStableIds(
       boardOrders.map((order) => order.orderStableId),
@@ -278,11 +278,11 @@ export class PosOrdersController {
 
   @Get('settings/auto-accept')
   getAutoAcceptOnlineOrders(@Req() req: PosDeviceRequest) {
-    const deviceStoreId = req.posDevice?.storeId;
-    if (!deviceStoreId) {
+    const storeStableId = req.posDevice?.storeStableId;
+    if (!storeStableId) {
       throw new UnauthorizedException('POS device store unavailable');
     }
-    return this.posOrders.getAutoAcceptOnlineOrders(deviceStoreId);
+    return this.posOrders.getAutoAcceptOnlineOrders(storeStableId);
   }
 
   @Patch('settings/auto-accept')
@@ -290,14 +290,11 @@ export class PosOrdersController {
     @Req() req: PosDeviceRequest,
     @Body() body: UpdateAutoAcceptOnlineOrdersDto,
   ) {
-    const deviceStoreId = req.posDevice?.storeId;
-    if (!deviceStoreId) {
+    const storeStableId = req.posDevice?.storeStableId;
+    if (!storeStableId) {
       throw new UnauthorizedException('POS device store unavailable');
     }
-    return this.posOrders.setAutoAcceptOnlineOrders(
-      deviceStoreId,
-      body.enabled,
-    );
+    return this.posOrders.setAutoAcceptOnlineOrders(storeStableId, body.enabled);
   }
 
   @Get(':orderStableId')

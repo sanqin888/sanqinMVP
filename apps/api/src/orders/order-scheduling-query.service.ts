@@ -56,22 +56,12 @@ export class OrderSchedulingQueryService {
     );
   }
 
-  /**
-   * Resolve the authenticated POS device's canonical Store UUID before reading
-   * Order.storeId, which intentionally stores Store.storeStableId.
-   */
-  async listUpcomingForDeviceStore(
-    deviceStoreId: string,
+  async listUpcomingForStoreStableId(
+    storeStableId: string,
   ): Promise<ScheduledOrderSummaryDto[]> {
-    const store = await this.prisma.store.findUnique({
-      where: { id: deviceStoreId },
-      select: { storeStableId: true },
-    });
-    if (!store) return [];
-
     const orders = await this.prisma.order.findMany({
       where: {
-        storeId: store.storeStableId,
+        storeId: storeStableId,
         fulfillmentTiming: OrderFulfillmentTiming.SCHEDULED,
         scheduleActivatedAt: null,
         status: { in: [OrderStatus.pending, OrderStatus.paid] },

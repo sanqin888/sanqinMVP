@@ -26,7 +26,7 @@ describe('ScheduledOrdersController', () => {
       },
     ];
     const query = {
-      listUpcomingForDeviceStore: jest.fn().mockResolvedValue(scheduledOrders),
+      listUpcomingForStoreStableId: jest.fn().mockResolvedValue(scheduledOrders),
     };
     const controller = new ScheduledOrdersController(
       query as never,
@@ -35,17 +35,17 @@ describe('ScheduledOrdersController', () => {
 
     await expect(
       controller.listScheduledOrders({
-        posDevice: { storeId: 'store-uuid-1' },
+        posDevice: { storeStableId: '4750_Yonge_Street' },
       } as never),
     ).resolves.toEqual({ orders: scheduledOrders });
-    expect(query.listUpcomingForDeviceStore).toHaveBeenCalledWith(
-      'store-uuid-1',
+    expect(query.listUpcomingForStoreStableId).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
     );
   });
 
   it('rejects a queue read when the POS device store context is unavailable', async () => {
     const controller = new ScheduledOrdersController(
-      { listUpcomingForDeviceStore: jest.fn() } as never,
+      { listUpcomingForStoreStableId: jest.fn() } as never,
       {} as never,
     );
 

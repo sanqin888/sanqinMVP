@@ -23,7 +23,7 @@ import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeId: string };
+  posDevice?: { storeStableId: string };
 };
 
 @Controller('orders')
@@ -39,12 +39,12 @@ export class ScheduledOrdersController {
   async listScheduledOrders(
     @Req() req: PosDeviceRequest,
   ): Promise<ScheduledOrdersQueueDto> {
-    const deviceStoreId = req.posDevice?.storeId;
-    if (!deviceStoreId) {
+    const storeStableId = req.posDevice?.storeStableId;
+    if (!storeStableId) {
       throw new UnauthorizedException('POS device store unavailable');
     }
     return {
-      orders: await this.query.listUpcomingForDeviceStore(deviceStoreId),
+      orders: await this.query.listUpcomingForStoreStableId(storeStableId),
     };
   }
 

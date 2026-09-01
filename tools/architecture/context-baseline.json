@@ -151,13 +151,15 @@
       "apps/api/src/pos/pos-exchange-rate.service.ts",
       "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
       "apps/api/src/pos/pos-store-status.service.ts",
+      "apps/api/src/pos/pos-orders.service.ts",
       "apps/api/src/messaging/business-config.service.ts",
       "apps/api/src/orders/orders.service.ts",
       "apps/api/src/admin/business/admin-business.service.ts"
     ],
     "canonicalConfigWriterConsumers": [
       "apps/api/src/admin/business/admin-business.service.ts",
-      "apps/api/src/pos/pos-store-status.service.ts"
+      "apps/api/src/pos/pos-store-status.service.ts",
+      "apps/api/src/pos/pos-orders.service.ts"
     ],
     "legacyWriteOnlyConfigConsumers": [],
     "migratedConsumerForbiddenSymbols": {

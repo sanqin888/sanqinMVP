@@ -31,6 +31,12 @@ type ManagedDeviceRecord = {
   store: { storeStableId: string };
 };
 
+type VerifiedPosDeviceIdentity = {
+  deviceStableId: string;
+  storeStableId: string;
+  name: string | null;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
@@ -157,7 +163,10 @@ export class PosDeviceService
     return { device: updated, deviceKey };
   }
 
-  async verifyDevice(params: { deviceStableId: string; deviceKey: string }) {
+  async verifyDevice(params: {
+    deviceStableId: string;
+    deviceKey: string;
+  }): Promise<VerifiedPosDeviceIdentity | null> {
     const device = await this.prisma.posDevice.findUnique({
       where: { deviceStableId: params.deviceStableId },
       select: {
@@ -165,9 +174,8 @@ export class PosDeviceService
         deviceKeyHash: true,
         status: true,
         deviceStableId: true,
-        storeId: true,
+        name: true,
         store: { select: { storeStableId: true } },
-        meta: true,
       },
     });
 
@@ -184,8 +192,11 @@ export class PosDeviceService
       data: { lastSeenAt: new Date() },
     });
 
-    const { store, ...verifiedDevice } = device;
-    return { ...verifiedDevice, storeStableId: store.storeStableId };
+    return {
+      deviceStableId: device.deviceStableId,
+      storeStableId: device.store.storeStableId,
+      name: device.name,
+    };
   }
 
   async recordConnectivityHeartbeat(deviceStableId: string): Promise<void> {
