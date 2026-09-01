@@ -65,6 +65,7 @@ describe('PosFullRefundOrchestrationService', () => {
       ),
     ).resolves.toMatchObject({ outcome: 'refunded' });
     expect(harness.posOrders.createFullRefund).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
       'order_stable_1',
       input,
     );

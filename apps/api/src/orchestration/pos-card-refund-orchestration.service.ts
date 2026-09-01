@@ -63,7 +63,10 @@ export class PosCardRefundOrchestrationService {
     orderStableId: string,
     input: PosManagedCardRefundInput,
   ): Promise<PosManagedCardRefundView> {
-    const order = await this.orders.getByStableId(orderStableId);
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     const checkout = await this.checkouts.findByOrderStableId(orderStableId);
     if (!checkout) return this.legacyView(order);
     if (checkout.status !== 'COMPLETED') {
@@ -148,6 +151,7 @@ export class PosCardRefundOrchestrationService {
         });
       }
       const finalized = await this.finalizeOrderRefund(
+        storeStableId,
         order,
         reason,
         operatorName,
@@ -261,6 +265,7 @@ export class PosCardRefundOrchestrationService {
     }
 
     const finalized = await this.finalizeOrderRefund(
+      storeStableId,
       order,
       reason,
       operatorName,
@@ -279,6 +284,7 @@ export class PosCardRefundOrchestrationService {
   }
 
   private async finalizeOrderRefund(
+    storeStableId: string,
     order: OrderDto,
     reason: string,
     operatorName: string,
@@ -295,7 +301,10 @@ export class PosCardRefundOrchestrationService {
       return result.order;
     } catch (error) {
       if (error instanceof ConflictException) {
-        const current = await this.orders.getByStableId(order.orderStableId);
+        const current = await this.orders.getByStableIdForStore(
+          order.orderStableId,
+          storeStableId,
+        );
         if (current.status === 'refunded') return current;
       }
       throw error;

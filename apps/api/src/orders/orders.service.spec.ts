@@ -61,6 +61,7 @@ describe('OrdersService', () => {
     $transaction: jest.Mock;
     order: {
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
       create: jest.Mock;
@@ -145,6 +146,7 @@ describe('OrdersService', () => {
         ),
       order: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn(),
@@ -1149,6 +1151,48 @@ describe('OrdersService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.order.create).not.toHaveBeenCalled();
+  });
+
+  it('POS 第二门店 recent 只查询自己的 canonical storeStableId', async () => {
+    const originalStoreId = process.env.STORE_ID;
+    process.env.STORE_ID = 'original-store';
+    prisma.order.findMany.mockResolvedValue([]);
+
+    try {
+      await service.recent('second-store', 10);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { storeId: 'second-store' },
+          take: 10,
+        }),
+      );
+    } finally {
+      if (originalStoreId === undefined) delete process.env.STORE_ID;
+      else process.env.STORE_ID = originalStoreId;
+    }
+  });
+
+  it('configured 原门店 recent 临时兼容历史 storeId=NULL 订单', async () => {
+    const originalStoreId = process.env.STORE_ID;
+    process.env.STORE_ID = 'original-store';
+    prisma.order.findMany.mockResolvedValue([]);
+
+    try {
+      await service.recent('original-store', 10);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [{ storeId: 'original-store' }, { storeId: null }],
+          },
+          take: 10,
+        }),
+      );
+    } finally {
+      if (originalStoreId === undefined) delete process.env.STORE_ID;
+      else process.env.STORE_ID = originalStoreId;
+    }
   });
 
   it('emits paid-verified event for priority orders', () => {

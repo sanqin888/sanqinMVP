@@ -130,8 +130,14 @@ export class PosOrdersService {
     private readonly brandStoreConfigWriter: BrandStoreConfigWriterPort,
   ) {}
 
-  async advance(orderStableId: string): Promise<PosOrderAdvanceResult> {
-    const order = await this.orders.getByStableId(orderStableId);
+  async advance(
+    storeStableId: string,
+    orderStableId: string,
+  ): Promise<PosOrderAdvanceResult> {
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     const nextStatus = ORDER_STATUS_ADVANCE_FLOW[order.status];
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
 
@@ -139,7 +145,10 @@ export class PosOrdersService {
       try {
         const result = await this.uberOrderActions.accept(externalOrderId);
         const current = result.ok
-          ? await this.orders.getByStableId(orderStableId)
+          ? await this.orders.getByStableIdForStore(
+              orderStableId,
+              storeStableId,
+            )
           : order;
         return this.advanceResult(current, result);
       } catch (error) {
@@ -157,7 +166,10 @@ export class PosOrdersService {
         externalOrderId,
         'ready' satisfies OrderStatus,
       );
-      const current = await this.orders.getByStableId(orderStableId);
+      const current = await this.orders.getByStableIdForStore(
+        orderStableId,
+        storeStableId,
+      );
       return this.advanceResult(
         current,
         result.ok
@@ -166,11 +178,19 @@ export class PosOrdersService {
       );
     }
 
-    return this.advanceResult(await this.orders.advance(orderStableId));
+    return this.advanceResult(
+      await this.orders.advanceForStore(orderStableId, storeStableId),
+    );
   }
 
-  async retryUberSync(orderStableId: string): Promise<PosOrderAdvanceResult> {
-    const order = await this.orders.getByStableId(orderStableId);
+  async retryUberSync(
+    storeStableId: string,
+    orderStableId: string,
+  ): Promise<PosOrderAdvanceResult> {
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
     if (!externalOrderId || order.status !== 'ready') {
       throw new BadRequestException('只有已就绪的 Uber 订单可以重试同步');
@@ -200,11 +220,15 @@ export class PosOrdersService {
   }
 
   async denyUberOrder(
+    storeStableId: string,
     orderStableId: string,
     reasonCode: string,
     reasonDetail?: string,
   ): Promise<PosOrderAdvanceResult> {
-    const order = await this.orders.getByStableId(orderStableId);
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
     if (!externalOrderId) {
       throw new BadRequestException('只有 Uber 订单可以拒单');
@@ -232,11 +256,15 @@ export class PosOrdersService {
   }
 
   async cancelUberOrder(
+    storeStableId: string,
     orderStableId: string,
     reasonCode: string,
     reasonDetail?: string,
   ): Promise<PosOrderAdvanceResult> {
-    const order = await this.orders.getByStableId(orderStableId);
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
     if (!externalOrderId) {
       throw new BadRequestException('只有 Uber 订单可以提交取消');
@@ -257,9 +285,13 @@ export class PosOrdersService {
   }
 
   async getManagementActions(
+    storeStableId: string,
     orderStableId: string,
   ): Promise<{ actions: PosOrderActionCapability[] }> {
-    const order = await this.orders.getByStableId(orderStableId);
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
 
     if (order.channel === Channel.web) {
       const externalPaymentCents =
@@ -333,10 +365,14 @@ export class PosOrdersService {
   }
 
   async createAmendment(
+    storeStableId: string,
     orderStableId: string,
     input: PosCreateAmendmentInput,
   ): Promise<OrderDto> {
-    const order = await this.orders.getByStableId(orderStableId);
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     this.assertInStoreManagementOrder(order);
     const operatorName = this.requireOperatorName(input.operatorName);
     const reason = this.requireReason(input.reason);
@@ -353,10 +389,14 @@ export class PosOrdersService {
   }
 
   async createFullRefund(
+    storeStableId: string,
     orderStableId: string,
     input: PosCreateFullRefundInput,
   ) {
-    const order = await this.orders.getByStableId(orderStableId);
+    const order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
     await this.assertFullRefundManagementOrder(order, orderStableId);
     const operatorName = this.requireOperatorName(input.operatorName);
     const reason = this.requireReason(input.reason);
@@ -371,8 +411,10 @@ export class PosOrdersService {
   }
 
   async listAmendments(
+    storeStableId: string,
     orderStableId: string,
   ): Promise<PosOrderAmendmentHistory[]> {
+    await this.orders.getByStableIdForStore(orderStableId, storeStableId);
     const order = await this.prisma.order.findUnique({
       where: { orderStableId },
       select: { id: true },

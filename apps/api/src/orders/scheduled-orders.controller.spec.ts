@@ -14,6 +14,14 @@ const timing = (
 });
 
 describe('ScheduledOrdersController', () => {
+  const posRequest = {
+    posDevice: {
+      deviceStableId: 'device-1',
+      storeStableId: '4750_Yonge_Street',
+      name: 'Front POS',
+    },
+  } as never;
+
   it('lists scheduled orders only for the authenticated POS device store', async () => {
     const scheduledOrders = [
       {
@@ -62,7 +70,7 @@ describe('ScheduledOrdersController', () => {
 
   it('manual early start delegates to the same scheduled activation command', async () => {
     const query = {
-      findByStableId: jest
+      findByStableIdForStore: jest
         .fn()
         .mockResolvedValueOnce(timing())
         .mockResolvedValueOnce({
@@ -81,23 +89,28 @@ describe('ScheduledOrdersController', () => {
       preparation as never,
     );
 
-    await expect(controller.startPreparationEarly('stable-1')).resolves.toEqual(
-      expect.objectContaining({ status: 'making' }),
+    await expect(
+      controller.startPreparationEarly(posRequest, 'stable-1'),
+    ).resolves.toEqual(expect.objectContaining({ status: 'making' }));
+    expect(query.findByStableIdForStore).toHaveBeenCalledWith(
+      'stable-1',
+      '4750_Yonge_Street',
     );
     expect(preparation.activateScheduledOrderByStableId).toHaveBeenCalledWith(
       'stable-1',
+      '4750_Yonge_Street',
     );
   });
 
   it('rejects early-start for an immediate order', async () => {
     const controller = new ScheduledOrdersController(
       {
-        findByStableId: jest.fn().mockResolvedValue(timing('IMMEDIATE')),
+        findByStableIdForStore: jest.fn().mockResolvedValue(timing('IMMEDIATE')),
       } as never,
       { activateScheduledOrderByStableId: jest.fn() } as never,
     );
-    await expect(controller.startPreparationEarly('stable-1')).rejects.toThrow(
-      'order is not scheduled',
-    );
+    await expect(
+      controller.startPreparationEarly(posRequest, 'stable-1'),
+    ).rejects.toThrow('order is not scheduled');
   });
 });
