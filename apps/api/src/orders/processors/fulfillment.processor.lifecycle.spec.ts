@@ -18,6 +18,10 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
     const sendPrintJob = jest
       .fn()
       .mockRejectedValue(new Error('print persistence unavailable'));
+    const emitAsync = jest.fn(async (_event: string, input: unknown) => {
+      await sendPrintJob(input);
+      return [];
+    });
     const processor = new FulfillmentProcessor(
       {} as never,
       {
@@ -31,7 +35,7 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
         },
       } as never,
       {} as never,
-      { sendPrintJob } as never,
+      { emitAsync } as never,
       {
         getByStableId: jest.fn().mockResolvedValue({ orderNumber: '1001' }),
       } as never,

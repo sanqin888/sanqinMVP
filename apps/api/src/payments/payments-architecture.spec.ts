@@ -307,7 +307,6 @@ describe('Payments bounded-context architecture', () => {
       .sort();
 
     expect(composers).toEqual([
-      'app.module.ts',
       'orchestration/payment-checkout-attempt.service.ts',
       'orchestration/payment-reverse-sync-orchestration.service.ts',
       'orchestration/pos-card-payment-orchestration.module.ts',
