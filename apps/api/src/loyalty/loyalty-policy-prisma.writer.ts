@@ -93,11 +93,7 @@ export class PrismaLoyaltyPolicyWriter
         where: { id: 1 },
         select: LOYALTY_POLICY_SETTINGS_SELECT,
       });
-      this.observeParity(
-        'writer-pre-write',
-        brandConfig,
-        loyaltyProgramPolicy,
-      );
+      this.observeParity('writer-pre-write', brandConfig, loyaltyProgramPolicy);
       if (!loyaltyProgramPolicy) {
         throw new Error('LoyaltyProgramPolicy is not initialized');
       }
