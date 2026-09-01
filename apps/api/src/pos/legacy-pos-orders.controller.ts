@@ -39,7 +39,7 @@ import {
 } from '@prisma/client';
 import type { OrderStatus } from '@shared/order';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
-import { StableIdPipe } from '../common/pipes/stable-id.pipe';
+import { StableIdPipe } from './pos-http-validation';
 import {
   POS_ORDER_OPERATIONS,
   type PosOrderDto,

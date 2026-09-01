@@ -25,7 +25,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import type { AuthenticatedPosIdentity } from './pos-device-management.contract';
 import { PosDeviceGuard } from './pos-device.guard';
-import { StableIdPipe } from '../common/pipes/stable-id.pipe';
+import { StableIdPipe, ZodValidationPipe } from './pos-http-validation';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput, OrderStatus } from '@shared/order';
 import {
@@ -41,7 +41,6 @@ import {
   PaymentMethod,
 } from '@prisma/client';
 import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
-import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
