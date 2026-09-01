@@ -108,7 +108,7 @@ export class AdminBusinessService {
     return this.brandStoreConfigReader.getBrandSnapshot();
   }
 
-  getStoreConfig(storeStableId?: string): Promise<StoreConfigSnapshot> {
+  getStoreConfig(storeStableId: string): Promise<StoreConfigSnapshot> {
     return this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
   }
 
@@ -134,7 +134,7 @@ export class AdminBusinessService {
 
   async updateStoreConfig(
     payload: unknown,
-    storeStableId?: string,
+    storeStableId: string,
   ): Promise<StoreConfigSnapshot> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException('store config payload must be an object');
@@ -172,7 +172,7 @@ export class AdminBusinessService {
     return this.getStoreConfig(storeStableId);
   }
 
-  async getStoreHours(storeStableId?: string): Promise<StoreBusinessHour[]> {
+  async getStoreHours(storeStableId: string): Promise<StoreBusinessHour[]> {
     const store =
       await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
     return this.ensureHoursInitialized(store.storeStableId);
@@ -180,13 +180,13 @@ export class AdminBusinessService {
 
   async updateStoreHours(
     rawHours: unknown,
-    storeStableId?: string,
+    storeStableId: string,
   ): Promise<StoreBusinessHour[]> {
     await this.updateHours(rawHours, storeStableId);
     return this.getStoreHours(storeStableId);
   }
 
-  async getStoreHolidays(storeStableId?: string): Promise<StoreHoliday[]> {
+  async getStoreHolidays(storeStableId: string): Promise<StoreHoliday[]> {
     const store =
       await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
     return this.storeScheduleReader.listHolidays(store.storeStableId);
@@ -194,7 +194,7 @@ export class AdminBusinessService {
 
   async updateStoreHolidays(
     raw: unknown,
-    storeStableId?: string,
+    storeStableId: string,
   ): Promise<StoreHoliday[]> {
     await this.saveHolidays(raw, storeStableId);
     return this.getStoreHolidays(storeStableId);

@@ -459,6 +459,23 @@ if (brandStoreCanonicalConfigOwnership) {
   );
   const posStoreContextWebConsumers =
     authenticatedPosStoreContext?.webConsumers ?? [];
+  const adminExplicitStoreContext =
+    brandStoreCanonicalConfigOwnership.adminExplicitStoreContext ?? null;
+  const adminStoreContextApiAdapter = toPosix(
+    adminExplicitStoreContext?.apiAdapter ?? '',
+  );
+  const adminStoreContextService = toPosix(
+    adminExplicitStoreContext?.service ?? '',
+  );
+  const adminStoreContextWebApiClient = toPosix(
+    adminExplicitStoreContext?.webApiClient ?? '',
+  );
+  const adminStoreContextWebSelector = toPosix(
+    adminExplicitStoreContext?.webSelector ?? '',
+  );
+  const adminStoreContextWebSettings = toPosix(
+    adminExplicitStoreContext?.webStoreSettings ?? '',
+  );
 
   if (contextOf(publicSurface) !== ownerContext) {
     failures.push(
@@ -808,6 +825,105 @@ if (brandStoreCanonicalConfigOwnership) {
       ) {
         failures.push(
           `POS Web consumer must use authenticated POS store context instead of implicit /staff/store config: ${consumerPath}`,
+        );
+      }
+    }
+  }
+
+  if (adminExplicitStoreContext) {
+    for (const boundaryPath of [
+      adminStoreContextApiAdapter,
+      adminStoreContextService,
+      adminStoreContextWebApiClient,
+      adminStoreContextWebSelector,
+      adminStoreContextWebSettings,
+    ]) {
+      if (!boundaryPath || !existsSync(join(REPOSITORY_ROOT, boundaryPath))) {
+        failures.push(
+          `Admin explicit Store context boundary path missing: ${boundaryPath || '<missing>'}`,
+        );
+      }
+    }
+
+    const webApiPath = join(REPOSITORY_ROOT, adminStoreContextWebApiClient);
+    if (adminStoreContextWebApiClient && existsSync(webApiPath)) {
+      const source = readFileSync(webApiPath, 'utf8');
+      if (
+        source.includes('/staff/store/') ||
+        source.includes('storeStableId?: string') ||
+        !source.includes('staffStorePath(storeStableId: string') ||
+        !source.includes('/staff/stores/${encodeURIComponent(storeStableId)}/${suffix}')
+      ) {
+        failures.push(
+          `canonical Admin Store Web API must require explicit storeStableId and must not fall back to /staff/store/*: ${adminStoreContextWebApiClient}`,
+        );
+      }
+    }
+
+    const selectorPath = join(REPOSITORY_ROOT, adminStoreContextWebSelector);
+    if (adminStoreContextWebSelector && existsSync(selectorPath)) {
+      const source = readFileSync(selectorPath, 'utf8');
+      if (
+        !source.includes('fetchStaffStores') ||
+        source.includes('fetchStaffStoreConfig') ||
+        source.includes('configuredStoreStableId') ||
+        !source.includes("nextParams.set('store', selectedStoreStableId)") ||
+        !source.includes("return stores[0]?.storeStableId ?? ''")
+      ) {
+        failures.push(
+          `Admin Store selector must establish explicit ?store= context from the Store directory without reading implicit Store config: ${adminStoreContextWebSelector}`,
+        );
+      }
+    }
+
+    const settingsPath = join(REPOSITORY_ROOT, adminStoreContextWebSettings);
+    if (adminStoreContextWebSettings && existsSync(settingsPath)) {
+      const source = readFileSync(settingsPath, 'utf8');
+      if (
+        source.includes("searchParams.get('store')?.trim() || undefined") ||
+        !source.includes('if (!requestedStoreStableId)') ||
+        !source.includes('fetchStaffStoreConfig(requestedStoreStableId)') ||
+        !source.includes('fetchStaffStoreHours(requestedStoreStableId)') ||
+        !source.includes('fetchStaffStoreHolidays(requestedStoreStableId)')
+      ) {
+        failures.push(
+          `Admin Store settings must wait for explicit ?store= identity before loading Store config, hours, or holidays: ${adminStoreContextWebSettings}`,
+        );
+      }
+    }
+
+    const servicePath = join(REPOSITORY_ROOT, adminStoreContextService);
+    if (adminStoreContextService && existsSync(servicePath)) {
+      const source = readFileSync(servicePath, 'utf8');
+      const requiredSignatures = [
+        'getStoreConfig(storeStableId: string)',
+        'storeStableId: string,\n  ): Promise<StoreConfigSnapshot>',
+        'getStoreHours(storeStableId: string)',
+        'storeStableId: string,\n  ): Promise<StoreBusinessHour[]>',
+        'getStoreHolidays(storeStableId: string)',
+        'storeStableId: string,\n  ): Promise<StoreHoliday[]>',
+      ];
+      if (
+        source.includes('storeStableId?: string') ||
+        requiredSignatures.some((signature) => !source.includes(signature))
+      ) {
+        failures.push(
+          `canonical Admin Business Store methods must require explicit storeStableId: ${adminStoreContextService}`,
+        );
+      }
+    }
+
+    const apiPath = join(REPOSITORY_ROOT, adminStoreContextApiAdapter);
+    if (adminStoreContextApiAdapter && existsSync(apiPath)) {
+      const source = readFileSync(apiPath, 'utf8');
+      if (
+        !source.includes('@compat brand-store.default-store-identity.v1') ||
+        !source.includes('resolveConfiguredStoreStableId') ||
+        !source.includes("@Get('stores/:storeStableId/config')") ||
+        /service\.getStore(?:Config|Hours|Holidays)\s*\(\s*\)/.test(source)
+      ) {
+        failures.push(
+          `legacy /staff/store/* fallback must stay isolated and annotated in the staff transport adapter while canonical routes remain storeStableId-scoped: ${adminStoreContextApiAdapter}`,
         );
       }
     }

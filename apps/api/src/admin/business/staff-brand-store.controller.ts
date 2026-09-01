@@ -16,6 +16,7 @@ import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 import {
   InvalidStoreDirectoryInputError,
+  resolveConfiguredStoreStableId,
   StoreDirectoryService,
   StoreStableIdAlreadyExistsError,
   type BrandConfigSnapshot,
@@ -139,22 +140,28 @@ export class StaffBrandStoreController {
     };
   }
 
+  // @compat brand-store.default-store-identity.v1
   @Get('store/config')
   @Roles('ADMIN', 'STAFF')
   getStoreConfig(): Promise<StoreConfigSnapshot> {
-    return this.service.getStoreConfig();
+    return this.service.getStoreConfig(resolveConfiguredStoreStableId());
   }
 
   @Patch('store/config')
   @Roles('ADMIN')
   updateStoreConfig(@Body() body: unknown): Promise<StoreConfigSnapshot> {
-    return this.service.updateStoreConfig(body);
+    return this.service.updateStoreConfig(
+      body,
+      resolveConfiguredStoreStableId(),
+    );
   }
 
   @Get('store/hours')
   @Roles('ADMIN', 'STAFF')
   async getStoreHours(): Promise<{ hours: StoreBusinessHour[] }> {
-    return { hours: await this.service.getStoreHours() };
+    return {
+      hours: await this.service.getStoreHours(resolveConfiguredStoreStableId()),
+    };
   }
 
   @Put('store/hours')
@@ -162,13 +169,22 @@ export class StaffBrandStoreController {
   async updateStoreHours(
     @Body() body: { hours?: unknown },
   ): Promise<{ hours: StoreBusinessHour[] }> {
-    return { hours: await this.service.updateStoreHours(body.hours) };
+    return {
+      hours: await this.service.updateStoreHours(
+        body.hours,
+        resolveConfiguredStoreStableId(),
+      ),
+    };
   }
 
   @Get('store/holidays')
   @Roles('ADMIN', 'STAFF')
   async getStoreHolidays(): Promise<{ holidays: StoreHoliday[] }> {
-    return { holidays: await this.service.getStoreHolidays() };
+    return {
+      holidays: await this.service.getStoreHolidays(
+        resolveConfiguredStoreStableId(),
+      ),
+    };
   }
 
   @Put('store/holidays')
@@ -176,6 +192,11 @@ export class StaffBrandStoreController {
   async updateStoreHolidays(
     @Body() body: { holidays?: unknown },
   ): Promise<{ holidays: StoreHoliday[] }> {
-    return { holidays: await this.service.updateStoreHolidays(body) };
+    return {
+      holidays: await this.service.updateStoreHolidays(
+        body,
+        resolveConfiguredStoreStableId(),
+      ),
+    };
   }
 }

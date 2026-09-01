@@ -115,10 +115,8 @@ export function updateAdminBrandConfig(
   });
 }
 
-function staffStorePath(storeStableId: string | undefined, suffix: string): string {
-  return storeStableId
-    ? `/staff/stores/${encodeURIComponent(storeStableId)}/${suffix}`
-    : `/staff/store/${suffix}`;
+function staffStorePath(storeStableId: string, suffix: string): string {
+  return `/staff/stores/${encodeURIComponent(storeStableId)}/${suffix}`;
 }
 
 export function fetchStaffStores(): Promise<StoreDirectoryEntryView[]> {
@@ -134,14 +132,14 @@ export function createAdminStore(input: CreateStoreView): Promise<StoreConfigVie
 }
 
 export function fetchStaffStoreConfig(
-  storeStableId?: string,
+  storeStableId: string,
 ): Promise<StoreConfigView> {
   return apiFetch<StoreConfigView>(staffStorePath(storeStableId, 'config'));
 }
 
 export function updateAdminStoreConfig(
   input: StoreConfigUpdateView,
-  storeStableId?: string,
+  storeStableId: string,
 ): Promise<StoreConfigView> {
   return apiFetch<StoreConfigView>(staffStorePath(storeStableId, 'config'), {
     method: 'PATCH',
@@ -151,14 +149,14 @@ export function updateAdminStoreConfig(
 }
 
 export function fetchStaffStoreHours(
-  storeStableId?: string,
+  storeStableId: string,
 ): Promise<StoreHoursResponse> {
   return apiFetch<StoreHoursResponse>(staffStorePath(storeStableId, 'hours'));
 }
 
 export function updateAdminStoreHours(
   hours: StoreBusinessHourView[],
-  storeStableId?: string,
+  storeStableId: string,
 ): Promise<StoreHoursResponse> {
   return apiFetch<StoreHoursResponse>(staffStorePath(storeStableId, 'hours'), {
     method: 'PUT',
@@ -168,14 +166,14 @@ export function updateAdminStoreHours(
 }
 
 export function fetchStaffStoreHolidays(
-  storeStableId?: string,
+  storeStableId: string,
 ): Promise<StoreHolidaysResponse> {
   return apiFetch<StoreHolidaysResponse>(staffStorePath(storeStableId, 'holidays'));
 }
 
 export function updateAdminStoreHolidays(
   holidays: StoreHolidayView[],
-  storeStableId?: string,
+  storeStableId: string,
 ): Promise<StoreHolidaysResponse> {
   return apiFetch<StoreHolidaysResponse>(staffStorePath(storeStableId, 'holidays'), {
     method: 'PUT',

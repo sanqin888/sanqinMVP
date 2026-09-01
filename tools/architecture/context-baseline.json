@@ -184,6 +184,13 @@
         "apps/web/src/app/[locale]/(device)/store/pos/orders/page.tsx",
         "apps/web/src/app/[locale]/(device)/store/pos/summary/page.tsx"
       ]
+    },
+    "adminExplicitStoreContext": {
+      "apiAdapter": "apps/api/src/admin/business/staff-brand-store.controller.ts",
+      "service": "apps/api/src/admin/business/admin-business.service.ts",
+      "webApiClient": "apps/web/src/lib/api/brand-store.ts",
+      "webSelector": "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
+      "webStoreSettings": "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx"
     }
   },
   "benefitsLoyaltyPolicyOwnership": {
