@@ -31,6 +31,7 @@ function makeSocket(input?: {
             posDevice: {
               deviceStableId: input.deviceStableId,
               storeStableId: input.storeId,
+              name: 'Front POS',
             },
           }
         : {},
@@ -40,7 +41,7 @@ function makeSocket(input?: {
 }
 
 function setup(deviceResult: typeof activeDevice | null = activeDevice) {
-  const verifyDevice = jest.fn().mockResolvedValue(deviceResult);
+  const verifyCredentials = jest.fn().mockResolvedValue(deviceResult);
   const posPrintJob = {
     findUnique: jest.fn(),
     findMany: jest.fn().mockResolvedValue([]),
@@ -48,7 +49,7 @@ function setup(deviceResult: typeof activeDevice | null = activeDevice) {
   };
   const gateway = new PosGateway(
     { posPrintJob } as never,
-    { verifyDevice } as never,
+    { verifyCredentials } as never,
   );
   let middleware: PosSocketMiddleware | undefined;
   gateway.afterInit({
@@ -57,7 +58,7 @@ function setup(deviceResult: typeof activeDevice | null = activeDevice) {
     }),
   } as never);
   if (!middleware) throw new Error('POS socket middleware was not registered');
-  return { gateway, middleware, verifyDevice, posPrintJob };
+  return { gateway, middleware, verifyCredentials, posPrintJob };
 }
 
 function runMiddleware(
@@ -76,35 +77,35 @@ describe('PosGateway device authorization', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('authenticates browser POS with the verified stable store identity', async () => {
-    const { middleware, verifyDevice } = setup();
+    const { middleware, verifyCredentials } = setup();
     const client = makeSocket({
       cookie: 'other=value; posDeviceId=device-1; posDeviceKey=secret%2Bkey',
     });
 
     await expect(runMiddleware(middleware, client)).resolves.toBeUndefined();
-    expect(verifyDevice).toHaveBeenCalledWith({
+    expect(verifyCredentials).toHaveBeenCalledWith({
       deviceStableId: 'device-1',
       deviceKey: 'secret+key',
     });
     expect(client.data).toEqual({
-      posDevice: { deviceStableId: 'device-1', storeStableId: 'store-a' },
+      posDevice: activeDevice,
     });
     expect(client.data).not.toHaveProperty('posDeviceKey');
   });
 
   it('authenticates printer Socket.IO credentials', async () => {
-    const { middleware, verifyDevice } = setup();
+    const { middleware, verifyCredentials } = setup();
     const client = makeSocket({
       auth: { posDeviceId: 'printer-1', posDeviceKey: 'printer-secret' },
     });
 
     await expect(runMiddleware(middleware, client)).resolves.toBeUndefined();
-    expect(verifyDevice).toHaveBeenCalledWith({
+    expect(verifyCredentials).toHaveBeenCalledWith({
       deviceStableId: 'printer-1',
       deviceKey: 'printer-secret',
     });
     expect(client.data).toEqual({
-      posDevice: { deviceStableId: 'device-1', storeStableId: 'store-a' },
+      posDevice: activeDevice,
     });
   });
 
@@ -145,19 +146,19 @@ describe('PosGateway device authorization', () => {
   });
 
   it('rejects missing credentials before room membership', async () => {
-    const { middleware, verifyDevice } = setup();
+    const { middleware, verifyCredentials } = setup();
     const client = makeSocket();
 
     const error = await runMiddleware(middleware, client);
 
     expect(error).toBeInstanceOf(Error);
     expect(error?.message).toBe('POS_DEVICE_AUTH_FAILED');
-    expect(verifyDevice).not.toHaveBeenCalled();
+    expect(verifyCredentials).not.toHaveBeenCalled();
     expect(client.data).toEqual({});
   });
 
   it('rejects invalid or inactive device credentials', async () => {
-    const { middleware, verifyDevice } = setup(null);
+    const { middleware, verifyCredentials } = setup(null);
     const client = makeSocket({
       auth: { posDeviceId: 'device-disabled', posDeviceKey: 'bad-or-revoked' },
     });
@@ -165,7 +166,7 @@ describe('PosGateway device authorization', () => {
     const error = await runMiddleware(middleware, client);
 
     expect(error?.message).toBe('POS_DEVICE_AUTH_FAILED');
-    expect(verifyDevice).toHaveBeenCalledTimes(1);
+    expect(verifyCredentials).toHaveBeenCalledTimes(1);
     expect(client.data).toEqual({});
   });
 

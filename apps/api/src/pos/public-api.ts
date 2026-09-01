@@ -9,4 +9,10 @@ export {
   type PosDeviceManagementSnapshot,
   type PosDeviceManagementStatus,
 } from './pos-device-management.contract';
+export {
+  POS_DEVICE_CREDENTIAL_VERIFIER,
+  type AuthenticatedPosIdentity,
+  type PosDeviceCredentialVerifierPort,
+  type PosDeviceCredentials,
+} from './pos-device-auth.contract';
 export { PosDeviceModule } from './pos-device.module';

@@ -37,7 +37,11 @@ describe('ScheduledOrdersController', () => {
 
     await expect(
       controller.listScheduledOrders({
-        posDevice: { storeStableId: '4750_Yonge_Street' },
+        posDevice: {
+          deviceStableId: 'device-1',
+          storeStableId: '4750_Yonge_Street',
+          name: 'Front POS',
+        },
       } as never),
     ).resolves.toEqual({ orders: scheduledOrders });
     expect(query.listUpcomingForStoreStableId).toHaveBeenCalledWith(

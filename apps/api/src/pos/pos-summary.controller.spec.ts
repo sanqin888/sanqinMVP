@@ -30,7 +30,11 @@ describe('PosSummaryController print routing', () => {
 
     const result = await controller.getSummary(
       {
-        posDevice: { storeStableId: '4750_Yonge_Street' },
+        posDevice: {
+          deviceStableId: 'device-1',
+          storeStableId: '4750_Yonge_Street',
+          name: 'Front POS',
+        },
       } as never,
       timeMin,
       timeMax,
@@ -64,7 +68,11 @@ describe('PosSummaryController print routing', () => {
 
     const result = await controller.printSummary(
       {
-        posDevice: { storeStableId: '4750_Yonge_Street' },
+        posDevice: {
+          deviceStableId: 'device-1',
+          storeStableId: '4750_Yonge_Street',
+          name: 'Front POS',
+        },
       } as never,
       timeMin,
       timeMax,

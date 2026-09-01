@@ -57,7 +57,7 @@ describe('PosGateway durable print delivery', () => {
     };
     const gateway = new PosGateway(
       { posPrintJob } as never,
-      { verifyDevice: jest.fn() } as never,
+      { verifyCredentials: jest.fn() } as never,
     );
     gateway.server = {
       in: jest.fn().mockReturnValue({
@@ -150,7 +150,11 @@ describe('PosGateway durable print delivery', () => {
     const client = {
       id: 'socket-1',
       data: {
-        posDevice: { deviceStableId: 'device-1', storeStableId: 'store-1' },
+        posDevice: {
+          deviceStableId: 'device-1',
+          storeStableId: 'store-1',
+          name: 'Front POS',
+        },
       },
     } as never;
     await gateway.handlePrintJobAck(client, {

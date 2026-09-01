@@ -11,6 +11,11 @@ import {
   type StoreLegacyDbIdResolverPort,
 } from '../store/public-api';
 import {
+  type AuthenticatedPosIdentity,
+  type PosDeviceCredentialVerifierPort,
+  type PosDeviceCredentials,
+} from './pos-device-auth.contract';
+import {
   type PosDeviceAdminCompatibilityPort,
   type PosDeviceEnrollmentResult,
   type PosDeviceManagementPort,
@@ -31,12 +36,6 @@ type ManagedDeviceRecord = {
   store: { storeStableId: string };
 };
 
-type VerifiedPosDeviceIdentity = {
-  deviceStableId: string;
-  storeStableId: string;
-  name: string | null;
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
@@ -47,7 +46,10 @@ function toJsonObject(value: Record<string, unknown>): Prisma.JsonObject {
 
 @Injectable()
 export class PosDeviceService
-  implements PosDeviceManagementPort, PosDeviceAdminCompatibilityPort
+  implements
+    PosDeviceManagementPort,
+    PosDeviceAdminCompatibilityPort,
+    PosDeviceCredentialVerifierPort
 {
   constructor(
     private readonly prisma: PrismaService,
@@ -163,10 +165,9 @@ export class PosDeviceService
     return { device: updated, deviceKey };
   }
 
-  async verifyDevice(params: {
-    deviceStableId: string;
-    deviceKey: string;
-  }): Promise<VerifiedPosDeviceIdentity | null> {
+  async verifyCredentials(
+    params: PosDeviceCredentials,
+  ): Promise<AuthenticatedPosIdentity | null> {
     const device = await this.prisma.posDevice.findUnique({
       where: { deviceStableId: params.deviceStableId },
       select: {

@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import type { AuthenticatedPosIdentity } from './pos-device-auth.contract';
 import { PosDeviceService } from './pos-device.service';
 import {
   POS_DEVICE_ID_COOKIE,
@@ -70,7 +71,7 @@ export class PosDeviceGuard implements CanActivate {
     }
 
     // 3. 验证设备
-    const device = await this.posDeviceService.verifyDevice({
+    const device = await this.posDeviceService.verifyCredentials({
       deviceStableId,
       deviceKey,
     });
@@ -83,7 +84,8 @@ export class PosDeviceGuard implements CanActivate {
       throw new UnauthorizedException('Invalid POS device credentials');
     }
 
-    (req as Request & { posDevice?: typeof device }).posDevice = device;
+    (req as Request & { posDevice?: AuthenticatedPosIdentity }).posDevice =
+      device;
     return true;
   }
 }

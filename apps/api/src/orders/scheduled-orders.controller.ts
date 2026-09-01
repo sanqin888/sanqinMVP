@@ -16,6 +16,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
 import type { OrderFulfillmentTimingDto } from './dto/order-fulfillment-timing.dto';
 import type { ScheduledOrdersQueueDto } from './dto/scheduled-order-summary.dto';
@@ -23,7 +24,7 @@ import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeStableId: string };
+  posDevice?: AuthenticatedPosIdentity;
 };
 
 @Controller('orders')

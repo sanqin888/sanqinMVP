@@ -16,6 +16,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
 import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 
@@ -37,7 +38,7 @@ type PosManagedCardRefundDto = Omit<
 > & { refundMethod: PaymentMethod };
 
 type PosDeviceRequest = Request & {
-  posDevice?: { storeId: string; storeStableId: string };
+  posDevice?: AuthenticatedPosIdentity;
 };
 
 @Controller('pos/payments/card')

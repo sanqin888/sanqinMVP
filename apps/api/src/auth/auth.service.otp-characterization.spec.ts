@@ -41,6 +41,7 @@ describe('AuthService OTP characterization', () => {
       {} as never,
       {} as never,
       challengeEngine,
+      { verifyCredentials: jest.fn() } as never,
     );
 
     return {

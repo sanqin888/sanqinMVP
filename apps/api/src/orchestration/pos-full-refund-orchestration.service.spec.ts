@@ -7,6 +7,7 @@ import request from 'supertest';
 
 import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import type { AuthenticatedPosIdentity } from '../pos/public-api';
 import { PosDeviceGuard } from '../pos/pos-device.guard';
 import type { PosOrdersService } from '../pos/pos-orders.service';
 import { PosCardRefundController } from './pos-card-refund.controller';
@@ -160,7 +161,6 @@ describe('PosFullRefundOrchestrationService', () => {
 
 const controllerOrderStableId = 'c1234567890abcdefghijklmn';
 const controllerStoreStableId = '4750_Yonge_Street';
-const controllerStoreDbId = '11111111-1111-4111-8111-111111111111';
 const controllerFullRefund =
   jest.fn<PosFullRefundOrchestrationService['refundFullOrder']>();
 const controllerCardRefund =
@@ -209,11 +209,12 @@ describe('POS refund controller validation boundaries', () => {
       .useValue({
         canActivate: (context: ExecutionContext) => {
           const httpRequest = context.switchToHttp().getRequest<{
-            posDevice?: { storeId: string; storeStableId: string };
+            posDevice?: AuthenticatedPosIdentity;
           }>();
           httpRequest.posDevice = {
-            storeId: controllerStoreDbId,
+            deviceStableId: 'device-controller-1',
             storeStableId: controllerStoreStableId,
+            name: 'Front POS',
           };
           return true;
         },
