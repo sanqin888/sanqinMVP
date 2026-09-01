@@ -1,15 +1,12 @@
 // apps/api/src/orders/orders.module.ts
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
-import { OrdersController } from './orders.controller';
-import { ScheduledOrdersController } from './scheduled-orders.controller';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/membership.module';
 import { PromotionsModule } from '../promotions/promotions.module';
-import { PosDeviceModule } from '../pos/pos-device.module';
 import { LocationModule } from '../location/location.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { EmailModule } from '../email/email.module';
@@ -25,11 +22,12 @@ import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrderLabelPlanService } from './order-label-plan.service';
 import { POS_ORDER_READ } from './pos-order-read.contract';
 import { PosOrderReadService } from './pos-order-read.service';
+import { POS_ORDER_OPERATIONS } from './pos-order-operations.contract';
+import { PosOrderOperationsService } from './pos-order-operations.service';
 
 @Module({
   imports: [
     PrismaModule,
-    PosDeviceModule,
     LoyaltyModule,
     BrandStoreConfigModule,
     DeliveriesModule,
@@ -40,15 +38,17 @@ import { PosOrderReadService } from './pos-order-read.service';
     EmailModule,
     MessagingModule,
   ],
-  // Nest/Express registers routes in controller order. Keep static
-  // /orders/scheduled ahead of OrdersController's /orders/:orderStableId.
-  controllers: [ScheduledOrdersController, OrdersController],
   providers: [
     OrdersService,
     PosOrderReadService,
     {
       provide: POS_ORDER_READ,
       useExisting: PosOrderReadService,
+    },
+    PosOrderOperationsService,
+    {
+      provide: POS_ORDER_OPERATIONS,
+      useExisting: PosOrderOperationsService,
     },
     OrderIngestionService,
     OrderPreparationService,
@@ -63,6 +63,7 @@ import { PosOrderReadService } from './pos-order-read.service';
   exports: [
     OrdersService,
     POS_ORDER_READ,
+    POS_ORDER_OPERATIONS,
     OrderIngestionService,
     OrderPreparationService,
     OrderSchedulingQueryService,

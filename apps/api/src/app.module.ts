@@ -10,7 +10,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 import { PrismaModule } from './prisma/prisma.module';
-import { OrdersModule } from './orders/orders.module';
+import { OrdersHttpCompositionModule } from './orders-http-composition.module';
 import { ReportsModule } from './reports/reports.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { CloverModule } from './clover/clover.module';
@@ -60,8 +60,8 @@ const envConfigModule = configModuleFactory.forRoot({
     AnalyticsModule,
     EventEmitterModule.forRoot(),
     AuthModule,
-    OrdersModule,
     PosModule,
+    OrdersHttpCompositionModule,
     MembershipModule,
     ReportsModule,
     LoyaltyModule,

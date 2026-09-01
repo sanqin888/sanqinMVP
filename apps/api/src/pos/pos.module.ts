@@ -21,6 +21,7 @@ import { PosExchangeRateModule } from './pos-exchange-rate.module';
 import { PosExchangeRateController } from './pos-exchange-rate.controller';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
+import { PosPrintDispatchListener } from './pos-print-dispatch.listener';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { BrandStoreConfigModule } from '../store/public-api';
     PosSummaryService,
     PosStoreStatusService,
     PosOrdersService,
+    PosPrintDispatchListener,
     PosConnectivityWatchdogService,
     RolesGuard,
   ],

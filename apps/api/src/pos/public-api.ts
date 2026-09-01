@@ -14,3 +14,5 @@ export {
   type PosDeviceManagementStatus,
 } from './pos-device-management.contract';
 export { PosDeviceModule } from './pos-device.module';
+export { StableIdPipe } from '../common/pipes/stable-id.pipe';
+export { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';

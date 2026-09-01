@@ -29,7 +29,7 @@ export class RequestIdInterceptor implements NestInterceptor {
     '/api/v1/membership/coupons',
     '/api/v1/orders/prep-time',
   ];
-  private readonly scheduledOrdersPollingPath = '/api/v1/orders/scheduled';
+  private readonly scheduledOrdersPollingPath = '/api/v1/pos/orders/scheduled';
   private readonly analyticsEventsPath = '/api/v1/analytics/events';
   private readonly cloverOnlineQuotePath = '/api/v1/clover/pay/online/quote';
   private readonly orderPrintStatusPath =

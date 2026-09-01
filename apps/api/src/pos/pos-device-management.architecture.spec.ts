@@ -5,7 +5,6 @@ const POS_ROOT = resolve(__dirname);
 const API_ROOT = resolve(POS_ROOT, '..');
 const ADMIN_POS_DEVICE_ROOT = resolve(API_ROOT, 'admin', 'pos-devices');
 const AUTH_ROOT = resolve(API_ROOT, 'auth');
-const ORDERS_ROOT = resolve(API_ROOT, 'orders');
 const ORCHESTRATION_ROOT = resolve(API_ROOT, 'orchestration');
 
 function read(path: string): string {
@@ -85,7 +84,7 @@ describe('POS device authentication boundary', () => {
 
   it('prevents POS HTTP, Socket and Payments consumers from inventing identity shapes', () => {
     const consumers = [
-      resolve(ORDERS_ROOT, 'scheduled-orders.controller.ts'),
+      resolve(POS_ROOT, 'legacy-pos-orders.controller.ts'),
       resolve(POS_ROOT, 'pos-device.guard.ts'),
       resolve(POS_ROOT, 'pos-devices.controller.ts'),
       resolve(POS_ROOT, 'pos-orders.controller.ts'),

@@ -12,12 +12,11 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
-import { PosGateway } from '../../pos/pos.gateway';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  UberDirectDropoffDetails,
+  type UberDirectDropoffDetails,
   UberDirectService,
 } from '../../deliveries/uber-direct.service';
 import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
@@ -28,6 +27,11 @@ import {
   type OrderLabelPlanDto,
 } from '../order-label-plan.service';
 import { resolveConfiguredStoreStableId } from '../../store/public-api';
+import {
+  POS_PRINT_JOB_DISPATCH_REQUESTED,
+  type PosPrintJobDispatchRequest,
+  type PosPrintJobDispatchResult,
+} from '../pos-print-dispatch.contract';
 
 @Injectable()
 export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
@@ -123,17 +127,17 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly events: OrderEventsBus,
     private readonly prisma: PrismaService,
     private readonly uberDirect: UberDirectService,
-    private readonly posGateway: PosGateway,
+    private readonly eventEmitter: EventEmitter2,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly orderLabelPlanService: OrderLabelPlanService,
   ) {}
 
-  onModuleInit() {
+  onModuleInit(): void {
     this.events.onOrderPaidVerified(this.onPaid);
     this.events.onOrderAccepted(this.onAccepted);
   }
 
-  onModuleDestroy() {
+  onModuleDestroy(): void {
     this.events.offOrderPaidVerified(this.onPaid);
     this.events.offOrderAccepted(this.onAccepted);
   }
@@ -227,7 +231,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       label: labelPlan.labels.length > 0,
     };
     try {
-      const job = await this.posGateway.sendPrintJob({
+      const job = await this.dispatchPrintJob({
         orderId: order.id,
         orderStableId: order.orderStableId,
         storeId,
@@ -313,7 +317,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    await this.posGateway.sendPrintJob({
+    await this.dispatchPrintJob({
       orderId: order.id,
       orderStableId: payload.orderStableId,
       storeId,
@@ -426,7 +430,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         },
       };
 
-      const job = await this.posGateway.sendPrintJob({
+      const job = await this.dispatchPrintJob({
         orderId: order.id,
         orderStableId: payload.orderStableId,
         storeId,
@@ -452,6 +456,27 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         errorType: error instanceof Error ? error.name : 'UnknownError',
       });
     }
+  }
+
+  private async dispatchPrintJob(
+    request: PosPrintJobDispatchRequest,
+  ): Promise<PosPrintJobDispatchResult> {
+    const results = await this.eventEmitter.emitAsync(
+      POS_PRINT_JOB_DISPATCH_REQUESTED,
+      request,
+    );
+    if (results.length !== 1) {
+      throw new Error(`POS_PRINT_JOB_DISPATCH_HANDLER_COUNT:${results.length}`);
+    }
+    const result = results[0] as unknown;
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      typeof (result as { jobId?: unknown }).jobId !== 'string'
+    ) {
+      throw new Error('POS_PRINT_JOB_DISPATCH_INVALID_RESULT');
+    }
+    return result as PosPrintJobDispatchResult;
   }
 
   private extractDropoff(

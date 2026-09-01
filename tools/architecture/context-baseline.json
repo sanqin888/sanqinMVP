@@ -6,6 +6,7 @@
     "importUnit": "production source import statements",
     "compositionRootsExcluded": [
       "apps/api/src/app.module.ts",
+      "apps/api/src/orders-http-composition.module.ts",
       "apps/api/src/app.bootstrap.ts",
       "apps/api/src/main.ts",
       "apps/api/src/ubereats-worker.main.ts"
@@ -179,8 +180,14 @@
     "authenticatedPosStoreContext": {
       "apiAdapter": "apps/api/src/pos/pos-summary.controller.ts",
       "ordersApiAdapter": "apps/api/src/pos/pos-orders.controller.ts",
-      "legacyOrdersApiAdapter": "apps/api/src/orders/orders.controller.ts",
-      "scheduledOrdersApiAdapter": "apps/api/src/orders/scheduled-orders.controller.ts",
+      "legacyOrdersApiAdapter": "apps/api/src/pos/legacy-pos-orders.controller.ts",
+      "scheduledOrdersApiAdapter": "apps/api/src/pos/pos-orders.controller.ts",
+      "ordersController": "apps/api/src/orders/orders.controller.ts",
+      "ordersModule": "apps/api/src/orders/orders.module.ts",
+      "ordersPublicApi": "apps/api/src/orders/public-api.ts",
+      "ordersHttpCompositionModule": "apps/api/src/orders-http-composition.module.ts",
+      "ordersFulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
+      "posPrintDispatchListener": "apps/api/src/pos/pos-print-dispatch.listener.ts",
       "compositionModule": "apps/api/src/pos/pos.module.ts",
       "webApiClient": "apps/web/src/lib/api/pos-session.ts",
       "webConsumers": [
