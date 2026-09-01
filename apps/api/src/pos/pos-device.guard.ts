@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import type { AuthenticatedPosIdentity } from './pos-device-auth.contract';
+import type { AuthenticatedPosIdentity } from './pos-device-management.contract';
 import { PosDeviceService } from './pos-device.service';
 import {
   POS_DEVICE_ID_COOKIE,

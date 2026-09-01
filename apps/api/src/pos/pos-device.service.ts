@@ -12,11 +12,9 @@ import {
 } from '../store/public-api';
 import {
   type AuthenticatedPosIdentity,
+  type PosDeviceAdminCompatibilityPort,
   type PosDeviceCredentialVerifierPort,
   type PosDeviceCredentials,
-} from './pos-device-auth.contract';
-import {
-  type PosDeviceAdminCompatibilityPort,
   type PosDeviceEnrollmentResult,
   type PosDeviceManagementPort,
   type PosDeviceManagementSnapshot,

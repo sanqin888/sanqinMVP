@@ -13,7 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type {
   AuthenticatedPosIdentity,
   PosDeviceCredentials,
-} from './pos-device-auth.contract';
+} from './pos-device-management.contract';
 import { PosDeviceService } from './pos-device.service';
 import {
   POS_DEVICE_ID_COOKIE,

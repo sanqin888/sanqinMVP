@@ -11,7 +11,7 @@ import type { Request } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import type { AuthenticatedPosIdentity } from './pos-device-auth.contract';
+import type { AuthenticatedPosIdentity } from './pos-device-management.contract';
 import { PosDeviceGuard } from './pos-device.guard';
 import {
   PosStoreStatusService,

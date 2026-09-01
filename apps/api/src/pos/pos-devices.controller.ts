@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import type { AuthenticatedPosIdentity } from './pos-device-auth.contract';
+import type { AuthenticatedPosIdentity } from './pos-device-management.contract';
 import { PosDeviceService } from './pos-device.service';
 import { PosDeviceGuard } from './pos-device.guard';
 import {
