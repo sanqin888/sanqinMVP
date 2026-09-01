@@ -24,31 +24,30 @@ describe('PosDeviceService.verifyDevice', () => {
     const device = {
       id: 'db-device-1',
       deviceStableId: 'device-1',
-      storeId: 'store-db-a',
       store: { storeStableId: 'store-a' },
+      name: 'Front POS',
       status: 'ACTIVE',
       deviceKeyHash: hashDeviceKey(deviceKey),
-      meta: null,
     };
     const { service, posDevice } = setup(device);
 
     await expect(
       service.verifyDevice({ deviceStableId: 'device-1', deviceKey }),
     ).resolves.toEqual({
-      id: 'db-device-1',
       deviceStableId: 'device-1',
-      storeId: 'store-db-a',
       storeStableId: 'store-a',
-      status: 'ACTIVE',
-      deviceKeyHash: hashDeviceKey(deviceKey),
-      meta: null,
+      name: 'Front POS',
     });
     expect(posDevice.findUnique).toHaveBeenCalledWith({
       where: { deviceStableId: 'device-1' },
-      select: expect.objectContaining({
-        storeId: true,
+      select: {
+        id: true,
+        deviceKeyHash: true,
+        status: true,
+        deviceStableId: true,
+        name: true,
         store: { select: { storeStableId: true } },
-      }) as unknown,
+      },
     });
     expect(posDevice.update).toHaveBeenCalledWith({
       where: { id: 'db-device-1' },
@@ -60,7 +59,6 @@ describe('PosDeviceService.verifyDevice', () => {
     const { service, posDevice } = setup({
       id: 'db-device-1',
       deviceStableId: 'device-1',
-      storeId: 'store-a',
       status: 'ACTIVE',
       deviceKeyHash: hashDeviceKey('correct-secret'),
       meta: null,
@@ -80,7 +78,6 @@ describe('PosDeviceService.verifyDevice', () => {
     const { service, posDevice } = setup({
       id: 'db-device-1',
       deviceStableId: 'device-1',
-      storeId: 'store-a',
       status: 'DISABLED',
       deviceKeyHash: hashDeviceKey(deviceKey),
       meta: null,

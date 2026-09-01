@@ -8,13 +8,9 @@ type PosSocketMiddleware = (
 ) => void;
 
 const activeDevice = {
-  id: 'device-db-1',
   deviceStableId: 'device-1',
-  deviceKeyHash: 'hash',
-  status: 'ACTIVE',
-  storeId: 'store-db-a',
   storeStableId: 'store-a',
-  meta: null,
+  name: 'Front POS',
 };
 
 function makeSocket(input?: {
@@ -79,7 +75,7 @@ describe('PosGateway device authorization', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('authenticates browser POS and maps the device store UUID to the stable POS room id', async () => {
+  it('authenticates browser POS with the verified stable store identity', async () => {
     const { middleware, verifyDevice } = setup();
     const client = makeSocket({
       cookie: 'other=value; posDeviceId=device-1; posDeviceKey=secret%2Bkey',

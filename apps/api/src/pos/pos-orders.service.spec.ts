@@ -32,17 +32,57 @@ describe('PosOrdersService', () => {
       getReadyForPickupAction: jest.fn().mockResolvedValue(null),
       retryReadyForPickup: jest.fn(),
     };
+    const brandStoreConfigReader = {
+      getStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+        autoAcceptOnlineOrders: true,
+      }),
+    };
+    const brandStoreConfigWriter = {
+      updateConfig: jest.fn().mockResolvedValue(undefined),
+    };
     return {
       service: new PosOrdersService(
         orders as never,
         uberEats as never,
         uberEats as never,
         {} as never,
+        brandStoreConfigReader as never,
+        brandStoreConfigWriter as never,
       ),
       orders,
       uberEats,
+      brandStoreConfigReader,
+      brandStoreConfigWriter,
     };
   };
+
+  it('reads auto-accept from the Brand/Store boundary by store stable ID', async () => {
+    const { service, brandStoreConfigReader } = setup(order());
+    brandStoreConfigReader.getStoreSnapshot.mockResolvedValue({
+      storeStableId: '4750_Yonge_Street',
+      autoAcceptOnlineOrders: false,
+    });
+
+    await expect(
+      service.getAutoAcceptOnlineOrders('4750_Yonge_Street'),
+    ).resolves.toEqual({ enabled: false });
+    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
+  });
+
+  it('writes auto-accept through the Brand/Store boundary by store stable ID', async () => {
+    const { service, brandStoreConfigWriter } = setup(order());
+
+    await expect(
+      service.setAutoAcceptOnlineOrders('4750_Yonge_Street', false),
+    ).resolves.toEqual({ enabled: false });
+    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith(
+      { store: { autoAcceptOnlineOrders: false } },
+      '4750_Yonge_Street',
+    );
+  });
 
   it('普通订单仅使用本地状态推进', async () => {
     const { service, orders, uberEats } = setup(order());
