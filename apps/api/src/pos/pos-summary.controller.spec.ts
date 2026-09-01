@@ -53,13 +53,10 @@ describe('PosSummaryController print routing', () => {
       status: 'paid',
       payment: 'cash',
     });
-    expect(gateway.sendPrintSummary).toHaveBeenCalledWith(
-      '4750_Yonge_Street',
-      {
-        ...summary,
-        breakdownType: 'payment',
-      },
-    );
+    expect(gateway.sendPrintSummary).toHaveBeenCalledWith('4750_Yonge_Street', {
+      ...summary,
+      breakdownType: 'payment',
+    });
     expect(result).toEqual({ success: true });
   });
 
