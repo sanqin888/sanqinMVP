@@ -2,25 +2,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { apiFetch } from '@/lib/api/client';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import {
+  createAdminPosDevice,
+  deleteAdminPosDevice,
+  fetchAdminPosDevices,
+  resetAdminPosDeviceEnrollment,
+  updateAdminPosDeviceStatus,
+  type AdminPosDeviceView,
+} from '@/lib/api/pos-devices';
 import type { Locale } from '@/lib/i18n/locales';
-
-type PosDevice = {
-  id: string;
-  deviceStableId: string;
-  storeId: string;
-  name: string | null;
-  status: 'ACTIVE' | 'DISABLED';
-  enrolledAt: string;
-  lastSeenAt: string | null;
-  enrollmentCode?: string | null;
-};
-
-type PosDeviceWithCode = PosDevice & {
-  enrollmentCode: string;
-};
 
 type RevealState = {
   deviceStableId: string;
@@ -37,15 +29,19 @@ function formatDateTime(value: string | null) {
 
 export default function AdminPosDevicesPage() {
   const { locale } = useParams<{ locale: Locale }>();
-  const [devices, setDevices] = useState<PosDevice[]>([]);
+  const searchParams = useSearchParams();
+  const storeStableId = searchParams.get('store')?.trim() ?? '';
+  const [devices, setDevices] = useState<AdminPosDeviceView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [formState, setFormState] = useState({ name: '', storeId: '' });
+  const [deviceName, setDeviceName] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [reveal, setReveal] = useState<RevealState | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [statusUpdatingStableId, setStatusUpdatingStableId] = useState<
+    string | null
+  >(null);
 
   const pendingDevices = useMemo(
     () => devices.filter((device) => !device.lastSeenAt),
@@ -55,32 +51,47 @@ export default function AdminPosDevicesPage() {
     () => devices.filter((device) => Boolean(device.lastSeenAt)),
     [devices],
   );
-  const hasDevices = useMemo(() => devices.length > 0, [devices.length]);
+  const hasDevices = devices.length > 0;
 
-  async function loadDevices() {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const data = await apiFetch<PosDevice[]>('/admin/pos-devices');
-      setDevices(data ?? []);
-    } catch (error) {
-      setLoadError((error as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const loadDevices = useCallback(
+    async (selectedStoreStableId = storeStableId) => {
+      if (!selectedStoreStableId) {
+        setDevices([]);
+        setLoading(true);
+        setLoadError(null);
+        return;
+      }
+
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const data = await fetchAdminPosDevices(selectedStoreStableId);
+        setDevices(data ?? []);
+      } catch (error) {
+        setLoadError((error as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [storeStableId],
+  );
 
   useEffect(() => {
-    void loadDevices();
-  }, []);
+    setReveal(null);
+    setActionError(null);
+    setFormError(null);
+    void loadDevices(storeStableId);
+  }, [loadDevices, storeStableId]);
 
   async function handleCreate() {
     setFormError(null);
     setActionError(null);
 
-    const name = formState.name.trim();
-    const storeId = formState.storeId.trim();
-
+    const name = deviceName.trim();
+    if (!storeStableId) {
+      setFormError('请先选择门店。');
+      return;
+    }
     if (!name) {
       setFormError('请填写设备名称。');
       return;
@@ -88,22 +99,17 @@ export default function AdminPosDevicesPage() {
 
     setSaving(true);
     try {
-      const payload = {
+      const created = await createAdminPosDevice({
         name,
-        storeId: storeId || undefined,
-      };
-      const created = await apiFetch<PosDeviceWithCode>('/admin/pos-devices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        storeStableId,
       });
       setReveal({
         deviceStableId: created.deviceStableId,
         deviceName: created.name ?? name,
         enrollmentCode: created.enrollmentCode,
       });
-      setFormState({ name: '', storeId: '' });
-      await loadDevices();
+      setDeviceName('');
+      await loadDevices(storeStableId);
     } catch (error) {
       setFormError((error as Error).message);
     } finally {
@@ -111,58 +117,57 @@ export default function AdminPosDevicesPage() {
     }
   }
 
-  async function handleReset(device: PosDevice) {
-    // 1. 增加确认弹窗
-    if (!window.confirm(`确定要重置设备「${device.name ?? '未命名'}」的绑定码吗？\n旧的绑定码将立即失效。`)) {
+  async function handleReset(device: AdminPosDeviceView) {
+    if (
+      !window.confirm(
+        `确定要重置设备「${device.name ?? '未命名'}」的绑定码吗？\n旧的绑定码将立即失效。`,
+      )
+    ) {
       return;
     }
 
     setActionError(null);
     try {
-      // 2. 使用正确的 API 路径 (PATCH /reset-code) 和 apiFetch
-      const updated = await apiFetch<PosDeviceWithCode>(
-        `/admin/pos-devices/${device.id}/reset-code`,
-        { method: 'PATCH' },
+      const updated = await resetAdminPosDeviceEnrollment(
+        device.deviceStableId,
       );
-
-      // 3. 直接弹窗显示新码，不再设置 React 状态
-      window.alert(`重置成功！\n请在 POS 设备上输入新的绑定码：\n\n${updated.enrollmentCode}\n\n(请立即记录，关闭后无法再次查看)`);
-
-      // 4. 刷新列表（可选，主要为了更新 meta 信息）
-      await loadDevices();
+      window.alert(
+        `重置成功！\n请在 POS 设备上输入新的绑定码：\n\n${updated.enrollmentCode}\n\n(请立即记录，关闭后无法再次查看)`,
+      );
+      await loadDevices(storeStableId);
     } catch (error) {
       setActionError((error as Error).message);
     }
   }
 
-  async function handleDelete(device: PosDevice) {
+  async function handleDelete(device: AdminPosDeviceView) {
     setActionError(null);
-    if (!window.confirm(`确定删除设备「${device.name ?? device.deviceStableId}」吗？此操作不可撤销。`)) {
+    if (
+      !window.confirm(
+        `确定删除设备「${device.name ?? device.deviceStableId}」吗？此操作不可撤销。`,
+      )
+    ) {
       return;
     }
     try {
-      await apiFetch(`/admin/pos-devices/${device.id}`, { method: 'DELETE' });
-      await loadDevices();
+      await deleteAdminPosDevice(device.deviceStableId);
+      await loadDevices(storeStableId);
     } catch (error) {
       setActionError((error as Error).message);
     }
   }
 
-  async function handleToggleStatus(device: PosDevice) {
+  async function handleToggleStatus(device: AdminPosDeviceView) {
     setActionError(null);
     const nextStatus = device.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
-    setStatusUpdatingId(device.id);
+    setStatusUpdatingStableId(device.deviceStableId);
     try {
-      await apiFetch(`/admin/pos-devices/${device.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      await loadDevices();
+      await updateAdminPosDeviceStatus(device.deviceStableId, nextStatus);
+      await loadDevices(storeStableId);
     } catch (error) {
       setActionError((error as Error).message);
     } finally {
-      setStatusUpdatingId(null);
+      setStatusUpdatingStableId(null);
     }
   }
 
@@ -190,7 +195,7 @@ export default function AdminPosDevicesPage() {
           </Link>
         </div>
         <p className="text-sm text-slate-600">
-          在此完成 POS 设备初始认证，并管理已认证设备的状态。绑定码只会在创建或重置时展示，请及时保存。
+          当前页面只管理顶部所选门店的 POS 设备。绑定码只会在创建或重置时展示，请及时保存。
         </p>
       </div>
 
@@ -238,27 +243,24 @@ export default function AdminPosDevicesPage() {
             <span className="text-slate-600">设备名称</span>
             <input
               className="w-full rounded-md border px-3 py-2"
-              value={formState.name}
-              onChange={(e) => setFormState((prev) => ({ ...prev, name: e.target.value }))}
+              value={deviceName}
+              onChange={(event) => setDeviceName(event.target.value)}
               placeholder="例如：前台收银机 01"
             />
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-600">门店 ID（可选）</span>
-            <input
-              className="w-full rounded-md border px-3 py-2"
-              value={formState.storeId}
-              onChange={(e) => setFormState((prev) => ({ ...prev, storeId: e.target.value }))}
-              placeholder="默认使用系统门店"
-            />
-          </label>
+          <div className="space-y-1 text-sm">
+            <span className="text-slate-600">所属门店</span>
+            <div className="min-h-10 rounded-md border bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700">
+              {storeStableId || '正在确定门店…'}
+            </div>
+          </div>
         </div>
         {formError && <div className="mt-3 text-sm text-red-600">{formError}</div>}
         <div className="mt-4">
           <button
             type="button"
             onClick={() => void handleCreate()}
-            disabled={saving}
+            disabled={saving || !storeStableId}
             className="rounded-md border bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
           >
             {saving ? '创建中…' : '生成绑定码'}
@@ -273,23 +275,26 @@ export default function AdminPosDevicesPage() {
             <button
               type="button"
               onClick={() => void loadDevices()}
-              className="rounded-md border px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              disabled={!storeStableId}
+              className="rounded-md border px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
             >
               刷新列表
             </button>
           </div>
           {loading ? (
-            <p className="mt-4 text-sm text-slate-500">加载中…</p>
+            <p className="mt-4 text-sm text-slate-500">
+              {storeStableId ? '加载中…' : '正在确定当前门店…'}
+            </p>
           ) : loadError ? (
             <p className="mt-4 text-sm text-red-600">{loadError}</p>
           ) : !hasDevices ? (
-            <p className="mt-4 text-sm text-slate-500">暂无设备，请先创建。</p>
+            <p className="mt-4 text-sm text-slate-500">当前门店暂无设备，请先创建。</p>
           ) : pendingDevices.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">当前没有待认证设备。</p>
           ) : (
             <div className="mt-4 space-y-3">
               {pendingDevices.map((device) => (
-                <div key={device.id} className="rounded-xl border p-4">
+                <div key={device.deviceStableId} className="rounded-xl border p-4">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div className="space-y-1">
                       <div className="text-base font-semibold text-slate-900">
@@ -298,7 +303,9 @@ export default function AdminPosDevicesPage() {
                       <div className="text-xs text-slate-500">
                         StableId: {device.deviceStableId}
                       </div>
-                      <div className="text-xs text-slate-500">门店：{device.storeId}</div>
+                      <div className="text-xs text-slate-500">
+                        门店：{device.storeStableId}
+                      </div>
                     </div>
                     <span className="inline-flex w-fit rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
                       未认证
@@ -336,32 +343,38 @@ export default function AdminPosDevicesPage() {
           <div>
             <h2 className="text-xl font-semibold text-slate-900">已认证设备管理</h2>
             <p className="text-sm text-slate-600">
-              查看设备在线情况，并根据需要启用或停用设备。
+              查看当前门店设备在线情况，并根据需要启用或停用设备。
             </p>
           </div>
           <button
             type="button"
             onClick={() => void loadDevices()}
-            className="rounded-md border px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            disabled={!storeStableId}
+            className="rounded-md border px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
           >
             刷新列表
           </button>
         </div>
 
         {loading ? (
-          <p className="mt-4 text-sm text-slate-500">加载中…</p>
+          <p className="mt-4 text-sm text-slate-500">
+            {storeStableId ? '加载中…' : '正在确定当前门店…'}
+          </p>
         ) : loadError ? (
           <p className="mt-4 text-sm text-red-600">{loadError}</p>
         ) : certifiedDevices.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">暂无已认证设备。</p>
+          <p className="mt-4 text-sm text-slate-500">当前门店暂无已认证设备。</p>
         ) : (
           <div className="mt-4 space-y-3">
             {certifiedDevices.map((device) => (
-              <div key={device.id} className="rounded-xl border p-4">
+              <div key={device.deviceStableId} className="rounded-xl border p-4">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div className="space-y-1">
                     <div className="text-base font-semibold text-slate-900">
                       {device.name ?? '未命名设备'}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      StableId: {device.deviceStableId}
                     </div>
                   </div>
                   <span
@@ -382,10 +395,10 @@ export default function AdminPosDevicesPage() {
                   <button
                     type="button"
                     onClick={() => void handleToggleStatus(device)}
-                    disabled={statusUpdatingId === device.id}
+                    disabled={statusUpdatingStableId === device.deviceStableId}
                     className="rounded-md border px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                   >
-                    {statusUpdatingId === device.id
+                    {statusUpdatingStableId === device.deviceStableId
                       ? '处理中…'
                       : device.status === 'ACTIVE'
                         ? '停用设备'

@@ -4,10 +4,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
 import { DateTime } from 'luxon';
 import { parseAutoPauseReason } from '../pos/pos-store-status.service';
-import { PrismaStoreScheduleReader } from './brand-store-config.reader';
 import {
   BRAND_STORE_CONFIG_READER,
+  STORE_SCHEDULE_READER,
   type BrandStoreConfigReaderPort,
+  type StoreScheduleReaderPort,
+  type StoreWeekday,
 } from './public-api';
 
 export type StoreStatus = {
@@ -57,7 +59,8 @@ export class StoreStatusService {
   constructor(
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly configReader: BrandStoreConfigReaderPort,
-    private readonly scheduleReader: PrismaStoreScheduleReader,
+    @Inject(STORE_SCHEDULE_READER)
+    private readonly scheduleReader: StoreScheduleReaderPort,
   ) {}
 
   async getCurrentStatus(): Promise<StoreStatus> {
@@ -67,18 +70,17 @@ export class StoreStatusService {
     const { nowIso, todayStr, weekday, minutesSinceMidnight, nowZ } =
       this.getStoreClock(tz);
 
-    // Holiday：按“门店时区的 YYYY-MM-DD”来匹配
-    const holidays = await this.scheduleReader.listHolidays();
-    const todayHoliday = holidays.find((h) => {
-      const hDateStr = DateTime.fromJSDate(h.date, { zone: 'utc' })
-        .setZone(tz)
-        .toFormat('yyyy-LL-dd');
-      return hDateStr === todayStr;
-    });
+    // Holiday：按“门店时区的 YYYY-MM-DD”来匹配，并显式限定门店。
+    const holidays = await this.scheduleReader.listHolidays(
+      config.storeStableId,
+    );
+    const todayHoliday = holidays.find((holiday) => holiday.date === todayStr);
     const todayHolidayName = todayHoliday?.name ?? null;
 
-    // BusinessHour：weekday 是 unique，直接 findUnique
-    const todayHours = await this.scheduleReader.getBusinessHour(weekday);
+    const todayHours = await this.scheduleReader.getBusinessHour(
+      config.storeStableId,
+      weekday as StoreWeekday,
+    );
 
     let ruleSource: StoreStatus['ruleSource'] = 'REGULAR_HOURS';
     let isClosed = true;

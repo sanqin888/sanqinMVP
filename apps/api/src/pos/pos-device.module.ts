@@ -6,17 +6,32 @@ import { PosDeviceGuard } from './pos-device.guard';
 import { PosDevicesController } from './pos-devices.controller';
 import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
 import { PosGateway } from './pos.gateway';
+import {
+  POS_DEVICE_ADMIN_COMPATIBILITY,
+  POS_DEVICE_MANAGEMENT,
+} from './pos-device-management.contract';
+import { BrandStoreConfigModule } from '../store/public-api';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, BrandStoreConfigModule],
   controllers: [PosDevicesController], // 把设备认领相关的 Controller 放这里
   providers: [
     PosDeviceService,
+    {
+      provide: POS_DEVICE_MANAGEMENT,
+      useExisting: PosDeviceService,
+    },
+    {
+      provide: POS_DEVICE_ADMIN_COMPATIBILITY,
+      useExisting: PosDeviceService,
+    },
     PosDeviceGuard,
     PosGateway,
     PosCardPaymentFeatureConfig,
   ],
   exports: [
+    POS_DEVICE_MANAGEMENT,
+    POS_DEVICE_ADMIN_COMPATIBILITY,
     PosDeviceService,
     PosDeviceGuard,
     PosGateway,

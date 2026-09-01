@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Admin Brand/Store writer cutover base: `origin/dev@e8a0fec8` (2026-08-31).
+Phase 2 Admin Brand/Store + POS-device identity cutover base: `origin/dev@443b1a5c` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -41,7 +41,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 23; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
@@ -79,9 +79,12 @@ pair fails CI.
   as `resolveConfiguredStoreStableId()`. Existing Orders, Clover, POS, Admin and
   Uber callers were moved off `common/store-id.ts`, lowering direct
   architecture-foundation debt without changing the resolved store value.
-- `StoreStatusService` is the first canonical consumer and no longer reads or
-  creates `BusinessConfig`. BusinessHour/Holiday queries remain legacy global
-  store-scope debt for a later schema-safe slice.
+- `StoreStatusService` no longer reads or creates `BusinessConfig`. Store schedule
+  reads now go through the Brand/Store-owned `STORE_SCHEDULE_READER`, with
+  `storeStableId` resolved to `storeDbId` only inside the Prisma adapter. The
+  BusinessHour/Holiday hard-coded store UUID defaults are removed by the
+  store-scope migration, and BusinessHour uniqueness is scoped to
+  `(storeDbId, weekday)` instead of weekday globally.
 - Accounting, Promotions, PublicMenu, AdminMenu, and Orders now read store-local
   timezone through the canonical Store snapshot. Public/Admin menu reads no longer
   create a default `BusinessConfig` row as a side effect; Orders also no longer
@@ -97,14 +100,15 @@ pair fails CI.
   The timed auto-resume compare-and-set is implemented inside the Brand/Store
   writer so an outdated expiry task cannot clear a newer pause. POS is now
   architecture-gated against regressing to Prisma configuration delegates.
-- Admin Business now follows the owner boundaries for both reads and writes. Brand
-  and Store reads use `BRAND_STORE_CONFIG_READER`; Brand/Store updates use
-  `BRAND_STORE_CONFIG_WRITER`; retained Loyalty fields on the legacy PATCH/PUT
-  rollback surfaces delegate to `LOYALTY_POLICY_WRITER`. Admin no longer writes
-  `BusinessConfig`, `BrandConfig`, or `StoreConfig` through Prisma directly. The
-  Brand/Store owner writer updates canonical rows first, then refreshes the full
-  overlapping `BusinessConfig` compatibility copy in the same transaction while
-  the one-way trigger can still be fired by registered Benefits compatibility writes.
+- Admin Business compatibility routes now follow the owner boundaries for both reads
+  and writes. Current staff Web consumers use `/staff/brand/*` and `/staff/store/*`
+  transport adapters backed by `BRAND_STORE_CONFIG_READER/WRITER` and the Store
+  schedule ports; `/admin/business/*` remains server-side compatibility only.
+  Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
+  `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
+  updates canonical config rows first, then refreshes the full overlapping
+  `BusinessConfig` compatibility copy in the same transaction while the one-way
+  trigger can still be fired by registered Benefits compatibility writes.
 - Uber menu schedule/tax and store-status source reads now cross the Brand/Store
   boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
   sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
@@ -129,6 +133,12 @@ pair fails CI.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.
+- Admin POS-device management now crosses the Store Operations/POS `public-api.ts`
+  management boundary. The former Admin Prisma device service and Prisma-generated
+  status/store UUID DTO dependencies are removed, lowering Identity/Customer/Benefits
+  runtime-data direct-import debt by five. Canonical Web requests use
+  `storeStableId`/`deviceStableId`; the temporary stale-browser UUID resolver is
+  registered as `pos-device.admin-db-id.v1` and does not emit DB UUIDs back to Web.
 
 ## Phase 2 Benefits loyalty policy reader/writer boundary active
 

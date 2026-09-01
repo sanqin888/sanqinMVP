@@ -1208,6 +1208,11 @@ if (benefitsLoyaltyPolicyOwnership) {
     const sourcePath = repositoryPath(absolutePath);
     const source = readFileSync(absolutePath, 'utf8');
     if (sourcePath.startsWith('apps/web/src/')) {
+      if (source.includes('/admin/business/')) {
+        failures.push(
+          `Web must use Brand/Store-owned staff contracts instead of legacy /admin/business/* routes: ${sourcePath}`,
+        );
+      }
       const legacyRoute = legacyAdminBusinessPolicyRoutes.find((route) =>
         source.includes(route),
       );

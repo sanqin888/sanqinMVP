@@ -1,8 +1,8 @@
 //apps/api/src/admin/pos-devices/dto/update-pos-device-status.dto.ts
-import { IsEnum } from 'class-validator';
-import { PosDeviceStatus } from '@prisma/client';
+import { IsIn } from 'class-validator';
+import type { PosDeviceManagementStatus } from '../../../pos/public-api';
 
 export class UpdatePosDeviceStatusDto {
-  @IsEnum(PosDeviceStatus)
-  status: PosDeviceStatus;
+  @IsIn(['ACTIVE', 'DISABLED'])
+  status: PosDeviceManagementStatus;
 }

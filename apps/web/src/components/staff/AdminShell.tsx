@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   Activity,
   BarChart3,
@@ -26,12 +26,14 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { AdminStoreContextSelector } from '@/features/admin/brand-store/AdminStoreContextSelector';
 import type { Locale } from '@/lib/i18n/locales';
 import { isStaffRouteActive, type StaffNavigationMatch } from './navigation';
 
 type AdminShellProps = {
   children: ReactNode;
   locale: Locale;
+  role: 'ADMIN' | 'STAFF' | 'ACCOUNTANT';
   onLogout: () => Promise<void>;
 };
 
@@ -92,7 +94,7 @@ function buildCategories(locale: Locale): AdminCategory[] {
       items: [
         {
           href: `${adminRoot}/setting`,
-          labelZh: '门店信息设置',
+          labelZh: '门店配置',
           labelEn: 'Store settings',
           icon: Store,
         },
@@ -272,11 +274,13 @@ function ContextNavigation({
   category,
   locale,
   pathname,
+  storeStableId,
   onNavigate,
 }: {
   category: AdminCategory;
   locale: Locale;
   pathname: string;
+  storeStableId?: string;
   onNavigate?: () => void;
 }) {
   const isZh = locale === 'zh';
@@ -320,11 +324,17 @@ function ContextNavigation({
         : category.items.map((item) => {
             const active = isStaffRouteActive(pathname, item.href, item.match);
             const Icon = item.icon;
+            const preserveStoreContext =
+              Boolean(storeStableId) &&
+              (category.id === 'store' || category.id === 'catalog');
+            const itemHref = preserveStoreContext
+              ? `${item.href}?store=${encodeURIComponent(storeStableId ?? '')}`
+              : item.href;
 
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={itemHref}
                 aria-current={active ? 'page' : undefined}
                 onClick={onNavigate}
                 className={
@@ -366,12 +376,26 @@ function LogoutButton({
   );
 }
 
-export function AdminShell({ children, locale, onLogout }: AdminShellProps) {
+export function AdminShell({ children, locale, role, onLogout }: AdminShellProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const isZh = locale === 'zh';
   const categories = buildCategories(locale);
   const activeCategory = resolveActiveCategory(pathname, categories);
+  const selectedStoreStableId = searchParams.get('store')?.trim() ?? '';
+  const isPosDevicesPage = pathname.endsWith('/pos-devices');
+  const showStoreContext =
+    role !== 'ACCOUNTANT' &&
+    (activeCategory.id === 'catalog' ||
+      (activeCategory.id === 'store' &&
+        (pathname.endsWith('/setting') || isPosDevicesPage)));
+  const storeContext =
+    activeCategory.id === 'catalog'
+      ? 'catalog'
+      : isPosDevicesPage
+        ? 'operations'
+        : 'store';
 
   return (
     <div data-staff-shell="admin" className="min-h-screen bg-slate-50 text-slate-950">
@@ -429,6 +453,14 @@ export function AdminShell({ children, locale, onLogout }: AdminShellProps) {
         </nav>
       </header>
 
+      {showStoreContext ? (
+        <AdminStoreContextSelector
+          locale={locale}
+          context={storeContext}
+          canCreateStore={role === 'ADMIN'}
+        />
+      ) : null}
+
       <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
         <aside className="hidden border-r border-slate-200 bg-white lg:sticky lg:top-[113px] lg:block lg:h-[calc(100vh-113px)] lg:overflow-y-auto">
           <div className="p-4 xl:p-5">
@@ -436,6 +468,7 @@ export function AdminShell({ children, locale, onLogout }: AdminShellProps) {
               category={activeCategory}
               locale={locale}
               pathname={pathname}
+              storeStableId={selectedStoreStableId || undefined}
             />
           </div>
         </aside>
@@ -476,6 +509,7 @@ export function AdminShell({ children, locale, onLogout }: AdminShellProps) {
                 category={activeCategory}
                 locale={locale}
                 pathname={pathname}
+                storeStableId={selectedStoreStableId || undefined}
                 onNavigate={() => setMobileNavigationOpen(false)}
               />
             </div>
