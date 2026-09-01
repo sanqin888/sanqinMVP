@@ -1,11 +1,11 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 
 import { PosOrdersController } from './pos-orders.controller';
 
 describe('PosOrdersController Uber orders', () => {
   const orders = {
     board: jest.fn(),
-    create: jest.fn(),
+    createForStore: jest.fn(),
   };
   const posOrders = {
     cancelUberOrder: jest.fn(),
@@ -20,6 +20,13 @@ describe('PosOrdersController Uber orders', () => {
   const posCardPaymentFeature = {
     isEnabled: jest.fn(() => false),
   };
+  const posRequest = {
+    posDevice: {
+      deviceStableId: 'device-1',
+      storeStableId: '4750_Yonge_Street',
+      name: 'Front POS',
+    },
+  } as never;
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
@@ -42,12 +49,17 @@ describe('PosOrdersController Uber orders', () => {
       paymentMethod: 'CARD',
       items: [],
     } as const;
-    orders.create.mockResolvedValue({ orderStableId: 'legacy-card-order' });
-
-    await expect(controller.create(dto as never)).resolves.toEqual({
+    orders.createForStore.mockResolvedValue({
       orderStableId: 'legacy-card-order',
     });
-    expect(orders.create).toHaveBeenCalledWith(dto);
+
+    await expect(controller.create(posRequest, dto as never)).resolves.toEqual({
+      orderStableId: 'legacy-card-order',
+    });
+    expect(orders.createForStore).toHaveBeenCalledWith(
+      dto,
+      '4750_Yonge_Street',
+    );
   });
 
   it('feature flag=true 时服务端拒绝绕过 Clover 的 legacy CARD 创建', async () => {
@@ -59,10 +71,33 @@ describe('PosOrdersController Uber orders', () => {
       items: [],
     } as const;
 
-    await expect(controller.create(dto as never)).rejects.toBeInstanceOf(
-      ConflictException,
-    );
-    expect(orders.create).not.toHaveBeenCalled();
+    await expect(
+      controller.create(posRequest, dto as never),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(orders.createForStore).not.toHaveBeenCalled();
+  });
+
+  it('POS 建单缺少 authenticated store identity 时拒绝创建', async () => {
+    const dto = {
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      paymentMethod: 'CASH',
+      items: [],
+    } as const;
+
+    await expect(
+      controller.create(
+        {
+          posDevice: {
+            deviceStableId: 'device-1',
+            storeStableId: '   ',
+            name: 'Front POS',
+          },
+        } as never,
+        dto as never,
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(orders.createForStore).not.toHaveBeenCalled();
   });
 
   it('POS 普通看板排除尚未激活的预约单', async () => {

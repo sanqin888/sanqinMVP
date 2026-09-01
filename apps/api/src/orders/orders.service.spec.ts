@@ -1099,6 +1099,58 @@ describe('OrdersService', () => {
     }
   });
 
+  it('POS 门店建单持久化 authenticated storeStableId 而不是 deployment default', async () => {
+    const originalStoreId = process.env.STORE_ID;
+    process.env.STORE_ID = 'deployment-default-store';
+    prisma.order.create.mockResolvedValue({
+      id: 'pos-store-order',
+      orderStableId: 'pos-store-order-stable',
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: new Date(),
+      paymentMethod: 'CASH',
+      items: [],
+    });
+
+    try {
+      await service.createForStore(
+        {
+          channel: 'in_store',
+          fulfillmentType: 'pickup',
+          contactName: 'POS Customer',
+          paymentMethod: 'CASH',
+          items: [],
+        },
+        ' authenticated-store ',
+      );
+
+      expect(prisma.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            storeId: 'authenticated-store',
+          }) as unknown,
+        }),
+      );
+    } finally {
+      if (originalStoreId === undefined) delete process.env.STORE_ID;
+      else process.env.STORE_ID = originalStoreId;
+    }
+  });
+
+  it('通用 create 不允许非 Web 调用绕过 authenticated store context', async () => {
+    await expect(
+      service.create({
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        paymentMethod: 'CASH',
+        items: [],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.order.create).not.toHaveBeenCalled();
+  });
+
   it('emits paid-verified event for priority orders', () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')
