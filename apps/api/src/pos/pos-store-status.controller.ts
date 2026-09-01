@@ -5,6 +5,7 @@ import {
   HttpCode,
   Post,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -34,6 +35,14 @@ function actionContext(
   };
 }
 
+function requireStoreStableId(req: PosStoreStatusRequest): string {
+  const storeStableId = req.posDevice?.storeStableId?.trim();
+  if (!storeStableId) {
+    throw new UnauthorizedException('POS device store unavailable');
+  }
+  return storeStableId;
+}
+
 @Controller('pos/store-status')
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('ADMIN', 'STAFF')
@@ -41,8 +50,8 @@ export class PosStoreStatusController {
   constructor(private readonly service: PosStoreStatusService) {}
 
   @Get()
-  getStatus() {
-    return this.service.getCustomerOrderingStatus();
+  getStatus(@Req() req: PosStoreStatusRequest) {
+    return this.service.getCustomerOrderingStatus(requireStoreStableId(req));
   }
 
   @Post('pause')
@@ -62,6 +71,7 @@ export class PosStoreStatusController {
     const untilTomorrow = body.untilTomorrow === true;
 
     return this.service.pauseCustomerOrdering(
+      requireStoreStableId(req),
       {
         durationMinutes,
         untilTomorrow,
@@ -73,6 +83,9 @@ export class PosStoreStatusController {
   @Post('resume')
   @HttpCode(200)
   resume(@Req() req: PosStoreStatusRequest) {
-    return this.service.resumeCustomerOrdering(actionContext(req));
+    return this.service.resumeCustomerOrdering(
+      requireStoreStableId(req),
+      actionContext(req),
+    );
   }
 }

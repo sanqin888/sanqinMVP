@@ -1,6 +1,7 @@
 // apps/api/src/store/store-status.controller.ts
 
 import { Controller, Get } from '@nestjs/common';
+import { resolveConfiguredStoreStableId } from './store-identity';
 import { StoreStatusService, type StoreStatus } from './store-status.service';
 
 @Controller('public')
@@ -14,6 +15,6 @@ export class StoreStatusController {
    */
   @Get('store-status')
   async getStatus(): Promise<StoreStatus> {
-    return this.service.getCurrentStatus();
+    return this.service.getCurrentStatus(resolveConfiguredStoreStableId());
   }
 }

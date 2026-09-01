@@ -396,9 +396,10 @@ export class PrismaBrandStoreConfigWriter
   }
 
   async resumeTemporaryClosureIfMatches(
+    storeStableId: string,
     expectedReason: string,
   ): Promise<boolean> {
-    const storeStableId = resolveConfiguredStoreStableId();
+    const configuredStoreStableId = resolveConfiguredStoreStableId();
 
     return this.prisma.$transaction(async (tx) => {
       const store = await tx.store.findUnique({
@@ -432,6 +433,7 @@ export class PrismaBrandStoreConfigWriter
         },
       });
       if (result.count === 0) return false;
+      if (storeStableId !== configuredStoreStableId) return true;
 
       const [brand, nextStore] = await Promise.all([
         tx.brandConfig.findUnique({

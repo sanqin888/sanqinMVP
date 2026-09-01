@@ -97,9 +97,19 @@ pair fails CI.
 - POS StoreStatus/Connectivity now uses the canonical Brand/Store boundary for both
   reads and writes. Timed-pause status/timezone reads, manual pause/resume, and the
   watchdog's recovery race re-check no longer query or mutate `BusinessConfig`.
-  The timed auto-resume compare-and-set is implemented inside the Brand/Store
-  writer so an outdated expiry task cannot clear a newer pause. POS is now
-  architecture-gated against regressing to Prisma configuration delegates.
+  The guarded POS StoreStatus transport now carries its authenticated device
+  `storeStableId` through reads, pause/resume writes, and timed-pause
+  compare-and-set reconciliation instead of letting the Brand/Store owner infer a
+  configured store. The deployment-scoped connectivity watchdog resolves its
+  configured `storeStableId` once, scopes ACTIVE POS-device heartbeats to that
+  Store relation, and passes the same explicit identity through StoreStatus and
+  pause reconciliation. The public `/public/store-status` route keeps its existing
+  deployment-store behavior but resolves that identity at the transport boundary.
+  The timed auto-resume compare-and-set remains inside the Brand/Store writer so
+  an outdated expiry task cannot clear a newer pause; a non-configured store CAS
+  updates only that StoreConfig and does not refresh the singleton BusinessConfig
+  compatibility copy. POS is architecture-gated against regressing to Prisma
+  configuration delegates or implicit store selection.
 - POS Orders and Daily Summary browser timezone context now comes from the guarded
   `/pos/store-context` adapter. `PosDeviceGuard` supplies the authenticated device
   `storeStableId`, and the adapter requests that exact Store snapshot through

@@ -6,6 +6,7 @@ const API_ROOT = resolve(POS_ROOT, '..');
 const ADMIN_POS_DEVICE_ROOT = resolve(API_ROOT, 'admin', 'pos-devices');
 const AUTH_ROOT = resolve(API_ROOT, 'auth');
 const ORCHESTRATION_ROOT = resolve(API_ROOT, 'orchestration');
+const STORE_ROOT = resolve(API_ROOT, 'store');
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
@@ -80,6 +81,39 @@ describe('POS device authentication boundary', () => {
     expect(contract).not.toMatch(/\bstoreId\s*:/);
     expect(contract).not.toMatch(/\bdeviceId\s*:/);
     expect(contract).not.toContain('deviceKeyHash');
+  });
+
+  it('threads authenticated POS store identity through store-status operations', () => {
+    const controller = read(resolve(POS_ROOT, 'pos-store-status.controller.ts'));
+    const service = read(resolve(POS_ROOT, 'pos-store-status.service.ts'));
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
+    const storeStatusController = read(
+      resolve(STORE_ROOT, 'store-status.controller.ts'),
+    );
+    const storeStatusService = read(
+      resolve(STORE_ROOT, 'store-status.service.ts'),
+    );
+
+    expect(controller).toContain('req.posDevice?.storeStableId?.trim()');
+    expect(controller).toContain(
+      'this.service.getCustomerOrderingStatus(requireStoreStableId(req))',
+    );
+    expect(controller).toContain('requireStoreStableId(req),');
+    expect(service).toContain('getStoreSnapshot(storeStableId)');
+    expect(service).toMatch(
+      /resumeTemporaryClosureIfMatches\(\s*storeStableId,/,
+    );
+    expect(service).not.toContain('resolveConfiguredStoreStableId');
+    expect(watchdog).toContain('store: { storeStableId }');
+    expect(watchdog).toContain('getCurrentStatus(storeStableId)');
+    expect(watchdog).toContain('reconcileExpiredPause(storeStableId)');
+    expect(storeStatusController).toContain(
+      'getCurrentStatus(resolveConfiguredStoreStableId())',
+    );
+    expect(storeStatusService).toContain('getStoreSnapshot(storeStableId)');
+    expect(storeStatusService).not.toContain('resolveConfiguredStoreStableId');
   });
 
   it('prevents POS HTTP, Socket and Payments consumers from inventing identity shapes', () => {
