@@ -175,7 +175,16 @@
         "resolveConfiguredStoreStableId"
       ]
     },
-    "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"]
+    "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"],
+    "authenticatedPosStoreContext": {
+      "apiAdapter": "apps/api/src/pos/pos-summary.controller.ts",
+      "compositionModule": "apps/api/src/pos/pos.module.ts",
+      "webApiClient": "apps/web/src/lib/api/pos-session.ts",
+      "webConsumers": [
+        "apps/web/src/app/[locale]/(device)/store/pos/orders/page.tsx",
+        "apps/web/src/app/[locale]/(device)/store/pos/summary/page.tsx"
+      ]
+    }
   },
   "benefitsLoyaltyPolicyOwnership": {
     "context": "identity-customer-benefits",

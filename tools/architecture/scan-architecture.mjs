@@ -446,6 +446,19 @@ if (brandStoreCanonicalConfigOwnership) {
     brandStoreCanonicalConfigOwnership.migratedConsumerForbiddenSymbols ?? {};
   const forbiddenLegacyPaths =
     brandStoreCanonicalConfigOwnership.forbiddenLegacyPaths ?? [];
+  const authenticatedPosStoreContext =
+    brandStoreCanonicalConfigOwnership.authenticatedPosStoreContext ?? null;
+  const posStoreContextApiAdapter = toPosix(
+    authenticatedPosStoreContext?.apiAdapter ?? '',
+  );
+  const posStoreContextCompositionModule = toPosix(
+    authenticatedPosStoreContext?.compositionModule ?? '',
+  );
+  const posStoreContextWebApiClient = toPosix(
+    authenticatedPosStoreContext?.webApiClient ?? '',
+  );
+  const posStoreContextWebConsumers =
+    authenticatedPosStoreContext?.webConsumers ?? [];
 
   if (contextOf(publicSurface) !== ownerContext) {
     failures.push(
@@ -706,6 +719,97 @@ if (brandStoreCanonicalConfigOwnership) {
       failures.push(
         `Brand/Store read-cutover consumer must use ${publicSurface}: ${consumerPath}`,
       );
+    }
+  }
+
+  if (authenticatedPosStoreContext) {
+    for (const boundaryPath of [
+      posStoreContextApiAdapter,
+      posStoreContextCompositionModule,
+      posStoreContextWebApiClient,
+    ]) {
+      if (!boundaryPath || !existsSync(join(REPOSITORY_ROOT, boundaryPath))) {
+        failures.push(
+          `authenticated POS store context boundary path missing: ${boundaryPath || '<missing>'}`,
+        );
+      }
+    }
+
+    const posStoreContextApiPath = join(
+      REPOSITORY_ROOT,
+      posStoreContextApiAdapter,
+    );
+    if (posStoreContextApiAdapter && existsSync(posStoreContextApiPath)) {
+      const source = readFileSync(posStoreContextApiPath, 'utf8');
+      if (
+        !source.includes("@Controller('pos/store-context')") ||
+        !source.includes('SessionAuthGuard') ||
+        !source.includes('RolesGuard') ||
+        !source.includes("@Roles('ADMIN', 'STAFF')") ||
+        !source.includes('PosDeviceGuard') ||
+        !source.includes('AuthenticatedPosIdentity') ||
+        !source.includes('BRAND_STORE_CONFIG_READER') ||
+        !/getStoreSnapshot\s*\(\s*storeStableId\s*,?\s*\)/.test(source) ||
+        source.includes('resolveConfiguredStoreStableId')
+      ) {
+        failures.push(
+          `authenticated POS store context must derive storeStableId from PosDeviceGuard identity and read Brand/Store through its public boundary: ${posStoreContextApiAdapter}`,
+        );
+      }
+    }
+
+    const posStoreContextModulePath = join(
+      REPOSITORY_ROOT,
+      posStoreContextCompositionModule,
+    );
+    if (
+      posStoreContextCompositionModule &&
+      existsSync(posStoreContextModulePath) &&
+      !readFileSync(posStoreContextModulePath, 'utf8').includes(
+        'PosStoreContextController',
+      )
+    ) {
+      failures.push(
+        `authenticated POS store context controller must be mounted in the POS composition module: ${posStoreContextCompositionModule}`,
+      );
+    }
+
+    const posStoreContextWebApiPath = join(
+      REPOSITORY_ROOT,
+      posStoreContextWebApiClient,
+    );
+    if (posStoreContextWebApiClient && existsSync(posStoreContextWebApiPath)) {
+      const source = readFileSync(posStoreContextWebApiPath, 'utf8');
+      if (
+        !source.includes('fetchPosStoreContext') ||
+        !source.includes('/pos/store-context') ||
+        source.includes('fetchStaffStoreConfig')
+      ) {
+        failures.push(
+          `POS Web adapter must expose the authenticated /pos/store-context contract without falling back to staff Store config: ${posStoreContextWebApiClient}`,
+        );
+      }
+    }
+
+    for (const consumer of posStoreContextWebConsumers) {
+      const consumerPath = toPosix(consumer);
+      const absoluteConsumerPath = join(REPOSITORY_ROOT, consumerPath);
+      if (!existsSync(absoluteConsumerPath)) {
+        failures.push(
+          `authenticated POS store context Web consumer missing: ${consumerPath}`,
+        );
+        continue;
+      }
+      const source = readFileSync(absoluteConsumerPath, 'utf8');
+      if (
+        !source.includes('fetchPosStoreContext') ||
+        source.includes('fetchStaffStoreConfig') ||
+        source.includes('@/lib/api/brand-store')
+      ) {
+        failures.push(
+          `POS Web consumer must use authenticated POS store context instead of implicit /staff/store config: ${consumerPath}`,
+        );
+      }
     }
   }
 

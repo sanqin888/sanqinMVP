@@ -100,6 +100,11 @@ pair fails CI.
   The timed auto-resume compare-and-set is implemented inside the Brand/Store
   writer so an outdated expiry task cannot clear a newer pause. POS is now
   architecture-gated against regressing to Prisma configuration delegates.
+- POS Orders and Daily Summary browser timezone context now comes from the guarded
+  `/pos/store-context` adapter. `PosDeviceGuard` supplies the authenticated device
+  `storeStableId`, and the adapter requests that exact Store snapshot through
+  `BRAND_STORE_CONFIG_READER`; the POS browser no longer uses the implicit
+  `/staff/store/config` fallback for its own store context.
 - Admin Business compatibility routes now follow the owner boundaries for both reads
   and writes. Current staff Web consumers use `/staff/brand/*` and `/staff/store/*`
   transport adapters backed by `BRAND_STORE_CONFIG_READER/WRITER` and the Store
@@ -128,8 +133,10 @@ pair fails CI.
 - The architecture scanner protects the public surface from cross-context deep
   imports, prevents the canonical reader from regressing to legacy persistence,
   requires the owner writer to keep canonical writes, temporary-closure CAS, and
-  its registered `BusinessConfig` compatibility copy in one transaction, and
-  forbids Admin or POS StoreStatus from directly writing Prisma config delegates.
+  its registered `BusinessConfig` compatibility copy in one transaction, forbids
+  Admin or POS StoreStatus from directly writing Prisma config delegates, and pins
+  POS Orders/Summary browser store context to the guarded POS endpoint rather than
+  the implicit staff-store fallback.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.

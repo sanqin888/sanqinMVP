@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import {
   PosLoyaltyPolicyController,
+  PosStoreContextController,
   PosSummaryController,
 } from './pos-summary.controller';
 import { PosOrdersController } from './pos-orders.controller';
@@ -36,6 +37,7 @@ import { BrandStoreConfigModule } from '../store/public-api';
   controllers: [
     PosSummaryController,
     PosOrdersController,
+    PosStoreContextController,
     PosStoreStatusController,
     PosExchangeRateController,
     PosLoyaltyPolicyController,
