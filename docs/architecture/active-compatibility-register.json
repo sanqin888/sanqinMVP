@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "e8a0fec8",
+  "baselineCommit": "443b1a5c",
   "updatedAt": "2026-08-31",
   "requiredFields": [
     "compat_id",
@@ -108,6 +108,31 @@
         "apps/api/src/store/store-status.service.ts",
         "apps/web/src/lib/api/brand-store.ts",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
+      ]
+    },
+    {
+      "compat_id": "pos-device.admin-db-id.v1",
+      "status": "active",
+      "old_owner": "Admin POS-device browser contract exposed PosDevice.id and PosDevice.storeId database UUIDs and accepted those UUIDs for device actions/store assignment",
+      "new_owner": "Store Operations/POS PosDevice management boundary using deviceStableId and storeStableId for all canonical Admin/Web operations",
+      "dual_write_or_read": [
+        "Canonical Admin POS-device list requests include storeStableId and return only deviceStableId/storeStableId business identities",
+        "Canonical create, reset, status, and delete operations use storeStableId/deviceStableId through POS_DEVICE_MANAGEMENT",
+        "The no-query legacy list temporarily keeps id/storeId field names but maps them to deviceStableId/storeStableId so old bundles remain operational without emitting database UUIDs",
+        "A stale browser tab may still submit a previously loaded device DB UUID or legacy create storeId UUID; POS_DEVICE_ADMIN_COMPATIBILITY resolves those inbound UUIDs to stable identities before canonical management executes"
+      ],
+      "parity_metric": "New Admin Web requests containing storeStableId must use zero database UUID fields; API logs with event=pos_device_admin_compatibility_used (legacy_unscoped_list, legacy_store_db_id, implicit_default_store, legacy_device_db_id) must reach zero after deployment/browser refresh observation",
+      "rollback": "Keep the inbound UUID resolver and legacy no-query response aliases while old Admin bundles may still be open; canonical stable-ID routes remain the preferred path and no database UUID is reintroduced into new Web state",
+      "exit_criteria": "Admin Web has used only storeStableId/deviceStableId for one observation window, legacy no-query list traffic and UUID resolver usage are zero, then remove storeId DTO input, legacy response aliases, UUID resolvers, annotations, and this active compatibility entry",
+      "remove_pr": "Follow-up POS-device Admin DB-ID contraction after production observation",
+      "deadline": "Before Store Operations/POS identity modularization exit",
+      "evidence": [
+        "apps/api/src/pos/public-api.ts",
+        "apps/api/src/pos/pos-device-management.contract.ts",
+        "apps/api/src/pos/pos-device.service.ts",
+        "apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts",
+        "apps/web/src/lib/api/pos-devices.ts",
+        "apps/web/src/app/[locale]/(site)/admin/(protected)/pos-devices/page.tsx"
       ]
     },
     {

@@ -1,6 +1,6 @@
 # Current 12-context dependency graph
 
-Phase 2 Admin Brand/Store writer cutover base: `origin/dev@e8a0fec8` (2026-08-31).
+Phase 2 Admin Brand/Store + POS-device identity cutover base: `origin/dev@443b1a5c` (2026-08-31).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the Phase 1 modularization
@@ -41,7 +41,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 28; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 23; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
@@ -133,6 +133,12 @@ pair fails CI.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.
+- Admin POS-device management now crosses the Store Operations/POS `public-api.ts`
+  management boundary. The former Admin Prisma device service and Prisma-generated
+  status/store UUID DTO dependencies are removed, lowering Identity/Customer/Benefits
+  runtime-data direct-import debt by five. Canonical Web requests use
+  `storeStableId`/`deviceStableId`; the temporary stale-browser UUID resolver is
+  registered as `pos-device.admin-db-id.v1` and does not emit DB UUIDs back to Web.
 
 ## Phase 2 Benefits loyalty policy reader/writer boundary active
 

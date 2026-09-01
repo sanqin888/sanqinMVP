@@ -10,6 +10,7 @@ import {
   BRAND_STORE_CONFIG_WRITER,
   STORE_DIRECTORY_READER,
   STORE_DIRECTORY_WRITER,
+  STORE_LEGACY_DB_ID_RESOLVER,
 } from './brand-store-config.contract';
 import { StoreDirectoryService } from './store-directory.service';
 import {
@@ -41,6 +42,10 @@ import {
       useExisting: PrismaBrandStoreConfigWriter,
     },
     {
+      provide: STORE_LEGACY_DB_ID_RESOLVER,
+      useExisting: PrismaBrandStoreConfigReader,
+    },
+    {
       provide: STORE_SCHEDULE_READER,
       useExisting: PrismaStoreScheduleAdapter,
     },
@@ -54,6 +59,7 @@ import {
     BRAND_STORE_CONFIG_WRITER,
     STORE_DIRECTORY_READER,
     STORE_DIRECTORY_WRITER,
+    STORE_LEGACY_DB_ID_RESOLVER,
     StoreDirectoryService,
     STORE_SCHEDULE_READER,
     STORE_SCHEDULE_WRITER,
