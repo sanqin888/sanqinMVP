@@ -61,18 +61,18 @@ export class PrismaLoyaltyPolicyWriter
   }
 
   async getLoyaltyPolicySettings(): Promise<LoyaltyPolicySettings> {
-    const brandConfig = await this.prisma.brandConfig.findUnique({
-      where: { id: 1 },
-      select: LOYALTY_POLICY_SETTINGS_SELECT,
-    });
     const loyaltyProgramPolicy =
       await this.prisma.loyaltyProgramPolicy.findUnique({
         where: { id: 1 },
         select: LOYALTY_POLICY_SETTINGS_SELECT,
       });
+    const brandConfig = await this.prisma.brandConfig.findUnique({
+      where: { id: 1 },
+      select: LOYALTY_POLICY_SETTINGS_SELECT,
+    });
 
     this.observeParity('settings-read', brandConfig, loyaltyProgramPolicy);
-    return requireLoyaltyPolicySettings(brandConfig);
+    return requireLoyaltyPolicySettings(loyaltyProgramPolicy);
   }
 
   // @compat benefits.business-config-loyalty-policy.v1
@@ -85,42 +85,52 @@ export class PrismaLoyaltyPolicyWriter
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const current = requireLoyaltyPolicySettings(
-        await tx.brandConfig.findUnique({
-          where: { id: 1 },
-          select: LOYALTY_POLICY_SETTINGS_SELECT,
-        }),
-      );
       const loyaltyProgramPolicy = await tx.loyaltyProgramPolicy.findUnique({
         where: { id: 1 },
         select: LOYALTY_POLICY_SETTINGS_SELECT,
       });
-      this.observeParity('writer-pre-write', current, loyaltyProgramPolicy);
+      const brandConfig = await tx.brandConfig.findUnique({
+        where: { id: 1 },
+        select: LOYALTY_POLICY_SETTINGS_SELECT,
+      });
+      this.observeParity(
+        'writer-pre-write',
+        brandConfig,
+        loyaltyProgramPolicy,
+      );
       if (!loyaltyProgramPolicy) {
         throw new Error('LoyaltyProgramPolicy is not initialized');
       }
+      if (!brandConfig) {
+        throw new Error(
+          'BrandConfig loyalty compatibility copy is not initialized',
+        );
+      }
+      const current = loyaltyProgramPolicy;
 
       const next: LoyaltyPolicySettings = { ...current, ...patch };
 
-      await tx.loyaltyProgramPolicy.update({
+      const updatedPolicy = await tx.loyaltyProgramPolicy.update({
         where: { id: 1 },
         data: next,
+        select: LOYALTY_POLICY_SETTINGS_SELECT,
       });
 
-      // Keep the legacy copy synchronized until the one-way BusinessConfig
-      // compatibility trigger is removed. Writing the complete canonical
-      // settings prevents a stale legacy value from being replayed into
-      // BrandConfig by a later unrelated BusinessConfig update.
+      // Keep the legacy copies synchronized until the BusinessConfig trigger
+      // has its Loyalty fields split out and both compatibility writers can be
+      // contracted. The dedicated policy is the Phase C read/merge source.
       await tx.businessConfig.update({
         where: { id: 1 },
         data: next,
       });
 
-      return tx.brandConfig.update({
+      await tx.brandConfig.update({
         where: { id: 1 },
         data: next,
         select: LOYALTY_POLICY_SETTINGS_SELECT,
       });
+
+      return updatedPolicy;
     });
   }
 }

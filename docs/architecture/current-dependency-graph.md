@@ -182,14 +182,16 @@ pair fails CI.
   forbids reintroducing the `BusinessConfig` symbol or delegate there.
 - `benefits.business-config-loyalty-policy.v1` records this transitional compatibility
   state. Phase A expanded and backfilled the dedicated `LoyaltyProgramPolicy`
-  singleton. Phase B now maintains `LoyaltyProgramPolicy + BusinessConfig +
-  BrandConfig` in one Benefits-owned transaction and shadow-compares the dedicated
-  row on settings, runtime, and transaction-bound reads while still returning
-  BrandConfig. Structured `loyalty_policy_shadow_mismatch` warnings make missing
-  rows or field drift observable. The remaining implementation order is dedicated
-  read cutover, separate trigger Loyalty split, removal of BusinessConfig then
-  BrandConfig dual-writes, and only then the final column contraction. Every later
-  Prisma/trigger migration remains separately authorized.
+  singleton, and Phase B established one-transaction triple-write plus parity
+  telemetry. Phase C now returns `LoyaltyProgramPolicy` for editable settings,
+  runtime reads, and transaction-bound reads while continuing to shadow-compare
+  BrandConfig; partial policy updates also merge against the dedicated row before
+  synchronizing `BusinessConfig + BrandConfig` rollback copies. Structured
+  `loyalty_policy_shadow_mismatch` warnings still expose missing rows or field drift.
+  The remaining implementation order is the separate trigger Loyalty split,
+  removal of BusinessConfig then BrandConfig dual-writes, and only then the final
+  column contraction. Every later Prisma/trigger migration remains separately
+  authorized.
 
 ## Carried debt outside this closeout
 
