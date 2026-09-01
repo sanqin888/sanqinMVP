@@ -6,7 +6,13 @@ export class CreatePosDeviceDto {
   @IsNotEmpty()
   name: string;
 
+  @IsString()
+  @IsNotEmpty()
+  @IsOptional()
+  storeStableId?: string;
+
+  // @compat pos-device.admin-db-id.v1
   @IsUUID()
   @IsOptional()
-  storeId?: string; // 如果不填，Service 层可以给一个默认值
+  storeId?: string;
 }

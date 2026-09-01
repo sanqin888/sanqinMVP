@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@e8a0fec8` (2026-08-31).
+`origin/dev@443b1a5c` (2026-08-31).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -13,6 +13,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `brand-store.business-config.v1` | active | BusinessConfig → BrandConfig + StoreConfig; application readers/writers and staff Web consumers are canonical, while the owner-maintained compatibility copy remains for Benefits Phase B | Difference report zero for one business cycle; direct application BusinessConfig reads/writes stay zero; Benefits removes the legacy trigger dependency | Before Phase 2 exit |
 | `brand-store.default-store-identity.v1` | active | implicit `default` store → explicit `storeStableId` | Rows backfilled; implicit resolution metric zero; schema default removed | Before Phase 2 exit |
+| `pos-device.admin-db-id.v1` | active | Admin POS-device DB UUID contract → POS-owned `storeStableId` / `deviceStableId` management contract | New Admin Web uses zero DB UUID fields; stale-browser UUID resolution and no-query legacy list traffic reach zero | Before Store Operations/POS identity exit |
 | `web.api-envelope-direct-payload.v1` | active | remaining Checkout legacy browser calls → strict canonical `apiFetch`/`serverApiFetch` | POS session/login direct fetches stay at zero; remaining Checkout 6 reach zero; page-local Checkout envelope/direct-payload reader removed | Before Phase 1 exit |
 | `payments.pos-card-legacy.v1` | frozen | direct paid Order → Unified Payment Core + Terminal + finalize | Clover support blocker resolved; real device accepted; one settlement cycle reconciled; legacy calls zero | Before Phase 5B exit |
 | `payments.web-checkout-v1.v1` | frozen | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | External validation unblocked; Web cutover accepted; one settlement cycle reconciled; old calls zero | Before Phase 5B exit |

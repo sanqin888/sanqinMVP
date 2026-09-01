@@ -19,7 +19,7 @@ export function AdminStoreContextSelector({
   canCreateStore,
 }: {
   locale: Locale;
-  context: 'store' | 'catalog';
+  context: 'store' | 'catalog' | 'operations';
   canCreateStore: boolean;
 }) {
   const isZh = locale === 'zh';
@@ -84,12 +84,19 @@ export function AdminStoreContextSelector({
   }, [storeStableId, stores]);
 
   useEffect(() => {
+    const shouldFillMissingStore =
+      context === 'operations' &&
+      !requestedStoreStableId &&
+      Boolean(selectedStoreStableId);
+    const shouldReplaceInvalidStore =
+      Boolean(requestedStoreStableId) &&
+      Boolean(selectedStoreStableId) &&
+      requestedStoreStableId !== selectedStoreStableId;
+
     if (
       loading ||
       failed ||
-      !requestedStoreStableId ||
-      !selectedStoreStableId ||
-      requestedStoreStableId === selectedStoreStableId
+      (!shouldFillMissingStore && !shouldReplaceInvalidStore)
     ) {
       return;
     }
@@ -98,6 +105,7 @@ export function AdminStoreContextSelector({
     nextParams.set('store', selectedStoreStableId);
     router.replace(`${pathname}?${nextParams.toString()}`);
   }, [
+    context,
     failed,
     loading,
     pathname,

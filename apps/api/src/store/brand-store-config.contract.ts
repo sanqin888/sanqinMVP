@@ -2,6 +2,9 @@ export const BRAND_STORE_CONFIG_READER = Symbol('BRAND_STORE_CONFIG_READER');
 export const BRAND_STORE_CONFIG_WRITER = Symbol('BRAND_STORE_CONFIG_WRITER');
 export const STORE_DIRECTORY_READER = Symbol('STORE_DIRECTORY_READER');
 export const STORE_DIRECTORY_WRITER = Symbol('STORE_DIRECTORY_WRITER');
+export const STORE_LEGACY_DB_ID_RESOLVER = Symbol(
+  'STORE_LEGACY_DB_ID_RESOLVER',
+);
 
 export type BrandConfigSnapshot = {
   brandNameZh: string | null;
@@ -118,6 +121,11 @@ export interface StoreDirectoryReaderPort {
 
 export interface StoreDirectoryWriterPort {
   createStore(input: CreateStoreInput): Promise<StoreConfigSnapshot>;
+}
+
+/** @compat pos-device.admin-db-id.v1 */
+export interface StoreLegacyDbIdResolverPort {
+  resolveStoreStableIdByDbId(storeDbId: string): Promise<string | null>;
 }
 
 export class StoreStableIdAlreadyExistsError extends Error {
