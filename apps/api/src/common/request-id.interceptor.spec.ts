@@ -120,25 +120,21 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
+    runIntercept('GET', '/api/v1/pos/orders/scheduled', 200, { orders: [] });
 
     expect(loggerLogSpy).not.toHaveBeenCalled();
     expect(loggerWarnSpy).not.toHaveBeenCalled();
   });
 
-  it('does not suppress other scheduled-order backend actions', () => {
+  it('keeps legacy scheduled-order compatibility traffic observable', () => {
     const loggerLogSpy = jest
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
 
-    runIntercept('POST', '/api/v1/orders/order-1/preparation/start', 200, {
-      status: 'making',
-    });
+    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
 
     expect(loggerLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'POST /api/v1/orders/order-1/preparation/start - 200',
-      ),
+      expect.stringContaining('GET /api/v1/orders/scheduled - 200'),
     );
   });
 
@@ -150,10 +146,10 @@ describe('RequestIdInterceptor', () => {
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
 
-    runIntercept('GET', '/api/v1/orders/scheduled', 503, { ok: false });
+    runIntercept('GET', '/api/v1/pos/orders/scheduled', 503, { ok: false });
 
     expect(loggerWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('GET /api/v1/orders/scheduled - 503'),
+      expect.stringContaining('GET /api/v1/pos/orders/scheduled - 503'),
     );
     expect(loggerLogSpy).not.toHaveBeenCalled();
   });

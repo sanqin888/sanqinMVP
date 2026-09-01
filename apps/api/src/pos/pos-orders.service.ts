@@ -4,16 +4,20 @@ import {
   OrderAmendmentItemAction,
   OrderAmendmentType,
   PaymentMethod,
-  Prisma,
 } from '@prisma/client';
-import type { OrderJsonValue } from '@shared/order';
-import { OrdersService } from '../orders/orders.service';
-import { POS_ORDER_READ, type PosOrderReadPort } from '../orders/public-api';
 import {
-  ORDER_STATUS_ADVANCE_FLOW,
+  ORDER_STATUS_FLOW,
+  type OrderJsonValue,
   type OrderStatus,
-} from '../orders/order-status';
-import type { OrderDto } from '../orders/dto/order.dto';
+} from '@shared/order';
+import {
+  POS_ORDER_OPERATIONS,
+  POS_ORDER_READ,
+  type PosOrderDto,
+  type PosOrderJsonInput,
+  type PosOrderOperationsPort,
+  type PosOrderReadPort,
+} from '../orders/public-api';
 import {
   UBER_EATS_ORDER_ACTIONS,
   UBER_EATS_ORDER_STATUS_SYNC,
@@ -50,7 +54,7 @@ type PosAmendmentItemInput = {
   displayName?: string | null;
   nameEn?: string | null;
   nameZh?: string | null;
-  optionsJson?: Prisma.InputJsonValue;
+  optionsJson?: PosOrderJsonInput;
 };
 
 export type PosCreateAmendmentInput = {
@@ -114,7 +118,8 @@ export type PosOrderAmendmentHistory = {
 @Injectable()
 export class PosOrdersService {
   constructor(
-    private readonly orders: OrdersService,
+    @Inject(POS_ORDER_OPERATIONS)
+    private readonly orders: PosOrderOperationsPort,
     @Inject(UBER_EATS_ORDER_ACTIONS)
     private readonly uberOrderActions: UberEatsOrderActionsPort,
     @Inject(UBER_EATS_ORDER_STATUS_SYNC)
@@ -135,7 +140,7 @@ export class PosOrdersService {
       orderStableId,
       storeStableId,
     );
-    const nextStatus = ORDER_STATUS_ADVANCE_FLOW[order.status];
+    const nextStatus = ORDER_STATUS_FLOW[order.status];
     const externalOrderId = this.getUberWebhookExternalOrderId(order);
 
     if (order.status === 'pending' && externalOrderId) {
@@ -365,7 +370,7 @@ export class PosOrdersService {
     storeStableId: string,
     orderStableId: string,
     input: PosCreateAmendmentInput,
-  ): Promise<OrderDto> {
+  ): Promise<PosOrderDto> {
     const order = await this.orders.getByStableIdForStore(
       orderStableId,
       storeStableId,
@@ -443,7 +448,7 @@ export class PosOrdersService {
   }
 
   private async assertFullRefundManagementOrder(
-    order: OrderDto,
+    order: PosOrderDto,
     orderStableId: string,
   ): Promise<void> {
     if (order.channel === Channel.web) {
@@ -465,7 +470,7 @@ export class PosOrdersService {
     }
   }
 
-  private assertInStoreManagementOrder(order: OrderDto): void {
+  private assertInStoreManagementOrder(order: PosOrderDto): void {
     if (order.channel === Channel.web) {
       throw new BadRequestException(
         'Web order management is disabled until Clover POS/payment sync is available',
@@ -515,7 +520,7 @@ export class PosOrdersService {
   }
 
   private advanceResult(
-    order: OrderDto,
+    order: PosOrderDto,
     action?: {
       actionId?: string;
       status?: string;
@@ -540,7 +545,7 @@ export class PosOrdersService {
     );
   }
 
-  private getUberWebhookExternalOrderId(order: OrderDto): string | null {
+  private getUberWebhookExternalOrderId(order: PosOrderDto): string | null {
     if (order.channel !== 'ubereats') return null;
     if (!order.clientRequestId?.startsWith(UBER_EATS_CLIENT_REQUEST_PREFIX)) {
       return null;
@@ -553,7 +558,7 @@ export class PosOrdersService {
   }
 }
 
-export type PosOrderAdvanceResult = OrderDto & {
+export type PosOrderAdvanceResult = PosOrderDto & {
   uberActionStatus: string | null;
   retryable: boolean;
   actionId: string | null;
