@@ -1,12 +1,10 @@
 // apps/api/src/pos/pos-summary.service.ts
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
-  Channel,
-  FulfillmentType,
-  PaymentMethod,
-  Prisma,
-} from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+  POS_ORDER_READ,
+  type PosOrderFinancialSummaryRecord,
+  type PosOrderReadPort,
+} from '../orders/public-api';
 
 export type PosPaymentBucket =
   | 'cash'
@@ -79,28 +77,14 @@ type SummaryQuery = {
   payment?: string; // cash|card|online|store_balance
 };
 
-type OrderLite = {
-  id: string;
-  orderStableId: string | null;
-  clientRequestId: string | null;
-  paidAt: Date;
-  channel: Channel;
-  fulfillmentType: FulfillmentType;
-  status: string;
-  subtotalCents: number;
-  subtotalAfterDiscountCents: number;
-  totalCents: number;
-  taxCents: number;
-  deliveryFeeCents: number;
-  deliveryCostCents: number;
-  loyaltyRedeemCents: number | null;
-  couponDiscountCents: number | null;
-  paymentMethod: PaymentMethod | null;
-};
+type OrderLite = PosOrderFinancialSummaryRecord;
 
 @Injectable()
 export class PosSummaryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(POS_ORDER_READ)
+    private readonly orderRead: PosOrderReadPort,
+  ) {}
 
   private parseIsoInstant(value: string, field: string): Date {
     if (typeof value !== 'string' || value.trim().length === 0) {
@@ -155,19 +139,19 @@ export class PosSummaryService {
   private computePaymentBucket(
     o: Pick<OrderLite, 'channel' | 'paymentMethod'>,
   ): PosPaymentBucket {
-    if (o.channel === Channel.web) return 'online';
-    if (o.channel === Channel.ubereats) return 'ubereats';
+    if (o.channel === 'web') return 'online';
+    if (o.channel === 'ubereats') return 'ubereats';
 
     switch (o.paymentMethod) {
-      case PaymentMethod.CASH:
+      case 'CASH':
         return 'cash';
-      case PaymentMethod.CARD:
+      case 'CARD':
         return 'card';
-      case PaymentMethod.WECHAT_ALIPAY:
+      case 'WECHAT_ALIPAY':
         return 'cash';
-      case PaymentMethod.STORE_BALANCE:
+      case 'STORE_BALANCE':
         return 'store_balance';
-      case PaymentMethod.UBEREATS:
+      case 'UBEREATS':
         return 'ubereats';
       default:
         return 'store_balance';
@@ -189,35 +173,13 @@ export class PosSummaryService {
     const statusFilter = this.toStatusBucket(q.status);
     const paymentFilter = this.toPaymentBucket(q.payment);
 
-    // 1) 先取 paidAt 落在区间内的订单（timeMax 用 lt，和前端 end+1day 的设计对齐）
-    const where: Prisma.OrderWhereInput = {
-      storeId: q.storeStableId,
-      paidAt: { gte: start, lt: end },
+    // 1) Orders owns persistence and returns only the POS financial read model.
+    const orders = await this.orderRead.listFinancialSummaryOrders({
+      storeStableId: q.storeStableId,
+      paidFrom: start,
+      paidToExclusive: end,
       ...(fulfillmentFilter ? { fulfillmentType: fulfillmentFilter } : {}),
-    };
-
-    const orders = (await this.prisma.order.findMany({
-      where,
-      orderBy: { paidAt: 'desc' },
-      select: {
-        id: true,
-        orderStableId: true,
-        clientRequestId: true,
-        paidAt: true,
-        channel: true,
-        fulfillmentType: true,
-        status: true,
-        subtotalCents: true,
-        subtotalAfterDiscountCents: true,
-        totalCents: true,
-        taxCents: true,
-        deliveryFeeCents: true,
-        deliveryCostCents: true,
-        loyaltyRedeemCents: true,
-        couponDiscountCents: true,
-        paymentMethod: true,
-      },
-    })) as unknown as OrderLite[];
+    });
 
     if (orders.length === 0) {
       return {
@@ -254,27 +216,7 @@ export class PosSummaryService {
       };
     }
 
-    const orderIds = orders.map((o) => o.id);
-
-    // 2) 订单维度聚合：退款/补收（来自 OrderAmendment）
-    const amendAgg = await this.prisma.orderAmendment.groupBy({
-      by: ['orderId'],
-      where: { orderId: { in: orderIds } },
-      _sum: { refundCents: true, additionalChargeCents: true },
-    });
-
-    const amendMap = new Map<
-      string,
-      { refundCents: number; additionalChargeCents: number }
-    >();
-    for (const row of amendAgg) {
-      amendMap.set(row.orderId, {
-        refundCents: this.cents(row._sum.refundCents),
-        additionalChargeCents: this.cents(row._sum.additionalChargeCents),
-      });
-    }
-
-    // 3) 组装订单行 + 应用 status/payment 过滤（因为 payment bucket 不是纯 DB 字段）
+    // 2) 组装订单行 + 应用 status/payment 过滤（因为 payment bucket 不是纯 DB 字段）
     const rows: PosDailySummaryResponse['orders'] = [];
     let salesCents = 0;
     let taxCents = 0;
@@ -285,11 +227,6 @@ export class PosSummaryService {
     let totalDeliveryCostCents = 0;
 
     for (const o of orders) {
-      const amend = amendMap.get(o.id) ?? {
-        refundCents: 0,
-        additionalChargeCents: 0,
-      };
-
       const discountCentsForOrder = Math.max(
         0,
         this.cents(o.subtotalCents) - this.cents(o.subtotalAfterDiscountCents),
@@ -302,9 +239,9 @@ export class PosSummaryService {
       const statusBucket = this.computeStatusBucket(o.status);
       const payment = this.computePaymentBucket(o);
       const channel: PosDailySummaryResponse['orders'][number]['channel'] =
-        o.channel === Channel.web
+        o.channel === 'web'
           ? 'web'
-          : o.channel === Channel.ubereats
+          : o.channel === 'ubereats'
             ? 'ubereats'
             : 'in_store';
 
@@ -313,12 +250,8 @@ export class PosSummaryService {
         this.cents(o.taxCents) +
         deliveryFeeCents -
         deliveryCostCents -
-        amend.refundCents +
-        amend.additionalChargeCents;
-
-      if (!o.orderStableId) {
-        throw new BadRequestException('orderStableId missing');
-      }
+        this.cents(o.refundCents) +
+        this.cents(o.additionalChargeCents);
 
       const row = {
         orderStableId: o.orderStableId,
@@ -326,7 +259,7 @@ export class PosSummaryService {
         createdAt: o.paidAt.toISOString(),
 
         channel,
-        fulfillmentType: o.fulfillmentType as 'pickup' | 'dine_in' | 'delivery',
+        fulfillmentType: o.fulfillmentType,
 
         status: o.status,
         statusBucket,
@@ -337,8 +270,8 @@ export class PosSummaryService {
         taxCents: this.cents(o.taxCents),
         discountCents: discountCentsForOrder,
 
-        refundCents: amend.refundCents,
-        additionalChargeCents: amend.additionalChargeCents,
+        refundCents: this.cents(o.refundCents),
+        additionalChargeCents: this.cents(o.additionalChargeCents),
 
         netCents: netCentsForOrder,
         salesCents: salesCentsForOrder,
@@ -364,7 +297,7 @@ export class PosSummaryService {
       totalDeliveryCostCents += deliveryCostCents;
     }
 
-    // 4) breakdowns
+    // 3) breakdowns
     const paymentBuckets: PosPaymentBucket[] = [
       'cash',
       'card',

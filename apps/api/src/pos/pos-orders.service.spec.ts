@@ -34,6 +34,9 @@ describe('PosOrdersService', () => {
       getReadyForPickupAction: jest.fn().mockResolvedValue(null),
       retryReadyForPickup: jest.fn(),
     };
+    const orderRead = {
+      listAmendmentsForStore: jest.fn().mockResolvedValue([]),
+    };
     const brandStoreConfigReader = {
       getStoreSnapshot: jest.fn().mockResolvedValue({
         storeStableId: '4750_Yonge_Street',
@@ -48,12 +51,13 @@ describe('PosOrdersService', () => {
         orders as never,
         uberEats as never,
         uberEats as never,
-        {} as never,
+        orderRead as never,
         brandStoreConfigReader as never,
         brandStoreConfigWriter as never,
       ),
       orders,
       uberEats,
+      orderRead,
       brandStoreConfigReader,
       brandStoreConfigWriter,
     };
@@ -521,5 +525,43 @@ describe('PosOrdersService', () => {
     ).rejects.toThrow('external payment reversal is not available');
 
     expect(orders.createFullRefund).not.toHaveBeenCalled();
+  });
+
+  it('改单历史只通过 Orders public read boundary 读取', async () => {
+    const { service, orderRead } = setup(order());
+    orderRead.listAmendmentsForStore.mockResolvedValue([
+      {
+        amendmentStableId: 'amendment_1',
+        type: 'VOID_ITEM',
+        paymentMethod: 'CASH',
+        reason: '商品售罄 · 操作人:Staff',
+        deltaCents: -500,
+        refundCents: 500,
+        additionalChargeCents: 0,
+        summaryJson: null,
+        items: [],
+      },
+    ]);
+
+    await expect(
+      service.listAmendments('4750_Yonge_Street', 'order_1'),
+    ).resolves.toEqual([
+      {
+        amendmentStableId: 'amendment_1',
+        type: 'VOID_ITEM',
+        paymentMethod: 'CASH',
+        reason: '商品售罄',
+        operatorName: 'Staff',
+        deltaCents: -500,
+        refundCents: 500,
+        additionalChargeCents: 0,
+        summaryJson: null,
+        items: [],
+      },
+    ]);
+    expect(orderRead.listAmendmentsForStore).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
   });
 });

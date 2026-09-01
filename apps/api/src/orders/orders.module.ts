@@ -23,6 +23,8 @@ import { OrderIngestionService } from './order-ingestion.service';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrderLabelPlanService } from './order-label-plan.service';
+import { POS_ORDER_READ } from './pos-order-read.contract';
+import { PosOrderReadService } from './pos-order-read.service';
 
 @Module({
   imports: [
@@ -43,6 +45,11 @@ import { OrderLabelPlanService } from './order-label-plan.service';
   controllers: [ScheduledOrdersController, OrdersController],
   providers: [
     OrdersService,
+    PosOrderReadService,
+    {
+      provide: POS_ORDER_READ,
+      useExisting: PosOrderReadService,
+    },
     OrderIngestionService,
     OrderPreparationService,
     OrderSchedulingQueryService,
@@ -55,6 +62,7 @@ import { OrderLabelPlanService } from './order-label-plan.service';
   ],
   exports: [
     OrdersService,
+    POS_ORDER_READ,
     OrderIngestionService,
     OrderPreparationService,
     OrderSchedulingQueryService,
