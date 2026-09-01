@@ -94,10 +94,11 @@
         "Staff Brand/Store schedule reads and writes plus StoreStatus now pass storeStableId through STORE_SCHEDULE_READER/WRITER and resolve storeDbId only inside the Store Prisma adapter",
         "BusinessHour and Holiday no longer carry hard-coded store DB UUID defaults in Prisma; the store-scope migration keeps the physical storeId column, exposes it as storeDbId in Prisma, and changes BusinessHour uniqueness to storeDbId + weekday",
         "Authenticated POS Orders and Daily Summary browser timezone context now comes from /pos/store-context: PosDeviceGuard supplies the authenticated device storeStableId and the POS adapter reads that exact Store snapshot through BRAND_STORE_CONFIG_READER instead of falling back to /staff/store/config",
+        "Canonical Admin Web Store config, hours, and holidays calls now require storeStableId and use only /staff/stores/:storeStableId/*; the selector establishes ?store= from the Store directory before Store settings load, while legacy /staff/store/* routes remain isolated as an annotated stale-bundle compatibility adapter",
         "Uber channel configuration rows still default storeId to the literal default identity, and frozen Uber menu schedule readers still require their later scoped cutover",
         "Other existing rows and callers may still omit an explicit store identity"
       ],
-      "parity_metric": "Count of rows using the default literal and count of requests resolved through implicit-store fallback; both must reach zero",
+      "parity_metric": "Count of rows using the default literal plus RequestIdInterceptor traffic to /api/v1/staff/store/config, /hours, and /holidays and other implicit-store fallback paths; all must reach zero before contraction",
       "rollback": "Retain the old nullable/default columns during expand-backfill-cutover; do not reinterpret historical IDs",
       "exit_criteria": "All rows are backfilled, callers pass storeStableId, schema defaults and fallback helpers are removed",
       "remove_pr": "Phase 2 store identity contraction PR",
@@ -108,8 +109,11 @@
         "apps/api/src/store/brand-store-config.reader.ts",
         "apps/api/src/store/store-status.service.ts",
         "apps/api/src/pos/pos-summary.controller.ts",
+        "apps/api/src/admin/business/staff-brand-store.controller.ts",
         "apps/web/src/lib/api/pos-session.ts",
         "apps/web/src/lib/api/brand-store.ts",
+        "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
+        "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
       ]
     },

@@ -106,9 +106,11 @@ pair fails CI.
   `BRAND_STORE_CONFIG_READER`; the POS browser no longer uses the implicit
   `/staff/store/config` fallback for its own store context.
 - Admin Business compatibility routes now follow the owner boundaries for both reads
-  and writes. Current staff Web consumers use `/staff/brand/*` and `/staff/store/*`
-  transport adapters backed by `BRAND_STORE_CONFIG_READER/WRITER` and the Store
-  schedule ports; `/admin/business/*` remains server-side compatibility only.
+  and writes. Canonical staff Web Store consumers require an explicit `storeStableId`
+  and use `/staff/stores/:storeStableId/*` adapters backed by
+  `BRAND_STORE_CONFIG_READER/WRITER` and the Store schedule ports. The selector writes
+  a valid `?store=` context before Store settings load; singular `/staff/store/*` and
+  `/admin/business/*` remain compatibility-only transport paths.
   Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
   `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
   updates canonical config rows first, then refreshes the full overlapping
@@ -134,9 +136,10 @@ pair fails CI.
   imports, prevents the canonical reader from regressing to legacy persistence,
   requires the owner writer to keep canonical writes, temporary-closure CAS, and
   its registered `BusinessConfig` compatibility copy in one transaction, forbids
-  Admin or POS StoreStatus from directly writing Prisma config delegates, and pins
-  POS Orders/Summary browser store context to the guarded POS endpoint rather than
-  the implicit staff-store fallback.
+  Admin or POS StoreStatus from directly writing Prisma config delegates, pins POS
+  Orders/Summary browser store context to the guarded POS endpoint, and prevents
+  canonical Admin Store clients/settings from returning to implicit `/staff/store/*`
+  routes or optional `storeStableId` contracts.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.
