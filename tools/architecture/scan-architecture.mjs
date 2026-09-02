@@ -1274,6 +1274,21 @@ if (benefitsLoyaltyPolicyOwnership) {
       toPosix,
     ),
   );
+  const loyaltyPersistenceCompatId = 'benefits.business-config-loyalty-policy.v1';
+  const activeLoyaltyPersistenceCompat = (registry.active ?? []).find(
+    (entry) => entry.compat_id === loyaltyPersistenceCompatId,
+  );
+  const closedLoyaltyPersistenceCompat = (registry.closed ?? []).find(
+    (entry) => entry.compat_id === loyaltyPersistenceCompatId,
+  );
+  if (
+    activeLoyaltyPersistenceCompat ||
+    closedLoyaltyPersistenceCompat?.status !== 'closed'
+  ) {
+    failures.push(
+      `Benefits Loyalty persistence contraction must keep ${loyaltyPersistenceCompatId} closed after Phase D production verification`,
+    );
+  }
 
   for (const boundaryPath of [
     publicSurface,

@@ -200,18 +200,23 @@ pair fails CI.
   `BRAND_STORE_CONFIG_READER`; Orders no longer reads or creates `BusinessConfig`.
   The architecture scanner registers Orders as a migrated Brand/Store consumer and
   forbids reintroducing the `BusinessConfig` symbol or delegate there.
-- `benefits.business-config-loyalty-policy.v1` now records database-only contraction
-  debt. Phase A expanded/backfilled `LoyaltyProgramPolicy`, Phase B established
-  triple-write/parity telemetry, and Phase C cut runtime reads to the dedicated row.
-  The current application contraction goes further: editable settings, runtime reads,
-  transaction-bound reads, and policy writes now use only `LoyaltyProgramPolicy`;
-  `BusinessConfig` and `BrandConfig` are no longer Loyalty read/write or rollback
-  participants in application code, and the architecture scanner prevents those
-  dependencies from returning. The authorized Phase D schema/migration contraction is
-  now generated locally: it fail-closes on any three-copy parity drift, replaces the
-  BusinessConfig compatibility trigger without Loyalty propagation, and drops the ten
-  duplicate Loyalty columns from both legacy config tables. The compatibility entry
-  stays active until remote CI, deployment, and direct production verification finish.
+- `benefits.business-config-loyalty-policy.v1` is **closed**. Phase A expanded and
+  backfilled `LoyaltyProgramPolicy`, Phase B established transitional triple-write/parity,
+  Phase C cut runtime reads to the dedicated row, and Phase D completed the persistence
+  contraction. Editable settings, runtime/transaction reads, and writes now use only
+  `LoyaltyProgramPolicy`; `BrandConfig` and `BusinessConfig` no longer contain Loyalty
+  policy columns; `syncBusinessConfigToCanonicalConfig()` contains no Loyalty propagation;
+  and the architecture scanner rejects both application regression and reactivation of
+  this persistence compatibility. Production direct verification covered Admin policy
+  change/restore, POS policy load, Web pure-points order plus exact refund reversal,
+  public membership rules, unrelated Store write/restore, database metadata, and the
+  relevant error logs.
+- As a result, `brand-store.business-config.v1` is no longer blocked by Benefits. Its
+  remaining `BusinessConfig` copy and one-way trigger exist only for non-Loyalty
+  Brand/Store compatibility. The next Brand/Store step should use targeted static audit,
+  direct parity queries, and explicit Admin/POS behavior tests rather than waiting for an
+  organic business cycle before deciding whether the compatibility copy/trigger can be
+  contracted.
 
 ## Carried debt outside this closeout
 
