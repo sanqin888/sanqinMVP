@@ -113,7 +113,8 @@ export class AccountingService {
   ) {}
 
   private async getBusinessTimezone(): Promise<string> {
-    const { timezone } = await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
+    const { timezone } =
+      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
     return timezone.trim() || AccountingService.DEFAULT_BUSINESS_TIMEZONE;
   }
 

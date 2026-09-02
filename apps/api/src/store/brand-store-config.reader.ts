@@ -148,7 +148,6 @@ export class PrismaBrandStoreConfigReader
     });
     return store?.storeStableId ?? null;
   }
-
 }
 
 @Injectable()

@@ -62,7 +62,10 @@ export class PosExchangeRateService {
   private cache: CachedCadCnyRate | null = null;
   private readonly runtimeConfigByStore = new Map<string, RuntimeConfig>();
   private refreshPromise: Promise<void> | null = null;
-  private readonly lastDailyInitialAttemptDateByStore = new Map<string, string>();
+  private readonly lastDailyInitialAttemptDateByStore = new Map<
+    string,
+    string
+  >();
   private readonly lastPostCutoffAttemptDateByStore = new Map<string, string>();
 
   constructor(
@@ -121,7 +124,9 @@ export class PosExchangeRateService {
       await this.refreshPromise;
     }
 
-    if (this.lastDailyInitialAttemptDateByStore.get(storeStableId) !== clock.date) {
+    if (
+      this.lastDailyInitialAttemptDateByStore.get(storeStableId) !== clock.date
+    ) {
       this.lastDailyInitialAttemptDateByStore.set(storeStableId, clock.date);
       if (isPostCutoff) {
         this.lastPostCutoffAttemptDateByStore.set(storeStableId, clock.date);

@@ -198,7 +198,9 @@ describe('OrdersService', () => {
     };
 
     brandStoreConfigReader = {
-      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue(defaultStoreConfigSnapshot),
+      getConfiguredStoreSnapshot: jest
+        .fn()
+        .mockResolvedValue(defaultStoreConfigSnapshot),
     };
 
     loyalty = {
@@ -335,7 +337,9 @@ describe('OrdersService', () => {
       storeLongitude: -79.4,
       enableUberDirect: false,
     });
-    expect(brandStoreConfigReader.getConfiguredStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('uses the canonical store timezone for daily-special pricing', async () => {
@@ -366,7 +370,9 @@ describe('OrdersService', () => {
           },
         }),
       );
-      expect(brandStoreConfigReader.getConfiguredStoreSnapshot).toHaveBeenCalled();
+      expect(
+        brandStoreConfigReader.getConfiguredStoreSnapshot,
+      ).toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

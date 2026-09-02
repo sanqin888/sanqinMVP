@@ -54,7 +54,9 @@ describe('PosExchangeRateService', () => {
       .fn()
       .mockResolvedValue(bankResponse('2026-08-21', '0.2047'));
 
-    await expect(service.quoteCadToCny('4750_Yonge_Street', 2345)).resolves.toEqual({
+    await expect(
+      service.quoteCadToCny('4750_Yonge_Street', 2345),
+    ).resolves.toEqual({
       cadAmountCents: 2345,
       cnyAmountFen: 11584,
       cadToCnyRate: 4.94,
@@ -78,7 +80,9 @@ describe('PosExchangeRateService', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
     jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z')); // 17:00 Toronto
-    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toMatchObject({
+    await expect(
+      service.quoteCadToCny('4750_Yonge_Street', 1000),
+    ).resolves.toMatchObject({
       cnyAmountFen: 4900,
       cadToCnyRate: 4.9,
       rateDate: '2026-08-24',
@@ -99,7 +103,9 @@ describe('PosExchangeRateService', () => {
     await service.quoteCadToCny('4750_Yonge_Street', 1000);
     jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z'));
 
-    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toMatchObject({
+    await expect(
+      service.quoteCadToCny('4750_Yonge_Street', 1000),
+    ).resolves.toMatchObject({
       cnyAmountFen: 4940,
       cadToCnyRate: 4.94,
       rateDate: '2026-08-21',
@@ -136,7 +142,9 @@ describe('PosExchangeRateService', () => {
       ]),
     );
 
-    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toMatchObject({
+    await expect(
+      service.quoteCadToCny('4750_Yonge_Street', 1000),
+    ).resolves.toMatchObject({
       cnyAmountFen: 4940,
       cadToCnyRate: 4.94,
       rateDate: '2026-08-21',
@@ -147,7 +155,9 @@ describe('PosExchangeRateService', () => {
     const { service, brandStoreConfigReader } = setup(4.856);
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
-    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toEqual({
+    await expect(
+      service.quoteCadToCny('4750_Yonge_Street', 1000),
+    ).resolves.toEqual({
       cadAmountCents: 1000,
       cnyAmountFen: 4860,
       cadToCnyRate: 4.86,
@@ -163,9 +173,9 @@ describe('PosExchangeRateService', () => {
 
   it('rejects non-integer CAD cents', async () => {
     const { service } = setup();
-    await expect(service.quoteCadToCny('4750_Yonge_Street', 100.5)).rejects.toThrow(
-      'cadAmountCents must be a non-negative safe integer',
-    );
+    await expect(
+      service.quoteCadToCny('4750_Yonge_Street', 100.5),
+    ).rejects.toThrow('cadAmountCents must be a non-negative safe integer');
     expect(global.fetch).toBe(originalFetch);
   });
 });

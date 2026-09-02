@@ -50,7 +50,9 @@ function setup() {
     getSnapshot: jest.fn().mockResolvedValue(brandStoreConfig),
     getBrandSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.brand),
     getStoreSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.store),
-    getConfiguredStoreSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.store),
+    getConfiguredStoreSnapshot: jest
+      .fn()
+      .mockResolvedValue(brandStoreConfig.store),
   };
   const brandStoreConfigWriter = {
     updateBrandConfig: jest.fn().mockResolvedValue(undefined),

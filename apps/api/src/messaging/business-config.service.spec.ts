@@ -29,7 +29,9 @@ const canonicalSnapshot = {
 function setup() {
   const brandStoreConfigReader = {
     getBrandSnapshot: jest.fn().mockResolvedValue(canonicalSnapshot.brand),
-    getConfiguredStoreSnapshot: jest.fn().mockResolvedValue(canonicalSnapshot.store),
+    getConfiguredStoreSnapshot: jest
+      .fn()
+      .mockResolvedValue(canonicalSnapshot.store),
   };
   const service = new BusinessConfigService(brandStoreConfigReader as never);
   return { service, brandStoreConfigReader };
@@ -142,7 +144,9 @@ describe('BusinessConfigService canonical Brand/Store configuration', () => {
       getBrandSnapshot: jest
         .fn()
         .mockRejectedValue(new Error('canonical config missing')),
-      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue(canonicalSnapshot.store),
+      getConfiguredStoreSnapshot: jest
+        .fn()
+        .mockResolvedValue(canonicalSnapshot.store),
     };
     const service = new BusinessConfigService(brandStoreConfigReader as never);
 
