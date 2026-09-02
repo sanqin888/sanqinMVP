@@ -232,14 +232,16 @@ pair fails CI.
 
 ## Carried debt outside this closeout
 
-- `web.api-envelope-direct-payload.v1` remains active only because Checkout still
-  has six legacy browser fetches. POS session/login claim, login, auth/me,
-  store-status and heartbeat calls now use the centralized POS session API adapter;
-  their five direct-fetch allowances are removed and cannot return without failing
-  the architecture scanner. The canonical clients continue to require the strict
-  global envelope.
+- `web.api-envelope-direct-payload.v1` was closed on 2026-09-02. Checkout now has
+  zero regular JSON browser direct fetches, and the architecture scanner no longer
+  carries a Checkout allowance.
 - Payments/Clover legacy paths remain frozen by their compatibility entries.
-- Brand/Store configuration persistence contraction is complete; implicit/default-store identity remains the primary Phase 2 Brand/Store work.
+- Brand/Store configuration persistence contraction is complete;
+  `brand-store.default-store-identity.v1` remains the primary Phase 2 Brand/Store
+  work. The UberEats structural freeze was explicitly lifted on 2026-09-02 so the
+  remaining Uber Store-identity normalization may proceed before real production
+  traffic, but each Uber code slice is gated by focused post-deploy active
+  verification and user confirmation before the next slice begins.
 
 ## Reading the graph
 

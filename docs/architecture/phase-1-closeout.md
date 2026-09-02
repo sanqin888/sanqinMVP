@@ -73,8 +73,10 @@ This closeout makes no production payment-path change.
 - EventEmitter aliases alongside durable outbox events remain a review candidate;
   live consumers/duplicate side effects must be measured first.
 - Notification disabled/fallback logic and versioned Uber event files were not
-  deleted because dynamic/operational behavior is not sufficiently proven and the
-  Uber boundary is frozen for structural changes.
+  deleted because dynamic/operational behavior was not sufficiently proven and the
+  Uber boundary was frozen for structural changes at Phase 1 closeout time. That
+  structural freeze was explicitly lifted by the user on 2026-09-02; subsequent
+  Uber changes follow the slice-by-slice active verification gate in `AGENTS.md`.
 
 ## Post-closeout StableId ownership decision
 
@@ -109,8 +111,11 @@ closeout because those production protocol paths were not structurally changed.
 
 ## Phase 2 entry condition
 
-Brand/Store Phase 2 may begin without changing the frozen payment/Uber paths.
-Before any schema migration or package-boundary change, follow the repository's
-explicit authorization requirements. The Phase 2 work should start with the
-BusinessConfig field-ownership matrix and read-only data audit, then use
-expand/backfill/cutover/contract for Store identity/config changes.
+Brand/Store Phase 2 originally began while both payment and Uber provider paths
+were structurally frozen. The Uber structural freeze was explicitly lifted on
+2026-09-02 so the remaining Store-identity contraction can be completed before
+real Uber production traffic; Payments/Clover remains frozen while its external
+blocker is open. Before any schema migration or package-boundary change, follow
+the repository's explicit authorization requirements. Uber work must additionally
+follow the per-slice active verification gate in `AGENTS.md` before advancing to
+the next Uber code slice.

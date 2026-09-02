@@ -70,3 +70,25 @@ adapter。acquire transaction 使用 partition-derived transaction advisory lock
 partition 的 refill、expired lease cleanup、token debit 与 lease insert 串行且原子；不同
 partition 使用不同 lock key，不会被全局串行。cooldown 在同一锁内只允许向后延长，release
 按唯一 lease id 幂等删除，崩溃遗留 lease 会在后续 acquire 时按 indexed expiry 清理。
+
+## 变更与部署实测闸门
+
+UberEats 的结构性代码冻结已由用户在 2026-09-02 明确解除，允许在本文件的 bounded-context
+边界内继续重构、收缩兼容和修正 Store identity 等生产前架构问题。解除冻结不等于允许一次性
+大范围改写；UberEats 仍按 L3 critical workflow 管理。
+
+每一批 UberEats 代码修改必须满足：
+
+1. 只处理一个可独立部署、可独立回滚/forward-fix 的 slice，并在修改前列明受影响能力；
+2. 未受本批影响且已经通过 verification 的 OAuth、webhook、order lifecycle、menu、worker、
+   store-status 等链路不得顺手重构；
+3. 本地修改完成后必须给出受影响文件/contract、行为变化以及对应的主动实测步骤和预期结果；
+4. CI 全绿并部署后，不等待自然流量，按本批影响面执行主动实测，并在需要时用 sanitized logs、
+   DB parity、provider/Admin/POS 操作结果作为证据；
+5. 用户明确确认本批受影响能力全部正常后，才允许开始下一批 UberEats 代码修改；若失败则停止
+   后续 slice，先修复并重新验证当前批；
+6. 上述闸门持续到本轮 UberEats 集成整改/模块化工作全部完成并达到 production-ready。
+
+Uber 外部 wire schema、webhook signature、idempotency、provider truth、order state transition
+仍属于 critical contract；若某一批必须改变这些外部行为，仍需先提交影响、切换/回滚方案并获得
+该具体行为的明确授权。Prisma schema/migration 也继续遵守仓库的单独授权规则。
