@@ -301,10 +301,6 @@
       "limit": 1,
       "reason": "binary image download transport"
     },
-    "apps/web/src/app/[locale]/(site)/checkout/page.tsx": {
-      "limit": 6,
-      "reason": "legacy checkout browser API calls; payment-adjacent page is migrated separately"
-    },
     "apps/web/src/app/[locale]/(site)/wallet/apple-pay/page.tsx": {
       "limit": 1,
       "reason": "Clover Apple Pay telemetry sendBeacon fallback; frozen payment protocol adapter"

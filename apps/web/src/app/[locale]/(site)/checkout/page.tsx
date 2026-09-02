@@ -83,54 +83,11 @@ type MemberAddress = {
   isDefault?: boolean;
 };
 
-type MemberAddressPayload =
-  | MemberAddress[]
-  | {
-      details?: MemberAddress[];
-      data?: MemberAddress[];
-    };
-
-type ApiEnvelope<T> = {
-  code?: string;
-  message?: string;
-  details?: T;
-};
-
 type OperationStatusPayload = {
   ok?: boolean;
   error?: string;
   verificationToken?: string;
 };
-
-async function assertOperationResult(
-  response: Response,
-): Promise<OperationStatusPayload> {
-  const payload = (await response.json().catch(() => null)) as
-    | ApiEnvelope<OperationStatusPayload>
-    | OperationStatusPayload
-    | null;
-
-  const details =
-    payload && typeof payload === "object" && "code" in payload
-      ? (payload as ApiEnvelope<OperationStatusPayload>).details
-      : (payload as OperationStatusPayload | null);
-
-  if (!response.ok) {
-    const message =
-      details?.error ||
-      (payload && typeof payload === "object" && "message" in payload
-        ? (payload as ApiEnvelope<OperationStatusPayload>).message
-        : undefined) ||
-      `request failed (${response.status})`;
-    throw new Error(message);
-  }
-
-  if (details && typeof details.ok === "boolean" && !details.ok) {
-    throw new Error(details.error || "request failed");
-  }
-
-  return details ?? {};
-}
 
 function toSafeErrorLog(error: unknown): Record<string, unknown> {
   if (error instanceof ApiError) {
@@ -326,14 +283,6 @@ type MembershipSummaryResponse = {
   emailVerifiedAt?: string | null;
 };
 
-type MembershipSummaryEnvelope =
-  | MembershipSummaryResponse
-  | {
-      code?: string;
-      message?: string;
-      details: MembershipSummaryResponse;
-    };
-
 type LoyaltyInfo = {
   userStableId: string;
   tier: MemberTier;
@@ -354,14 +303,6 @@ type CheckoutCoupon = {
   // 为了过滤 “active” / “expired”等状态，加个可选字段，避免 TS 报错
   status?: "active" | "used" | "expired" | string;
 };
-
-type CouponsApiEnvelope =
-  | CheckoutCoupon[]
-  | {
-      code?: string;
-      message?: string;
-      details?: CheckoutCoupon[];
-    };
 
 type PrepTimeResponse = {
   minutes: number;
@@ -2118,7 +2059,7 @@ export default function CheckoutPage() {
     setPhoneVerificationCode("");
 
     try {
-      const res = await fetch(
+      await apiFetch<OperationStatusPayload>(
         useEmail ? EMAIL_OTP_REQUEST_URL : PHONE_OTP_REQUEST_URL,
         {
           method: "POST",
@@ -2138,8 +2079,6 @@ export default function CheckoutPage() {
           ),
         },
       );
-
-      await assertOperationResult(res);
 
       setContactVerificationMethod(useEmail ? "email" : "phone");
       setPhoneVerificationStep("codeSent");
@@ -2187,7 +2126,7 @@ export default function CheckoutPage() {
     setPhoneVerificationError(null);
 
     try {
-      const res = await fetch(
+      const verification = await apiFetch<OperationStatusPayload>(
         contactVerificationMethod === "email"
           ? EMAIL_OTP_VERIFY_URL
           : PHONE_OTP_VERIFY_URL,
@@ -2209,8 +2148,6 @@ export default function CheckoutPage() {
           ),
         },
       );
-
-      const verification = await assertOperationResult(res);
       if (!verification.verificationToken) {
         throw new Error("verification proof missing");
       }
@@ -2347,19 +2284,10 @@ export default function CheckoutPage() {
       try {
         setLoyaltyLoading(true);
         setLoyaltyError(null);
-        const res = await fetch("/api/v1/membership/summary", {
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
-        const raw = (await res.json()) as MembershipSummaryEnvelope;
-        const data =
-          "details" in raw && raw.details
-            ? raw.details
-            : (raw as MembershipSummaryResponse);
+        const data = await apiFetch<MembershipSummaryResponse>(
+          "/membership/summary",
+          { signal: controller.signal },
+        );
 
         const stableId = data.userStableId ?? "";
         if (stableId) {
@@ -2427,25 +2355,10 @@ export default function CheckoutPage() {
     const loadAddresses = async () => {
       try {
         const params = new URLSearchParams({ userStableId });
-        const res = await fetch(
-          `/api/v1/membership/addresses?${params.toString()}`,
+        const list = await apiFetch<MemberAddress[]>(
+          `/membership/addresses?${params.toString()}`,
           { signal: controller.signal },
         );
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-        const payload = (await res.json()) as MemberAddressPayload;
-        let list: MemberAddress[] = [];
-
-        if (Array.isArray(payload)) {
-          list = payload;
-        } else if (payload && typeof payload === "object") {
-          if (Array.isArray(payload.details)) {
-            list = payload.details;
-          } else if (Array.isArray(payload.data)) {
-            list = payload.data;
-          }
-        }
         setMemberAddresses(list);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -2487,27 +2400,10 @@ export default function CheckoutPage() {
           ["userStableId", ensuredUserStableId],
           ["locale", locale === "zh" ? "zh" : "en"],
         ]);
-        const res = await fetch(
-          `/api/v1/membership/coupons?${params.toString()}`,
+        const list = await apiFetch<CheckoutCoupon[]>(
+          `/membership/coupons?${params.toString()}`,
           { signal: controller.signal },
         );
-
-        if (!res.ok) {
-          throw new Error(`Failed with status ${res.status}`);
-        }
-
-        const raw = (await res.json()) as CouponsApiEnvelope;
-
-        let list: CheckoutCoupon[] = [];
-        if (Array.isArray(raw)) {
-          list = raw;
-        } else if (
-          raw &&
-          typeof raw === "object" &&
-          Array.isArray(raw.details)
-        ) {
-          list = raw.details;
-        }
 
         const normalized = list.filter(
           (item) => !item.status || item.status === "active",
@@ -2783,7 +2679,7 @@ export default function CheckoutPage() {
         isDefault: memberAddresses.length === 0,
       };
 
-      await fetch("/api/v1/membership/addresses", {
+      await apiFetch<unknown>("/membership/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
