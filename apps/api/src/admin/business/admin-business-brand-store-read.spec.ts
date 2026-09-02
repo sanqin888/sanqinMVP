@@ -233,5 +233,4 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
       'second_store',
     );
   });
-
 });
