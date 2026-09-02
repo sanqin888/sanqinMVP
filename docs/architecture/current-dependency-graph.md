@@ -122,13 +122,13 @@ pair fails CI.
   dispatch now fail closed with a structured missing-store error instead of routing an
   unscoped order to `resolveConfiguredStoreStableId()`. Architecture scanning registers
   the affected Orders paths and rejects those NULL/configured-store fallbacks returning.
-- Admin Business compatibility routes now follow the owner boundaries for both reads
-  and writes. Canonical staff Web Store consumers require an explicit `storeStableId`
-  and use `/staff/stores/:storeStableId/*` adapters backed by
-  `BRAND_STORE_CONFIG_READER/WRITER` and the Store schedule ports. The selector writes
-  a valid `?store=` context before Store settings load. The singular `/staff/store/*`
-  transport compatibility routes are removed in this contraction batch; only the
-  separately tracked `/admin/business/*` compatibility transport remains.
+- Admin Brand/Store transport now uses only the owner-aligned staff contracts. Canonical
+  staff Web Store consumers require an explicit `storeStableId` and use
+  `/staff/stores/:storeStableId/*` adapters backed by `BRAND_STORE_CONFIG_READER/WRITER`
+  and the Store schedule ports. The selector writes a valid `?store=` context before
+  Store settings load. The singular `/staff/store/*` compatibility routes and the
+  legacy `/admin/business/*` config/hours/holidays/temporary-close transport are both
+  removed; the standalone legacy `BusinessHoursModule` is retired with that transport.
   Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
   `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
   now writes only canonical `BrandConfig`/`StoreConfig` rows. Mirror-off production
@@ -189,14 +189,12 @@ pair fails CI.
   config); allowing either transitional copy to become stale could revert Benefits
   values on a later unrelated legacy config write.
 - The general Admin Settings page no longer declares or resubmits Loyalty policy
-  fields. Legacy `PATCH /admin/business/config` and compatibility
-  `PUT /admin/business/temporary-close` now reject all ten Loyalty keys with HTTP
-  400 and direct stale callers to `/admin/benefits/loyalty-policy`; their request
-  shapes and `BusinessConfigResponse` no longer expose Loyalty fields, and
-  `AdminBusinessService` no longer imports or invokes Benefits policy readers or
-  writers. Repository-wide Web code remains gated from combining either legacy
-  route with a Loyalty policy field. New direct BusinessConfig Loyalty persistence
-  consumers are also blocked outside the registered Benefits Phase B triple-writer.
+  fields. During the Benefits transition, legacy `PATCH /admin/business/config` and
+  `PUT /admin/business/temporary-close` rejected all ten Loyalty keys with HTTP 400;
+  the later Brand/Store transport contraction now removes those routes entirely.
+  `AdminBusinessService` still does not import or invoke Benefits policy readers or
+  writers, and repository-wide Web code remains gated from restoring the retired
+  `/admin/business/*` transport or routing Loyalty policy through it.
 - Admin Members now reads editable settings from `GET /admin/benefits/loyalty-policy`
   through the Benefits settings reader, while POS payment reads the runtime policy
   from `GET /pos/loyalty-policy` through a POS adapter protected by the existing
