@@ -76,7 +76,9 @@ describe('Orders ↔ POS transport boundary', () => {
 
     expect(ordersModule).toContain('controllers: [OrdersController]');
     expect(ordersModule).not.toContain('PosDeviceModule');
-    expect(appModule).toContain("import { OrdersModule } from './orders/public-api'");
+    expect(appModule).toContain(
+      "import { OrdersModule } from './orders/public-api'",
+    );
     expect(appModule).toContain('    OrdersModule,');
     expect(appModule).not.toContain('OrdersHttpCompositionModule');
 
