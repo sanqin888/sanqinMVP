@@ -126,8 +126,9 @@ pair fails CI.
   and writes. Canonical staff Web Store consumers require an explicit `storeStableId`
   and use `/staff/stores/:storeStableId/*` adapters backed by
   `BRAND_STORE_CONFIG_READER/WRITER` and the Store schedule ports. The selector writes
-  a valid `?store=` context before Store settings load; singular `/staff/store/*` and
-  `/admin/business/*` remain compatibility-only transport paths.
+  a valid `?store=` context before Store settings load. The singular `/staff/store/*`
+  transport compatibility routes are removed in this contraction batch; only the
+  separately tracked `/admin/business/*` compatibility transport remains.
   Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
   `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
   now writes only canonical `BrandConfig`/`StoreConfig` rows. Mirror-off production
@@ -156,8 +157,8 @@ pair fails CI.
   and pins the registered contraction migration to atomic fail-closed parity/dependency
   checks with trigger → function → table DDL and no `CASCADE`. It also keeps POS
   Orders/Summary browser store context on the guarded POS endpoint and prevents
-  canonical Admin Store clients/settings from returning to implicit `/staff/store/*`
-  routes or optional `storeStableId` contracts.
+  canonical Admin Store clients/settings or the staff transport adapter from
+  restoring implicit `/staff/store/*` routes or optional `storeStableId` contracts.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.
