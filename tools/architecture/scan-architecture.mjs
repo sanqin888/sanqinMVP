@@ -468,12 +468,12 @@ if (brandStoreCanonicalConfigOwnership) {
   const posOrdersApiAdapter = toPosix(
     authenticatedPosStoreContext?.ordersApiAdapter ?? '',
   );
-  const legacyPosOrdersApiAdapter = toPosix(
-    authenticatedPosStoreContext?.legacyOrdersApiAdapter ?? '',
-  );
   const scheduledPosOrdersApiAdapter = toPosix(
     authenticatedPosStoreContext?.scheduledOrdersApiAdapter ?? '',
   );
+  const retiredOrdersCompatibilityTransportFiles = (
+    authenticatedPosStoreContext?.retiredOrdersCompatibilityTransportFiles ?? []
+  ).map(toPosix);
   const ordersTransportController = toPosix(
     authenticatedPosStoreContext?.ordersController ?? '',
   );
@@ -482,9 +482,6 @@ if (brandStoreCanonicalConfigOwnership) {
   );
   const ordersTransportPublicApi = toPosix(
     authenticatedPosStoreContext?.ordersPublicApi ?? '',
-  );
-  const ordersHttpCompositionModule = toPosix(
-    authenticatedPosStoreContext?.ordersHttpCompositionModule ?? '',
   );
   const ordersStoreScopeService = toPosix(
     authenticatedPosStoreContext?.ordersStoreScopeService ?? '',
@@ -895,12 +892,10 @@ if (brandStoreCanonicalConfigOwnership) {
       posExchangeRateApiAdapter,
       posExchangeRateService,
       posOrdersApiAdapter,
-      legacyPosOrdersApiAdapter,
       scheduledPosOrdersApiAdapter,
       ordersTransportController,
       ordersTransportModule,
       ordersTransportPublicApi,
-      ordersHttpCompositionModule,
       ordersStoreScopeService,
       ordersSchedulingQuery,
       ordersPreparation,
@@ -1007,41 +1002,6 @@ if (brandStoreCanonicalConfigOwnership) {
       }
     }
 
-    const legacyPosOrdersApiPath = join(
-      REPOSITORY_ROOT,
-      legacyPosOrdersApiAdapter,
-    );
-    if (legacyPosOrdersApiAdapter && existsSync(legacyPosOrdersApiPath)) {
-      const source = readFileSync(legacyPosOrdersApiPath, 'utf8');
-      if (
-        !source.includes("@Controller('orders')") ||
-        !source.includes('PosDeviceGuard') ||
-        !source.includes('AuthenticatedPosIdentity') ||
-        !source.includes('requireStoreStableId') ||
-        !source.includes('POS_ORDER_OPERATIONS') ||
-        !source.includes("from '../orders/public-api'") ||
-        !source.includes("from '../auth/public-api'") ||
-        source.includes("from '../auth/session-auth.guard'") ||
-        source.includes("from '../auth/roles.guard'") ||
-        source.includes("from '../auth/roles.decorator'") ||
-        !source.includes(
-          'this.orders.recent(this.requireStoreStableId(req), limit)',
-        ) ||
-        !source.includes(
-          'this.orders.board(this.requireStoreStableId(req), {',
-        ) ||
-        !source.includes('updateStatusForStore') ||
-        !source.includes('advanceForStore') ||
-        !source.includes("@Get('scheduled')") ||
-        source.includes("from '../orders/orders.service'") ||
-        source.includes("from '../orders/order-scheduling-query.service'")
-      ) {
-        failures.push(
-          `legacy POS Orders compatibility routes must remain POS-owned, authenticated, store-scoped, and backed by Orders public API: ${legacyPosOrdersApiAdapter}`,
-        );
-      }
-    }
-
     const scheduledPosOrdersApiPath = join(
       REPOSITORY_ROOT,
       scheduledPosOrdersApiAdapter,
@@ -1083,7 +1043,10 @@ if (brandStoreCanonicalConfigOwnership) {
         source.includes("@Get('board')") ||
         source.includes("@Patch(':orderStableId/status')") ||
         source.includes("@Post(':orderStableId/amendments')") ||
-        source.includes("@Post(':orderStableId/advance')")
+        source.includes("@Post(':orderStableId/advance')") ||
+        source.includes("@Get('scheduled')") ||
+        source.includes("@Get(':orderStableId/fulfillment-timing')") ||
+        source.includes("@Post(':orderStableId/preparation/start')")
       ) {
         failures.push(
           `Orders transport must not own POS routes or depend on POS authentication transport: ${ordersTransportController}`,
@@ -1100,10 +1063,31 @@ if (brandStoreCanonicalConfigOwnership) {
       if (
         source.includes('PosDeviceModule') ||
         source.includes("from '../pos/") ||
-        !source.includes('POS_ORDER_OPERATIONS')
+        !source.includes('POS_ORDER_OPERATIONS') ||
+        !source.includes('controllers: [OrdersController]')
       ) {
         failures.push(
-          `Orders module must expose POS operations through its public boundary without importing POS transport: ${ordersTransportModule}`,
+          `Orders module must own OrdersController and expose POS operations through its public boundary without importing POS transport: ${ordersTransportModule}`,
+        );
+      }
+    }
+
+    for (const retiredPath of retiredOrdersCompatibilityTransportFiles) {
+      if (existsSync(join(REPOSITORY_ROOT, retiredPath))) {
+        failures.push(
+          `retired POS /orders/* compatibility transport must stay deleted: ${retiredPath}`,
+        );
+      }
+    }
+
+    for (const absolutePath of sourceFiles) {
+      const sourcePath = repositoryPath(absolutePath);
+      if (!sourcePath.startsWith('apps/api/src/')) continue;
+      if (sourcePath === ordersTransportController) continue;
+      const source = readFileSync(absolutePath, 'utf8');
+      if (/@Controller\((['"])orders\1\)/.test(source)) {
+        failures.push(
+          `POS-specific /orders/* compatibility transport must not be restored outside OrdersController: ${sourcePath}`,
         );
       }
     }
@@ -1122,27 +1106,6 @@ if (brandStoreCanonicalConfigOwnership) {
       failures.push(
         `Orders public API must expose POS_ORDER_OPERATIONS: ${ordersTransportPublicApi}`,
       );
-    }
-
-    const ordersHttpCompositionPath = join(
-      REPOSITORY_ROOT,
-      ordersHttpCompositionModule,
-    );
-    if (
-      ordersHttpCompositionModule &&
-      existsSync(ordersHttpCompositionPath)
-    ) {
-      const source = readFileSync(ordersHttpCompositionPath, 'utf8');
-      if (
-        !source.includes('imports: [OrdersModule, PosDeviceModule]') ||
-        !source.includes(
-          'controllers: [LegacyPosOrdersController, OrdersController]',
-        )
-      ) {
-        failures.push(
-          `Orders HTTP composition must register legacy POS routes before generic Orders routes without moving POS transport into OrdersModule: ${ordersHttpCompositionModule}`,
-        );
-      }
     }
 
     const ordersStoreScopePath = join(

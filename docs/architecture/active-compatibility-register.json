@@ -50,7 +50,6 @@
         "apps/api/src/store/store-status.service.ts",
         "apps/api/src/orders/orders.controller.ts",
         "apps/api/src/orders/orders.service.ts",
-        "apps/api/src/pos/legacy-pos-orders.controller.ts",
         "apps/api/src/orders/order-scheduling-query.service.ts",
         "apps/api/src/orders/order-preparation.service.ts",
         "apps/api/src/orders/processors/fulfillment.processor.ts",
@@ -65,39 +64,6 @@
         "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
         "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
-      ]
-    },
-    {
-      "compat_id": "orders.pos-transport-routes.v1",
-      "status": "active",
-      "old_owner": "POS-specific HTTP routes mounted from OrdersController and ScheduledOrdersController under /orders/*, with Orders importing POS device transport authentication",
-      "new_owner": "Store Operations/POS-owned canonical /pos/orders/* transport calling the Orders-owned POS_ORDER_OPERATIONS public application boundary",
-      "dual_write_or_read": [
-        "Canonical POS recent/board/status/amendment/advance routes use /pos/orders/* and call POS_ORDER_OPERATIONS instead of importing OrdersService, Orders DTOs, status internals, or scheduling implementation",
-        "Canonical scheduled queue, fulfillment timing, and manual preparation routes are available under /pos/orders/*; the current Web POS scheduled rail polls /pos/orders/scheduled",
-        "Legacy /orders/recent, /orders/board, /orders/:orderStableId/status, /orders/:orderStableId/amendments, /orders/:orderStableId/advance, /orders/scheduled, /orders/:orderStableId/fulfillment-timing, and /orders/:orderStableId/preparation/start remain mounted by a POS-owned compatibility controller with their existing guards, response shapes, status codes, and store scoping",
-        "Healthy canonical /pos/orders/scheduled polling is quiet in RequestIdInterceptor while legacy /orders/scheduled traffic is intentionally observable so stale clients can be measured before contraction",
-        "The shared /orders HTTP prefix is composed at the API root so the POS-owned compatibility controller is registered before generic Orders routes without restoring OrdersModule -> PosDeviceModule",
-        "Orders fulfillment keeps the existing print payload and durable retry behavior but requests PosPrintJob dispatch through an Orders-owned event contract; the POS-owned listener is the only side of this boundary that invokes PosGateway, so no printer payload or Socket protocol changes are introduced"
-      ],
-      "parity_metric": "Repository consumers of the legacy POS /orders/* routes must be zero, and RequestIdInterceptor traffic to every legacy route family must remain zero through an agreed stale-client observation window; canonical /pos/orders/* behavior remains covered by POS controller characterization tests",
-      "rollback": "Keep the POS-owned legacy compatibility controller mounted while canonical clients migrate; if a stale client is discovered it continues to use the same Orders public operation boundary without restoring Orders-to-POS imports",
-      "exit_criteria": "All known Web/POS consumers use /pos/orders/*, legacy route traffic is zero for the agreed observation window, no operational client requires the old URLs, and the user explicitly authorizes contract contraction",
-      "remove_pr": "Follow-up legacy POS /orders/* HTTP route contraction after production observation and explicit authorization",
-      "deadline": "Before Commerce/Orders and Store Operations/POS boundary modularization exit",
-      "evidence": [
-        "apps/api/src/orders/public-api.ts",
-        "apps/api/src/orders/pos-order-operations.contract.ts",
-        "apps/api/src/orders/pos-order-operations.service.ts",
-        "apps/api/src/orders/pos-print-dispatch.contract.ts",
-        "apps/api/src/orders-http-composition.module.ts",
-        "apps/api/src/auth/public-api.ts",
-        "apps/api/src/pos/pos-orders.controller.ts",
-        "apps/api/src/pos/legacy-pos-orders.controller.ts",
-        "apps/api/src/pos/pos-print-dispatch.listener.ts",
-        "apps/api/src/pos/pos-orders-transport-boundary.architecture.spec.ts",
-        "apps/api/src/common/request-id.interceptor.ts",
-        "apps/web/src/components/store/PosDeviceFrame.tsx"
       ]
     },
     {
@@ -189,6 +155,30 @@
     }
   ],
   "closed": [
+    {
+      "compat_id": "orders.pos-transport-routes.v1",
+      "status": "closed",
+      "old_owner": "POS-specific HTTP compatibility routes under /orders/* plus root route-order composition required to mount them ahead of generic Orders routes",
+      "new_owner": "Store Operations/POS-owned canonical /pos/orders/* transport calling the Orders-owned POS_ORDER_OPERATIONS public application boundary; OrdersController is mounted directly by OrdersModule",
+      "dual_write_or_read": "Removed. The legacy POS /orders/* controller, its characterization spec, and the temporary OrdersHttpCompositionModule are deleted. Canonical POS routes remain under /pos/orders/* and ordinary customer Orders routes remain owned by OrdersController under /orders/*.",
+      "parity_metric": "Readiness completed on 2026-09-02: current Web source has zero legacy POS /orders/* consumers; user production log verification found zero hits to the legacy route family while canonical POS traffic remained active, including POST /api/v1/pos/orders 201, POST /api/v1/pos/orders/:id/print 200, POST /api/v1/pos/orders/:id/advance 200, and GET /api/v1/pos/orders/settings/auto-accept 200.",
+      "rollback": "Forward-fix only. Do not restore the retired /orders/* POS transport; any stale operational client must be updated to the canonical /pos/orders/* contract.",
+      "exit_criteria": "Completed: repository consumers are zero, production legacy traffic is zero, canonical POS traffic is active, the user explicitly authorized contraction, and architecture guards now prevent the retired controller/composition from returning.",
+      "remove_pr": "refactor/orders-pos-transport-routes-v1",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/api/src/orders/orders.module.ts",
+        "apps/api/src/orders/orders.controller.ts",
+        "apps/api/src/orders/public-api.ts",
+        "apps/api/src/pos/pos-orders.controller.ts",
+        "apps/api/src/pos/pos-orders-transport-boundary.architecture.spec.ts",
+        "tools/architecture/context-baseline.json",
+        "tools/architecture/scan-architecture.mjs",
+        "apps/web/src/lib/api/pos.ts",
+        "apps/web/src/components/store/PosDeviceFrame.tsx",
+        "production legacy-route and canonical-route verification reported 2026-09-02"
+      ]
+    },
     {
       "compat_id": "brand-store.business-config.v1",
       "status": "closed",

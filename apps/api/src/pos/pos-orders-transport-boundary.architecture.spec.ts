@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const POS_ROOT = resolve(__dirname);
@@ -26,13 +26,12 @@ describe('Orders ↔ POS transport boundary', () => {
     expect(fulfillment).toContain('POS_PRINT_JOB_DISPATCH_REQUESTED');
   });
 
-  it('makes canonical and compatibility POS order transports use Orders public API', () => {
+  it('makes the canonical POS order transport use Orders public API', () => {
     const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
     const service = read(resolve(POS_ROOT, 'pos-orders.service.ts'));
-    const legacy = read(resolve(POS_ROOT, 'legacy-pos-orders.controller.ts'));
     const publicApi = read(resolve(ORDERS_ROOT, 'public-api.ts'));
 
-    for (const source of [canonical, service, legacy]) {
+    for (const source of [canonical, service]) {
       expect(source).toContain("from '../orders/public-api'");
       expect(source).toContain('POS_ORDER_OPERATIONS');
       expect(source).not.toContain("from '../orders/orders.service'");
@@ -43,27 +42,57 @@ describe('Orders ↔ POS transport boundary', () => {
       expect(source).not.toContain("from '../orders/order-status'");
     }
 
-    expect(legacy).toContain("from '../auth/public-api'");
-    expect(legacy).not.toContain("from '../auth/session-auth.guard'");
-    expect(legacy).not.toContain("from '../auth/roles.guard'");
-    expect(legacy).not.toContain("from '../auth/roles.decorator'");
     expect(publicApi).toContain('POS_ORDER_OPERATIONS');
     expect(publicApi).toContain('PosOrderOperationsPort');
   });
 
-  it('keeps the legacy /orders routes ahead of generic Orders routes in root HTTP composition', () => {
-    const composition = read(
+  it('keeps retired /orders/* POS compatibility transport deleted', () => {
+    const retiredPaths = [
+      resolve(POS_ROOT, 'legacy-pos-orders.controller.ts'),
       resolve(API_ROOT, 'orders-http-composition.module.ts'),
-    );
-    const legacyIndex = composition.indexOf('LegacyPosOrdersController');
-    const ordersIndex = composition.indexOf('OrdersController');
+    ];
+    const ordersController = read(resolve(ORDERS_ROOT, 'orders.controller.ts'));
+    const ordersModule = read(resolve(ORDERS_ROOT, 'orders.module.ts'));
+    const appModule = read(resolve(API_ROOT, 'app.module.ts'));
+    const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
 
-    expect(composition).toContain('imports: [OrdersModule, PosDeviceModule]');
-    expect(composition).toContain(
-      'controllers: [LegacyPosOrdersController, OrdersController]',
-    );
-    expect(legacyIndex).toBeGreaterThanOrEqual(0);
-    expect(ordersIndex).toBeGreaterThanOrEqual(0);
+    for (const retiredPath of retiredPaths) {
+      expect(existsSync(retiredPath)).toBe(false);
+    }
+
+    expect(ordersController).toContain("@Controller('orders')");
+    for (const legacyRoute of [
+      "@Get('recent')",
+      "@Get('board')",
+      "@Patch(':orderStableId/status')",
+      "@Post(':orderStableId/amendments')",
+      "@Post(':orderStableId/advance')",
+      "@Get('scheduled')",
+      "@Get(':orderStableId/fulfillment-timing')",
+      "@Post(':orderStableId/preparation/start')",
+    ]) {
+      expect(ordersController).not.toContain(legacyRoute);
+    }
+
+    expect(ordersModule).toContain('controllers: [OrdersController]');
+    expect(ordersModule).not.toContain('PosDeviceModule');
+    expect(appModule).toContain("import { OrdersModule } from './orders/public-api'");
+    expect(appModule).toContain('    OrdersModule,');
+    expect(appModule).not.toContain('OrdersHttpCompositionModule');
+
+    expect(canonical).toContain("@Controller('pos/orders')");
+    for (const canonicalRoute of [
+      "@Get('recent')",
+      "@Get('board')",
+      "@Patch(':orderStableId/status')",
+      "@Post(':orderStableId/amendments')",
+      "@Post(':orderStableId/advance')",
+      "@Get('scheduled')",
+      "@Get(':orderStableId/fulfillment-timing')",
+      "@Post(':orderStableId/preparation/start')",
+    ]) {
+      expect(canonical).toContain(canonicalRoute);
+    }
   });
 
   it('keeps POS print-job dispatch implementation on the POS side', () => {

@@ -135,7 +135,6 @@ describe('POS device authentication boundary', () => {
 
   it('prevents POS HTTP, Socket and Payments consumers from inventing identity shapes', () => {
     const consumers = [
-      resolve(POS_ROOT, 'legacy-pos-orders.controller.ts'),
       resolve(POS_ROOT, 'pos-device.guard.ts'),
       resolve(POS_ROOT, 'pos-devices.controller.ts'),
       resolve(POS_ROOT, 'pos-exchange-rate.controller.ts'),
