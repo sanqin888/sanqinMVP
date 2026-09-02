@@ -188,4 +188,24 @@ describe('OrderPreparationService', () => {
     expect(update).not.toHaveBeenCalled();
     expect(createMany).not.toHaveBeenCalled();
   });
+
+  it('store-scoped activation matches only the canonical storeId', async () => {
+    const query = captureTag([]);
+    const service = new OrderPreparationService({
+      $transaction: (work: (client: unknown) => unknown) =>
+        work({ $queryRaw: query.tag }),
+    } as never);
+
+    await service.activateScheduledOrderByStableId(
+      'stable-1',
+      '4750_Yonge_Street',
+    );
+
+    const strings = query.getStrings();
+    if (!strings) throw new Error('expected store-scoped activation query');
+    const statement = sqlText(strings);
+    expect(statement).toContain('"storeId" =');
+    expect(statement).not.toContain('"storeId" IS NULL');
+    expect(query.getValues()).toEqual(['stable-1', '4750_Yonge_Street']);
+  });
 });

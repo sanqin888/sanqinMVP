@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveConfiguredStoreStableId } from '../store/public-api';
 import type { OrderFulfillmentTimingDto } from './dto/order-fulfillment-timing.dto';
 import type { ScheduledOrderSummaryDto } from './dto/scheduled-order-summary.dto';
 
@@ -14,15 +13,9 @@ export class OrderSchedulingQueryService {
     if (!normalizedStoreStableId) {
       throw new BadRequestException('storeStableId is required');
     }
-    const canonicalScope: Prisma.OrderWhereInput = {
+    return {
       storeId: normalizedStoreStableId,
     };
-    if (normalizedStoreStableId !== resolveConfiguredStoreStableId()) {
-      return canonicalScope;
-    }
-
-    // @compat brand-store.default-store-identity.v1
-    return { OR: [canonicalScope, { storeId: null }] };
   }
 
   async findByStableIdForStore(

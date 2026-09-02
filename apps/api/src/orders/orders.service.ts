@@ -1021,19 +1021,8 @@ export class OrdersService {
       throw new BadRequestException('storeStableId is required');
     }
 
-    const canonicalScope: Prisma.OrderWhereInput = {
-      storeId: normalizedStoreStableId,
-    };
-    if (normalizedStoreStableId !== resolveConfiguredStoreStableId()) {
-      return canonicalScope;
-    }
-
-    // @compat brand-store.default-store-identity.v1
-    // Historical in-store orders created before authenticated POS store routing
-    // can have storeId=NULL. Only the configured original store may see those
-    // rows until the deterministic backfill/contraction removes this fallback.
     return {
-      OR: [canonicalScope, { storeId: null }],
+      storeId: normalizedStoreStableId,
     };
   }
 
