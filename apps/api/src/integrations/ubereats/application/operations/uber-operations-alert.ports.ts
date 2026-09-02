@@ -1,5 +1,5 @@
 export interface UberOperationsAlertRepositoryPort {
-  getStoreStatusSource(): Promise<{
+  getStoreStatusSource(storeStableId: string): Promise<{
     isTemporarilyClosed: boolean;
     temporaryCloseReason: string | null;
   }>;

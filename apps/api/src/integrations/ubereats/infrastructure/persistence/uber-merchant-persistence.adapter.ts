@@ -325,8 +325,8 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
     @Inject(UBER_STORE_CONFIG_QUERY)
     private readonly storeConfig: UberStoreConfigQueryPort,
   ) {}
-  async getStoreStatusSource() {
-    const config = await this.storeConfig.getStoreConfig();
+  async getStoreStatusSource(storeStableId: string) {
+    const config = await this.storeConfig.getStoreConfig(storeStableId);
     return {
       isTemporarilyClosed: config.isTemporarilyClosed,
       temporaryCloseReason: config.temporaryCloseReason,

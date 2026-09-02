@@ -53,8 +53,8 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
     useFactory: (
       reader: BrandStoreConfigReaderPort,
     ): UberStoreConfigQueryPort => ({
-      getStoreConfig: async () => {
-        const store = await reader.getStoreSnapshot();
+      getStoreConfig: async (storeStableId) => {
+        const store = await reader.getStoreSnapshot(storeStableId);
         return {
           timezone: store.timezone,
           salesTaxRate: store.salesTaxRate,

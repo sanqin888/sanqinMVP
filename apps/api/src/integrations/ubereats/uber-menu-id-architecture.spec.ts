@@ -45,6 +45,33 @@ describe('Uber Eats menu id architecture', () => {
     );
   });
 
+  it('requires explicit store context for store-scoped Admin menu operations', () => {
+    const controller = scanTypeScript(join(__dirname, 'api'), {
+      productionOnly: true,
+    }).find((file) => file.path.endsWith('menu.controller.ts'));
+    expect(controller).toBeDefined();
+    expect(controller!.source).not.toContain('OptionalResourceIdPipe');
+    expect(
+      controller!.source.match(
+        /@Query\('storeId', ResourceIdPipe\) storeId: string/g,
+      ),
+    ).toHaveLength(8);
+
+    const roots = [
+      join(__dirname, 'application', 'menu'),
+      join(__dirname, 'infrastructure', 'persistence'),
+    ];
+    const forbidden = /\bnormalizeUberStoreId\b|['"]default['"]/g;
+    const violations = roots.flatMap((root) =>
+      scanTypeScript(root, { productionOnly: true }).flatMap((file) =>
+        [...file.source.matchAll(forbidden)].map((match) =>
+          formatSourceViolation(__dirname, file, match[0]),
+        ),
+      ),
+    );
+    expect(violations).toEqual([]);
+  });
+
   it('uses authenticated userStableId for menu audit operations', () => {
     const controller = scanTypeScript(join(__dirname, 'api'), {
       productionOnly: true,

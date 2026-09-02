@@ -704,7 +704,11 @@ describe('Uber merchant gateway use-case boundaries', () => {
         listMappings: jest
           .fn()
           .mockResolvedValue([
-            { uberStoreId: 'uber-store-1', isProvisioned: true },
+            {
+              uberStoreId: 'uber-store-1',
+              isProvisioned: true,
+              posExternalStoreId: 'store-stable-1',
+            },
           ]),
       } as never,
       alerts as never,
@@ -718,6 +722,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
         pauseUntil: '2026-08-23T03:00:00.000Z',
       }),
     ).resolves.toMatchObject({ outcome: 'SUCCEEDED', synchronizedStores: 1 });
+    expect(alerts.getStoreStatusSource).not.toHaveBeenCalled();
     expect(api.writeStatus).toHaveBeenCalledWith(
       'uber-store-1',
       {
@@ -751,7 +756,11 @@ describe('Uber merchant gateway use-case boundaries', () => {
         listMappings: jest
           .fn()
           .mockResolvedValue([
-            { uberStoreId: 'uber-store-1', isProvisioned: true },
+            {
+              uberStoreId: 'uber-store-1',
+              isProvisioned: true,
+              posExternalStoreId: 'store-stable-1',
+            },
           ]),
       } as never,
       alerts as never,
@@ -761,6 +770,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       outcome: 'SUCCEEDED',
       synchronizedStores: 1,
     });
+    expect(alerts.getStoreStatusSource).toHaveBeenCalledWith('store-stable-1');
     expect(api.writeStatus).toHaveBeenCalledWith(
       'uber-store-1',
       {
@@ -770,6 +780,30 @@ describe('Uber merchant gateway use-case boundaries', () => {
       },
       expect.stringMatching(/^sanqin-uber-/),
     );
+  });
+
+  it('rejects automatic status sync when a provisioned Uber store lacks storeStableId context', async () => {
+    const useCase = new SyncUberStoreStatusUseCase(
+      { writeStatus: jest.fn() } as never,
+      {
+        listMappings: jest.fn().mockResolvedValue([
+          {
+            uberStoreId: 'uber-store-1',
+            isProvisioned: true,
+            posExternalStoreId: null,
+          },
+        ]),
+      } as never,
+      {
+        getStoreStatusSource: jest.fn(),
+        recordStoreStatusResult: jest.fn(),
+        createStoreStatusAlert: jest.fn(),
+      } as never,
+    );
+
+    await expect(useCase.syncStoreStatusToUber()).rejects.toMatchObject({
+      code: 'UBER_STORE_MAPPING_INVALID',
+    });
   });
 
   it('records a rejected semantic status result without interpreting HTTP', async () => {
@@ -795,7 +829,11 @@ describe('Uber merchant gateway use-case boundaries', () => {
         listMappings: jest
           .fn()
           .mockResolvedValue([
-            { uberStoreId: 'uber-store-1', isProvisioned: true },
+            {
+              uberStoreId: 'uber-store-1',
+              isProvisioned: true,
+              posExternalStoreId: 'store-stable-1',
+            },
           ]),
       } as never,
       alerts as never,
@@ -806,6 +844,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       failedStores: 1,
       error: { code: 'UPSTREAM_REJECTED', retryable: false },
     });
+    expect(alerts.getStoreStatusSource).toHaveBeenCalledWith('store-stable-1');
     expect(alerts.recordStoreStatusResult).toHaveBeenCalledWith(rejected, {
       status: 'ONLINE',
     });

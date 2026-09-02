@@ -15,47 +15,6 @@ import {
   resolveUberMenuAvailability,
 } from '../../domain/menu/uber-menu.types';
 
-type ScopedRows<T> = {
-  default?: T;
-  uber?: T;
-  canonical?: T;
-};
-
-const groupScopedRows = <T extends { storeId: string }>(
-  rows: T[],
-  canonicalStoreId: string,
-  uberStoreId: string,
-  keyOf: (row: T) => string,
-): Map<string, ScopedRows<T>> => {
-  const byKey = new Map<string, ScopedRows<T>>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    const scoped = byKey.get(key) ?? {};
-    if (row.storeId === canonicalStoreId) scoped.canonical = row;
-    else if (row.storeId === uberStoreId) scoped.uber = row;
-    else if (row.storeId === 'default') scoped.default = row;
-    byKey.set(key, scoped);
-  }
-  return byKey;
-};
-
-const restoredItemIds = (
-  events: Array<{ payload: unknown }>,
-  posStoreId: string,
-): Set<string> =>
-  new Set(
-    events.flatMap((event) => {
-      const payload = event.payload as {
-        posStoreId?: unknown;
-        menuItemStableId?: unknown;
-      } | null;
-      return payload?.posStoreId === posStoreId &&
-        typeof payload.menuItemStableId === 'string'
-        ? [payload.menuItemStableId]
-        : [];
-    }),
-  );
-
 /** Prisma rows are translated here; the application boundary only sees stable menu DTOs. */
 @Injectable()
 export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepositoryPort {
@@ -66,13 +25,10 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
   ) {}
 
   async loadPublishSnapshot(
-    posStoreId: string,
+    storeStableId: string,
     uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null> {
-    const storeId = posStoreId;
-    const configStoreIds = Array.from(
-      new Set([posStoreId, uberStoreId, 'default']),
-    );
+    const storeId = storeStableId;
     const [
       mapping,
       storeConfig,
@@ -83,17 +39,16 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       rawOptionConfigs,
       rawGroupConfigs,
       rawCategoryConfigs,
-      restoreEvents,
     ] = await Promise.all([
       this.prisma.uberStoreMapping.findFirst({
         where: {
           uberStoreId,
-          posExternalStoreId: posStoreId,
+          posExternalStoreId: storeStableId,
           isProvisioned: true,
         },
         select: { uberStoreId: true },
       }),
-      this.storeConfig.getStoreConfig(),
+      this.storeConfig.getStoreConfig(storeStableId),
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null, isActive: true },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
@@ -147,7 +102,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
       }),
       this.prisma.uberItemChannelConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           menuItemStableId: true,
@@ -159,7 +114,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
       }),
       this.prisma.uberOptionItemConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           optionChoiceStableId: true,
@@ -170,7 +125,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
       }),
       this.prisma.uberModifierGroupConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           templateGroupStableId: true,
@@ -181,19 +136,12 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
       }),
       this.prisma.uberCategoryConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           menuCategoryStableId: true,
           displayName: true,
         },
-      }),
-      this.prisma.opsEvent.findMany({
-        where: {
-          eventName: 'ubereats_menu_price_restored',
-          source: 'ubereats',
-        },
-        select: { payload: true },
       }),
     ]);
     if (!mapping) return null;
@@ -221,64 +169,23 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       });
     }
     const taxRate = Number((salesTaxRate * 100).toFixed(4));
-    const restoredItems = restoredItemIds(restoreEvents, posStoreId);
-
-    const itemScopes = groupScopedRows(
-      rawItemConfigs,
-      posStoreId,
-      uberStoreId,
-      (config) => config.menuItemStableId,
-    );
     const itemConfig = new Map(
-      Array.from(itemScopes.entries()).flatMap(([stableId, scoped]) => {
-        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-        if (!base) return [];
-        const priceCents = scoped.canonical
-          ? scoped.canonical.priceCents != null || restoredItems.has(stableId)
-            ? scoped.canonical.priceCents
-            : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null)
-          : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null);
-        return [[stableId, { ...base, priceCents }] as const];
-      }),
+      rawItemConfigs.map((config) => [config.menuItemStableId, config] as const),
     );
     const optionConfig = new Map(
-      Array.from(
-        groupScopedRows(
-          rawOptionConfigs,
-          posStoreId,
-          uberStoreId,
-          (config) => config.optionChoiceStableId,
-        ).entries(),
-      ).flatMap(([stableId, scoped]) => {
-        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-        return base ? ([[stableId, base]] as const) : [];
-      }),
+      rawOptionConfigs.map(
+        (config) => [config.optionChoiceStableId, config] as const,
+      ),
     );
     const groupConfig = new Map(
-      Array.from(
-        groupScopedRows(
-          rawGroupConfigs,
-          posStoreId,
-          uberStoreId,
-          (config) => config.templateGroupStableId,
-        ).entries(),
-      ).flatMap(([stableId, scoped]) => {
-        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-        return base ? ([[stableId, base]] as const) : [];
-      }),
+      rawGroupConfigs.map(
+        (config) => [config.templateGroupStableId, config] as const,
+      ),
     );
     const categoryConfig = new Map(
-      Array.from(
-        groupScopedRows(
-          rawCategoryConfigs,
-          posStoreId,
-          uberStoreId,
-          (config) => config.menuCategoryStableId,
-        ).entries(),
-      ).flatMap(([stableId, scoped]) => {
-        const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-        return base ? ([[stableId, base]] as const) : [];
-      }),
+      rawCategoryConfigs.map(
+        (config) => [config.menuCategoryStableId, config] as const,
+      ),
     );
     const categoryById = new Map(
       categories.map((category) => [category.id, category]),

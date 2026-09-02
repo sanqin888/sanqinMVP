@@ -8,5 +8,5 @@ export type UberStoreConfigSnapshot = {
 };
 
 export interface UberStoreConfigQueryPort {
-  getStoreConfig(): Promise<UberStoreConfigSnapshot>;
+  getStoreConfig(storeStableId: string): Promise<UberStoreConfigSnapshot>;
 }

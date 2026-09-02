@@ -11,10 +11,7 @@ import {
 } from '@nestjs/common';
 import { UberEatsExceptionFilter } from './ubereats-exception.filter';
 
-import {
-  OptionalResourceIdPipe,
-  ResourceIdPipe,
-} from './pipes/resource-id.pipe';
+import { ResourceIdPipe } from './pipes/resource-id.pipe';
 import {
   UberAdminWrite,
   UberMfaAdminWrite,
@@ -74,7 +71,7 @@ export class UberEatsMenuController {
   ) {}
   @Get('menu/channel/items')
   async listItemChannelConfigs(
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     return presentMenuList(
       await this.configQueries.listItemChannelConfigs(storeId),
@@ -84,7 +81,7 @@ export class UberEatsMenuController {
 
   @Get('menu/published/items')
   async listPublishedMenuItems(
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     return presentMenuList(
       await this.configQueries.listPublishedMenuItems(storeId),
@@ -97,7 +94,7 @@ export class UberEatsMenuController {
   async upsertItemChannelConfig(
     @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: UpsertUberPriceBookItemDto,
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     await this.itemConfigUpserts.execute({
       storeId,
@@ -113,7 +110,7 @@ export class UberEatsMenuController {
 
   @Get('menu/channel/options')
   async listOptionChannelConfigs(
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     return presentMenuList(
       await this.configQueries.listOptionItemConfigs(storeId),
@@ -126,7 +123,7 @@ export class UberEatsMenuController {
   async upsertOptionChannelConfig(
     @Param('stableId', ResourceIdPipe) stableId: string,
     @Body() dto: UpsertUberOptionItemConfigDto,
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     await this.optionConfigUpserts.execute({
       storeId,
@@ -142,7 +139,7 @@ export class UberEatsMenuController {
 
   @Get('menu/draft')
   async getMenuDraft(
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     return presentMenuDraft(await this.draftReader.execute(storeId));
   }
@@ -179,14 +176,14 @@ export class UberEatsMenuController {
 
   @Get('menu/draft/diff')
   async getMenuDraftDiff(
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     return presentMenuDiff(await this.draftDiffs.execute(storeId));
   }
 
   @Get('menu/upstream')
   async retrieveAndReconcileMenu(
-    @Query('storeId', OptionalResourceIdPipe) storeId?: string,
+    @Query('storeId', ResourceIdPipe) storeId: string,
   ) {
     return presentMenuReconciliation(await this.upstreamMenus.execute(storeId));
   }

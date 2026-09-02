@@ -13,7 +13,7 @@ import {
   fingerprintUberMenuConfigState,
   type UberMenuConfigFingerprintValue,
 } from '../../domain/menu/uber-menu-config-import-fingerprint';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 
 type Row = Record<string, unknown>;
 type MenuDb = PrismaService | Prisma.TransactionClient;
@@ -233,7 +233,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
     });
   }
   private async canonicalStoreId(db: MenuDb, storeId: string) {
-    const requestedStoreId = normalizeUberStoreId(storeId);
+    const requestedStoreId = requireUberStoreId(storeId);
     const mapping = await db.uberStoreMapping.findFirst({
       where: {
         isProvisioned: true,

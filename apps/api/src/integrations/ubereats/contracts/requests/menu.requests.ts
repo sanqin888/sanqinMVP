@@ -92,12 +92,11 @@ export class UpdateUberDraftItemDto {
   @IsInt()
   sortOrder?: number;
 
-  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeId!: string;
 }
 
 export class UpdateUberDraftGroupDto {
@@ -126,12 +125,11 @@ export class UpdateUberDraftGroupDto {
   @IsInt()
   sortOrder?: number;
 
-  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeId!: string;
 }
 
 export class UpdateUberDraftOptionDto {
@@ -157,22 +155,20 @@ export class UpdateUberDraftOptionDto {
   @IsInt()
   sortOrder?: number;
 
-  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeId!: string;
 }
 
 export class PublishUberMenuDto {
-  /** Internal/POS store id and cloud print-task room id; never an Uber store id. */
-  @IsOptional()
+  /** Explicit local store reference resolved to SanQ storeStableId before persistence. */
   @IsString()
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeId!: string;
 
   @IsOptional()
   @IsBoolean()
