@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { isStaffRouteActive, type StaffNavigationMatch } from './navigation';
 
 type AccountingShellProps = {
@@ -103,9 +105,14 @@ function AccountingBrand({ locale }: { locale: 'zh' | 'en' }) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#87362E] text-sm font-bold tracking-wide text-white shadow-sm">
-        SQ
-      </div>
+      <Image
+        src="/images/sanq-logo-omega.svg"
+        alt="SanQ"
+        width={48}
+        height={48}
+        className="size-12 shrink-0 object-contain"
+        priority
+      />
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-slate-950">
           {isZh ? '三秦财务' : 'SanQ Accounting'}
@@ -176,8 +183,9 @@ export function AccountingShell({ children, locale }: AccountingShellProps) {
     <div data-staff-shell="accounting" className="min-h-screen bg-slate-50 text-slate-950">
       <div className="min-h-screen lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
         <aside className="hidden border-r border-slate-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col">
-          <div className="border-b border-slate-100 p-5">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5">
             <AccountingBrand locale={locale} />
+            <LocaleSwitcher locale={locale} />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
             <DesktopNavigation locale={locale} pathname={pathname} />
@@ -194,8 +202,9 @@ export function AccountingShell({ children, locale }: AccountingShellProps) {
         </aside>
 
         <div className="min-w-0">
-          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+          <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
             <AccountingBrand locale={locale} />
+            <LocaleSwitcher locale={locale} />
           </header>
 
           <main className="min-w-0 px-4 py-5 pb-28 sm:px-6 sm:py-6 lg:px-8 lg:py-8 lg:pb-8">
