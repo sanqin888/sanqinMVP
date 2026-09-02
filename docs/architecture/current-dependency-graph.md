@@ -106,15 +106,22 @@ pair fails CI.
   pause reconciliation. The public `/public/store-status` route keeps its existing
   deployment-store behavior but resolves that identity at the transport boundary.
   The timed auto-resume compare-and-set remains inside the Brand/Store writer so
-  an outdated expiry task cannot clear a newer pause; a non-configured store CAS
-  updates only that StoreConfig and does not refresh the singleton BusinessConfig
-  compatibility copy. POS is architecture-gated against regressing to Prisma
+  an outdated expiry task cannot clear a newer pause; each store CAS updates only
+  its canonical StoreConfig because the former singleton BusinessConfig mirror has
+  been fully removed. POS is architecture-gated against regressing to Prisma
   configuration delegates or implicit store selection.
 - POS Orders and Daily Summary browser timezone context now comes from the guarded
   `/pos/store-context` adapter. `PosDeviceGuard` supplies the authenticated device
   `storeStableId`, and the adapter requests that exact Store snapshot through
   `BRAND_STORE_CONFIG_READER`; the POS browser no longer uses the implicit
   `/staff/store/config` fallback for its own store context.
+- Orders historical NULL-store compatibility is contracted in the current batch after
+  direct production verification found `Order.storeId IS NULL = 0`. Store-scoped Orders
+  and scheduled queries now match only the explicit canonical `storeStableId`; scheduled
+  preparation no longer admits a NULL store row. Accepted, reprint, and amendment print
+  dispatch now fail closed with a structured missing-store error instead of routing an
+  unscoped order to `resolveConfiguredStoreStableId()`. Architecture scanning registers
+  the affected Orders paths and rejects those NULL/configured-store fallbacks returning.
 - Admin Business compatibility routes now follow the owner boundaries for both reads
   and writes. Canonical staff Web Store consumers require an explicit `storeStableId`
   and use `/staff/stores/:storeStableId/*` adapters backed by
@@ -124,9 +131,8 @@ pair fails CI.
   Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
   `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
   now writes only canonical `BrandConfig`/`StoreConfig` rows. Mirror-off production
-  verification is complete, the Prisma `BusinessConfig` model is removed, and the
-  fail-closed contraction migration is staged to drop the remaining physical table,
-  trigger, and function after repeating parity/dependency checks under locks.
+  verification and the fail-closed destructive contraction are complete: the Prisma
+  `BusinessConfig` model, physical table, sync trigger, and sync function are gone.
 - Uber menu schedule/tax and store-status source reads now cross the Brand/Store
   boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
   sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
@@ -213,16 +219,16 @@ pair fails CI.
   change/restore, POS policy load, Web pure-points order plus exact refund reversal,
   public membership rules, unrelated Store write/restore, database metadata, and the
   relevant error logs.
-- `brand-store.business-config.v1` has passed its application cutover and direct production
-  proof. On 2026-09-02, an Admin Brand exchange-rate change/restore and POS pause/resume
-  advanced canonical `BrandConfig`/`StoreConfig` timestamps while `BusinessConfig.updatedAt`
-  remained unchanged; the final 29 overlapping fields returned to zero-diff. The separately
-  authorized destructive contraction is now staged: Prisma no longer declares
-  `BusinessConfig`, and `20260902044000_contract_brand_store_business_config` locks the
-  legacy/canonical rows, rechecks parity plus expected trigger/function/dependency shape,
-  then drops trigger → function → table without `CASCADE` and verifies canonical rows remain.
-  The compatibility entry stays active only until that migration is deployed and its
-  post-deploy metadata/behavior checks pass.
+- `brand-store.business-config.v1` is **closed**. The application cutover and mirror-off
+  production proof completed first, then migration
+  `20260902044000_contract_brand_store_business_config` rechecked the 29 overlapping fields,
+  expected trigger/function binding, row counts, and database dependencies under locks before
+  dropping trigger → function → table without `CASCADE`. Post-deployment verification on
+  2026-09-02 confirmed `BusinessConfig`, `BusinessConfig_sync_canonical_config`, and
+  `syncBusinessConfigToCanonicalConfig()` are absent while `BrandConfig`, the configured
+  Store, and `StoreConfig` remain intact. An Admin Brand PATCH persisted the new canonical
+  exchange rate `5.2`; POS pause/resume both returned 200, Uber status sync succeeded in both
+  directions, final StoreConfig state is open, and API/worker error scans were clean.
 
 ## Carried debt outside this closeout
 
@@ -233,7 +239,7 @@ pair fails CI.
   the architecture scanner. The canonical clients continue to require the strict
   global envelope.
 - Payments/Clover legacy paths remain frozen by their compatibility entries.
-- Brand/Store configuration and implicit default-store identity are Phase 2 work.
+- Brand/Store configuration persistence contraction is complete; implicit/default-store identity remains the primary Phase 2 Brand/Store work.
 
 ## Reading the graph
 

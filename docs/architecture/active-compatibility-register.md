@@ -11,8 +11,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `brand-store.business-config.v1` | active | BusinessConfig → BrandConfig + StoreConfig; application runtime is canonical, mirror-off production verification passed, and the Prisma model is now removed with a fail-closed destructive migration staged | Deploy `20260902044000_contract_brand_store_business_config`; its locked preflight must re-confirm one legacy row, 29-field zero-diff, expected trigger/function binding, and zero unexpected dependencies; post-deploy confirm table/trigger/function are absent and canonical Admin/POS behavior remains healthy, then move this entry to closed | Before Phase 2 exit |
-| `brand-store.default-store-identity.v1` | active | implicit `default` store → explicit `storeStableId`; canonical POS Orders/StoreStatus/Admin Store contexts are explicit, while the configured original store temporarily reads historical `Order.storeId=NULL` rows and singular staff routes remain stale-bundle compatibility | Default/NULL rows backfilled; implicit resolution metric zero; schema default and fallback routes removed after observation | Before Phase 2 exit |
+| `brand-store.default-store-identity.v1` | active | implicit `default`/configured fallback → explicit `storeStableId`; production has `Order.storeId IS NULL = 0` and zero `storeId='default'` rows across all eight Uber defaulted tables; the current first batch removes Orders historical NULL-store query/preparation/print fallbacks, while singular staff routes and other configured/default identity debt remain | Deploy/verify the Orders NULL-store contraction; then contract singular `/staff/store/*`, audit remaining implicit resolvers, and remove eight Uber `@default("default")` schema defaults after explicit-store verification; re-run direct Admin/POS/Uber tests and zero-count queries | Before Phase 2 exit |
 | `pos-device.admin-db-id.v1` | active | Admin POS-device DB UUID contract → POS-owned `storeStableId` / `deviceStableId` management contract | New Admin Web uses zero DB UUID fields; stale-browser UUID resolution and no-query legacy list traffic reach zero | Before Store Operations/POS identity exit |
 | `web.api-envelope-direct-payload.v1` | active | remaining Checkout legacy browser calls → strict canonical `apiFetch`/`serverApiFetch` | POS session/login direct fetches stay at zero; remaining Checkout 6 reach zero; page-local Checkout envelope/direct-payload reader removed | Before Phase 1 exit |
 | `payments.pos-card-legacy.v1` | frozen | direct paid Order → Unified Payment Core + Terminal + finalize | Clover support blocker resolved; real device accepted; one settlement cycle reconciled; legacy calls zero | Before Phase 5B exit |
@@ -26,6 +25,7 @@ behavior while external verification remains blocked.
 
 | compat_id | Closed by | Result |
 |---|---|---|
+| `brand-store.business-config.v1` | PR #2099 + PR #2101 / `277a5276` | BusinessConfig application mirror, Prisma model, physical table, sync trigger/function were removed; post-deploy Admin persisted exchange rate 5.2, POS pause/resume and Uber store-status sync succeeded, canonical rows remained healthy, and error scans were clean |
 | `orders.order-item-components.v1` | PR #2004 / `b8413cd7` | Production dry-run found zero actionable rows; planner/CLI and legacy read reconstruction were removed |
 
 ## Candidate review queue

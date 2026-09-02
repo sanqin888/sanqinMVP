@@ -15,37 +15,6 @@
   ],
   "active": [
     {
-      "compat_id": "brand-store.business-config.v1",
-      "status": "active",
-      "old_owner": "BusinessConfig single-store compatibility model plus its one-way BusinessConfig-to-canonical trigger",
-      "new_owner": "BrandConfig plus per-store StoreConfig behind the Brand/Store reader/writer boundary; Benefits loyalty policy is tracked separately",
-      "dual_write_or_read": [
-        "Orders delivery pricing, sales tax, store coordinates, Uber Direct enablement, and store-local timezone reads use BRAND_STORE_CONFIG_READER; Orders no longer reads or creates BusinessConfig",
-        "POS StoreStatus reads and pause/resume writes now use BRAND_STORE_CONFIG_READER/WRITER. Timed auto-resume compare-and-set persistence is owned by the Brand/Store writer, so POS no longer reads or writes BusinessConfig directly while preserving the existing race protection",
-        "Admin Business compatibility reads use BRAND_STORE_CONFIG_READER and Brand/Store writes use BRAND_STORE_CONFIG_WRITER; Admin no longer writes BusinessConfig, BrandConfig, or StoreConfig through Prisma directly. Staff Web consumers use the Brand/Store-owned /staff/brand and /staff/store contracts instead of /admin/business/*, while the legacy routes remain only as compatibility adapters. The Brand/Store owner writer now persists only canonical BrandConfig/StoreConfig rows and no longer refreshes BusinessConfig",
-        "Benefits Loyalty is fully contracted out of BrandConfig/BusinessConfig persistence; the legacy Admin Business rollback surface rejects Loyalty keys and directs callers to the Benefits-owned endpoint instead of delegating them into Brand/Store persistence",
-        "Uber menu schedule/tax and store-status source reads use an Uber application-owned store-config query port wired only in ubereats.module.ts to BRAND_STORE_CONFIG_READER; Uber production code no longer reads or creates BusinessConfig, and active admin/source labels now identify StoreConfig as the canonical source",
-        "The application mirror is stopped and production verification on 2026-09-02 proved canonical Admin/POS writes advance BrandConfig/StoreConfig while BusinessConfig.updatedAt remains unchanged; the separately authorized destructive migration is now staged to remove the physical BusinessConfig row, trigger, and function"
-      ],
-      "parity_metric": "Production verification on 2026-09-02 actively changed/restored BrandConfig exchange rate and POS pause/resume: BusinessConfig.updatedAt stayed at 2026-09-02T04:00:05.881Z while BrandConfig/StoreConfig advanced, and the final 29 overlapping fields returned to zero-diff. The contraction migration repeats row-count, 29-field parity, expected trigger/function binding, and dependency checks under locks immediately before destructive DDL",
-      "rollback": "Before the destructive migration is deployed, the physical legacy table/trigger remain and the migration can simply be withheld. After DROP TABLE is applied, use forward-fix only: do not recreate BusinessConfig or restore application mirroring; canonical BrandConfig/StoreConfig remain the source of truth",
-      "exit_criteria": "Application runtime has zero BusinessConfig Prisma delegates; direct production mirror-off verification is clean; the authorized migration removes BusinessConfig, BusinessConfig_sync_canonical_config, and syncBusinessConfigToCanonicalConfig() without CASCADE and confirms canonical rows remain; after deployment verification this compatibility entry can move to closed",
-      "remove_pr": "refactor/remove-business-config-persistence: remove the Prisma model and deploy apps/api/prisma/migrations/20260902044000_contract_brand_store_business_config/migration.sql, then perform post-deploy metadata/behavior verification",
-      "deadline": "Before Phase 2 Brand/Store exit",
-      "evidence": [
-        "apps/api/prisma/schema.prisma",
-        "apps/api/prisma/migrations/20260902044000_contract_brand_store_business_config/migration.sql",
-        "apps/api/src/store/brand-store-config.reader.ts",
-        "apps/api/src/store/brand-store-config.writer.spec.ts",
-        "apps/api/src/pos/pos-store-status.service.ts",
-        "apps/api/src/pos/pos-connectivity-watchdog.service.spec.ts",
-        "apps/api/src/admin/business/admin-business.service.ts",
-        "tools/architecture/context-baseline.json",
-        "tools/architecture/scan-architecture.mjs",
-        "SanQ full-site modularization audit section 3.3 and 6.2"
-      ]
-    },
-    {
       "compat_id": "brand-store.default-store-identity.v1",
       "status": "active",
       "old_owner": "Implicit literal default store identity in Uber channel tables, BusinessHour/Holiday persistence defaults, and single-store helpers",
@@ -54,13 +23,13 @@
         "Staff Brand/Store schedule reads and writes plus StoreStatus now pass storeStableId through STORE_SCHEDULE_READER/WRITER and resolve storeDbId only inside the Store Prisma adapter",
         "BusinessHour and Holiday no longer carry hard-coded store DB UUID defaults in Prisma; the store-scope migration keeps the physical storeId column, exposes it as storeDbId in Prisma, and changes BusinessHour uniqueness to storeDbId + weekday",
         "Authenticated POS Orders and Daily Summary browser timezone context now comes from /pos/store-context: PosDeviceGuard supplies the authenticated device storeStableId and the POS adapter reads that exact Store snapshot through BRAND_STORE_CONFIG_READER instead of falling back to /staff/store/config",
-        "Authenticated POS order creation, recent/board reads, per-order management/printing/status actions, scheduled-order timing/manual preparation, and managed refund entry points now carry the PosDeviceGuard storeStableId through store-scoped Orders boundaries; only the configured original store temporarily includes historical Order.storeId=NULL rows under this compatibility ID, while every other store matches only its own canonical storeStableId",
-        "Authenticated POS store-status reads, pause/resume writes, and timed-pause compare-and-set reconciliation now carry PosDeviceGuard storeStableId through the Brand/Store reader/writer boundary. The configured-store connectivity watchdog resolves its deployment store once, scopes ACTIVE PosDevice heartbeats to that Store relation, and passes the same explicit storeStableId through StoreStatus and pause reconciliation instead of relying on owner-internal fallback selection. Non-configured StoreConfig pause/resume writes stay out of the singleton BusinessConfig compatibility copy",
+        "Authenticated POS order creation, recent/board reads, per-order management/printing/status actions, scheduled-order timing/manual preparation, and managed refund entry points carry the PosDeviceGuard storeStableId through store-scoped Orders boundaries. The first NULL-store contraction batch is now staged: store-scoped Orders and scheduling queries match only canonical storeId, scheduled preparation no longer accepts storeId IS NULL, and accepted/reprint/amendment print dispatch fails closed instead of guessing the configured store when order.storeId is missing; production Order.storeId IS NULL was verified as zero before this contraction",
+        "Authenticated POS store-status reads, pause/resume writes, and timed-pause compare-and-set reconciliation now carry PosDeviceGuard storeStableId through the Brand/Store reader/writer boundary. The configured-store connectivity watchdog resolves its deployment store once, scopes ACTIVE PosDevice heartbeats to that Store relation, and passes the same explicit storeStableId through StoreStatus and pause reconciliation instead of relying on owner-internal fallback selection. StoreConfig pause/resume persistence is canonical-only because the former singleton BusinessConfig compatibility persistence has been fully contracted",
         "Canonical Admin Web Store config, hours, and holidays calls now require storeStableId and use only /staff/stores/:storeStableId/*; the selector establishes ?store= from the Store directory before Store settings load, while legacy /staff/store/* routes remain isolated as an annotated stale-bundle compatibility adapter",
-        "Uber channel configuration rows still default storeId to the literal default identity, and frozen Uber menu schedule readers still require their later scoped cutover",
+        "Eight Uber channel/ops persistence models still declare storeId @default(\"default\") even though production rows using the literal default identity were verified as zero across all eight tables on 2026-09-02; remaining Uber readers/writers still need an explicit-store contraction audit before those schema defaults are removed",
         "Other existing rows and callers may still omit an explicit store identity"
       ],
-      "parity_metric": "Count of rows using the default literal plus Order rows with storeId IS NULL, together with RequestIdInterceptor traffic to /api/v1/staff/store/config, /hours, and /holidays and other implicit-store fallback paths; all must reach zero before contraction",
+      "parity_metric": "Readiness check on 2026-09-02: Order rows with storeId IS NULL = 0; rows with storeId='default' = 0 across UberItemChannelConfig, UberCategoryConfig, UberModifierGroupConfig, UberOptionItemConfig, UberOptionChildGroupBinding, UberMenuPublishVersion, UberReconciliationReport, and UberOpsTicket; no real /api/v1/staff/store/* request appeared after deployment while canonical /api/v1/staff/stores/4750_Yonge_Street/* reads/writes returned 200. Remaining exit work is code/schema contraction of the now-unused fallbacks/defaults plus direct regression verification, not an organic-traffic waiting period",
       "rollback": "Retain the old nullable/default columns during expand-backfill-cutover; do not reinterpret historical IDs",
       "exit_criteria": "All rows are backfilled, callers pass storeStableId, schema defaults and fallback helpers are removed",
       "remove_pr": "Phase 2 store identity contraction PR",
@@ -82,6 +51,9 @@
         "apps/api/src/orders/orders.service.ts",
         "apps/api/src/pos/legacy-pos-orders.controller.ts",
         "apps/api/src/orders/order-scheduling-query.service.ts",
+        "apps/api/src/orders/order-preparation.service.ts",
+        "apps/api/src/orders/processors/fulfillment.processor.ts",
+        "apps/api/src/orders/processors/fulfillment.processor.spec.ts",
         "apps/api/src/admin/business/staff-brand-store.controller.ts",
         "apps/web/src/lib/api/pos-session.ts",
         "apps/web/src/lib/api/brand-store.ts",
@@ -212,6 +184,31 @@
     }
   ],
   "closed": [
+    {
+      "compat_id": "brand-store.business-config.v1",
+      "status": "closed",
+      "old_owner": "BusinessConfig single-store compatibility model plus its one-way BusinessConfig-to-canonical trigger",
+      "new_owner": "BrandConfig plus per-store StoreConfig behind the Brand/Store reader/writer boundary; Benefits loyalty policy is owned separately by LoyaltyProgramPolicy",
+      "dual_write_or_read": "Removed. Application runtime uses only canonical BrandConfig/StoreConfig persistence; the BusinessConfig Prisma model, physical table, BusinessConfig_sync_canonical_config trigger, and syncBusinessConfigToCanonicalConfig() function are all gone.",
+      "parity_metric": "Before destructive contraction, direct production verification proved the application mirror was inert and the final 29 overlapping Brand/Store fields were zero-diff. Migration 20260902044000_contract_brand_store_business_config rechecked row counts, all 29 fields, trigger/function binding, and database dependencies under locks before dropping legacy persistence. Post-deployment verification on 2026-09-02 confirmed the migration applied exactly once, BusinessConfig/trigger/function are absent, BrandConfig/Store/StoreConfig canonical rows remain, Admin PATCH /api/v1/staff/brand/config returned 200 and persisted wechatAlipayExchangeRate=5.2, POS pause/resume both returned 200 with final isTemporarilyClosed=false, both Uber store-status syncs succeeded, and API/worker error scans were clean.",
+      "rollback": "Forward-fix only after destructive contraction. Do not recreate BusinessConfig, its sync trigger/function, or an application mirror; BrandConfig/StoreConfig are the canonical persistence owners.",
+      "exit_criteria": "Completed: runtime BusinessConfig delegates are zero, the Prisma model and physical legacy persistence are removed, canonical rows survived migration, and direct Admin/POS/Uber production behavior remains healthy after deletion.",
+      "remove_pr": "PR #2101 / merge 277a5276; migration 20260902044000_contract_brand_store_business_config",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/api/prisma/schema.prisma",
+        "apps/api/prisma/migrations/20260902044000_contract_brand_store_business_config/migration.sql",
+        "apps/api/src/store/brand-store-config.reader.ts",
+        "apps/api/src/store/brand-store-config.writer.spec.ts",
+        "apps/api/src/pos/pos-store-status.service.ts",
+        "apps/api/src/admin/business/admin-business.service.ts",
+        "tools/architecture/context-baseline.json",
+        "tools/architecture/scan-architecture.mjs",
+        "PR #2099 application mirror contraction",
+        "PR #2101 destructive persistence contraction",
+        "production verification 2026-09-02 01:08-01:12 America/Toronto"
+      ]
+    },
     {
       "compat_id": "benefits.business-config-loyalty-policy.v1",
       "status": "closed",

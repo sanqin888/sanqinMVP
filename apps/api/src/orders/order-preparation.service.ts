@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveConfiguredStoreStableId } from '../store/public-api';
 import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
@@ -86,8 +85,6 @@ export class OrderPreparationService {
     storeStableId: string,
     now = new Date(),
   ): Promise<OrderPreparationActivationResult> {
-    const allowLegacyNullStore =
-      storeStableId.trim() === resolveConfiguredStoreStableId();
     try {
       return await this.prisma.$transaction(async (tx) => {
         const rows = await tx.$queryRaw<LockedOrder[]>`
@@ -102,10 +99,7 @@ export class OrderPreparationService {
             "scheduleActivatedAt"
           FROM "Order"
           WHERE "orderStableId" = ${orderStableId}
-            AND (
-              "storeId" = ${storeStableId.trim()}
-              OR (${allowLegacyNullStore} AND "storeId" IS NULL)
-            )
+            AND "storeId" = ${storeStableId.trim()}
           FOR UPDATE
         `;
         const order = rows[0];

@@ -480,6 +480,15 @@ if (brandStoreCanonicalConfigOwnership) {
   const ordersHttpCompositionModule = toPosix(
     authenticatedPosStoreContext?.ordersHttpCompositionModule ?? '',
   );
+  const ordersStoreScopeService = toPosix(
+    authenticatedPosStoreContext?.ordersStoreScopeService ?? '',
+  );
+  const ordersSchedulingQuery = toPosix(
+    authenticatedPosStoreContext?.ordersSchedulingQuery ?? '',
+  );
+  const ordersPreparation = toPosix(
+    authenticatedPosStoreContext?.ordersPreparation ?? '',
+  );
   const ordersFulfillmentProcessor = toPosix(
     authenticatedPosStoreContext?.ordersFulfillmentProcessor ?? '',
   );
@@ -854,6 +863,9 @@ if (brandStoreCanonicalConfigOwnership) {
       ordersTransportModule,
       ordersTransportPublicApi,
       ordersHttpCompositionModule,
+      ordersStoreScopeService,
+      ordersSchedulingQuery,
+      ordersPreparation,
       ordersFulfillmentProcessor,
       posPrintDispatchListener,
       posStoreContextCompositionModule,
@@ -1058,6 +1070,56 @@ if (brandStoreCanonicalConfigOwnership) {
       }
     }
 
+    const ordersStoreScopePath = join(
+      REPOSITORY_ROOT,
+      ordersStoreScopeService,
+    );
+    if (ordersStoreScopeService && existsSync(ordersStoreScopePath)) {
+      const source = readFileSync(ordersStoreScopePath, 'utf8');
+      if (
+        source.includes('storeId: null') ||
+        source.includes('@compat brand-store.default-store-identity.v1')
+      ) {
+        failures.push(
+          `Orders store-scoped queries must not reintroduce historical NULL-store compatibility: ${ordersStoreScopeService}`,
+        );
+      }
+    }
+
+    const ordersSchedulingQueryPath = join(
+      REPOSITORY_ROOT,
+      ordersSchedulingQuery,
+    );
+    if (ordersSchedulingQuery && existsSync(ordersSchedulingQueryPath)) {
+      const source = readFileSync(ordersSchedulingQueryPath, 'utf8');
+      if (
+        source.includes('storeId: null') ||
+        source.includes('resolveConfiguredStoreStableId') ||
+        source.includes('@compat brand-store.default-store-identity.v1')
+      ) {
+        failures.push(
+          `Orders scheduled queries must require the explicit storeStableId without historical NULL-store fallback: ${ordersSchedulingQuery}`,
+        );
+      }
+    }
+
+    const ordersPreparationPath = join(
+      REPOSITORY_ROOT,
+      ordersPreparation,
+    );
+    if (ordersPreparation && existsSync(ordersPreparationPath)) {
+      const source = readFileSync(ordersPreparationPath, 'utf8');
+      if (
+        source.includes('allowLegacyNullStore') ||
+        source.includes('resolveConfiguredStoreStableId') ||
+        source.includes('"storeId" IS NULL')
+      ) {
+        failures.push(
+          `Orders preparation must match the explicit storeStableId and must not activate historical NULL-store rows: ${ordersPreparation}`,
+        );
+      }
+    }
+
     const ordersFulfillmentPath = join(
       REPOSITORY_ROOT,
       ordersFulfillmentProcessor,
@@ -1071,6 +1133,16 @@ if (brandStoreCanonicalConfigOwnership) {
       ) {
         failures.push(
           `Orders fulfillment must request POS print dispatch through the Orders-owned event boundary instead of importing PosGateway: ${ordersFulfillmentProcessor}`,
+        );
+      }
+      if (
+        source.includes('resolveConfiguredStoreStableId') ||
+        source.includes('reprint_legacy_store_fallback') ||
+        source.includes('process.env.STORE_ID') ||
+        /order\.storeId\s*\?\?/.test(source)
+      ) {
+        failures.push(
+          `Orders fulfillment must fail closed when canonical order.storeId is missing instead of guessing the configured/default store: ${ordersFulfillmentProcessor}`,
         );
       }
     }

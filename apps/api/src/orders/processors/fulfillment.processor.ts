@@ -26,7 +26,6 @@ import {
   OrderLabelPlanService,
   type OrderLabelPlanDto,
 } from '../order-label-plan.service';
-import { resolveConfiguredStoreStableId } from '../../store/public-api';
 import {
   POS_PRINT_JOB_DISPATCH_REQUESTED,
   type PosPrintJobDispatchRequest,
@@ -174,7 +173,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    let storeId = order.storeId;
+    const storeId = order.storeId;
     if (!storeId) {
       this.logger.error({
         event: 'accepted_print_store_missing',
@@ -182,9 +181,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         orderStableId: order.orderStableId,
         reason: 'STORE_ID_MISSING',
       });
-      // Compatibility only: orders created before store ownership was
-      // persisted still follow the deployment's controlled POS route.
-      storeId = resolveConfiguredStoreStableId();
+      return;
     }
 
     let printPayload: PrintPosPayloadDto;
@@ -285,18 +282,14 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
-    // Orders created before store mapping was persisted have a null storeId.
-    // Keep their established reprint route compatible with the configured POS.
-    const storeId = order.storeId ?? resolveConfiguredStoreStableId();
-    if (!order.storeId) {
-      this.logger.warn({
-        event: 'reprint_legacy_store_fallback',
+    const storeId = order.storeId;
+    if (!storeId) {
+      this.logger.error({
+        event: 'reprint_store_missing',
         orderStableId: payload.orderStableId,
-        storeId,
-        reason: process.env.STORE_ID
-          ? 'ORDER_STORE_ID_MISSING_USING_CONFIGURED_STORE'
-          : 'ORDER_STORE_ID_MISSING_USING_DEFAULT_STORE',
+        reason: 'STORE_ID_MISSING',
       });
+      return;
     }
     let labelPlan: OrderLabelPlanDto | undefined;
     let targets = payload.targets;
@@ -371,7 +364,16 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const storeId = order.storeId ?? resolveConfiguredStoreStableId();
+      const storeId = order.storeId;
+      if (!storeId) {
+        this.logger.error({
+          event: 'amendment_print_store_missing',
+          orderStableId: payload.orderStableId,
+          reason: 'STORE_ID_MISSING',
+        });
+        return;
+      }
+
       const reason = payload.reason.trim();
       const operatorName = payload.operatorName.trim();
       const headerNote =
