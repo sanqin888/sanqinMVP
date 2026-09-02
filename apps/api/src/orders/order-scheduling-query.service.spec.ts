@@ -76,7 +76,7 @@ describe('OrderSchedulingQueryService scheduled queue', () => {
     expect(orderFindMany).toHaveBeenCalledWith({
       where: {
         orderStableId: { in: ['scheduled-1', 'immediate-1'] },
-        OR: [{ storeId: '4750_Yonge_Street' }, { storeId: null }],
+        storeId: '4750_Yonge_Street',
       },
       select: { orderStableId: true, fulfillmentTiming: true },
     });

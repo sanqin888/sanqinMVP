@@ -1173,7 +1173,7 @@ describe('OrdersService', () => {
     }
   });
 
-  it('configured 原门店 recent 临时兼容历史 storeId=NULL 订单', async () => {
+  it('configured 原门店 recent 只查询自己的 canonical storeStableId', async () => {
     const originalStoreId = process.env.STORE_ID;
     process.env.STORE_ID = 'original-store';
     prisma.order.findMany.mockResolvedValue([]);
@@ -1183,9 +1183,7 @@ describe('OrdersService', () => {
 
       expect(prisma.order.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {
-            OR: [{ storeId: 'original-store' }, { storeId: null }],
-          },
+          where: { storeId: 'original-store' },
           take: 10,
         }),
       );

@@ -51,8 +51,10 @@ describe('FulfillmentProcessor reprint store routing', () => {
     return { processor, sendPrintJob };
   }
 
-  it('历史订单缺少 storeId 时使用配置的门店恢复收银小票打印', async () => {
-    process.env.STORE_ID = 'configured-store';
+  it('订单缺少 storeId 时拒绝猜测门店并停止重打派发', async () => {
+    const errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
     const { processor, sendPrintJob } = setup(null);
 
     await processor.handleOrderReprint({
@@ -60,19 +62,17 @@ describe('FulfillmentProcessor reprint store routing', () => {
       targets: { customer: true, kitchen: false },
     });
 
-    expect(sendPrintJob).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderId: 'order-1',
+        event: 'reprint_store_missing',
         orderStableId: 'stable-1',
-        storeId: 'configured-store',
-        data: expect.objectContaining({
-          targets: { customer: true, kitchen: false },
-        }) as unknown,
+        reason: 'STORE_ID_MISSING',
       }),
     );
+    expect(sendPrintJob).not.toHaveBeenCalled();
   });
 
-  it('新订单始终优先使用订单自身的 storeId', async () => {
+  it('新订单始终使用订单自身的 storeId', async () => {
     process.env.STORE_ID = 'configured-store';
     const { processor, sendPrintJob } = setup('order-store');
 
@@ -81,6 +81,29 @@ describe('FulfillmentProcessor reprint store routing', () => {
     expect(sendPrintJob).toHaveBeenCalledWith(
       expect.objectContaining({ storeId: 'order-store' }),
     );
+  });
+
+  it('改单打印缺少 storeId 时停止派发', async () => {
+    const errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const { processor, sendPrintJob } = setup(null);
+
+    await processor.handleOrderAmendmentPrint({
+      orderStableId: 'stable-1',
+      reason: 'test',
+      operatorName: 'staff',
+      items: [],
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'amendment_print_store_missing',
+        orderStableId: 'stable-1',
+        reason: 'STORE_ID_MISSING',
+      }),
+    );
+    expect(sendPrintJob).not.toHaveBeenCalled();
   });
 });
 
@@ -173,8 +196,7 @@ describe('FulfillmentProcessor accepted web order printing', () => {
     });
   });
 
-  it('历史订单缺少门店时记录结构化错误并使用受控配置兼容打印', async () => {
-    process.env.STORE_ID = 'configured-store';
+  it('订单缺少 storeId 时记录结构化错误并停止自动打印派发', async () => {
     const errorSpy = jest
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
@@ -189,11 +211,6 @@ describe('FulfillmentProcessor accepted web order printing', () => {
         reason: 'STORE_ID_MISSING',
       }),
     );
-    expect(sendPrintJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        storeId: 'configured-store',
-        kind: 'AUTO',
-      }),
-    );
+    expect(sendPrintJob).not.toHaveBeenCalled();
   });
 });
