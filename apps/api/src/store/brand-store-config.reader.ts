@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BrandStoreConfigUnavailableError,
@@ -155,56 +154,12 @@ export class PrismaBrandStoreConfigReader
   }
 }
 
-const BRAND_COMPATIBILITY_SELECT = {
-  brandNameZh: true,
-  brandNameEn: true,
-  siteUrl: true,
-  emailFromNameZh: true,
-  emailFromNameEn: true,
-  emailFromAddress: true,
-  smsSignature: true,
-  supportPhone: true,
-  supportEmail: true,
-  wechatAlipayExchangeRate: true,
-} as const;
-
-const STORE_COMPATIBILITY_SELECT = {
-  timezone: true,
-  isTemporarilyClosed: true,
-  temporaryCloseReason: true,
-  publicNotice: true,
-  publicNoticeEn: true,
-  deliveryBaseFeeCents: true,
-  priorityPerKmCents: true,
-  maxDeliveryRangeKm: true,
-  priorityDefaultDistanceKm: true,
-  latitude: true,
-  longitude: true,
-  addressLine1: true,
-  addressLine2: true,
-  city: true,
-  province: true,
-  postalCode: true,
-  salesTaxRate: true,
-  enableUberDirect: true,
-} as const;
-
-type StoreCompatibilitySnapshot = Pick<
-  StoreConfigSnapshot,
-  keyof typeof STORE_COMPATIBILITY_SELECT
->;
-
 @Injectable()
 export class PrismaBrandStoreConfigWriter
   implements BrandStoreConfigWriterPort, StoreDirectoryWriterPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
-  // @compat brand-store.business-config.v1
-  // Canonical BrandConfig/StoreConfig are the write targets. The complete
-  // overlapping Brand/Store snapshot is copied back to BusinessConfig while
-  // registered legacy writes can still fire the one-way compatibility trigger
-  // and replay that row into canonical storage.
   async updateConfig(
     input: BrandStoreConfigUpdateInput,
     requestedStoreStableId?: string,
@@ -216,17 +171,24 @@ export class PrismaBrandStoreConfigWriter
 
     if (!hasBrandPatch && !hasStorePatch) return;
 
-    const configuredStoreStableId = resolveConfiguredStoreStableId();
-    const storeStableId = requestedStoreStableId ?? configuredStoreStableId;
-    const hasCompatibilityPatch =
-      hasBrandPatch ||
-      (storeStableId === configuredStoreStableId &&
-        Object.keys(storePatch).some(
-          (key) => key in STORE_COMPATIBILITY_SELECT,
-        ));
+    await this.prisma.$transaction(async (tx) => {
+      let storeDbId: string | null = null;
 
-    if (!hasCompatibilityPatch) {
-      await this.prisma.$transaction(async (tx) => {
+      if (hasBrandPatch) {
+        const brand = await tx.brandConfig.findUnique({
+          where: { id: 1 },
+          select: { id: true },
+        });
+        if (!brand) {
+          throw new BrandStoreConfigUnavailableError(
+            'BrandConfig(id=1) is not provisioned',
+          );
+        }
+      }
+
+      if (hasStorePatch) {
+        const storeStableId =
+          requestedStoreStableId ?? resolveConfiguredStoreStableId();
         const store = await tx.store.findUnique({
           where: { storeStableId },
           select: { id: true, config: { select: { storeId: true } } },
@@ -241,68 +203,22 @@ export class PrismaBrandStoreConfigWriter
             `StoreConfig for ${storeStableId} is not provisioned`,
           );
         }
+        storeDbId = store.id;
+      }
+
+      if (hasBrandPatch) {
+        await tx.brandConfig.update({
+          where: { id: 1 },
+          data: brandPatch,
+        });
+      }
+
+      if (hasStorePatch && storeDbId) {
         await tx.storeConfig.update({
-          where: { storeId: store.id },
+          where: { storeId: storeDbId },
           data: storePatch,
         });
-      });
-      return;
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      const [brand, store] = await Promise.all([
-        tx.brandConfig.findUnique({
-          where: { id: 1 },
-          select: BRAND_COMPATIBILITY_SELECT,
-        }),
-        tx.store.findUnique({
-          where: { storeStableId },
-          select: {
-            id: true,
-            name: true,
-            config: { select: STORE_COMPATIBILITY_SELECT },
-          },
-        }),
-      ]);
-
-      if (!brand) {
-        throw new BrandStoreConfigUnavailableError(
-          'BrandConfig(id=1) is not provisioned',
-        );
       }
-      if (!store) {
-        throw new BrandStoreConfigUnavailableError(
-          `Configured store ${storeStableId} is not provisioned`,
-        );
-      }
-      if (!store.config) {
-        throw new BrandStoreConfigUnavailableError(
-          `StoreConfig for ${storeStableId} is not provisioned`,
-        );
-      }
-
-      const nextBrand = hasBrandPatch
-        ? await tx.brandConfig.update({
-            where: { id: 1 },
-            data: brandPatch,
-            select: BRAND_COMPATIBILITY_SELECT,
-          })
-        : brand;
-
-      const nextStore = hasStorePatch
-        ? await tx.storeConfig.update({
-            where: { storeId: store.id },
-            data: storePatch,
-            select: STORE_COMPATIBILITY_SELECT,
-          })
-        : store.config;
-
-      await this.refreshBusinessConfigCompatibility(
-        tx,
-        store.name,
-        nextBrand,
-        nextStore,
-      );
     });
   }
 
@@ -399,16 +315,10 @@ export class PrismaBrandStoreConfigWriter
     storeStableId: string,
     expectedReason: string,
   ): Promise<boolean> {
-    const configuredStoreStableId = resolveConfiguredStoreStableId();
-
     return this.prisma.$transaction(async (tx) => {
       const store = await tx.store.findUnique({
         where: { storeStableId },
-        select: {
-          id: true,
-          name: true,
-          config: { select: STORE_COMPATIBILITY_SELECT },
-        },
+        select: { id: true, config: { select: { storeId: true } } },
       });
       if (!store) {
         throw new BrandStoreConfigUnavailableError(
@@ -432,79 +342,7 @@ export class PrismaBrandStoreConfigWriter
           temporaryCloseReason: null,
         },
       });
-      if (result.count === 0) return false;
-      if (storeStableId !== configuredStoreStableId) return true;
-
-      const [brand, nextStore] = await Promise.all([
-        tx.brandConfig.findUnique({
-          where: { id: 1 },
-          select: BRAND_COMPATIBILITY_SELECT,
-        }),
-        tx.storeConfig.findUnique({
-          where: { storeId: store.id },
-          select: STORE_COMPATIBILITY_SELECT,
-        }),
-      ]);
-      if (!brand) {
-        throw new BrandStoreConfigUnavailableError(
-          'BrandConfig(id=1) is not provisioned',
-        );
-      }
-      if (!nextStore) {
-        throw new BrandStoreConfigUnavailableError(
-          `StoreConfig for ${storeStableId} is not provisioned`,
-        );
-      }
-
-      await this.refreshBusinessConfigCompatibility(
-        tx,
-        store.name,
-        brand,
-        nextStore,
-      );
-      return true;
-    });
-  }
-
-  private async refreshBusinessConfigCompatibility(
-    tx: Prisma.TransactionClient,
-    storeName: string,
-    brand: BrandConfigSnapshot,
-    store: StoreCompatibilitySnapshot,
-  ): Promise<void> {
-    await tx.businessConfig.update({
-      where: { id: 1 },
-      data: {
-        storeName,
-        timezone: store.timezone,
-        isTemporarilyClosed: store.isTemporarilyClosed,
-        temporaryCloseReason: store.temporaryCloseReason,
-        publicNotice: store.publicNotice,
-        publicNoticeEn: store.publicNoticeEn,
-        deliveryBaseFeeCents: store.deliveryBaseFeeCents,
-        priorityPerKmCents: store.priorityPerKmCents,
-        maxDeliveryRangeKm: store.maxDeliveryRangeKm,
-        priorityDefaultDistanceKm: store.priorityDefaultDistanceKm,
-        storeLatitude: store.latitude,
-        storeLongitude: store.longitude,
-        storeAddressLine1: store.addressLine1,
-        storeAddressLine2: store.addressLine2,
-        storeCity: store.city,
-        storeProvince: store.province,
-        storePostalCode: store.postalCode,
-        brandNameZh: brand.brandNameZh,
-        brandNameEn: brand.brandNameEn,
-        siteUrl: brand.siteUrl,
-        emailFromNameZh: brand.emailFromNameZh,
-        emailFromNameEn: brand.emailFromNameEn,
-        emailFromAddress: brand.emailFromAddress,
-        smsSignature: brand.smsSignature,
-        supportPhone: brand.supportPhone,
-        supportEmail: brand.supportEmail,
-        salesTaxRate: store.salesTaxRate,
-        wechatAlipayExchangeRate: brand.wechatAlipayExchangeRate,
-        enableUberDirect: store.enableUberDirect,
-      },
+      return result.count > 0;
     });
   }
 }

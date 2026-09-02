@@ -2,9 +2,9 @@
 
 Date: 2026-08-30
 Last updated: 2026-09-01
-Current local contraction baseline: `origin/dev` at `98e19e74`
-Compatibility entry: `benefits.business-config-loyalty-policy.v1`
-Status: Admin Business contraction and Phases A-C are complete. Phase D is now implemented locally across application, Prisma schema, migration, architecture gates, and docs: Loyalty reads/writes use only LoyaltyProgramPolicy; the authorized contraction migration fail-closes on three-copy drift, removes Loyalty from the BusinessConfig trigger, and drops the duplicated BrandConfig/BusinessConfig columns. Remote CI, deployment, and direct production verification remain pending.
+Current closeout baseline: `origin/dev` at `91f3d87e`
+Compatibility entry: `benefits.business-config-loyalty-policy.v1` — **closed**
+Status: **Phase D production contraction and direct verification are complete.** Loyalty reads/writes use only `LoyaltyProgramPolicy`; migration `20260901235900_contract_loyalty_policy_storage` is applied in production; `BrandConfig`/`BusinessConfig` no longer contain the ten Loyalty columns; the surviving BusinessConfig-to-canonical trigger contains no Loyalty propagation; targeted Admin, POS, Web pure-points/refund, public membership-rules, and unrelated Store-write verification all passed. The compatibility entry is moved from active to closed in this closeout.
 
 ## 1. Scope and current ownership
 
@@ -31,16 +31,16 @@ Current runtime consumers are already cut over:
 - LoyaltyService transaction and non-transaction policy reads use the Benefits-owned policy implementation.
 - Admin Settings no longer declares or resubmits Loyalty fields.
 
-The remaining debt is persistence and rollback compatibility, not business ownership.
+At that stage, the remaining debt was persistence and rollback compatibility rather than business ownership; Phase D has now removed that debt.
 
-## 2. Static audit: old Admin Loyalty write entry
+## 2. Historical static audit: old Admin Loyalty write entry
 
-Two Admin Business endpoints still accept the ten Loyalty fields because both delegate to `AdminBusinessService.updateConfig()`:
+Before the Admin Business contract contraction, two Admin Business endpoints accepted the ten Loyalty fields because both delegated to `AdminBusinessService.updateConfig()`:
 
 - `PATCH /admin/business/config`
 - `PUT /admin/business/temporary-close`
 
-No known Web consumer currently sends or reads Loyalty fields through either route. Staff Web consumers have now moved Brand/Store configuration and timezone reads to the Brand/Store-owned `/staff/brand/*` and `/staff/store/*` contracts; `/admin/business/*` remains a server-side compatibility adapter only.
+That Loyalty request/response ownership is now removed: stale Loyalty keys are explicitly rejected and callers are directed to `/admin/benefits/loyalty-policy`. No known Web consumer sends or reads Loyalty fields through either legacy route. Staff Web consumers use the Brand/Store-owned `/staff/brand/*` and `/staff/store/*` contracts; `/admin/business/*` remains a server-side Brand/Store compatibility adapter only.
 
 Therefore the pre-contraction target is:
 
@@ -50,23 +50,23 @@ Therefore the pre-contraction target is:
 
 The architecture scanner must keep these invariants from regressing before the actual contract contraction.
 
-## 3. Why BusinessConfig still has to stay synchronized today
+## 3. Historical reason BusinessConfig had to stay synchronized before Phase D
 
 `20260819233000_add_store_config_foundation/migration.sql` created the one-way trigger:
 
 `BusinessConfig -> syncBusinessConfigToCanonicalConfig() -> BrandConfig + StoreConfig`
 
-The trigger runs after every insert/update of singleton `BusinessConfig(id=1)`. Its BrandConfig upsert currently includes all ten Loyalty fields.
+Before Phase D, that trigger ran after every insert/update of singleton `BusinessConfig(id=1)` and its BrandConfig upsert still included all ten Loyalty fields.
 
-This creates a stale replay hazard:
+That created the stale replay hazard which justified the transitional triple-write:
 
-1. Benefits writes a new Loyalty policy to BrandConfig.
-2. If BusinessConfig keeps an older Loyalty copy, an unrelated legacy Admin Business update later fires the trigger.
-3. The trigger can replay the stale BusinessConfig Loyalty values back into BrandConfig.
+1. Benefits could write a new Loyalty policy to BrandConfig.
+2. If BusinessConfig kept an older Loyalty copy, an unrelated legacy BusinessConfig update could later fire the trigger.
+3. The trigger could replay the stale BusinessConfig Loyalty values back into BrandConfig.
 
-For that reason `PrismaLoyaltyPolicyWriter` now writes the complete next policy to LoyaltyProgramPolicy, BusinessConfig, and BrandConfig in one transaction. BusinessConfig and BrandConfig remain compatibility copies during Phase B; LoyaltyProgramPolicy is maintained as the dedicated persistence target but is not yet the runtime return source.
+Phase D removed this hazard: the trigger no longer contains Loyalty fields, `BrandConfig`/`BusinessConfig` no longer store them, and `PrismaLoyaltyPolicyWriter` now writes only `LoyaltyProgramPolicy`.
 
-## 4. Trigger Loyalty split readiness conditions
+## 4. Historical trigger Loyalty split readiness conditions
 
 Do not remove the Loyalty portion from `syncBusinessConfigToCanonicalConfig()` until all of the following are true:
 
@@ -80,9 +80,9 @@ Do not remove the Loyalty portion from `syncBusinessConfigToCanonicalConfig()` u
 
 Only then is it safe to make unrelated BusinessConfig writes incapable of changing Loyalty policy.
 
-## 5. Contract contraction PR after business-day observation
+## 5. Historical Admin contract contraction PR
 
-This is the first behavior-changing PR and does **not** need a Prisma migration.
+This was the first behavior-changing PR and did **not** need a Prisma migration. The later Phase D acceptance method was explicitly changed to targeted direct production tests rather than waiting for a business-day observation window.
 
 ### 5.1 API changes
 
@@ -212,7 +212,7 @@ The previous passive business-cycle wait is no longer a Phase D gate. Before con
 
 ### Phase D — Final Loyalty persistence contraction
 
-Implementation status: **implemented locally across application, schema, migration, architecture gates, and documentation; remote CI/deployment verification pending**.
+Implementation status: **complete in production and closed out.** PR #2095 passed GitHub Actions and was merged; the destructive contraction migration was applied successfully in production; direct targeted verification completed on 2026-09-01 America/Toronto.
 
 The user-approved Phase D target combines the old D/E/F/G end state:
 
@@ -222,9 +222,9 @@ The user-approved Phase D target combines the old D/E/F/G end state:
 4. drop the ten Loyalty columns from both BrandConfig and BusinessConfig only after the replacement trigger function no longer references them;
 5. keep `LoyaltyProgramPolicy` unchanged as the sole policy persistence model;
 6. make the architecture scanner fail CI if Loyalty application code regains BrandConfig/BusinessConfig policy reads or writes;
-7. keep the compatibility-register entry active until the destructive migration is deployed and direct verification is clean.
+7. keep the compatibility-register entry active until the destructive migration is deployed and direct verification is clean, then move it to `closed` in the same closeout that makes that terminal state CI-enforced.
 
-The application, schema, and migration portions above are now implemented locally under explicit migration authorization. The migration is intentionally not applied to production from the MCP workspace; remote CI and normal deployment remain the validation/rollout path.
+The application, schema, migration, CI validation, production deployment, and direct verification are all complete. The compatibility entry is therefore closed in this follow-up; production rollback is forward-fix only after the destructive contraction.
 
 The final migration must fail closed before destructive DDL if any of the ten current values differ across `LoyaltyProgramPolicy(id=1)`, `BrandConfig(id=1)`, and `BusinessConfig(id=1)`. It must replace the trigger function before dropping either table's Loyalty columns. Do not invent values or recreate removed columns during rollback.
 
@@ -243,6 +243,17 @@ Do not wait for a natural order or a full business cycle. After deploying the co
 7. query PostgreSQL metadata and verify `syncBusinessConfigToCanonicalConfig()` contains none of the ten Loyalty field names and BrandConfig/BusinessConfig no longer expose those columns;
 8. inspect application logs around the test actions for Benefits/Admin/POS/Orders/Brand-Store errors.
 
+Observed production results on 2026-09-01 America/Toronto:
+
+- migration `20260901235900_contract_loyalty_policy_storage` applied successfully;
+- PostgreSQL metadata reported zero remaining Loyalty columns on `BrandConfig`/`BusinessConfig` and a Loyalty-free `syncBusinessConfigToCanonicalConfig()`;
+- Admin Loyalty policy was intentionally changed and restored through two `PATCH /admin/benefits/loyalty-policy` requests, both `200`; the final canonical row matches the original policy values;
+- POS loaded `GET /pos/loyalty-policy` with `200`;
+- Web created pure-points order `cawqbhc6m7hnh1zp7czbzkr0y` with `loyaltyRedeemCents=749`, `paymentTotalCents=0`, `externalCents=0`, and no `PaymentTransaction`; full refund returned `201` and the Loyalty ledger contains exact `-7,490,000` / `+7,490,000` micro-point redemption/reversal entries;
+- public membership rules loaded through `GET /public/membership/rules` with `200`;
+- Store hours were changed and restored through the canonical staff Store route with `200` while `LoyaltyProgramPolicy.updatedAt` remained unchanged after the Loyalty restore;
+- the inspected test window contained no HTTP 5xx, Prisma missing-column/schema-mismatch, or equivalent contraction errors.
+
 This direct test set replaces passive observation as the acceptance method for this contraction.
 
 ## 9. Rollback principles
@@ -255,7 +266,7 @@ This direct test set replaces passive observation as the acceptance method for t
 
 ## 10. Exit criteria
 
-`benefits.business-config-loyalty-policy.v1` can close only when all are true:
+`benefits.business-config-loyalty-policy.v1` is **closed**. All exit criteria are satisfied:
 
 - old Admin Business Loyalty request fields are gone;
 - old Admin Business Loyalty response fields are gone;
@@ -266,4 +277,4 @@ This direct test set replaces passive observation as the acceptance method for t
 - BrandConfig and BusinessConfig contain no Loyalty columns;
 - no active `BusinessConfig` Loyalty read/write/fallback remains;
 - direct post-deployment verification and pre-contraction parity evidence are clean;
-- the compatibility register and architecture scanner are updated in the same contraction closeout.
+- the compatibility register records the entry under `closed`, and the architecture scanner fails if this persistence compatibility is reactivated.

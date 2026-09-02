@@ -72,7 +72,7 @@ export function validateUberStoreTimezone(input: {
   timezoneConfirmed: boolean;
 }): string | null {
   if (input.uberTimezone && input.uberTimezone !== input.businessTimezone) {
-    return `BusinessConfig.timezone（${input.businessTimezone}）与 Uber 门店时区（${input.uberTimezone}）不一致，已阻止正式发布。`;
+    return `StoreConfig.timezone（${input.businessTimezone}）与 Uber 门店时区（${input.uberTimezone}）不一致，已阻止正式发布。`;
   }
   if (!input.uberTimezone && !input.timezoneConfirmed) {
     return `Uber API 未返回门店时区；请在管理页确认 Uber 门店使用 ${input.businessTimezone} 后再正式发布。`;

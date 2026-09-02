@@ -610,29 +610,14 @@ if (brandStoreCanonicalConfigOwnership) {
       'utf8',
     );
     if (
-      !writerSource.includes('@compat brand-store.business-config.v1') ||
       !/\.\$transaction\s*\(/.test(writerSource) ||
       !/tx\.brandConfig\.update\s*\(/.test(writerSource) ||
       !/tx\.storeConfig\.update\s*\(/.test(writerSource) ||
       !/tx\.storeConfig\.updateMany\s*\(/.test(writerSource) ||
-      !writerSource.includes('resumeTemporaryClosureIfMatches') ||
-      !/tx\.businessConfig\.update\s*\(/.test(writerSource)
+      !writerSource.includes('resumeTemporaryClosureIfMatches')
     ) {
       failures.push(
-        `Brand/Store writer must own canonical config writes, preserve temporary-closure compare-and-set semantics, and keep the registered compatibility copy inside one transaction: ${writerImplementation}`,
-      );
-    }
-    const legacyWriterMethods = [
-      ...writerSource.matchAll(
-        /\.\s*businessConfig\s*\.\s*([A-Za-z][A-Za-z0-9_]*)/g,
-      ),
-    ].map((match) => match[1]);
-    if (
-      legacyWriterMethods.length !== 1 ||
-      legacyWriterMethods[0] !== 'update'
-    ) {
-      failures.push(
-        `Brand/Store owner implementation must contain exactly one registered BusinessConfig compatibility update: ${writerImplementation} -> ${legacyWriterMethods.join(',') || '<none>'}`,
+        `Brand/Store writer must own canonical config writes and preserve temporary-closure compare-and-set semantics inside a transaction: ${writerImplementation}`,
       );
     }
   }
@@ -641,7 +626,6 @@ if (brandStoreCanonicalConfigOwnership) {
     const normalizedRoot = toPosix(root);
     for (const absolutePath of walk(join(REPOSITORY_ROOT, normalizedRoot))) {
       const sourcePath = repositoryPath(absolutePath);
-      if (sourcePath === writerImplementation) continue;
       const source = readFileSync(absolutePath, 'utf8');
       for (const delegate of forbiddenLegacyDelegates) {
         const delegatePattern = new RegExp(
@@ -649,7 +633,7 @@ if (brandStoreCanonicalConfigOwnership) {
         );
         if (delegatePattern.test(source)) {
           failures.push(
-            `Brand/Store owner must not read legacy Prisma delegate: ${sourcePath} -> ${delegate}`,
+            `Application runtime must not use legacy Brand/Store Prisma delegate: ${sourcePath} -> ${delegate}`,
           );
         }
       }
@@ -1274,6 +1258,21 @@ if (benefitsLoyaltyPolicyOwnership) {
       toPosix,
     ),
   );
+  const loyaltyPersistenceCompatId = 'benefits.business-config-loyalty-policy.v1';
+  const activeLoyaltyPersistenceCompat = (registry.active ?? []).find(
+    (entry) => entry.compat_id === loyaltyPersistenceCompatId,
+  );
+  const closedLoyaltyPersistenceCompat = (registry.closed ?? []).find(
+    (entry) => entry.compat_id === loyaltyPersistenceCompatId,
+  );
+  if (
+    activeLoyaltyPersistenceCompat ||
+    closedLoyaltyPersistenceCompat?.status !== 'closed'
+  ) {
+    failures.push(
+      `Benefits Loyalty persistence contraction must keep ${loyaltyPersistenceCompatId} closed after Phase D production verification`,
+    );
+  }
 
   for (const boundaryPath of [
     publicSurface,

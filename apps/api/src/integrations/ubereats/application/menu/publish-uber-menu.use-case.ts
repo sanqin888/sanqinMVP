@@ -157,7 +157,7 @@ export class PublishUberMenuUseCase {
         serviceAvailabilityTimezone: snapshot.timezone,
         taxRate: {
           percentage: snapshot.taxRate,
-          source: 'BusinessConfig.salesTaxRate',
+          source: 'StoreConfig.salesTaxRate',
           requiresAdminConfirmation: true,
           confirmed: false,
         },
