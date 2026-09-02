@@ -504,7 +504,9 @@ export class SyncUberStoreStatusUseCase {
         ? this.targetStatusPayload(target)
         : null;
       if (!payload && mapping.posExternalStoreId?.trim()) {
-        payload = await this.currentStoreStatusPayload(mapping.posExternalStoreId);
+        payload = await this.currentStoreStatusPayload(
+          mapping.posExternalStoreId,
+        );
       }
       if (!mapping.isProvisioned) {
         const result = {
@@ -518,7 +520,9 @@ export class SyncUberStoreStatusUseCase {
         await this.alerts.recordStoreStatusResult(result, payload ?? {});
         continue;
       }
-      payload ??= await this.currentStoreStatusPayload(mapping.posExternalStoreId);
+      payload ??= await this.currentStoreStatusPayload(
+        mapping.posExternalStoreId,
+      );
       const businessVersion = createHash('sha256')
         .update(JSON.stringify(payload))
         .digest('hex');

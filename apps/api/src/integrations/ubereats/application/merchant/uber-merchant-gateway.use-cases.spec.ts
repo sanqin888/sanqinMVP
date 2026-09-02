@@ -701,15 +701,13 @@ describe('Uber merchant gateway use-case boundaries', () => {
     const useCase = new SyncUberStoreStatusUseCase(
       api as never,
       {
-        listMappings: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              uberStoreId: 'uber-store-1',
-              isProvisioned: true,
-              posExternalStoreId: 'store-stable-1',
-            },
-          ]),
+        listMappings: jest.fn().mockResolvedValue([
+          {
+            uberStoreId: 'uber-store-1',
+            isProvisioned: true,
+            posExternalStoreId: 'store-stable-1',
+          },
+        ]),
       } as never,
       alerts as never,
     );
@@ -753,15 +751,13 @@ describe('Uber merchant gateway use-case boundaries', () => {
     const useCase = new SyncUberStoreStatusUseCase(
       api as never,
       {
-        listMappings: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              uberStoreId: 'uber-store-1',
-              isProvisioned: true,
-              posExternalStoreId: 'store-stable-1',
-            },
-          ]),
+        listMappings: jest.fn().mockResolvedValue([
+          {
+            uberStoreId: 'uber-store-1',
+            isProvisioned: true,
+            posExternalStoreId: 'store-stable-1',
+          },
+        ]),
       } as never,
       alerts as never,
     );
@@ -826,15 +822,13 @@ describe('Uber merchant gateway use-case boundaries', () => {
     const useCase = new SyncUberStoreStatusUseCase(
       { writeStatus: jest.fn().mockResolvedValue(rejected) },
       {
-        listMappings: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              uberStoreId: 'uber-store-1',
-              isProvisioned: true,
-              posExternalStoreId: 'store-stable-1',
-            },
-          ]),
+        listMappings: jest.fn().mockResolvedValue([
+          {
+            uberStoreId: 'uber-store-1',
+            isProvisioned: true,
+            posExternalStoreId: 'store-stable-1',
+          },
+        ]),
       } as never,
       alerts as never,
     );

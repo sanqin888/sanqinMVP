@@ -55,9 +55,7 @@ export class PrismaBrandStoreConfigReader
     return brand;
   }
 
-  async getStoreSnapshot(
-    storeStableId: string,
-  ): Promise<StoreConfigSnapshot> {
+  async getStoreSnapshot(storeStableId: string): Promise<StoreConfigSnapshot> {
     const store = await this.prisma.store.findUnique({
       where: { storeStableId },
       select: {

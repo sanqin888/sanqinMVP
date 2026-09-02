@@ -170,7 +170,9 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     }
     const taxRate = Number((salesTaxRate * 100).toFixed(4));
     const itemConfig = new Map(
-      rawItemConfigs.map((config) => [config.menuItemStableId, config] as const),
+      rawItemConfigs.map(
+        (config) => [config.menuItemStableId, config] as const,
+      ),
     );
     const optionConfig = new Map(
       rawOptionConfigs.map(

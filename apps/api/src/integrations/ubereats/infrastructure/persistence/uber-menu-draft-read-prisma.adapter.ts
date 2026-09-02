@@ -75,7 +75,8 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       },
       select: { uberStoreId: true, posExternalStoreId: true },
     });
-    const mappedStoreStableId = storeMapping?.posExternalStoreId?.trim() || null;
+    const mappedStoreStableId =
+      storeMapping?.posExternalStoreId?.trim() || null;
     const isProvisioned = Boolean(
       storeMapping?.uberStoreId && mappedStoreStableId,
     );

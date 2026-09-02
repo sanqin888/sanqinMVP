@@ -138,9 +138,7 @@ export class UberEatsMenuController {
   }
 
   @Get('menu/draft')
-  async getMenuDraft(
-    @Query('storeId', ResourceIdPipe) storeId: string,
-  ) {
+  async getMenuDraft(@Query('storeId', ResourceIdPipe) storeId: string) {
     return presentMenuDraft(await this.draftReader.execute(storeId));
   }
 
@@ -175,9 +173,7 @@ export class UberEatsMenuController {
   }
 
   @Get('menu/draft/diff')
-  async getMenuDraftDiff(
-    @Query('storeId', ResourceIdPipe) storeId: string,
-  ) {
+  async getMenuDraftDiff(@Query('storeId', ResourceIdPipe) storeId: string) {
     return presentMenuDiff(await this.draftDiffs.execute(storeId));
   }
 
