@@ -162,12 +162,13 @@ pair fails CI.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
   accounting, but its Business configuration persistence now crosses the
   Brand/Store public writer boundary. No new direct context edge is introduced.
-- Admin POS-device management now crosses the Store Operations/POS `public-api.ts`
+- Admin POS-device management crosses the Store Operations/POS `public-api.ts`
   management boundary. The former Admin Prisma device service and Prisma-generated
   status/store UUID DTO dependencies are removed, lowering Identity/Customer/Benefits
-  runtime-data direct-import debt by five. Canonical Web requests use
-  `storeStableId`/`deviceStableId`; the temporary stale-browser UUID resolver is
-  registered as `pos-device.admin-db-id.v1` and does not emit DB UUIDs back to Web.
+  runtime-data direct-import debt by five. Canonical Web requests use only
+  `storeStableId`/`deviceStableId`; `pos-device.admin-db-id.v1` is now contracted,
+  so unscoped list aliases, inbound Store/device DB UUID translation, the POS
+  compatibility port/provider, and the Brand/Store legacy DB-ID resolver are absent.
 
 ## Phase 2 Benefits loyalty policy reader/writer boundary active
 

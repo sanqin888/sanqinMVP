@@ -12,7 +12,6 @@ export {
   BRAND_STORE_CONFIG_WRITER,
   STORE_DIRECTORY_READER,
   STORE_DIRECTORY_WRITER,
-  STORE_LEGACY_DB_ID_RESOLVER,
   BrandStoreConfigUnavailableError,
   StoreStableIdAlreadyExistsError,
   type BrandConfigSnapshot,
@@ -26,7 +25,6 @@ export {
   type StoreDirectoryEntry,
   type StoreDirectoryReaderPort,
   type StoreDirectoryWriterPort,
-  type StoreLegacyDbIdResolverPort,
 } from './brand-store-config.contract';
 export {
   STORE_SCHEDULE_READER,

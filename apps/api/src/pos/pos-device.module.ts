@@ -7,7 +7,6 @@ import { PosDevicesController } from './pos-devices.controller';
 import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
 import { PosGateway } from './pos.gateway';
 import {
-  POS_DEVICE_ADMIN_COMPATIBILITY,
   POS_DEVICE_CREDENTIAL_VERIFIER,
   POS_DEVICE_MANAGEMENT,
 } from './pos-device-management.contract';
@@ -26,10 +25,6 @@ import { BrandStoreConfigModule } from '../store/public-api';
       provide: POS_DEVICE_MANAGEMENT,
       useExisting: PosDeviceService,
     },
-    {
-      provide: POS_DEVICE_ADMIN_COMPATIBILITY,
-      useExisting: PosDeviceService,
-    },
     PosDeviceGuard,
     PosGateway,
     PosCardPaymentFeatureConfig,
@@ -37,7 +32,6 @@ import { BrandStoreConfigModule } from '../store/public-api';
   exports: [
     POS_DEVICE_CREDENTIAL_VERIFIER,
     POS_DEVICE_MANAGEMENT,
-    POS_DEVICE_ADMIN_COMPATIBILITY,
     PosDeviceService,
     PosDeviceGuard,
     PosGateway,

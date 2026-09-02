@@ -50,7 +50,6 @@
         "apps/api/src/store/store-status.service.ts",
         "apps/api/src/orders/orders.controller.ts",
         "apps/api/src/orders/orders.service.ts",
-        "apps/api/src/pos/legacy-pos-orders.controller.ts",
         "apps/api/src/orders/order-scheduling-query.service.ts",
         "apps/api/src/orders/order-preparation.service.ts",
         "apps/api/src/orders/processors/fulfillment.processor.ts",
@@ -65,64 +64,6 @@
         "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
         "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
-      ]
-    },
-    {
-      "compat_id": "orders.pos-transport-routes.v1",
-      "status": "active",
-      "old_owner": "POS-specific HTTP routes mounted from OrdersController and ScheduledOrdersController under /orders/*, with Orders importing POS device transport authentication",
-      "new_owner": "Store Operations/POS-owned canonical /pos/orders/* transport calling the Orders-owned POS_ORDER_OPERATIONS public application boundary",
-      "dual_write_or_read": [
-        "Canonical POS recent/board/status/amendment/advance routes use /pos/orders/* and call POS_ORDER_OPERATIONS instead of importing OrdersService, Orders DTOs, status internals, or scheduling implementation",
-        "Canonical scheduled queue, fulfillment timing, and manual preparation routes are available under /pos/orders/*; the current Web POS scheduled rail polls /pos/orders/scheduled",
-        "Legacy /orders/recent, /orders/board, /orders/:orderStableId/status, /orders/:orderStableId/amendments, /orders/:orderStableId/advance, /orders/scheduled, /orders/:orderStableId/fulfillment-timing, and /orders/:orderStableId/preparation/start remain mounted by a POS-owned compatibility controller with their existing guards, response shapes, status codes, and store scoping",
-        "Healthy canonical /pos/orders/scheduled polling is quiet in RequestIdInterceptor while legacy /orders/scheduled traffic is intentionally observable so stale clients can be measured before contraction",
-        "The shared /orders HTTP prefix is composed at the API root so the POS-owned compatibility controller is registered before generic Orders routes without restoring OrdersModule -> PosDeviceModule",
-        "Orders fulfillment keeps the existing print payload and durable retry behavior but requests PosPrintJob dispatch through an Orders-owned event contract; the POS-owned listener is the only side of this boundary that invokes PosGateway, so no printer payload or Socket protocol changes are introduced"
-      ],
-      "parity_metric": "Repository consumers of the legacy POS /orders/* routes must be zero, and RequestIdInterceptor traffic to every legacy route family must remain zero through an agreed stale-client observation window; canonical /pos/orders/* behavior remains covered by POS controller characterization tests",
-      "rollback": "Keep the POS-owned legacy compatibility controller mounted while canonical clients migrate; if a stale client is discovered it continues to use the same Orders public operation boundary without restoring Orders-to-POS imports",
-      "exit_criteria": "All known Web/POS consumers use /pos/orders/*, legacy route traffic is zero for the agreed observation window, no operational client requires the old URLs, and the user explicitly authorizes contract contraction",
-      "remove_pr": "Follow-up legacy POS /orders/* HTTP route contraction after production observation and explicit authorization",
-      "deadline": "Before Commerce/Orders and Store Operations/POS boundary modularization exit",
-      "evidence": [
-        "apps/api/src/orders/public-api.ts",
-        "apps/api/src/orders/pos-order-operations.contract.ts",
-        "apps/api/src/orders/pos-order-operations.service.ts",
-        "apps/api/src/orders/pos-print-dispatch.contract.ts",
-        "apps/api/src/orders-http-composition.module.ts",
-        "apps/api/src/auth/public-api.ts",
-        "apps/api/src/pos/pos-orders.controller.ts",
-        "apps/api/src/pos/legacy-pos-orders.controller.ts",
-        "apps/api/src/pos/pos-print-dispatch.listener.ts",
-        "apps/api/src/pos/pos-orders-transport-boundary.architecture.spec.ts",
-        "apps/api/src/common/request-id.interceptor.ts",
-        "apps/web/src/components/store/PosDeviceFrame.tsx"
-      ]
-    },
-    {
-      "compat_id": "pos-device.admin-db-id.v1",
-      "status": "active",
-      "old_owner": "Admin POS-device browser contract exposed PosDevice.id and PosDevice.storeId database UUIDs and accepted those UUIDs for device actions/store assignment",
-      "new_owner": "Store Operations/POS PosDevice management boundary using deviceStableId and storeStableId for all canonical Admin/Web operations",
-      "dual_write_or_read": [
-        "Canonical Admin POS-device list requests include storeStableId and return only deviceStableId/storeStableId business identities",
-        "Canonical create, reset, status, and delete operations use storeStableId/deviceStableId through POS_DEVICE_MANAGEMENT",
-        "The no-query legacy list temporarily keeps id/storeId field names but maps them to deviceStableId/storeStableId so old bundles remain operational without emitting database UUIDs",
-        "A stale browser tab may still submit a previously loaded device DB UUID or legacy create storeId UUID; POS_DEVICE_ADMIN_COMPATIBILITY resolves those inbound UUIDs to stable identities before canonical management executes"
-      ],
-      "parity_metric": "New Admin Web requests containing storeStableId must use zero database UUID fields; API logs with event=pos_device_admin_compatibility_used (legacy_unscoped_list, legacy_store_db_id, implicit_default_store, legacy_device_db_id) must reach zero after deployment/browser refresh observation",
-      "rollback": "Keep the inbound UUID resolver and legacy no-query response aliases while old Admin bundles may still be open; canonical stable-ID routes remain the preferred path and no database UUID is reintroduced into new Web state",
-      "exit_criteria": "Admin Web has used only storeStableId/deviceStableId for one observation window, legacy no-query list traffic and UUID resolver usage are zero, then remove storeId DTO input, legacy response aliases, UUID resolvers, annotations, and this active compatibility entry",
-      "remove_pr": "Follow-up POS-device Admin DB-ID contraction after production observation",
-      "deadline": "Before Store Operations/POS identity modularization exit",
-      "evidence": [
-        "apps/api/src/pos/public-api.ts",
-        "apps/api/src/pos/pos-device-management.contract.ts",
-        "apps/api/src/pos/pos-device.service.ts",
-        "apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts",
-        "apps/web/src/lib/api/pos-devices.ts",
-        "apps/web/src/app/[locale]/(site)/admin/(protected)/pos-devices/page.tsx"
       ]
     },
     {
@@ -189,6 +130,55 @@
     }
   ],
   "closed": [
+    {
+      "compat_id": "orders.pos-transport-routes.v1",
+      "status": "closed",
+      "old_owner": "POS-specific HTTP compatibility routes under /orders/* plus root route-order composition required to mount them ahead of generic Orders routes",
+      "new_owner": "Store Operations/POS-owned canonical /pos/orders/* transport calling the Orders-owned POS_ORDER_OPERATIONS public application boundary; OrdersController is mounted directly by OrdersModule",
+      "dual_write_or_read": "Removed. The legacy POS /orders/* controller, its characterization spec, and the temporary OrdersHttpCompositionModule are deleted. Canonical POS routes remain under /pos/orders/* and ordinary customer Orders routes remain owned by OrdersController under /orders/*.",
+      "parity_metric": "Readiness completed on 2026-09-02: current Web source has zero legacy POS /orders/* consumers; user production log verification found zero hits to the legacy route family while canonical POS traffic remained active, including POST /api/v1/pos/orders 201, POST /api/v1/pos/orders/:id/print 200, POST /api/v1/pos/orders/:id/advance 200, and GET /api/v1/pos/orders/settings/auto-accept 200.",
+      "rollback": "Forward-fix only. Do not restore the retired /orders/* POS transport; any stale operational client must be updated to the canonical /pos/orders/* contract.",
+      "exit_criteria": "Completed: repository consumers are zero, production legacy traffic is zero, canonical POS traffic is active, the user explicitly authorized contraction, and architecture guards now prevent the retired controller/composition from returning.",
+      "remove_pr": "refactor/orders-pos-transport-routes-v1",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/api/src/orders/orders.module.ts",
+        "apps/api/src/orders/orders.controller.ts",
+        "apps/api/src/orders/public-api.ts",
+        "apps/api/src/pos/pos-orders.controller.ts",
+        "apps/api/src/pos/pos-orders-transport-boundary.architecture.spec.ts",
+        "tools/architecture/context-baseline.json",
+        "tools/architecture/scan-architecture.mjs",
+        "apps/web/src/lib/api/pos.ts",
+        "apps/web/src/components/store/PosDeviceFrame.tsx",
+        "production legacy-route and canonical-route verification reported 2026-09-02"
+      ]
+    },
+    {
+      "compat_id": "pos-device.admin-db-id.v1",
+      "status": "closed",
+      "old_owner": "Admin POS-device browser contract exposed PosDevice.id and PosDevice.storeId database UUIDs and accepted those UUIDs for device actions/store assignment",
+      "new_owner": "Store Operations/POS PosDevice management boundary using deviceStableId and storeStableId for all canonical Admin/Web operations",
+      "dual_write_or_read": "Removed. Admin create/list/reset/status/delete now require the canonical stable-ID contract; the no-query list aliases, inbound Store/device DB UUID translators, POS_DEVICE_ADMIN_COMPATIBILITY port/provider, and Brand/Store STORE_LEGACY_DB_ID_RESOLVER are deleted.",
+      "parity_metric": "Readiness completed on 2026-09-02: current Admin Web source uses only storeStableId/deviceStableId; production has three ACTIVE PosDevice rows with zero missing deviceStableId and zero missing related Store.storeStableId; after the 12:59 API restart the canonical GET /api/v1/admin/pos-devices?storeStableId=4750_Yonge_Street returned 200 while event=pos_device_admin_compatibility_used had zero hits.",
+      "rollback": "Forward-fix only. Do not restore DB UUID fields or implicit store selection to the Admin browser contract; stale clients must refresh and use storeStableId/deviceStableId.",
+      "exit_criteria": "Completed: repository Web consumers are stable-ID only, live canonical traffic is active, compatibility logging is zero in the observed deployed window, DB identity parity is complete, and architecture tests prevent the compatibility port/resolvers from returning.",
+      "remove_pr": "Store Operations/POS Admin DB-ID contraction work package",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/api/src/pos/public-api.ts",
+        "apps/api/src/pos/pos-device-management.contract.ts",
+        "apps/api/src/pos/pos-device.service.ts",
+        "apps/api/src/pos/pos-device-management.architecture.spec.ts",
+        "apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts",
+        "apps/api/src/admin/pos-devices/dto/create-pos-device.dto.ts",
+        "apps/api/src/store/brand-store-config.contract.ts",
+        "apps/api/src/store/brand-store-config.reader.ts",
+        "apps/web/src/lib/api/pos-devices.ts",
+        "apps/web/src/app/[locale]/(site)/admin/(protected)/pos-devices/page.tsx",
+        "production canonical-route, compatibility-log and PosDevice parity verification 2026-09-02"
+      ]
+    },
     {
       "compat_id": "brand-store.business-config.v1",
       "status": "closed",
