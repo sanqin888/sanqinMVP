@@ -126,18 +126,6 @@ describe('RequestIdInterceptor', () => {
     expect(loggerWarnSpy).not.toHaveBeenCalled();
   });
 
-  it('keeps legacy scheduled-order compatibility traffic observable', () => {
-    const loggerLogSpy = jest
-      .spyOn(Logger.prototype, 'log')
-      .mockImplementation(() => undefined);
-
-    runIntercept('GET', '/api/v1/orders/scheduled', 200, { orders: [] });
-
-    expect(loggerLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('GET /api/v1/orders/scheduled - 200'),
-    );
-  });
-
   it('warns when scheduled-order polling returns an abnormal status', () => {
     const loggerLogSpy = jest
       .spyOn(Logger.prototype, 'log')

@@ -1,6 +1,7 @@
 // apps/api/src/orders/orders.module.ts
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
@@ -38,6 +39,7 @@ import { PosOrderOperationsService } from './pos-order-operations.service';
     EmailModule,
     MessagingModule,
   ],
+  controllers: [OrdersController],
   providers: [
     OrdersService,
     PosOrderReadService,

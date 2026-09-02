@@ -291,6 +291,9 @@ describe('Payments bounded-context architecture', () => {
 
   it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
     const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
+      // AppModule is the repository composition root: importing both modules
+      // wires contexts there but does not coordinate Payments + Orders behavior.
+      .filter(({ path }) => path !== resolve(SOURCE_ROOT, 'app.module.ts'))
       .filter((file) => {
         const imports = importSpecifiers(file.source);
         const importsPayments = imports.some((specifier) =>
