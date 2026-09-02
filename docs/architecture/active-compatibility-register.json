@@ -67,30 +67,6 @@
       ]
     },
     {
-      "compat_id": "web.api-envelope-direct-payload.v1",
-      "status": "active",
-      "old_owner": "Checkout direct API payload readers and page-local response unwrap helpers",
-      "new_owner": "One Web API client using the global code/message/details response envelope",
-      "dual_write_or_read": [
-        "Canonical apiFetch and serverApiFetch require the global code/message/details envelope",
-        "POS session/login claim, login, auth/me, public store-status and connectivity heartbeat calls use the centralized POS session API adapter; their five browser direct-fetch allowances are removed",
-        "Legacy browser direct-fetch debt remains only in Checkout (6 calls), which still owns page-local envelope/direct-payload compatibility"
-      ],
-      "parity_metric": "Architecture scanner browser direct-fetch debt is reduced from 11 to 6 and must reach zero; POS session/login direct fetches must remain zero, and page-local Checkout envelope/direct-payload readers must be removed",
-      "rollback": "Keep only the remaining Checkout legacy calls isolated by architecture allowances until its dedicated risk-scoped migration; POS session/login must stay on the canonical client and must not regain direct-fetch allowances",
-      "exit_criteria": "All regular Web JSON API calls use the canonical client, remaining legacy browser direct fetches are zero, and duplicate/page-local ApiEnvelope readers are removed",
-      "remove_pr": "POS session/login browser transport migration followed by the dedicated Checkout browser transport migration",
-      "deadline": "Before Phase 1 low-risk cleanup exit",
-      "evidence": [
-        "SanQ full-site modularization audit section 3.4",
-        "apps/web/src/lib/api/pos-session.ts",
-        "apps/web/src/app/[locale]/(device)/store/pos/PosSessionKeepAlive.tsx",
-        "apps/web/src/app/[locale]/(device)/store/pos/login/page.tsx",
-        "apps/api/src/pos/pos-devices.controller.ts",
-        "tools/architecture/context-baseline.json"
-      ]
-    },
-    {
       "compat_id": "payments.pos-card-legacy.v1",
       "status": "frozen",
       "old_owner": "POS CARD /pos/orders direct paid-order creation",
@@ -130,6 +106,25 @@
     }
   ],
   "closed": [
+    {
+      "compat_id": "web.api-envelope-direct-payload.v1",
+      "status": "closed",
+      "old_owner": "Checkout direct API payload readers and page-local response unwrap helpers",
+      "new_owner": "One Web API client using the global code/message/details response envelope",
+      "dual_write_or_read": "Removed. Checkout OTP request/verify, membership summary, address list/create, and coupon list calls now use canonical apiFetch; page-local ApiEnvelope/direct-payload readers and the Checkout direct-fetch architecture allowance are deleted.",
+      "parity_metric": "Source contraction on 2026-09-02 reduced Checkout browser direct fetches from 6 to 0. The architecture scanner now has no Checkout direct-fetch allowance, so any reintroduction is rejected as a new browser direct fetch. Existing apiFetch protocol handling preserves operation-status {ok:false,error} failures and the global {code,message,details} envelope contract.",
+      "rollback": "Forward-fix only. Do not restore page-local envelope/direct-payload compatibility or a Checkout direct-fetch allowance; fix any endpoint contract mismatch at the canonical API client/owner contract boundary.",
+      "exit_criteria": "Completed: Checkout regular JSON API direct fetches are zero, page-local ApiEnvelope/direct-payload compatibility is removed, and the architecture baseline permanently rejects its return.",
+      "remove_pr": "refactor/web-api-envelope-contraction",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/web/src/app/[locale]/(site)/checkout/page.tsx",
+        "apps/web/src/lib/api/client.ts",
+        "apps/web/src/lib/api/protocol.ts",
+        "tools/architecture/context-baseline.json",
+        "tools/architecture/scan-architecture.mjs"
+      ]
+    },
     {
       "compat_id": "orders.pos-transport-routes.v1",
       "status": "closed",
