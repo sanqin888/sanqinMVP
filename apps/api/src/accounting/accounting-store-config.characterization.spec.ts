@@ -22,7 +22,7 @@ describe('AccountingService canonical store timezone characterization', () => {
       order: { findMany: orderFindMany },
     };
     const brandStoreConfigReader = {
-      getStoreSnapshot: jest.fn().mockResolvedValue({
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'America/Toronto',
       }),
     };
@@ -64,7 +64,7 @@ describe('AccountingService canonical store timezone characterization', () => {
       accountingPeriodClose: { findUnique },
     };
     const brandStoreConfigReader = {
-      getStoreSnapshot: jest.fn().mockResolvedValue({
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'America/Toronto',
       }),
     };
@@ -78,7 +78,9 @@ describe('AccountingService canonical store timezone characterization', () => {
       AccountingTxType.EXPENSE,
     );
 
-    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
     expect(findUnique).toHaveBeenNthCalledWith(1, {
       where: {
         periodType_periodKey: {

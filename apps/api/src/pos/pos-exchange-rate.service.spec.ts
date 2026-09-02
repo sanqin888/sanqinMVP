@@ -21,10 +21,12 @@ function bankResponse(date: string, value: string): Response {
 
 function setup(fallbackRate = 4.85) {
   const brandStoreConfigReader = {
-    getSnapshot: jest.fn().mockResolvedValue({
-      store: { timezone: 'America/Toronto' },
-      brand: { wechatAlipayExchangeRate: fallbackRate },
-    }),
+    getStoreSnapshot: jest
+      .fn()
+      .mockResolvedValue({ timezone: 'America/Toronto' }),
+    getBrandSnapshot: jest
+      .fn()
+      .mockResolvedValue({ wechatAlipayExchangeRate: fallbackRate }),
   };
   const service = new PosExchangeRateService(brandStoreConfigReader as never);
   Reflect.set(service, 'logger', {
@@ -52,7 +54,7 @@ describe('PosExchangeRateService', () => {
       .fn()
       .mockResolvedValue(bankResponse('2026-08-21', '0.2047'));
 
-    await expect(service.quoteCadToCny(2345)).resolves.toEqual({
+    await expect(service.quoteCadToCny('4750_Yonge_Street', 2345)).resolves.toEqual({
       cadAmountCents: 2345,
       cnyAmountFen: 11584,
       cadToCnyRate: 4.94,
@@ -61,7 +63,7 @@ describe('PosExchangeRateService', () => {
     });
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
-    await service.quoteCadToCny(1000);
+    await service.quoteCadToCny('4750_Yonge_Street', 1000);
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -72,17 +74,17 @@ describe('PosExchangeRateService', () => {
       .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'))
       .mockResolvedValueOnce(bankResponse('2026-08-24', '0.2060'));
 
-    await service.quoteCadToCny(1000);
+    await service.quoteCadToCny('4750_Yonge_Street', 1000);
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
     jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z')); // 17:00 Toronto
-    await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
+    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toMatchObject({
       cnyAmountFen: 4900,
       cadToCnyRate: 4.9,
       rateDate: '2026-08-24',
       source: 'BANK_OF_CANADA',
     });
-    await service.quoteCadToCny(1000);
+    await service.quoteCadToCny('4750_Yonge_Street', 1000);
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
@@ -94,15 +96,35 @@ describe('PosExchangeRateService', () => {
       .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'))
       .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'));
 
-    await service.quoteCadToCny(1000);
+    await service.quoteCadToCny('4750_Yonge_Street', 1000);
     jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z'));
 
-    await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
+    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toMatchObject({
       cnyAmountFen: 4940,
       cadToCnyRate: 4.94,
       rateDate: '2026-08-21',
     });
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the cached Bank of Canada rate instead of falling back when a later refresh fails', async () => {
+    const { service } = setup(4.2);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(bankResponse('2026-08-21', '0.2047'))
+      .mockRejectedValueOnce(new Error('network down'));
+
+    await service.quoteCadToCny('4750_Yonge_Street', 1000);
+    jest.setSystemTime(new Date('2026-08-24T21:00:05.000Z')); // 17:00 Toronto
+
+    await expect(
+      service.quoteCadToCny('4750_Yonge_Street', 1000),
+    ).resolves.toMatchObject({
+      cnyAmountFen: 4940,
+      cadToCnyRate: 4.94,
+      rateDate: '2026-08-21',
+      source: 'BANK_OF_CANADA',
+    });
   });
 
   it('uses the most recent valid observation when a newer date has no published value', async () => {
@@ -114,7 +136,7 @@ describe('PosExchangeRateService', () => {
       ]),
     );
 
-    await expect(service.quoteCadToCny(1000)).resolves.toMatchObject({
+    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toMatchObject({
       cnyAmountFen: 4940,
       cadToCnyRate: 4.94,
       rateDate: '2026-08-21',
@@ -125,19 +147,23 @@ describe('PosExchangeRateService', () => {
     const { service, brandStoreConfigReader } = setup(4.856);
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
 
-    await expect(service.quoteCadToCny(1000)).resolves.toEqual({
+    await expect(service.quoteCadToCny('4750_Yonge_Street', 1000)).resolves.toEqual({
       cadAmountCents: 1000,
       cnyAmountFen: 4860,
       cadToCnyRate: 4.86,
       rateDate: null,
       source: 'BUSINESS_CONFIG_FALLBACK',
     });
-    expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(2);
+    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(2);
+    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
+    expect(brandStoreConfigReader.getBrandSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('rejects non-integer CAD cents', async () => {
     const { service } = setup();
-    await expect(service.quoteCadToCny(100.5)).rejects.toThrow(
+    await expect(service.quoteCadToCny('4750_Yonge_Street', 100.5)).rejects.toThrow(
       'cadAmountCents must be a non-negative safe integer',
     );
     expect(global.fetch).toBe(originalFetch);

@@ -1514,7 +1514,7 @@ export class OrdersService {
   }
 
   private async getStorePricingConfig(): Promise<DeliveryPricingConfig> {
-    const existing = await this.brandStoreConfigReader.getStoreSnapshot();
+    const existing = await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
 
     const deliveryBaseFeeCents = Number.isFinite(existing.deliveryBaseFeeCents)
       ? Math.max(0, Math.round(existing.deliveryBaseFeeCents))
@@ -2071,7 +2071,7 @@ export class OrdersService {
       }
     };
 
-    const storeConfig = await this.brandStoreConfigReader.getStoreSnapshot();
+    const storeConfig = await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
     const now = resolveStoreNow(storeConfig.timezone);
     const weekday = now.weekday;
     const productStableIds = dbProducts.map((product) => product.stableId);

@@ -39,54 +39,6 @@ export type HolidayDto = {
   closeMinutes?: number | null;
 };
 
-const LEGACY_LOYALTY_POLICY_FIELDS = [
-  'earnPtPerDollar',
-  'redeemDollarPerPoint',
-  'referralPtPerDollar',
-  'tierMultiplierBronze',
-  'tierMultiplierSilver',
-  'tierMultiplierGold',
-  'tierMultiplierPlatinum',
-  'tierThresholdSilver',
-  'tierThresholdGold',
-  'tierThresholdPlatinum',
-] as const;
-
-export type BusinessConfigResponse = {
-  timezone: string;
-  isTemporarilyClosed: boolean;
-  temporaryCloseReason: string | null;
-  publicNotice: string | null;
-  publicNoticeEn: string | null;
-  deliveryBaseFeeCents: number;
-  priorityPerKmCents: number;
-  maxDeliveryRangeKm: number;
-  priorityDefaultDistanceKm: number;
-  storeLatitude: number | null;
-  storeLongitude: number | null;
-  storeAddressLine1: string | null;
-  storeAddressLine2: string | null;
-  storeCity: string | null;
-  storeProvince: string | null;
-  storePostalCode: string | null;
-  brandNameZh: string | null;
-  brandNameEn: string | null;
-  siteUrl: string | null;
-  emailFromNameZh: string | null;
-  emailFromNameEn: string | null;
-  emailFromAddress: string | null;
-  smsSignature: string | null;
-  supportPhone: string | null;
-  supportEmail: string | null;
-  salesTaxRate: number;
-  wechatAlipayExchangeRate: number;
-  enableUberDirect: boolean;
-  allergyHandlingMode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
-  unsupportedAllergens: string[];
-  hours: DayConfigDto[];
-  holidays: HolidayDto[];
-};
-
 @Injectable()
 export class AdminBusinessService {
   private readonly logger = new AppLogger(AdminBusinessService.name);
@@ -117,18 +69,67 @@ export class AdminBusinessService {
       throw new BadRequestException('brand config payload must be an object');
     }
     const body = payload as Record<string, unknown>;
-    await this.updateConfig({
-      brandNameZh: body.brandNameZh,
-      brandNameEn: body.brandNameEn,
-      siteUrl: body.siteUrl,
-      emailFromNameZh: body.emailFromNameZh,
-      emailFromNameEn: body.emailFromNameEn,
-      emailFromAddress: body.emailFromAddress,
-      smsSignature: body.smsSignature,
-      supportPhone: body.supportPhone,
-      supportEmail: body.supportEmail,
-      wechatAlipayExchangeRate: body.wechatAlipayExchangeRate,
-    });
+    const updates: BrandConfigUpdateInput = {};
+
+    if (body.brandNameZh !== undefined) {
+      updates.brandNameZh = this.normalizeOptionalText(
+        'brandNameZh',
+        body.brandNameZh,
+      );
+    }
+    if (body.brandNameEn !== undefined) {
+      updates.brandNameEn = this.normalizeOptionalText(
+        'brandNameEn',
+        body.brandNameEn,
+      );
+    }
+    if (body.siteUrl !== undefined) {
+      updates.siteUrl = this.normalizeOptionalText('siteUrl', body.siteUrl);
+    }
+    if (body.emailFromNameZh !== undefined) {
+      updates.emailFromNameZh = this.normalizeOptionalText(
+        'emailFromNameZh',
+        body.emailFromNameZh,
+      );
+    }
+    if (body.emailFromNameEn !== undefined) {
+      updates.emailFromNameEn = this.normalizeOptionalText(
+        'emailFromNameEn',
+        body.emailFromNameEn,
+      );
+    }
+    if (body.emailFromAddress !== undefined) {
+      updates.emailFromAddress = this.normalizeOptionalText(
+        'emailFromAddress',
+        body.emailFromAddress,
+      );
+    }
+    if (body.smsSignature !== undefined) {
+      updates.smsSignature = this.normalizeOptionalText(
+        'smsSignature',
+        body.smsSignature,
+      );
+    }
+    if (body.supportPhone !== undefined) {
+      updates.supportPhone = this.normalizeOptionalText(
+        'supportPhone',
+        body.supportPhone,
+      );
+    }
+    if (body.supportEmail !== undefined) {
+      updates.supportEmail = this.normalizeOptionalText(
+        'supportEmail',
+        body.supportEmail,
+      );
+    }
+    if (body.wechatAlipayExchangeRate !== undefined) {
+      updates.wechatAlipayExchangeRate = this.normalizeExchangeRate(
+        'wechatAlipayExchangeRate',
+        body.wechatAlipayExchangeRate,
+      );
+    }
+
+    await this.brandStoreConfigWriter.updateBrandConfig(updates);
     return this.getBrandConfig();
   }
 
@@ -201,79 +202,15 @@ export class AdminBusinessService {
   }
 
   /**
-   * 统一返回给前端的配置：
-   * - timezone
-   * - isTemporarilyClosed / temporaryCloseReason
-   * - 每周营业时间（7 天）
-   * - 节假日列表
-   */
-  async getConfig(): Promise<BusinessConfigResponse> {
-    const brandStoreConfig = await this.brandStoreConfigReader.getSnapshot();
-    const { brand, store } = brandStoreConfig;
-    const [hours, holidays] = await Promise.all([
-      this.ensureHoursInitialized(store.storeStableId),
-      this.storeScheduleReader.listHolidays(store.storeStableId),
-    ]);
-
-    return {
-      timezone: store.timezone,
-      isTemporarilyClosed: store.isTemporarilyClosed,
-      temporaryCloseReason: store.temporaryCloseReason,
-      publicNotice: store.publicNotice,
-      publicNoticeEn: store.publicNoticeEn,
-      deliveryBaseFeeCents: store.deliveryBaseFeeCents,
-      priorityPerKmCents: store.priorityPerKmCents,
-      maxDeliveryRangeKm: store.maxDeliveryRangeKm,
-      priorityDefaultDistanceKm: store.priorityDefaultDistanceKm,
-      storeLatitude: store.latitude,
-      storeLongitude: store.longitude,
-      storeAddressLine1: store.addressLine1,
-      storeAddressLine2: store.addressLine2,
-      storeCity: store.city,
-      storeProvince: store.province,
-      storePostalCode: store.postalCode,
-      brandNameZh: brand.brandNameZh,
-      brandNameEn: brand.brandNameEn,
-      siteUrl: brand.siteUrl,
-      emailFromNameZh: brand.emailFromNameZh,
-      emailFromNameEn: brand.emailFromNameEn,
-      emailFromAddress: brand.emailFromAddress,
-      smsSignature: brand.smsSignature,
-      supportPhone: brand.supportPhone,
-      supportEmail: brand.supportEmail,
-      salesTaxRate: store.salesTaxRate,
-      wechatAlipayExchangeRate: Number(
-        brand.wechatAlipayExchangeRate.toFixed(2),
-      ),
-      enableUberDirect: store.enableUberDirect,
-      allergyHandlingMode: store.allergyHandlingMode,
-      unsupportedAllergens: store.unsupportedAllergens,
-      hours: hours.map((h) => ({
-        weekday: h.weekday,
-        openMinutes: h.openMinutes ?? 0,
-        closeMinutes: h.closeMinutes ?? 0,
-        isClosed: h.isClosed,
-      })),
-      holidays: holidays.map((h) => ({
-        date: h.date,
-        name: h.name ?? undefined,
-        isClosed: h.isClosed,
-        openMinutes: h.openMinutes ?? null,
-        closeMinutes: h.closeMinutes ?? null,
-      })),
-    };
-  }
-
-  /**
    * 覆盖式更新每周营业时间：
    * - body.hours 是 0-6 共 7 条（不强制要求有 7 条，但建议前端这样做）
    * - 如果 isClosed=true，open/closeMinutes 会被忽略
    * - 内部实现：deleteMany + createMany
    */
-  async updateHours(
+  private async updateHours(
     rawHours: unknown,
-    requestedStoreStableId?: string,
-  ): Promise<BusinessConfigResponse> {
+    storeStableId: string,
+  ): Promise<void> {
     if (!Array.isArray(rawHours)) {
       throw new BadRequestException('hours must be an array');
     }
@@ -328,9 +265,6 @@ export class AdminBusinessService {
       };
     });
 
-    const storeStableId = (
-      await this.brandStoreConfigReader.getStoreSnapshot(requestedStoreStableId)
-    ).storeStableId;
     await this.storeScheduleWriter.replaceBusinessHours(
       storeStableId,
       sanitized.map(
@@ -351,9 +285,6 @@ export class AdminBusinessService {
         )
         .join(', ')}`,
     );
-
-    // 返回最新整体配置
-    return this.getConfig();
   }
 
   /**
@@ -362,23 +293,13 @@ export class AdminBusinessService {
    * - isTemporarilyClosed = false 时，自动清空 reason
    * - 可同时更新配送费/税率
    */
-  async updateConfig(
+  private async updateConfig(
     payload: unknown,
-    requestedStoreStableId?: string,
-  ): Promise<BusinessConfigResponse> {
+    requestedStoreStableId: string,
+  ): Promise<void> {
     if (!payload || typeof payload !== 'object') {
       throw new BadRequestException(
         'payload must be an object with isTemporarilyClosed (boolean)',
-      );
-    }
-
-    const rejectedLoyaltyFields = LEGACY_LOYALTY_POLICY_FIELDS.filter((field) =>
-      Object.prototype.hasOwnProperty.call(payload, field),
-    );
-    if (rejectedLoyaltyFields.length > 0) {
-      throw new BadRequestException(
-        'Loyalty policy fields are no longer accepted by Admin Business config; ' +
-          `use /admin/benefits/loyalty-policy instead: ${rejectedLoyaltyFields.join(', ')}`,
       );
     }
 
@@ -402,17 +323,7 @@ export class AdminBusinessService {
       storeCountryCode,
       storePhone,
       storeContactName,
-      brandNameZh,
-      brandNameEn,
-      siteUrl,
-      emailFromNameZh,
-      emailFromNameEn,
-      emailFromAddress,
-      smsSignature,
-      supportPhone,
-      supportEmail,
       salesTaxRate,
-      wechatAlipayExchangeRate,
       enableUberDirect,
       autoAcceptOnlineOrders,
       allergyHandlingMode,
@@ -437,17 +348,7 @@ export class AdminBusinessService {
       storeCountryCode?: unknown;
       storePhone?: unknown;
       storeContactName?: unknown;
-      brandNameZh?: unknown;
-      brandNameEn?: unknown;
-      siteUrl?: unknown;
-      emailFromNameZh?: unknown;
-      emailFromNameEn?: unknown;
-      emailFromAddress?: unknown;
-      smsSignature?: unknown;
-      supportPhone?: unknown;
-      supportEmail?: unknown;
       salesTaxRate?: unknown;
-      wechatAlipayExchangeRate?: unknown;
       enableUberDirect?: unknown;
       autoAcceptOnlineOrders?: unknown;
       allergyHandlingMode?: unknown;
@@ -471,7 +372,6 @@ export class AdminBusinessService {
     const trimmedReason =
       typeof reason === 'string' ? reason.trim() : undefined;
 
-    const brandUpdates: BrandConfigUpdateInput = {};
     const storeUpdates: StoreConfigUpdateInput = {};
 
     if (allergyHandlingMode !== undefined) {
@@ -640,77 +540,10 @@ export class AdminBusinessService {
       );
     }
 
-    if (brandNameZh !== undefined) {
-      brandUpdates.brandNameZh = this.normalizeOptionalText(
-        'brandNameZh',
-        brandNameZh,
-      );
-    }
-
-    if (brandNameEn !== undefined) {
-      brandUpdates.brandNameEn = this.normalizeOptionalText(
-        'brandNameEn',
-        brandNameEn,
-      );
-    }
-
-    if (siteUrl !== undefined) {
-      brandUpdates.siteUrl = this.normalizeOptionalText('siteUrl', siteUrl);
-    }
-
-    if (emailFromNameZh !== undefined) {
-      brandUpdates.emailFromNameZh = this.normalizeOptionalText(
-        'emailFromNameZh',
-        emailFromNameZh,
-      );
-    }
-
-    if (emailFromNameEn !== undefined) {
-      brandUpdates.emailFromNameEn = this.normalizeOptionalText(
-        'emailFromNameEn',
-        emailFromNameEn,
-      );
-    }
-
-    if (emailFromAddress !== undefined) {
-      brandUpdates.emailFromAddress = this.normalizeOptionalText(
-        'emailFromAddress',
-        emailFromAddress,
-      );
-    }
-
-    if (smsSignature !== undefined) {
-      brandUpdates.smsSignature = this.normalizeOptionalText(
-        'smsSignature',
-        smsSignature,
-      );
-    }
-
-    if (supportPhone !== undefined) {
-      brandUpdates.supportPhone = this.normalizeOptionalText(
-        'supportPhone',
-        supportPhone,
-      );
-    }
-
-    if (supportEmail !== undefined) {
-      brandUpdates.supportEmail = this.normalizeOptionalText(
-        'supportEmail',
-        supportEmail,
-      );
-    }
-
     if (salesTaxRate !== undefined) {
       storeUpdates.salesTaxRate = this.normalizeRate(
         'salesTaxRate',
         salesTaxRate,
-      );
-    }
-
-    if (wechatAlipayExchangeRate !== undefined) {
-      brandUpdates.wechatAlipayExchangeRate = this.normalizeExchangeRate(
-        'wechatAlipayExchangeRate',
-        wechatAlipayExchangeRate,
       );
     }
 
@@ -730,11 +563,8 @@ export class AdminBusinessService {
       storeUpdates.autoAcceptOnlineOrders = autoAcceptOnlineOrders;
     }
 
-    const hasBrandUpdates = Object.keys(brandUpdates).length > 0;
     const hasStoreUpdates = Object.keys(storeUpdates).length > 0;
-    if (!hasBrandUpdates && !hasStoreUpdates) {
-      return this.getConfig();
-    }
+    if (!hasStoreUpdates) return;
 
     const temporaryPauseChanged =
       (storeUpdates.isTemporarilyClosed !== undefined &&
@@ -744,26 +574,16 @@ export class AdminBusinessService {
         storeUpdates.temporaryCloseReason !==
           storeConfigSnapshot.temporaryCloseReason);
 
-    if (hasBrandUpdates || hasStoreUpdates) {
-      const updateInput = {
-        brand: hasBrandUpdates ? brandUpdates : undefined,
-        store: hasStoreUpdates ? storeUpdates : undefined,
-      };
-      if (requestedStoreStableId) {
-        await this.brandStoreConfigWriter.updateConfig(
-          updateInput,
-          requestedStoreStableId,
-        );
-      } else {
-        await this.brandStoreConfigWriter.updateConfig(updateInput);
-      }
-    }
+    await this.brandStoreConfigWriter.updateStoreConfig(
+      requestedStoreStableId,
+      storeUpdates,
+    );
 
     let shouldSyncUberStoreStatus = false;
     if (temporaryPauseChanged) {
-      const configuredStoreStableId = requestedStoreStableId
-        ? (await this.brandStoreConfigReader.getStoreSnapshot()).storeStableId
-        : storeConfigSnapshot.storeStableId;
+      const configuredStoreStableId = (
+        await this.brandStoreConfigReader.getConfiguredStoreSnapshot()
+      ).storeStableId;
       shouldSyncUberStoreStatus =
         storeConfigSnapshot.storeStableId === configuredStoreStableId;
     }
@@ -780,8 +600,6 @@ export class AdminBusinessService {
         storeConfigSnapshot.priorityPerKmCents
       } taxRate=${storeUpdates.salesTaxRate ?? storeConfigSnapshot.salesTaxRate}`,
     );
-
-    return this.getConfig();
   }
 
   private async syncUberStoreStatusSafely(source: string) {
@@ -800,10 +618,10 @@ export class AdminBusinessService {
    * - 调用方传入的 holidays 会覆盖原有全部 Holiday 记录
    * - id 字段当前不参与 upsert，仅作为前端本地 key 用
    */
-  async saveHolidays(
+  private async saveHolidays(
     raw: unknown,
-    requestedStoreStableId?: string,
-  ): Promise<BusinessConfigResponse> {
+    storeStableId: string,
+  ): Promise<void> {
     if (!raw || typeof raw !== 'object') {
       throw new BadRequestException('payload must be an object with holidays');
     }
@@ -868,9 +686,6 @@ export class AdminBusinessService {
       });
     });
 
-    const storeStableId = (
-      await this.brandStoreConfigReader.getStoreSnapshot(requestedStoreStableId)
-    ).storeStableId;
     await this.storeScheduleWriter.replaceHolidays(storeStableId, sanitized);
 
     this.logger.log(
@@ -878,8 +693,6 @@ export class AdminBusinessService {
         .map((h) => h.date)
         .join(', ')}`,
     );
-
-    return this.getConfig();
   }
 
   // ========= 私有工具函数 =========

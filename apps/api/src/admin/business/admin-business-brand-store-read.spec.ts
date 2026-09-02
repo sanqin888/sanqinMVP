@@ -50,9 +50,11 @@ function setup() {
     getSnapshot: jest.fn().mockResolvedValue(brandStoreConfig),
     getBrandSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.brand),
     getStoreSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.store),
+    getConfiguredStoreSnapshot: jest.fn().mockResolvedValue(brandStoreConfig.store),
   };
   const brandStoreConfigWriter = {
-    updateConfig: jest.fn().mockResolvedValue(undefined),
+    updateBrandConfig: jest.fn().mockResolvedValue(undefined),
+    updateStoreConfig: jest.fn().mockResolvedValue(undefined),
   };
   const storeScheduleReader = {
     listBusinessHours: jest.fn().mockResolvedValue([
@@ -102,95 +104,34 @@ function setup() {
 }
 
 describe('AdminBusinessService canonical Brand/Store reads', () => {
-  it('builds the admin response from owner readers only', async () => {
-    const { service, brandStoreConfigReader, storeScheduleReader } = setup();
+  it('updates BrandConfig without resolving any Store identity', async () => {
+    const { service, brandStoreConfigReader, brandStoreConfigWriter } = setup();
 
-    await expect(service.getConfig()).resolves.toEqual({
-      timezone: 'America/Toronto',
-      isTemporarilyClosed: true,
-      temporaryCloseReason: 'Kitchen maintenance',
-      publicNotice: '中文通知',
-      publicNoticeEn: 'English notice',
-      deliveryBaseFeeCents: 600,
-      priorityPerKmCents: 100,
-      maxDeliveryRangeKm: 10,
-      priorityDefaultDistanceKm: 3,
-      storeLatitude: 43.760288,
-      storeLongitude: -79.412167,
-      storeAddressLine1: '4750 Yonge St.',
-      storeAddressLine2: 'Unit 138',
-      storeCity: 'Toronto',
-      storeProvince: 'ON',
-      storePostalCode: 'M2N 5M6',
-      brandNameZh: '三秦肉夹馍',
-      brandNameEn: 'SanQ Roujiamo',
-      siteUrl: 'https://sanq.ca',
-      emailFromNameZh: '三秦肉夹馍',
-      emailFromNameEn: 'SanQ Roujiamo',
-      emailFromAddress: 'hello@sanq.ca',
-      smsSignature: 'SanQ',
-      supportPhone: '+1-437-808-6888',
-      supportEmail: 'support@sanq.ca',
-      salesTaxRate: 0.13,
-      wechatAlipayExchangeRate: 5.12,
-      enableUberDirect: true,
-      allergyHandlingMode: 'DENY_LIST',
-      unsupportedAllergens: ['PEANUTS'],
-      hours: [
-        {
-          weekday: 1,
-          openMinutes: 660,
-          closeMinutes: 1260,
-          isClosed: false,
-        },
-      ],
-      holidays: [
-        {
-          date: '2026-12-25',
-          name: 'Christmas',
-          isClosed: true,
-          openMinutes: null,
-          closeMinutes: null,
-        },
-      ],
-    });
-
-    expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(1);
-    expect(storeScheduleReader.listBusinessHours).toHaveBeenCalledWith(
-      '4750_Yonge_Street',
-    );
-    expect(storeScheduleReader.listHolidays).toHaveBeenCalledWith(
-      '4750_Yonge_Street',
-    );
-  });
-
-  it('uses the Brand/Store owner writer for reason-only compatibility routes', async () => {
-    const { service, brandStoreConfigReader, brandStoreConfigWriter, uber } =
-      setup();
-
-    await service.updateConfig({ reason: ' Updated reason ' });
-
-    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
-    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith({
-      brand: undefined,
-      store: { temporaryCloseReason: 'Updated reason' },
-    });
-    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
-  });
-
-  it('routes Brand/Store writes to their owner boundary', async () => {
-    const { service, brandStoreConfigWriter, uber } = setup();
-
-    await service.updateConfig({
+    await service.updateBrandConfig({
       brandNameEn: ' SanQ Updated ',
-      salesTaxRate: 0.14999,
+      wechatAlipayExchangeRate: 5.2,
     });
 
-    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith({
-      brand: { brandNameEn: 'SanQ Updated' },
-      store: { salesTaxRate: 0.15 },
+    expect(brandStoreConfigWriter.updateBrandConfig).toHaveBeenCalledWith({
+      brandNameEn: 'SanQ Updated',
+      wechatAlipayExchangeRate: 5.2,
     });
-    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
+    expect(brandStoreConfigReader.getStoreSnapshot).not.toHaveBeenCalled();
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('reads StoreConfig only through an explicit storeStableId', async () => {
+    const { service, brandStoreConfigReader } = setup();
+
+    await expect(service.getStoreConfig('second_store')).resolves.toEqual(
+      brandStoreConfig.store,
+    );
+
+    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledWith(
+      'second_store',
+    );
   });
 
   it('writes StoreConfig contact and online-order settings through the owner writer', async () => {
@@ -206,17 +147,14 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
       brandStoreConfig.store.storeStableId,
     );
 
-    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith(
-      {
-        brand: undefined,
-        store: {
-          countryCode: 'CA',
-          phone: '+1 416 555 0100',
-          contactName: 'Front counter',
-          autoAcceptOnlineOrders: false,
-        },
-      },
+    expect(brandStoreConfigWriter.updateStoreConfig).toHaveBeenCalledWith(
       brandStoreConfig.store.storeStableId,
+      {
+        countryCode: 'CA',
+        phone: '+1 416 555 0100',
+        contactName: 'Front counter',
+        autoAcceptOnlineOrders: false,
+      },
     );
   });
 
@@ -225,12 +163,9 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
 
     await service.updateStoreConfig({ salesTaxRate: 0.15 }, 'second_store');
 
-    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith(
-      {
-        brand: undefined,
-        store: { salesTaxRate: 0.15 },
-      },
+    expect(brandStoreConfigWriter.updateStoreConfig).toHaveBeenCalledWith(
       'second_store',
+      { salesTaxRate: 0.15 },
     );
   });
 });

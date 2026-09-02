@@ -118,11 +118,27 @@ describe('POS device authentication boundary', () => {
     expect(storeStatusService).not.toContain('resolveConfiguredStoreStableId');
   });
 
+  it('threads authenticated POS store identity through exchange-rate quoting while keeping the fallback Brand-owned', () => {
+    const controller = read(
+      resolve(POS_ROOT, 'pos-exchange-rate.controller.ts'),
+    );
+    const service = read(resolve(POS_ROOT, 'pos-exchange-rate.service.ts'));
+
+    expect(controller).toContain('AuthenticatedPosIdentity');
+    expect(controller).toContain('req.posDevice?.storeStableId?.trim()');
+    expect(controller).toContain('requireStoreStableId(req)');
+    expect(service).toContain('getStoreSnapshot(storeStableId)');
+    expect(service).toContain('getBrandSnapshot()');
+    expect(service).not.toContain('brandStoreConfigReader.getSnapshot()');
+    expect(service).not.toContain('resolveConfiguredStoreStableId');
+  });
+
   it('prevents POS HTTP, Socket and Payments consumers from inventing identity shapes', () => {
     const consumers = [
       resolve(POS_ROOT, 'legacy-pos-orders.controller.ts'),
       resolve(POS_ROOT, 'pos-device.guard.ts'),
       resolve(POS_ROOT, 'pos-devices.controller.ts'),
+      resolve(POS_ROOT, 'pos-exchange-rate.controller.ts'),
       resolve(POS_ROOT, 'pos-orders.controller.ts'),
       resolve(POS_ROOT, 'pos-store-status.controller.ts'),
       resolve(POS_ROOT, 'pos-summary.controller.ts'),

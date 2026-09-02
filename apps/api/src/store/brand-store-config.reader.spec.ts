@@ -93,14 +93,12 @@ describe('PrismaBrandStoreConfigReader', () => {
   it('reads the canonical brand and configured store snapshots without legacy BusinessConfig', async () => {
     const { prisma, reader } = setup();
 
-    await expect(reader.getSnapshot()).resolves.toEqual({
-      brand: brandConfig,
-      store: {
-        storeStableId: '4750_Yonge_Street',
-        storeName: '4750 Yonge St.',
-        isActive: true,
-        ...storeConfig,
-      },
+    await expect(reader.getBrandSnapshot()).resolves.toEqual(brandConfig);
+    await expect(reader.getConfiguredStoreSnapshot()).resolves.toEqual({
+      storeStableId: '4750_Yonge_Street',
+      storeName: '4750 Yonge St.',
+      isActive: true,
+      ...storeConfig,
     });
 
     expect(prisma.brandConfig.findUnique).toHaveBeenCalledWith({
@@ -182,7 +180,7 @@ describe('PrismaBrandStoreConfigReader', () => {
   it('reads StoreConfig independently from BrandConfig for store-only consumers', async () => {
     const { prisma, reader } = setup({ brand: null });
 
-    await expect(reader.getStoreSnapshot()).resolves.toMatchObject({
+    await expect(reader.getConfiguredStoreSnapshot()).resolves.toMatchObject({
       storeStableId: '4750_Yonge_Street',
       timezone: 'America/Toronto',
     });
@@ -192,7 +190,7 @@ describe('PrismaBrandStoreConfigReader', () => {
   it('fails closed when BrandConfig is not provisioned instead of creating defaults', async () => {
     const { reader } = setup({ brand: null });
 
-    await expect(reader.getSnapshot()).rejects.toEqual(
+    await expect(reader.getBrandSnapshot()).rejects.toEqual(
       expect.any(BrandStoreConfigUnavailableError),
     );
   });
@@ -200,7 +198,7 @@ describe('PrismaBrandStoreConfigReader', () => {
   it('fails closed when the configured Store is not provisioned', async () => {
     const { reader } = setup({ store: null });
 
-    await expect(reader.getSnapshot()).rejects.toThrow(
+    await expect(reader.getConfiguredStoreSnapshot()).rejects.toThrow(
       'Configured store 4750_Yonge_Street is not provisioned',
     );
   });
@@ -215,7 +213,7 @@ describe('PrismaBrandStoreConfigReader', () => {
       },
     });
 
-    await expect(reader.getSnapshot()).rejects.toThrow(
+    await expect(reader.getConfiguredStoreSnapshot()).rejects.toThrow(
       'StoreConfig for 4750_Yonge_Street is not provisioned',
     );
   });

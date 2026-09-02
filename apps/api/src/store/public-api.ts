@@ -19,7 +19,6 @@ export {
   type BrandConfigUpdateInput,
   type BrandStoreConfigReaderPort,
   type BrandStoreConfigSnapshot,
-  type BrandStoreConfigUpdateInput,
   type BrandStoreConfigWriterPort,
   type CreateStoreInput,
   type StoreConfigSnapshot,

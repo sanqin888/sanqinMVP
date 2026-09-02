@@ -153,7 +153,7 @@ export class AdminMenuService {
 
   // ========= Full menu for admin =========
   async getFullMenu(): Promise<AdminMenuFullResponse> {
-    const { timezone } = await this.brandStoreConfigReader.getStoreSnapshot();
+    const { timezone } = await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
     const now = resolveStoreNow(timezone || 'America/Toronto');
     const weekday = now.weekday;
     const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({

@@ -60,24 +60,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export class PosExchangeRateService {
   private readonly logger = new AppLogger(PosExchangeRateService.name);
   private cache: CachedCadCnyRate | null = null;
-  private runtimeConfig: RuntimeConfig | null = null;
+  private readonly runtimeConfigByStore = new Map<string, RuntimeConfig>();
   private refreshPromise: Promise<void> | null = null;
-  private lastDailyInitialAttemptDate: string | null = null;
-  private lastPostCutoffAttemptDate: string | null = null;
+  private readonly lastDailyInitialAttemptDateByStore = new Map<string, string>();
+  private readonly lastPostCutoffAttemptDateByStore = new Map<string, string>();
 
   constructor(
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
   ) {}
 
-  async quoteCadToCny(cadAmountCents: number): Promise<PosExchangeRateQuote> {
+  async quoteCadToCny(
+    storeStableId: string,
+    cadAmountCents: number,
+  ): Promise<PosExchangeRateQuote> {
     if (!Number.isSafeInteger(cadAmountCents) || cadAmountCents < 0) {
       throw new BadRequestException(
         'cadAmountCents must be a non-negative safe integer',
       );
     }
 
-    await this.ensureDailyRate(new Date());
+    await this.ensureDailyRate(storeStableId, new Date());
 
     const rate = this.cache;
     if (!rate) {
@@ -106,8 +109,11 @@ export class PosExchangeRateService {
     };
   }
 
-  private async ensureDailyRate(now: Date): Promise<void> {
-    const config = await this.getRuntimeConfig();
+  private async ensureDailyRate(
+    storeStableId: string,
+    now: Date,
+  ): Promise<void> {
+    const config = await this.getRuntimeConfig(storeStableId);
     const clock = this.getStoreClock(now, config.timezone);
     const isPostCutoff = clock.hour >= DAILY_REFRESH_HOUR;
 
@@ -115,22 +121,34 @@ export class PosExchangeRateService {
       await this.refreshPromise;
     }
 
-    if (this.lastDailyInitialAttemptDate !== clock.date) {
-      this.lastDailyInitialAttemptDate = clock.date;
+    if (this.lastDailyInitialAttemptDateByStore.get(storeStableId) !== clock.date) {
+      this.lastDailyInitialAttemptDateByStore.set(storeStableId, clock.date);
       if (isPostCutoff) {
-        this.lastPostCutoffAttemptDate = clock.date;
+        this.lastPostCutoffAttemptDateByStore.set(storeStableId, clock.date);
       }
-      await this.refreshLatestRate(clock.date, 'daily-first-use');
+      await this.refreshLatestRate(
+        storeStableId,
+        clock.date,
+        'daily-first-use',
+      );
       return;
     }
 
-    if (isPostCutoff && this.lastPostCutoffAttemptDate !== clock.date) {
-      this.lastPostCutoffAttemptDate = clock.date;
-      await this.refreshLatestRate(clock.date, '17:00-first-use');
+    if (
+      isPostCutoff &&
+      this.lastPostCutoffAttemptDateByStore.get(storeStableId) !== clock.date
+    ) {
+      this.lastPostCutoffAttemptDateByStore.set(storeStableId, clock.date);
+      await this.refreshLatestRate(
+        storeStableId,
+        clock.date,
+        '17:00-first-use',
+      );
     }
   }
 
   private async refreshLatestRate(
+    storeStableId: string,
     storeDate: string,
     reason: 'daily-first-use' | '17:00-first-use',
   ): Promise<void> {
@@ -139,17 +157,22 @@ export class PosExchangeRateService {
       return;
     }
 
-    this.refreshPromise = this.performRefresh(storeDate, reason).finally(() => {
+    this.refreshPromise = this.performRefresh(
+      storeStableId,
+      storeDate,
+      reason,
+    ).finally(() => {
       this.refreshPromise = null;
     });
     await this.refreshPromise;
   }
 
   private async performRefresh(
+    storeStableId: string,
     storeDate: string,
     reason: 'daily-first-use' | '17:00-first-use',
   ): Promise<void> {
-    const config = await this.getRuntimeConfig(true);
+    const config = await this.getRuntimeConfig(storeStableId, true);
 
     try {
       const observation = await this.fetchLatestBankOfCanadaObservation();
@@ -210,13 +233,20 @@ export class PosExchangeRateService {
     }
   }
 
-  private async getRuntimeConfig(force = false): Promise<RuntimeConfig> {
-    if (!force && this.runtimeConfig) return this.runtimeConfig;
+  private async getRuntimeConfig(
+    storeStableId: string,
+    force = false,
+  ): Promise<RuntimeConfig> {
+    const cached = this.runtimeConfigByStore.get(storeStableId);
+    if (!force && cached) return cached;
 
-    const config = await this.brandStoreConfigReader.getSnapshot();
+    const [store, brand] = await Promise.all([
+      this.brandStoreConfigReader.getStoreSnapshot(storeStableId),
+      this.brandStoreConfigReader.getBrandSnapshot(),
+    ]);
 
-    const timezone = config.store.timezone.trim() || DEFAULT_TIMEZONE;
-    const manualRate = config.brand.wechatAlipayExchangeRate;
+    const timezone = store.timezone.trim() || DEFAULT_TIMEZONE;
+    const manualRate = brand.wechatAlipayExchangeRate;
     const fallbackRateHundredths =
       typeof manualRate === 'number' &&
       Number.isFinite(manualRate) &&
@@ -224,14 +254,15 @@ export class PosExchangeRateService {
         ? Math.round(manualRate * 100)
         : null;
 
-    this.runtimeConfig = {
+    const config = {
       timezone: this.isValidTimeZone(timezone) ? timezone : DEFAULT_TIMEZONE,
       fallbackRateHundredths:
         fallbackRateHundredths && fallbackRateHundredths > 0
           ? fallbackRateHundredths
           : null,
     };
-    return this.runtimeConfig;
+    this.runtimeConfigByStore.set(storeStableId, config);
+    return config;
   }
 
   private async fetchLatestBankOfCanadaObservation(): Promise<BankOfCanadaObservation> {

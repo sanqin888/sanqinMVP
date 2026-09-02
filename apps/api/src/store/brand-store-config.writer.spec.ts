@@ -153,13 +153,11 @@ describe('PrismaBrandStoreConfigWriter', () => {
   it('writes canonical Brand/Store rows without a BusinessConfig delegate', async () => {
     const { tx, writer } = setup();
 
-    await writer.updateConfig({
-      brand: { brandNameEn: 'SanQ Updated' },
-      store: {
-        isTemporarilyClosed: true,
-        temporaryCloseReason: 'Maintenance',
-        salesTaxRate: 0.15,
-      },
+    await writer.updateBrandConfig({ brandNameEn: 'SanQ Updated' });
+    await writer.updateStoreConfig(storeStableId, {
+      isTemporarilyClosed: true,
+      temporaryCloseReason: 'Maintenance',
+      salesTaxRate: 0.15,
     });
 
     expect(tx.store.findUnique).toHaveBeenCalledTimes(1);
@@ -182,15 +180,13 @@ describe('PrismaBrandStoreConfigWriter', () => {
   it('does not touch BusinessConfig or require BrandConfig for StoreConfig-only canonical fields', async () => {
     const { tx, writer } = setup({ brand: null });
 
-    await writer.updateConfig({
-      store: {
-        phone: '+1 416 555 0100',
-        contactName: 'Front counter',
-        countryCode: 'CA',
-        autoAcceptOnlineOrders: false,
-        allergyHandlingMode: 'DENY_LIST',
-        unsupportedAllergens: ['PEANUTS'],
-      },
+    await writer.updateStoreConfig(storeStableId, {
+      phone: '+1 416 555 0100',
+      contactName: 'Front counter',
+      countryCode: 'CA',
+      autoAcceptOnlineOrders: false,
+      allergyHandlingMode: 'DENY_LIST',
+      unsupportedAllergens: ['PEANUTS'],
     });
 
     expect(tx.storeConfig.update).toHaveBeenCalledTimes(1);
@@ -212,10 +208,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
   it('writes a non-default StoreConfig without consulting BrandConfig', async () => {
     const { tx, writer } = setup();
 
-    await writer.updateConfig(
-      { store: { salesTaxRate: 0.15 } },
-      'second_store',
-    );
+    await writer.updateStoreConfig('second_store', { salesTaxRate: 0.15 });
 
     expect(tx.store.findUnique.mock.calls[0]?.[0].where).toEqual({
       storeStableId: 'second_store',
@@ -344,7 +337,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
     const { writer } = setup({ config: null });
 
     await expect(
-      writer.updateConfig({ store: { salesTaxRate: 0.15 } }),
+      writer.updateStoreConfig(storeStableId, { salesTaxRate: 0.15 }),
     ).rejects.toEqual(expect.any(BrandStoreConfigUnavailableError));
   });
 
@@ -352,7 +345,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
     const { writer } = setup({ brand: null });
 
     await expect(
-      writer.updateConfig({ brand: { brandNameEn: 'SanQ Updated' } }),
+      writer.updateBrandConfig({ brandNameEn: 'SanQ Updated' }),
     ).rejects.toEqual(expect.any(BrandStoreConfigUnavailableError));
   });
 });

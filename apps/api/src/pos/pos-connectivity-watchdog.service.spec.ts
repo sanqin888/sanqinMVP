@@ -250,7 +250,7 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       }),
     };
     const configWriter = {
-      updateConfig: jest.fn().mockResolvedValue(undefined),
+      updateStoreConfig: jest.fn().mockResolvedValue(undefined),
       resumeTemporaryClosureIfMatches: jest.fn().mockResolvedValue(true),
     };
     const posGateway = {
@@ -308,14 +308,12 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
         autoResumeAt: expectedAutoResumeAt,
       });
 
-      expect(configWriter.updateConfig).toHaveBeenCalledWith(
-        {
-          store: {
-            isTemporarilyClosed: true,
-            temporaryCloseReason: `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
-          },
-        },
+      expect(configWriter.updateStoreConfig).toHaveBeenCalledWith(
         STORE_STABLE_ID,
+        {
+          isTemporarilyClosed: true,
+          temporaryCloseReason: `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
+        },
       );
       expect(
         posGateway.publishCustomerOrderingStatusUpdate,
@@ -337,14 +335,12 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       autoResumeAt: '2026-08-26T00:00:00-04:00',
     });
 
-    expect(configWriter.updateConfig).toHaveBeenCalledWith(
-      {
-        store: {
-          isTemporarilyClosed: true,
-          temporaryCloseReason: '__AUTO_UNTIL__:2026-08-26T00:00:00-04:00|',
-        },
-      },
+    expect(configWriter.updateStoreConfig).toHaveBeenCalledWith(
       STORE_STABLE_ID,
+      {
+        isTemporarilyClosed: true,
+        temporaryCloseReason: '__AUTO_UNTIL__:2026-08-26T00:00:00-04:00|',
+      },
     );
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
   });
@@ -359,14 +355,12 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       autoResumeAt: null,
     });
 
-    expect(configWriter.updateConfig).toHaveBeenCalledWith(
-      {
-        store: {
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-        },
-      },
+    expect(configWriter.updateStoreConfig).toHaveBeenCalledWith(
       STORE_STABLE_ID,
+      {
+        isTemporarilyClosed: false,
+        temporaryCloseReason: null,
+      },
     );
     expect(posGateway.publishCustomerOrderingStatusUpdate).toHaveBeenCalledWith(
       {

@@ -214,10 +214,9 @@ export class PosOrdersService {
     storeStableId: string,
     enabled: boolean,
   ): Promise<{ enabled: boolean }> {
-    await this.brandStoreConfigWriter.updateConfig(
-      { store: { autoAcceptOnlineOrders: enabled } },
-      storeStableId,
-    );
+    await this.brandStoreConfigWriter.updateStoreConfig(storeStableId, {
+      autoAcceptOnlineOrders: enabled,
+    });
     return { enabled };
   }
 
