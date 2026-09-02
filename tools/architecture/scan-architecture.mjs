@@ -1305,14 +1305,30 @@ if (brandStoreCanonicalConfigOwnership) {
     const apiPath = join(REPOSITORY_ROOT, adminStoreContextApiAdapter);
     if (adminStoreContextApiAdapter && existsSync(apiPath)) {
       const source = readFileSync(apiPath, 'utf8');
+      const forbiddenSingularStoreRoutes = [
+        "@Get('store/config')",
+        "@Patch('store/config')",
+        "@Get('store/hours')",
+        "@Put('store/hours')",
+        "@Get('store/holidays')",
+        "@Put('store/holidays')",
+      ];
+      const requiredCanonicalStoreRoutes = [
+        "@Get('stores/:storeStableId/config')",
+        "@Patch('stores/:storeStableId/config')",
+        "@Get('stores/:storeStableId/hours')",
+        "@Put('stores/:storeStableId/hours')",
+        "@Get('stores/:storeStableId/holidays')",
+        "@Put('stores/:storeStableId/holidays')",
+      ];
       if (
-        !source.includes('@compat brand-store.default-store-identity.v1') ||
-        !source.includes('resolveConfiguredStoreStableId') ||
-        !source.includes("@Get('stores/:storeStableId/config')") ||
-        /service\.getStore(?:Config|Hours|Holidays)\s*\(\s*\)/.test(source)
+        source.includes('resolveConfiguredStoreStableId') ||
+        source.includes('@compat brand-store.default-store-identity.v1') ||
+        forbiddenSingularStoreRoutes.some((route) => source.includes(route)) ||
+        requiredCanonicalStoreRoutes.some((route) => !source.includes(route))
       ) {
         failures.push(
-          `legacy /staff/store/* fallback must stay isolated and annotated in the staff transport adapter while canonical routes remain storeStableId-scoped: ${adminStoreContextApiAdapter}`,
+          `Admin Store transport must expose only explicit storeStableId-scoped config/hours/holidays routes and must not restore /staff/store/* fallback: ${adminStoreContextApiAdapter}`,
         );
       }
     }
