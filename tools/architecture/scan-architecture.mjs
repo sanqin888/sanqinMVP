@@ -1265,6 +1265,10 @@ if (benefitsLoyaltyPolicyOwnership) {
   const contractedAdminBusinessService = toPosix(
     benefitsLoyaltyPolicyOwnership.contractedAdminBusinessService,
   );
+  const prismaSchema = toPosix(benefitsLoyaltyPolicyOwnership.prismaSchema);
+  const contractionMigration = toPosix(
+    benefitsLoyaltyPolicyOwnership.contractionMigration,
+  );
   const allowedBusinessConfigPolicyFiles = new Set(
     (benefitsLoyaltyPolicyOwnership.allowedBusinessConfigPolicyFiles ?? []).map(
       toPosix,
@@ -1334,15 +1338,15 @@ if (benefitsLoyaltyPolicyOwnership) {
     );
     if (!dedicatedDelegatePattern.test(source)) {
       failures.push(
-        `Benefits loyalty policy reader must shadow-read dedicated ${dedicatedStorageDelegate} storage: ${implementation}`,
+        `Benefits loyalty policy reader must use dedicated ${dedicatedStorageDelegate} storage: ${implementation}`,
       );
     }
     const transitionalDelegatePattern = new RegExp(
       `\\.\\s*${escapeRegExp(transitionalStorageDelegate)}\\b`,
     );
-    if (!transitionalDelegatePattern.test(source)) {
+    if (transitionalDelegatePattern.test(source)) {
       failures.push(
-        `Benefits loyalty policy reader must keep transitional ${transitionalStorageDelegate} available for Phase C parity/rollback observation: ${implementation}`,
+        `Benefits contracted loyalty policy reader must not access transitional ${transitionalStorageDelegate}: ${implementation}`,
       );
     }
     const transactionalPolicyReaderStart = source.indexOf(
@@ -1355,18 +1359,17 @@ if (benefitsLoyaltyPolicyOwnership) {
     if (
       !transactionalPolicyReaderSource.includes('Prisma.TransactionClient') ||
       !transactionalPolicyReaderSource.includes(
-        `tx.${transitionalStorageDelegate}.findUnique`,
-      ) ||
-      !transactionalPolicyReaderSource.includes(
         `tx.${dedicatedStorageDelegate}.findUnique`,
       ) ||
-      !transactionalPolicyReaderSource.includes('observePolicyParity') ||
+      transactionalPolicyReaderSource.includes(
+        `tx.${transitionalStorageDelegate}.`,
+      ) ||
       !transactionalPolicyReaderSource.includes(
         'normalizeLoyaltyPolicy(loyaltyProgramPolicy)',
       )
     ) {
       failures.push(
-        `Benefits Phase C transaction-bound policy reader must return ${dedicatedStorageDelegate} while comparing ${transitionalStorageDelegate} through the same Prisma transaction client: ${implementation}`,
+        `Benefits contracted transaction-bound policy reader must use only ${dedicatedStorageDelegate} through the supplied Prisma transaction client: ${implementation}`,
       );
     }
     const policyReaderStart = source.indexOf('async getLoyaltyPolicySnapshot()');
@@ -1374,18 +1377,17 @@ if (benefitsLoyaltyPolicyOwnership) {
       policyReaderStart >= 0 ? source.slice(policyReaderStart, policyReaderStart + 2200) : '';
     if (
       !policyReaderSource.includes(
-        `this.prisma.${transitionalStorageDelegate}.findUnique`,
-      ) ||
-      !policyReaderSource.includes(
         `this.prisma.${dedicatedStorageDelegate}.findUnique`,
       ) ||
-      !policyReaderSource.includes('observePolicyParity') ||
+      policyReaderSource.includes(
+        `this.prisma.${transitionalStorageDelegate}.`,
+      ) ||
       !policyReaderSource.includes(
         'normalizeLoyaltyPolicy(loyaltyProgramPolicy)',
       )
     ) {
       failures.push(
-        `Benefits Phase C runtime policy reader must return ${dedicatedStorageDelegate} while shadow-comparing ${transitionalStorageDelegate}: ${implementation}`,
+        `Benefits contracted runtime policy reader must use only ${dedicatedStorageDelegate}: ${implementation}`,
       );
     }
     const legacyPolicyReaderPattern =
@@ -1425,30 +1427,28 @@ if (benefitsLoyaltyPolicyOwnership) {
       !settingsReaderSource.includes(
         `this.prisma.${dedicatedStorageDelegate}.findUnique`,
       ) ||
-      !settingsReaderSource.includes(
-        `this.prisma.${transitionalStorageDelegate}.findUnique`,
+      settingsReaderSource.includes(
+        `this.prisma.${transitionalStorageDelegate}.`,
       ) ||
-      !settingsReaderSource.includes('observeParity') ||
       !settingsReaderSource.includes(
         'return requireLoyaltyPolicySettings(loyaltyProgramPolicy)',
       )
     ) {
       failures.push(
-        `Benefits Phase C editable policy reader must return ${dedicatedStorageDelegate} while shadow-comparing ${transitionalStorageDelegate}: ${writerImplementation}`,
+        `Benefits contracted editable policy reader must use only ${dedicatedStorageDelegate}: ${writerImplementation}`,
       );
     }
     if (
       !writerSource.includes('normalizeLoyaltyPolicyUpdate') ||
       !/\.\$transaction\s*\(/.test(writerSource) ||
-      !writerSource.includes(`tx.${transitionalStorageDelegate}.findUnique`) ||
       !writerSource.includes(`tx.${dedicatedStorageDelegate}.findUnique`) ||
       !writerSource.includes('const current = loyaltyProgramPolicy;') ||
       !writerSource.includes(`tx.${dedicatedStorageDelegate}.update`) ||
-      !/tx\.businessConfig\.update\s*\(/.test(writerSource) ||
-      !writerSource.includes(`tx.${transitionalStorageDelegate}.update`)
+      writerSource.includes(`tx.${transitionalStorageDelegate}.`) ||
+      /tx\.businessConfig\./.test(writerSource)
     ) {
       failures.push(
-        `Benefits Phase C loyalty writer must merge from ${dedicatedStorageDelegate}, shadow-compare ${transitionalStorageDelegate}, and triple-write ${dedicatedStorageDelegate}, BusinessConfig compatibility, and ${transitionalStorageDelegate} in one transaction: ${writerImplementation}`,
+        `Benefits contracted loyalty writer must merge from and write only ${dedicatedStorageDelegate} in one transaction: ${writerImplementation}`,
       );
     }
     if (
@@ -1461,9 +1461,97 @@ if (benefitsLoyaltyPolicyOwnership) {
         `Benefits loyalty policy writer must not invent runtime defaults or create missing policy config: ${writerImplementation}`,
       );
     }
-    if (!writerSource.includes('@compat benefits.business-config-loyalty-policy.v1')) {
+    if (writerSource.includes('@compat benefits.business-config-loyalty-policy.v1')) {
       failures.push(
-        `Benefits loyalty policy writer compatibility annotation missing: ${writerImplementation}`,
+        `Benefits contracted loyalty policy writer must not retain the legacy persistence compatibility annotation: ${writerImplementation}`,
+      );
+    }
+  }
+
+  const prismaSchemaPath = join(REPOSITORY_ROOT, prismaSchema);
+  if (!existsSync(prismaSchemaPath)) {
+    failures.push(`Benefits loyalty policy Prisma schema missing: ${prismaSchema}`);
+  } else {
+    const schemaSource = readFileSync(prismaSchemaPath, 'utf8');
+    for (const modelName of ['BrandConfig', 'BusinessConfig']) {
+      const modelMatch = schemaSource.match(
+        new RegExp(`model\\s+${escapeRegExp(modelName)}\\s*\\{([\\s\\S]*?)\\n\\}`),
+      );
+      if (!modelMatch) {
+        failures.push(`Benefits Loyalty contraction model missing: ${prismaSchema} -> ${modelName}`);
+        continue;
+      }
+      for (const field of forbiddenBrandStoreContractFields) {
+        if (new RegExp(`^\\s*${escapeRegExp(field)}\\s+`, 'm').test(modelMatch[1])) {
+          failures.push(
+            `Benefits Loyalty contraction must remove duplicated policy column: ${prismaSchema} -> ${modelName}.${field}`,
+          );
+        }
+      }
+    }
+
+    const dedicatedModelMatch = schemaSource.match(
+      /model\s+LoyaltyProgramPolicy\s*\{([\s\S]*?)\n\}/,
+    );
+    if (!dedicatedModelMatch) {
+      failures.push(`Benefits dedicated LoyaltyProgramPolicy model missing: ${prismaSchema}`);
+    } else {
+      for (const field of forbiddenBrandStoreContractFields) {
+        if (!new RegExp(`^\\s*${escapeRegExp(field)}\\s+`, 'm').test(dedicatedModelMatch[1])) {
+          failures.push(
+            `Benefits dedicated LoyaltyProgramPolicy field missing after contraction: ${prismaSchema} -> ${field}`,
+          );
+        }
+      }
+    }
+  }
+
+  const contractionMigrationPath = join(REPOSITORY_ROOT, contractionMigration);
+  if (!existsSync(contractionMigrationPath)) {
+    failures.push(
+      `Benefits Loyalty contraction migration missing: ${contractionMigration}`,
+    );
+  } else {
+    const migrationSource = readFileSync(contractionMigrationPath, 'utf8');
+    const triggerFunctionMatch = migrationSource.match(
+      /CREATE OR REPLACE FUNCTION "syncBusinessConfigToCanonicalConfig"\(\)[\s\S]*?\$\$ LANGUAGE plpgsql;/,
+    );
+    if (!triggerFunctionMatch) {
+      failures.push(
+        `Benefits Loyalty contraction must replace syncBusinessConfigToCanonicalConfig(): ${contractionMigration}`,
+      );
+    } else {
+      for (const field of forbiddenBrandStoreContractFields) {
+        if (triggerFunctionMatch[0].includes(`"${field}"`)) {
+          failures.push(
+            `BusinessConfig compatibility trigger must not propagate Loyalty field after contraction: ${contractionMigration} -> ${field}`,
+          );
+        }
+      }
+    }
+
+    for (const field of forbiddenBrandStoreContractFields) {
+      const dropCount = (
+        migrationSource.match(
+          new RegExp(`DROP COLUMN "${escapeRegExp(field)}"`, 'g'),
+        ) ?? []
+      ).length;
+      if (dropCount !== 2) {
+        failures.push(
+          `Benefits Loyalty contraction migration must drop ${field} from both BrandConfig and BusinessConfig: ${contractionMigration}`,
+        );
+      }
+    }
+
+    if (
+      !migrationSource.includes('BEGIN;') ||
+      !migrationSource.includes('COMMIT;') ||
+      !migrationSource.includes(
+        'Loyalty Phase D contraction blocked: persistence drift detected',
+      )
+    ) {
+      failures.push(
+        `Benefits Loyalty contraction migration must be atomic and fail closed on pre-drop parity drift: ${contractionMigration}`,
       );
     }
   }

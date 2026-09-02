@@ -1,9 +1,10 @@
 # Benefits Loyalty policy contraction implementation plan
 
 Date: 2026-08-30
-Baseline: `origin/dev` at `483f675f`
+Last updated: 2026-09-01
+Current local contraction baseline: `origin/dev` at `98e19e74`
 Compatibility entry: `benefits.business-config-loyalty-policy.v1`
-Status: Admin Business contract contraction plus Phase A dedicated persistence expand/backfill and Phase B triple-write/shadow-read are implemented; Phase C dedicated read cutover is implemented locally; trigger split, dual-write removal, and final column contraction remain pending.
+Status: Admin Business contraction and Phases A-C are complete. Phase D is now implemented locally across application, Prisma schema, migration, architecture gates, and docs: Loyalty reads/writes use only LoyaltyProgramPolicy; the authorized contraction migration fail-closes on three-copy drift, removes Loyalty from the BusinessConfig trigger, and drops the duplicated BrandConfig/BusinessConfig columns. Remote CI, deployment, and direct production verification remain pending.
 
 ## 1. Scope and current ownership
 
@@ -148,7 +149,7 @@ Migration rules:
 - fail the migration if the canonical source row is absent instead of inventing a policy;
 - do not change rates, threshold semantics, tier ordering rules or rounding behavior in this migration.
 
-The Phase A schema and migration were implemented after explicit Prisma/migration authorization; every later trigger/schema migration in Phases D/G still requires its own explicit authorization.
+Phase A was implemented after explicit Prisma/migration authorization. The combined Phase D final contraction likewise received explicit authorization on 2026-09-01 before its trigger/schema migration was created.
 
 ## 7. Expand-backfill-cutover sequence
 
@@ -207,77 +208,50 @@ After zero-diff observation:
 - public API contracts remain unchanged;
 - writes continue to LoyaltyProgramPolicy + BusinessConfig + BrandConfig temporarily for rollback safety.
 
-Observe at least one complete business cycle after deployment with zero policy mismatch before Phase D trigger work begins.
+The previous passive business-cycle wait is no longer a Phase D gate. Before contraction, use direct production parity queries plus targeted end-to-end actions so the relevant paths are exercised immediately rather than waiting for organic traffic.
 
-### Phase D — Split the Loyalty portion from the BusinessConfig trigger
+### Phase D — Final Loyalty persistence contraction
 
-Authorized Prisma migration only.
+Implementation status: **implemented locally across application, schema, migration, architecture gates, and documentation; remote CI/deployment verification pending**.
 
-Replace `syncBusinessConfigToCanonicalConfig()` so its BrandConfig insert/upsert no longer includes any of the ten Loyalty fields. Keep the existing Brand/Store synchronization behavior unchanged.
+The user-approved Phase D target combines the old D/E/F/G end state:
 
-Deploy this migration while the application writer still writes all three copies. That makes the trigger change backward-safe for the currently deployed writer and proves unrelated BusinessConfig updates can no longer mutate Loyalty policy.
+1. replace `syncBusinessConfigToCanonicalConfig()` so its BrandConfig insert/upsert contains no Loyalty fields while preserving every non-Loyalty Brand/Store synchronization behavior;
+2. make the Benefits reader/settings/transaction paths read only `LoyaltyProgramPolicy`;
+3. make the Benefits writer merge and write only `LoyaltyProgramPolicy`; remove BusinessConfig and BrandConfig Loyalty writes and the parity/shadow helper;
+4. drop the ten Loyalty columns from both BrandConfig and BusinessConfig only after the replacement trigger function no longer references them;
+5. keep `LoyaltyProgramPolicy` unchanged as the sole policy persistence model;
+6. make the architecture scanner fail CI if Loyalty application code regains BrandConfig/BusinessConfig policy reads or writes;
+7. keep the compatibility-register entry active until the destructive migration is deployed and direct verification is clean.
 
-Required verification:
+The application, schema, and migration portions above are now implemented locally under explicit migration authorization. The migration is intentionally not applied to production from the MCP workspace; remote CI and normal deployment remain the validation/rollout path.
 
-1. save an unrelated Admin Business setting;
-2. confirm LoyaltyProgramPolicy is unchanged;
-3. confirm BrandConfig Loyalty values are unchanged;
-4. confirm BrandConfig/StoreConfig non-Loyalty fields still synchronize as expected.
+The final migration must fail closed before destructive DDL if any of the ten current values differ across `LoyaltyProgramPolicy(id=1)`, `BrandConfig(id=1)`, and `BusinessConfig(id=1)`. It must replace the trigger function before dropping either table's Loyalty columns. Do not invent values or recreate removed columns during rollback.
 
-### Phase E — Stop BusinessConfig Loyalty dual-write
+Deployment ordering is part of the contraction safety boundary. The current Docker runtime does not automatically execute `prisma migrate deploy`, and an old Phase C API cannot safely remain serving after the duplicated columns are dropped. Build the new image first, briefly stop the old API/worker, run the authorized migration using the new image, then start the new services. Do not perform an Admin Loyalty policy write with the new application before the contraction migration has completed, because the new writer intentionally updates only `LoyaltyProgramPolicy` and the migration will correctly fail closed if the retired copies drift during that window.
 
-After the trigger split is verified:
+## 8. Direct verification checklist for Phase D
 
-- remove `tx.businessConfig.update()` from the Benefits policy writer;
-- continue writing LoyaltyProgramPolicy + BrandConfig temporarily;
-- keep parity reporting between the dedicated row and BrandConfig;
-- update scanner rules so any Benefits writer BusinessConfig usage fails CI.
+Do not wait for a natural order or a full business cycle. After deploying the complete Phase D contraction, actively exercise these paths:
 
-Rollback at this stage is to a version that reads the dedicated table and still has the BrandConfig copy available; do not roll back to a version that expects BusinessConfig-triggered Loyalty propagation.
+1. query the canonical `LoyaltyProgramPolicy(id=1)` values and record them;
+2. open Admin Members Loyalty settings, change one intentionally chosen policy field through `/admin/benefits/loyalty-policy`, reload it, and verify only `LoyaltyProgramPolicy` stores the new value;
+3. open POS payment and confirm the Loyalty policy loads successfully;
+4. place or quote a Web order that exercises points redemption conversion and verify the configured `redeemDollarPerPoint` is honored; pure-points payment is suitable and does not require waiting for an organic order;
+5. open the public membership rules surface and verify earn/referral/tier values match the canonical policy;
+6. save an unrelated Brand/Store setting through its normal staff contract and verify the Loyalty policy is unchanged while the intended non-Loyalty BrandConfig/StoreConfig field changes correctly;
+7. query PostgreSQL metadata and verify `syncBusinessConfigToCanonicalConfig()` contains none of the ten Loyalty field names and BrandConfig/BusinessConfig no longer expose those columns;
+8. inspect application logs around the test actions for Benefits/Admin/POS/Orders/Brand-Store errors.
 
-### Phase F — Stop BrandConfig Loyalty dual-write
-
-After another zero-diff observation window:
-
-- write only LoyaltyProgramPolicy;
-- read only LoyaltyProgramPolicy;
-- BrandConfig/BusinessConfig Loyalty columns become inactive schema residue;
-- remove the writer's compatibility annotation only when the compatibility register is updated in the same PR.
-
-### Phase G — Column contraction migration
-
-Authorized destructive/contraction Prisma migration only:
-
-- drop the ten Loyalty fields from BrandConfig;
-- drop the ten Loyalty fields from BusinessConfig;
-- verify the trigger function no longer references any dropped field;
-- remove corresponding Prisma generated-type dependencies, tests and compatibility documentation;
-- close `benefits.business-config-loyalty-policy.v1` only after production verification.
-
-This migration must be separate from the initial expand migration.
-
-## 8. Business-day observation checklist before contract contraction
-
-The current deployed cutover should be observed before removing the old Admin write contract:
-
-1. Open Admin Members and load Loyalty settings successfully.
-2. Save one no-op or intentionally chosen policy value through the Benefits endpoint and confirm it reloads correctly.
-3. Open POS payment and confirm the policy loads without Admin Business dependency/error.
-4. Exercise an Orders quote/checkout path that evaluates points redemption and confirm the configured `redeemDollarPerPoint` is honored.
-5. Open the public membership rules page and confirm current earn/referral/tier values render correctly.
-6. Save an unrelated Brand/Store value through the staff Brand/Store contract, then re-open Loyalty settings and confirm no Loyalty value changed. This specifically validates that the owner-maintained compatibility copy is synchronized and the current one-way trigger cannot replay stale policy.
-7. Review application logs for Benefits/Admin/POS/Orders errors around these actions. No database mutation or manual trigger change is required for this observation.
-
-Only after this checklist is clean should the contract contraction PR in section 5 begin.
+This direct test set replaces passive observation as the acceptance method for this contraction.
 
 ## 9. Rollback principles
 
 - Never rewrite Loyalty ledger history during policy migration.
 - Do not reinterpret historical order redemption amounts using a newer policy.
-- Before trigger split, rollback may rely on synchronized BusinessConfig + BrandConfig copies.
-- After trigger split, rollback must target a version that does not require BusinessConfig-triggered Loyalty propagation.
-- After the dedicated read cutover, keep the previous canonical copy until the agreed observation period is complete.
-- A schema contraction rollback is forward-fix only; do not recreate dropped columns from guessed defaults.
+- Before the destructive database contraction is deployed, rollback may target the Phase C dedicated-read release because the duplicate columns still exist; do not roll back to an older BrandConfig-canonical reader.
+- After the trigger split and column drop, rollback is forward-fix only and must target an application version that uses `LoyaltyProgramPolicy` as the canonical source.
+- Do not recreate dropped columns from guessed defaults.
 
 ## 10. Exit criteria
 
@@ -291,5 +265,5 @@ Only after this checklist is clean should the contract contraction PR in section
 - BusinessConfig trigger contains no Loyalty fields;
 - BrandConfig and BusinessConfig contain no Loyalty columns;
 - no active `BusinessConfig` Loyalty read/write/fallback remains;
-- production observation and parity reports are clean;
+- direct post-deployment verification and pre-contraction parity evidence are clean;
 - the compatibility register and architecture scanner are updated in the same contraction closeout.
