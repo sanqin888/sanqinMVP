@@ -127,8 +127,6 @@
       "resolveConfiguredStoreStableId",
       "BRAND_STORE_CONFIG_READER",
       "BRAND_STORE_CONFIG_WRITER",
-      "STORE_LEGACY_DB_ID_RESOLVER",
-      "StoreLegacyDbIdResolverPort",
       "BrandConfigUpdateInput",
       "BrandStoreConfigReaderPort",
       "BrandStoreConfigSnapshot",

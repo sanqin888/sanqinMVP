@@ -67,31 +67,6 @@
       ]
     },
     {
-      "compat_id": "pos-device.admin-db-id.v1",
-      "status": "active",
-      "old_owner": "Admin POS-device browser contract exposed PosDevice.id and PosDevice.storeId database UUIDs and accepted those UUIDs for device actions/store assignment",
-      "new_owner": "Store Operations/POS PosDevice management boundary using deviceStableId and storeStableId for all canonical Admin/Web operations",
-      "dual_write_or_read": [
-        "Canonical Admin POS-device list requests include storeStableId and return only deviceStableId/storeStableId business identities",
-        "Canonical create, reset, status, and delete operations use storeStableId/deviceStableId through POS_DEVICE_MANAGEMENT",
-        "The no-query legacy list temporarily keeps id/storeId field names but maps them to deviceStableId/storeStableId so old bundles remain operational without emitting database UUIDs",
-        "A stale browser tab may still submit a previously loaded device DB UUID or legacy create storeId UUID; POS_DEVICE_ADMIN_COMPATIBILITY resolves those inbound UUIDs to stable identities before canonical management executes"
-      ],
-      "parity_metric": "New Admin Web requests containing storeStableId must use zero database UUID fields; API logs with event=pos_device_admin_compatibility_used (legacy_unscoped_list, legacy_store_db_id, implicit_default_store, legacy_device_db_id) must reach zero after deployment/browser refresh observation",
-      "rollback": "Keep the inbound UUID resolver and legacy no-query response aliases while old Admin bundles may still be open; canonical stable-ID routes remain the preferred path and no database UUID is reintroduced into new Web state",
-      "exit_criteria": "Admin Web has used only storeStableId/deviceStableId for one observation window, legacy no-query list traffic and UUID resolver usage are zero, then remove storeId DTO input, legacy response aliases, UUID resolvers, annotations, and this active compatibility entry",
-      "remove_pr": "Follow-up POS-device Admin DB-ID contraction after production observation",
-      "deadline": "Before Store Operations/POS identity modularization exit",
-      "evidence": [
-        "apps/api/src/pos/public-api.ts",
-        "apps/api/src/pos/pos-device-management.contract.ts",
-        "apps/api/src/pos/pos-device.service.ts",
-        "apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts",
-        "apps/web/src/lib/api/pos-devices.ts",
-        "apps/web/src/app/[locale]/(site)/admin/(protected)/pos-devices/page.tsx"
-      ]
-    },
-    {
       "compat_id": "web.api-envelope-direct-payload.v1",
       "status": "active",
       "old_owner": "Checkout direct API payload readers and page-local response unwrap helpers",
@@ -177,6 +152,31 @@
         "apps/web/src/lib/api/pos.ts",
         "apps/web/src/components/store/PosDeviceFrame.tsx",
         "production legacy-route and canonical-route verification reported 2026-09-02"
+      ]
+    },
+    {
+      "compat_id": "pos-device.admin-db-id.v1",
+      "status": "closed",
+      "old_owner": "Admin POS-device browser contract exposed PosDevice.id and PosDevice.storeId database UUIDs and accepted those UUIDs for device actions/store assignment",
+      "new_owner": "Store Operations/POS PosDevice management boundary using deviceStableId and storeStableId for all canonical Admin/Web operations",
+      "dual_write_or_read": "Removed. Admin create/list/reset/status/delete now require the canonical stable-ID contract; the no-query list aliases, inbound Store/device DB UUID translators, POS_DEVICE_ADMIN_COMPATIBILITY port/provider, and Brand/Store STORE_LEGACY_DB_ID_RESOLVER are deleted.",
+      "parity_metric": "Readiness completed on 2026-09-02: current Admin Web source uses only storeStableId/deviceStableId; production has three ACTIVE PosDevice rows with zero missing deviceStableId and zero missing related Store.storeStableId; after the 12:59 API restart the canonical GET /api/v1/admin/pos-devices?storeStableId=4750_Yonge_Street returned 200 while event=pos_device_admin_compatibility_used had zero hits.",
+      "rollback": "Forward-fix only. Do not restore DB UUID fields or implicit store selection to the Admin browser contract; stale clients must refresh and use storeStableId/deviceStableId.",
+      "exit_criteria": "Completed: repository Web consumers are stable-ID only, live canonical traffic is active, compatibility logging is zero in the observed deployed window, DB identity parity is complete, and architecture tests prevent the compatibility port/resolvers from returning.",
+      "remove_pr": "Store Operations/POS Admin DB-ID contraction work package",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/api/src/pos/public-api.ts",
+        "apps/api/src/pos/pos-device-management.contract.ts",
+        "apps/api/src/pos/pos-device.service.ts",
+        "apps/api/src/pos/pos-device-management.architecture.spec.ts",
+        "apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts",
+        "apps/api/src/admin/pos-devices/dto/create-pos-device.dto.ts",
+        "apps/api/src/store/brand-store-config.contract.ts",
+        "apps/api/src/store/brand-store-config.reader.ts",
+        "apps/web/src/lib/api/pos-devices.ts",
+        "apps/web/src/app/[locale]/(site)/admin/(protected)/pos-devices/page.tsx",
+        "production canonical-route, compatibility-log and PosDevice parity verification 2026-09-02"
       ]
     },
     {

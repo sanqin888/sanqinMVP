@@ -4,15 +4,11 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { withPosConnectivityHeartbeatEnabled } from '../common/pos-connectivity';
 import {
-  resolveConfiguredStoreStableId,
   STORE_DIRECTORY_READER,
-  STORE_LEGACY_DB_ID_RESOLVER,
   type StoreDirectoryReaderPort,
-  type StoreLegacyDbIdResolverPort,
 } from '../store/public-api';
 import {
   type AuthenticatedPosIdentity,
-  type PosDeviceAdminCompatibilityPort,
   type PosDeviceCredentialVerifierPort,
   type PosDeviceCredentials,
   type PosDeviceEnrollmentResult,
@@ -44,17 +40,12 @@ function toJsonObject(value: Record<string, unknown>): Prisma.JsonObject {
 
 @Injectable()
 export class PosDeviceService
-  implements
-    PosDeviceManagementPort,
-    PosDeviceAdminCompatibilityPort,
-    PosDeviceCredentialVerifierPort
+  implements PosDeviceManagementPort, PosDeviceCredentialVerifierPort
 {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORE_DIRECTORY_READER)
     private readonly storeDirectoryReader: StoreDirectoryReaderPort,
-    @Inject(STORE_LEGACY_DB_ID_RESOLVER)
-    private readonly storeLegacyDbIdResolver: StoreLegacyDbIdResolverPort,
   ) {}
 
   private hashDeviceKey(value: string): string {
@@ -215,22 +206,6 @@ export class PosDeviceService
     });
   }
 
-  // @compat pos-device.admin-db-id.v1
-  async listDevices(): Promise<PosDeviceManagementSnapshot[]> {
-    const devices = await this.prisma.posDevice.findMany({
-      orderBy: { enrolledAt: 'desc' },
-      select: {
-        deviceStableId: true,
-        name: true,
-        status: true,
-        enrolledAt: true,
-        lastSeenAt: true,
-        store: { select: { storeStableId: true } },
-      },
-    });
-    return devices.map((device) => this.toManagementSnapshot(device));
-  }
-
   async listDevicesByStore(
     storeStableId: string,
   ): Promise<PosDeviceManagementSnapshot[]> {
@@ -342,33 +317,5 @@ export class PosDeviceService
   async deleteDevice(deviceStableId: string): Promise<void> {
     await this.requireManagedDevice(deviceStableId);
     await this.prisma.posDevice.delete({ where: { deviceStableId } });
-  }
-
-  // @compat brand-store.default-store-identity.v1
-  // @compat pos-device.admin-db-id.v1
-  async resolveStoreStableId(legacyStoreDbId?: string): Promise<string> {
-    if (!legacyStoreDbId) {
-      return resolveConfiguredStoreStableId();
-    }
-    const storeStableId =
-      await this.storeLegacyDbIdResolver.resolveStoreStableIdByDbId(
-        legacyStoreDbId,
-      );
-    if (!storeStableId) {
-      throw new PosDeviceStoreUnavailableError(legacyStoreDbId);
-    }
-    return storeStableId;
-  }
-
-  // @compat pos-device.admin-db-id.v1
-  async resolveDeviceStableId(legacyDeviceDbId: string): Promise<string> {
-    const device = await this.prisma.posDevice.findUnique({
-      where: { id: legacyDeviceDbId },
-      select: { deviceStableId: true },
-    });
-    if (!device) {
-      throw new PosDeviceNotFoundError(legacyDeviceDbId);
-    }
-    return device.deviceStableId;
   }
 }

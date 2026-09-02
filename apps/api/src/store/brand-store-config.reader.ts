@@ -13,7 +13,6 @@ import {
   type StoreDirectoryEntry,
   type StoreDirectoryReaderPort,
   type StoreDirectoryWriterPort,
-  type StoreLegacyDbIdResolverPort,
 } from './brand-store-config.contract';
 import { resolveConfiguredStoreStableId } from './store-identity';
 import type {
@@ -26,10 +25,7 @@ import type {
 
 @Injectable()
 export class PrismaBrandStoreConfigReader
-  implements
-    BrandStoreConfigReaderPort,
-    StoreDirectoryReaderPort,
-    StoreLegacyDbIdResolverPort
+  implements BrandStoreConfigReaderPort, StoreDirectoryReaderPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -138,15 +134,6 @@ export class PrismaBrandStoreConfigReader
       storeName: store.name,
       isActive: store.isActive,
     }));
-  }
-
-  // @compat pos-device.admin-db-id.v1
-  async resolveStoreStableIdByDbId(storeDbId: string): Promise<string | null> {
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeDbId },
-      select: { storeStableId: true },
-    });
-    return store?.storeStableId ?? null;
   }
 }
 
