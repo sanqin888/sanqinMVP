@@ -40,7 +40,7 @@ Before the Admin Business contract contraction, two Admin Business endpoints acc
 - `PATCH /admin/business/config`
 - `PUT /admin/business/temporary-close`
 
-That Loyalty request/response ownership is now removed: stale Loyalty keys are explicitly rejected and callers are directed to `/admin/benefits/loyalty-policy`. No known Web consumer sends or reads Loyalty fields through either legacy route. Staff Web consumers use the Brand/Store-owned `/staff/brand/*` and `/staff/store/*` contracts; `/admin/business/*` remains a server-side Brand/Store compatibility adapter only.
+That Loyalty request/response ownership is now removed: stale Loyalty keys are explicitly rejected and callers are directed to `/admin/benefits/loyalty-policy`. No known Web consumer sends or reads Loyalty fields through either legacy route. Staff Web consumers use the Brand/Store-owned `/staff/brand/*` and explicit `/staff/stores/:storeStableId/*` contracts; `/admin/business/*` remains a server-side Brand/Store compatibility adapter only.
 
 Therefore the pre-contraction target is:
 

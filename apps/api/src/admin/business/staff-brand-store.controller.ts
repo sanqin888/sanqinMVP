@@ -16,7 +16,6 @@ import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 import {
   InvalidStoreDirectoryInputError,
-  resolveConfiguredStoreStableId,
   StoreDirectoryService,
   StoreStableIdAlreadyExistsError,
   type BrandConfigSnapshot,
@@ -137,66 +136,6 @@ export class StaffBrandStoreController {
   ): Promise<{ holidays: StoreHoliday[] }> {
     return {
       holidays: await this.service.updateStoreHolidays(body, storeStableId),
-    };
-  }
-
-  // @compat brand-store.default-store-identity.v1
-  @Get('store/config')
-  @Roles('ADMIN', 'STAFF')
-  getStoreConfig(): Promise<StoreConfigSnapshot> {
-    return this.service.getStoreConfig(resolveConfiguredStoreStableId());
-  }
-
-  @Patch('store/config')
-  @Roles('ADMIN')
-  updateStoreConfig(@Body() body: unknown): Promise<StoreConfigSnapshot> {
-    return this.service.updateStoreConfig(
-      body,
-      resolveConfiguredStoreStableId(),
-    );
-  }
-
-  @Get('store/hours')
-  @Roles('ADMIN', 'STAFF')
-  async getStoreHours(): Promise<{ hours: StoreBusinessHour[] }> {
-    return {
-      hours: await this.service.getStoreHours(resolveConfiguredStoreStableId()),
-    };
-  }
-
-  @Put('store/hours')
-  @Roles('ADMIN')
-  async updateStoreHours(
-    @Body() body: { hours?: unknown },
-  ): Promise<{ hours: StoreBusinessHour[] }> {
-    return {
-      hours: await this.service.updateStoreHours(
-        body.hours,
-        resolveConfiguredStoreStableId(),
-      ),
-    };
-  }
-
-  @Get('store/holidays')
-  @Roles('ADMIN', 'STAFF')
-  async getStoreHolidays(): Promise<{ holidays: StoreHoliday[] }> {
-    return {
-      holidays: await this.service.getStoreHolidays(
-        resolveConfiguredStoreStableId(),
-      ),
-    };
-  }
-
-  @Put('store/holidays')
-  @Roles('ADMIN')
-  async updateStoreHolidays(
-    @Body() body: { holidays?: unknown },
-  ): Promise<{ holidays: StoreHoliday[] }> {
-    return {
-      holidays: await this.service.updateStoreHolidays(
-        body,
-        resolveConfiguredStoreStableId(),
-      ),
     };
   }
 }
