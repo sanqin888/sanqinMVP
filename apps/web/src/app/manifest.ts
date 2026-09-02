@@ -5,7 +5,11 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "SanQ Roujiamo",
     short_name: "SanQ",
     description: "SanQ Roujiamo online ordering experience.",
-    start_url: "/zh",
+    // Preserve the existing Chromium identity while allowing a language-neutral launch.
+    // Before `id` existed, Chromium derived the app identity from the old `/zh` start URL.
+    id: "/zh",
+    start_url: "/",
+    scope: "/",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: "#0f172a",
