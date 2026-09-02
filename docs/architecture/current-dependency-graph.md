@@ -123,16 +123,16 @@ pair fails CI.
   `/admin/business/*` remain compatibility-only transport paths.
   Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
   `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
-  updates canonical config rows first, then refreshes the full overlapping
-  `BusinessConfig` compatibility copy in the same transaction while the one-way
-  trigger can still be fired by registered Benefits compatibility writes.
+  now writes only canonical `BrandConfig`/`StoreConfig` rows; the application-side
+  `BusinessConfig` mirror has been removed while the physical compatibility table and
+  one-way trigger remain temporarily for post-deploy proof before destructive contraction.
 - Uber menu schedule/tax and store-status source reads now cross the Brand/Store
   boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
   sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
   both HTTP and dedicated-worker runtimes; Uber persistence no longer reads or
-  creates `BusinessConfig`. Existing Uber response/source labels are preserved in
-  this cutover so the verified public/wire behavior does not change. Uber
-  architecture CI now rejects any production `.businessConfig` regression.
+  creates `BusinessConfig`. Active Uber admin/source labels now identify
+  `StoreConfig` as the canonical timezone/tax source; provider wire behavior is unchanged.
+  Uber architecture CI now rejects any production `.businessConfig` regression.
 - Messaging configuration now caches the canonical Brand/Store snapshot instead
   of a Prisma `BusinessConfig` model and no longer creates configuration on read.
   Brand support contact fields feed message templates, while Store name/address/
@@ -211,12 +211,15 @@ pair fails CI.
   change/restore, POS policy load, Web pure-points order plus exact refund reversal,
   public membership rules, unrelated Store write/restore, database metadata, and the
   relevant error logs.
-- As a result, `brand-store.business-config.v1` is no longer blocked by Benefits. Its
-  remaining `BusinessConfig` copy and one-way trigger exist only for non-Loyalty
-  Brand/Store compatibility. The next Brand/Store step should use targeted static audit,
-  direct parity queries, and explicit Admin/POS behavior tests rather than waiting for an
-  organic business cycle before deciding whether the compatibility copy/trigger can be
-  contracted.
+- `brand-store.business-config.v1` has passed the final static consumer audit and direct
+  production parity pre-check: application production code no longer needs the legacy
+  persistence path, and the owner-maintained `BusinessConfig` mirror is now removed from
+  runtime writes. The physical table and one-way trigger remain temporarily. After this
+  application contraction is deployed, record `BusinessConfig.updatedAt`, actively
+  change-and-restore a mirrored Admin setting and POS pause/resume, verify canonical values
+  change while the legacy row stays untouched, and confirm final 29-field parity returns
+  to zero. That direct proof replaces waiting for an organic business cycle and gates the
+  separately authorized destructive migration.
 
 ## Carried debt outside this closeout
 

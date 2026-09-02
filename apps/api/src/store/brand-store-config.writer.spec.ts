@@ -120,18 +120,6 @@ function setup(options?: {
   const storeUpdateMany = jest.fn().mockResolvedValue({
     count: options?.casCount ?? 1,
   });
-  const storeConfigFindUnique = jest.fn().mockResolvedValue({
-    ...(options?.config ?? storeConfig),
-    isTemporarilyClosed: false,
-    temporaryCloseReason: null,
-  });
-  const businessUpdate = jest.fn(
-    (args: { where: { id: number }; data: Record<string, unknown> }) => {
-      void args;
-      return Promise.resolve({});
-    },
-  );
-
   const tx = {
     brandConfig: {
       findUnique: brandFindUnique,
@@ -143,12 +131,8 @@ function setup(options?: {
       create: storeCreate,
     },
     storeConfig: {
-      findUnique: storeConfigFindUnique,
       update: storeUpdate,
       updateMany: storeUpdateMany,
-    },
-    businessConfig: {
-      update: businessUpdate,
     },
   };
   const transaction = jest.fn(
@@ -166,7 +150,7 @@ function setup(options?: {
 }
 
 describe('PrismaBrandStoreConfigWriter', () => {
-  it('writes canonical Brand/Store rows first and refreshes the compatibility copy', async () => {
+  it('writes canonical Brand/Store rows without a BusinessConfig delegate', async () => {
     const { tx, writer } = setup();
 
     await writer.updateConfig({
@@ -192,14 +176,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
       temporaryCloseReason: 'Maintenance',
       salesTaxRate: 0.15,
     });
-    expect(tx.businessConfig.update).toHaveBeenCalledTimes(1);
-    expect(tx.businessConfig.update.mock.calls[0]?.[0].data).toMatchObject({
-      storeName: 'SanQ Roujiamo - Yonge',
-      brandNameEn: 'SanQ Updated',
-      isTemporarilyClosed: true,
-      temporaryCloseReason: 'Maintenance',
-      salesTaxRate: 0.15,
-    });
+    expect('businessConfig' in tx).toBe(false);
   });
 
   it('does not touch BusinessConfig or require BrandConfig for StoreConfig-only canonical fields', async () => {
@@ -229,10 +206,10 @@ describe('PrismaBrandStoreConfigWriter', () => {
       },
     });
     expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
-    expect(tx.businessConfig.update).not.toHaveBeenCalled();
+    expect('businessConfig' in tx).toBe(false);
   });
 
-  it('keeps non-default StoreConfig updates out of the single-store compatibility copy', async () => {
+  it('writes a non-default StoreConfig without consulting BrandConfig', async () => {
     const { tx, writer } = setup();
 
     await writer.updateConfig(
@@ -248,7 +225,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
       data: { salesTaxRate: 0.15 },
     });
     expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
-    expect(tx.businessConfig.update).not.toHaveBeenCalled();
+    expect('businessConfig' in tx).toBe(false);
   });
 
   it('provisions a new Store with StoreConfig and seven closed business days', async () => {
@@ -299,7 +276,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
     expect(tx.store.create).not.toHaveBeenCalled();
   });
 
-  it('atomically resumes only the matching canonical temporary closure and refreshes compatibility', async () => {
+  it('atomically resumes only the matching canonical temporary closure without legacy persistence', async () => {
     const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
     const { tx, writer } = setup({
       config: {
@@ -324,14 +301,11 @@ describe('PrismaBrandStoreConfigWriter', () => {
         temporaryCloseReason: null,
       },
     });
-    expect(tx.businessConfig.update).toHaveBeenCalledTimes(1);
-    expect(tx.businessConfig.update.mock.calls[0]?.[0].data).toMatchObject({
-      isTemporarilyClosed: false,
-      temporaryCloseReason: null,
-    });
+    expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
+    expect('businessConfig' in tx).toBe(false);
   });
 
-  it('keeps non-default StoreConfig auto-resume out of the single-store compatibility copy', async () => {
+  it('supports non-default StoreConfig auto-resume through the same canonical CAS', async () => {
     const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
     const { tx, writer } = setup({
       config: {
@@ -350,8 +324,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
     });
     expect(tx.storeConfig.updateMany).toHaveBeenCalledTimes(1);
     expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
-    expect(tx.storeConfig.findUnique).not.toHaveBeenCalled();
-    expect(tx.businessConfig.update).not.toHaveBeenCalled();
+    expect('businessConfig' in tx).toBe(false);
   });
 
   it('preserves a changed pause when the canonical compare-and-set no longer matches', async () => {
@@ -364,15 +337,22 @@ describe('PrismaBrandStoreConfigWriter', () => {
 
     expect(tx.storeConfig.updateMany).toHaveBeenCalledTimes(1);
     expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
-    expect(tx.storeConfig.findUnique).not.toHaveBeenCalled();
-    expect(tx.businessConfig.update).not.toHaveBeenCalled();
+    expect('businessConfig' in tx).toBe(false);
   });
 
-  it('fails closed when canonical configuration is not provisioned', async () => {
-    const { writer } = setup({ brand: null });
+  it('fails closed when the target StoreConfig is not provisioned', async () => {
+    const { writer } = setup({ config: null });
 
     await expect(
       writer.updateConfig({ store: { salesTaxRate: 0.15 } }),
+    ).rejects.toEqual(expect.any(BrandStoreConfigUnavailableError));
+  });
+
+  it('fails closed when BrandConfig is not provisioned for a brand update', async () => {
+    const { writer } = setup({ brand: null });
+
+    await expect(
+      writer.updateConfig({ brand: { brandNameEn: 'SanQ Updated' } }),
     ).rejects.toEqual(expect.any(BrandStoreConfigUnavailableError));
   });
 });
