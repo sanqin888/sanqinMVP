@@ -48,6 +48,63 @@ describe('POS device management boundary', () => {
     expect(publicApi).toContain('POS_DEVICE_MANAGEMENT');
     expect(publicApi).not.toContain('PosDeviceService');
   });
+
+  it('keeps the retired Admin DB-ID compatibility contract deleted', () => {
+    const controller = read(
+      resolve(ADMIN_POS_DEVICE_ROOT, 'admin-pos-devices.controller.ts'),
+    );
+    const createDto = read(
+      resolve(ADMIN_POS_DEVICE_ROOT, 'dto/create-pos-device.dto.ts'),
+    );
+    const posContract = read(
+      resolve(POS_ROOT, 'pos-device-management.contract.ts'),
+    );
+    const posModule = read(resolve(POS_ROOT, 'pos-device.module.ts'));
+    const posPublicApi = read(resolve(POS_ROOT, 'public-api.ts'));
+    const posService = read(resolve(POS_ROOT, 'pos-device.service.ts'));
+    const storeContract = read(
+      resolve(STORE_ROOT, 'brand-store-config.contract.ts'),
+    );
+    const storeModule = read(
+      resolve(STORE_ROOT, 'brand-store-config.module.ts'),
+    );
+    const storePublicApi = read(resolve(STORE_ROOT, 'public-api.ts'));
+    const storeReader = read(
+      resolve(STORE_ROOT, 'brand-store-config.reader.ts'),
+    );
+
+    expect(createDto).toContain('storeStableId: string');
+    expect(createDto).not.toMatch(/\bstoreId\??\s*:/);
+    expect(createDto).not.toContain('IsUUID');
+    expect(controller).toContain(
+      "BadRequestException('storeStableId is required')",
+    );
+    expect(controller).toContain("@Patch(':deviceStableId/reset-code')");
+    expect(controller).toContain("@Patch(':deviceStableId/status')");
+    expect(controller).toContain("@Delete(':deviceStableId')");
+    expect(controller).not.toContain('UUID_PATTERN');
+    expect(controller).not.toContain('pos_device_admin_compatibility_used');
+
+    for (const source of [posContract, posModule, posPublicApi, posService]) {
+      expect(source).not.toContain('POS_DEVICE_ADMIN_COMPATIBILITY');
+      expect(source).not.toContain('PosDeviceAdminCompatibilityPort');
+      expect(source).not.toContain('@compat pos-device.admin-db-id.v1');
+    }
+    expect(posService).not.toContain('resolveDeviceStableId');
+    expect(posService).not.toContain('resolveStoreStableId(');
+
+    for (const source of [
+      storeContract,
+      storeModule,
+      storePublicApi,
+      storeReader,
+    ]) {
+      expect(source).not.toContain('STORE_LEGACY_DB_ID_RESOLVER');
+      expect(source).not.toContain('StoreLegacyDbIdResolverPort');
+      expect(source).not.toContain('resolveStoreStableIdByDbId');
+      expect(source).not.toContain('@compat pos-device.admin-db-id.v1');
+    }
+  });
 });
 
 describe('POS device authentication boundary', () => {

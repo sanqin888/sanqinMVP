@@ -1,5 +1,5 @@
 //apps/api/src/admin/pos-devices/dto/create-pos-device.dto.ts
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
 
 export class CreatePosDeviceDto {
   @IsString()
@@ -8,11 +8,5 @@ export class CreatePosDeviceDto {
 
   @IsString()
   @IsNotEmpty()
-  @IsOptional()
-  storeStableId?: string;
-
-  // @compat pos-device.admin-db-id.v1
-  @IsUUID()
-  @IsOptional()
-  storeId?: string;
+  storeStableId: string;
 }

@@ -1,7 +1,4 @@
 export const POS_DEVICE_MANAGEMENT = Symbol('POS_DEVICE_MANAGEMENT');
-export const POS_DEVICE_ADMIN_COMPATIBILITY = Symbol(
-  'POS_DEVICE_ADMIN_COMPATIBILITY',
-);
 export const POS_DEVICE_CREDENTIAL_VERIFIER = Symbol(
   'POS_DEVICE_CREDENTIAL_VERIFIER',
 );
@@ -54,17 +51,6 @@ export interface PosDeviceManagementPort {
     status: PosDeviceManagementStatus,
   ): Promise<PosDeviceManagementSnapshot>;
   deleteDevice(deviceStableId: string): Promise<void>;
-}
-
-/**
- * Temporary adapter for browser bundles that may still hold legacy DB UUIDs or
- * omit an explicit store identity. Canonical Admin code must not use this port.
- * @compat pos-device.admin-db-id.v1
- */
-export interface PosDeviceAdminCompatibilityPort {
-  listDevices(): Promise<PosDeviceManagementSnapshot[]>;
-  resolveStoreStableId(legacyStoreDbId?: string): Promise<string>;
-  resolveDeviceStableId(legacyDeviceDbId: string): Promise<string>;
 }
 
 export class PosDeviceStoreUnavailableError extends Error {

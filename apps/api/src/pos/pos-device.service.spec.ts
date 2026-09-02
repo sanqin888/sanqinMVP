@@ -11,11 +11,9 @@ describe('PosDeviceService.verifyCredentials', () => {
       findUnique: jest.fn().mockResolvedValue(device),
       update: jest.fn().mockResolvedValue(device),
     };
-    const service = new PosDeviceService(
-      { posDevice } as never,
-      { listStores: jest.fn().mockResolvedValue([]) },
-      { resolveStoreStableIdByDbId: jest.fn().mockResolvedValue(null) },
-    );
+    const service = new PosDeviceService({ posDevice } as never, {
+      listStores: jest.fn().mockResolvedValue([]),
+    });
     return { service, posDevice };
   }
 
@@ -103,9 +101,7 @@ describe('PosDeviceService.verifyCredentials', () => {
 });
 
 describe('PosDeviceService management boundary', () => {
-  const storeDbId = '8a3d4c0e-4750-4f6a-9138-000000000001';
   const storeStableId = '4750_Yonge_Street';
-  const deviceDbId = '37bbde5d-b8d9-4e34-8c32-b4c0fdb37c25';
   const deviceStableId = 'cmdevice000000000000000001';
   const managedDevice = {
     deviceStableId,
@@ -133,19 +129,14 @@ describe('PosDeviceService management boundary', () => {
         },
       ]),
     };
-    const storeLegacyDbIdResolver = {
-      resolveStoreStableIdByDbId: jest.fn().mockResolvedValue(storeStableId),
-    };
     const service = new PosDeviceService(
       { posDevice } as never,
       storeDirectoryReader,
-      storeLegacyDbIdResolver,
     );
     return {
       service,
       posDevice,
       storeDirectoryReader,
-      storeLegacyDbIdResolver,
     };
   }
 
@@ -216,25 +207,5 @@ describe('PosDeviceService management boundary', () => {
     expect(posDevice.delete).toHaveBeenCalledWith({
       where: { deviceStableId },
     });
-  });
-
-  it('isolates legacy DB UUID translation behind compatibility methods', async () => {
-    const { service, posDevice, storeLegacyDbIdResolver } = setup();
-    posDevice.findUnique.mockResolvedValueOnce({ deviceStableId });
-
-    await expect(service.resolveDeviceStableId(deviceDbId)).resolves.toBe(
-      deviceStableId,
-    );
-    await expect(service.resolveStoreStableId(storeDbId)).resolves.toBe(
-      storeStableId,
-    );
-
-    expect(posDevice.findUnique).toHaveBeenCalledWith({
-      where: { id: deviceDbId },
-      select: { deviceStableId: true },
-    });
-    expect(
-      storeLegacyDbIdResolver.resolveStoreStableIdByDbId,
-    ).toHaveBeenCalledWith(storeDbId);
   });
 });

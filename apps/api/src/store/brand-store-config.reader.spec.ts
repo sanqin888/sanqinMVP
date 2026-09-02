@@ -136,22 +136,6 @@ describe('PrismaBrandStoreConfigReader', () => {
     );
   });
 
-  it('resolves a legacy Store DB UUID only inside the Store owner boundary', async () => {
-    const storeDbId = '8a3d4c0e-4750-4f6a-9138-000000000001';
-    const { prisma, reader } = setup();
-    prisma.store.findUnique.mockResolvedValueOnce({
-      storeStableId: '4750_Yonge_Street',
-    } as never);
-
-    await expect(reader.resolveStoreStableIdByDbId(storeDbId)).resolves.toBe(
-      '4750_Yonge_Street',
-    );
-    expect(prisma.store.findUnique).toHaveBeenCalledWith({
-      where: { id: storeDbId },
-      select: { storeStableId: true },
-    });
-  });
-
   it('lists stable Store identities without exposing database ids', async () => {
     const { prisma, reader } = setup();
 
