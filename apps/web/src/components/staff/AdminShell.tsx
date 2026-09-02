@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
@@ -26,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { AdminStoreContextSelector } from '@/features/admin/brand-store/AdminStoreContextSelector';
 import type { Locale } from '@/lib/i18n/locales';
 import { isStaffRouteActive, type StaffNavigationMatch } from './navigation';
@@ -236,9 +238,14 @@ function AdminBrand({ locale }: { locale: Locale }) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#87362E] text-sm font-bold tracking-wide text-white shadow-sm">
-        SQ
-      </div>
+      <Image
+        src="/images/sanq-logo-omega.svg"
+        alt="SanQ"
+        width={48}
+        height={48}
+        className="size-12 shrink-0 object-contain"
+        priority
+      />
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-slate-950">
           {isZh ? '三秦运营后台' : 'SanQ Operations'}
@@ -408,11 +415,14 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <Link
               href={`/${locale}/accounting/dashboard`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="hidden min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-300 sm:flex"
             >
               <Calculator className="size-4" aria-hidden="true" />
               {isZh ? '财务系统' : 'Accounting'}
             </Link>
+            <LocaleSwitcher locale={locale} />
             <LogoutButton locale={locale} onLogout={onLogout} />
             <button
               type="button"
