@@ -40,7 +40,10 @@ describe('StaffBrandStoreController store identity routing', () => {
     await controller.updateStoreHolidaysByStableId('store_b', holidaysBody);
 
     expect(service.getStoreConfig).toHaveBeenCalledWith('store_b');
-    expect(service.updateStoreConfig).toHaveBeenCalledWith(configUpdate, 'store_b');
+    expect(service.updateStoreConfig).toHaveBeenCalledWith(
+      configUpdate,
+      'store_b',
+    );
     expect(service.getStoreHours).toHaveBeenCalledWith('store_b');
     expect(service.updateStoreHours).toHaveBeenCalledWith(hours, 'store_b');
     expect(service.getStoreHolidays).toHaveBeenCalledWith('store_b');
