@@ -310,7 +310,7 @@ describe('PrismaBrandStoreConfigWriter', () => {
     });
 
     await expect(
-      writer.resumeTemporaryClosureIfMatches(pauseReason),
+      writer.resumeTemporaryClosureIfMatches(storeStableId, pauseReason),
     ).resolves.toBe(true);
 
     expect(tx.storeConfig.updateMany).toHaveBeenCalledWith({
@@ -331,12 +331,35 @@ describe('PrismaBrandStoreConfigWriter', () => {
     });
   });
 
+  it('keeps non-default StoreConfig auto-resume out of the single-store compatibility copy', async () => {
+    const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
+    const { tx, writer } = setup({
+      config: {
+        ...storeConfig,
+        isTemporarilyClosed: true,
+        temporaryCloseReason: pauseReason,
+      },
+    });
+
+    await expect(
+      writer.resumeTemporaryClosureIfMatches('second_store', pauseReason),
+    ).resolves.toBe(true);
+
+    expect(tx.store.findUnique.mock.calls[0]?.[0].where).toEqual({
+      storeStableId: 'second_store',
+    });
+    expect(tx.storeConfig.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.brandConfig.findUnique).not.toHaveBeenCalled();
+    expect(tx.storeConfig.findUnique).not.toHaveBeenCalled();
+    expect(tx.businessConfig.update).not.toHaveBeenCalled();
+  });
+
   it('preserves a changed pause when the canonical compare-and-set no longer matches', async () => {
     const pauseReason = '__AUTO_UNTIL__:2026-08-25T08:30:00-04:00|';
     const { tx, writer } = setup({ casCount: 0 });
 
     await expect(
-      writer.resumeTemporaryClosureIfMatches(pauseReason),
+      writer.resumeTemporaryClosureIfMatches(storeStableId, pauseReason),
     ).resolves.toBe(false);
 
     expect(tx.storeConfig.updateMany).toHaveBeenCalledTimes(1);

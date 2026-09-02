@@ -62,9 +62,9 @@ export class PosStoreStatusService {
     private readonly uberEatsService: UberEatsStoreStatusSyncPort,
   ) {}
 
-  async getCustomerOrderingStatus() {
-    await this.reconcileExpiredPause();
-    const config = await this.configReader.getStoreSnapshot();
+  async getCustomerOrderingStatus(storeStableId: string) {
+    await this.reconcileExpiredPause(storeStableId);
+    const config = await this.configReader.getStoreSnapshot(storeStableId);
 
     if (!config.isTemporarilyClosed) {
       return {
@@ -80,8 +80,8 @@ export class PosStoreStatusService {
     };
   }
 
-  async reconcileExpiredPause(): Promise<boolean> {
-    const config = await this.configReader.getStoreSnapshot();
+  async reconcileExpiredPause(storeStableId: string): Promise<boolean> {
+    const config = await this.configReader.getStoreSnapshot(storeStableId);
     if (!config.isTemporarilyClosed || !config.temporaryCloseReason)
       return false;
 
@@ -92,22 +92,29 @@ export class PosStoreStatusService {
     if (!resumeAt.isValid || resumeAt > DateTime.now()) return false;
 
     const resumed = await this.configWriter.resumeTemporaryClosureIfMatches(
+      storeStableId,
       config.temporaryCloseReason,
     );
     if (!resumed) return false;
 
-    await this.finalizeResume('auto_resume', undefined, parsed.autoResumeAt);
+    await this.finalizeResume(
+      storeStableId,
+      'auto_resume',
+      undefined,
+      parsed.autoResumeAt,
+    );
     return true;
   }
 
   async pauseCustomerOrdering(
+    storeStableId: string,
     input: {
       durationMinutes?: number;
       untilTomorrow?: boolean;
     },
     context?: PosStoreStatusActionContext,
   ) {
-    const config = await this.configReader.getStoreSnapshot();
+    const config = await this.configReader.getStoreSnapshot(storeStableId);
     const timezone = config.timezone || 'America/Toronto';
     const nowInStoreTz = DateTime.now().setZone(timezone);
 
@@ -132,12 +139,15 @@ export class PosStoreStatusService {
       throw new BadRequestException('Failed to calculate auto-resume time');
     }
 
-    await this.configWriter.updateConfig({
-      store: {
-        isTemporarilyClosed: true,
-        temporaryCloseReason: buildAutoPauseReason(autoResumeAtIso),
+    await this.configWriter.updateConfig(
+      {
+        store: {
+          isTemporarilyClosed: true,
+          temporaryCloseReason: buildAutoPauseReason(autoResumeAtIso),
+        },
       },
-    });
+      storeStableId,
+    );
 
     const status = {
       isTemporarilyClosed: true,
@@ -146,6 +156,7 @@ export class PosStoreStatusService {
 
     this.logger.log({
       event: 'pos_store_paused',
+      storeStableId,
       durationMinutes: input.untilTomorrow
         ? null
         : (input.durationMinutes ?? null),
@@ -162,18 +173,25 @@ export class PosStoreStatusService {
     return status;
   }
 
-  async resumeCustomerOrdering(context?: PosStoreStatusActionContext) {
-    await this.configWriter.updateConfig({
-      store: {
-        isTemporarilyClosed: false,
-        temporaryCloseReason: null,
+  async resumeCustomerOrdering(
+    storeStableId: string,
+    context?: PosStoreStatusActionContext,
+  ) {
+    await this.configWriter.updateConfig(
+      {
+        store: {
+          isTemporarilyClosed: false,
+          temporaryCloseReason: null,
+        },
       },
-    });
+      storeStableId,
+    );
 
-    return this.finalizeResume('resume', context);
+    return this.finalizeResume(storeStableId, 'resume', context);
   }
 
   private async finalizeResume(
+    storeStableId: string,
     source: 'resume' | 'auto_resume',
     context?: PosStoreStatusActionContext,
     autoResumeAt?: string,
@@ -184,6 +202,7 @@ export class PosStoreStatusService {
     };
 
     this.logger.log({
+      storeStableId,
       event:
         source === 'auto_resume'
           ? 'pos_store_auto_resumed'
