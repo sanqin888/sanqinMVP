@@ -1,5 +1,5 @@
 // apps/api/src/loyalty/loyalty.service.ts
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -13,11 +13,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engine';
 import type {
   LoyaltyPolicyReaderPort,
-  LoyaltyPolicySettings,
   LoyaltyPolicySnapshot,
   LoyaltyTier,
 } from './loyalty-policy.contract';
-import { compareLoyaltyPolicyPersistence } from './loyalty-policy-parity';
 import { normalizeLoyaltyPolicy } from './loyalty-policy';
 
 const MICRO_PER_POINT = 1_000_000n; // 1 pt = 1e6 micro-pts，避免小数误差
@@ -150,46 +148,17 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 
 @Injectable()
 export class LoyaltyService implements LoyaltyPolicyReaderPort {
-  private readonly logger = new Logger(LoyaltyService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly couponTriggerService: CouponProgramTriggerService,
   ) {}
 
-  private observePolicyParity(
-    context: string,
-    brandConfig: LoyaltyPolicySettings | null,
-    loyaltyProgramPolicy: LoyaltyPolicySettings | null,
-  ): void {
-    const differences = compareLoyaltyPolicyPersistence(
-      brandConfig,
-      loyaltyProgramPolicy,
-    );
-    if (differences.length === 0) return;
-
-    this.logger.warn(
-      JSON.stringify({
-        event: 'loyalty_policy_shadow_mismatch',
-        compatId: 'benefits.business-config-loyalty-policy.v1',
-        context,
-        differences,
-      }),
-    );
-  }
-
-  // @compat benefits.business-config-loyalty-policy.v1
   async getLoyaltyPolicySnapshot(): Promise<LoyaltyPolicySnapshot> {
     const loyaltyProgramPolicy =
       await this.prisma.loyaltyProgramPolicy.findUnique({
         where: { id: 1 },
         select: LOYALTY_POLICY_SELECT,
       });
-    const brandConfig = await this.prisma.brandConfig.findUnique({
-      where: { id: 1 },
-      select: LOYALTY_POLICY_SELECT,
-    });
-    this.observePolicyParity('runtime-read', brandConfig, loyaltyProgramPolicy);
     return normalizeLoyaltyPolicy(loyaltyProgramPolicy);
   }
 
@@ -200,15 +169,6 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       where: { id: 1 },
       select: LOYALTY_POLICY_SELECT,
     });
-    const brandConfig = await tx.brandConfig.findUnique({
-      where: { id: 1 },
-      select: LOYALTY_POLICY_SELECT,
-    });
-    this.observePolicyParity(
-      'transaction-read',
-      brandConfig,
-      loyaltyProgramPolicy,
-    );
     return normalizeLoyaltyPolicy(loyaltyProgramPolicy);
   }
 
