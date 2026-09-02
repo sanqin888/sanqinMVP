@@ -1,0 +1,19 @@
+{
+  "id": "/pwa/accounting",
+  "name": "SanQ Accounting",
+  "short_name": "SanQ Acct",
+  "description": "SanQ accounting and financial reporting workspace.",
+  "start_url": "/accounting",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#172440",
+  "theme_color": "#172440",
+  "icons": [
+    {
+      "src": "/images/pwa/accounting-v1.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

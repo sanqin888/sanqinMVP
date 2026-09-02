@@ -1,0 +1,19 @@
+{
+  "id": "/pwa/admin",
+  "name": "SanQ Admin",
+  "short_name": "SanQ Admin",
+  "description": "SanQ administration workspace.",
+  "start_url": "/admin",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b3f88",
+  "theme_color": "#0b3f88",
+  "icons": [
+    {
+      "src": "/images/pwa/admin-v1.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
