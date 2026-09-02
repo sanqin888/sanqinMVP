@@ -54,7 +54,7 @@ export interface ModifierConfigRepository {
   list(storeId: string): Promise<ModifierConfig[]>;
 }
 export interface BusinessScheduleRepository {
-  get(): Promise<BusinessSchedule>;
+  get(storeStableId: string): Promise<BusinessSchedule>;
 }
 export interface MenuStoreMappingRepository {
   findByPosStoreId(storeId: string): Promise<MenuStoreMapping | null>;

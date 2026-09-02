@@ -497,49 +497,45 @@ export class SyncUberStoreStatusUseCase {
     private readonly alerts: UberOperationsAlertRepositoryPort,
   ) {}
   async syncStoreStatusToUber(target?: UberStoreStatusTarget) {
-    const config = await this.alerts.getStoreStatusSource();
-    const pause = this.parsePause(config.temporaryCloseReason);
-    const payload: Record<string, string> = target
-      ? target.targetStatus === 'PAUSED'
-        ? {
-            status: 'OFFLINE',
-            reason: target.reason ?? '运营手动暂停',
-            ...(target.pauseUntil
-              ? { is_offline_until: target.pauseUntil }
-              : {}),
-          }
-        : { status: 'ONLINE' }
-      : config.isTemporarilyClosed
-        ? {
-            status: 'OFFLINE',
-            reason: pause.reason,
-            ...(pause.pauseUntil ? { is_offline_until: pause.pauseUntil } : {}),
-          }
-        : { status: 'ONLINE' };
     const results: Record<string, unknown>[] = [];
-    const businessVersion = createHash('sha256')
-      .update(JSON.stringify(payload))
-      .digest('hex');
     for (const mapping of await this.mappings.listMappings()) {
       if (target && mapping.uberStoreId !== target.uberStoreId) continue;
-      const result = !mapping.isProvisioned
-        ? {
-            uberStoreId: mapping.uberStoreId,
-            outcome: 'SKIPPED' as const,
-            reason: 'NOT_PROVISIONED' as const,
-            attempts: 0,
-            error: 'Uber 门店尚未 provision，未发送状态写请求',
-          }
-        : await this.api.writeStatus(
-            mapping.uberStoreId,
-            payload,
-            buildUberIdempotencyKey({
-              taskId: `store-status:${mapping.uberStoreId}:${businessVersion}`,
-              resourceId: mapping.uberStoreId,
-              action: 'WRITE_STATUS',
-              businessVersion,
-            }),
-          );
+      let payload: Record<string, string> | null = target
+        ? this.targetStatusPayload(target)
+        : null;
+      if (!payload && mapping.posExternalStoreId?.trim()) {
+        payload = await this.currentStoreStatusPayload(
+          mapping.posExternalStoreId,
+        );
+      }
+      if (!mapping.isProvisioned) {
+        const result = {
+          uberStoreId: mapping.uberStoreId,
+          outcome: 'SKIPPED' as const,
+          reason: 'NOT_PROVISIONED' as const,
+          attempts: 0,
+          error: 'Uber 门店尚未 provision，未发送状态写请求',
+        };
+        results.push(result);
+        await this.alerts.recordStoreStatusResult(result, payload ?? {});
+        continue;
+      }
+      payload ??= await this.currentStoreStatusPayload(
+        mapping.posExternalStoreId,
+      );
+      const businessVersion = createHash('sha256')
+        .update(JSON.stringify(payload))
+        .digest('hex');
+      const result = await this.api.writeStatus(
+        mapping.uberStoreId,
+        payload,
+        buildUberIdempotencyKey({
+          taskId: `store-status:${mapping.uberStoreId}:${businessVersion}`,
+          resourceId: mapping.uberStoreId,
+          action: 'WRITE_STATUS',
+          businessVersion,
+        }),
+      );
       results.push(result);
       await this.alerts.recordStoreStatusResult(result, payload);
       if (result.outcome === 'FAILED')
@@ -575,6 +571,36 @@ export class SyncUberStoreStatusUseCase {
         ),
       },
     };
+  }
+
+  private targetStatusPayload(target: UberStoreStatusTarget) {
+    return target.targetStatus === 'PAUSED'
+      ? {
+          status: 'OFFLINE',
+          reason: target.reason ?? '运营手动暂停',
+          ...(target.pauseUntil ? { is_offline_until: target.pauseUntil } : {}),
+        }
+      : { status: 'ONLINE' };
+  }
+
+  private async currentStoreStatusPayload(posExternalStoreId: string | null) {
+    const storeStableId = posExternalStoreId?.trim();
+    if (!storeStableId) {
+      throw new UberValidationError({
+        code: 'UBER_STORE_MAPPING_INVALID',
+        operation: 'merchant.sync-store-status',
+        message: '已 provision 的 Uber 门店缺少 SanQ storeStableId mapping',
+      });
+    }
+    const config = await this.alerts.getStoreStatusSource(storeStableId);
+    const pause = this.parsePause(config.temporaryCloseReason);
+    return config.isTemporarilyClosed
+      ? {
+          status: 'OFFLINE',
+          reason: pause.reason,
+          ...(pause.pauseUntil ? { is_offline_until: pause.pauseUntil } : {}),
+        }
+      : { status: 'ONLINE' };
   }
   private parsePause(value?: string | null) {
     const prefix = '__AUTO_UNTIL__:';

@@ -27,6 +27,7 @@ import {
   UberMenuPublishSafetyService,
 } from '../../domain/menu/uber-menu-publish-safety.service';
 import { buildUberNodeId } from '../../domain/menu/uber-menu-graph.service';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 
 export class PublishUberMenuUseCase {
   constructor(
@@ -39,7 +40,7 @@ export class PublishUberMenuUseCase {
   ) {}
 
   async execute(input: PublishMenuInput) {
-    const requestedStoreId = input.storeId?.trim() || 'default';
+    const requestedStoreId = requireUberStoreId(input.storeId);
     const mapping =
       await this.provisionedStores.resolveProvisionedUberStoreId(
         requestedStoreId,
@@ -49,10 +50,10 @@ export class PublishUberMenuUseCase {
         'UBER_STORE_NOT_PROVISIONED',
         `门店 ${requestedStoreId} 未配置 POS 映射或尚未 provision。`,
       );
-    const posStoreId = mapping.posExternalStoreId;
+    const storeStableId = mapping.posExternalStoreId;
     const uberStoreId = mapping.uberStoreId;
     const snapshot = await this.snapshots.loadPublishSnapshot(
-      posStoreId,
+      storeStableId,
       uberStoreId,
     );
     if (!snapshot)
@@ -108,9 +109,9 @@ export class PublishUberMenuUseCase {
       changedItems: payload.items.length,
     };
     const previous =
-      await this.publications.findLastSucceededPayload(posStoreId);
+      await this.publications.findLastSucceededPayload(storeStableId);
     const intentionalRestores =
-      await this.publications.listIntentionalPriceRestores(posStoreId);
+      await this.publications.listIntentionalPriceRestores(storeStableId);
     const safety = new UberMenuPublishSafetyService().evaluate({
       previous,
       current: payload,
@@ -150,7 +151,7 @@ export class PublishUberMenuUseCase {
       return {
         ok: true,
         dryRun: true,
-        storeId: posStoreId,
+        storeId: storeStableId,
         uberStoreId: snapshot.uberStoreId,
         summary,
         serviceAvailability,
@@ -182,13 +183,13 @@ export class PublishUberMenuUseCase {
       );
     if (safety.criticalCount > 0)
       await this.publications.recordCriticalRiskAcknowledgement({
-        storeId: posStoreId,
+        storeId: storeStableId,
         payloadHash,
         criticalCount: safety.criticalCount,
       });
     const idempotencyKey = buildUberIdempotencyKey({
       taskId: payloadHash,
-      resourceId: `${posStoreId}:${snapshot.uberStoreId}`,
+      resourceId: `${storeStableId}:${snapshot.uberStoreId}`,
       action: 'PUBLISH_MENU',
       businessVersion: payloadHash,
     });
@@ -199,14 +200,14 @@ export class PublishUberMenuUseCase {
         ok: true,
         dryRun: false,
         duplicate: true,
-        storeId: posStoreId,
+        storeId: storeStableId,
         uberStoreId: snapshot.uberStoreId,
         versionStableId: succeeded.versionStableId,
         summary,
       };
     const payloadItemIds = new Set(payload.items.map((item) => item.id));
     const attempt = await this.publications.createAttempt({
-      storeId: posStoreId,
+      storeId: storeStableId,
       uberStoreId: snapshot.uberStoreId,
       idempotencyKey,
       businessVersion: payloadHash,
@@ -228,7 +229,7 @@ export class PublishUberMenuUseCase {
         ok: true,
         dryRun: false,
         duplicate: true,
-        storeId: posStoreId,
+        storeId: storeStableId,
         uberStoreId: snapshot.uberStoreId,
         versionStableId: attempt.versionStableId,
         summary,
@@ -246,7 +247,7 @@ export class PublishUberMenuUseCase {
       return {
         ok: true,
         dryRun: false,
-        storeId: posStoreId,
+        storeId: storeStableId,
         uberStoreId: snapshot.uberStoreId,
         versionStableId: attempt.versionStableId,
         summary,
@@ -443,8 +444,8 @@ export class RetrieveAndReconcileUberMenuUseCase {
     private readonly gateway: UberMenuGatewayPort,
   ) {}
 
-  async execute(storeId?: string) {
-    const requestedStoreId = storeId?.trim() || 'default';
+  async execute(storeId: string) {
+    const requestedStoreId = requireUberStoreId(storeId);
     const mapping =
       await this.provisionedStores.resolveProvisionedUberStoreId(
         requestedStoreId,

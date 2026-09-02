@@ -5,7 +5,7 @@ import type {
   UberItemChannelConfigCommandPort,
   UberOptionItemConfigCommandPort,
 } from '../../application/menu/uber-menu-draft.ports';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 import { UberTelemetryService } from './uber-telemetry.service';
 
@@ -176,8 +176,8 @@ export class UberMenuConfigWritePrismaAdapter
     };
   }
 
-  private async canonicalStoreId(storeId?: string) {
-    const requestedStoreId = normalizeUberStoreId(storeId);
+  private async canonicalStoreId(storeId: string) {
+    const requestedStoreId = requireUberStoreId(storeId);
     const mapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
         isProvisioned: true,

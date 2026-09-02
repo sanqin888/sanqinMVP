@@ -3,7 +3,7 @@ import { UberMenuPublishStatus } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type { UberMenuDraftDiffPort } from '../../application/menu/uber-menu-draft.ports';
 import { buildUberMenuDraftDiff } from '../../domain/menu/uber-menu-diff.service';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 import { UberMenuDraftReadPrismaAdapter } from './uber-menu-draft-read-prisma.adapter';
 
 @Injectable()
@@ -13,8 +13,8 @@ export class UberMenuDraftDiffPrismaAdapter implements UberMenuDraftDiffPort {
     private readonly drafts: UberMenuDraftReadPrismaAdapter,
   ) {}
 
-  async getUberMenuDraftDiff(storeId?: string) {
-    const requestedStoreId = normalizeUberStoreId(storeId);
+  async getUberMenuDraftDiff(storeId: string) {
+    const requestedStoreId = requireUberStoreId(storeId);
     const mapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
         isProvisioned: true,

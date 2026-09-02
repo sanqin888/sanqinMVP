@@ -4,7 +4,7 @@ import type {
   UberOptionItemConfigCommandPort,
 } from './uber-menu-draft.ports';
 import { UBER_MENU_COMMAND_IDEMPOTENCY } from './uber-menu-draft.ports';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 import type { UpsertOptionItemConfigInput } from '../../domain/menu/uber-menu.types';
 import { ensureOptionChoiceExists } from './uber-menu-reference-validator.service';
 
@@ -20,7 +20,7 @@ export class UpsertUberOptionItemConfigUseCase {
       this.optionChoices,
       input.optionChoiceStableId,
     );
-    const storeId = normalizeUberStoreId(input.storeId);
+    const storeId = requireUberStoreId(input.storeId);
     return this.transaction.execute((commands) =>
       commands.upsertUberOptionItemConfig({
         resourceKey: {

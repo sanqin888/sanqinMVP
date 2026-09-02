@@ -109,36 +109,39 @@ describe('split Uber menu repositories field mapping', () => {
     ]);
   });
 
-  it('maps business schedule', async () => {
+  it('maps business schedule for the explicit storeStableId', async () => {
     const storeConfig = {
       getStoreConfig: jest.fn().mockResolvedValue({
         timezone: 'Asia/Shanghai',
         salesTaxRate: 0.1,
       }),
     };
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        weekday: 1,
+        openMinutes: 60,
+        closeMinutes: 120,
+        isClosed: false,
+        id: 9,
+      },
+    ]);
     const repository = new UberBusinessSchedulePrismaRepository(
-      db({
-        businessHour: {
-          findMany: jest.fn().mockResolvedValue([
-            {
-              weekday: 1,
-              openMinutes: 60,
-              closeMinutes: 120,
-              isClosed: false,
-              id: 9,
-            },
-          ]),
-        },
-      }),
+      db({ businessHour: { findMany } }),
       storeConfig as never,
     );
-    expect(await repository.get()).toEqual({
+    expect(await repository.get('store-stable-1')).toEqual({
       timezone: 'Asia/Shanghai',
       salesTaxRate: 0.1,
       hours: [
         { weekday: 1, openMinutes: 60, closeMinutes: 120, isClosed: false },
       ],
     });
+    expect(storeConfig.getStoreConfig).toHaveBeenCalledWith('store-stable-1');
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { store: { storeStableId: 'store-stable-1' } },
+      }),
+    );
   });
 
   it('maps store data and extracts its timezone without returning raw JSON', async () => {

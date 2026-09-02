@@ -75,15 +75,17 @@ export interface OptionChoiceExistenceQueryPort {
 }
 export interface ProvisionedUberStoreQueryPort {
   /**
-   * Accepts either the POS/print-room id or the Uber store id, then returns the
-   * provisioned mapping with the POS id as the canonical menu persistence scope.
+   * Accepts either SanQ storeStableId or the Uber provider store id, then returns
+   * the provisioned mapping whose posExternalStoreId is the SanQ storeStableId.
    */
   resolveProvisionedUberStoreId(
     storeId: string,
   ): Promise<UberProvisionedStoreMapping | null>;
 }
 export interface UberBusinessScheduleQueryPort {
-  readBusinessSchedule(): Promise<UberBusinessScheduleRecord | null>;
+  readBusinessSchedule(
+    storeStableId: string,
+  ): Promise<UberBusinessScheduleRecord | null>;
 }
 
 export type UberItemChannelConfigDto = {
@@ -200,13 +202,13 @@ export type UberDraftMutationResult<TConfig> = {
 
 export interface UberMenuConfigQueryPort {
   listUberItemChannelConfigs(
-    storeId?: string,
+    storeId: string,
   ): Promise<UberMenuConfigListResult<UberItemChannelConfigDto>>;
   listUberPublishedMenuItems(
-    storeId?: string,
+    storeId: string,
   ): Promise<UberMenuConfigListResult<UberPublishedMenuItemDto>>;
   listUberOptionItemConfigs(
-    storeId?: string,
+    storeId: string,
   ): Promise<UberMenuConfigListResult<UberOptionItemConfigDto>>;
 }
 export interface UberItemChannelConfigCommandPort {
@@ -220,7 +222,7 @@ export interface UberOptionItemConfigCommandPort {
   ): Promise<UberMenuConfigWriteResult<UberOptionItemConfigDto>>;
 }
 export interface UberMenuDraftReadPort {
-  getUberMenuDraft(storeId?: string): Promise<UberMenuDraftResult>;
+  getUberMenuDraft(storeId: string): Promise<UberMenuDraftResult>;
 }
 export interface UberDraftItemCommandPort {
   updateUberDraftItem(
@@ -250,5 +252,5 @@ export interface UberMenuWriteTransactionPort<TCommands> {
 }
 
 export interface UberMenuDraftDiffPort {
-  getUberMenuDraftDiff(storeId?: string): Promise<UberMenuDraftDiffResult>;
+  getUberMenuDraftDiff(storeId: string): Promise<UberMenuDraftDiffResult>;
 }
