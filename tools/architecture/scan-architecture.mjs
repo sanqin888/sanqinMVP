@@ -446,6 +446,14 @@ if (brandStoreCanonicalConfigOwnership) {
     brandStoreCanonicalConfigOwnership.migratedConsumerForbiddenSymbols ?? {};
   const forbiddenLegacyPaths =
     brandStoreCanonicalConfigOwnership.forbiddenLegacyPaths ?? [];
+  const legacyPersistenceModel =
+    brandStoreCanonicalConfigOwnership.legacyPersistenceModel ?? '';
+  const brandStorePrismaSchema = toPosix(
+    brandStoreCanonicalConfigOwnership.prismaSchema ?? '',
+  );
+  const brandStoreContractionMigration = toPosix(
+    brandStoreCanonicalConfigOwnership.contractionMigration ?? '',
+  );
   const authenticatedPosStoreContext =
     brandStoreCanonicalConfigOwnership.authenticatedPosStoreContext ?? null;
   const posStoreContextApiAdapter = toPosix(
@@ -637,6 +645,92 @@ if (brandStoreCanonicalConfigOwnership) {
           );
         }
       }
+    }
+  }
+
+  const brandStorePrismaSchemaPath = join(
+    REPOSITORY_ROOT,
+    brandStorePrismaSchema,
+  );
+  if (!legacyPersistenceModel || !brandStorePrismaSchema) {
+    failures.push(
+      'Brand/Store legacy persistence contraction metadata is incomplete',
+    );
+  } else if (!existsSync(brandStorePrismaSchemaPath)) {
+    failures.push(
+      `Brand/Store Prisma schema missing: ${brandStorePrismaSchema}`,
+    );
+  } else {
+    const schemaSource = readFileSync(brandStorePrismaSchemaPath, 'utf8');
+    const legacyModelPattern = new RegExp(
+      `\\bmodel\\s+${escapeRegExp(legacyPersistenceModel)}\\s*\\{`,
+    );
+    if (legacyModelPattern.test(schemaSource)) {
+      failures.push(
+        `Brand/Store legacy persistence model must not return after contraction: ${brandStorePrismaSchema} -> ${legacyPersistenceModel}`,
+      );
+    }
+  }
+
+  const brandStoreContractionMigrationPath = join(
+    REPOSITORY_ROOT,
+    brandStoreContractionMigration,
+  );
+  if (!brandStoreContractionMigration) {
+    failures.push(
+      'Brand/Store legacy persistence contraction migration is not registered',
+    );
+  } else if (!existsSync(brandStoreContractionMigrationPath)) {
+    failures.push(
+      `Brand/Store legacy persistence contraction migration missing: ${brandStoreContractionMigration}`,
+    );
+  } else {
+    const migrationSource = readFileSync(
+      brandStoreContractionMigrationPath,
+      'utf8',
+    );
+    const triggerDrop =
+      'DROP TRIGGER "BusinessConfig_sync_canonical_config" ON "BusinessConfig";';
+    const functionDrop =
+      'DROP FUNCTION "syncBusinessConfigToCanonicalConfig"();';
+    const tableDrop = 'DROP TABLE "BusinessConfig";';
+    const triggerDropIndex = migrationSource.indexOf(triggerDrop);
+    const functionDropIndex = migrationSource.indexOf(functionDrop);
+    const tableDropIndex = migrationSource.indexOf(tableDrop);
+
+    if (
+      !migrationSource.includes('BEGIN;') ||
+      !migrationSource.includes('COMMIT;') ||
+      !migrationSource.includes(
+        'Brand/Store BusinessConfig contraction blocked: persistence drift detected in fields:',
+      ) ||
+      !migrationSource.includes('unexpected foreign-key dependencies found') ||
+      !migrationSource.includes('dependent views/materialized views found') ||
+      !migrationSource.includes(
+        'Brand/Store BusinessConfig contraction incomplete: BusinessConfig table still exists',
+      )
+    ) {
+      failures.push(
+        `Brand/Store BusinessConfig contraction migration must be atomic, fail closed on parity/dependencies, and verify postconditions: ${brandStoreContractionMigration}`,
+      );
+    }
+    if (
+      /DROP\s+(?:TRIGGER|FUNCTION|TABLE)[^;]*\bCASCADE\b/i.test(
+        migrationSource,
+      )
+    ) {
+      failures.push(
+        `Brand/Store BusinessConfig contraction migration must not use CASCADE: ${brandStoreContractionMigration}`,
+      );
+    }
+    if (
+      triggerDropIndex < 0 ||
+      functionDropIndex <= triggerDropIndex ||
+      tableDropIndex <= functionDropIndex
+    ) {
+      failures.push(
+        `Brand/Store BusinessConfig contraction must drop trigger, then function, then table: ${brandStoreContractionMigration}`,
+      );
     }
   }
 
@@ -1472,18 +1566,22 @@ if (benefitsLoyaltyPolicyOwnership) {
     failures.push(`Benefits loyalty policy Prisma schema missing: ${prismaSchema}`);
   } else {
     const schemaSource = readFileSync(prismaSchemaPath, 'utf8');
-    for (const modelName of ['BrandConfig', 'BusinessConfig']) {
-      const modelMatch = schemaSource.match(
-        new RegExp(`model\\s+${escapeRegExp(modelName)}\\s*\\{([\\s\\S]*?)\\n\\}`),
+    const brandConfigModelMatch = schemaSource.match(
+      /model\s+BrandConfig\s*\{([\s\S]*?)\n\}/,
+    );
+    if (!brandConfigModelMatch) {
+      failures.push(
+        `Benefits Loyalty contraction model missing: ${prismaSchema} -> BrandConfig`,
       );
-      if (!modelMatch) {
-        failures.push(`Benefits Loyalty contraction model missing: ${prismaSchema} -> ${modelName}`);
-        continue;
-      }
+    } else {
       for (const field of forbiddenBrandStoreContractFields) {
-        if (new RegExp(`^\\s*${escapeRegExp(field)}\\s+`, 'm').test(modelMatch[1])) {
+        if (
+          new RegExp(`^\\s*${escapeRegExp(field)}\\s+`, 'm').test(
+            brandConfigModelMatch[1],
+          )
+        ) {
           failures.push(
-            `Benefits Loyalty contraction must remove duplicated policy column: ${prismaSchema} -> ${modelName}.${field}`,
+            `Benefits Loyalty contraction must remove duplicated policy column: ${prismaSchema} -> BrandConfig.${field}`,
           );
         }
       }
