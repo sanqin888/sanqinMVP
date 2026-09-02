@@ -1,7 +1,6 @@
 // apps/api/src/admin/admin.module.ts
 import { Module } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AdminBusinessController } from './business/admin-business.controller';
 import { StaffBrandStoreController } from './business/staff-brand-store.controller';
 import { AdminBusinessService } from './business/admin-business.service';
 import { AdminMenuModule } from './menu/admin-menu.module';
@@ -14,7 +13,6 @@ import { AdminStaffController } from './staff/admin-staff.controller';
 import { AuthModule } from '../auth/auth.module';
 import { AdminCouponsModule } from './coupons/admin-coupons.module';
 import { AdminPromotionsModule } from './promotions/admin-promotions.module';
-import { BusinessHoursModule } from './business-hours/business-hours.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
@@ -29,7 +27,6 @@ import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.co
 @Module({
   imports: [
     AuthModule,
-    BusinessHoursModule,
     AdminMenuModule,
     AdminImageUploadModule,
     AdminCouponsModule,
@@ -45,7 +42,6 @@ import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.co
   ],
   controllers: [
     StaffBrandStoreController,
-    AdminBusinessController,
     AdminImageUploadController,
     AdminStaffController,
     AdminHomepageController,

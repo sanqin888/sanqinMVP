@@ -45,7 +45,8 @@ export class PublicMenuService {
   ) {}
 
   async getPublicMenu(): Promise<PublicMenuResponse> {
-    const { timezone } = await this.brandStoreConfigReader.getStoreSnapshot();
+    const { timezone } =
+      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
     const now = resolveStoreNow(timezone || 'America/Toronto');
     const weekday = now.weekday;
 

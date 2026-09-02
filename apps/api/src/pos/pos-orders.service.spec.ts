@@ -44,7 +44,7 @@ describe('PosOrdersService', () => {
       }),
     };
     const brandStoreConfigWriter = {
-      updateConfig: jest.fn().mockResolvedValue(undefined),
+      updateStoreConfig: jest.fn().mockResolvedValue(undefined),
     };
     return {
       service: new PosOrdersService(
@@ -84,9 +84,9 @@ describe('PosOrdersService', () => {
     await expect(
       service.setAutoAcceptOnlineOrders('4750_Yonge_Street', false),
     ).resolves.toEqual({ enabled: false });
-    expect(brandStoreConfigWriter.updateConfig).toHaveBeenCalledWith(
-      { store: { autoAcceptOnlineOrders: false } },
+    expect(brandStoreConfigWriter.updateStoreConfig).toHaveBeenCalledWith(
       '4750_Yonge_Street',
+      { autoAcceptOnlineOrders: false },
     );
   });
 

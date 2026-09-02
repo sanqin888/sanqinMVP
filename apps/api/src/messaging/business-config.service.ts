@@ -100,7 +100,10 @@ export class BusinessConfigService {
     if (this.inFlight) {
       return this.inFlight;
     }
-    this.inFlight = this.brandStoreConfigReader.getSnapshot();
+    this.inFlight = Promise.all([
+      this.brandStoreConfigReader.getBrandSnapshot(),
+      this.brandStoreConfigReader.getConfiguredStoreSnapshot(),
+    ]).then(([brand, store]) => ({ brand, store }));
     try {
       const value = await this.inFlight;
       this.cache = value;

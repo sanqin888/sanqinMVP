@@ -133,7 +133,6 @@
       "BrandConfigUpdateInput",
       "BrandStoreConfigReaderPort",
       "BrandStoreConfigSnapshot",
-      "BrandStoreConfigUpdateInput",
       "BrandStoreConfigWriterPort",
       "StoreConfigUpdateInput",
       "BrandStoreConfigModule"
@@ -182,6 +181,8 @@
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"],
     "authenticatedPosStoreContext": {
       "apiAdapter": "apps/api/src/pos/pos-summary.controller.ts",
+      "exchangeRateApiAdapter": "apps/api/src/pos/pos-exchange-rate.controller.ts",
+      "exchangeRateService": "apps/api/src/pos/pos-exchange-rate.service.ts",
       "ordersApiAdapter": "apps/api/src/pos/pos-orders.controller.ts",
       "legacyOrdersApiAdapter": "apps/api/src/pos/legacy-pos-orders.controller.ts",
       "scheduledOrdersApiAdapter": "apps/api/src/pos/pos-orders.controller.ts",
@@ -206,7 +207,14 @@
       "service": "apps/api/src/admin/business/admin-business.service.ts",
       "webApiClient": "apps/web/src/lib/api/brand-store.ts",
       "webSelector": "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
-      "webStoreSettings": "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx"
+      "webStoreSettings": "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx",
+      "retiredCompatibilityTransportFiles": [
+        "apps/api/src/admin/business/admin-business.controller.ts",
+        "apps/api/src/admin/business-hours/business-hours.controller.ts",
+        "apps/api/src/admin/business-hours/business-hours.service.ts",
+        "apps/api/src/admin/business-hours/business-hours.module.ts",
+        "apps/api/src/admin/business-hours/dto/business-hours.dto.ts"
+      ]
     }
   },
   "benefitsLoyaltyPolicyOwnership": {
@@ -268,7 +276,7 @@
       "/admin/business/config",
       "/admin/business/temporary-close"
     ],
-    "contractedAdminBusinessController": "apps/api/src/admin/business/admin-business.controller.ts",
+    "retiredAdminBusinessController": "apps/api/src/admin/business/admin-business.controller.ts",
     "contractedAdminBusinessService": "apps/api/src/admin/business/admin-business.service.ts",
     "prismaSchema": "apps/api/prisma/schema.prisma",
     "contractionMigration": "apps/api/prisma/migrations/20260901235900_contract_loyalty_policy_storage/migration.sql",

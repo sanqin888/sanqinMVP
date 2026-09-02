@@ -40,7 +40,7 @@ Before the Admin Business contract contraction, two Admin Business endpoints acc
 - `PATCH /admin/business/config`
 - `PUT /admin/business/temporary-close`
 
-That Loyalty request/response ownership is now removed: stale Loyalty keys are explicitly rejected and callers are directed to `/admin/benefits/loyalty-policy`. No known Web consumer sends or reads Loyalty fields through either legacy route. Staff Web consumers use the Brand/Store-owned `/staff/brand/*` and explicit `/staff/stores/:storeStableId/*` contracts; `/admin/business/*` remains a server-side Brand/Store compatibility adapter only.
+That Loyalty request/response ownership is now removed: stale Loyalty keys were explicitly rejected and callers were directed to `/admin/benefits/loyalty-policy` during the transition. No known Web consumer sent or read Loyalty fields through either legacy route. Staff Web consumers use the Brand/Store-owned `/staff/brand/*` and explicit `/staff/stores/:storeStableId/*` contracts; the later Brand/Store transport contraction retires `/admin/business/*` entirely.
 
 Therefore the pre-contraction target is:
 
@@ -90,7 +90,7 @@ In `apps/api/src/admin/business/admin-business.controller.ts`:
 
 - remove the ten Loyalty fields from the request shapes for both `PATCH config` and `PUT temporary-close`;
 - keep Brand/Store request fields unchanged;
-- keep the compatibility `PUT temporary-close` route itself until Brand/Store contraction decides its fate.
+- keep the compatibility `PUT temporary-close` route itself until Brand/Store contraction decides its fate; that later contraction now retires the route together with the rest of `/admin/business/*`.
 
 In `apps/api/src/admin/business/admin-business.service.ts`:
 

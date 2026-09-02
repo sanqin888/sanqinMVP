@@ -90,7 +90,7 @@ describe('OrdersService', () => {
     };
   };
   let brandStoreConfigReader: {
-    getStoreSnapshot: jest.Mock;
+    getConfiguredStoreSnapshot: jest.Mock;
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;
@@ -198,7 +198,9 @@ describe('OrdersService', () => {
     };
 
     brandStoreConfigReader = {
-      getStoreSnapshot: jest.fn().mockResolvedValue(defaultStoreConfigSnapshot),
+      getConfiguredStoreSnapshot: jest
+        .fn()
+        .mockResolvedValue(defaultStoreConfigSnapshot),
     };
 
     loyalty = {
@@ -301,7 +303,7 @@ describe('OrdersService', () => {
   });
 
   it('reads delivery and tax pricing through the Brand/Store config boundary', async () => {
-    brandStoreConfigReader.getStoreSnapshot.mockResolvedValue({
+    brandStoreConfigReader.getConfiguredStoreSnapshot.mockResolvedValue({
       ...defaultStoreConfigSnapshot,
       deliveryBaseFeeCents: 725,
       priorityPerKmCents: 135,
@@ -335,13 +337,15 @@ describe('OrdersService', () => {
       storeLongitude: -79.4,
       enableUberDirect: false,
     });
-    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('uses the canonical store timezone for daily-special pricing', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-31T04:30:00.000Z'));
-    brandStoreConfigReader.getStoreSnapshot.mockResolvedValue({
+    brandStoreConfigReader.getConfiguredStoreSnapshot.mockResolvedValue({
       ...defaultStoreConfigSnapshot,
       timezone: 'Pacific/Honolulu',
     });
@@ -366,7 +370,9 @@ describe('OrdersService', () => {
           },
         }),
       );
-      expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalled();
+      expect(
+        brandStoreConfigReader.getConfiguredStoreSnapshot,
+      ).toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

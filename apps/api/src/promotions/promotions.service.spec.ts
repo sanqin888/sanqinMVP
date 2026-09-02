@@ -8,7 +8,7 @@ describe('PromotionsService canonical store timezone', () => {
       promotionRule: { findMany },
     };
     const brandStoreConfigReader = {
-      getStoreSnapshot: jest.fn().mockResolvedValue({
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'America/Toronto',
       }),
     };
@@ -22,7 +22,9 @@ describe('PromotionsService canonical store timezone', () => {
     expect(result.rules).toEqual([]);
     expect(result.now.weekday).toBeGreaterThanOrEqual(1);
     expect(result.now.weekday).toBeLessThanOrEqual(7);
-    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
     expect(findMany).toHaveBeenCalledWith({
       where: {
         status: 'ACTIVE',

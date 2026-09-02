@@ -86,11 +86,6 @@ export type StoreConfigUpdateInput = Partial<
   >
 >;
 
-export type BrandStoreConfigUpdateInput = {
-  brand?: BrandConfigUpdateInput;
-  store?: StoreConfigUpdateInput;
-};
-
 export type StoreDirectoryEntry = Pick<
   StoreConfigSnapshot,
   'storeStableId' | 'storeName' | 'isActive'
@@ -103,14 +98,16 @@ export type CreateStoreInput = {
 
 export interface BrandStoreConfigReaderPort {
   getBrandSnapshot(): Promise<BrandConfigSnapshot>;
+  /** @compat brand-store.default-store-identity.v1 */
   getStoreSnapshot(storeStableId?: string): Promise<StoreConfigSnapshot>;
-  getSnapshot(): Promise<BrandStoreConfigSnapshot>;
+  getConfiguredStoreSnapshot(): Promise<StoreConfigSnapshot>;
 }
 
 export interface BrandStoreConfigWriterPort {
-  updateConfig(
-    input: BrandStoreConfigUpdateInput,
-    storeStableId?: string,
+  updateBrandConfig(input: BrandConfigUpdateInput): Promise<void>;
+  updateStoreConfig(
+    storeStableId: string,
+    input: StoreConfigUpdateInput,
   ): Promise<void>;
   resumeTemporaryClosureIfMatches(
     storeStableId: string,

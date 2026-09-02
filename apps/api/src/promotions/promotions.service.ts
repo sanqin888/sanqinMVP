@@ -22,7 +22,7 @@ export class PromotionsService {
     now: ReturnType<typeof resolveStoreNow>;
   }> {
     const [storeConfig, rules] = await Promise.all([
-      this.brandStoreConfigReader.getStoreSnapshot(),
+      this.brandStoreConfigReader.getConfiguredStoreSnapshot(),
       this.prisma.promotionRule.findMany({
         where: {
           status: 'ACTIVE',
