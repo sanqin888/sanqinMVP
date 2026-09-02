@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import NextImage from 'next/image';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import {
@@ -238,7 +238,7 @@ function AdminBrand({ locale }: { locale: Locale }) {
 
   return (
     <div className="flex items-center gap-3">
-      <Image
+      <NextImage
         src="/images/sanq-logo-omega.svg"
         alt="SanQ"
         width={48}
