@@ -283,6 +283,6 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       await this.readBusinessSchedule(),
     );
     if (!result.valid) throw uberMenuValidation(result.message);
-    return { ...result, taxRateSource: 'BusinessConfig.salesTaxRate' };
+    return { ...result, taxRateSource: 'StoreConfig.salesTaxRate' };
   }
 }

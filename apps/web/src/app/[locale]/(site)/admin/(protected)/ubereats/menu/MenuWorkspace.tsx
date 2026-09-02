@@ -1545,7 +1545,7 @@ export function MenuWorkspace({
               <div
                 className={`mt-2 rounded border p-2 text-xs ${timezoneMismatch ? 'border-red-300 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}
               >
-                <p>BusinessConfig.timezone：{businessTimezone ?? '-'}</p>
+                <p>StoreConfig.timezone：{businessTimezone ?? '-'}</p>
                 <p>Uber 门店时区：{uberTimezone ?? 'API 未返回，需人工核对'}</p>
                 <label className="mt-2 flex items-start gap-2">
                   <input
