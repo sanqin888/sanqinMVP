@@ -4,12 +4,12 @@ import {
   BrandStoreConfigUnavailableError,
   StoreStableIdAlreadyExistsError,
   type BrandConfigSnapshot,
+  type BrandConfigUpdateInput,
   type BrandStoreConfigReaderPort,
-  type BrandStoreConfigSnapshot,
-  type BrandStoreConfigUpdateInput,
   type BrandStoreConfigWriterPort,
   type CreateStoreInput,
   type StoreConfigSnapshot,
+  type StoreConfigUpdateInput,
   type StoreDirectoryEntry,
   type StoreDirectoryReaderPort,
   type StoreDirectoryWriterPort,
@@ -120,6 +120,10 @@ export class PrismaBrandStoreConfigReader
     };
   }
 
+  getConfiguredStoreSnapshot(): Promise<StoreConfigSnapshot> {
+    return this.getStoreSnapshot(resolveConfiguredStoreStableId());
+  }
+
   async listStores(): Promise<StoreDirectoryEntry[]> {
     const stores = await this.prisma.store.findMany({
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
@@ -144,14 +148,6 @@ export class PrismaBrandStoreConfigReader
     });
     return store?.storeStableId ?? null;
   }
-
-  async getSnapshot(): Promise<BrandStoreConfigSnapshot> {
-    const [brand, store] = await Promise.all([
-      this.getBrandSnapshot(),
-      this.getStoreSnapshot(),
-    ]);
-    return { brand, store };
-  }
 }
 
 @Injectable()
@@ -160,65 +156,53 @@ export class PrismaBrandStoreConfigWriter
 {
   constructor(private readonly prisma: PrismaService) {}
 
-  async updateConfig(
-    input: BrandStoreConfigUpdateInput,
-    requestedStoreStableId?: string,
-  ): Promise<void> {
-    const brandPatch = input.brand ?? {};
-    const storePatch = input.store ?? {};
-    const hasBrandPatch = Object.keys(brandPatch).length > 0;
-    const hasStorePatch = Object.keys(storePatch).length > 0;
-
-    if (!hasBrandPatch && !hasStorePatch) return;
+  async updateBrandConfig(input: BrandConfigUpdateInput): Promise<void> {
+    if (Object.keys(input).length === 0) return;
 
     await this.prisma.$transaction(async (tx) => {
-      let storeDbId: string | null = null;
-
-      if (hasBrandPatch) {
-        const brand = await tx.brandConfig.findUnique({
-          where: { id: 1 },
-          select: { id: true },
-        });
-        if (!brand) {
-          throw new BrandStoreConfigUnavailableError(
-            'BrandConfig(id=1) is not provisioned',
-          );
-        }
+      const brand = await tx.brandConfig.findUnique({
+        where: { id: 1 },
+        select: { id: true },
+      });
+      if (!brand) {
+        throw new BrandStoreConfigUnavailableError(
+          'BrandConfig(id=1) is not provisioned',
+        );
       }
 
-      if (hasStorePatch) {
-        const storeStableId =
-          requestedStoreStableId ?? resolveConfiguredStoreStableId();
-        const store = await tx.store.findUnique({
-          where: { storeStableId },
-          select: { id: true, config: { select: { storeId: true } } },
-        });
-        if (!store) {
-          throw new BrandStoreConfigUnavailableError(
-            `Configured store ${storeStableId} is not provisioned`,
-          );
-        }
-        if (!store.config) {
-          throw new BrandStoreConfigUnavailableError(
-            `StoreConfig for ${storeStableId} is not provisioned`,
-          );
-        }
-        storeDbId = store.id;
+      await tx.brandConfig.update({
+        where: { id: 1 },
+        data: input,
+      });
+    });
+  }
+
+  async updateStoreConfig(
+    storeStableId: string,
+    input: StoreConfigUpdateInput,
+  ): Promise<void> {
+    if (Object.keys(input).length === 0) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      const store = await tx.store.findUnique({
+        where: { storeStableId },
+        select: { id: true, config: { select: { storeId: true } } },
+      });
+      if (!store) {
+        throw new BrandStoreConfigUnavailableError(
+          `Configured store ${storeStableId} is not provisioned`,
+        );
+      }
+      if (!store.config) {
+        throw new BrandStoreConfigUnavailableError(
+          `StoreConfig for ${storeStableId} is not provisioned`,
+        );
       }
 
-      if (hasBrandPatch) {
-        await tx.brandConfig.update({
-          where: { id: 1 },
-          data: brandPatch,
-        });
-      }
-
-      if (hasStorePatch && storeDbId) {
-        await tx.storeConfig.update({
-          where: { storeId: storeDbId },
-          data: storePatch,
-        });
-      }
+      await tx.storeConfig.update({
+        where: { storeId: store.id },
+        data: input,
+      });
     });
   }
 

@@ -139,15 +139,10 @@ export class PosStoreStatusService {
       throw new BadRequestException('Failed to calculate auto-resume time');
     }
 
-    await this.configWriter.updateConfig(
-      {
-        store: {
-          isTemporarilyClosed: true,
-          temporaryCloseReason: buildAutoPauseReason(autoResumeAtIso),
-        },
-      },
-      storeStableId,
-    );
+    await this.configWriter.updateStoreConfig(storeStableId, {
+      isTemporarilyClosed: true,
+      temporaryCloseReason: buildAutoPauseReason(autoResumeAtIso),
+    });
 
     const status = {
       isTemporarilyClosed: true,
@@ -177,15 +172,10 @@ export class PosStoreStatusService {
     storeStableId: string,
     context?: PosStoreStatusActionContext,
   ) {
-    await this.configWriter.updateConfig(
-      {
-        store: {
-          isTemporarilyClosed: false,
-          temporaryCloseReason: null,
-        },
-      },
-      storeStableId,
-    );
+    await this.configWriter.updateStoreConfig(storeStableId, {
+      isTemporarilyClosed: false,
+      temporaryCloseReason: null,
+    });
 
     return this.finalizeResume(storeStableId, 'resume', context);
   }

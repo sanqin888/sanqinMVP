@@ -28,7 +28,10 @@ const canonicalSnapshot = {
 
 function setup() {
   const brandStoreConfigReader = {
-    getSnapshot: jest.fn().mockResolvedValue(canonicalSnapshot),
+    getBrandSnapshot: jest.fn().mockResolvedValue(canonicalSnapshot.brand),
+    getConfiguredStoreSnapshot: jest
+      .fn()
+      .mockResolvedValue(canonicalSnapshot.store),
   };
   const service = new BusinessConfigService(brandStoreConfigReader as never);
   return { service, brandStoreConfigReader };
@@ -62,32 +65,33 @@ describe('BusinessConfigService canonical Brand/Store configuration', () => {
       },
     });
 
-    expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(brandStoreConfigReader.getBrandSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('preserves the existing messaging defaults when canonical optional fields are empty', async () => {
     const brandStoreConfigReader = {
-      getSnapshot: jest.fn().mockResolvedValue({
-        brand: {
-          brandNameZh: null,
-          brandNameEn: '   ',
-          siteUrl: null,
-          emailFromNameZh: null,
-          emailFromNameEn: null,
-          emailFromAddress: null,
-          smsSignature: null,
-          supportPhone: null,
-          supportEmail: null,
-        },
-        store: {
-          storeName: '   ',
-          addressLine1: null,
-          addressLine2: null,
-          city: null,
-          province: null,
-          postalCode: null,
-          phone: null,
-        },
+      getBrandSnapshot: jest.fn().mockResolvedValue({
+        brandNameZh: null,
+        brandNameEn: '   ',
+        siteUrl: null,
+        emailFromNameZh: null,
+        emailFromNameEn: null,
+        emailFromAddress: null,
+        smsSignature: null,
+        supportPhone: null,
+        supportEmail: null,
+      }),
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+        storeName: '   ',
+        addressLine1: null,
+        addressLine2: null,
+        city: null,
+        province: null,
+        postalCode: null,
+        phone: null,
       }),
     };
     const service = new BusinessConfigService(brandStoreConfigReader as never);
@@ -121,25 +125,37 @@ describe('BusinessConfigService canonical Brand/Store configuration', () => {
     jest.setSystemTime(new Date('2026-08-30T20:04:59.000Z'));
     await service.getMessagingSnapshot('zh');
 
-    expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(brandStoreConfigReader.getBrandSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
 
     jest.setSystemTime(new Date('2026-08-30T20:05:01.000Z'));
     await service.getMessagingSnapshot('en');
 
-    expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(2);
+    expect(brandStoreConfigReader.getBrandSnapshot).toHaveBeenCalledTimes(2);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(2);
   });
 
   it('fails closed when canonical Brand/Store configuration is unavailable', async () => {
     const brandStoreConfigReader = {
-      getSnapshot: jest
+      getBrandSnapshot: jest
         .fn()
         .mockRejectedValue(new Error('canonical config missing')),
+      getConfiguredStoreSnapshot: jest
+        .fn()
+        .mockResolvedValue(canonicalSnapshot.store),
     };
     const service = new BusinessConfigService(brandStoreConfigReader as never);
 
     await expect(service.getMessagingSnapshot('en')).rejects.toThrow(
       'canonical config missing',
     );
-    expect(brandStoreConfigReader.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(brandStoreConfigReader.getBrandSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
   });
 });

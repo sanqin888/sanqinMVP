@@ -133,7 +133,6 @@
       "BrandConfigUpdateInput",
       "BrandStoreConfigReaderPort",
       "BrandStoreConfigSnapshot",
-      "BrandStoreConfigUpdateInput",
       "BrandStoreConfigWriterPort",
       "StoreConfigUpdateInput",
       "BrandStoreConfigModule"
@@ -182,6 +181,8 @@
     "forbiddenLegacyPaths": ["apps/api/src/common/store-id.ts"],
     "authenticatedPosStoreContext": {
       "apiAdapter": "apps/api/src/pos/pos-summary.controller.ts",
+      "exchangeRateApiAdapter": "apps/api/src/pos/pos-exchange-rate.controller.ts",
+      "exchangeRateService": "apps/api/src/pos/pos-exchange-rate.service.ts",
       "ordersApiAdapter": "apps/api/src/pos/pos-orders.controller.ts",
       "legacyOrdersApiAdapter": "apps/api/src/pos/legacy-pos-orders.controller.ts",
       "scheduledOrdersApiAdapter": "apps/api/src/pos/pos-orders.controller.ts",

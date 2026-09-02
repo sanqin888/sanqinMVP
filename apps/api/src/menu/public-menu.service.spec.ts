@@ -9,7 +9,7 @@ describe('PublicMenuService canonical store timezone', () => {
       menuCategory: { findMany: categoryFindMany },
     };
     const brandStoreConfigReader = {
-      getStoreSnapshot: jest.fn().mockResolvedValue({
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'America/Toronto',
       }),
     };
@@ -23,7 +23,9 @@ describe('PublicMenuService canonical store timezone', () => {
       dailySpecials: [],
     });
 
-    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
+    expect(
+      brandStoreConfigReader.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
     expect(dailySpecialFindMany).toHaveBeenCalledTimes(1);
     expect(categoryFindMany).toHaveBeenCalledTimes(1);
     expect('businessConfig' in prisma).toBe(false);

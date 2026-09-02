@@ -459,6 +459,12 @@ if (brandStoreCanonicalConfigOwnership) {
   const posStoreContextApiAdapter = toPosix(
     authenticatedPosStoreContext?.apiAdapter ?? '',
   );
+  const posExchangeRateApiAdapter = toPosix(
+    authenticatedPosStoreContext?.exchangeRateApiAdapter ?? '',
+  );
+  const posExchangeRateService = toPosix(
+    authenticatedPosStoreContext?.exchangeRateService ?? '',
+  );
   const posOrdersApiAdapter = toPosix(
     authenticatedPosStoreContext?.ordersApiAdapter ?? '',
   );
@@ -634,10 +640,37 @@ if (brandStoreCanonicalConfigOwnership) {
       !/tx\.brandConfig\.update\s*\(/.test(writerSource) ||
       !/tx\.storeConfig\.update\s*\(/.test(writerSource) ||
       !/tx\.storeConfig\.updateMany\s*\(/.test(writerSource) ||
+      !writerSource.includes('updateBrandConfig') ||
+      !writerSource.includes('updateStoreConfig') ||
+      /async\s+updateConfig\s*\(/.test(writerSource) ||
       !writerSource.includes('resumeTemporaryClosureIfMatches')
     ) {
       failures.push(
-        `Brand/Store writer must own canonical config writes and preserve temporary-closure compare-and-set semantics inside a transaction: ${writerImplementation}`,
+        `Brand/Store writer must expose separate Brand writes and explicit storeStableId-scoped Store writes while preserving temporary-closure compare-and-set semantics: ${writerImplementation}`,
+      );
+    }
+  }
+
+  if (contractImplementation && existsSync(join(REPOSITORY_ROOT, contractImplementation))) {
+    const contractSource = readFileSync(
+      join(REPOSITORY_ROOT, contractImplementation),
+      'utf8',
+    );
+    if (
+      !contractSource.includes(
+        'getConfiguredStoreSnapshot(): Promise<StoreConfigSnapshot>',
+      ) ||
+      /getSnapshot\s*\(\s*\)\s*:\s*Promise<BrandStoreConfigSnapshot>/.test(
+        contractSource,
+      ) ||
+      !contractSource.includes('updateBrandConfig(input: BrandConfigUpdateInput)') ||
+      !/updateStoreConfig\(\s*storeStableId:\s*string,\s*input:\s*StoreConfigUpdateInput,?\s*\)/.test(
+        contractSource,
+      ) ||
+      /updateConfig\s*\([\s\S]{0,160}storeStableId\?:\s*string/.test(contractSource)
+    ) {
+      failures.push(
+        `Brand/Store config contract must name configured-store reads explicitly and must not allow implicit Store identity on writes: ${contractImplementation}`,
       );
     }
   }
@@ -859,6 +892,8 @@ if (brandStoreCanonicalConfigOwnership) {
   if (authenticatedPosStoreContext) {
     for (const boundaryPath of [
       posStoreContextApiAdapter,
+      posExchangeRateApiAdapter,
+      posExchangeRateService,
       posOrdersApiAdapter,
       legacyPosOrdersApiAdapter,
       scheduledPosOrdersApiAdapter,
@@ -900,6 +935,43 @@ if (brandStoreCanonicalConfigOwnership) {
       ) {
         failures.push(
           `authenticated POS store context must derive storeStableId from PosDeviceGuard identity and read Brand/Store through its public boundary: ${posStoreContextApiAdapter}`,
+        );
+      }
+    }
+
+    const posExchangeRateApiPath = join(
+      REPOSITORY_ROOT,
+      posExchangeRateApiAdapter,
+    );
+    if (posExchangeRateApiAdapter && existsSync(posExchangeRateApiPath)) {
+      const source = readFileSync(posExchangeRateApiPath, 'utf8');
+      if (
+        !source.includes("@Controller('pos/exchange-rate')") ||
+        !source.includes('PosDeviceGuard') ||
+        !source.includes('AuthenticatedPosIdentity') ||
+        !source.includes('requireStoreStableId(req)') ||
+        !source.includes('quoteCadToCny(')
+      ) {
+        failures.push(
+          `POS exchange-rate transport must derive storeStableId from authenticated PosDeviceGuard identity: ${posExchangeRateApiAdapter}`,
+        );
+      }
+    }
+
+    const posExchangeRateServicePath = join(
+      REPOSITORY_ROOT,
+      posExchangeRateService,
+    );
+    if (posExchangeRateService && existsSync(posExchangeRateServicePath)) {
+      const source = readFileSync(posExchangeRateServicePath, 'utf8');
+      if (
+        !source.includes('getStoreSnapshot(storeStableId)') ||
+        !source.includes('getBrandSnapshot()') ||
+        source.includes('brandStoreConfigReader.getSnapshot()') ||
+        source.includes('resolveConfiguredStoreStableId')
+      ) {
+        failures.push(
+          `POS exchange-rate service must use explicit Store timezone plus Brand-owned fallback rate without implicit store resolution: ${posExchangeRateService}`,
         );
       }
     }
@@ -1908,45 +1980,18 @@ if (benefitsLoyaltyPolicyOwnership) {
     );
   } else {
     const source = readFileSync(contractedAdminBusinessServicePath, 'utf8');
-    const responseMatch = source.match(
-      /export type BusinessConfigResponse = \{([\s\S]*?)\n\};/,
-    );
-    if (!responseMatch) {
-      failures.push(
-        `contracted Admin Business response contract missing: ${contractedAdminBusinessService}`,
-      );
-    } else {
-      for (const field of forbiddenBrandStoreContractFields) {
-        if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(responseMatch[1])) {
-          failures.push(
-            `contracted Admin Business response must not expose Benefits policy field: ${contractedAdminBusinessService} -> ${field}`,
-          );
-        }
-      }
-    }
-
-    const rejectionListMatch = source.match(
-      /const LEGACY_LOYALTY_POLICY_FIELDS = \[([\s\S]*?)\]\s+as const;/,
-    );
-    if (!rejectionListMatch) {
-      failures.push(
-        `contracted Admin Business service must keep an explicit stale-client Loyalty rejection list: ${contractedAdminBusinessService}`,
-      );
-    } else {
-      for (const field of forbiddenBrandStoreContractFields) {
-        if (
-          !new RegExp(`['\"]${escapeRegExp(field)}['\"]`).test(
-            rejectionListMatch[1],
-          )
-        ) {
-          failures.push(
-            `contracted Admin Business stale-client rejection list missing Benefits field: ${contractedAdminBusinessService} -> ${field}`,
-          );
-        }
+    for (const field of forbiddenBrandStoreContractFields) {
+      if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+        failures.push(
+          `contracted Admin Business service must not retain Benefits policy field after compatibility transport removal: ${contractedAdminBusinessService} -> ${field}`,
+        );
       }
     }
 
     if (
+      source.includes('BusinessConfigResponse') ||
+      source.includes('LEGACY_LOYALTY_POLICY_FIELDS') ||
+      source.includes('/admin/benefits/loyalty-policy') ||
       source.includes('../../loyalty/') ||
       source.includes('LOYALTY_POLICY_WRITER') ||
       source.includes('LOYALTY_POLICY_SETTINGS_READER') ||
@@ -1955,15 +2000,7 @@ if (benefitsLoyaltyPolicyOwnership) {
       source.includes('@compat benefits.business-config-loyalty-policy.v1')
     ) {
       failures.push(
-        `contracted Admin Business service must not read or write Benefits policy through the old Business config boundary: ${contractedAdminBusinessService}`,
-      );
-    }
-    if (
-      !source.includes('BadRequestException') ||
-      !source.includes('/admin/benefits/loyalty-policy')
-    ) {
-      failures.push(
-        `contracted Admin Business service must reject stale Loyalty payloads with the dedicated Benefits route: ${contractedAdminBusinessService}`,
+        `retired Admin Business/Benefits compatibility contract must stay deleted: ${contractedAdminBusinessService}`,
       );
     }
   }
