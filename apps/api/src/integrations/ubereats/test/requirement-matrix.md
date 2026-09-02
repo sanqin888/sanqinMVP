@@ -242,7 +242,7 @@ Uber 专用 modifier 明细表才能看到特殊请求。Order-level `carts[].sp
 `SPECIAL_INSTRUCTIONS` reason。Uber 可能返回空 allergy 占位；空数组/空 instructions 视为没有
 实际 allergy request，不触发拒单。不得静默忽略真实或损坏的特殊请求。
 
-门店食品安全策略必须使用真正的 `StoreConfig`，不得新增到 transitional `BusinessConfig`：
+门店食品安全策略必须使用真正的 `StoreConfig`；已收缩的 legacy `BusinessConfig` 不得重新引入：
 
 - `allergyHandlingMode=RELAY_ALL`：默认行为；所有结构合法的 allergy request 继续接单并完整转发。
 - `allergyHandlingMode=DENY_LIST`：递归汇总 item 与 modifier/option 的结构化

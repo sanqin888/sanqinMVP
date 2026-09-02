@@ -120,6 +120,9 @@
     "publicSurface": "apps/api/src/store/public-api.ts",
     "implementation": "apps/api/src/store/brand-store-config.reader.ts",
     "writerImplementation": "apps/api/src/store/brand-store-config.reader.ts",
+    "legacyPersistenceModel": "BusinessConfig",
+    "prismaSchema": "apps/api/prisma/schema.prisma",
+    "contractionMigration": "apps/api/prisma/migrations/20260902044000_contract_brand_store_business_config/migration.sql",
     "publicSymbols": [
       "DEFAULT_STORE_STABLE_ID",
       "resolveConfiguredStoreStableId",

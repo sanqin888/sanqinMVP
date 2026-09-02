@@ -123,9 +123,10 @@ pair fails CI.
   `/admin/business/*` remain compatibility-only transport paths.
   Admin no longer writes `BusinessConfig`, `BrandConfig`, `StoreConfig`,
   `BusinessHour`, or `Holiday` through Prisma directly. The Brand/Store owner writer
-  now writes only canonical `BrandConfig`/`StoreConfig` rows; the application-side
-  `BusinessConfig` mirror has been removed while the physical compatibility table and
-  one-way trigger remain temporarily for post-deploy proof before destructive contraction.
+  now writes only canonical `BrandConfig`/`StoreConfig` rows. Mirror-off production
+  verification is complete, the Prisma `BusinessConfig` model is removed, and the
+  fail-closed contraction migration is staged to drop the remaining physical table,
+  trigger, and function after repeating parity/dependency checks under locks.
 - Uber menu schedule/tax and store-status source reads now cross the Brand/Store
   boundary through an Uber application-owned `UBER_STORE_CONFIG_QUERY` port. The
   sole Uber composition root wires that port to `BRAND_STORE_CONFIG_READER` for
@@ -143,11 +144,12 @@ pair fails CI.
   shared Prisma implementation stay owner-internal. Cross-context consumers wire
   the public module and inject the public tokens instead of deep-importing internals.
 - The architecture scanner protects the public surface from cross-context deep
-  imports, prevents the canonical reader from regressing to legacy persistence,
-  requires the owner writer to keep canonical writes, temporary-closure CAS, and
-  its registered `BusinessConfig` compatibility copy in one transaction, forbids
-  Admin or POS StoreStatus from directly writing Prisma config delegates, pins POS
-  Orders/Summary browser store context to the guarded POS endpoint, and prevents
+  imports, prevents the canonical reader/writer from regressing to legacy persistence,
+  requires canonical writes plus temporary-closure CAS, forbids any API runtime
+  `.businessConfig` delegate, requires the Prisma `BusinessConfig` model to stay absent,
+  and pins the registered contraction migration to atomic fail-closed parity/dependency
+  checks with trigger → function → table DDL and no `CASCADE`. It also keeps POS
+  Orders/Summary browser store context on the guarded POS endpoint and prevents
   canonical Admin Store clients/settings from returning to implicit `/staff/store/*`
   routes or optional `storeStableId` contracts.
 - Admin remains an Identity/Customer/Benefits adapter path for dependency-map
@@ -211,15 +213,16 @@ pair fails CI.
   change/restore, POS policy load, Web pure-points order plus exact refund reversal,
   public membership rules, unrelated Store write/restore, database metadata, and the
   relevant error logs.
-- `brand-store.business-config.v1` has passed the final static consumer audit and direct
-  production parity pre-check: application production code no longer needs the legacy
-  persistence path, and the owner-maintained `BusinessConfig` mirror is now removed from
-  runtime writes. The physical table and one-way trigger remain temporarily. After this
-  application contraction is deployed, record `BusinessConfig.updatedAt`, actively
-  change-and-restore a mirrored Admin setting and POS pause/resume, verify canonical values
-  change while the legacy row stays untouched, and confirm final 29-field parity returns
-  to zero. That direct proof replaces waiting for an organic business cycle and gates the
-  separately authorized destructive migration.
+- `brand-store.business-config.v1` has passed its application cutover and direct production
+  proof. On 2026-09-02, an Admin Brand exchange-rate change/restore and POS pause/resume
+  advanced canonical `BrandConfig`/`StoreConfig` timestamps while `BusinessConfig.updatedAt`
+  remained unchanged; the final 29 overlapping fields returned to zero-diff. The separately
+  authorized destructive contraction is now staged: Prisma no longer declares
+  `BusinessConfig`, and `20260902044000_contract_brand_store_business_config` locks the
+  legacy/canonical rows, rechecks parity plus expected trigger/function/dependency shape,
+  then drops trigger → function → table without `CASCADE` and verifies canonical rows remain.
+  The compatibility entry stays active only until that migration is deployed and its
+  post-deploy metadata/behavior checks pass.
 
 ## Carried debt outside this closeout
 
