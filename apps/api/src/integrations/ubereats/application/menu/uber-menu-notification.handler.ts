@@ -60,8 +60,8 @@ export class UberMenuRefreshRequestHandler {
     const mapping = await this.provisionedStores.resolveProvisionedUberStoreId(
       event.storeId,
     );
-    const posStoreId = mapping?.posExternalStoreId?.trim() || null;
-    if (!mapping || !posStoreId)
+    const storeStableId = mapping?.posExternalStoreId?.trim() || null;
+    if (!mapping || !storeStableId)
       throw new UberValidationError({
         code: 'UBER_MENU_REFRESH_STORE_NOT_MAPPED',
         message:
@@ -69,7 +69,7 @@ export class UberMenuRefreshRequestHandler {
         operation: 'webhook.menu-refresh',
       });
 
-    if (event.partnerStoreId && event.partnerStoreId !== posStoreId)
+    if (event.partnerStoreId && event.partnerStoreId !== storeStableId)
       throw new UberValidationError({
         code: 'UBER_MENU_REFRESH_STORE_MAPPING_MISMATCH',
         message:
@@ -78,7 +78,7 @@ export class UberMenuRefreshRequestHandler {
       });
 
     const payload =
-      await this.publications.findLastSucceededPayload(posStoreId);
+      await this.publications.findLastSucceededPayload(storeStableId);
     if (!payload)
       throw new UberValidationError({
         code: 'UBER_MENU_REFRESH_CONFIRMED_MENU_MISSING',
@@ -102,7 +102,7 @@ export class UberMenuRefreshRequestHandler {
     await this.telemetry.captureEvent('ubereats_store_menu_refresh_processed', {
       eventId,
       uberStoreId: event.storeId,
-      posStoreId,
+      posStoreId: storeStableId,
       payloadHash,
     });
   }

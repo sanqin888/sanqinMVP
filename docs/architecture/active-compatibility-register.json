@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "443b1a5c",
+  "baselineCommit": "ef1e7adc",
   "updatedAt": "2026-09-02",
   "requiredFields": [
     "compat_id",
@@ -28,11 +28,12 @@
         "Canonical Admin Web Store config, hours, and holidays calls require storeStableId and use only /staff/stores/:storeStableId/*; the selector establishes ?store= from the Store directory before Store settings load, and the second contraction batch removes the legacy /staff/store/* transport adapter entirely so Admin Store transport no longer resolves a configured fallback identity",
         "The third contraction batch removes the remaining /admin/business/* config/hours/holidays/temporary-close compatibility transport and retires the standalone BusinessHoursModule after source and deployed-log checks found no real consumers; canonical /staff/brand/* and /staff/stores/:storeStableId/* remain the only Admin Brand/Store transport",
         "The fourth contraction batch separates BrandStoreConfigWriterPort into Brand-only updateBrandConfig and explicit storeStableId-scoped updateStoreConfig, removes the retired combined Admin Business response/update shape, gives deployment-level Store readers the explicit getConfiguredStoreSnapshot name, and threads authenticated POS storeStableId into exchange-rate quoting. POS exchange-rate timezone is Store-owned while wechatAlipayExchangeRate remains Brand-owned fallback; the Bank of Canada cached rate remains preferred over that fallback",
-        "Eight Uber channel/ops persistence models still declare storeId @default(\"default\") even though production rows using the literal default identity were verified as zero across all eight tables on 2026-09-02; Uber composition remains the only production caller still using no-argument getStoreSnapshot() and needs an explicit-store contraction audit before those schema defaults are removed"
+        "First Uber Store-identity code slice on branch refactor/ubereats-store-identity-context-v2 removes no-argument StoreConfig reads, scopes Uber menu BusinessHour reads by explicit storeStableId, contracts menu draft/publish config reads to canonical storeStableId rows only, removes menu-side literal-default normalization, and makes automatic store-status sync use each mapping's SanQ store context. The active compatibility remainder is now Operations/OpsTicket identity plus persistence schema: production UberOpsTicket contains 15 historical provider-UUID scoped STORE_STATUS_SYNC rows and 3 canonical 4750_Yonge_Street MENU_PUBLISH rows, while eight Uber channel/ops models still declare storeId @default(\"default\"). Those data/schema contractions remain separate and are not claimed complete by this slice",
+        "The user explicitly lifted the UberEats structural-change freeze on 2026-09-02 so this remaining Store-identity work can be completed before real Uber production traffic. UberEats changes must now proceed in independently deployable slices; after each deployed slice, its affected capabilities require focused active verification and explicit user confirmation before the next UberEats code slice begins"
       ],
-      "parity_metric": "Readiness check on 2026-09-02: Order rows with storeId IS NULL = 0; rows with storeId='default' = 0 across UberItemChannelConfig, UberCategoryConfig, UberModifierGroupConfig, UberOptionItemConfig, UberOptionChildGroupBinding, UberMenuPublishVersion, UberReconciliationReport, and UberOpsTicket; no real /api/v1/staff/store/* request appeared after deployment while canonical /api/v1/staff/stores/4750_Yonge_Street/* reads/writes returned 200. After the second contraction was deployed and directly tested, a follow-up source scan showed zero Web /admin/business/* consumers and deployed API logs showed no real GET/PATCH/PUT /api/v1/admin/business/* requests, so the third contraction removes that compatibility transport instead of waiting for an organic business cycle. Remaining exit work is the separate implicit-resolver/Uber identity contraction",
-      "rollback": "Retain the old nullable/default columns during expand-backfill-cutover; do not reinterpret historical IDs",
-      "exit_criteria": "All rows are backfilled, callers pass storeStableId, schema defaults and fallback helpers are removed",
+      "parity_metric": "Readiness check on 2026-09-02: Order rows with storeId IS NULL = 0; rows with storeId='default' = 0 across UberItemChannelConfig, UberCategoryConfig, UberModifierGroupConfig, UberOptionItemConfig, UberOptionChildGroupBinding, UberMenuPublishVersion, UberReconciliationReport, and UberOpsTicket. Production menu/config rows are canonical 4750_Yonge_Street scoped; UberOpsTicket is the known exception with 15 provider-UUID STORE_STATUS_SYNC rows and 3 canonical 4750_Yonge_Street MENU_PUBLISH rows, and the provisioned mapping links provider store 47f93365-f7dc-4b49-9e3b-a99e9915e558 to 4750_Yonge_Street. No real /api/v1/staff/store/* request appeared after deployment while canonical /api/v1/staff/stores/4750_Yonge_Street/* reads/writes returned 200. Remaining Uber exit work is actively unblocked but verification-gated: each Store-identity slice must deploy independently, run focused active smoke checks with sanitized log/DB evidence where useful, and receive user confirmation before the next slice. Do not wait for organic traffic as the parity signal.",
+      "rollback": "Retain old Uber default/fallback compatibility until the replacement explicit identity path for that slice has been actively verified; cut back or forward-fix the current slice on regression, and do not reinterpret historical provider IDs",
+      "exit_criteria": "All Uber and non-Uber callers pass explicit SanQ storeStableId where SanQ Store identity is intended; Uber provider storeId is named/handled separately; runtime literal-default normalization, schema defaults, and fallback helpers are removed only after the preceding slice is actively verified",
       "remove_pr": "Phase 2 store identity contraction PR",
       "deadline": "Before Phase 2 Brand/Store exit",
       "evidence": [
@@ -64,30 +65,6 @@
         "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
         "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx",
         "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
-      ]
-    },
-    {
-      "compat_id": "web.api-envelope-direct-payload.v1",
-      "status": "active",
-      "old_owner": "Checkout direct API payload readers and page-local response unwrap helpers",
-      "new_owner": "One Web API client using the global code/message/details response envelope",
-      "dual_write_or_read": [
-        "Canonical apiFetch and serverApiFetch require the global code/message/details envelope",
-        "POS session/login claim, login, auth/me, public store-status and connectivity heartbeat calls use the centralized POS session API adapter; their five browser direct-fetch allowances are removed",
-        "Legacy browser direct-fetch debt remains only in Checkout (6 calls), which still owns page-local envelope/direct-payload compatibility"
-      ],
-      "parity_metric": "Architecture scanner browser direct-fetch debt is reduced from 11 to 6 and must reach zero; POS session/login direct fetches must remain zero, and page-local Checkout envelope/direct-payload readers must be removed",
-      "rollback": "Keep only the remaining Checkout legacy calls isolated by architecture allowances until its dedicated risk-scoped migration; POS session/login must stay on the canonical client and must not regain direct-fetch allowances",
-      "exit_criteria": "All regular Web JSON API calls use the canonical client, remaining legacy browser direct fetches are zero, and duplicate/page-local ApiEnvelope readers are removed",
-      "remove_pr": "POS session/login browser transport migration followed by the dedicated Checkout browser transport migration",
-      "deadline": "Before Phase 1 low-risk cleanup exit",
-      "evidence": [
-        "SanQ full-site modularization audit section 3.4",
-        "apps/web/src/lib/api/pos-session.ts",
-        "apps/web/src/app/[locale]/(device)/store/pos/PosSessionKeepAlive.tsx",
-        "apps/web/src/app/[locale]/(device)/store/pos/login/page.tsx",
-        "apps/api/src/pos/pos-devices.controller.ts",
-        "tools/architecture/context-baseline.json"
       ]
     },
     {
@@ -130,6 +107,25 @@
     }
   ],
   "closed": [
+    {
+      "compat_id": "web.api-envelope-direct-payload.v1",
+      "status": "closed",
+      "old_owner": "Checkout direct API payload readers and page-local response unwrap helpers",
+      "new_owner": "One Web API client using the global code/message/details response envelope",
+      "dual_write_or_read": "Removed. Checkout OTP request/verify, membership summary, address list/create, and coupon list calls now use canonical apiFetch; page-local ApiEnvelope/direct-payload readers and the Checkout direct-fetch architecture allowance are deleted.",
+      "parity_metric": "Source contraction on 2026-09-02 reduced Checkout browser direct fetches from 6 to 0. The architecture scanner now has no Checkout direct-fetch allowance, so any reintroduction is rejected as a new browser direct fetch. Existing apiFetch protocol handling preserves operation-status {ok:false,error} failures and the global {code,message,details} envelope contract.",
+      "rollback": "Forward-fix only. Do not restore page-local envelope/direct-payload compatibility or a Checkout direct-fetch allowance; fix any endpoint contract mismatch at the canonical API client/owner contract boundary.",
+      "exit_criteria": "Completed: Checkout regular JSON API direct fetches are zero, page-local ApiEnvelope/direct-payload compatibility is removed, and the architecture baseline permanently rejects its return.",
+      "remove_pr": "refactor/web-api-envelope-contraction",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/web/src/app/[locale]/(site)/checkout/page.tsx",
+        "apps/web/src/lib/api/client.ts",
+        "apps/web/src/lib/api/protocol.ts",
+        "tools/architecture/context-baseline.json",
+        "tools/architecture/scan-architecture.mjs"
+      ]
+    },
     {
       "compat_id": "orders.pos-transport-routes.v1",
       "status": "closed",

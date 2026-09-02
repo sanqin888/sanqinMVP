@@ -12,7 +12,7 @@ export class LoadUberMenuWorkflowUseCase {
           repositories.snapshots.load(),
           repositories.itemChannels.list(storeId),
           repositories.modifiers.list(storeId),
-          repositories.schedules.get(),
+          repositories.schedules.get(storeId),
           repositories.storeMappings.findByPosStoreId(storeId),
         ]);
       return {

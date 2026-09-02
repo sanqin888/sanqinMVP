@@ -15,7 +15,12 @@ export type UberAuthenticationError = {
 };
 
 export type UberStoreScopedInput = {
-  /** Uber store id. Used by Uber-scoped draft/configuration endpoints. */
+  /** Explicit store reference for one Uber-scoped draft/configuration operation. */
+  storeId: string;
+};
+
+export type UberOptionalStoreScopedInput = {
+  /** Optional store filter; omission intentionally means all provisioned stores. */
   storeId?: string;
 };
 
@@ -103,8 +108,8 @@ export type UpdateDraftOptionInput = UberStoreScopedInput & {
 };
 
 export type PublishMenuInput = {
-  /** Internal/POS store id (also the cloud print-task room id), not an Uber store id. */
-  storeId?: string;
+  /** Explicit local store reference resolved to SanQ storeStableId before persistence. */
+  storeId: string;
   dryRun?: boolean;
   timezoneConfirmed?: boolean;
   taxRateConfirmed?: boolean;
@@ -246,7 +251,7 @@ export function isPermanentPublicHttpsUrl(value: string): boolean {
 }
 
 /** Convert the site's stored image path into the public URL Uber can fetch. */
-export type SyncAvailabilityInput = UberStoreScopedInput & {
+export type SyncAvailabilityInput = UberOptionalStoreScopedInput & {
   menuItemStableId: string;
   isAvailable: boolean;
 };
@@ -268,7 +273,7 @@ export type UberAvailabilitySyncResult = {
   }>;
 };
 
-export type SyncOptionAvailabilityInput = UberStoreScopedInput & {
+export type SyncOptionAvailabilityInput = UberOptionalStoreScopedInput & {
   optionChoiceStableId: string;
   isAvailable: boolean;
 };

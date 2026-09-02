@@ -8,16 +8,16 @@ in this closeout branch.
 
 ## Status
 
-**Phase 1 low-risk cleanup is functionally complete except for one explicitly
-tracked Web compatibility item.** The remaining item is not hidden or widened:
-`web.api-envelope-direct-payload.v1` now records only the 6 legacy browser calls in
-Checkout; the 5 POS session/login calls have moved to the canonical client. The
-remaining Checkout debt still prevents claiming the compatibility register's formal
-"Before Phase 1 exit" condition as fully satisfied.
+**Phase 1 low-risk cleanup is now complete.** The final tracked Web compatibility
+item, `web.api-envelope-direct-payload.v1`, was contracted on 2026-09-02: Checkout's
+remaining 6 regular JSON browser calls now use the canonical `apiFetch`, its
+page-local envelope/direct-payload readers are removed, and the architecture
+allowance is deleted. The formal "Before Phase 1 exit" compatibility condition is
+therefore satisfied in source.
 
-The canonical Web transports themselves are complete and strict. The remaining
-calls are risk-scoped debt to migrate separately rather than a reason to weaken
-or bypass the new architecture gate.
+The canonical Web transports remain strict: regular browser JSON calls use
+`apiFetch`, App Router server calls use `serverApiFetch`, and only documented raw
+binary/beacon/provider transports retain direct `fetch` allowances.
 
 ## Completed Phase 0/1 slices
 
@@ -48,24 +48,20 @@ approved public-alias traffic rather than a legacy direct-import allowance, so i
 does not require a numeric baseline entry, but it restores the intended rule that
 architecture-foundation does not depend on a business context.
 
-## Compatibility still active
+## Compatibility closeout
 
 ### `web.api-envelope-direct-payload.v1`
 
 Canonical `apiFetch` and `serverApiFetch` reject direct payload drift and share one
-`code/message/details` parser. POS `PosSessionKeepAlive` and POS login now route all
-five session/device calls through `apps/web/src/lib/api/pos-session.ts`; their direct
-fetch allowances are removed. The connectivity heartbeat returns a standard JSON
-success payload so it can participate in the same envelope contract.
+`code/message/details` parser. POS session/device calls had already moved to the
+canonical client; the 2026-09-02 Checkout contraction moved the remaining 6 regular
+JSON calls (OTP request/verify, membership summary, address list/create, and coupon
+list) to `apiFetch` as well.
 
-Remaining legacy browser calls are now only:
-
-- Checkout: 6 direct fetches.
-
-These 6 calls remain pinned by the architecture scanner. Checkout is payment-adjacent,
-so its dedicated migration must remove the final allowance and page-local
-envelope/direct-payload reader before the compatibility entry can move to closed
-history.
+Checkout now has zero direct browser `fetch` calls and no page-local
+`ApiEnvelope`/direct-payload compatibility reader. Its architecture allowance was
+removed, so the scanner will reject any future reintroduction as new direct-fetch
+debt. `web.api-envelope-direct-payload.v1` is therefore closed.
 
 ### Frozen Payments/Clover entries
 
@@ -77,8 +73,10 @@ This closeout makes no production payment-path change.
 - EventEmitter aliases alongside durable outbox events remain a review candidate;
   live consumers/duplicate side effects must be measured first.
 - Notification disabled/fallback logic and versioned Uber event files were not
-  deleted because dynamic/operational behavior is not sufficiently proven and the
-  Uber boundary is frozen for structural changes.
+  deleted because dynamic/operational behavior was not sufficiently proven and the
+  Uber boundary was frozen for structural changes at Phase 1 closeout time. That
+  structural freeze was explicitly lifted by the user on 2026-09-02; subsequent
+  Uber changes follow the slice-by-slice active verification gate in `AGENTS.md`.
 
 ## Post-closeout StableId ownership decision
 
@@ -113,8 +111,11 @@ closeout because those production protocol paths were not structurally changed.
 
 ## Phase 2 entry condition
 
-Brand/Store Phase 2 may begin without changing the frozen payment/Uber paths.
-Before any schema migration or package-boundary change, follow the repository's
-explicit authorization requirements. The Phase 2 work should start with the
-BusinessConfig field-ownership matrix and read-only data audit, then use
-expand/backfill/cutover/contract for Store identity/config changes.
+Brand/Store Phase 2 originally began while both payment and Uber provider paths
+were structurally frozen. The Uber structural freeze was explicitly lifted on
+2026-09-02 so the remaining Store-identity contraction can be completed before
+real Uber production traffic; Payments/Clover remains frozen while its external
+blocker is open. Before any schema migration or package-boundary change, follow
+the repository's explicit authorization requirements. Uber work must additionally
+follow the per-slice active verification gate in `AGENTS.md` before advancing to
+the next Uber code slice.

@@ -62,7 +62,7 @@ export type UberMenuPublishSnapshot = {
 
 export interface UberMenuSnapshotRepositoryPort {
   loadPublishSnapshot(
-    posStoreId: string,
+    storeStableId: string,
     uberStoreId: string,
   ): Promise<UberMenuPublishSnapshot | null>;
 }

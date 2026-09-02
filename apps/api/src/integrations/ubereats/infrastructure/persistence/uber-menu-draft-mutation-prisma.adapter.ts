@@ -11,7 +11,7 @@ import {
   type UpdateDraftItemInput,
   type UpdateDraftOptionInput,
 } from '../../domain/menu/uber-menu.types';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 
 const uberMenuValidation = (message: string) =>
   new UberValidationError({
@@ -239,8 +239,8 @@ export class UberMenuDraftMutationPrismaAdapter
     };
   }
 
-  private async canonicalStoreId(storeId?: string) {
-    const requestedStoreId = normalizeUberStoreId(storeId);
+  private async canonicalStoreId(storeId: string) {
+    const requestedStoreId = requireUberStoreId(storeId);
     const mapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
         isProvisioned: true,

@@ -29,7 +29,7 @@ import {
 import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import type { UberMenuDraftJsonValue } from '../../domain/menu/uber-menu-diff.types';
 import { validateUberBusinessSchedule } from '../../domain/menu/uber-business-schedule.validator';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 import { UberMenuDraftSourcePrismaRepository } from './uber-menu-draft.repositories';
 
 const uberMenuValidation = (message: string) =>
@@ -63,8 +63,8 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     private readonly storeConfig: UberStoreConfigQueryPort,
   ) {}
 
-  async getUberMenuDraft(storeId?: string) {
-    const requestedStoreId = normalizeUberStoreId(storeId);
+  async getUberMenuDraft(storeId: string) {
+    const requestedStoreId = requireUberStoreId(storeId);
     const storeMapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
         isProvisioned: true,
@@ -75,22 +75,23 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
       },
       select: { uberStoreId: true, posExternalStoreId: true },
     });
-    const mappedPosStoreId = storeMapping?.posExternalStoreId?.trim() || null;
+    const mappedStoreStableId =
+      storeMapping?.posExternalStoreId?.trim() || null;
     const isProvisioned = Boolean(
-      storeMapping?.uberStoreId && mappedPosStoreId,
+      storeMapping?.uberStoreId && mappedStoreStableId,
     );
-    const posStoreId = mappedPosStoreId ?? requestedStoreId;
+    const storeStableId = mappedStoreStableId ?? requestedStoreId;
     const uberStoreId = isProvisioned
       ? storeMapping!.uberStoreId
       : `draft:${requestedStoreId}`;
-    const graph = await this.buildUberMenuGraph(posStoreId, uberStoreId);
+    const graph = await this.buildUberMenuGraph(storeStableId, uberStoreId);
     const validation = validateUberMenuGraph(graph);
     const normalized = {
       graph: validation.graph,
       warnings: validation.warnings,
       errors: validation.kind === 'invalid' ? validation.errors : [],
     };
-    const schedule = await this.getUberMenuSchedule();
+    const schedule = await this.getUberMenuSchedule(storeStableId);
     const payload = buildUberUploadMenuPayload(
       normalized.graph,
       schedule.serviceAvailability,
@@ -101,7 +102,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     const summary = summarizeUberMenuGraph(normalized.graph);
     const lastPublishedVersion =
       await this.prisma.uberMenuPublishVersion.findFirst({
-        where: { storeId: posStoreId },
+        where: { storeId: storeStableId },
         orderBy: { createdAt: 'desc' },
         select: {
           versionStableId: true,
@@ -124,7 +125,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     const uberDraftTreeNodes = buildUberDraftTreeNodes(uberDraftCategories);
     const stableIdsByNodeId = this.stableIdsByNodeId(
       normalized.graph,
-      posStoreId,
+      storeStableId,
     );
     const projectIssue = (issue: InternalValidationIssue) =>
       this.projectValidationIssue(issue, stableIdsByNodeId);
@@ -261,10 +262,13 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     return buildUberMenuGraph(source, emptyUberMenuDraftFilters());
   }
 
-  private async readBusinessSchedule() {
+  private async readBusinessSchedule(storeStableId: string) {
     const [config, hours] = await Promise.all([
-      this.storeConfig.getStoreConfig(),
-      this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
+      this.storeConfig.getStoreConfig(storeStableId),
+      this.prisma.businessHour.findMany({
+        where: { store: { storeStableId } },
+        orderBy: { weekday: 'asc' },
+      }),
     ]);
     return {
       timezone: config.timezone,
@@ -273,14 +277,14 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     };
   }
 
-  private async getUberMenuSchedule(): Promise<{
+  private async getUberMenuSchedule(storeStableId: string): Promise<{
     timezone: string;
     serviceAvailability: UberServiceAvailability[];
     taxRatePercentage: number;
     taxRateSource: string;
   }> {
     const result = validateUberBusinessSchedule(
-      await this.readBusinessSchedule(),
+      await this.readBusinessSchedule(storeStableId),
     );
     if (!result.valid) throw uberMenuValidation(result.message);
     return { ...result, taxRateSource: 'StoreConfig.salesTaxRate' };

@@ -2,14 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { UberMenuPublishStatus } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type { UberMenuConfigQueryPort } from '../../application/menu/uber-menu-draft.ports';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import { requireUberStoreId } from '../../domain/merchant/uber-store-id';
 import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 @Injectable()
 export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listUberItemChannelConfigs(storeId?: string) {
+  async listUberItemChannelConfigs(storeId: string) {
     const normalizedStoreId = await this.canonicalStoreId(storeId);
     const items = await this.prisma.uberItemChannelConfig.findMany({
       where: { storeId: normalizedStoreId },
@@ -41,7 +41,7 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
     };
   }
 
-  async listUberPublishedMenuItems(storeId?: string) {
+  async listUberPublishedMenuItems(storeId: string) {
     const normalizedStoreId = await this.canonicalStoreId(storeId);
     const items = await this.prisma.uberPublishedMenuItem.findMany({
       where: {
@@ -80,7 +80,7 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
     };
   }
 
-  async listUberOptionItemConfigs(storeId?: string) {
+  async listUberOptionItemConfigs(storeId: string) {
     const normalizedStoreId = await this.canonicalStoreId(storeId);
     const items = await this.prisma.uberOptionItemConfig.findMany({
       where: { storeId: normalizedStoreId },
@@ -111,8 +111,8 @@ export class UberMenuConfigQueryPrismaAdapter implements UberMenuConfigQueryPort
     };
   }
 
-  private async canonicalStoreId(storeId?: string) {
-    const requestedStoreId = normalizeUberStoreId(storeId);
+  private async canonicalStoreId(storeId: string) {
+    const requestedStoreId = requireUberStoreId(storeId);
     const mapping = await this.prisma.uberStoreMapping.findFirst({
       where: {
         isProvisioned: true,
