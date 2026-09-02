@@ -113,11 +113,11 @@ describe('UberOperationsAlertPrismaAdapter store status alerts', () => {
       temporaryCloseReason: 'Kitchen maintenance',
     });
 
-    await expect(adapter.getStoreStatusSource()).resolves.toEqual({
+    await expect(adapter.getStoreStatusSource('store-stable-1')).resolves.toEqual({
       isTemporarilyClosed: true,
       temporaryCloseReason: 'Kitchen maintenance',
     });
-    expect(storeConfig.getStoreConfig).toHaveBeenCalledTimes(1);
+    expect(storeConfig.getStoreConfig).toHaveBeenCalledWith('store-stable-1');
   });
 
   it('updates an existing open alert for the same store status target instead of duplicating it', async () => {

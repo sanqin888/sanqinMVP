@@ -18,58 +18,15 @@ import {
 import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
-type ScopedRows<T> = {
-  default?: T;
-  uber?: T;
-  canonical?: T;
-};
-
-const groupScopedRows = <T extends { storeId: string }>(
-  rows: T[],
-  canonicalStoreId: string,
-  uberStoreId: string,
-  keyOf: (row: T) => string,
-): Map<string, ScopedRows<T>> => {
-  const byKey = new Map<string, ScopedRows<T>>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    const scoped = byKey.get(key) ?? {};
-    if (row.storeId === canonicalStoreId) scoped.canonical = row;
-    else if (row.storeId === uberStoreId) scoped.uber = row;
-    else if (row.storeId === 'default') scoped.default = row;
-    byKey.set(key, scoped);
-  }
-  return byKey;
-};
-
-const restoredItemIds = (
-  events: Array<{ payload: unknown }>,
-  posStoreId: string,
-): Set<string> =>
-  new Set(
-    events.flatMap((event) => {
-      const payload = event.payload as {
-        posStoreId?: unknown;
-        menuItemStableId?: unknown;
-      } | null;
-      return payload?.posStoreId === posStoreId &&
-        typeof payload.menuItemStableId === 'string'
-        ? [payload.menuItemStableId]
-        : [];
-    }),
-  );
 
 /** Owns the Prisma query shape and maps it to the domain graph snapshot. */
 export class UberMenuDraftSourcePrismaRepository {
   constructor(private readonly db: MenuDb) {}
 
   async load(
-    storeId: string,
+    storeStableId: string,
     uberStoreId: string,
   ): Promise<UberMenuDraftSource> {
-    const configStoreIds = Array.from(
-      new Set([storeId, uberStoreId, 'default']),
-    );
     const [
       categories,
       menuItems,
@@ -78,7 +35,6 @@ export class UberMenuDraftSourcePrismaRepository {
       rawOptionConfigs,
       rawModifierConfigs,
       rawCategoryConfigs,
-      restoreEvents,
     ] = await Promise.all([
       this.db.menuCategory.findMany({
         where: { deletedAt: null },
@@ -154,7 +110,7 @@ export class UberMenuDraftSourcePrismaRepository {
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       }),
       this.db.uberItemChannelConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           menuItemStableId: true,
@@ -166,7 +122,7 @@ export class UberMenuDraftSourcePrismaRepository {
         },
       }),
       this.db.uberOptionItemConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           optionChoiceStableId: true,
@@ -178,7 +134,7 @@ export class UberMenuDraftSourcePrismaRepository {
         },
       }),
       this.db.uberModifierGroupConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           templateGroupStableId: true,
@@ -189,7 +145,7 @@ export class UberMenuDraftSourcePrismaRepository {
         },
       }),
       this.db.uberCategoryConfig.findMany({
-        where: { storeId: { in: configStoreIds } },
+        where: { storeId: storeStableId },
         select: {
           storeId: true,
           menuCategoryStableId: true,
@@ -198,82 +154,21 @@ export class UberMenuDraftSourcePrismaRepository {
           isActive: true,
         },
       }),
-      this.db.opsEvent.findMany({
-        where: {
-          eventName: 'ubereats_menu_price_restored',
-          source: 'ubereats',
-        },
-        select: { payload: true },
-      }),
     ]);
 
-    const restoredItems = restoredItemIds(restoreEvents, storeId);
-    const itemConfigs = Array.from(
-      groupScopedRows(
-        rawItemConfigs,
-        storeId,
-        uberStoreId,
-        (row) => row.menuItemStableId,
-      ).entries(),
-    ).flatMap(([stableId, scoped]) => {
-      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-      if (!base) return [];
-      const priceCents = scoped.canonical
-        ? scoped.canonical.priceCents != null || restoredItems.has(stableId)
-          ? scoped.canonical.priceCents
-          : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null)
-        : (scoped.uber?.priceCents ?? scoped.default?.priceCents ?? null);
-      return [
-        {
-          ...base,
-          priceCents,
-          preparationType: readUberPreparationType(base.preparationType),
-        },
-      ];
-    });
-    const optionConfigs = Array.from(
-      groupScopedRows(
-        rawOptionConfigs,
-        storeId,
-        uberStoreId,
-        (row) => row.optionChoiceStableId,
-      ).values(),
-    ).flatMap((scoped) => {
-      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-      return base
-        ? [
-            {
-              ...base,
-              preparationType: readUberPreparationType(base.preparationType),
-            },
-          ]
-        : [];
-    });
-    const modifierConfigs = Array.from(
-      groupScopedRows(
-        rawModifierConfigs,
-        storeId,
-        uberStoreId,
-        (row) => row.templateGroupStableId,
-      ).values(),
-    ).flatMap((scoped) => {
-      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-      return base ? [base] : [];
-    });
-    const categoryConfigs = Array.from(
-      groupScopedRows(
-        rawCategoryConfigs,
-        storeId,
-        uberStoreId,
-        (row) => row.menuCategoryStableId,
-      ).values(),
-    ).flatMap((scoped) => {
-      const base = scoped.canonical ?? scoped.uber ?? scoped.default;
-      return base ? [base] : [];
-    });
+    const itemConfigs = rawItemConfigs.map((config) => ({
+      ...config,
+      preparationType: readUberPreparationType(config.preparationType),
+    }));
+    const optionConfigs = rawOptionConfigs.map((config) => ({
+      ...config,
+      preparationType: readUberPreparationType(config.preparationType),
+    }));
+    const modifierConfigs = rawModifierConfigs;
+    const categoryConfigs = rawCategoryConfigs;
 
     return {
-      storeId,
+      storeId: storeStableId,
       uberStoreId,
       categories,
       menuItems: menuItems.map(({ optionGroups, ...item }) => ({
@@ -408,10 +303,11 @@ export class UberBusinessSchedulePrismaRepository implements BusinessScheduleRep
     private readonly db: MenuDb,
     private readonly storeConfig: UberStoreConfigQueryPort,
   ) {}
-  async get() {
+  async get(storeStableId: string) {
     const [config, rows] = await Promise.all([
-      this.storeConfig.getStoreConfig(),
+      this.storeConfig.getStoreConfig(storeStableId),
       this.db.businessHour.findMany({
+        where: { store: { storeStableId } },
         orderBy: { weekday: 'asc' },
         select: {
           weekday: true,

@@ -95,8 +95,7 @@ export type CreateStoreInput = {
 
 export interface BrandStoreConfigReaderPort {
   getBrandSnapshot(): Promise<BrandConfigSnapshot>;
-  /** @compat brand-store.default-store-identity.v1 */
-  getStoreSnapshot(storeStableId?: string): Promise<StoreConfigSnapshot>;
+  getStoreSnapshot(storeStableId: string): Promise<StoreConfigSnapshot>;
   getConfiguredStoreSnapshot(): Promise<StoreConfigSnapshot>;
 }
 

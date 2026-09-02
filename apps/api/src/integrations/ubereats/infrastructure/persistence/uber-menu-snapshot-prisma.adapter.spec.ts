@@ -8,7 +8,6 @@ type SnapshotRows = {
   optionConfigs?: unknown[];
   groupConfigs?: unknown[];
   categoryConfigs?: unknown[];
-  restoreEvents?: unknown[];
 };
 
 describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
@@ -43,9 +42,6 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
       },
       uberCategoryConfig: {
         findMany: jest.fn().mockResolvedValue(rows.categoryConfigs ?? []),
-      },
-      opsEvent: {
-        findMany: jest.fn().mockResolvedValue(rows.restoreEvents ?? []),
       },
     };
     const storeConfigQuery = {
@@ -113,7 +109,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
       'uber-store',
     );
 
-    expect(x.storeConfigQuery.getStoreConfig).toHaveBeenCalledTimes(1);
+    expect(x.storeConfigQuery.getStoreConfig).toHaveBeenCalledWith('pos-store');
     expect(snapshot).toMatchObject({
       timezone: 'America/Toronto',
       taxRate: 13,
@@ -232,7 +228,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     expect(snapshot?.modifierOptions[0]?.name).toBe('Uber Option Override');
   });
 
-  it('inherits legacy Uber price when availability-only canonical row has null price', async () => {
+  it('keeps canonical store pricing when legacy provider-scoped rows are present', async () => {
     const x = setup(
       { timezone: 'America/Toronto', salesTaxRate: 0.13 },
       {
@@ -264,27 +260,22 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     );
 
     expect(snapshot?.items[0]).toMatchObject({
-      priceCents: 1229,
-      overridePriceCents: 1229,
-      priceValueSource: 'UBER_OVERRIDE',
+      priceCents: 1099,
+      overridePriceCents: null,
+      priceValueSource: 'SANQ_SOURCE',
       isAvailable: false,
     });
+    expect(x.prisma.uberItemChannelConfig.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { storeId: 'pos-store' } }),
+    );
   });
 
-  it('keeps an explicitly restored item on the SanQ source price', async () => {
+  it('uses the SanQ source price when the canonical override is null', async () => {
     const x = setup(
       { timezone: 'America/Toronto', salesTaxRate: 0.13 },
       {
         ...bilingualRows,
         itemConfigs: [
-          {
-            storeId: 'uber-store',
-            menuItemStableId: 'item-stable',
-            priceCents: 1229,
-            isAvailable: true,
-            displayName: null,
-            displayDescription: null,
-          },
           {
             storeId: 'pos-store',
             menuItemStableId: 'item-stable',
@@ -292,14 +283,6 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
             isAvailable: true,
             displayName: null,
             displayDescription: null,
-          },
-        ],
-        restoreEvents: [
-          {
-            payload: {
-              posStoreId: 'pos-store',
-              menuItemStableId: 'item-stable',
-            },
           },
         ],
       },
@@ -317,14 +300,14 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     });
   });
 
-  it('reads legacy default-scoped option overrides deterministically', async () => {
+  it('reads option overrides only from the canonical store scope', async () => {
     const x = setup(
       { timezone: 'America/Toronto', salesTaxRate: 0.13 },
       {
         ...bilingualRows,
         optionConfigs: [
           {
-            storeId: 'default',
+            storeId: 'pos-store',
             optionChoiceStableId: 'option-stable',
             priceDeltaCents: 260,
             isAvailable: true,
@@ -346,7 +329,7 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     });
     expect(x.prisma.uberOptionItemConfig.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { storeId: { in: ['pos-store', 'uber-store', 'default'] } },
+        where: { storeId: 'pos-store' },
       }),
     );
   });

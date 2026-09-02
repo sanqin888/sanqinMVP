@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@443b1a5c` (2026-08-31).
+`origin/dev@ce0a448b` (2026-09-02).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -11,7 +11,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `brand-store.default-store-identity.v1` | active / Uber unblocked, verification-gated | implicit `default`/configured fallback → explicit `storeStableId`; production has `Order.storeId IS NULL = 0` and zero `storeId='default'` rows across all eight Uber defaulted tables; non-Uber contractions are complete, while Uber still has no-argument Store config reads, runtime `'default'` normalization, fallback menu reads, and mixed SanQ `storeStableId` / Uber provider `storeId` semantics | Uber structural changes were explicitly unblocked on 2026-09-02 so this work can finish before real Uber production traffic. Proceed in independently deployable Uber slices; after every deployed slice, actively test every affected capability (menu/draft/publish/availability/store status/operations/orders/provider surface as applicable), inspect relevant sanitized logs/DB parity, and obtain user confirmation before starting the next Uber code slice. Do not wait for organic traffic. | Before Phase 2 exit / before Uber production traffic |
+| `brand-store.default-store-identity.v1` | active / Uber unblocked, verification-gated | implicit `default`/configured fallback → explicit `storeStableId`; first Uber code slice on `refactor/ubereats-store-identity-context-contraction` removes no-arg StoreConfig reads, scopes menu BusinessHour/config reads to explicit canonical `storeStableId`, removes menu-side `'default'` normalization, and makes automatic store-status sync use each mapping's SanQ store context. Production has zero literal `default` rows, but `UberOpsTicket.storeId` still contains 15 provider-UUID rows and 3 canonical `4750_Yonge_Street` rows; Operations/data cleanup plus eight Prisma `@default("default")` declarations remain active debt | Uber structural changes were explicitly unblocked on 2026-09-02 so this work can finish before real Uber production traffic. Proceed in independently deployable Uber slices; after every deployed slice, actively test every affected capability (menu/draft/publish/availability/store status/operations/orders/provider surface as applicable), inspect relevant sanitized logs/DB parity, and obtain user confirmation before starting the next Uber code slice. Do not wait for organic traffic. | Before Phase 2 exit / before Uber production traffic |
 | `payments.pos-card-legacy.v1` | frozen | direct paid Order → Unified Payment Core + Terminal + finalize | Clover support blocker resolved; real device accepted; one settlement cycle reconciled; legacy calls zero | Before Phase 5B exit |
 | `payments.web-checkout-v1.v1` | frozen | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | External validation unblocked; Web cutover accepted; one settlement cycle reconciled; old calls zero | Before Phase 5B exit |
 

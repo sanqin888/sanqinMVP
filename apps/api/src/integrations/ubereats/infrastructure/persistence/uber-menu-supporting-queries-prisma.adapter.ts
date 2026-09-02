@@ -60,10 +60,13 @@ export class UberMenuSupportingQueriesPrismaAdapter
       : null;
   }
 
-  async readBusinessSchedule() {
+  async readBusinessSchedule(storeStableId: string) {
     const [config, hours] = await Promise.all([
-      this.storeConfig.getStoreConfig(),
-      this.prisma.businessHour.findMany({ orderBy: { weekday: 'asc' } }),
+      this.storeConfig.getStoreConfig(storeStableId),
+      this.prisma.businessHour.findMany({
+        where: { store: { storeStableId } },
+        orderBy: { weekday: 'asc' },
+      }),
     ]);
     return {
       timezone: config.timezone,
