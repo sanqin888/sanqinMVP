@@ -1761,10 +1761,25 @@ export class AccountingService {
   }
 
   async dimensionSlice(query: { from?: string; to?: string }) {
+    const timezone = await this.getBusinessTimezone();
+    const parseStoreBoundary = (
+      raw: string | undefined,
+      boundary: 'start' | 'end',
+    ): Date | undefined => {
+      if (!raw) return undefined;
+      const parsed = DateTime.fromISO(raw, { zone: timezone });
+      if (!parsed.isValid) {
+        throw new BadRequestException(`Invalid date: ${raw}`);
+      }
+      const bounded =
+        boundary === 'start' ? parsed.startOf('day') : parsed.endOf('day');
+      return bounded.toUTC().toJSDate();
+    };
+
     const fromDate = await this.clampAccountingFromDate(
-      this.parseDate(query.from),
+      parseStoreBoundary(query.from, 'start'),
     );
-    const toDate = this.parseDate(query.to, true);
+    const toDate = parseStoreBoundary(query.to, 'end');
     const orders = await this.prisma.order.findMany({
       where: {
         paidAt: {
