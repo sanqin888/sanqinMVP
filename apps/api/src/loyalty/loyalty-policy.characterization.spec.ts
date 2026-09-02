@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { LoyaltyService } from './loyalty.service';
 import type { LoyaltyPolicySnapshot } from './loyalty-policy.contract';
 import {
@@ -11,19 +10,12 @@ type LoyaltyTransactionalPolicyTestSeam = {
 };
 
 describe('Loyalty policy characterization', () => {
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
   it('preserves the existing default policy when config is absent', () => {
     expect(normalizeLoyaltyPolicy(null)).toEqual(DEFAULT_LOYALTY_POLICY);
   });
 
   it('returns the default policy without creating legacy config on a missing row', async () => {
     const prisma = {
-      brandConfig: {
-        findUnique: jest.fn().mockResolvedValue(null),
-      },
       loyaltyProgramPolicy: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
@@ -34,28 +26,23 @@ describe('Loyalty policy characterization', () => {
       DEFAULT_LOYALTY_POLICY,
     );
     expect('businessConfig' in prisma).toBe(false);
+    expect('brandConfig' in prisma).toBe(false);
   });
 
-  it('reports a BrandConfig mismatch while returning the dedicated policy', async () => {
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    const brandConfig = {
+  it('returns the dedicated LoyaltyProgramPolicy snapshot without a BrandConfig read', async () => {
+    const dedicatedPolicy = {
       earnPtPerDollar: 0.02,
       redeemDollarPerPoint: 1,
       referralPtPerDollar: 0.01,
       tierMultiplierBronze: 1,
       tierMultiplierSilver: 2,
-      tierMultiplierGold: 3,
+      tierMultiplierGold: 4,
       tierMultiplierPlatinum: 5,
       tierThresholdSilver: 100000,
       tierThresholdGold: 1000000,
       tierThresholdPlatinum: 3000000,
     };
-    const dedicatedPolicy = {
-      ...brandConfig,
-      tierMultiplierGold: 4,
-    };
     const prisma = {
-      brandConfig: { findUnique: jest.fn().mockResolvedValue(brandConfig) },
       loyaltyProgramPolicy: {
         findUnique: jest.fn().mockResolvedValue(dedicatedPolicy),
       },
@@ -78,12 +65,8 @@ describe('Loyalty policy characterization', () => {
         PLATINUM: 5,
       },
     });
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('loyalty_policy_shadow_mismatch'),
-    );
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('tierMultiplierGold'),
-    );
+    expect('businessConfig' in prisma).toBe(false);
+    expect('brandConfig' in prisma).toBe(false);
   });
 
   it('reads committed Store Balance tender from the Loyalty ledger', async () => {
@@ -109,8 +92,7 @@ describe('Loyalty policy characterization', () => {
     });
   });
 
-  it('reads transaction policy from dedicated persistence and shadow-compares BrandConfig through the same tx', async () => {
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+  it('reads transaction policy only from dedicated persistence through the same tx', async () => {
     const persistedPolicy = {
       earnPtPerDollar: 0.02,
       redeemDollarPerPoint: 0.75,
@@ -123,17 +105,10 @@ describe('Loyalty policy characterization', () => {
       tierThresholdGold: 1000000,
       tierThresholdPlatinum: 3000000,
     };
-    const brandConfigFindUnique = jest.fn().mockResolvedValue({
-      ...persistedPolicy,
-      redeemDollarPerPoint: 1,
-    });
     const loyaltyProgramPolicyFindUnique = jest
       .fn()
       .mockResolvedValue(persistedPolicy);
     const tx = {
-      brandConfig: {
-        findUnique: brandConfigFindUnique,
-      },
       loyaltyProgramPolicy: {
         findUnique: loyaltyProgramPolicyFindUnique,
       },
@@ -160,21 +135,6 @@ describe('Loyalty policy characterization', () => {
         PLATINUM: 5,
       },
     });
-    expect(brandConfigFindUnique).toHaveBeenCalledWith({
-      where: { id: 1 },
-      select: {
-        earnPtPerDollar: true,
-        redeemDollarPerPoint: true,
-        referralPtPerDollar: true,
-        tierMultiplierBronze: true,
-        tierMultiplierSilver: true,
-        tierMultiplierGold: true,
-        tierMultiplierPlatinum: true,
-        tierThresholdSilver: true,
-        tierThresholdGold: true,
-        tierThresholdPlatinum: true,
-      },
-    });
     expect(loyaltyProgramPolicyFindUnique).toHaveBeenCalledWith({
       where: { id: 1 },
       select: {
@@ -190,17 +150,12 @@ describe('Loyalty policy characterization', () => {
         tierThresholdPlatinum: true,
       },
     });
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('loyalty_policy_shadow_mismatch'),
-    );
     expect('businessConfig' in tx).toBe(false);
+    expect('brandConfig' in tx).toBe(false);
   });
 
   it('returns default transaction policy when dedicated persistence is missing', async () => {
     const tx = {
-      brandConfig: {
-        findUnique: jest.fn().mockResolvedValue(null),
-      },
       loyaltyProgramPolicy: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
@@ -213,6 +168,7 @@ describe('Loyalty policy characterization', () => {
       ).getLoyaltyPolicySnapshotWithTx(tx),
     ).resolves.toEqual(DEFAULT_LOYALTY_POLICY);
     expect('businessConfig' in tx).toBe(false);
+    expect('brandConfig' in tx).toBe(false);
   });
 
   it('preserves existing normalization rules for invalid loyalty policy values', () => {
@@ -247,7 +203,7 @@ describe('Loyalty policy characterization', () => {
     });
   });
 
-  it('reads membership program rules from the Benefits policy snapshot backed by BrandConfig', async () => {
+  it('reads membership program rules from the dedicated Benefits policy snapshot', async () => {
     const membershipPolicy = {
       earnPtPerDollar: 0.02,
       redeemDollarPerPoint: 0.5,
@@ -260,14 +216,10 @@ describe('Loyalty policy characterization', () => {
       tierThresholdGold: 900000,
       tierThresholdPlatinum: 2500000,
     };
-    const brandConfigFindUnique = jest.fn().mockResolvedValue(membershipPolicy);
     const loyaltyProgramPolicyFindUnique = jest
       .fn()
       .mockResolvedValue(membershipPolicy);
     const prisma = {
-      brandConfig: {
-        findUnique: brandConfigFindUnique,
-      },
       loyaltyProgramPolicy: {
         findUnique: loyaltyProgramPolicyFindUnique,
       },
@@ -311,22 +263,9 @@ describe('Loyalty policy characterization', () => {
       ],
     });
 
-    expect(brandConfigFindUnique).toHaveBeenCalledWith({
-      where: { id: 1 },
-      select: {
-        earnPtPerDollar: true,
-        redeemDollarPerPoint: true,
-        referralPtPerDollar: true,
-        tierMultiplierBronze: true,
-        tierMultiplierSilver: true,
-        tierMultiplierGold: true,
-        tierMultiplierPlatinum: true,
-        tierThresholdSilver: true,
-        tierThresholdGold: true,
-        tierThresholdPlatinum: true,
-      },
-    });
+    expect(loyaltyProgramPolicyFindUnique).toHaveBeenCalled();
     expect('businessConfig' in prisma).toBe(false);
+    expect('brandConfig' in prisma).toBe(false);
   });
 
   it('keeps points and store balance redemption keys distinct for the same order', async () => {
@@ -356,20 +295,6 @@ describe('Loyalty policy characterization', () => {
       lifetimeSpendCents: 0,
     };
     const tx = {
-      brandConfig: {
-        findUnique: jest.fn().mockResolvedValue({
-          earnPtPerDollar: 0.01,
-          redeemDollarPerPoint: 1,
-          referralPtPerDollar: 0.01,
-          tierMultiplierBronze: 1,
-          tierMultiplierSilver: 2,
-          tierMultiplierGold: 3,
-          tierMultiplierPlatinum: 5,
-          tierThresholdSilver: 100000,
-          tierThresholdGold: 1000000,
-          tierThresholdPlatinum: 3000000,
-        }),
-      },
       loyaltyProgramPolicy: {
         findUnique: jest.fn().mockResolvedValue({
           earnPtPerDollar: 0.01,
@@ -603,20 +528,6 @@ describe('Loyalty policy characterization', () => {
           subtotalAfterDiscountCents: 2000,
           couponDiscountCents: 0,
           loyaltyRedeemCents: 1000,
-        }),
-      },
-      brandConfig: {
-        findUnique: jest.fn().mockResolvedValue({
-          earnPtPerDollar: 0.01,
-          redeemDollarPerPoint: 1,
-          referralPtPerDollar: 0.01,
-          tierMultiplierBronze: 1,
-          tierMultiplierSilver: 2,
-          tierMultiplierGold: 3,
-          tierMultiplierPlatinum: 5,
-          tierThresholdSilver: 100000,
-          tierThresholdGold: 1000000,
-          tierThresholdPlatinum: 3000000,
         }),
       },
       loyaltyProgramPolicy: {

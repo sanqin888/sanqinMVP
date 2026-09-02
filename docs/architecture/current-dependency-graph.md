@@ -200,18 +200,18 @@ pair fails CI.
   `BRAND_STORE_CONFIG_READER`; Orders no longer reads or creates `BusinessConfig`.
   The architecture scanner registers Orders as a migrated Brand/Store consumer and
   forbids reintroducing the `BusinessConfig` symbol or delegate there.
-- `benefits.business-config-loyalty-policy.v1` records this transitional compatibility
-  state. Phase A expanded and backfilled the dedicated `LoyaltyProgramPolicy`
-  singleton, and Phase B established one-transaction triple-write plus parity
-  telemetry. Phase C now returns `LoyaltyProgramPolicy` for editable settings,
-  runtime reads, and transaction-bound reads while continuing to shadow-compare
-  BrandConfig; partial policy updates also merge against the dedicated row before
-  synchronizing `BusinessConfig + BrandConfig` rollback copies. Structured
-  `loyalty_policy_shadow_mismatch` warnings still expose missing rows or field drift.
-  The remaining implementation order is the separate trigger Loyalty split,
-  removal of BusinessConfig then BrandConfig dual-writes, and only then the final
-  column contraction. Every later Prisma/trigger migration remains separately
-  authorized.
+- `benefits.business-config-loyalty-policy.v1` now records database-only contraction
+  debt. Phase A expanded/backfilled `LoyaltyProgramPolicy`, Phase B established
+  triple-write/parity telemetry, and Phase C cut runtime reads to the dedicated row.
+  The current application contraction goes further: editable settings, runtime reads,
+  transaction-bound reads, and policy writes now use only `LoyaltyProgramPolicy`;
+  `BusinessConfig` and `BrandConfig` are no longer Loyalty read/write or rollback
+  participants in application code, and the architecture scanner prevents those
+  dependencies from returning. The authorized Phase D schema/migration contraction is
+  now generated locally: it fail-closes on any three-copy parity drift, replaces the
+  BusinessConfig compatibility trigger without Loyalty propagation, and drops the ten
+  duplicate Loyalty columns from both legacy config tables. The compatibility entry
+  stays active until remote CI, deployment, and direct production verification finish.
 
 ## Carried debt outside this closeout
 

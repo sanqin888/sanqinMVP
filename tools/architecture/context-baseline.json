@@ -264,9 +264,9 @@
     ],
     "contractedAdminBusinessController": "apps/api/src/admin/business/admin-business.controller.ts",
     "contractedAdminBusinessService": "apps/api/src/admin/business/admin-business.service.ts",
-    "allowedBusinessConfigPolicyFiles": [
-      "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts"
-    ]
+    "prismaSchema": "apps/api/prisma/schema.prisma",
+    "contractionMigration": "apps/api/prisma/migrations/20260901235900_contract_loyalty_policy_storage/migration.sql",
+    "allowedBusinessConfigPolicyFiles": []
   },
   "dependencyBoundaries": [
     {
