@@ -11,10 +11,9 @@ describe('PosDeviceService.verifyCredentials', () => {
       findUnique: jest.fn().mockResolvedValue(device),
       update: jest.fn().mockResolvedValue(device),
     };
-    const service = new PosDeviceService(
-      { posDevice } as never,
-      { listStores: jest.fn().mockResolvedValue([]) },
-    );
+    const service = new PosDeviceService({ posDevice } as never, {
+      listStores: jest.fn().mockResolvedValue([]),
+    });
     return { service, posDevice };
   }
 
