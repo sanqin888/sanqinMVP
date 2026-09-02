@@ -109,7 +109,7 @@ describe('Uber menu command use cases', () => {
     await expect(
       new UpdateUberDraftGroupUseCase(transaction(groupCommands)).execute(
         'group-1',
-        {},
+        { storeId: 'store-stable-1' },
       ),
     ).resolves.toBe('updated');
     expect(updateGroup).toHaveBeenCalledTimes(1);
