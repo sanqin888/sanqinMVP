@@ -206,9 +206,6 @@ describe('OrderPreparationService', () => {
     const statement = sqlText(strings);
     expect(statement).toContain('"storeId" =');
     expect(statement).not.toContain('"storeId" IS NULL');
-    expect(query.getValues()).toEqual([
-      'stable-1',
-      '4750_Yonge_Street',
-    ]);
+    expect(query.getValues()).toEqual(['stable-1', '4750_Yonge_Street']);
   });
 });
