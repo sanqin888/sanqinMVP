@@ -1,4 +1,4 @@
-import type { UberStoreScopedInput } from '../../domain/menu/uber-menu.types';
+import type { UberOptionalStoreScopedInput } from '../../domain/menu/uber-menu.types';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 export type OrderStatusSyncContext = { targetStatus: UberOrderStatus };
@@ -56,7 +56,7 @@ export type MenuPublishContext = {
   };
 };
 
-export type GenerateReconciliationReportInput = UberStoreScopedInput & {
+export type GenerateReconciliationReportInput = UberOptionalStoreScopedInput & {
   rangeStart?: string;
   rangeEnd?: string;
 };

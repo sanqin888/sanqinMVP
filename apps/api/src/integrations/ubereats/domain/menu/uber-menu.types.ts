@@ -273,7 +273,7 @@ export type UberAvailabilitySyncResult = {
   }>;
 };
 
-export type SyncOptionAvailabilityInput = UberStoreScopedInput & {
+export type SyncOptionAvailabilityInput = UberOptionalStoreScopedInput & {
   optionChoiceStableId: string;
   isAvailable: boolean;
 };
