@@ -752,37 +752,74 @@ tested accordingly.
 
 ---
 
-## 19. Current modularization sequencing and temporary freeze zones
+## 19. Current modularization sequencing and provider-change gates
 
-Until the user explicitly confirms that UberEats production verification and
-the Clover developer/sandbox merchant identity blocker are closed:
+The user explicitly lifted the structural freeze on the UberEats integration on
+2026-09-02 so the integration can be made production-ready before real production
+traffic begins. UberEats code under `apps/api/src/integrations/ubereats/**` may now
+be refactored, contracted, renamed, or have internal/public application contracts
+changed when required by the approved modularization task, subject to the normal
+architecture-boundary rules in this file and the Uber-specific verification gate
+below.
 
-* do not structurally reorganize, rename, flatten, or change the public contracts
-  of `apps/api/src/integrations/ubereats/**`;
+The Clover developer/sandbox merchant identity blocker is still open. Until the
+user explicitly confirms that blocker is closed:
+
 * do not structurally reorganize Payments/Clover OAuth, terminal communication,
   provider infrastructure, unified-payment orchestration, or their direct
   Orders/POS contracts;
-* do not delete current provider compatibility paths or widen feature-flag
-  rollout;
-* narrowly scoped provider-verification or support-requested fixes are allowed,
-  but they must preserve current module boundaries and receive normal focused
-  regression coverage;
-* if a support response requires an architecture change, present its impact and
-  alternatives and obtain explicit authorization before implementation.
+* do not delete current Clover/payment compatibility paths or widen payment
+  feature-flag rollout;
+* narrowly scoped Clover provider-verification or support-requested fixes are
+  allowed, but they must preserve current module boundaries and receive normal
+  focused regression coverage;
+* if a Clover support response requires an architecture change, present its
+  impact and alternatives and obtain explicit authorization before implementation.
 
-Productive modularization work may proceed meanwhile in this order:
+### UberEats modification verification gate
+
+UberEats changes must proceed as small, independently deployable slices. For each
+slice that changes UberEats runtime behavior, identity, persistence, transport,
+composition, menu, order, store-status, reconciliation, operations, worker, or
+provider integration behavior:
+
+1. before implementation, identify the affected UberEats capabilities and preserve
+   unrelated verified flows;
+2. after the local change, report the exact affected files/contracts and provide
+   focused active test steps for every affected capability, including expected
+   UI/API behavior and relevant sanitized log/DB evidence where useful;
+3. after CI passes and the slice is deployed, perform or have the user perform the
+   focused active tests instead of waiting for organic traffic;
+4. do not begin the next UberEats code slice until the affected tests from the
+   current slice have been confirmed successful by the user;
+5. if an active test exposes a regression, stop the sequence and fix/verify that
+   slice before continuing;
+6. continue this slice-by-slice gate until the approved UberEats integration work
+   is fully contracted and production-ready.
+
+External Uber wire protocols, webhook signatures, idempotency semantics, order
+state transitions, and provider truth remain critical contracts. A task that must
+change one of those external behaviors still requires an explicit impact report,
+rollback/cutover plan, and user authorization before that specific behavior is
+changed. Lifting the structural freeze does not waive those critical-cutover rules.
+
+Productive modularization work may proceed in this order:
 
 1. baseline and guardrails: dependency graph, architecture tests, ID inventory,
    compatibility register, characterization tests;
 2. low-risk deduplication and public-contract cleanup;
 3. responsive Admin/Accounting shells and reusable staff UI primitives, without
    moving business ownership into the UI;
-4. Brand/Store identity and configuration, then Catalog/Pricing/Offers;
+4. Brand/Store identity and configuration, including the now-unfrozen UberEats
+   Store-identity contraction under the verification gate above, then
+   Catalog/Pricing/Offers;
 5. Identity/Customer/Benefits and Messaging boundaries;
-6. Orders/Fulfillment only after characterization coverage and with extra care
-   around the temporarily frozen payment/Uber contracts;
-7. Payments/Clover, UberEats, POS terminal communication, and final critical
-   cutovers after the external blockers are resolved.
+6. Orders/Fulfillment after characterization coverage, with extra care around the
+   still-frozen payment contracts and any UberEats flows affected by the current
+   verified slice;
+7. Payments/Clover and POS terminal critical cutovers after the Clover blocker is
+   resolved; UberEats may proceed before that point under its slice verification
+   gate.
 
 Each modularization PR should establish or improve one enforceable boundary and
 remain deployable on its own. Recompute or rerun applicable dependency/architecture
