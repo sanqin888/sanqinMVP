@@ -7,6 +7,10 @@ build
 .DS_Store
 .coverage
 
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+
 # Docker
 *.log
 /package-lock.json
