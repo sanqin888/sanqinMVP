@@ -1980,45 +1980,18 @@ if (benefitsLoyaltyPolicyOwnership) {
     );
   } else {
     const source = readFileSync(contractedAdminBusinessServicePath, 'utf8');
-    const responseMatch = source.match(
-      /export type BusinessConfigResponse = \{([\s\S]*?)\n\};/,
-    );
-    if (!responseMatch) {
-      failures.push(
-        `contracted Admin Business response contract missing: ${contractedAdminBusinessService}`,
-      );
-    } else {
-      for (const field of forbiddenBrandStoreContractFields) {
-        if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(responseMatch[1])) {
-          failures.push(
-            `contracted Admin Business response must not expose Benefits policy field: ${contractedAdminBusinessService} -> ${field}`,
-          );
-        }
-      }
-    }
-
-    const rejectionListMatch = source.match(
-      /const LEGACY_LOYALTY_POLICY_FIELDS = \[([\s\S]*?)\]\s+as const;/,
-    );
-    if (!rejectionListMatch) {
-      failures.push(
-        `contracted Admin Business service must keep an explicit stale-client Loyalty rejection list: ${contractedAdminBusinessService}`,
-      );
-    } else {
-      for (const field of forbiddenBrandStoreContractFields) {
-        if (
-          !new RegExp(`['\"]${escapeRegExp(field)}['\"]`).test(
-            rejectionListMatch[1],
-          )
-        ) {
-          failures.push(
-            `contracted Admin Business stale-client rejection list missing Benefits field: ${contractedAdminBusinessService} -> ${field}`,
-          );
-        }
+    for (const field of forbiddenBrandStoreContractFields) {
+      if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
+        failures.push(
+          `contracted Admin Business service must not retain Benefits policy field after compatibility transport removal: ${contractedAdminBusinessService} -> ${field}`,
+        );
       }
     }
 
     if (
+      source.includes('BusinessConfigResponse') ||
+      source.includes('LEGACY_LOYALTY_POLICY_FIELDS') ||
+      source.includes('/admin/benefits/loyalty-policy') ||
       source.includes('../../loyalty/') ||
       source.includes('LOYALTY_POLICY_WRITER') ||
       source.includes('LOYALTY_POLICY_SETTINGS_READER') ||
@@ -2027,15 +2000,7 @@ if (benefitsLoyaltyPolicyOwnership) {
       source.includes('@compat benefits.business-config-loyalty-policy.v1')
     ) {
       failures.push(
-        `contracted Admin Business service must not read or write Benefits policy through the old Business config boundary: ${contractedAdminBusinessService}`,
-      );
-    }
-    if (
-      !source.includes('BadRequestException') ||
-      !source.includes('/admin/benefits/loyalty-policy')
-    ) {
-      failures.push(
-        `contracted Admin Business service must reject stale Loyalty payloads with the dedicated Benefits route: ${contractedAdminBusinessService}`,
+        `retired Admin Business/Benefits compatibility contract must stay deleted: ${contractedAdminBusinessService}`,
       );
     }
   }
