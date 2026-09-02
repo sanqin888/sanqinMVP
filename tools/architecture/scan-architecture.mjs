@@ -520,6 +520,9 @@ if (brandStoreCanonicalConfigOwnership) {
   const adminStoreContextWebSettings = toPosix(
     adminExplicitStoreContext?.webStoreSettings ?? '',
   );
+  const retiredAdminCompatibilityTransportFiles = (
+    adminExplicitStoreContext?.retiredCompatibilityTransportFiles ?? []
+  ).map(toPosix);
 
   if (contextOf(publicSurface) !== ownerContext) {
     failures.push(
@@ -1332,6 +1335,25 @@ if (brandStoreCanonicalConfigOwnership) {
         );
       }
     }
+
+    for (const retiredPath of retiredAdminCompatibilityTransportFiles) {
+      if (existsSync(join(REPOSITORY_ROOT, retiredPath))) {
+        failures.push(
+          `retired Admin Business compatibility transport must stay deleted: ${retiredPath}`,
+        );
+      }
+    }
+
+    for (const absolutePath of sourceFiles) {
+      const sourcePath = repositoryPath(absolutePath);
+      if (!sourcePath.startsWith('apps/api/src/')) continue;
+      const source = readFileSync(absolutePath, 'utf8');
+      if (/@Controller\((['"])admin\/business\1\)/.test(source)) {
+        failures.push(
+          `Admin must not restore the retired /admin/business/* compatibility transport: ${sourcePath}`,
+        );
+      }
+    }
   }
 
   const privateTargets = new Set(
@@ -1425,8 +1447,8 @@ if (benefitsLoyaltyPolicyOwnership) {
     benefitsLoyaltyPolicyOwnership.forbiddenBrandStoreContractFields ?? [];
   const legacyAdminBusinessPolicyRoutes =
     benefitsLoyaltyPolicyOwnership.legacyAdminBusinessPolicyRoutes ?? [];
-  const contractedAdminBusinessController = toPosix(
-    benefitsLoyaltyPolicyOwnership.contractedAdminBusinessController,
+  const retiredAdminBusinessController = toPosix(
+    benefitsLoyaltyPolicyOwnership.retiredAdminBusinessController,
   );
   const contractedAdminBusinessService = toPosix(
     benefitsLoyaltyPolicyOwnership.contractedAdminBusinessService,
@@ -1866,28 +1888,14 @@ if (benefitsLoyaltyPolicyOwnership) {
     }
   }
 
-  const contractedAdminBusinessControllerPath = join(
+  const retiredAdminBusinessControllerPath = join(
     REPOSITORY_ROOT,
-    contractedAdminBusinessController,
+    retiredAdminBusinessController,
   );
-  if (!existsSync(contractedAdminBusinessControllerPath)) {
+  if (existsSync(retiredAdminBusinessControllerPath)) {
     failures.push(
-      `contracted Admin Business controller missing: ${contractedAdminBusinessController}`,
+      `retired Admin Business compatibility controller must stay deleted: ${retiredAdminBusinessController}`,
     );
-  } else {
-    const source = readFileSync(contractedAdminBusinessControllerPath, 'utf8');
-    for (const field of forbiddenBrandStoreContractFields) {
-      if (new RegExp(`\\b${escapeRegExp(field)}\\b`).test(source)) {
-        failures.push(
-          `contracted Admin Business request DTO must not expose Benefits policy field: ${contractedAdminBusinessController} -> ${field}`,
-        );
-      }
-    }
-    if (source.includes('@compat benefits.business-config-loyalty-policy.v1')) {
-      failures.push(
-        `contracted Admin Business controller must not retain the Loyalty compatibility annotation: ${contractedAdminBusinessController}`,
-      );
-    }
   }
 
   const contractedAdminBusinessServicePath = join(

@@ -1,6 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
 import type { BrandStoreConfigSnapshot } from '../../store/public-api';
-import { AdminBusinessController } from './admin-business.controller';
 import { AdminBusinessService } from './admin-business.service';
 
 const brandStoreConfig: BrandStoreConfigSnapshot = {
@@ -236,27 +234,4 @@ describe('AdminBusinessService canonical Brand/Store reads', () => {
     );
   });
 
-  it('rejects Loyalty policy fields through both legacy Admin Business routes', async () => {
-    const { service, brandStoreConfigReader, brandStoreConfigWriter } = setup();
-    const controller = new AdminBusinessController(service);
-    const legacyPayload = { earnPtPerDollar: 0.02 } as never;
-    const expectRejected = async (request: Promise<unknown>) => {
-      try {
-        await request;
-        throw new Error('expected Admin Business Loyalty contract rejection');
-      } catch (error) {
-        expect(error).toBeInstanceOf(BadRequestException);
-        expect((error as BadRequestException).getStatus()).toBe(400);
-        expect((error as Error).message).toContain(
-          '/admin/benefits/loyalty-policy',
-        );
-      }
-    };
-
-    await expectRejected(controller.patchConfig(legacyPayload));
-    await expectRejected(controller.updateTemporaryClose(legacyPayload));
-
-    expect(brandStoreConfigReader.getStoreSnapshot).not.toHaveBeenCalled();
-    expect(brandStoreConfigWriter.updateConfig).not.toHaveBeenCalled();
-  });
 });
