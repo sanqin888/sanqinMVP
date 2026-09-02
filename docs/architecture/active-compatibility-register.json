@@ -23,14 +23,14 @@
         "Orders delivery pricing, sales tax, store coordinates, Uber Direct enablement, and store-local timezone reads use BRAND_STORE_CONFIG_READER; Orders no longer reads or creates BusinessConfig",
         "POS StoreStatus reads and pause/resume writes now use BRAND_STORE_CONFIG_READER/WRITER. Timed auto-resume compare-and-set persistence is owned by the Brand/Store writer, so POS no longer reads or writes BusinessConfig directly while preserving the existing race protection",
         "Admin Business compatibility reads use BRAND_STORE_CONFIG_READER and Brand/Store writes use BRAND_STORE_CONFIG_WRITER; Admin no longer writes BusinessConfig, BrandConfig, or StoreConfig through Prisma directly. Staff Web consumers use the Brand/Store-owned /staff/brand and /staff/store contracts instead of /admin/business/*, while the legacy routes remain only as compatibility adapters. The Brand/Store owner writer persists canonical rows first and refreshes the complete overlapping BusinessConfig compatibility copy in the same transaction",
-        "Retained Loyalty fields on the legacy Admin Business rollback surface are delegated to LOYALTY_POLICY_WRITER rather than being mixed into Brand/Store persistence",
+        "Benefits Loyalty is fully contracted out of BrandConfig/BusinessConfig persistence; the legacy Admin Business rollback surface rejects Loyalty keys and directs callers to the Benefits-owned endpoint instead of delegating them into Brand/Store persistence",
         "Uber menu schedule/tax and store-status source reads use an Uber application-owned store-config query port wired only in ubereats.module.ts to BRAND_STORE_CONFIG_READER; Uber production code no longer reads or creates BusinessConfig, while existing response source labels remain unchanged for compatibility",
-        "The BusinessConfig compatibility trigger remains active because the Benefits Phase B writer still updates the legacy Loyalty copy. The Brand/Store owner therefore continues refreshing the complete overlapping BusinessConfig snapshot so a later Loyalty compatibility write cannot replay stale Brand/Store values"
+        "After Loyalty Phase D, syncBusinessConfigToCanonicalConfig() contains only non-Loyalty Brand/Store propagation. The remaining BusinessConfig copy and trigger are retained solely for Brand/Store compatibility and are no longer required by Benefits"
       ],
-      "parity_metric": "Per-field BrandConfig/StoreConfig versus BusinessConfig difference report must remain zero for one complete business cycle; direct Admin and POS BusinessConfig/BrandConfig/StoreConfig writes must remain zero",
-      "rollback": "Brand/Store production reads and all application Brand/Store writes are canonical; keep the owner-maintained BusinessConfig compatibility copy and one-way trigger until Benefits removes its legacy BusinessConfig write dependency and Brand/Store write parity is proven",
-      "exit_criteria": "All Brand/Store fields have one owner, application consumers no longer read or write BusinessConfig directly, Benefits no longer depends on the legacy trigger, and the Brand/Store compatibility copy plus trigger can then be contracted",
-      "remove_pr": "POS writer cutover is implemented in this slice; final Brand/Store compatibility-copy and trigger contraction follows Benefits trigger split plus parity observation",
+      "parity_metric": "Use direct production parity queries plus explicit Admin/POS Brand/Store writes to prove BrandConfig/StoreConfig versus BusinessConfig overlap stays zero-diff; do not wait for organic business-cycle traffic. Direct application BusinessConfig/BrandConfig/StoreConfig writes outside the Brand/Store owner must remain zero",
+      "rollback": "Brand/Store production reads and all application Brand/Store writes are canonical. The owner-maintained BusinessConfig compatibility copy and non-Loyalty one-way trigger now exist only for Brand/Store rollback compatibility; Benefits no longer constrains their removal",
+      "exit_criteria": "All Brand/Store fields have one owner, application consumers no longer read or write BusinessConfig directly, targeted direct parity/behavior checks are clean, and the remaining Brand/Store compatibility copy plus trigger can be contracted with the required migration authorization",
+      "remove_pr": "Next Brand/Store contraction: audit the remaining BusinessConfig compatibility consumers, run targeted direct parity/behavior checks, then remove the compatibility copy/trigger in an explicitly authorized contraction migration if no consumer remains",
       "deadline": "Before Phase 2 Brand/Store exit",
       "evidence": [
         "apps/api/prisma/schema.prisma",
@@ -42,45 +42,6 @@
         "tools/architecture/context-baseline.json",
         "tools/architecture/scan-architecture.mjs",
         "SanQ full-site modularization audit section 3.3 and 6.2"
-      ]
-    },
-    {
-      "compat_id": "benefits.business-config-loyalty-policy.v1",
-      "status": "active",
-      "old_owner": "Deployed database-only residue: BusinessConfig still contains the ten Loyalty columns and its one-way trigger function can replay them into duplicated BrandConfig columns until the Phase D contraction migration is deployed; local application/schema state no longer uses either config model for Loyalty",
-      "new_owner": "Benefits-owned LoyaltyPolicy reader/writer boundary plus LoyaltyProgramPolicy dedicated persistence is the sole application source of truth for editable settings, runtime/transaction reads, and policy writes",
-      "dual_write_or_read": [
-        "Application contraction is implemented locally: the Benefits writer validates/merges against LoyaltyProgramPolicy and writes only LoyaltyProgramPolicy in one transaction; no BusinessConfig or BrandConfig Loyalty write remains",
-        "LoyaltyService runtime and transaction-bound reads plus editable Admin settings read only LoyaltyProgramPolicy; BrandConfig shadow reads and loyalty_policy_shadow_mismatch application telemetry are removed with the retired rollback copy",
-        "Admin Members, POS payment, Orders redemption conversion, and public membership rules continue to consume the Benefits public boundary rather than legacy Admin Business config",
-        "The architecture scanner now rejects LoyaltyService/PrismaLoyaltyPolicyWriter access to BrandConfig or BusinessConfig and allows zero direct BusinessConfig Loyalty persistence consumers",
-        "The authorized Phase D contraction migration is generated locally: it rechecks all ten fields for zero-diff, atomically replaces syncBusinessConfigToCanonicalConfig() without Loyalty propagation, then drops the ten duplicated columns from both BrandConfig and BusinessConfig"
-      ],
-      "parity_metric": "Production pre-contraction verification on 2026-09-01 confirmed all ten Loyalty fields are zero-diff across LoyaltyProgramPolicy, BrandConfig, and BusinessConfig before removing application compatibility reads/writes. The final database migration must fail closed on pre-migration parity drift, replace the trigger before dropping columns, and leave zero application BusinessConfig/BrandConfig Loyalty consumers.",
-      "rollback": "After this application contraction, rollback may target the Phase C dedicated-read release while the duplicate database columns still exist, but must not roll back to an older BrandConfig-canonical reader. Once the destructive column contraction is deployed, rollback is forward-fix only and must never recreate policy values from guessed defaults or rewrite Loyalty ledger/historical order redemption facts.",
-      "exit_criteria": "Old Admin Business Loyalty request/response fields are removed, all runtime readers/writers use dedicated LoyaltyProgramPolicy persistence, the BusinessConfig trigger contains no Loyalty fields, duplicated BrandConfig/BusinessConfig Loyalty columns are dropped in an authorized contraction migration, pre-contraction parity is proven, and active compatibility annotations are removed",
-      "remove_pr": "Phase D application/schema/migration contraction is implemented locally. Remaining work is remote CI, production deployment, direct verification, then compatibility-entry closeout.",
-      "deadline": "Before Phase 2 Identity/Customer/Benefits exit",
-      "evidence": [
-        "apps/api/src/loyalty/public-api.ts",
-        "apps/api/src/loyalty/loyalty-policy.contract.ts",
-        "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts",
-        "apps/api/src/admin/benefits/admin-loyalty-policy.controller.ts",
-        "apps/api/src/admin/business/admin-business.controller.ts",
-        "apps/api/src/admin/business/admin-business.service.ts",
-        "apps/api/src/pos/pos-summary.controller.ts",
-        "apps/web/src/lib/api/loyalty.ts",
-        "apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx",
-        "apps/api/src/orders/orders.service.ts",
-        "apps/api/src/orders/orders-loyalty-redemption.ts",
-        "apps/api/src/orders/orders-loyalty-redemption.characterization.spec.ts",
-        "apps/api/prisma/schema.prisma",
-        "apps/api/prisma/migrations/20260819233000_add_store_config_foundation/migration.sql",
-        "apps/api/prisma/migrations/20260831133000_add_loyalty_program_policy/migration.sql",
-        "apps/api/prisma/migrations/20260901235900_contract_loyalty_policy_storage/migration.sql",
-        "docs/architecture/benefits-loyalty-policy-contraction-plan.md",
-        "tools/architecture/context-baseline.json",
-        "tools/architecture/scan-architecture.mjs"
       ]
     },
     {
@@ -250,6 +211,34 @@
     }
   ],
   "closed": [
+    {
+      "compat_id": "benefits.business-config-loyalty-policy.v1",
+      "status": "closed",
+      "old_owner": "BusinessConfig/BrandConfig duplicated Loyalty policy columns plus the BusinessConfig-to-canonical trigger and transitional Benefits shadow/triple-write persistence",
+      "new_owner": "Benefits-owned LoyaltyPolicy public boundary backed solely by LoyaltyProgramPolicy(id=1)",
+      "dual_write_or_read": "Removed. Benefits runtime/settings/transaction reads and writes use only LoyaltyProgramPolicy; BrandConfig/BusinessConfig no longer contain Loyalty policy columns and the surviving Brand/Store trigger contains no Loyalty propagation",
+      "parity_metric": "Pre-contraction production parity on 2026-09-01 was zero-diff across all ten policy fields. Post-deployment direct verification proved Admin Loyalty PATCH 200 and canonical restore, POS /pos/loyalty-policy 200, Web pure-points order with externalCents=0 plus full refund and exact REDEEM_ON_ORDER/REFUND_RETURN_REDEEM ledger reversal, public membership rules 200, unrelated Store hours change/revert without LoyaltyProgramPolicy.updatedAt movement, zero old Loyalty columns, and a Loyalty-free trigger function",
+      "rollback": "Forward-fix only after the destructive Phase D migration. Do not recreate dropped BrandConfig/BusinessConfig Loyalty columns, invent defaults, reinterpret historical redemption facts, or rewrite Loyalty ledger history",
+      "exit_criteria": "Completed: old Admin Business Loyalty request/response ownership is contracted, all runtime readers/writers use LoyaltyProgramPolicy, the trigger contains no Loyalty fields, duplicate columns are dropped, direct production verification is clean, and source compatibility annotations are absent",
+      "remove_pr": "Phase D contraction PR #2095 plus refactor/loyalty-phase-d-closeout",
+      "deadline": "Completed 2026-09-01",
+      "evidence": [
+        "apps/api/src/loyalty/public-api.ts",
+        "apps/api/src/loyalty/loyalty-policy.contract.ts",
+        "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts",
+        "apps/api/src/admin/benefits/admin-loyalty-policy.controller.ts",
+        "apps/api/src/admin/business/admin-business.controller.ts",
+        "apps/api/src/admin/business/admin-business.service.ts",
+        "apps/api/src/orders/orders-loyalty-redemption.ts",
+        "apps/api/src/orders/orders-loyalty-redemption.characterization.spec.ts",
+        "apps/api/prisma/schema.prisma",
+        "apps/api/prisma/migrations/20260901235900_contract_loyalty_policy_storage/migration.sql",
+        "docs/architecture/benefits-loyalty-policy-contraction-plan.md",
+        "tools/architecture/context-baseline.json",
+        "tools/architecture/scan-architecture.mjs",
+        "production verification 2026-09-01 22:57-23:04 America/Toronto"
+      ]
+    },
     {
       "compat_id": "orders.order-item-components.v1",
       "status": "closed",
