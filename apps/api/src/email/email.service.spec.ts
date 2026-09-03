@@ -14,7 +14,12 @@ describe('EmailService stable user identity', () => {
         emailFromAddress: 'noreply@sanq.ca',
       }),
     };
-    const messagingSendCreate = jest.fn().mockResolvedValue({ id: 'send-1' });
+    const messagingSendCreate = jest
+      .fn<
+        Promise<{ id: string }>,
+        [{ data: { user?: { connect: { userStableId: string } } } }]
+      >()
+      .mockResolvedValue({ id: 'send-1' });
     const prisma = {
       messagingSend: {
         create: messagingSendCreate,
@@ -38,12 +43,9 @@ describe('EmailService stable user identity', () => {
       }),
     ).resolves.toMatchObject({ ok: true, sendId: 'send-1' });
 
-    expect(messagingSendCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          user: { connect: { userStableId: 'customer-stable-1' } },
-        }),
-      }),
-    );
+    const [createInput] = messagingSendCreate.mock.calls[0];
+    expect(createInput.data.user).toEqual({
+      connect: { userStableId: 'customer-stable-1' },
+    });
   });
 });
