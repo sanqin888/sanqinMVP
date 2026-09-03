@@ -296,10 +296,7 @@ export class CouponOfferPolicyService
     });
   }
 
-  async updateProgram(
-    programStableId: string,
-    input: CouponProgramAdminInput,
-  ) {
+  async updateProgram(programStableId: string, input: CouponProgramAdminInput) {
     const existing = await this.prisma.couponProgram.findUnique({
       where: { programStableId },
     });

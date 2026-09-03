@@ -1,6 +1,8 @@
 export const COUPON_PROGRAM_CLAIMS = Symbol('COUPON_PROGRAM_CLAIMS');
 export const COUPON_PROGRAM_TRIGGER = Symbol('COUPON_PROGRAM_TRIGGER');
-export const COUPON_PROGRAM_ADMIN_ISSUER = Symbol('COUPON_PROGRAM_ADMIN_ISSUER');
+export const COUPON_PROGRAM_ADMIN_ISSUER = Symbol(
+  'COUPON_PROGRAM_ADMIN_ISSUER',
+);
 
 export type CouponProgramTriggerType =
   | 'SIGNUP_COMPLETED'
@@ -19,10 +21,7 @@ export type ClaimableCouponProgram = {
   perUserLimit: number;
   issuedToUser: number;
   canClaim: boolean;
-  unavailableReason:
-    | 'TOTAL_LIMIT_REACHED'
-    | 'USER_LIMIT_REACHED'
-    | null;
+  unavailableReason: 'TOTAL_LIMIT_REACHED' | 'USER_LIMIT_REACHED' | null;
 };
 
 export type CouponProgramClaimResult = {

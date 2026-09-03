@@ -30,7 +30,7 @@ export type CouponTemplateAdminInput = {
   validFrom?: string | null;
   validTo?: string | null;
   useRule: unknown;
-  issueRule?: unknown | null;
+  issueRule?: unknown;
 };
 
 export type CouponProgramAdminInput = {
