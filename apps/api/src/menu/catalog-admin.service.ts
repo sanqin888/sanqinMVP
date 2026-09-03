@@ -16,7 +16,6 @@ import {
   TemplateGroupLiteDto,
 } from '@shared/menu';
 
-import { AppLogger } from '../common/app-logger';
 import {
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
@@ -73,8 +72,6 @@ function nextMidnightLocal(): Date {
 
 @Injectable()
 export class CatalogAdminService {
-  private readonly logger = new AppLogger(CatalogAdminService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
@@ -339,9 +336,6 @@ export class CatalogAdminService {
       },
     );
 
-    this.logger.log(
-      `Admin full menu generated: categories=${categoryDtos.length} templatesLite=${templatesLite.length}`,
-    );
     const itemBasePriceMap = new Map(
       categoryDtos.flatMap((category) =>
         (category.items ?? []).map((item) => [
