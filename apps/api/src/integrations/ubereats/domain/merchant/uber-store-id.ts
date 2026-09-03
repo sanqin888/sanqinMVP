@@ -4,8 +4,3 @@ export function requireUberStoreId(storeId?: string): string {
   if (!normalized) throw new TypeError('storeId must not be empty');
   return normalized;
 }
-
-/** @compat brand-store.default-store-identity.v1 */
-export function normalizeUberStoreId(storeId?: string): string {
-  return storeId?.trim() || 'default';
-}

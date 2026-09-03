@@ -71,7 +71,7 @@ export class UberMenuAvailabilityPrismaAdapter
     await this.prisma.uberOpsTicket.create({
       data: {
         storeId: input.storeId,
-        type: UberOpsTicketType.MENU_PUBLISH,
+        type: UberOpsTicketType.MENU_ITEM_AVAILABILITY,
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,
         title: `Uber 商品可售状态同步失败：${input.menuItemStableId}`,
@@ -79,12 +79,7 @@ export class UberMenuAvailabilityPrismaAdapter
         menuItemStableId: input.menuItemStableId,
         lastError: input.error,
         context: {
-          availability: {
-            storeId: input.storeId,
-            uberStoreId: input.uberStoreId,
-            menuItemStableId: input.menuItemStableId,
-            isAvailable: input.isAvailable,
-          },
+          isAvailable: input.isAvailable,
         },
       },
     });

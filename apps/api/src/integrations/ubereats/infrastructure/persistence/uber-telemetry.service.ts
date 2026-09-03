@@ -10,6 +10,7 @@ export interface UberTelemetryContext {
   externalOrderId?: string | null;
   orderStableId?: string | null;
   uberStoreId?: string | null;
+  storeStableId?: string | null;
   posStoreId?: string | null;
   menuPublishVersionStableId?: string | null;
   orderActionId?: string | null;
@@ -50,6 +51,7 @@ const CONTEXT_KEYS = new Set<keyof UberTelemetryContext>([
   'externalOrderId',
   'orderStableId',
   'uberStoreId',
+  'storeStableId',
   'posStoreId',
   'menuPublishVersionStableId',
   'orderActionId',

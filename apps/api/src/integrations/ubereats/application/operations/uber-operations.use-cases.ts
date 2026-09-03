@@ -1,6 +1,6 @@
 import { UberValidationError } from '../shared/uber-application.error';
 import { toUberEatsApplicationError } from '../shared/uber-domain-error.mapper';
-import { normalizeUberStoreId } from '../../domain/merchant/uber-store-id';
+import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import {
   UberOpsTicketPriority,
   UberOpsTicketStatus,
@@ -27,6 +27,7 @@ import type {
   UberOpsTicketRepositoryPort,
   UberOrderOperationsRepositoryPort,
   UberReconciliationRepositoryPort,
+  UberOpsTicketStoreScope,
 } from './uber-operations.ports';
 import type { PublishUberMenuUseCase } from '../menu/publish-uber-menu.use-case';
 import type { UberMenuAvailabilityUseCase } from '../menu/uber-menu-availability.use-case';
@@ -42,9 +43,9 @@ export type CreateUberOpsTicketCommand = Omit<
   uberStoreId?: string;
   targetStoreStatus?: 'ONLINE' | 'PAUSED';
   publish?: {
-    storeId?: string;
     timezoneConfirmed?: boolean;
     taxRateConfirmed?: boolean;
+    safetyFingerprint?: string;
     excludedCategoryIds?: string[];
     excludedGroupIds?: string[];
     excludedMenuItemStableIds?: string[];
@@ -59,6 +60,65 @@ const invalidOperationsInput = (message: string): UberValidationError =>
     operation: 'operations.validate',
   });
 
+const requireStoreStableId = (value: string | undefined): string => {
+  const storeStableId = value?.trim();
+  if (!storeStableId)
+    throw invalidOperationsInput('Uber Operations 必须提供 storeStableId');
+  return storeStableId;
+};
+
+/** @compat brand-store.default-store-identity.v1 */
+const ticketStoreScope = async (
+  storeStableId: string,
+  mappings: Pick<UberStoreMappingRepositoryPort, 'listMappings'>,
+): Promise<UberOpsTicketStoreScope> => {
+  const legacyUberStoreIds = (await mappings.listMappings())
+    .filter((mapping) => mapping.posExternalStoreId?.trim() === storeStableId)
+    .map((mapping) => mapping.uberStoreId.trim())
+    .filter(Boolean);
+  return { storeStableId, legacyUberStoreIds };
+};
+
+/** @compat brand-store.default-store-identity.v1 */
+const resolvePersistedTicketStoreStableId = async (
+  persistedStoreScopeId: string,
+  mappings: Pick<UberStoreMappingRepositoryPort, 'listMappings'>,
+): Promise<string> => {
+  const rows = await mappings.listMappings();
+  const canonical = rows
+    .find(
+      (mapping) => mapping.posExternalStoreId?.trim() === persistedStoreScopeId,
+    )
+    ?.posExternalStoreId?.trim();
+  if (canonical) return canonical;
+
+  const legacy = rows
+    .find((mapping) => mapping.uberStoreId.trim() === persistedStoreScopeId)
+    ?.posExternalStoreId?.trim();
+  if (legacy) return legacy;
+
+  throw invalidOperationsInput(
+    `工单门店 identity 无法解析为 SanQ storeStableId: ${persistedStoreScopeId}`,
+  );
+};
+
+const assertUberStoreMapping = async (
+  storeStableId: string,
+  uberStoreId: string,
+  mappings: Pick<UberStoreMappingRepositoryPort, 'listMappings'>,
+) => {
+  const matched = (await mappings.listMappings()).some(
+    (mapping) =>
+      mapping.isProvisioned &&
+      mapping.uberStoreId.trim() === uberStoreId.trim() &&
+      mapping.posExternalStoreId?.trim() === storeStableId,
+  );
+  if (!matched)
+    throw invalidOperationsInput(
+      `Uber store ${uberStoreId} 未映射到 SanQ storeStableId ${storeStableId}`,
+    );
+};
+
 export const mapCreateUberOpsTicketCommand = (
   command: CreateUberOpsTicketCommand,
 ): CreateOpsTicketInput => {
@@ -67,7 +127,7 @@ export const mapCreateUberOpsTicketCommand = (
     title: command.title,
     description: command.description,
     priority: command.priority,
-    storeId: command.storeId,
+    storeStableId: command.storeStableId,
     externalOrderId: command.externalOrderId,
     menuItemStableId: command.menuItemStableId,
   };
@@ -90,7 +150,7 @@ export const mapCreateUberOpsTicketCommand = (
         context: {
           publish: {
             ...command.publish,
-            storeId: command.publish?.storeId ?? command.storeId!,
+            storeStableId: command.storeStableId,
             dryRun: false,
           },
         },
@@ -105,17 +165,26 @@ export class GenerateUberReconciliationReportUseCase {
     private readonly orders: UberOrderOperationsRepositoryPort,
     private readonly reports: UberReconciliationRepositoryPort,
     private readonly tickets: UberOpsTicketRepositoryPort,
+    private readonly mappings: Pick<
+      UberStoreMappingRepositoryPort,
+      'listMappings'
+    >,
     private readonly telemetry: UberTelemetryPort,
   ) {}
   async execute(
     input: GenerateReconciliationReportInput,
   ): Promise<UberReconciliationReportResult> {
-    const storeId = normalizeUberStoreId(input.storeId);
+    const storeStableId = requireStoreStableId(input.storeStableId);
     const range = reportRange(input.rangeStart, input.rangeEnd);
+    const scope = await ticketStoreScope(storeStableId, this.mappings);
     const [orders, failedSyncEvents, discrepancyOrders] = await Promise.all([
-      this.orders.reconciliationOrders(range.rangeStart, range.rangeEnd),
+      this.orders.reconciliationOrders(
+        storeStableId,
+        range.rangeStart,
+        range.rangeEnd,
+      ),
       this.reports.countFailedSyncEvents(range.rangeStart, range.rangeEnd),
-      this.tickets.countOpen(storeId),
+      this.tickets.countOpen(scope),
     ]);
     const summary = {
       totalOrders: orders.length,
@@ -130,10 +199,11 @@ export class GenerateUberReconciliationReportUseCase {
       discrepancyOrders,
     };
     const report = await this.reports.save({
-      storeId,
+      storeStableId,
       ...range,
       ...summary,
       payload: {
+        storeStableId,
         rangeStart: range.rangeStart.toISOString(),
         rangeEnd: range.rangeEnd.toISOString(),
         summary,
@@ -141,9 +211,9 @@ export class GenerateUberReconciliationReportUseCase {
     });
     await this.telemetry.captureEvent(
       'ubereats_reconciliation_report_generated',
-      { storeId, reportStableId: report.reportStableId, ...summary },
+      { storeStableId, reportStableId: report.reportStableId, ...summary },
     );
-    return { ok: true, storeId, ...report, ...summary, ...range };
+    return { ok: true, storeStableId, ...report, ...summary, ...range };
   }
 }
 
@@ -152,14 +222,31 @@ export class CreateUberOpsTicketUseCase {
     private readonly tickets: UberOpsTicketRepositoryPort,
     private readonly orders: UberOrderOperationsRepositoryPort,
     private readonly menuItems: UberMenuItemOperationsRepositoryPort,
+    private readonly mappings: Pick<
+      UberStoreMappingRepositoryPort,
+      'listMappings'
+    >,
     private readonly telemetry: UberTelemetryPort,
   ) {}
   async execute(
     command: CreateUberOpsTicketCommand,
   ): Promise<UberOpsTicketCreated> {
     const input = mapCreateUberOpsTicketCommand(command);
-    const storeId = normalizeUberStoreId(input.storeId);
+    const storeStableId = requireStoreStableId(input.storeStableId);
     const context = parseTicketContext(input.type, input.context);
+    if (input.type === UberOpsTicketType.STORE_STATUS_SYNC)
+      await assertUberStoreMapping(
+        storeStableId,
+        (context as StoreStatusSyncContext).uberStoreId,
+        this.mappings,
+      );
+    if (
+      input.type === UberOpsTicketType.MENU_PUBLISH &&
+      (context as MenuPublishContext).publish.storeStableId !== storeStableId
+    )
+      throw invalidOperationsInput(
+        '菜单发布工单的 storeStableId 与工单门店不一致',
+      );
     if (
       input.externalOrderId &&
       !(await this.orders.exists(input.externalOrderId))
@@ -171,7 +258,7 @@ export class CreateUberOpsTicketUseCase {
     )
       throw invalidOperationsInput(`菜单项 ${input.menuItemStableId} 不存在`);
     const ticket = await this.tickets.create({
-      storeId,
+      storeStableId,
       type: input.type,
       priority: input.priority ?? UberOpsTicketPriority.MEDIUM,
       title: input.title,
@@ -181,12 +268,12 @@ export class CreateUberOpsTicketUseCase {
       context,
     });
     await this.telemetry.captureEvent('ubereats_ops_ticket_created', {
-      storeId,
+      storeStableId,
       ticketStableId: ticket.ticketStableId,
       type: input.type,
       priority: ticket.priority,
     });
-    return { ok: true, ...ticket, storeId };
+    return { ok: true, ...ticket, storeStableId };
   }
 }
 
@@ -197,6 +284,10 @@ export class RetryUberOpsTicketUseCase {
     private readonly menuPublish: PublishUberMenuUseCase,
     private readonly menuAvailability: UberMenuAvailabilityUseCase,
     private readonly storeStatusSync: SyncUberStoreStatusUseCase,
+    private readonly mappings: Pick<
+      UberStoreMappingRepositoryPort,
+      'listMappings'
+    >,
     private readonly telemetry: UberTelemetryPort,
   ) {}
   async execute(id: string): Promise<UberOpsTicketRetryResult> {
@@ -208,6 +299,10 @@ export class RetryUberOpsTicketUseCase {
     });
     let retryError: unknown;
     try {
+      const storeStableId = await resolvePersistedTicketStoreStableId(
+        ticket.persistedStoreScopeId,
+        this.mappings,
+      );
       if (ticket.type === UberOpsTicketType.ORDER_STATUS_SYNC) {
         if (!ticket.externalOrderId)
           throw invalidOperationsInput('订单状态同步工单缺少 externalOrderId');
@@ -216,23 +311,38 @@ export class RetryUberOpsTicketUseCase {
           parseOrderContext(ticket.context).targetStatus,
         );
       } else if (ticket.type === UberOpsTicketType.STORE_STATUS_SYNC) {
-        const result = await this.storeStatusSync.syncStoreStatusToUber(
-          parseStoreContext(ticket.context),
+        const storeContext = parseStoreContext(ticket.context);
+        await assertUberStoreMapping(
+          storeStableId,
+          storeContext.uberStoreId,
+          this.mappings,
         );
+        const result =
+          await this.storeStatusSync.syncStoreStatusToUber(storeContext);
         if (result.outcome === 'FAILED')
           throw new Error('Uber 门店状态同步失败');
-      } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH)
-        await this.menuPublish.execute(
-          parsePublishContext(ticket.context).publish,
-        );
-      else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
+      } else if (ticket.type === UberOpsTicketType.MENU_PUBLISH) {
+        const publishContext = parsePublishContext(ticket.context);
+        if (publishContext.publish.storeStableId !== storeStableId)
+          throw invalidOperationsInput(
+            '菜单发布工单的 storeStableId 与持久化门店 scope 不一致',
+          );
+        const { storeStableId: publishStoreStableId, ...publish } =
+          publishContext.publish;
+        await this.menuPublish.execute({
+          ...publish,
+          storeId: publishStoreStableId,
+        });
+      } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId)
           throw invalidOperationsInput('商品状态工单缺少 menuItemStableId');
         await this.menuAvailability.syncUberMenuItemAvailability({
-          storeId: ticket.storeId,
+          storeId: storeStableId,
           menuItemStableId: ticket.menuItemStableId,
           isAvailable: parseAvailabilityContext(ticket.context).isAvailable,
         });
+      } else {
+        throw invalidOperationsInput(`工单类型 ${ticket.type} 不支持重试`);
       }
     } catch (error) {
       retryError = error;
@@ -260,40 +370,68 @@ export class QueryUberOperationsSummary {
   constructor(
     private readonly reports: UberReconciliationRepositoryPort,
     private readonly ticketRepository: UberOpsTicketRepositoryPort,
+    private readonly mappings: Pick<
+      UberStoreMappingRepositoryPort,
+      'listMappings'
+    >,
   ) {}
   async listReports(
-    storeId?: string,
+    storeStableId: string,
     limit = 20,
   ): Promise<UberPage<UberReconciliationReport>> {
-    const normalized = normalizeUberStoreId(storeId);
+    const canonicalStoreStableId = requireStoreStableId(storeStableId);
     const items = await this.reports.list(
-      normalized,
+      canonicalStoreStableId,
       Math.min(Math.max(1, Number(limit) || 20), 100),
     );
-    return { storeId: normalized, count: items.length, items };
+    return {
+      storeStableId: canonicalStoreStableId,
+      count: items.length,
+      items,
+    };
   }
-  reconciliation(storeId?: string): Promise<UberOperationsCountSummary> {
-    return this.reports.summary(normalizeUberStoreId(storeId));
+  reconciliation(storeStableId: string): Promise<UberOperationsCountSummary> {
+    return this.reports.summary(requireStoreStableId(storeStableId));
   }
   async listTickets(
-    storeId?: string,
+    storeStableId: string,
     status?: UberOpsTicketStatus,
   ): Promise<UberPage<UberOpsTicket>> {
-    const normalized = normalizeUberStoreId(storeId);
-    const items = await this.ticketRepository.list(normalized, status);
-    return { storeId: normalized, count: items.length, items };
+    const canonicalStoreStableId = requireStoreStableId(storeStableId);
+    const scope = await ticketStoreScope(canonicalStoreStableId, this.mappings);
+    const records = await this.ticketRepository.list(scope, status);
+    const items: UberOpsTicket[] = records.map((ticket) => ({
+      ticketStableId: ticket.ticketStableId,
+      type: ticket.type,
+      status: ticket.status,
+      priority: ticket.priority,
+      title: ticket.title,
+      externalOrderId: ticket.externalOrderId,
+      menuItemStableId: ticket.menuItemStableId,
+      retryCount: ticket.retryCount,
+      lastError: ticket.lastError,
+      createdAt: ticket.createdAt,
+      updatedAt: ticket.updatedAt,
+    }));
+    return {
+      storeStableId: canonicalStoreStableId,
+      count: items.length,
+      items,
+    };
   }
-  ticketsSummary(
-    storeId?: string,
+  async ticketsSummary(
+    storeStableId: string,
     status?: UberOpsTicketStatus,
   ): Promise<UberOperationsCountSummary> {
-    return this.ticketRepository.summary(normalizeUberStoreId(storeId), status);
+    const canonicalStoreStableId = requireStoreStableId(storeStableId);
+    const scope = await ticketStoreScope(canonicalStoreStableId, this.mappings);
+    return this.ticketRepository.summary(scope, status);
   }
   tickets(
-    storeId?: string,
+    storeStableId: string,
     status?: UberOpsTicketStatus,
   ): Promise<UberOperationsCountSummary> {
-    return this.ticketsSummary(storeId, status);
+    return this.ticketsSummary(storeStableId, status);
   }
 }
 
@@ -322,6 +460,15 @@ const parseStoreContext = (value: unknown): StoreStatusSyncContext => {
   const c = requireContext(value);
   if (typeof c.uberStoreId !== 'string' || !c.uberStoreId.trim())
     throw invalidOperationsInput('门店状态工单缺少 uberStoreId');
+
+  /** @compat brand-store.default-store-identity.v1 */
+  if (c.targetStatus === 'OFFLINE') {
+    return {
+      uberStoreId: c.uberStoreId,
+      targetStatus: 'PAUSED',
+    };
+  }
+
   if (c.targetStatus !== 'ONLINE' && c.targetStatus !== 'PAUSED')
     throw invalidOperationsInput('门店状态工单的 targetStatus 非法');
   return {
@@ -335,8 +482,8 @@ const parsePublishContext = (value: unknown): MenuPublishContext => {
   const c = requireContext(value);
   const publish = requireContext(c.publish);
   if (
-    typeof publish.storeId !== 'string' ||
-    !publish.storeId.trim() ||
+    typeof publish.storeStableId !== 'string' ||
+    !publish.storeStableId.trim() ||
     publish.dryRun !== false
   )
     throw invalidOperationsInput('菜单发布工单缺少完整的 publish 参数');

@@ -342,28 +342,28 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
     } as Prisma.JsonObject);
   }
   async createStoreStatusAlert(
-    uberStoreId: string,
-    error: string,
-    reason: 'UPSTREAM_REJECTED' | 'UPSTREAM_UNAVAILABLE',
-    retryable: boolean,
-    payload: Record<string, string>,
+    input: Parameters<
+      UberOperationsAlertRepositoryPort['createStoreStatusAlert']
+    >[0],
   ) {
-    const description = redactUberLogText(error).slice(0, 500);
-    const targetStatus = payload.status === 'OFFLINE' ? 'PAUSED' : 'ONLINE';
+    const description = redactUberLogText(input.error).slice(0, 500);
+    const targetStatus =
+      input.payload.status === 'OFFLINE' ? 'PAUSED' : 'ONLINE';
     const context = {
-      uberStoreId,
+      uberStoreId: input.uberStoreId,
       targetStatus,
-      ...(payload.reason ? { reason: payload.reason } : {}),
-      ...(payload.is_offline_until
-        ? { pauseUntil: payload.is_offline_until }
+      ...(input.payload.reason ? { reason: input.payload.reason } : {}),
+      ...(input.payload.is_offline_until
+        ? { pauseUntil: input.payload.is_offline_until }
         : {}),
       outcome: 'FAILED',
-      failureReason: reason,
-      retryable,
+      failureReason: input.reason,
+      retryable: input.retryable,
     };
+    /** @compat brand-store.default-store-identity.v1 */
     const existing = await this.prisma.uberOpsTicket.findFirst({
       where: {
-        storeId: uberStoreId,
+        storeId: { in: [input.storeStableId, input.uberStoreId] },
         type: UberOpsTicketType.STORE_STATUS_SYNC,
         status: {
           in: [UberOpsTicketStatus.OPEN, UberOpsTicketStatus.IN_PROGRESS],
@@ -375,13 +375,13 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
               equals: targetStatus,
             },
           },
-          ...(targetStatus === payload.status
+          ...(targetStatus === input.payload.status
             ? []
             : [
                 {
                   context: {
                     path: ['targetStatus'],
-                    equals: payload.status,
+                    equals: input.payload.status,
                   },
                 },
               ]),
@@ -404,7 +404,7 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
 
     await this.prisma.uberOpsTicket.create({
       data: {
-        storeId: uberStoreId,
+        storeId: input.storeStableId,
         type: UberOpsTicketType.STORE_STATUS_SYNC,
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,

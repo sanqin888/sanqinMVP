@@ -20,7 +20,7 @@ export function loadMenuDraft(storeId: string, signal: AbortSignal) {
 }
 
 export const loadPendingOrders = (signal: AbortSignal) => apiFetch<{ items: PendingOrder[] }>('/integrations/ubereats/orders/pending?limit=25', { signal }).then((result) => result.items);
-export const loadReconciliationReports = (signal: AbortSignal) => apiFetch<{ items: ReconciliationReport[] }>('/integrations/ubereats/reports/reconciliation?limit=20', { signal }).then((result) => result.items);
+export const loadReconciliationReports = (storeStableId: string, signal: AbortSignal) => apiFetch<{ items: ReconciliationReport[] }>(`/integrations/ubereats/reports/reconciliation?storeStableId=${encodeURIComponent(storeStableId)}&limit=20`, { signal }).then((result) => result.items);
 export const loadTickets = (query: string, signal: AbortSignal) => apiFetch<{ items: Ticket[] }>(`/integrations/ubereats/ops/tickets?${query}`, { signal }).then((result) => result.items);
 export const loadSummary = (path: string) => apiFetch<SummaryResponse>(path);
 export const publishMenu = apiFetch;

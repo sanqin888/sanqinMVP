@@ -12,6 +12,10 @@ import {
 import { UberMenuAvailabilityUseCase } from '../../application/menu/uber-menu-availability.use-case';
 import { PublishUberMenuUseCase } from '../../application/menu/publish-uber-menu.use-case';
 import { SyncUberStoreStatusUseCase } from '../../application/merchant/uber-merchant-provisioning.service';
+import {
+  type UberStoreMappingRepositoryPort,
+  UBER_STORE_MAPPING_REPOSITORY,
+} from '../../application/merchant/uber-merchant-persistence.ports';
 import { SyncUberOrderStatusUseCase } from '../../application/orders/sync-uber-order-status.use-case';
 import {
   HandleUberFinancialReportSuccessUseCase,
@@ -122,18 +126,21 @@ export function createOperationsWiring(): Provider[] {
         UBER_ORDER_OPERATIONS_REPOSITORY,
         UBER_RECONCILIATION_REPOSITORY,
         UBER_OPS_TICKET_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
         orders: UberOrderOperationsRepositoryPort,
         reports: UberReconciliationRepositoryPort,
         tickets: UberOpsTicketRepositoryPort,
+        mappings: UberStoreMappingRepositoryPort,
         telemetry: UberTelemetryPort,
       ) =>
         new GenerateUberReconciliationReportUseCase(
           orders,
           reports,
           tickets,
+          mappings,
           telemetry,
         ),
     },
@@ -143,15 +150,23 @@ export function createOperationsWiring(): Provider[] {
         UBER_OPS_TICKET_REPOSITORY,
         UBER_ORDER_OPERATIONS_REPOSITORY,
         UBER_MENU_ITEM_OPERATIONS_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
         tickets: UberOpsTicketRepositoryPort,
         orders: UberOrderOperationsRepositoryPort,
         menuItems: UberMenuItemOperationsRepositoryPort,
+        mappings: UberStoreMappingRepositoryPort,
         telemetry: UberTelemetryPort,
       ) =>
-        new CreateUberOpsTicketUseCase(tickets, orders, menuItems, telemetry),
+        new CreateUberOpsTicketUseCase(
+          tickets,
+          orders,
+          menuItems,
+          mappings,
+          telemetry,
+        ),
     },
     {
       provide: RetryUberOpsTicketUseCase,
@@ -161,6 +176,7 @@ export function createOperationsWiring(): Provider[] {
         PublishUberMenuUseCase,
         UberMenuAvailabilityUseCase,
         SyncUberStoreStatusUseCase,
+        UBER_STORE_MAPPING_REPOSITORY,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
@@ -169,6 +185,7 @@ export function createOperationsWiring(): Provider[] {
         publish: PublishUberMenuUseCase,
         availability: UberMenuAvailabilityUseCase,
         stores: SyncUberStoreStatusUseCase,
+        mappings: UberStoreMappingRepositoryPort,
         telemetry: UberTelemetryPort,
       ) =>
         new RetryUberOpsTicketUseCase(
@@ -177,16 +194,22 @@ export function createOperationsWiring(): Provider[] {
           publish,
           availability,
           stores,
+          mappings,
           telemetry,
         ),
     },
     {
       provide: QueryUberOperationsSummary,
-      inject: [UBER_RECONCILIATION_REPOSITORY, UBER_OPS_TICKET_REPOSITORY],
+      inject: [
+        UBER_RECONCILIATION_REPOSITORY,
+        UBER_OPS_TICKET_REPOSITORY,
+        UBER_STORE_MAPPING_REPOSITORY,
+      ],
       useFactory: (
         reports: UberReconciliationRepositoryPort,
         tickets: UberOpsTicketRepositoryPort,
-      ) => new QueryUberOperationsSummary(reports, tickets),
+        mappings: UberStoreMappingRepositoryPort,
+      ) => new QueryUberOperationsSummary(reports, tickets, mappings),
     },
   ];
 }

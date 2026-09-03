@@ -6,6 +6,7 @@ describe('UberTelemetryService', () => {
     const service = new UberTelemetryService({ opsEvent: { upsert } } as never);
     await service.captureEvent('processed', {
       eventId: 'evt-1',
+      storeStableId: 'store-stable-1',
       operation: 'webhook',
       token: 'secret',
       phone: '+1 555 123 4567',
@@ -18,7 +19,11 @@ describe('UberTelemetryService', () => {
         idempotencyKey: 'evt-1',
         eventName: 'processed',
         source: 'ubereats',
-        payload: { operation: 'webhook', eventId: 'evt-1' },
+        payload: {
+          operation: 'webhook',
+          eventId: 'evt-1',
+          storeStableId: 'store-stable-1',
+        },
       },
       update: {},
     });
