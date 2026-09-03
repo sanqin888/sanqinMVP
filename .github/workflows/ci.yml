@@ -46,7 +46,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: apps/web/.next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**', 'libs/**') }}
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**', 'apps/web/public/**', 'apps/web/package.json', 'apps/web/next.config.ts', 'apps/web/tsconfig*.json', 'apps/web/postcss.config.mjs', 'libs/*/src/**', 'libs/*/package.json', 'libs/*/tsconfig*.json') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
 
@@ -99,7 +99,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: apps/web/.next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**', 'libs/**') }}
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**', 'apps/web/public/**', 'apps/web/package.json', 'apps/web/next.config.ts', 'apps/web/tsconfig*.json', 'apps/web/postcss.config.mjs', 'libs/*/src/**', 'libs/*/package.json', 'libs/*/tsconfig*.json') }}
 
       - name: Strict declaration check (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} exec tsc -p tsconfig.strict.json --pretty false
