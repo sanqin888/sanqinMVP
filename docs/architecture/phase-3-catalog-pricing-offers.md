@@ -15,6 +15,44 @@ The phase does not change frozen Payments/Clover traffic, historical Uber sandbo
 compatibility, or provider wire behavior unless a later slice is separately
 approved and verified.
 
+## Pre-Phase-3 Uber boundary verification baseline
+
+Status: **PRODUCTION VERIFIED on 2026-09-03**.
+
+The Uber structural work merged immediately before Phase 3 is now fully closed by
+active verification rather than CI evidence alone:
+
+- PR #2130 / `32d3925f`: Store Policy ownership contraction. Uber order admission
+  consumes store auto-accept/allergen policy through the Brand/Store public query
+  boundary instead of persistence-adapter policy methods.
+- PR #2131 / `4b615f49`: explicit store identity naming. SanQ store context is
+  `storeStableId`, Uber provider identity is `uberStoreId`, and the two identity
+  spaces remain distinct across application/persistence boundaries.
+- PR #2132 / `0c0a678e`: Orders ingestion public boundary. Uber consumes
+  `ORDER_INGESTION` instead of concrete `OrderIngestionService`; the existing
+  same-transaction callback for Uber action/cancellation persistence remains
+  intact. This contraction lowered `external-channels ->
+  commerce-orders-fulfillment` from 5 to 1.
+
+Active verification covered auto-accept enabled, auto-accept disabled with manual
+acceptance, immediate order lifecycle, Uber cancel/refund, and scheduled-order
+activation. The scheduled order left the scheduled queue at preparation time,
+entered active preparation, generated one print job, and received both kitchen
+and customer print ACKs. Three test orders persisted with
+`Order.storeId = 4750_Yonge_Street`; no duplicate ingestion or new default/provider
+UUID store identity was observed, first-attempt webhook processing succeeded, and
+worker error/warn/failure scans were clean.
+
+The allergen DENY_LIST scenario is **N/A due to Uber Test Store sandbox
+limitations**: its customer flow does not provide an allergen-entry control. This
+is recorded as an untestable sandbox case, not a failed verification.
+
+PR #2134 / `e69b913d` subsequently fixed the Admin pending-order display contract:
+`orderStableId` and `totalCents` are again exposed, `pickupCode` was added for a
+human-readable operator identifier, and the Web table truncates the two long IDs.
+Its CI is green; production UI re-verification is intentionally left pending until
+the next deployment.
+
 ## Slice 1 — Pricing public boundary contraction
 
 Status: **source implementation included in Slice 1**.
