@@ -40,4 +40,30 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
       select: { posExternalStoreId: true, uberStoreId: true },
     });
   });
+
+  it('把 availability 同步失败记录为可直接重试的 availability 工单', async () => {
+    const create = jest.fn().mockResolvedValue({});
+    const adapter = new UberMenuAvailabilityPrismaAdapter({
+      uberOpsTicket: { create },
+    } as never);
+
+    await adapter.createItemPublishFailure({
+      storeId: 'store-stable-1',
+      uberStoreId: 'uber-store-1',
+      menuItemStableId: 'item-stable-1',
+      isAvailable: false,
+      error: 'upstream unavailable',
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        storeId: 'store-stable-1',
+        type: 'MENU_ITEM_AVAILABILITY',
+        menuItemStableId: 'item-stable-1',
+        context: {
+          isAvailable: false,
+        },
+      }),
+    });
+  });
 });

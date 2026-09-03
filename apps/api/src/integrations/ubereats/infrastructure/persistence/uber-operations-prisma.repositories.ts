@@ -21,7 +21,10 @@ import type {
   UberFinancialReportStatus,
 } from '../../application/operations/uber-financial-reporting.ports';
 import type { UberEatsFinancialReportType } from '../../public-api';
-import type { UberOpsTicketStatus } from '../../application/operations/uber-operations.types';
+import type {
+  UberDomainJson,
+  UberOpsTicketStatus,
+} from '../../application/operations/uber-operations.types';
 import {
   toDomainTicketPriority,
   toDomainTicketStatus,
@@ -69,12 +72,15 @@ const ticketSelect = {
   status: true,
   priority: true,
   title: true,
+  description: true,
   externalOrderId: true,
   menuItemStableId: true,
+  context: true,
   retryCount: true,
   lastError: true,
   createdAt: true,
   updatedAt: true,
+  resolvedAt: true,
 } satisfies Prisma.UberOpsTicketSelect;
 
 type TicketRow = Prisma.UberOpsTicketGetPayload<{
@@ -83,26 +89,34 @@ type TicketRow = Prisma.UberOpsTicketGetPayload<{
 
 export const mapOpsTicketRow = (row: TicketRow) => ({
   ticketStableId: row.ticketStableId,
-  storeId: row.storeId,
+  persistedStoreScopeId: row.storeId,
   type: toDomainTicketType(row.type),
   status: toDomainTicketStatus(row.status),
   priority: toDomainTicketPriority(row.priority),
   title: row.title,
+  description: row.description,
   externalOrderId: row.externalOrderId,
   menuItemStableId: row.menuItemStableId,
+  context: row.context as UberDomainJson | null,
   retryCount: row.retryCount,
   lastError: row.lastError,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
+  resolvedAt: row.resolvedAt,
 });
 
 @Injectable()
 export class UberOrderOperationsPrismaRepository implements UberOrderOperationsRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
-  async reconciliationOrders(rangeStart: Date, rangeEnd: Date) {
+  async reconciliationOrders(
+    storeStableId: string,
+    rangeStart: Date,
+    rangeEnd: Date,
+  ) {
     const rows = await this.prisma.order.findMany({
       where: {
         channel: Channel.ubereats,
+        storeId: storeStableId,
         createdAt: { gte: rangeStart, lt: rangeEnd },
       },
       select: { status: true, totalCents: true },
@@ -150,25 +164,32 @@ export class UberReconciliationPrismaRepository implements UberReconciliationRep
     });
   }
   save(input: Parameters<UberReconciliationRepositoryPort['save']>[0]) {
+    const { storeStableId, ...report } = input;
     return this.prisma.uberReconciliationReport.create({
-      data: { ...input, payload: input.payload as Prisma.InputJsonValue },
+      data: {
+        ...report,
+        storeId: storeStableId,
+        payload: input.payload as Prisma.InputJsonValue,
+      },
       select: { reportStableId: true, createdAt: true },
     });
   }
-  async list(storeId: string, limit: number) {
+  async list(storeStableId: string, limit: number) {
     const rows = await this.prisma.uberReconciliationReport.findMany({
-      where: { storeId },
+      where: { storeId: storeStableId },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: reconciliationSelect,
     });
     return rows.map(mapReconciliationRow);
   }
-  async summary(storeId: string) {
+  async summary(storeStableId: string) {
     const [count, latest] = await Promise.all([
-      this.prisma.uberReconciliationReport.count({ where: { storeId } }),
+      this.prisma.uberReconciliationReport.count({
+        where: { storeId: storeStableId },
+      }),
       this.prisma.uberReconciliationReport.findFirst({
-        where: { storeId },
+        where: { storeId: storeStableId },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
@@ -179,18 +200,27 @@ export class UberReconciliationPrismaRepository implements UberReconciliationRep
 
 class TicketRepository implements UberOpsTicketRepositoryPort {
   constructor(private readonly db: Prisma.TransactionClient | PrismaService) {}
-  countOpen(storeId: string) {
+
+  private storeScopeIds(
+    scope: Parameters<UberOpsTicketRepositoryPort['countOpen']>[0],
+  ) {
+    return [scope.storeStableId, ...scope.legacyUberStoreIds];
+  }
+
+  countOpen(scope: Parameters<UberOpsTicketRepositoryPort['countOpen']>[0]) {
     return this.db.uberOpsTicket.count({
       where: {
-        storeId,
+        storeId: { in: this.storeScopeIds(scope) },
         status: { in: [DbTicketStatus.OPEN, DbTicketStatus.IN_PROGRESS] },
       },
     });
   }
   async create(input: Parameters<UberOpsTicketRepositoryPort['create']>[0]) {
+    const { storeStableId, ...ticket } = input;
     const row = await this.db.uberOpsTicket.create({
       data: {
-        ...input,
+        ...ticket,
+        storeId: storeStableId,
         type: toPrismaTicketType(input.type),
         priority: toPrismaTicketPriority(input.priority),
         status: DbTicketStatus.OPEN,
@@ -210,10 +240,13 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
       createdAt: row.createdAt,
     };
   }
-  async list(storeId: string, status?: UberOpsTicketStatus) {
+  async list(
+    scope: Parameters<UberOpsTicketRepositoryPort['list']>[0],
+    status?: UberOpsTicketStatus,
+  ) {
     const rows = await this.db.uberOpsTicket.findMany({
       where: {
-        storeId,
+        storeId: { in: this.storeScopeIds(scope) },
         ...(status ? { status: toPrismaTicketStatus(status) } : {}),
       },
       orderBy: [{ status: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
@@ -222,9 +255,12 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
     });
     return rows.map(mapOpsTicketRow);
   }
-  async summary(storeId: string, status?: UberOpsTicketStatus) {
+  async summary(
+    scope: Parameters<UberOpsTicketRepositoryPort['summary']>[0],
+    status?: UberOpsTicketStatus,
+  ) {
     const where: Prisma.UberOpsTicketWhereInput = {
-      storeId,
+      storeId: { in: this.storeScopeIds(scope) },
       ...(status ? { status: toPrismaTicketStatus(status) } : {}),
     };
     const [count, latest] = await Promise.all([
@@ -240,16 +276,9 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
   async find(ticketStableId: string) {
     const row = await this.db.uberOpsTicket.findUnique({
       where: { ticketStableId },
+      select: ticketSelect,
     });
-    if (!row) return null;
-    return {
-      ...mapOpsTicketRow(row),
-      description: row.description,
-      context: row.context as Parameters<
-        UberOpsTicketRepositoryPort['create']
-      >[0]['context'],
-      resolvedAt: row.resolvedAt,
-    };
+    return row ? mapOpsTicketRow(row) : null;
   }
   async markInProgress(ticketStableId: string) {
     await this.db.uberOpsTicket.update({

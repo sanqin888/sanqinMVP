@@ -5,7 +5,3 @@ export function requireUberStoreId(storeId?: string): string {
   return normalized;
 }
 
-/** @compat brand-store.default-store-identity.v1 */
-export function normalizeUberStoreId(storeId?: string): string {
-  return storeId?.trim() || 'default';
-}

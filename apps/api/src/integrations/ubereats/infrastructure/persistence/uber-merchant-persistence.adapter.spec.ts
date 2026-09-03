@@ -125,21 +125,22 @@ describe('UberOperationsAlertPrismaAdapter store status alerts', () => {
   it('updates an existing open alert for the same store status target instead of duplicating it', async () => {
     const { adapter, prisma } = setup('ticket-1');
 
-    await adapter.createStoreStatusAlert(
-      'uber-store-1',
-      'bad request',
-      'UPSTREAM_REJECTED',
-      false,
-      {
+    await adapter.createStoreStatusAlert({
+      storeStableId: 'store-stable-1',
+      uberStoreId: 'uber-store-1',
+      error: 'bad request',
+      reason: 'UPSTREAM_REJECTED',
+      retryable: false,
+      payload: {
         status: 'OFFLINE',
         reason: 'POS connectivity lost',
         is_offline_until: '2026-08-26T03:30:00.000Z',
       },
-    );
+    });
 
     expect(prisma.uberOpsTicket.findFirst).toHaveBeenCalledWith({
       where: {
-        storeId: 'uber-store-1',
+        storeId: { in: ['store-stable-1', 'uber-store-1'] },
         type: UberOpsTicketType.STORE_STATUS_SYNC,
         status: {
           in: [UberOpsTicketStatus.OPEN, UberOpsTicketStatus.IN_PROGRESS],
@@ -184,18 +185,19 @@ describe('UberOperationsAlertPrismaAdapter store status alerts', () => {
   it('creates a new alert when there is no matching open target alert', async () => {
     const { adapter, prisma } = setup(null);
 
-    await adapter.createStoreStatusAlert(
-      'uber-store-1',
-      'upstream unavailable',
-      'UPSTREAM_UNAVAILABLE',
-      true,
-      { status: 'ONLINE' },
-    );
+    await adapter.createStoreStatusAlert({
+      storeStableId: 'store-stable-1',
+      uberStoreId: 'uber-store-1',
+      error: 'upstream unavailable',
+      reason: 'UPSTREAM_UNAVAILABLE',
+      retryable: true,
+      payload: { status: 'ONLINE' },
+    });
 
     expect(prisma.uberOpsTicket.update).not.toHaveBeenCalled();
     expect(prisma.uberOpsTicket.create).toHaveBeenCalledWith({
       data: {
-        storeId: 'uber-store-1',
+        storeId: 'store-stable-1',
         type: UberOpsTicketType.STORE_STATUS_SYNC,
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,

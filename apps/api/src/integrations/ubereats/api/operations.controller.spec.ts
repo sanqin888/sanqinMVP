@@ -49,10 +49,17 @@ describe('UberEatsOperationsController contract', () => {
     retryTicket.execute.mockResolvedValue({ ticketStableId: 'ticket-42' });
 
     await expect(
-      controller().generateReconciliationReportV2({} as never),
+      controller().generateReconciliationReportV2({
+        storeStableId: 'store-stable-1',
+      } as never),
     ).resolves.toMatchObject({
       operationId: 'report-42',
       status: 'SUCCEEDED',
+    });
+    expect(generateReport.execute).toHaveBeenCalledWith({
+      storeStableId: 'store-stable-1',
+      rangeStart: undefined,
+      rangeEnd: undefined,
     });
     await expect(
       controller().retryOpsTicketV2('ticket-42'),

@@ -842,12 +842,13 @@ describe('Uber merchant gateway use-case boundaries', () => {
     expect(alerts.recordStoreStatusResult).toHaveBeenCalledWith(rejected, {
       status: 'ONLINE',
     });
-    expect(alerts.createStoreStatusAlert).toHaveBeenCalledWith(
-      'uber-store-1',
-      'rejected by Uber',
-      'UPSTREAM_REJECTED',
-      false,
-      { status: 'ONLINE' },
-    );
+    expect(alerts.createStoreStatusAlert).toHaveBeenCalledWith({
+      storeStableId: 'store-stable-1',
+      uberStoreId: 'uber-store-1',
+      error: 'rejected by Uber',
+      reason: 'UPSTREAM_REJECTED',
+      retryable: false,
+      payload: { status: 'ONLINE' },
+    });
   });
 });

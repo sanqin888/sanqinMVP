@@ -520,9 +520,8 @@ export class SyncUberStoreStatusUseCase {
         await this.alerts.recordStoreStatusResult(result, payload ?? {});
         continue;
       }
-      payload ??= await this.currentStoreStatusPayload(
-        mapping.posExternalStoreId,
-      );
+      const storeStableId = mappedIntegratorStoreId(mapping);
+      payload ??= await this.currentStoreStatusPayload(storeStableId);
       const businessVersion = createHash('sha256')
         .update(JSON.stringify(payload))
         .digest('hex');
@@ -539,13 +538,14 @@ export class SyncUberStoreStatusUseCase {
       results.push(result);
       await this.alerts.recordStoreStatusResult(result, payload);
       if (result.outcome === 'FAILED')
-        await this.alerts.createStoreStatusAlert(
-          mapping.uberStoreId,
-          result.error,
-          result.reason,
-          result.retryable,
+        await this.alerts.createStoreStatusAlert({
+          storeStableId,
+          uberStoreId: mapping.uberStoreId,
+          error: result.error,
+          reason: result.reason,
+          retryable: result.retryable,
           payload,
-        );
+        });
     }
     const succeeded = results.filter((r) => r.outcome === 'SUCCEEDED').length;
     if (results.length === 0)
