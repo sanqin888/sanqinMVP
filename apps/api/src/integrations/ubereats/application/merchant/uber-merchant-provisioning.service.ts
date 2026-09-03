@@ -525,7 +525,8 @@ export class SyncUberStoreStatusUseCase {
         throw new UberValidationError({
           code: 'UBER_STORE_MAPPING_INVALID',
           operation: 'merchant.sync-store-status',
-          message: '已 provision 的 Uber 门店缺少有效的 SanQ storeStableId mapping',
+          message:
+            '已 provision 的 Uber 门店缺少有效的 SanQ storeStableId mapping',
         });
       payload ??= await this.currentStoreStatusPayload(storeStableId);
       const businessVersion = createHash('sha256')
