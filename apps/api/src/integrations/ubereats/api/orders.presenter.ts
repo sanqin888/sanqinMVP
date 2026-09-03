@@ -19,7 +19,10 @@ export const presentPendingOrders = (
 ): UberOrdersListResponse => {
   const items = result.items.map((order) => ({
     externalOrderId: order.externalOrderId ?? '',
+    orderStableId: order.orderStableId,
+    pickupCode: order.pickupCode,
     status: order.status,
+    totalCents: order.totalCents,
     storeId: null,
     createdAt: dateOf(order.createdAt),
     updatedAt: null,

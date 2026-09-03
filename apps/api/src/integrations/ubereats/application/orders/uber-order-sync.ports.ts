@@ -3,6 +3,7 @@ import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 export type UberPendingOrder = {
   orderStableId: string | null;
   externalOrderId: string | null;
+  pickupCode: string | null;
   status: UberOrderStatus;
   totalCents: number;
   createdAt: Date;

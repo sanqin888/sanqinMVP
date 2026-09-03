@@ -49,7 +49,7 @@ export type UberIntegrationConfigResponse = {
   isOrderManagerPending: boolean | null;
   contractVersion: '2';
 };
-export type PendingOrder = { externalOrderId: string; orderStableId: string; status: string; totalCents: number; createdAt: string; sourceEventType?: string | null };
+export type PendingOrder = { externalOrderId: string; orderStableId: string | null; pickupCode: string | null; status: string; totalCents: number; createdAt: string; sourceEventType?: string | null };
 export type PendingOrdersResponse = UberListResponse<PendingOrder>;
 export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
 export type Ticket = { ticketStableId: string; type: string; title: string; priority: string; status: TicketStatus; retryCount: number; createdAt: string };
