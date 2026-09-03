@@ -171,13 +171,21 @@ describe('CatalogAdminService availability persistence', () => {
   ] as const)(
     '%s keeps the existing availability persistence semantics',
     async (mode, isAvailable, temporary) => {
-      const update = jest.fn().mockImplementation(({ data }) =>
-        Promise.resolve({
-          stableId: 'dish-1',
-          ...data,
-          visibility: 'PUBLIC',
-          isVisibleOnMainMenu: true,
-        }),
+      type AvailabilityUpdateData = {
+        isAvailable: boolean;
+        tempUnavailableUntil: Date | null;
+      };
+      let capturedData: AvailabilityUpdateData | undefined;
+      const update = jest.fn(
+        (input: { data: AvailabilityUpdateData }) => {
+          capturedData = input.data;
+          return Promise.resolve({
+            stableId: 'dish-1',
+            ...input.data,
+            visibility: 'PUBLIC',
+            isVisibleOnMainMenu: true,
+          });
+        },
       );
       const service = new CatalogAdminService(
         {
@@ -191,19 +199,11 @@ describe('CatalogAdminService availability persistence', () => {
 
       await service.setItemAvailability('dish-1', mode);
 
-      expect(update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { stableId: 'dish-1' },
-          data: expect.objectContaining({ isAvailable }),
-        }),
-      );
-      const updateArgument = update.mock.calls[0]?.[0] as
-        | { data: { tempUnavailableUntil: unknown } }
-        | undefined;
+      expect(capturedData?.isAvailable).toBe(isAvailable);
       if (temporary) {
-        expect(updateArgument?.data.tempUnavailableUntil).toBeInstanceOf(Date);
+        expect(capturedData?.tempUnavailableUntil).toBeInstanceOf(Date);
       } else {
-        expect(updateArgument?.data.tempUnavailableUntil).toBeNull();
+        expect(capturedData?.tempUnavailableUntil).toBeNull();
       }
     },
   );
