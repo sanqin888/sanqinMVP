@@ -66,18 +66,19 @@ describe('OrderIngestionService', () => {
       status: string;
       pickupCode: null;
     } = null;
+    let createdOrderArgs: { data: { storeId?: string } } | null = null;
     const tx = {
       order: {
         findUnique: jest.fn(() => existing),
-        create: jest.fn(
-          (_args: { data: { storeId?: string } }) =>
-            (existing = {
-              id: 'o1',
-              orderStableId: 's1',
-              status: 'pending',
-              pickupCode: null,
-            }),
-        ),
+        create: jest.fn((args: { data: { storeId?: string } }) => {
+          createdOrderArgs = args;
+          return (existing = {
+            id: 'o1',
+            orderStableId: 's1',
+            status: 'pending',
+            pickupCode: null,
+          });
+        }),
         update: jest.fn(() => existing),
       },
       orderItem: {
@@ -93,9 +94,7 @@ describe('OrderIngestionService', () => {
     await service.ingest(input, policies);
     await service.ingest(input, policies);
     expect(tx.order.create).toHaveBeenCalledTimes(1);
-    expect(tx.order.create.mock.calls[0]?.[0].data.storeId).toBe(
-      '4750_Yonge_Street',
-    );
+    expect(createdOrderArgs?.data.storeId).toBe('4750_Yonge_Street');
     expect(tx.order.update).toHaveBeenCalledTimes(1);
     expect(tx.orderItem.deleteMany).toHaveBeenCalledTimes(2);
   });
