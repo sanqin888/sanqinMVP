@@ -1,5 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsDefined,
@@ -20,7 +23,6 @@ import {
   ValidationArguments,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import { PublishUberMenuDto } from './menu.requests';
 import { OrderStatus } from './orders.requests';
 import { UBER_RESOURCE_ID_PATTERN } from '../uber-resource-id';
 
@@ -53,15 +55,14 @@ export const UberOpsTicketPriority = {
 export type UberOpsTicketPriority =
   (typeof UberOpsTicketPriority)[keyof typeof UberOpsTicketPriority];
 
-export class StoreIdQuery {
-  @IsOptional()
+export class StoreStableIdQuery {
   @IsString()
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeStableId!: string;
 }
-export class ReportListQuery extends StoreIdQuery {
+export class ReportListQuery extends StoreStableIdQuery {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -69,7 +70,7 @@ export class ReportListQuery extends StoreIdQuery {
   @Max(100)
   limit = 20;
 }
-export class OpsTicketListQuery extends StoreIdQuery {
+export class OpsTicketListQuery extends StoreStableIdQuery {
   @IsOptional()
   @IsEnum(UberOpsTicketStatus)
   status?: UberOpsTicketStatus;
@@ -97,12 +98,11 @@ class DateRangeConstraint implements ValidatorConstraintInterface {
 }
 
 export class GenerateUberReconciliationReportDto {
-  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeStableId!: string;
 
   @IsOptional()
   @IsDateString()
@@ -112,6 +112,49 @@ export class GenerateUberReconciliationReportDto {
   @IsOptional()
   @IsDateString()
   rangeEnd?: string;
+}
+
+class UberOpsMenuPublishOptionsDto {
+  @IsOptional()
+  @IsBoolean()
+  timezoneConfirmed?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  taxRateConfirmed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  safetyFingerprint?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  excludedCategoryIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  excludedGroupIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  excludedMenuItemStableIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  excludedOptionChoiceStableIds?: string[];
 }
 
 @ValidatorConstraint({ name: 'ticketContext', async: false })
@@ -128,7 +171,7 @@ class TicketContextConstraint implements ValidatorConstraintInterface {
       case UberOpsTicketType.STORE_STATUS_SYNC:
         return Boolean(dto.uberStoreId && dto.targetStoreStatus);
       case UberOpsTicketType.MENU_PUBLISH:
-        return Boolean(dto.publish || dto.storeId);
+        return Boolean(dto.storeStableId);
       default:
         return false;
     }
@@ -155,12 +198,11 @@ export class CreateUberOpsTicketDto {
   @IsEnum(UberOpsTicketPriority)
   priority?: UberOpsTicketPriority;
 
-  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeStableId!: string;
 
   @ValidateIf(
     (dto: CreateUberOpsTicketDto) =>
@@ -206,6 +248,6 @@ export class CreateUberOpsTicketDto {
 
   @IsOptional()
   @ValidateNested()
-  @Type(() => PublishUberMenuDto)
-  publish?: PublishUberMenuDto;
+  @Type(() => UberOpsMenuPublishOptionsDto)
+  publish?: UberOpsMenuPublishOptionsDto;
 }

@@ -15,6 +15,7 @@ export type UberReconciliationOrder = {
 };
 export interface UberOrderOperationsRepositoryPort {
   reconciliationOrders(
+    storeStableId: string,
     rangeStart: Date,
     rangeEnd: Date,
   ): Promise<UberReconciliationOrder[]>;
@@ -27,26 +28,38 @@ export interface UberReconciliationRepositoryPort {
   countFailedSyncEvents(rangeStart: Date, rangeEnd: Date): Promise<number>;
   save(
     input: Omit<UberReconciliationReport, 'reportStableId' | 'createdAt'> & {
-      storeId: string;
+      storeStableId: string;
       syncedOrders: number;
       pendingOrders: number;
       payload: UberDomainJson;
     },
   ): Promise<Pick<UberReconciliationReport, 'reportStableId' | 'createdAt'>>;
-  list(storeId: string, limit: number): Promise<UberReconciliationReport[]>;
-  summary(storeId: string): Promise<UberOperationsCountSummary>;
+  list(
+    storeStableId: string,
+    limit: number,
+  ): Promise<UberReconciliationReport[]>;
+  summary(storeStableId: string): Promise<UberOperationsCountSummary>;
 }
 export type UberOpsTicketRecord = UberOpsTicket & {
+  /** Raw persisted scope during brand-store.default-store-identity.v1 contraction. */
+  persistedStoreScopeId: string;
   description: string | null;
   externalOrderId: string | null;
   menuItemStableId: string | null;
   context: UberDomainJson | null;
   resolvedAt: Date | null;
 };
+
+/** @compat brand-store.default-store-identity.v1 */
+export type UberOpsTicketStoreScope = {
+  storeStableId: string;
+  legacyUberStoreIds: string[];
+};
+
 export interface UberOpsTicketRepositoryPort {
-  countOpen(storeId: string): Promise<number>;
+  countOpen(scope: UberOpsTicketStoreScope): Promise<number>;
   create(input: {
-    storeId: string;
+    storeStableId: string;
     type: UberOpsTicketType;
     priority: UberOpsTicketPriority;
     title: string;
@@ -60,9 +73,12 @@ export interface UberOpsTicketRepositoryPort {
       'ticketStableId' | 'status' | 'priority' | 'createdAt'
     >
   >;
-  list(storeId: string, status?: UberOpsTicketStatus): Promise<UberOpsTicket[]>;
+  list(
+    scope: UberOpsTicketStoreScope,
+    status?: UberOpsTicketStatus,
+  ): Promise<UberOpsTicketRecord[]>;
   summary(
-    storeId: string,
+    scope: UberOpsTicketStoreScope,
     status?: UberOpsTicketStatus,
   ): Promise<UberOperationsCountSummary>;
   find(ticketStableId: string): Promise<UberOpsTicketRecord | null>;

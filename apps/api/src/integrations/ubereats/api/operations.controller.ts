@@ -56,7 +56,7 @@ export class UberEatsOperationsController {
     @Body() dto: GenerateUberReconciliationReportDto,
   ): Promise<UberOperationMutationResponse> {
     const result = await this.generateReport.execute({
-      storeId: dto.storeId,
+      storeStableId: dto.storeStableId,
       rangeStart: dto.rangeStart,
       rangeEnd: dto.rangeEnd,
     });
@@ -67,7 +67,10 @@ export class UberEatsOperationsController {
   async listReconciliationReports(
     @Query() query: ReportListQuery,
   ): Promise<UberReconciliationReportListResponse> {
-    const result = await this.queries.listReports(query.storeId, query.limit);
+    const result = await this.queries.listReports(
+      query.storeStableId,
+      query.limit,
+    );
     return presentReconciliationReports(result);
   }
 
@@ -76,7 +79,7 @@ export class UberEatsOperationsController {
     @Query() query: ReportListQuery,
   ): Promise<UberOperationsSummaryResponse> {
     return presentOperationsSummary(
-      await this.queries.reconciliation(query.storeId),
+      await this.queries.reconciliation(query.storeStableId),
     );
   }
 
@@ -93,7 +96,10 @@ export class UberEatsOperationsController {
   async listOpsTickets(
     @Query() query: OpsTicketListQuery,
   ): Promise<UberOpsTicketListResponse> {
-    const result = await this.queries.listTickets(query.storeId, query.status);
+    const result = await this.queries.listTickets(
+      query.storeStableId,
+      query.status,
+    );
     return presentOpsTickets(result);
   }
 
@@ -102,7 +108,7 @@ export class UberEatsOperationsController {
     @Query() query: OpsTicketListQuery,
   ): Promise<UberOperationsSummaryResponse> {
     return presentOperationsSummary(
-      await this.queries.tickets(query.storeId, query.status),
+      await this.queries.tickets(query.storeStableId, query.status),
     );
   }
 

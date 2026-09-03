@@ -1,4 +1,3 @@
-import type { UberOptionalStoreScopedInput } from '../../domain/menu/uber-menu.types';
 import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 export type OrderStatusSyncContext = { targetStatus: UberOrderStatus };
@@ -45,10 +44,11 @@ export type StoreStatusSyncContext = {
 export type MenuPublishContext = {
   versionId?: string;
   publish: {
-    storeId: string;
+    storeStableId: string;
     dryRun: false;
     timezoneConfirmed?: boolean;
     taxRateConfirmed?: boolean;
+    safetyFingerprint?: string;
     excludedCategoryIds?: string[];
     excludedGroupIds?: string[];
     excludedMenuItemStableIds?: string[];
@@ -56,13 +56,14 @@ export type MenuPublishContext = {
   };
 };
 
-export type GenerateReconciliationReportInput = UberOptionalStoreScopedInput & {
+export type GenerateReconciliationReportInput = {
+  storeStableId: string;
   rangeStart?: string;
   rangeEnd?: string;
 };
 
 export type CreateOpsTicketInput = {
-  storeId?: string;
+  storeStableId: string;
   type: UberOpsTicketType;
   title: string;
   description?: string;
@@ -91,7 +92,6 @@ export type UberReconciliationReport = UberReconciliationSummary & {
 
 export type UberOpsTicket = {
   ticketStableId: string;
-  storeId: string;
   type: UberOpsTicketType;
   status: UberOpsTicketStatus;
   priority: UberOpsTicketPriority;
@@ -105,7 +105,7 @@ export type UberOpsTicket = {
 };
 
 export type UberPage<T> = {
-  storeId: string;
+  storeStableId: string;
   count: number;
   items: T[];
 };
@@ -117,13 +117,13 @@ export type UberOperationsCountSummary = {
 
 export type UberReconciliationReportResult = UberReconciliationReport & {
   ok: true;
-  storeId: string;
+  storeStableId: string;
 };
 
 export type UberOpsTicketCreated = Pick<
   UberOpsTicket,
   'ticketStableId' | 'status' | 'priority' | 'createdAt'
-> & { ok: true; storeId: string };
+> & { ok: true; storeStableId: string };
 
 export type UberOpsTicketRetryResult = Pick<
   UberOpsTicket,

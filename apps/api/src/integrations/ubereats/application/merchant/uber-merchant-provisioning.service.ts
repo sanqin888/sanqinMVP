@@ -520,9 +520,15 @@ export class SyncUberStoreStatusUseCase {
         await this.alerts.recordStoreStatusResult(result, payload ?? {});
         continue;
       }
-      payload ??= await this.currentStoreStatusPayload(
-        mapping.posExternalStoreId,
-      );
+      const storeStableId = mapping.posExternalStoreId?.trim();
+      if (!storeStableId || !INTEGRATOR_STORE_ID_PATTERN.test(storeStableId))
+        throw new UberValidationError({
+          code: 'UBER_STORE_MAPPING_INVALID',
+          operation: 'merchant.sync-store-status',
+          message:
+            '已 provision 的 Uber 门店缺少有效的 SanQ storeStableId mapping',
+        });
+      payload ??= await this.currentStoreStatusPayload(storeStableId);
       const businessVersion = createHash('sha256')
         .update(JSON.stringify(payload))
         .digest('hex');
@@ -539,13 +545,14 @@ export class SyncUberStoreStatusUseCase {
       results.push(result);
       await this.alerts.recordStoreStatusResult(result, payload);
       if (result.outcome === 'FAILED')
-        await this.alerts.createStoreStatusAlert(
-          mapping.uberStoreId,
-          result.error,
-          result.reason,
-          result.retryable,
+        await this.alerts.createStoreStatusAlert({
+          storeStableId,
+          uberStoreId: mapping.uberStoreId,
+          error: result.error,
+          reason: result.reason,
+          retryable: result.retryable,
           payload,
-        );
+        });
     }
     const succeeded = results.filter((r) => r.outcome === 'SUCCEEDED').length;
     if (results.length === 0)

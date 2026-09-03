@@ -34,10 +34,20 @@ describe('Uber Eats operations request contracts', () => {
 
   it('transforms and bounds report limit', () => {
     expect(
-      validateSync(plainToInstance(ReportListQuery, { limit: '100' })),
+      validateSync(
+        plainToInstance(ReportListQuery, {
+          storeStableId: 'store-stable-1',
+          limit: '100',
+        }),
+      ),
     ).toHaveLength(0);
     expect(
-      validateSync(plainToInstance(ReportListQuery, { limit: '101' })),
+      validateSync(
+        plainToInstance(ReportListQuery, {
+          storeStableId: 'store-stable-1',
+          limit: '101',
+        }),
+      ),
     ).not.toHaveLength(0);
   });
 

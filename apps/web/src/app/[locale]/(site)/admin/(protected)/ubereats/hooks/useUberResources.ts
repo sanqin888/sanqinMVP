@@ -28,12 +28,13 @@ export function useUberOrders(visible: boolean) {
   const loader = useCallback(loadPendingOrders, []);
   return useSummaryList(visible, '/integrations/ubereats/orders/pending/summary', loader);
 }
-export function useUberOperations(visible: boolean, storeId: string, status: TicketStatus | '') {
-  const query = new URLSearchParams({ limit: '25', ...(storeId ? { storeId } : {}), ...(status ? { status } : {}) }).toString();
+export function useUberOperations(visible: boolean, storeStableId: string, status: TicketStatus | '') {
+  const query = new URLSearchParams({ limit: '25', storeStableId, ...(status ? { status } : {}) }).toString();
   const loader = useCallback((signal: AbortSignal) => loadTickets(query, signal), [query]);
-  return useSummaryList(visible, `/integrations/ubereats/ops/tickets/summary?${query}`, loader);
+  return useSummaryList(visible && Boolean(storeStableId), `/integrations/ubereats/ops/tickets/summary?${query}`, loader);
 }
-export function useUberReports(visible: boolean) {
-  const loader = useCallback(loadReconciliationReports, []);
-  return useSummaryList(visible, '/integrations/ubereats/reports/reconciliation/summary', loader);
+export function useUberReports(visible: boolean, storeStableId: string) {
+  const query = new URLSearchParams({ storeStableId }).toString();
+  const loader = useCallback((signal: AbortSignal) => loadReconciliationReports(storeStableId, signal), [storeStableId]);
+  return useSummaryList(visible && Boolean(storeStableId), `/integrations/ubereats/reports/reconciliation/summary?${query}`, loader);
 }

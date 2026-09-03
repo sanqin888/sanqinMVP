@@ -1,6 +1,7 @@
 import { UberValidationError } from '../shared/uber-application.error';
 import {
   GenerateUberReconciliationReportUseCase,
+  mapCreateUberOpsTicketCommand,
   QueryUberOperationsSummary,
   RetryUberOpsTicketUseCase,
 } from './uber-operations.use-cases';
@@ -31,15 +32,25 @@ describe('Uber operations application workflows', () => {
       }),
     };
     const tickets = { countOpen: jest.fn().mockResolvedValue(1) };
+    const mappings = {
+      listMappings: jest.fn().mockResolvedValue([
+        {
+          uberStoreId: 'uber-store-1',
+          posExternalStoreId: 'store-stable-1',
+          isProvisioned: true,
+        },
+      ]),
+    };
     const useCase = new GenerateUberReconciliationReportUseCase(
       orders as never,
       reports as never,
       tickets as never,
+      mappings as never,
       telemetry,
     );
 
     const result = await useCase.execute({
-      storeId: 'store-1',
+      storeStableId: 'store-stable-1',
       rangeStart: '2026-01-01',
       rangeEnd: '2026-01-02',
     });
@@ -52,6 +63,15 @@ describe('Uber operations application workflows', () => {
       failedSyncEvents: 2,
       discrepancyOrders: 1,
     });
+    expect(orders.reconciliationOrders).toHaveBeenCalledWith(
+      'store-stable-1',
+      expect.any(Date),
+      expect.any(Date),
+    );
+    expect(tickets.countOpen).toHaveBeenCalledWith({
+      storeStableId: 'store-stable-1',
+      legacyUberStoreIds: ['uber-store-1'],
+    });
     expect(reports.save).toHaveBeenCalledTimes(1);
   });
 
@@ -60,11 +80,40 @@ describe('Uber operations application workflows', () => {
       {} as never,
       {} as never,
       {} as never,
+      { listMappings: jest.fn().mockResolvedValue([]) } as never,
       telemetry,
     );
     await expect(
-      useCase.execute({ rangeStart: '2026-01-02', rangeEnd: '2026-01-01' }),
+      useCase.execute({
+        storeStableId: 'store-stable-1',
+        rangeStart: '2026-01-02',
+        rangeEnd: '2026-01-01',
+      }),
     ).rejects.toBeInstanceOf(UberValidationError);
+  });
+
+  it('keeps menu-publish retry context on canonical storeStableId', () => {
+    const command = mapCreateUberOpsTicketCommand({
+      storeStableId: 'store-stable-1',
+      type: UberOpsTicketType.MENU_PUBLISH,
+      title: 'Retry menu publish',
+      publish: {
+        timezoneConfirmed: true,
+        taxRateConfirmed: true,
+        safetyFingerprint: 'a'.repeat(64),
+      },
+    });
+
+    expect(command.context).toEqual({
+      publish: {
+        storeStableId: 'store-stable-1',
+        dryRun: false,
+        timezoneConfirmed: true,
+        taxRateConfirmed: true,
+        safetyFingerprint: 'a'.repeat(64),
+      },
+    });
+    expect(JSON.stringify(command.context)).not.toContain('uberStoreId');
   });
 
   it('normalizes operation queries and caps report limit', async () => {
@@ -79,16 +128,33 @@ describe('Uber operations application workflows', () => {
     const query = new QueryUberOperationsSummary(
       reports as never,
       tickets as never,
+      {
+        listMappings: jest.fn().mockResolvedValue([
+          {
+            uberStoreId: 'uber-store-1',
+            posExternalStoreId: 'store-stable-1',
+            isProvisioned: true,
+          },
+        ]),
+      } as never,
     );
-    await query.listReports(' store-1 ', 500);
-    expect(reports.list).toHaveBeenCalledWith('store-1', 100);
+    await query.listReports(' store-stable-1 ', 500);
+    await query.listTickets('store-stable-1');
+    expect(reports.list).toHaveBeenCalledWith('store-stable-1', 100);
+    expect(tickets.list).toHaveBeenCalledWith(
+      {
+        storeStableId: 'store-stable-1',
+        legacyUberStoreIds: ['uber-store-1'],
+      },
+      undefined,
+    );
   });
 
-  it('retries a store pause ticket with the required Uber pause deadline', async () => {
+  it('retries a historical provider-scoped OFFLINE ticket through canonical store mapping', async () => {
     const tickets = {
       find: jest.fn().mockResolvedValue({
         ticketStableId: 'ticket-1',
-        storeId: 'store-1',
+        persistedStoreScopeId: 'uber-store-1',
         type: UberOpsTicketType.STORE_STATUS_SYNC,
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,
@@ -98,11 +164,9 @@ describe('Uber operations application workflows', () => {
         menuItemStableId: null,
         context: {
           uberStoreId: 'uber-store-1',
-          targetStatus: 'PAUSED',
-          reason: 'POS connectivity lost',
-          pauseUntil: '2026-08-26T03:30:00.000Z',
+          targetStatus: 'OFFLINE',
+          reason: 'UPSTREAM_REJECTED',
           outcome: 'FAILED',
-          failureReason: 'UPSTREAM_REJECTED',
           retryable: false,
         },
         retryCount: 0,
@@ -138,6 +202,15 @@ describe('Uber operations application workflows', () => {
       {} as never,
       {} as never,
       storeStatusSync as never,
+      {
+        listMappings: jest.fn().mockResolvedValue([
+          {
+            uberStoreId: 'uber-store-1',
+            posExternalStoreId: 'store-stable-1',
+            isProvisioned: true,
+          },
+        ]),
+      } as never,
       telemetry,
     );
 
@@ -149,8 +222,6 @@ describe('Uber operations application workflows', () => {
     expect(storeStatusSync.syncStoreStatusToUber).toHaveBeenCalledWith({
       uberStoreId: 'uber-store-1',
       targetStatus: 'PAUSED',
-      reason: 'POS connectivity lost',
-      pauseUntil: '2026-08-26T03:30:00.000Z',
     });
   });
 });
