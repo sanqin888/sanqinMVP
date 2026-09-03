@@ -342,7 +342,9 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
     } as Prisma.JsonObject);
   }
   async createStoreStatusAlert(
-    input: Parameters<UberOperationsAlertRepositoryPort['createStoreStatusAlert']>[0],
+    input: Parameters<
+      UberOperationsAlertRepositoryPort['createStoreStatusAlert']
+    >[0],
   ) {
     const description = redactUberLogText(input.error).slice(0, 500);
     const targetStatus =
@@ -373,13 +375,13 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
               equals: targetStatus,
             },
           },
-          ...(targetStatus === payload.status
+          ...(targetStatus === input.payload.status
             ? []
             : [
                 {
                   context: {
                     path: ['targetStatus'],
-                    equals: payload.status,
+                    equals: input.payload.status,
                   },
                 },
               ]),

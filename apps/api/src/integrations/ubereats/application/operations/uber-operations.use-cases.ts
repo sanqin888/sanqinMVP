@@ -85,14 +85,17 @@ const resolvePersistedTicketStoreStableId = async (
   mappings: Pick<UberStoreMappingRepositoryPort, 'listMappings'>,
 ): Promise<string> => {
   const rows = await mappings.listMappings();
-  const canonical = rows.find(
-    (mapping) => mapping.posExternalStoreId?.trim() === persistedStoreScopeId,
-  )?.posExternalStoreId?.trim();
+  const canonical = rows
+    .find(
+      (mapping) =>
+        mapping.posExternalStoreId?.trim() === persistedStoreScopeId,
+    )
+    ?.posExternalStoreId?.trim();
   if (canonical) return canonical;
 
-  const legacy = rows.find(
-    (mapping) => mapping.uberStoreId.trim() === persistedStoreScopeId,
-  )?.posExternalStoreId?.trim();
+  const legacy = rows
+    .find((mapping) => mapping.uberStoreId.trim() === persistedStoreScopeId)
+    ?.posExternalStoreId?.trim();
   if (legacy) return legacy;
 
   throw invalidOperationsInput(
@@ -242,7 +245,9 @@ export class CreateUberOpsTicketUseCase {
       input.type === UberOpsTicketType.MENU_PUBLISH &&
       (context as MenuPublishContext).publish.storeStableId !== storeStableId
     )
-      throw invalidOperationsInput('菜单发布工单的 storeStableId 与工单门店不一致');
+      throw invalidOperationsInput(
+        '菜单发布工单的 storeStableId 与工单门店不一致',
+      );
     if (
       input.externalOrderId &&
       !(await this.orders.exists(input.externalOrderId))

@@ -34,7 +34,10 @@ export interface UberReconciliationRepositoryPort {
       payload: UberDomainJson;
     },
   ): Promise<Pick<UberReconciliationReport, 'reportStableId' | 'createdAt'>>;
-  list(storeStableId: string, limit: number): Promise<UberReconciliationReport[]>;
+  list(
+    storeStableId: string,
+    limit: number,
+  ): Promise<UberReconciliationReport[]>;
   summary(storeStableId: string): Promise<UberOperationsCountSummary>;
 }
 export type UberOpsTicketRecord = UberOpsTicket & {

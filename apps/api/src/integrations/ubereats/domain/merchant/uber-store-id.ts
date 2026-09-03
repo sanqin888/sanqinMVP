@@ -4,4 +4,3 @@ export function requireUberStoreId(storeId?: string): string {
   if (!normalized) throw new TypeError('storeId must not be empty');
   return normalized;
 }
-

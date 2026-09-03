@@ -56,14 +56,19 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
     });
 
     expect(create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
         storeId: 'store-stable-1',
         type: 'MENU_ITEM_AVAILABILITY',
+        status: 'OPEN',
+        priority: 'HIGH',
+        title: 'Uber 商品可售状态同步失败：item-stable-1',
+        description: '本地状态已保存；请重试 Uber 商品可售状态同步。',
         menuItemStableId: 'item-stable-1',
+        lastError: 'upstream unavailable',
         context: {
           isAvailable: false,
         },
-      }),
+      },
     });
   });
 });

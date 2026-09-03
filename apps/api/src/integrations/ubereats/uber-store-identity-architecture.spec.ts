@@ -42,7 +42,9 @@ describe('Uber Eats store identity architecture', () => {
     const persistence = scanTypeScript(
       join(__dirname, 'infrastructure', 'persistence'),
       { productionOnly: true },
-    ).find((file) => file.path.endsWith('uber-merchant-persistence.adapter.ts'));
+    ).find((file) =>
+      file.path.endsWith('uber-merchant-persistence.adapter.ts'),
+    );
 
     expect(persistence).toBeDefined();
     expect(persistence!.source).toContain('storeId: input.storeStableId');
