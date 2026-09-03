@@ -1,7 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { PrismaService } from '../prisma/prisma.service';
+import type {
+  CouponJsonObject,
+  CouponProgramItem,
+} from './coupon-offer-policy.contract';
 
 const UseRuleSchema = z
   .discriminatedUnion('type', [
@@ -59,16 +61,16 @@ const ProgramItemsSchema = z
   )
   .min(1);
 
-export type ProgramItem = z.infer<typeof ProgramItemsSchema>[number];
+export type ProgramItem = CouponProgramItem;
 
-export function validateUseRule(value: unknown): Prisma.InputJsonValue {
+export function validateUseRule(value: unknown): CouponJsonObject {
   const parsed = UseRuleSchema.safeParse(value);
   if (!parsed.success) {
     throw new BadRequestException(
       `Invalid useRule configuration: ${parsed.error.message}`,
     );
   }
-  return parsed.data as Prisma.InputJsonValue;
+  return parsed.data as CouponJsonObject;
 }
 
 export function parseProgramItems(value: unknown): ProgramItem[] {
@@ -92,14 +94,12 @@ export function getExpiresInDays(value: unknown) {
 }
 
 export async function ensureProgramItemsExist(
-  prisma: PrismaService,
+  countTemplatesByStableIds: (stableIds: string[]) => Promise<number>,
   items: { couponStableId: string }[],
 ) {
   const ids = items.map((item) => item.couponStableId);
   const uniqueIds = Array.from(new Set(ids));
-  const count = await prisma.couponTemplate.count({
-    where: { couponStableId: { in: uniqueIds } },
-  });
+  const count = await countTemplatesByStableIds(uniqueIds);
   if (count !== uniqueIds.length) {
     throw new BadRequestException('包含不存在的优惠券模板');
   }

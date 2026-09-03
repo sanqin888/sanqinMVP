@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type CouponProgram } from '@prisma/client';
+import type { CouponProgramClaimsPort } from '../benefits/contracts/coupon-program.contract';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponProgramEligibilityService } from './coupon-program-eligibility.service';
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
@@ -24,7 +25,7 @@ function isRetryableTransactionError(error: unknown): boolean {
 }
 
 @Injectable()
-export class CouponProgramClaimService {
+export class CouponProgramClaimService implements CouponProgramClaimsPort {
   constructor(
     private readonly prisma: PrismaService,
     private readonly issuer: CouponProgramIssuerService,

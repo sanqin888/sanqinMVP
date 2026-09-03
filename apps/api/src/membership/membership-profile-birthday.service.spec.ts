@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { UserLanguage } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { LoyaltyService } from '../loyalty/loyalty.service';
-import type { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import type { CouponProgramTriggerPort } from '../benefits/public-api';
 import type { EmailVerificationService } from '../email/email-verification.service';
 import type { NotificationService } from '../notifications/notification.service';
 import { MembershipService } from './membership.service';
@@ -21,7 +21,7 @@ describe('MembershipService profile birthday', () => {
     const service = new MembershipService(
       prisma,
       {} as unknown as LoyaltyService,
-      {} as unknown as CouponProgramTriggerService,
+      {} as unknown as CouponProgramTriggerPort,
       {} as unknown as EmailVerificationService,
       {} as unknown as NotificationService,
     );

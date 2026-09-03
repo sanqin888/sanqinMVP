@@ -27,7 +27,10 @@ import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
 import { TemplateRenderer } from '../messaging/template-renderer';
 import { NotificationService } from '../notifications/notification.service';
-import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import {
+  COUPON_PROGRAM_TRIGGER,
+  type CouponProgramTriggerPort,
+} from '../benefits/public-api';
 import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
@@ -48,7 +51,8 @@ export class AuthService {
     private readonly templateRenderer: TemplateRenderer,
     private readonly businessConfigService: BusinessConfigService,
     private readonly notificationService: NotificationService,
-    private readonly couponTriggerService: CouponProgramTriggerService,
+    @Inject(COUPON_PROGRAM_TRIGGER)
+    private readonly couponTriggerService: CouponProgramTriggerPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
     @Inject(POS_DEVICE_CREDENTIAL_VERIFIER)
@@ -59,7 +63,7 @@ export class AuthService {
     try {
       await this.couponTriggerService.issueProgramsForUser(
         'SIGNUP_COMPLETED',
-        user,
+        user.userStableId,
       );
     } catch (error) {
       this.logger.error(

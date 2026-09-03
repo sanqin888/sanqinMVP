@@ -1,5 +1,5 @@
 // apps/api/src/loyalty/loyalty.service.ts
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -8,7 +8,10 @@ import {
   Prisma,
 } from '@prisma/client';
 import { createHash } from 'crypto';
-import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import {
+  COUPON_PROGRAM_TRIGGER,
+  type CouponProgramTriggerPort,
+} from '../benefits/public-api';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePromotionLoyaltyMultiplier } from '../promotions/public-api';
 import type {
@@ -150,7 +153,8 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 export class LoyaltyService implements LoyaltyPolicyReaderPort {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly couponTriggerService: CouponProgramTriggerService,
+    @Inject(COUPON_PROGRAM_TRIGGER)
+    private readonly couponTriggerService: CouponProgramTriggerPort,
   ) {}
 
   async getLoyaltyPolicySnapshot(): Promise<LoyaltyPolicySnapshot> {
@@ -905,7 +909,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       if (user) {
         await this.couponTriggerService.issueProgramsForUser(
           'TIER_UPGRADE',
-          user,
+          user.userStableId,
         );
       }
     }
@@ -1657,7 +1661,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       if (user) {
         await this.couponTriggerService.issueProgramsForUser(
           'TIER_UPGRADE',
-          user,
+          user.userStableId,
         );
       }
     }

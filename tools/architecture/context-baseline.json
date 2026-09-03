@@ -39,6 +39,7 @@
       "paths": [
         "apps/api/src/admin",
         "apps/api/src/auth",
+        "apps/api/src/benefits",
         "apps/api/src/loyalty",
         "apps/api/src/membership",
         "apps/api/src/phone-verification"
@@ -351,11 +352,10 @@
     "external-channels -> runtime-data-ci-ops": 24,
     "identity-customer-benefits -> architecture-foundation": 14,
     "identity-customer-benefits -> brand-store": 4,
-    "identity-customer-benefits -> catalog-pricing-offers": 7,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 2,
     "identity-customer-benefits -> messaging-notifications": 24,
-    "identity-customer-benefits -> runtime-data-ci-ops": 23,
+    "identity-customer-benefits -> runtime-data-ci-ops": 21,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
     "messaging-notifications -> runtime-data-ci-ops": 10,

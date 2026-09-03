@@ -19,6 +19,7 @@ import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { IdentityChallengeModule } from './challenge-engine.module';
 import { PosDeviceModule } from '../pos/public-api';
+import { CouponsModule } from '../coupons/public-api';
 
 @Global()
 @Module({
@@ -31,6 +32,7 @@ import { PosDeviceModule } from '../pos/public-api';
     NotificationModule,
     IdentityChallengeModule,
     PosDeviceModule,
+    CouponsModule,
   ],
   providers: [
     AuthService,

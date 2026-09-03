@@ -5,6 +5,7 @@ import {
   Controller,
   Get,
   Header,
+  Inject,
   Param,
   Post,
   Req,
@@ -12,7 +13,10 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { CouponProgramClaimService } from '../coupons/coupon-program-claim.service';
+import {
+  COUPON_PROGRAM_CLAIMS,
+  type CouponProgramClaimsPort,
+} from '../benefits/public-api';
 
 type AuthedRequest = Request & {
   user?: { userStableId?: string };
@@ -21,7 +25,10 @@ type AuthedRequest = Request & {
 @UseGuards(SessionAuthGuard)
 @Controller('promotions')
 export class PromotionsController {
-  constructor(private readonly couponClaims: CouponProgramClaimService) {}
+  constructor(
+    @Inject(COUPON_PROGRAM_CLAIMS)
+    private readonly couponClaims: CouponProgramClaimsPort,
+  ) {}
 
   @Get('claimable')
   @Header('Cache-Control', 'no-store')
