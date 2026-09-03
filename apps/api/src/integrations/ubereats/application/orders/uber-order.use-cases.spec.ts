@@ -59,6 +59,14 @@ const importedMenuMapping = {
   expectedPriceCents: 1000,
 };
 
+const defaultStoreConfig = () => ({
+  getStoreAllergyPolicy: jest.fn().mockResolvedValue({
+    mode: 'RELAY_ALL',
+    unsupportedAllergens: [],
+  }),
+  getStoreAutoAcceptOnlineOrders: jest.fn().mockResolvedValue(true),
+});
+
 describe('Uber order use-case boundaries', () => {
   it.each([
     [
@@ -93,6 +101,7 @@ describe('Uber order use-case boundaries', () => {
         { fetchOrderDetail },
         actions as unknown as UberOrderActionService,
         { findMapping: jest.fn() } as never,
+        defaultStoreConfig() as never,
       );
 
       await expect(
@@ -120,6 +129,7 @@ describe('Uber order use-case boundaries', () => {
       },
       actions as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
+      defaultStoreConfig() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -152,6 +162,7 @@ describe('Uber order use-case boundaries', () => {
       },
       actions as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
+      defaultStoreConfig() as never,
     );
 
     await useCase.execute('orders.notification', 'event-allergy', notification);
@@ -190,6 +201,7 @@ describe('Uber order use-case boundaries', () => {
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
       actions,
       { findMapping } as never,
+      defaultStoreConfig() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -228,6 +240,7 @@ describe('Uber order use-case boundaries', () => {
       { fetchOrderDetail },
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
+      defaultStoreConfig() as never,
     );
 
     await useCase.execute('orders.failure', 'failure-1', notification, {
@@ -265,6 +278,7 @@ describe('Uber order use-case boundaries', () => {
       { fetchOrderDetail },
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
+      defaultStoreConfig() as never,
     );
 
     await expect(
@@ -287,6 +301,7 @@ describe('Uber order use-case boundaries', () => {
       { fetchOrderDetail },
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
+      defaultStoreConfig() as never,
     );
 
     await expect(
@@ -320,6 +335,7 @@ describe('Uber order use-case boundaries', () => {
       { fetchOrderDetail },
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
+      defaultStoreConfig() as never,
     );
     await useCase.execute('orders.notification', 'event-1', notification);
     expect(fetchOrderDetail).not.toHaveBeenCalled();

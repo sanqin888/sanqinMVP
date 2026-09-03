@@ -43,6 +43,13 @@ const provisionedStore = {
   posExternalStoreId: 'pos-store-1',
 };
 
+const relayAllStoreConfig = () => ({
+  getStoreAllergyPolicy: jest.fn().mockResolvedValue({
+    mode: 'RELAY_ALL',
+    unsupportedAllergens: [],
+  }),
+});
+
 describe('UberOrderAdmissionService', () => {
   it('collects store, menu and connectivity facts before returning ACCEPT', async () => {
     const findMenuMappings = jest.fn().mockResolvedValue([
@@ -63,6 +70,7 @@ describe('UberOrderAdmissionService', () => {
         getPosStoreConnectivity,
       } as never,
       { findMapping } as never,
+      relayAllStoreConfig() as never,
     );
 
     await expect(
@@ -90,9 +98,9 @@ describe('UberOrderAdmissionService', () => {
       {
         findMenuMappings,
         getPosStoreConnectivity,
-        getStoreAllergyPolicy,
       } as never,
       { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
+      { getStoreAllergyPolicy } as never,
     );
 
     await expect(service.evaluate(order, 'event-1')).resolves.toMatchObject({
@@ -120,6 +128,7 @@ describe('UberOrderAdmissionService', () => {
         getPosStoreConnectivity,
       } as never,
       { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
+      relayAllStoreConfig() as never,
     );
 
     await expect(
@@ -148,6 +157,7 @@ describe('UberOrderAdmissionService', () => {
         getPosStoreConnectivity: jest.fn(),
       } as never,
       { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
+      relayAllStoreConfig() as never,
     );
 
     await expect(service.evaluate(order, 'event-1')).resolves.toMatchObject({
@@ -175,6 +185,7 @@ describe('UberOrderAdmissionService', () => {
       const service = new UberOrderAdmissionService(
         { findMenuMappings: jest.fn() } as never,
         { findMapping: jest.fn().mockResolvedValue(mapping) } as never,
+        relayAllStoreConfig() as never,
       );
 
       await expect(

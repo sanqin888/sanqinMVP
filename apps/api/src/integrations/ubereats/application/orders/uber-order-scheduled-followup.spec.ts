@@ -74,6 +74,14 @@ const storeMapping = {
   posExternalStoreId: '4750_Yonge_Street',
 };
 
+const storeConfig = {
+  getStoreAllergyPolicy: jest.fn().mockResolvedValue({
+    mode: 'RELAY_ALL',
+    unsupportedAllergens: [],
+  }),
+  getStoreAutoAcceptOnlineOrders: jest.fn().mockResolvedValue(true),
+};
+
 describe('Uber scheduled-order follow-up notifications', () => {
   it('refreshes scheduled detail and requeues ACCEPT for the finalization phase', async () => {
     const saved: { input?: ImportedOrderInput } = {};
@@ -112,6 +120,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
       { fetchOrderDetail },
       { request, buildIntent, requestScheduledFinalizeAccept } as never,
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+      storeConfig as never,
     );
 
     await useCase.execute(
@@ -158,6 +167,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
       { fetchOrderDetail },
       { request: jest.fn() } as never,
       { findMapping: jest.fn() } as never,
+      storeConfig as never,
     );
 
     await expect(

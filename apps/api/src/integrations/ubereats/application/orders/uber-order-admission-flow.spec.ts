@@ -57,6 +57,14 @@ const createActions = (enqueue: EnqueueMock) =>
     { signal: () => undefined },
   );
 
+const defaultStoreConfig = () => ({
+  getStoreAllergyPolicy: jest.fn().mockResolvedValue({
+    mode: 'RELAY_ALL',
+    unsupportedAllergens: [],
+  }),
+  getStoreAutoAcceptOnlineOrders: jest.fn().mockResolvedValue(true),
+});
+
 describe('Uber order admission flow', () => {
   it('queues one DENY only after admission rejects a missing published mapping', async () => {
     const enqueue: EnqueueMock = jest
@@ -75,6 +83,7 @@ describe('Uber order admission flow', () => {
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
       createActions(enqueue),
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+      defaultStoreConfig() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -108,10 +117,6 @@ describe('Uber order admission flow', () => {
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
-        getStoreAllergyPolicy: jest.fn().mockResolvedValue({
-          mode: 'DENY_LIST',
-          unsupportedAllergens: ['PEANUTS'],
-        }),
         getPosStoreConnectivity,
         saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
@@ -119,6 +124,13 @@ describe('Uber order admission flow', () => {
       { fetchOrderDetail: jest.fn().mockResolvedValue(detailWithAllergy) },
       createActions(enqueue),
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+      {
+        getStoreAllergyPolicy: jest.fn().mockResolvedValue({
+          mode: 'DENY_LIST',
+          unsupportedAllergens: ['PEANUTS'],
+        }),
+        getStoreAutoAcceptOnlineOrders: jest.fn().mockResolvedValue(true),
+      } as never,
     );
 
     await useCase.execute(
@@ -165,6 +177,7 @@ describe('Uber order admission flow', () => {
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
       createActions(enqueue),
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+      defaultStoreConfig() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -197,13 +210,16 @@ describe('Uber order admission flow', () => {
           status: 'ONLINE',
           lastHeartbeatAt: new Date(),
         }),
-        getStoreAutoAcceptOnlineOrders,
         saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
       createActions(enqueue),
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
+      {
+        ...defaultStoreConfig(),
+        getStoreAutoAcceptOnlineOrders,
+      } as never,
     );
 
     await useCase.execute(
@@ -237,6 +253,7 @@ describe('Uber order admission flow', () => {
       { fetchOrderDetail },
       createActions(enqueue),
       { findMapping: jest.fn() } as never,
+      defaultStoreConfig() as never,
     );
 
     await useCase.execute('orders.failure', 'event-2', notification);

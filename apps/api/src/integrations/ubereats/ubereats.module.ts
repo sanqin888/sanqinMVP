@@ -8,6 +8,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import {
   BRAND_STORE_CONFIG_READER,
   BrandStoreConfigModule,
+  BrandStoreConfigUnavailableError,
   type BrandStoreConfigReaderPort,
 } from '../../store/public-api';
 import { UberEatsMenuController } from './api/menu.controller';
@@ -52,17 +53,37 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
     inject: [BRAND_STORE_CONFIG_READER],
     useFactory: (
       reader: BrandStoreConfigReaderPort,
-    ): UberStoreConfigQueryPort => ({
-      getStoreConfig: async (storeStableId) => {
-        const store = await reader.getStoreSnapshot(storeStableId);
-        return {
-          timezone: store.timezone,
-          salesTaxRate: store.salesTaxRate,
-          isTemporarilyClosed: store.isTemporarilyClosed,
-          temporaryCloseReason: store.temporaryCloseReason,
-        };
-      },
-    }),
+    ): UberStoreConfigQueryPort => {
+      const readStorePolicy = async (storeStableId: string) => {
+        try {
+          return await reader.getStoreSnapshot(storeStableId);
+        } catch (error) {
+          if (error instanceof BrandStoreConfigUnavailableError) return null;
+          throw error;
+        }
+      };
+
+      return {
+        getStoreConfig: async (storeStableId) => {
+          const store = await reader.getStoreSnapshot(storeStableId);
+          return {
+            timezone: store.timezone,
+            salesTaxRate: store.salesTaxRate,
+            isTemporarilyClosed: store.isTemporarilyClosed,
+            temporaryCloseReason: store.temporaryCloseReason,
+          };
+        },
+        getStoreAllergyPolicy: async (storeStableId) => {
+          const store = await readStorePolicy(storeStableId);
+          return {
+            mode: store?.allergyHandlingMode ?? 'RELAY_ALL',
+            unsupportedAllergens: store?.unsupportedAllergens ?? [],
+          };
+        },
+        getStoreAutoAcceptOnlineOrders: async (storeStableId) =>
+          (await readStorePolicy(storeStableId))?.autoAcceptOnlineOrders ?? true,
+      };
+    },
   },
   ...createCommonWiring(),
   ...createMerchantWiring(),
