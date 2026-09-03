@@ -46,6 +46,9 @@ describe('Uber Eats store identity architecture', () => {
     const apiFiles = scanTypeScript(join(__dirname, 'api'), {
       productionOnly: true,
     });
+    const ordersFiles = scanTypeScript(join(__dirname, '..', '..', 'orders'), {
+      productionOnly: true,
+    });
     const publicApi = scanTypeScript(__dirname, {
       productionOnly: true,
     }).find((file) => file.path.endsWith('public-api.ts'));
@@ -68,6 +71,9 @@ describe('Uber Eats store identity architecture', () => {
     const orderPersistence = persistenceFiles.find((file) =>
       file.path.endsWith('uber-order-import-prisma.adapter.ts'),
     );
+    const orderIngestion = ordersFiles.find((file) =>
+      file.path.endsWith('order-ingestion.service.ts'),
+    );
     const menuController = apiFiles.find((file) =>
       file.path.endsWith('menu.controller.ts'),
     );
@@ -79,6 +85,7 @@ describe('Uber Eats store identity architecture', () => {
     expect(orderUseCases).toBeDefined();
     expect(orderPorts).toBeDefined();
     expect(orderPersistence).toBeDefined();
+    expect(orderIngestion).toBeDefined();
     expect(menuController).toBeDefined();
     expect(publicApi!.source).toContain('storeStableId?: string;');
     expect(crossContextResponses!.source).toContain('storeStableId: string;');
@@ -90,7 +97,10 @@ describe('Uber Eats store identity architecture', () => {
     expect(orderUseCases!.source).not.toContain('posStoreId');
     expect(orderPorts!.source).not.toContain('posStoreId');
     expect(orderPersistence!.source).not.toContain('posStoreId');
-    expect(orderPersistence!.source).toContain('storeId: input.storeStableId');
+    expect(orderPersistence!.source).toContain(
+      'storeStableId: input.storeStableId',
+    );
+    expect(orderIngestion!.source).toContain('storeId: input.storeStableId');
     expect(menuController!.source).toContain('storeStableId: dto.storeId');
   });
 

@@ -246,6 +246,11 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       action: null,
     });
 
+    expect(ingest).toHaveBeenCalledWith(
+      expect.objectContaining({ storeStableId: '4750_Yonge_Street' }),
+      expect.any(Object),
+      expect.any(Function),
+    );
     expect(inboxUpsert).not.toHaveBeenCalled();
     expect(inboxUpdate).not.toHaveBeenCalled();
   });

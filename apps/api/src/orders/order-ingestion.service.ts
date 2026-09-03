@@ -1,102 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   Channel,
-  FulfillmentType,
   OrderFulfillmentTiming,
   OrderStatus,
-  PaymentMethod,
   Prisma,
 } from '@prisma/client';
 import { OrderEventsBus } from '../messaging/order-events.bus';
 import { PrismaService } from '../prisma/prisma.service';
+import type {
+  IngestionResult,
+  NormalizedOrderInput,
+  OrderIngestionPolicies,
+  OrderIngestionPort,
+  OrderIngestionWithinTransaction,
+} from './order-ingestion.contract';
 import {
   resolveOrderPreparationMinutes,
   resolveOrderPrepStartAt,
 } from './order-preparation-time.policy';
 
-export type NormalizedOrderItem = {
-  productStableId: string;
-  quantity: number;
-  displayName: string;
-  nameEn?: string | null;
-  nameZh?: string | null;
-  unitPriceCents: number;
-  baseUnitPriceCents?: number | null;
-  optionsUnitPriceCents?: number | null;
-  options?: Prisma.InputJsonValue;
-  external?: {
-    itemId?: string | null;
-    lineId?: string | null;
-    instructions?: string | null;
-    lineTotalCents?: number | null;
-    publishedPriceCents?: number | null;
-    channelBasePriceCents?: number | null;
-    priceVarianceCents?: number | null;
-    modifiers?: Array<{
-      externalId: string | null;
-      parentExternalId: string | null;
-      displayName: string;
-      quantity: number;
-      priceDeltaCents: number;
-      specialInstructions: string | null;
-      snapshot: Prisma.InputJsonValue;
-    }>;
-  };
-};
-
-/** Channel switches are deliberately explicit: an external adapter must opt in. */
-export type OrderIngestionPolicies = {
-  verifyWebPayment: boolean;
-  applyMembershipPoints: boolean;
-  applyCoupons: boolean;
-  persistExternalSnapshot: boolean;
-  emitPaidLifecycleEvent: boolean;
-};
-
-export type NormalizedOrderInput = {
-  channel: Channel;
-  paymentMethod: PaymentMethod;
-  externalOrderId?: string | null;
-  clientRequestId: string;
-  storeId?: string | null;
-  status: OrderStatus;
-  paidAt: Date;
-  fulfillmentType: FulfillmentType;
-  fulfillmentTiming?: OrderFulfillmentTiming;
-  scheduledReadyAt?: Date | null;
-  pickupCode?: string | null;
-  amounts: {
-    subtotalCents: number;
-    subtotalAfterDiscountCents: number;
-    couponDiscountCents: number;
-    taxCents: number;
-    deliveryFeeCents: number;
-    totalCents: number;
-    paymentTotalCents: number;
-  };
-  contact?: {
-    name?: string | null;
-    email?: string | null;
-    phone?: string | null;
-  };
-  externalSnapshot?: {
-    displayId?: string | null;
-    notes?: string | null;
-    estimatedReadyAt?: Date | null;
-    priceVarianceCents?: number;
-  };
-  items: NormalizedOrderItem[];
-};
-
-export type IngestionResult = {
-  action: 'created' | 'updated';
-  status: OrderStatus;
-  orderId: string;
-  orderStableId: string;
-};
-
 @Injectable()
-export class OrderIngestionService {
+export class OrderIngestionService implements OrderIngestionPort {
   private readonly logger = new Logger(OrderIngestionService.name);
 
   constructor(
@@ -107,10 +31,7 @@ export class OrderIngestionService {
   async ingest(
     input: NormalizedOrderInput,
     policies: OrderIngestionPolicies,
-    withinTransaction?: (
-      tx: Prisma.TransactionClient,
-      result: IngestionResult,
-    ) => Promise<void>,
+    withinTransaction?: OrderIngestionWithinTransaction,
   ): Promise<IngestionResult> {
     // These validations belong to Web/POS preparation. External adapters cannot
     // accidentally inherit them simply by calling this persistence boundary.
@@ -175,7 +96,7 @@ export class OrderIngestionService {
         channel: input.channel,
         paymentMethod: input.paymentMethod,
         clientRequestId: input.clientRequestId,
-        storeId: input.storeId,
+        storeId: input.storeStableId,
         status: effectiveStatus,
         paidAt: input.paidAt,
         fulfillmentType: input.fulfillmentType,

@@ -23,6 +23,7 @@ describe('OrderIngestionService', () => {
     channel: 'ubereats',
     paymentMethod: 'UBEREATS',
     clientRequestId: 'UBER:1',
+    storeStableId: '4750_Yonge_Street',
     status: 'pending',
     paidAt: new Date('2026-01-01T00:00:00Z'),
     fulfillmentType: 'pickup',
@@ -65,18 +66,19 @@ describe('OrderIngestionService', () => {
       status: string;
       pickupCode: null;
     } = null;
+    let createdStoreId: string | undefined;
     const tx = {
       order: {
         findUnique: jest.fn(() => existing),
-        create: jest.fn(
-          () =>
-            (existing = {
-              id: 'o1',
-              orderStableId: 's1',
-              status: 'pending',
-              pickupCode: null,
-            }),
-        ),
+        create: jest.fn((args: { data: { storeId?: string } }) => {
+          createdStoreId = args.data.storeId;
+          return (existing = {
+            id: 'o1',
+            orderStableId: 's1',
+            status: 'pending',
+            pickupCode: null,
+          });
+        }),
         update: jest.fn(() => existing),
       },
       orderItem: {
@@ -92,6 +94,7 @@ describe('OrderIngestionService', () => {
     await service.ingest(input, policies);
     await service.ingest(input, policies);
     expect(tx.order.create).toHaveBeenCalledTimes(1);
+    expect(createdStoreId).toBe('4750_Yonge_Street');
     expect(tx.order.update).toHaveBeenCalledTimes(1);
     expect(tx.orderItem.deleteMany).toHaveBeenCalledTimes(2);
   });
