@@ -78,6 +78,22 @@ describe('AdminMenuService availability Uber status', () => {
     });
   });
 
+  it(
+    'Admin HTTP 响应保留 storeId 字段，同时 Uber public port 使用 storeStableId',
+    async () => {
+      const { service } = build({
+        status: 'SYNCED',
+        stores: [{ storeStableId: '4750_Yonge_Street', status: 'SYNCED' }],
+      });
+
+      const result = await service.setItemAvailability('dish-1', 'ON');
+
+      expect(result.uberSync.stores).toEqual([
+        { storeId: '4750_Yonge_Street', status: 'SYNCED' },
+      ]);
+    },
+  );
+
   it('上游异常不会伪装成功，并返回可重试的 FAILED 状态', async () => {
     const { service, syncUberMenuItemAvailability } = build(null);
     syncUberMenuItemAvailability.mockRejectedValue(new Error('upstream'));

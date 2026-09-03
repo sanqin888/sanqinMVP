@@ -34,7 +34,7 @@ describe('UberMenuAvailabilityUseCase', () => {
     const { useCase, queries, gateway, telemetry } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
-      { storeId: 'pos-a', uberStoreId: 'uber-a' },
+      { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
     gateway.updateItemAvailability.mockResolvedValue(undefined);
 
@@ -55,7 +55,7 @@ describe('UberMenuAvailabilityUseCase', () => {
       status: 'SYNCED',
       stores: [
         {
-          storeId: 'pos-a',
+          storeStableId: 'pos-a',
           uberStoreId: 'uber-a',
           status: 'SYNCED',
         },
@@ -63,7 +63,12 @@ describe('UberMenuAvailabilityUseCase', () => {
     });
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_menu_item_availability_sync_requested',
-      expect.objectContaining({ status: 'SYNCED', stores: result.stores }),
+      expect.objectContaining({
+        status: 'SYNCED',
+        stores: [
+          { storeId: 'pos-a', uberStoreId: 'uber-a', status: 'SYNCED' },
+        ],
+      }),
     );
   });
 
@@ -73,7 +78,7 @@ describe('UberMenuAvailabilityUseCase', () => {
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findMenuItemSuspendUntil.mockResolvedValue(suspendUntil);
     queries.findProvisionedStores.mockResolvedValue([
-      { storeId: 'pos-a', uberStoreId: 'uber-a' },
+      { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
     gateway.updateItemAvailability.mockResolvedValue(undefined);
 
@@ -93,7 +98,7 @@ describe('UberMenuAvailabilityUseCase', () => {
     const { useCase, queries, commands, gateway } = setup();
     queries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
-      { storeId: 'pos-a', uberStoreId: 'uber-a' },
+      { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
     gateway.updateItemAvailability.mockRejectedValue(
       new Error('update failed'),
@@ -105,13 +110,29 @@ describe('UberMenuAvailabilityUseCase', () => {
     });
 
     expect(commands.createItemPublishFailure).toHaveBeenCalledWith({
-      storeId: 'pos-a',
+      storeStableId: 'pos-a',
       uberStoreId: 'uber-a',
       menuItemStableId: 'item-1',
       isAvailable: false,
       error: 'update failed',
     });
     expect(result.status).toBe('FAILED');
+  });
+
+  it('显式 storeStableId 只作为 SanQ 门店筛选传给 mapping query', async () => {
+    const { useCase, queries } = setup();
+    queries.isMenuItemPublishable.mockResolvedValue(true);
+    queries.findProvisionedStores.mockResolvedValue([]);
+
+    await useCase.syncUberMenuItemAvailability({
+      storeStableId: ' 4750_Yonge_Street ',
+      menuItemStableId: 'item-1',
+      isAvailable: true,
+    });
+
+    expect(queries.findProvisionedStores).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
   });
 
   it('未配置 publishToUberEats 的菜品返回 SKIPPED_NOT_PUBLISHED', async () => {
@@ -146,7 +167,7 @@ describe('UberMenuAvailabilityUseCase', () => {
   it('option 204 成功后返回 SYNCED，不保留旧的 PENDING 状态', async () => {
     const { useCase, queries, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
-      { storeId: 'pos-a', uberStoreId: 'uber-a' },
+      { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
     gateway.updateItemAvailability.mockResolvedValue(undefined);
 
@@ -167,7 +188,7 @@ describe('UberMenuAvailabilityUseCase', () => {
       status: 'SYNCED',
       stores: [
         {
-          storeId: 'pos-a',
+          storeStableId: 'pos-a',
           uberStoreId: 'uber-a',
           status: 'SYNCED',
         },
@@ -175,15 +196,20 @@ describe('UberMenuAvailabilityUseCase', () => {
     });
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_option_item_availability_synced',
-      expect.objectContaining({ status: 'SYNCED', stores: result.stores }),
+      expect.objectContaining({
+        status: 'SYNCED',
+        stores: [
+          { storeId: 'pos-a', uberStoreId: 'uber-a', status: 'SYNCED' },
+        ],
+      }),
     );
   });
 
   it('多门店 option 部分同步失败时返回 FAILED 并继续其他门店', async () => {
     const { useCase, queries, gateway, telemetry } = setup();
     queries.findProvisionedStores.mockResolvedValue([
-      { storeId: 'pos-a', uberStoreId: 'a' },
-      { storeId: 'pos-b', uberStoreId: 'b' },
+      { storeStableId: 'pos-a', uberStoreId: 'a' },
+      { storeStableId: 'pos-b', uberStoreId: 'b' },
     ]);
     gateway.updateItemAvailability
       .mockResolvedValueOnce(undefined)
@@ -209,7 +235,18 @@ describe('UberMenuAvailabilityUseCase', () => {
     );
     expect(telemetry.captureEvent).toHaveBeenCalledWith(
       'ubereats_option_item_availability_synced',
-      expect.objectContaining({ status: 'FAILED', stores: result.stores }),
+      expect.objectContaining({
+        status: 'FAILED',
+        stores: [
+          { storeId: 'pos-a', uberStoreId: 'a', status: 'SYNCED' },
+          {
+            storeId: 'pos-b',
+            uberStoreId: 'b',
+            status: 'FAILED',
+            error: 'update b failed',
+          },
+        ],
+      }),
     );
   });
 });

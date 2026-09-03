@@ -213,7 +213,7 @@ describe('Uber order use-case boundaries', () => {
     expect(saved.order?.actionIntent?.idempotencyKey).toMatch(/^sanqin-uber-/);
     expect(saved.order?.order.fulfillmentTiming).toBe('IMMEDIATE');
     expect(saved.order?.order.scheduledReadyAt).toBeNull();
-    expect(saved.order?.posStoreId).toBe('4750_Yonge_Street');
+    expect(saved.order?.storeStableId).toBe('4750_Yonge_Street');
     expect(notifyPersistedAction).toHaveBeenCalledWith({
       taskId: 'action-1',
       created: true,

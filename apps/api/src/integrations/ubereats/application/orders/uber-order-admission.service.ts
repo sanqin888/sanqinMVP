@@ -33,7 +33,7 @@ export class UberOrderStoreMappingError extends UberApplicationError {
 }
 
 export type UberOrderImportContext = {
-  posStoreId: string;
+  storeStableId: string;
   menuMappings: UberOrderMenuMapping[];
   missingItemReference: string | null;
 };
@@ -83,27 +83,27 @@ export class UberOrderAdmissionService {
         eventId,
         order.externalOrderId,
       );
-    const posStoreId = storeMapping.posExternalStoreId?.trim();
-    if (!posStoreId)
+    const storeStableId = storeMapping.posExternalStoreId?.trim();
+    if (!storeStableId)
       throw new UberOrderStoreMappingError(
         'UBER_POS_STORE_ID_MISSING',
         uberStoreId,
         eventId,
         order.externalOrderId,
       );
-    if (!POS_EXTERNAL_STORE_ID_PATTERN.test(posStoreId))
+    if (!POS_EXTERNAL_STORE_ID_PATTERN.test(storeStableId))
       throw new UberOrderStoreMappingError(
         'UBER_POS_STORE_ID_INVALID',
         uberStoreId,
         eventId,
         order.externalOrderId,
       );
-    return { uberStoreId, posStoreId };
+    return { uberStoreId, storeStableId };
   }
 
   async resolveImportContext(
     order: ParsedUberOrder,
-    store: { uberStoreId: string; posStoreId: string },
+    store: { uberStoreId: string; storeStableId: string },
   ): Promise<UberOrderImportContext> {
     const externalIds = order.items
       .map((item) => item.externalItemId)
@@ -122,7 +122,11 @@ export class UberOrderAdmissionService {
       ? 'MISSING_EXTERNAL_ITEM_ID'
       : (externalIds.find((id) => !byId.has(id)) ?? null);
 
-    return { posStoreId: store.posStoreId, menuMappings, missingItemReference };
+    return {
+      storeStableId: store.storeStableId,
+      menuMappings,
+      missingItemReference,
+    };
   }
 
   async evaluate(
@@ -131,7 +135,7 @@ export class UberOrderAdmissionService {
   ): Promise<UberOrderAdmissionResult> {
     const store = await this.resolveStoreContext(order, eventId);
     const allergyPolicy = await this.storeConfig.getStoreAllergyPolicy(
-      store.posStoreId,
+      store.storeStableId,
     );
     const allergyRequest = order.allergyRequest ?? {
       hasRequest: false,
@@ -144,7 +148,7 @@ export class UberOrderAdmissionService {
     });
     if (allergyDecision.kind === 'DENY') {
       return {
-        posStoreId: store.posStoreId,
+        storeStableId: store.storeStableId,
         menuMappings: [],
         missingItemReference: null,
         canPersistOrder: false,
@@ -170,7 +174,7 @@ export class UberOrderAdmissionService {
     const connectivity =
       context.missingItemReference === null &&
       this.repository.getPosStoreConnectivity
-        ? await this.repository.getPosStoreConnectivity(context.posStoreId)
+        ? await this.repository.getPosStoreConnectivity(context.storeStableId)
         : { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
     const decision = this.policy.evaluate({
       missingItemReference: context.missingItemReference,

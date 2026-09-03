@@ -76,7 +76,7 @@ describe('UberOrderAdmissionService', () => {
     await expect(
       service.evaluate(parsedOrder(), 'event-1'),
     ).resolves.toMatchObject({
-      posStoreId: 'pos-store-1',
+      storeStableId: 'pos-store-1',
       canPersistOrder: true,
       decision: { kind: 'ACCEPT' },
     });
@@ -104,7 +104,7 @@ describe('UberOrderAdmissionService', () => {
     );
 
     await expect(service.evaluate(order, 'event-1')).resolves.toMatchObject({
-      posStoreId: 'pos-store-1',
+      storeStableId: 'pos-store-1',
       canPersistOrder: false,
       decision: {
         kind: 'DENY',

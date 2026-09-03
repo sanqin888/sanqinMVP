@@ -14,7 +14,7 @@ export type UberEatsAvailabilitySyncStatus =
 export type UberEatsAvailabilitySyncResult = {
   status: UberEatsAvailabilitySyncStatus;
   stores: Array<{
-    storeId: string;
+    storeStableId: string;
     status: UberEatsAvailabilitySyncStatus;
     error?: UberEatsSyncError;
   }>;

@@ -7,7 +7,7 @@ describe('public contract mappers', () => {
         status: 'PENDING',
         stores: [
           {
-            storeId: 'store-1',
+            storeStableId: 'store-1',
             uberStoreId: 'uber-store-1',
             status: 'PENDING',
           },
@@ -15,7 +15,7 @@ describe('public contract mappers', () => {
       }),
     ).toEqual({
       status: 'SYNC_REQUESTED',
-      stores: [{ storeId: 'store-1', status: 'SYNC_REQUESTED' }],
+      stores: [{ storeStableId: 'store-1', status: 'SYNC_REQUESTED' }],
     });
   });
 
@@ -25,7 +25,7 @@ describe('public contract mappers', () => {
         status: 'SYNCED',
         stores: [
           {
-            storeId: 'store-1',
+            storeStableId: 'store-1',
             uberStoreId: 'uber-store-1',
             status: 'SYNCED',
           },
@@ -33,7 +33,7 @@ describe('public contract mappers', () => {
       }),
     ).toEqual({
       status: 'SYNCED',
-      stores: [{ storeId: 'store-1', status: 'SYNCED' }],
+      stores: [{ storeStableId: 'store-1', status: 'SYNCED' }],
     });
   });
 
@@ -43,7 +43,7 @@ describe('public contract mappers', () => {
         status: 'FAILED',
         stores: [
           {
-            storeId: 'store-1',
+            storeStableId: 'store-1',
             uberStoreId: 'uber-store-1',
             status: 'FAILED',
             versionStableId: 'version-1',
@@ -55,7 +55,7 @@ describe('public contract mappers', () => {
       status: 'FAILED',
       stores: [
         {
-          storeId: 'store-1',
+          storeStableId: 'store-1',
           status: 'FAILED',
           error: {
             code: 'UNKNOWN',

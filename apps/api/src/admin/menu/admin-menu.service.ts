@@ -808,7 +808,7 @@ export class AdminMenuService {
       visibility: updated.visibility,
       isVisibleOnMainMenu: updated.isVisibleOnMainMenu,
       tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
-      uberSync,
+      uberSync: this.presentUberAvailabilitySync(uberSync),
     };
   }
 
@@ -1239,6 +1239,16 @@ export class AdminMenuService {
     return { ok: true };
   }
 
+  private presentUberAvailabilitySync(sync: UberEatsAvailabilitySyncResult) {
+    return {
+      ...sync,
+      stores: sync.stores.map(({ storeStableId, ...store }) => ({
+        ...store,
+        storeId: storeStableId,
+      })),
+    };
+  }
+
   private async syncUberMenuItemAvailabilitySafely(
     menuItemStableId: string,
     isAvailable: boolean,
@@ -1257,7 +1267,7 @@ export class AdminMenuService {
         status: 'FAILED',
         stores: [
           {
-            storeId: 'unknown',
+            storeStableId: 'unknown',
             status: 'FAILED',
             error: { code: 'UNKNOWN', message, retryable: true },
           },

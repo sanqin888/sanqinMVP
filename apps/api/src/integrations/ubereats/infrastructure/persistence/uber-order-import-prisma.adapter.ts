@@ -116,8 +116,8 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return denial?.status === 'SUCCEEDED';
   }
 
-  async getPosStoreConnectivity(posStoreId: string) {
-    if (posStoreId !== resolveConfiguredStoreStableId()) {
+  async getPosStoreConnectivity(storeStableId: string) {
+    if (storeStableId !== resolveConfiguredStoreStableId()) {
       return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
     }
     const devices = await this.prisma.posDevice.findMany({
@@ -225,7 +225,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         paymentMethod: PaymentMethod.UBEREATS,
         externalOrderId: input.order.externalOrderId,
         clientRequestId: `ubereats:${input.order.externalOrderId}`,
-        storeId: input.posStoreId,
+        storeId: input.storeStableId,
         status: this.toPrismaStatus(targetStatus),
         paidAt: input.order.paidAt,
         fulfillmentType:

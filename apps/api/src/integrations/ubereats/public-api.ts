@@ -29,12 +29,12 @@ import type {
 
 export interface UberEatsMenuAvailabilityPort {
   syncUberMenuItemAvailability(input: {
-    storeId?: string;
+    storeStableId?: string;
     menuItemStableId: string;
     isAvailable: boolean;
   }): Promise<UberEatsAvailabilitySyncResult>;
   syncUberOptionItemAvailability(input: {
-    storeId?: string;
+    storeStableId?: string;
     optionChoiceStableId: string;
     isAvailable: boolean;
   }): Promise<UberEatsAvailabilitySyncResult>;
