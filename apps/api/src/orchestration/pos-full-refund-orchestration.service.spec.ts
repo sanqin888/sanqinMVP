@@ -171,24 +171,7 @@ describe('POS refund controller validation boundaries', () => {
   let app: INestApplication;
   let httpServer: Server;
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    controllerFullRefund.mockResolvedValue({
-      order: { orderStableId: controllerOrderStableId },
-      outcome: 'refunded',
-    } as never);
-    controllerCardRefund.mockResolvedValue({
-      mode: 'MANAGED',
-      status: 'SUCCEEDED',
-      operation: 'REFUND',
-      order: { orderStableId: controllerOrderStableId },
-      refundedCardBaseCents: 0,
-      refundedAdditionalChargeCents: 0,
-      refundedCustomerTotalCents: 0,
-      failureCode: null,
-      failureMessage: null,
-    } as never);
-
+  beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [PosFullRefundController, PosCardRefundController],
       providers: [
@@ -227,7 +210,26 @@ describe('POS refund controller validation boundaries', () => {
     httpServer = app.getHttpServer() as unknown as Server;
   });
 
-  afterEach(async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    controllerFullRefund.mockResolvedValue({
+      order: { orderStableId: controllerOrderStableId },
+      outcome: 'refunded',
+    } as never);
+    controllerCardRefund.mockResolvedValue({
+      mode: 'MANAGED',
+      status: 'SUCCEEDED',
+      operation: 'REFUND',
+      order: { orderStableId: controllerOrderStableId },
+      refundedCardBaseCents: 0,
+      refundedAdditionalChargeCents: 0,
+      refundedCustomerTotalCents: 0,
+      failureCode: null,
+      failureMessage: null,
+    } as never);
+  });
+
+  afterAll(async () => {
     await app.close();
   });
 

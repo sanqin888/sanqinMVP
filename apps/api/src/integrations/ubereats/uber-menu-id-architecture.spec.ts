@@ -2,7 +2,7 @@ import { join, resolve } from 'node:path';
 import {
   formatSourceViolation,
   scanTypeScript,
-} from './test/architecture-test.utils';
+} from '../../test/architecture-test.utils';
 
 describe('Uber Eats menu id architecture', () => {
   it('keeps the Admin editor independent from Uber publish node ids', () => {

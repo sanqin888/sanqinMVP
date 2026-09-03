@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import {
   importViolations,
   scanTypeScript,
-} from '../test/architecture-test.utils';
+} from '../../../test/architecture-test.utils';
 
 const API_ROOT = resolve(__dirname);
 
