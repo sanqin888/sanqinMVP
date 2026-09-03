@@ -65,9 +65,7 @@ describe('UberMenuAvailabilityUseCase', () => {
       'ubereats_menu_item_availability_sync_requested',
       expect.objectContaining({
         status: 'SYNCED',
-        stores: [
-          { storeId: 'pos-a', uberStoreId: 'uber-a', status: 'SYNCED' },
-        ],
+        stores: [{ storeId: 'pos-a', uberStoreId: 'uber-a', status: 'SYNCED' }],
       }),
     );
   });
@@ -198,9 +196,7 @@ describe('UberMenuAvailabilityUseCase', () => {
       'ubereats_option_item_availability_synced',
       expect.objectContaining({
         status: 'SYNCED',
-        stores: [
-          { storeId: 'pos-a', uberStoreId: 'uber-a', status: 'SYNCED' },
-        ],
+        stores: [{ storeId: 'pos-a', uberStoreId: 'uber-a', status: 'SYNCED' }],
       }),
     );
   });
