@@ -44,6 +44,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Build shared libraries
+        run: |
+          pnpm --filter @shared/foundation build
+          pnpm --filter @shared/menu build
+          pnpm --filter @shared/order build
+
       - name: Generate Prisma Client (api only)
         if: matrix.app == 'api'
         run: pnpm --filter api prisma:generate
@@ -52,11 +58,23 @@ jobs:
         if: matrix.app == 'api'
         run: node tools/architecture/scan-architecture.mjs --check
 
-      - name: Lint (${{ matrix.app }})
-        run: pnpm --filter ${{ matrix.app }} lint
+      - name: Lint (api)
+        if: matrix.app == 'api'
+        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts"
 
-      - name: Build (${{ matrix.app }})
-        run: pnpm --filter ${{ matrix.app }} build
+      - name: Lint (web)
+        if: matrix.app == 'web'
+        run: pnpm --filter web lint
+
+      - name: Build (api)
+        if: matrix.app == 'api'
+        run: pnpm --filter api exec nest build
+
+      - name: Build (web)
+        if: matrix.app == 'web'
+        env:
+          SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
+        run: pnpm --filter web exec next build --turbopack
 
       - name: Strict declaration check (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} exec tsc -p tsconfig.strict.json --pretty false
@@ -68,5 +86,10 @@ jobs:
           pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
           pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
 
-      - name: Test (${{ matrix.app }})
-        run: pnpm --filter ${{ matrix.app }} test
+      - name: Test (api)
+        if: matrix.app == 'api'
+        run: pnpm --filter api exec jest
+
+      - name: Test (web)
+        if: matrix.app == 'web'
+        run: pnpm --filter web test
