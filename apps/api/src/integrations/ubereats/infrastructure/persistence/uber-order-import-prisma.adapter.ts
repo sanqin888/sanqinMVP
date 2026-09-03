@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -14,9 +14,12 @@ import {
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
+import {
+  ORDER_INGESTION,
+  type NormalizedOrderItem,
+  type OrderIngestionPort,
+} from '../../../../orders/public-api';
 import { resolveConfiguredStoreStableId } from '../../../../store/public-api';
-import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
-import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderCancellationDecision,
@@ -37,7 +40,8 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ingestion: OrderIngestionService,
+    @Inject(ORDER_INGESTION)
+    private readonly ingestion: OrderIngestionPort,
   ) {}
 
   async findMenuMappings(
@@ -225,7 +229,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         paymentMethod: PaymentMethod.UBEREATS,
         externalOrderId: input.order.externalOrderId,
         clientRequestId: `ubereats:${input.order.externalOrderId}`,
-        storeId: input.storeStableId,
+        storeStableId: input.storeStableId,
         status: this.toPrismaStatus(targetStatus),
         paidAt: input.order.paidAt,
         fulfillmentType:

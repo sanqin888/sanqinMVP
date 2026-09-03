@@ -23,6 +23,7 @@ describe('OrderIngestionService', () => {
     channel: 'ubereats',
     paymentMethod: 'UBEREATS',
     clientRequestId: 'UBER:1',
+    storeStableId: '4750_Yonge_Street',
     status: 'pending',
     paidAt: new Date('2026-01-01T00:00:00Z'),
     fulfillmentType: 'pickup',
@@ -92,6 +93,9 @@ describe('OrderIngestionService', () => {
     await service.ingest(input, policies);
     await service.ingest(input, policies);
     expect(tx.order.create).toHaveBeenCalledTimes(1);
+    expect(tx.order.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ storeId: '4750_Yonge_Street' }),
+    });
     expect(tx.order.update).toHaveBeenCalledTimes(1);
     expect(tx.orderItem.deleteMany).toHaveBeenCalledTimes(2);
   });

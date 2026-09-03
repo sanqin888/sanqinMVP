@@ -346,7 +346,7 @@
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 14,
     "commerce-orders-fulfillment -> store-operations-pos-print": 6,
     "external-channels -> architecture-foundation": 11,
-    "external-channels -> commerce-orders-fulfillment": 5,
+    "external-channels -> commerce-orders-fulfillment": 1,
     "external-channels -> identity-customer-benefits": 6,
     "external-channels -> messaging-notifications": 2,
     "external-channels -> runtime-data-ci-ops": 24,

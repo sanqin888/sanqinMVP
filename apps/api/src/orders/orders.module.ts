@@ -17,7 +17,8 @@ import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
 import { ScheduledOrderProcessor } from './processors/scheduled-order.processor';
 import { PrintPosPayloadService } from './print-pos-payload.service';
-import { OrderIngestionService } from './order-ingestion.service';
+import { ORDER_INGESTION } from './order-ingestion.contract';
+import { ORDER_INGESTION_PROVIDER } from './order-ingestion.provider';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrderLabelPlanService } from './order-label-plan.service';
@@ -52,7 +53,7 @@ import { PosOrderOperationsService } from './pos-order-operations.service';
       provide: POS_ORDER_OPERATIONS,
       useExisting: PosOrderOperationsService,
     },
-    OrderIngestionService,
+    ORDER_INGESTION_PROVIDER,
     OrderPreparationService,
     OrderSchedulingQueryService,
     PrintPosPayloadService,
@@ -66,7 +67,7 @@ import { PosOrderOperationsService } from './pos-order-operations.service';
     OrdersService,
     POS_ORDER_READ,
     POS_ORDER_OPERATIONS,
-    OrderIngestionService,
+    ORDER_INGESTION,
     OrderPreparationService,
     OrderSchedulingQueryService,
     PrintPosPayloadService,

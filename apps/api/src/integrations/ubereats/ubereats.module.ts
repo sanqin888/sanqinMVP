@@ -2,8 +2,10 @@ import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import { MessagingModule } from '../../messaging/messaging.module';
 import { OrderEventsBus } from '../../messaging/order-events.bus';
-import { OrdersModule } from '../../orders/orders.module';
-import { OrderIngestionService } from '../../orders/order-ingestion.service';
+import {
+  ORDER_INGESTION_PROVIDER,
+  OrdersModule,
+} from '../../orders/public-api';
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
   BRAND_STORE_CONFIG_READER,
@@ -124,7 +126,7 @@ export function createUberEatsWorkerRuntimeModule(
     imports: [PrismaModule, BrandStoreConfigModule],
     providers: [
       OrderEventsBus,
-      OrderIngestionService,
+      ORDER_INGESTION_PROVIDER,
       ...UBER_EATS_COMPOSITION_PROVIDERS,
       ...workerProviders,
     ],
