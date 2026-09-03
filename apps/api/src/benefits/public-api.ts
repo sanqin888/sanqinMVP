@@ -10,3 +10,11 @@ export {
   type CouponProgramTriggerPort,
   type CouponProgramTriggerType,
 } from './contracts/coupon-program.contract';
+export {
+  PAYMENT_COUPON_RESERVATION,
+  PAYMENT_TENDER_RESERVATION,
+  type HoldPaymentCouponReservationInput,
+  type HoldPaymentTenderReservationInput,
+  type PaymentCouponReservationPort,
+  type PaymentTenderReservationPort,
+} from './contracts/payment-benefit-reservation.contract';

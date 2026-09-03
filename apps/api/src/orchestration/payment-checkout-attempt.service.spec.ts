@@ -2,8 +2,10 @@
 import type { PaymentCheckoutAttempt } from '@prisma/client';
 import type { CreateOrderInput } from '@shared/order';
 
-import type { LoyaltyService } from '../loyalty/loyalty.service';
-import type { MembershipService } from '../membership/membership.service';
+import type {
+  PaymentCouponReservationPort,
+  PaymentTenderReservationPort,
+} from '../benefits/public-api';
 import type {
   OrdersService,
   PreparedPaymentOrderSnapshot,
@@ -128,36 +130,28 @@ const createHarness = () => {
   const orders = {
     preparePaymentOrder: jest.fn().mockResolvedValue(snapshot),
   } as unknown as jest.Mocked<OrdersService>;
-  const loyalty = {
-    holdPaymentTender: jest.fn().mockResolvedValue({
-      reservationId: 'loyalty-reservation-1',
-      userId: snapshot.userId,
-      pointsValueCents: 200,
-      balanceCents: 300,
-    }),
+  const paymentTenderReservations = {
+    holdPaymentTender: jest.fn().mockResolvedValue(undefined),
     releasePaymentTender: jest.fn().mockResolvedValue(undefined),
-  } as unknown as jest.Mocked<LoyaltyService>;
-  const membership = {
-    holdPaymentCoupons: jest.fn().mockResolvedValue({
-      couponId: null,
-      selectedUserCouponId: null,
-    }),
+  } as jest.Mocked<PaymentTenderReservationPort>;
+  const paymentCouponReservations = {
+    holdPaymentCoupons: jest.fn().mockResolvedValue(undefined),
     releasePaymentCoupons: jest.fn().mockResolvedValue(undefined),
-  } as unknown as jest.Mocked<MembershipService>;
+  } as jest.Mocked<PaymentCouponReservationPort>;
 
   const service = new PaymentCheckoutAttemptService(
     prisma,
     orders,
-    loyalty,
-    membership,
+    paymentTenderReservations,
+    paymentCouponReservations,
   );
 
   return {
     service,
     paymentCheckoutAttempt,
     orders,
-    loyalty,
-    membership,
+    paymentTenderReservations,
+    paymentCouponReservations,
     getRow: () => row,
   };
 };
@@ -166,21 +160,14 @@ describe('PaymentCheckoutAttemptService', () => {
   it('persists PREPARING before HOLD and becomes PREPARED only after all holds succeed', async () => {
     const harness = createHarness();
     jest
-      .mocked(harness.loyalty.holdPaymentTender)
+      .mocked(harness.paymentTenderReservations.holdPaymentTender)
       .mockImplementation(async () => {
         expect(harness.getRow()?.status).toBe('PREPARING');
-        return {
-          reservationId: 'loyalty-reservation-1',
-          userId: snapshot.userId,
-          pointsValueCents: 200,
-          balanceCents: 300,
-        };
       });
     jest
-      .mocked(harness.membership.holdPaymentCoupons)
+      .mocked(harness.paymentCouponReservations.holdPaymentCoupons)
       .mockImplementation(async () => {
         expect(harness.getRow()?.status).toBe('PREPARING');
-        return { couponId: null, selectedUserCouponId: null };
       });
 
     const prepared = await harness.service.prepare({
@@ -210,26 +197,34 @@ describe('PaymentCheckoutAttemptService', () => {
         data: expect.objectContaining({ storeId: storeDbId }),
       }),
     );
-    expect(harness.loyalty.holdPaymentTender).toHaveBeenCalledWith(
+    expect(
+      harness.paymentTenderReservations.holdPaymentTender,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         attemptId: 'attempt-1',
         pointsValueCents: 200,
         balanceCents: 300,
       }),
     );
-    expect(harness.membership.holdPaymentCoupons).toHaveBeenCalledWith(
+    expect(
+      harness.paymentCouponReservations.holdPaymentCoupons,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         attemptId: 'attempt-1',
+        userStableId: 'cmember1',
         couponStableId: 'ccoupon1',
         selectedUserCouponId: 'user-coupon-1',
       }),
     );
+    expect(
+      harness.paymentCouponReservations.holdPaymentCoupons.mock.calls[0]?.[0],
+    ).not.toHaveProperty('userId');
   });
 
   it('releases every partial hold and marks FAILED if reservation preparation fails', async () => {
     const harness = createHarness();
     jest
-      .mocked(harness.membership.holdPaymentCoupons)
+      .mocked(harness.paymentCouponReservations.holdPaymentCoupons)
       .mockRejectedValue(new Error('coupon race'));
 
     await expect(
@@ -243,12 +238,12 @@ describe('PaymentCheckoutAttemptService', () => {
       }),
     ).rejects.toThrow('coupon race');
 
-    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith(
-      'attempt-1',
-    );
-    expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledWith(
-      'attempt-1',
-    );
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledWith('attempt-1');
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
@@ -271,8 +266,12 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(first.status).toBe('CANCELLED');
     expect(second.status).toBe('CANCELLED');
-    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledTimes(1);
-    expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('reuses the persisted immutable snapshot without requoting on duplicate start', async () => {
@@ -291,8 +290,12 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(first.id).toBe(second.id);
     expect(harness.orders.preparePaymentOrder).toHaveBeenCalledTimes(1);
-    expect(harness.loyalty.holdPaymentTender).toHaveBeenCalledTimes(1);
-    expect(harness.membership.holdPaymentCoupons).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentTenderReservations.holdPaymentTender,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentCouponReservations.holdPaymentCoupons,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('rejects the same attempt when the store or order draft changes', async () => {
@@ -338,12 +341,12 @@ describe('PaymentCheckoutAttemptService', () => {
     await expect(harness.service.prepare(input)).rejects.toMatchObject({
       response: { code: 'PAYMENT_PREPARATION_EXPIRED' },
     });
-    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith(
-      'attempt-1',
-    );
-    expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledWith(
-      'attempt-1',
-    );
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledWith('attempt-1');
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
@@ -362,12 +365,12 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(cancelled.cancelled).toBe(true);
     expect(cancelled.checkout.status).toBe('CANCELLED');
-    expect(harness.loyalty.releasePaymentTender).toHaveBeenCalledWith(
-      'attempt-1',
-    );
-    expect(harness.membership.releasePaymentCoupons).toHaveBeenCalledWith(
-      'attempt-1',
-    );
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledWith('attempt-1');
   });
 
   it('does not release reservations when a stale failure races after provider processing started', async () => {
@@ -391,7 +394,43 @@ describe('PaymentCheckoutAttemptService', () => {
     );
 
     expect(current.status).toBe('PROCESSING');
-    expect(harness.loyalty.releasePaymentTender).not.toHaveBeenCalled();
-    expect(harness.membership.releasePaymentCoupons).not.toHaveBeenCalled();
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).not.toHaveBeenCalled();
   });
+
+  it.each(['UNKNOWN', 'RECONCILING'] as const)(
+    'keeps reservations held while checkout is %s',
+    async (status) => {
+      const harness = createHarness();
+      await harness.service.prepare({
+        source: 'POS_TERMINAL',
+        paymentMethod: 'CARD',
+        storeId: storeStableId,
+        attemptId: 'attempt-1',
+        clientIdempotencyKey: 'client-idem-1',
+        order,
+      });
+      const row = harness.getRow();
+      if (!row) throw new Error('checkout row missing');
+      row.status = status;
+      jest.clearAllMocks();
+
+      const current = await harness.service.markDefinitiveFailureAndRelease(
+        'attempt-1',
+        'FAILED',
+      );
+
+      expect(current.status).toBe(status);
+      expect(
+        harness.paymentTenderReservations.releasePaymentTender,
+      ).not.toHaveBeenCalled();
+      expect(
+        harness.paymentCouponReservations.releasePaymentCoupons,
+      ).not.toHaveBeenCalled();
+    },
+  );
 });

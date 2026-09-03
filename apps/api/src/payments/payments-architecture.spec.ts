@@ -268,6 +268,33 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
+  it('keeps payment preparation on Benefits reservation public contracts instead of Loyalty/Membership internals', () => {
+    const protectedFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      {
+        productionOnly: true,
+      },
+    ).filter(
+      ({ path }) =>
+        path.endsWith('payment-checkout-attempt.service.ts') ||
+        path.endsWith('pos-card-payment-orchestration.module.ts'),
+    );
+
+    expect(
+      importViolations(protectedFiles, SOURCE_ROOT, (specifier) =>
+        /(?:^|\/)(?:loyalty|membership)(?:\/|$)/.test(specifier),
+      ),
+    ).toEqual([]);
+
+    const imports = protectedFiles.flatMap(({ source }) =>
+      importSpecifiers(source),
+    );
+    expect(imports).toContain('../benefits/public-api');
+    expect(imports).toContain(
+      '../benefits/public-api/payment-benefits-reservation.module',
+    );
+  });
+
   it('prevents Orders and POS from importing Clover or payment provider infrastructure', () => {
     const consumers = [
       ...scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {

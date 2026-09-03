@@ -40,6 +40,12 @@ node tools/architecture/scan-architecture.mjs --report
   non-global, concrete coupon benefit services cannot be deep-imported outside
   their implementation root, and migrated Identity consumers cannot regain a
   direct Catalog/Offers dependency;
+- Unified payment preparation consumes points/balance and coupon HOLD/RELEASE only
+  through the registered Benefits payment-reservation contracts/composition
+  surface. `PaymentCheckoutAttemptService` and its POS composition module cannot
+  deep-import Loyalty/Membership implementations again; lowering the matching
+  `payments-clover -> identity-customer-benefits` allowance is part of the same
+  contraction;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

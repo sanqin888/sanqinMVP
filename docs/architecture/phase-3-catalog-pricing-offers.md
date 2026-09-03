@@ -138,7 +138,55 @@ is active pre-production work, while Web Ecommerce is guarded production and may
 only be changed when it is a documented critical modularization blocker with the
 required active verification gate.
 
+## Slice 2B — POS Payment Benefits reservation boundary contraction
+
+Status: **LOCAL implementation complete, pending review/CI**.  
+Base: `origin/dev@4fc982cd` (2026-09-03).
+
+This follow-up contracts only the Unified Payment preparation HOLD/RELEASE boundary;
+it does not move the transaction-bound COMMIT path:
+
+- Benefits now owns two narrow payment-reservation ports: one for Points/Stored
+  Balance HOLD/RELEASE and one for Coupon HOLD/RELEASE. The contracts expose only
+  payment/business facts (`attemptId`, `userStableId`, benefit selections, cents and
+  `expiresAt`) and return no Prisma reservation/user IDs.
+- `LoyaltyService` and `MembershipService` remain the current implementations but
+  implement those Benefits-owned ports. A Benefits public composition module aliases
+  the tokens to the existing providers without creating another pass-through facade.
+- `PaymentCheckoutAttemptService` no longer imports/injects concrete `LoyaltyService`
+  or `MembershipService`. Coupon HOLD also stops receiving the snapshot's internal
+  User DB UUID; Benefits resolves the user internally from `userStableId`.
+- `PosCardPaymentOrchestrationModule` now imports the Benefits reservation
+  composition surface rather than wiring `LoyaltyModule` and `MembershipModule`
+  directly.
+- Existing payment-preparation behavior stays in the same order:
+  `PREPARING -> HOLD tender -> HOLD coupon -> PREPARED`; partial HOLD failure,
+  expired pre-provider preparation, cancel-before-provider and definitive provider
+  failure still release reservations, while `UNKNOWN` / `RECONCILING` remain held
+  and duplicate preparation continues to reuse the persisted immutable snapshot.
+- Four production deep imports are removed, contracting
+  `payments-clover -> identity-customer-benefits` direct-import debt from 17 to 13.
+  The baseline is lowered in the same slice and both the central scanner and Payments
+  architecture test guard the migrated payment-preparation consumers against
+  regressing to Loyalty/Membership internals.
+- Production Web Clover Ecommerce, Web checkout/surcharge/reconciliation/refund,
+  payment traffic cutover, feature flags, Prisma schema and migrations are unchanged.
+
+The existing COMMIT sequence is deliberately retained inside
+`OrdersService.createFromConfirmedPaymentSnapshot()` so Points/Balance COMMIT,
+Coupon COMMIT and Order creation remain in one Prisma transaction. That remaining
+cross-context transaction boundary is Slice 2C work only if a contract can preserve
+atomicity without exposing `Prisma.TransactionClient` as an ordinary public contract
+or moving Benefits persistence ownership into Orders.
+
 ## Remaining Phase 3 work
+
+### Slice 2C — transaction-bound Benefits COMMIT contraction
+
+Design the safe follow-up for `commitPaymentTenderForOrder()` and
+`commitPaymentCouponsForOrder()` while preserving the current single-transaction
+Order finalization invariant. Do not implement a separate Benefits transaction or
+move Benefits persistence into Orders merely to reduce import counts.
 
 ### Slice 3 — Admin Catalog ownership contraction
 

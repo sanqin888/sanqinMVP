@@ -291,13 +291,33 @@ modularization code batch must append one new entry as part of the same change,
 rather than reconstructing the timeline later from scattered documents.  
 **Details:** this file and `AGENTS.md` section 19.
 
+### 2026-09-03 — Phase 3 Slice 2B: POS Payment Benefits reservation boundary contraction
+
+**PR/SHA:** local branch `refactor/phase3-slice2b-payment-benefits-reservations` from `origin/dev@4fc982cd`  
+**State:** LOCAL  
+**Result:** Unified Payment preparation now uses Benefits-owned narrow Points/Balance
+and Coupon reservation contracts for HOLD/RELEASE instead of directly injecting
+`LoyaltyService` / `MembershipService`. POS payment composition also wires the
+Benefits public reservation module rather than the concrete Loyalty/Membership
+modules, and Coupon HOLD no longer receives the internal User DB UUID. The measured
+`payments-clover -> identity-customer-benefits` direct-import debt contracts from
+17 to 13 with a matching architecture-baseline/guard update. The existing
+transaction-bound COMMIT + Order creation sequence, production Web Clover behavior,
+feature flags and Prisma schema/migrations remain unchanged; transaction-bound
+COMMIT contraction is recorded as Slice 2C follow-up.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`,
+`docs/payments/clover-pos-integration-charter.md`,
+`docs/payments/clover-pos-phase-plan.md`.
+
 ## Current position
 
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1 and Slice 2 merged; next planned work remains the later Phase 3
-  slices recorded in `docs/architecture/phase-3-catalog-pricing-offers.md`.
+- Phase 3: Slice 1 and Slice 2 merged; Slice 2B is complete locally and pending
+  review/CI. Slice 2C is a transaction-bound COMMIT design follow-up, not part of
+  the current source change.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

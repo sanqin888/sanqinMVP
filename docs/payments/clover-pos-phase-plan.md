@@ -454,8 +454,9 @@ Web Clover 行为。若 Web 生产路径本身成为模块化关键阻塞，则�
 - POS 不得 import Clover gateway/OAuth/raw schema。
 - POS 只能调用 Unified Payment application/public contract。
 - 新 Unified Payment core contract 不得依赖 POS UI/types。
-- 明确 orchestration/composition 层是同时依赖 Payments + Orders / Loyalty / Membership public boundary 的允许位置。
-- Payments infrastructure 不得直接操作 Loyalty / Membership reservation internals。
+- 明确 orchestration/composition 层是同时依赖 Payments + Orders + Benefits payment-reservation public boundary 的允许位置；payment preparation 不得直接注入 concrete `LoyaltyService` / `MembershipService`。
+- Points/Balance 与 Coupon 的 HOLD/RELEASE 通过 Benefits-owned 窄 contracts/composition wiring 提供；Payments infrastructure 不得直接操作 Loyalty / Membership reservation internals。
+- 现有 COMMIT 继续在 `OrdersService.createFromConfirmedPaymentSnapshot()` 的同一 Prisma transaction 内与 Order creation 原子执行；在找到不泄漏 `Prisma.TransactionClient` 且不拆散原子性的 transaction-bound Benefits contract 前，不得为了边界整洁而拆成独立 Benefits transaction。
 - Phase D orchestration 不得直接 import REST Pay Display / Platform v3 gateway 或 mapper。
 - 新流程禁止在 Payment provider/application 给出 canonical `SUCCEEDED` / internal-only finalize 前创建 paid Order。
 - Web legacy exception 仍精确保留，Phase D 不得扩大。

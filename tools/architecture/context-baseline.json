@@ -282,6 +282,20 @@
     "contractionMigration": "apps/api/prisma/migrations/20260901235900_contract_loyalty_policy_storage/migration.sql",
     "allowedBusinessConfigPolicyFiles": []
   },
+  "paymentBenefitsReservationBoundary": {
+    "ownerContext": "identity-customer-benefits",
+    "ownerRoots": [
+      "apps/api/src/benefits",
+      "apps/api/src/loyalty",
+      "apps/api/src/membership"
+    ],
+    "publicContract": "apps/api/src/benefits/public-api.ts",
+    "publicCompositionModule": "apps/api/src/benefits/public-api/payment-benefits-reservation.module.ts",
+    "protectedConsumers": [
+      "apps/api/src/orchestration/payment-checkout-attempt.service.ts",
+      "apps/api/src/orchestration/pos-card-payment-orchestration.module.ts"
+    ]
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -362,7 +376,7 @@
     "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
     "payments-clover -> commerce-orders-fulfillment": 10,
-    "payments-clover -> identity-customer-benefits": 17,
+    "payments-clover -> identity-customer-benefits": 13,
     "payments-clover -> messaging-notifications": 3,
     "payments-clover -> runtime-data-ci-ops": 8,
     "payments-clover -> store-operations-pos-print": 11,
