@@ -140,8 +140,9 @@ required active verification gate.
 
 ## Slice 2B — POS Payment Benefits reservation boundary contraction
 
-Status: **LOCAL implementation complete, pending review/CI**.  
-Base: `origin/dev@4fc982cd` (2026-09-03).
+Status: **MERGED** via PR #2139 / `6a022c8c` on 2026-09-03.  
+Implementation base: `origin/dev@4fc982cd`. CI architecture, lint, build,
+declaration and test gates passed before merge.
 
 This follow-up contracts only the Unified Payment preparation HOLD/RELEASE boundary;
 it does not move the transaction-bound COMMIT path:
@@ -179,19 +180,68 @@ cross-context transaction boundary is Slice 2C work only if a contract can prese
 atomicity without exposing `Prisma.TransactionClient` as an ordinary public contract
 or moving Benefits persistence ownership into Orders.
 
+## Slice 2C — transaction-bound Benefits COMMIT contraction
+
+Status: **DEFERRED after readiness audit (2026-09-03)**.
+
+The audit confirmed that `commitPaymentTenderForOrder()`,
+`commitPaymentCouponsForOrder()` and `Order.create()` currently participate in the
+same Prisma transaction owned by `OrdersService.createFromConfirmedPaymentSnapshot()`.
+The Loyalty COMMIT also locks the reservation/account and writes ledger/account
+state inside that transaction. A normal Benefits facade or a separate Benefits
+transaction would weaken the atomic invariant, while publishing
+`Prisma.TransactionClient` as an ordinary cross-context public contract would
+violate the current architecture rules.
+
+The audit also found that `OrdersService` still has many other concrete
+Loyalty/Membership calls, so replacing only these two COMMIT calls would not
+meaningfully contract `commerce-orders-fulfillment -> identity-customer-benefits`.
+Slice 2C is therefore not an implementation blocker and remains deferred until a
+safe transaction-scoped capability/Unit-of-Work design can preserve atomicity
+without moving Benefits persistence ownership into Orders.
+
+## Slice 3 — Admin Catalog ownership contraction
+
+Status: **LOCAL implementation complete, pending review/CI**.  
+Base: `origin/dev@6a022c8c`; branch
+`refactor/phase3-slice3-admin-catalog-ownership`.
+
+This slice moves the Admin menu management owner from the Admin adapter into the
+Catalog context without changing Admin HTTP routes or menu persistence semantics:
+
+- added Catalog-owned `CatalogAdminService` under `apps/api/src/menu` for Admin
+  full-menu reads, categories, packaging, menu items/fixed-component validation,
+  option-group templates/options/bindings and daily-special management;
+- added `menu/public-api.ts` and exports the Catalog management capability through
+  the existing `PublicMenuModule` composition surface;
+- `AdminMenuController` now delegates ordinary menu management directly to the
+  Catalog public use case; `AdminMenuModule` no longer provides `PrismaService` or
+  imports Brand/Store configuration for menu business logic;
+- deleted the legacy `AdminMenuService`, so there is no duplicate active menu
+  persistence/validation implementation under the Identity/Admin context;
+- retained a narrow `AdminMenuAvailabilityOrchestrationService` only for the three
+  existing Uber side-effect paths: availability-affecting `updateItem`, explicit
+  item availability, and option availability. Catalog performs the persistence
+  and effective-availability decision first; Admin then invokes only the Uber
+  public availability port and preserves the existing HTTP response behavior;
+- moved the existing characterization coverage so Catalog rules remain tested and
+  added coverage that ordinary item updates do not trigger Uber while availability
+  changes still do;
+- added a central architecture guard that requires Admin menu to consume
+  `menu/public-api.ts`, forbids direct Prisma ownership from returning under
+  `apps/api/src/admin/menu/**`, keeps Uber provider coordination out of
+  `CatalogAdminService`, and prevents the retired `AdminMenuService` from returning;
+- removing the old Admin service/module Prisma imports lowers
+  `identity-customer-benefits -> runtime-data-ci-ops` from 21 to 19. The new
+  Catalog persistence import is balanced by removing the redundant local
+  `PrismaService` provider/import from `PromotionsModule`, so
+  `catalog-pricing-offers -> runtime-data-ci-ops` remains 10 and no baseline is
+  increased.
+
+No Prisma schema/migration, Web route, production Web Clover behavior or Uber wire
+contract changes are part of Slice 3.
+
 ## Remaining Phase 3 work
-
-### Slice 2C — transaction-bound Benefits COMMIT contraction
-
-Design the safe follow-up for `commitPaymentTenderForOrder()` and
-`commitPaymentCouponsForOrder()` while preserving the current single-transaction
-Order finalization invariant. Do not implement a separate Benefits transaction or
-move Benefits persistence into Orders merely to reduce import counts.
-
-### Slice 3 — Admin Catalog ownership contraction
-
-Move Menu CRUD/application decisions out of `AdminMenuService` into Catalog-owned
-use cases. Admin remains an authenticated transport/management adapter.
 
 ### Slice 4 — Offers -> Messaging boundary
 
@@ -200,9 +250,19 @@ capability instead of directly importing `NotificationService`.
 
 ### Slice 5 — Catalog availability / Uber orchestration contraction
 
-Separate Catalog availability persistence from the Uber provider sync side
-effect. Because this touches the active Uber operational path, it requires the
-existing per-slice production verification gate.
+**Explicit follow-up from Slice 3:** move the temporary
+`AdminMenuAvailabilityOrchestrationService` coordination out of the Admin adapter.
+Catalog must continue to own availability persistence/effective-availability facts,
+while an explicit orchestration boundary coordinates those facts with the Uber
+public availability capability. Also re-audit the existing `publishToUberEats`
+fixed-component compatibility guard so provider capability constraints do not
+silently become permanent Catalog policy.
+
+Slice 5 must preserve the currently verified behavior for item availability,
+availability-affecting item update and option availability, including best-effort
+Uber failure handling and the Admin response `storeId` compatibility mapping.
+Because this changes the active Uber operational path, it requires the existing
+per-slice production verification gate before advancing further.
 
 ### Slice 6 — Phase 3 closeout
 

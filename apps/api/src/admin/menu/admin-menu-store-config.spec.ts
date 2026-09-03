@@ -1,6 +1,6 @@
-import { AdminMenuService } from './admin-menu.service';
+import { CatalogAdminService } from '../../menu/catalog-admin.service';
 
-describe('AdminMenuService canonical store timezone', () => {
+describe('CatalogAdminService canonical store timezone', () => {
   it('loads the admin menu from StoreConfig without creating BusinessConfig', async () => {
     const prisma = {
       menuDailySpecial: { findMany: jest.fn().mockResolvedValue([]) },
@@ -13,9 +13,8 @@ describe('AdminMenuService canonical store timezone', () => {
         timezone: 'America/Toronto',
       }),
     };
-    const service = new AdminMenuService(
+    const service = new CatalogAdminService(
       prisma as never,
-      {} as never,
       brandStoreConfigReader as never,
     );
 

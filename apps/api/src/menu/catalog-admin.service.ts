@@ -1,55 +1,56 @@
-// apps/api/src/admin/menu/admin-menu.service.ts
 import {
   BadRequestException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { AppLogger } from '../../common/app-logger';
+import type { Prisma } from '@prisma/client';
+import { SpecialPricingMode } from '@prisma/client';
 import {
-  DailySpecialDto,
   AdminMenuCategoryDto,
   AdminMenuFullResponse,
   AdminMenuOptionGroupBindingDto,
+  DailySpecialDto,
   isAvailableNow,
   TemplateGroupFullDto,
   TemplateGroupLiteDto,
 } from '@shared/menu';
+
+import { AppLogger } from '../common/app-logger';
 import {
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
   resolveStoreNow,
-} from '../../promotions/public-api';
-import type { Prisma } from '@prisma/client';
-import { SpecialPricingMode } from '@prisma/client';
-import {
-  UBER_EATS_MENU_AVAILABILITY,
-  type UberEatsAvailabilitySyncResult,
-  type UberEatsMenuAvailabilityPort,
-} from '../../integrations/ubereats/public-api';
+} from '../promotions/public-api';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
-} from '../../store/public-api';
-type AvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
+} from '../store/public-api';
+
+export type CatalogAvailabilityMode =
+  | 'ON'
+  | 'PERMANENT_OFF'
+  | 'TEMP_TODAY_OFF';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
-function parseIsoOrNull(v: unknown): Date | null {
-  if (v === null || v === undefined || v === '') return null;
-  if (typeof v !== 'string')
+function parseIsoOrNull(value: unknown): Date | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') {
     throw new BadRequestException(
       'tempUnavailableUntil must be ISO string or null',
     );
-  const t = Date.parse(v);
-  if (!Number.isFinite(t))
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
     throw new BadRequestException(
       'tempUnavailableUntil must be valid ISO string',
     );
-  return new Date(t);
+  }
+  return new Date(timestamp);
 }
 
 function availabilityFromDb(
@@ -65,19 +66,17 @@ function availabilityFromDb(
 }
 
 function nextMidnightLocal(): Date {
-  const d = new Date();
-  d.setHours(24, 0, 0, 0); // next local midnight
-  return d;
+  const value = new Date();
+  value.setHours(24, 0, 0, 0);
+  return value;
 }
 
 @Injectable()
-export class AdminMenuService {
-  private readonly logger = new AppLogger(AdminMenuService.name);
+export class CatalogAdminService {
+  private readonly logger = new AppLogger(CatalogAdminService.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(UBER_EATS_MENU_AVAILABILITY)
-    private readonly uberEatsService: UberEatsMenuAvailabilityPort,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
   ) {}
@@ -146,12 +145,10 @@ export class AdminMenuService {
         isActive: updated.isActive,
       };
     } catch {
-      // Prisma update 找不到会抛错；这里统一转 404
       throw new NotFoundException('Menu category not found');
     }
   }
 
-  // ========= Full menu for admin =========
   async getFullMenu(): Promise<AdminMenuFullResponse> {
     const { timezone } =
       await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
@@ -219,15 +216,15 @@ export class AdminMenuService {
     ]);
 
     const templatesLite: TemplateGroupLiteDto[] = (templateGroups ?? []).map(
-      (g) => ({
-        templateGroupStableId: g.stableId,
-        nameEn: g.nameEn,
-        nameZh: g.nameZh ?? null,
-        defaultMinSelect: g.defaultMinSelect,
-        defaultMaxSelect: g.defaultMaxSelect ?? null,
-        isAvailable: g.isAvailable,
-        tempUnavailableUntil: toIso(g.tempUnavailableUntil),
-        sortOrder: g.sortOrder,
+      (group) => ({
+        templateGroupStableId: group.stableId,
+        nameEn: group.nameEn,
+        nameZh: group.nameZh ?? null,
+        defaultMinSelect: group.defaultMinSelect,
+        defaultMaxSelect: group.defaultMaxSelect ?? null,
+        isAvailable: group.isAvailable,
+        tempUnavailableUntil: toIso(group.tempUnavailableUntil),
+        sortOrder: group.sortOrder,
       }),
     );
 
@@ -238,43 +235,43 @@ export class AdminMenuService {
       sortOrder: type.sortOrder,
     }));
     const categoryDtos: AdminMenuCategoryDto[] = (categories ?? []).map(
-      (cat) => {
-        const categoryStableId = cat.stableId;
-
-        const items = (cat.items ?? []).map((it) => {
+      (category) => {
+        const categoryStableId = category.stableId;
+        const items = (category.items ?? []).map((item) => {
           const activeSpecial =
             rawDailySpecials.find(
               (special) =>
-                special.itemStableId === it.stableId &&
+                special.itemStableId === item.stableId &&
                 isDailySpecialActiveNow(special, now),
             ) ?? null;
           const effectivePriceCents = activeSpecial
-            ? resolveEffectivePriceCents(it.basePriceCents, activeSpecial)
+            ? resolveEffectivePriceCents(item.basePriceCents, activeSpecial)
             : undefined;
 
           const optionGroups: AdminMenuOptionGroupBindingDto[] = (
-            it.optionGroups ?? []
+            item.optionGroups ?? []
           )
             .filter(
               (link) =>
                 link.templateGroup && link.templateGroup.deletedAt == null,
             )
             .map((link) => {
-              const tg = link.templateGroup;
-
+              const templateGroup = link.templateGroup;
               const template: TemplateGroupLiteDto = {
-                templateGroupStableId: tg.stableId,
-                nameEn: tg.nameEn,
-                nameZh: tg.nameZh ?? null,
-                defaultMinSelect: tg.defaultMinSelect,
-                defaultMaxSelect: tg.defaultMaxSelect ?? null,
-                isAvailable: tg.isAvailable,
-                tempUnavailableUntil: toIso(tg.tempUnavailableUntil),
-                sortOrder: tg.sortOrder,
+                templateGroupStableId: templateGroup.stableId,
+                nameEn: templateGroup.nameEn,
+                nameZh: templateGroup.nameZh ?? null,
+                defaultMinSelect: templateGroup.defaultMinSelect,
+                defaultMaxSelect: templateGroup.defaultMaxSelect ?? null,
+                isAvailable: templateGroup.isAvailable,
+                tempUnavailableUntil: toIso(
+                  templateGroup.tempUnavailableUntil,
+                ),
+                sortOrder: templateGroup.sortOrder,
               };
 
               return {
-                templateGroupStableId: tg.stableId,
+                templateGroupStableId: templateGroup.stableId,
                 bindingStableId: null,
                 minSelect: link.minSelect,
                 maxSelect: link.maxSelect,
@@ -287,27 +284,28 @@ export class AdminMenuService {
             });
 
           return {
-            stableId: it.stableId,
+            stableId: item.stableId,
             categoryStableId,
-            nameEn: it.nameEn,
-            nameZh: it.nameZh ?? null,
-            basePriceCents: it.basePriceCents,
+            nameEn: item.nameEn,
+            nameZh: item.nameZh ?? null,
+            basePriceCents: item.basePriceCents,
             effectivePriceCents,
             activeSpecial: activeSpecial
               ? {
                   stableId: activeSpecial.stableId,
-                  effectivePriceCents: effectivePriceCents ?? it.basePriceCents,
+                  effectivePriceCents:
+                    effectivePriceCents ?? item.basePriceCents,
                   pricingMode: activeSpecial.pricingMode,
                   disallowCoupons: activeSpecial.disallowCoupons,
                 }
               : null,
-            isAvailable: it.isAvailable,
-            visibility: it.visibility,
-            isVisibleOnMainMenu: it.isVisibleOnMainMenu,
-            publishToUberEats: it.publishToUberEats,
-            labelStrategy: it.labelStrategy,
-            itemKind: it.itemKind,
-            packagings: it.packagings.map((packaging) => ({
+            isAvailable: item.isAvailable,
+            visibility: item.visibility,
+            isVisibleOnMainMenu: item.isVisibleOnMainMenu,
+            publishToUberEats: item.publishToUberEats,
+            labelStrategy: item.labelStrategy,
+            itemKind: item.itemKind,
+            packagings: item.packagings.map((packaging) => ({
               sortOrder: packaging.sortOrder,
               packagingType: {
                 stableId: packaging.packagingType.stableId,
@@ -316,26 +314,26 @@ export class AdminMenuService {
                 sortOrder: packaging.packagingType.sortOrder,
               },
             })),
-            fixedComponents: it.fixedComponents.map((component) => ({
+            fixedComponents: item.fixedComponents.map((component) => ({
               componentItemStableId: component.componentItemStableId,
               quantity: component.quantity,
               sortOrder: component.sortOrder,
             })),
-            tempUnavailableUntil: toIso(it.tempUnavailableUntil),
-            sortOrder: it.sortOrder,
-            imageUrl: it.imageUrl ?? null,
-            ingredientsEn: it.ingredientsEn ?? null,
-            ingredientsZh: it.ingredientsZh ?? null,
+            tempUnavailableUntil: toIso(item.tempUnavailableUntil),
+            sortOrder: item.sortOrder,
+            imageUrl: item.imageUrl ?? null,
+            ingredientsEn: item.ingredientsEn ?? null,
+            ingredientsZh: item.ingredientsZh ?? null,
             optionGroups,
           };
         });
 
         return {
           stableId: categoryStableId,
-          sortOrder: cat.sortOrder,
-          nameEn: cat.nameEn,
-          nameZh: cat.nameZh ?? null,
-          isActive: cat.isActive,
+          sortOrder: category.sortOrder,
+          nameEn: category.nameEn,
+          nameZh: category.nameZh ?? null,
+          isActive: category.isActive,
           items,
         };
       },
@@ -345,8 +343,11 @@ export class AdminMenuService {
       `Admin full menu generated: categories=${categoryDtos.length} templatesLite=${templatesLite.length}`,
     );
     const itemBasePriceMap = new Map(
-      categoryDtos.flatMap((cat) =>
-        (cat.items ?? []).map((item) => [item.stableId, item.basePriceCents]),
+      categoryDtos.flatMap((category) =>
+        (category.items ?? []).map((item) => [
+          item.stableId,
+          item.basePriceCents,
+        ]),
       ),
     );
     const dailySpecials: DailySpecialDto[] = [];
@@ -394,7 +395,6 @@ export class AdminMenuService {
     };
   }
 
-  // ========= Category =========
   async createCategory(body: {
     nameEn: string;
     nameZh?: string;
@@ -408,9 +408,7 @@ export class AdminMenuService {
       data: {
         nameEn,
         nameZh: body.nameZh?.trim() || null,
-        sortOrder: Number.isFinite(body.sortOrder)
-          ? (body.sortOrder as number)
-          : 0,
+        sortOrder: Number.isFinite(body.sortOrder) ? (body.sortOrder as number) : 0,
         isActive: typeof body.isActive === 'boolean' ? body.isActive : true,
         deletedAt: null,
       },
@@ -420,7 +418,6 @@ export class AdminMenuService {
     return { stableId: created.stableId };
   }
 
-  // ========= Packaging =========
   async createPackagingType(body: {
     name: string;
     sortOrder?: number;
@@ -474,21 +471,16 @@ export class AdminMenuService {
     return { ok: true };
   }
 
-  // ========= Item =========
   async createItem(body: {
     categoryStableId: string;
     stableId?: string;
-
     nameEn: string;
     nameZh?: string;
-
     basePriceCents: number;
     sortOrder?: number;
-
     imageUrl?: string;
     ingredientsEn?: string;
     ingredientsZh?: string;
-
     isAvailable?: boolean;
     visibility?: 'PUBLIC' | 'HIDDEN';
     isVisibleOnMainMenu?: boolean;
@@ -499,48 +491,41 @@ export class AdminMenuService {
     tempUnavailableUntil?: string | null;
   }) {
     const categoryStableId = (body.categoryStableId ?? '').trim();
-    if (!categoryStableId)
+    if (!categoryStableId) {
       throw new BadRequestException('categoryStableId is required');
+    }
 
     const category = await this.prisma.menuCategory.findFirst({
       where: { stableId: categoryStableId, deletedAt: null },
       select: { id: true },
     });
-    if (!category)
+    if (!category) {
       throw new NotFoundException(`Category not found: ${categoryStableId}`);
+    }
 
     const packagingTypes = await this.resolvePackagingTypes(
       body.packagingTypeStableIds ?? [],
     );
-
-    // ✅ stableId：允许不传；不传则走 schema 的 @default(cuid())
     const stableIdRaw =
       typeof body.stableId === 'string' ? body.stableId.trim() : '';
     const stableId = stableIdRaw.length > 0 ? stableIdRaw : undefined;
-
     const nameEn = (body.nameEn ?? '').trim();
     if (!nameEn) throw new BadRequestException('nameEn is required');
-    if (!Number.isFinite(body.basePriceCents))
+    if (!Number.isFinite(body.basePriceCents)) {
       throw new BadRequestException('basePriceCents is required');
+    }
 
     const created = await this.prisma.menuItem.create({
       data: {
         categoryId: category.id,
-
         ...(stableId ? { stableId } : {}),
-
         nameEn,
         nameZh: body.nameZh?.trim() || null,
-
         basePriceCents: Math.max(0, Math.round(body.basePriceCents)),
-        sortOrder: Number.isFinite(body.sortOrder)
-          ? (body.sortOrder as number)
-          : 0,
-
+        sortOrder: Number.isFinite(body.sortOrder) ? (body.sortOrder as number) : 0,
         imageUrl: body.imageUrl?.trim() || null,
         ingredientsEn: body.ingredientsEn?.trim() || null,
         ingredientsZh: body.ingredientsZh?.trim() || null,
-
         isAvailable:
           typeof body.isAvailable === 'boolean' ? body.isAvailable : true,
         visibility: body.visibility ?? 'PUBLIC',
@@ -561,7 +546,6 @@ export class AdminMenuService {
           })),
         },
         tempUnavailableUntil: parseIsoOrNull(body.tempUnavailableUntil),
-
         deletedAt: null,
       },
       select: { stableId: true },
@@ -574,17 +558,13 @@ export class AdminMenuService {
     itemStableId: string,
     body: {
       categoryStableId?: string;
-
       nameEn?: string;
       nameZh?: string | null;
-
       basePriceCents?: number;
       sortOrder?: number;
-
       imageUrl?: string | null;
       ingredientsEn?: string | null;
       ingredientsZh?: string | null;
-
       isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
@@ -599,11 +579,18 @@ export class AdminMenuService {
       }>;
       tempUnavailableUntil?: string | null;
     },
-  ) {
+  ): Promise<{
+    ok: true;
+    availability: {
+      stableId: string;
+      isAvailable: boolean;
+      tempUnavailableUntil: string | null;
+      effectiveAvailability: boolean;
+    };
+  }> {
     const stableId = (itemStableId ?? '').trim();
     if (!stableId) throw new BadRequestException('itemStableId is required');
 
-    // ✅ 软删除后视为不存在
     const existing = await this.prisma.menuItem.findFirst({
       where: { stableId, deletedAt: null },
       select: {
@@ -617,17 +604,18 @@ export class AdminMenuService {
     });
     if (!existing) throw new NotFoundException(`Item not found: ${stableId}`);
 
-    let categoryId: string | undefined = undefined;
+    let categoryId: string | undefined;
     if (body.categoryStableId) {
-      const cat = await this.prisma.menuCategory.findFirst({
+      const category = await this.prisma.menuCategory.findFirst({
         where: { stableId: body.categoryStableId.trim(), deletedAt: null },
         select: { id: true },
       });
-      if (!cat)
+      if (!category) {
         throw new NotFoundException(
           `Category not found: ${body.categoryStableId}`,
         );
-      categoryId = cat.id;
+      }
+      categoryId = category.id;
     }
 
     let packagingTypesForUpdate:
@@ -639,9 +627,7 @@ export class AdminMenuService {
       );
       if (packagingTypesForUpdate.length > 1) {
         const nextPackagingTypeStableIds = new Set(
-          packagingTypesForUpdate.map(
-            (packagingType) => packagingType.stableId,
-          ),
+          packagingTypesForUpdate.map((packagingType) => packagingType.stableId),
         );
         const referencedPackagingTypeStableIds = new Set(
           existing.optionGroups.flatMap(
@@ -650,7 +636,7 @@ export class AdminMenuService {
         );
         const removedReferencedPackagingTypes = [
           ...referencedPackagingTypeStableIds,
-        ].filter((stableId) => !nextPackagingTypeStableIds.has(stableId));
+        ].filter((value) => !nextPackagingTypeStableIds.has(value));
         if (removedReferencedPackagingTypes.length > 0) {
           throw new BadRequestException(
             `Packaging types still used by menu options: ${removedReferencedPackagingTypes.join(', ')}`,
@@ -675,12 +661,10 @@ export class AdminMenuService {
       );
     }
 
-    // ✅ 标准 2：只允许创建时写入 stableId（这里不更新 stableId）
     const updated = await this.prisma.menuItem.update({
       where: { stableId },
       data: {
         categoryId,
-
         nameEn: body.nameEn === undefined ? undefined : body.nameEn.trim(),
         nameZh:
           body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
@@ -691,9 +675,7 @@ export class AdminMenuService {
         sortOrder:
           body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
         imageUrl:
-          body.imageUrl === undefined
-            ? undefined
-            : body.imageUrl?.trim() || null,
+          body.imageUrl === undefined ? undefined : body.imageUrl?.trim() || null,
         ingredientsEn:
           body.ingredientsEn === undefined
             ? undefined
@@ -751,22 +733,23 @@ export class AdminMenuService {
       },
     });
 
-    if (
-      body.isAvailable !== undefined ||
-      body.tempUnavailableUntil !== undefined
-    ) {
-      await this.syncUberMenuItemAvailabilitySafely(
-        updated.stableId,
-        isAvailableNow(
+    return {
+      ok: true,
+      availability: {
+        stableId: updated.stableId,
+        isAvailable: updated.isAvailable,
+        tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
+        effectiveAvailability: isAvailableNow(
           availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
         ),
-      );
-    }
-
-    return { ok: true };
+      },
+    };
   }
 
-  async setItemAvailability(itemStableId: string, mode: AvailabilityMode) {
+  async setItemAvailability(
+    itemStableId: string,
+    mode: CatalogAvailabilityMode,
+  ) {
     const stableId = itemStableId.trim();
     if (!stableId) throw new BadRequestException('itemStableId is required');
 
@@ -795,24 +778,18 @@ export class AdminMenuService {
       },
     });
 
-    const uberSync = await this.syncUberMenuItemAvailabilitySafely(
-      updated.stableId,
-      isAvailableNow(
-        availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
-      ),
-    );
-
     return {
       stableId: updated.stableId,
       isAvailable: updated.isAvailable,
       visibility: updated.visibility,
       isVisibleOnMainMenu: updated.isVisibleOnMainMenu,
       tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
-      uberSync: this.presentUberAvailabilitySync(uberSync),
+      effectiveAvailability: isAvailableNow(
+        availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
+      ),
     };
   }
 
-  // ========= Templates =========
   async listOptionGroupTemplates(): Promise<TemplateGroupFullDto[]> {
     const groups = await this.prisma.menuOptionGroupTemplate.findMany({
       where: { deletedAt: null },
@@ -823,24 +800,12 @@ export class AdminMenuService {
           orderBy: { sortOrder: 'asc' },
           include: {
             childLinks: {
-              where: {
-                childOption: {
-                  deletedAt: null,
-                },
-              },
-              include: {
-                childOption: { select: { stableId: true } },
-              },
+              where: { childOption: { deletedAt: null } },
+              include: { childOption: { select: { stableId: true } } },
             },
             parentLinks: {
-              where: {
-                parentOption: {
-                  deletedAt: null,
-                },
-              },
-              include: {
-                parentOption: { select: { stableId: true } },
-              },
+              where: { parentOption: { deletedAt: null } },
+              include: { parentOption: { select: { stableId: true } } },
             },
           },
         },
@@ -882,46 +847,42 @@ export class AdminMenuService {
         .map((item) => item.stableId),
     );
 
-    return (groups ?? []).map((g) => {
-      const templateGroupStableId = g.stableId;
+    return (groups ?? []).map((group) => {
+      const templateGroupStableId = group.stableId;
       return {
         templateGroupStableId,
-
-        nameEn: g.nameEn,
-        nameZh: g.nameZh ?? null,
-
-        defaultMinSelect: g.defaultMinSelect,
-        defaultMaxSelect: g.defaultMaxSelect ?? null,
-
-        isAvailable: g.isAvailable,
-        tempUnavailableUntil: toIso(g.tempUnavailableUntil),
-
-        sortOrder: g.sortOrder,
-
-        options: (g.options ?? []).map((o) => {
+        nameEn: group.nameEn,
+        nameZh: group.nameZh ?? null,
+        defaultMinSelect: group.defaultMinSelect,
+        defaultMaxSelect: group.defaultMaxSelect ?? null,
+        isAvailable: group.isAvailable,
+        tempUnavailableUntil: toIso(group.tempUnavailableUntil),
+        sortOrder: group.sortOrder,
+        options: (group.options ?? []).map((option) => {
           const selfAvailable = isAvailableNow(
-            availabilityFromDb(o.isAvailable, o.tempUnavailableUntil),
+            availabilityFromDb(
+              option.isAvailable,
+              option.tempUnavailableUntil,
+            ),
           );
           const targetAvailable =
-            !o.targetItemStableId ||
-            availableTargetItemStableIds.has(o.targetItemStableId);
+            !option.targetItemStableId ||
+            availableTargetItemStableIds.has(option.targetItemStableId);
 
           return {
-            optionStableId: o.stableId,
+            optionStableId: option.stableId,
             templateGroupStableId,
-
-            nameEn: o.nameEn,
-            nameZh: o.nameZh ?? null,
-            priceDeltaCents: o.priceDeltaCents,
-            targetItemStableId: o.targetItemStableId ?? null,
-
+            nameEn: option.nameEn,
+            nameZh: option.nameZh ?? null,
+            priceDeltaCents: option.priceDeltaCents,
+            targetItemStableId: option.targetItemStableId ?? null,
             isAvailable: selfAvailable && targetAvailable,
-            tempUnavailableUntil: toIso(o.tempUnavailableUntil),
-            sortOrder: o.sortOrder,
-            childOptionStableIds: (o.childLinks ?? []).map(
+            tempUnavailableUntil: toIso(option.tempUnavailableUntil),
+            sortOrder: option.sortOrder,
+            childOptionStableIds: (option.childLinks ?? []).map(
               (link) => link.childOption.stableId,
             ),
-            parentOptionStableIds: (o.parentLinks ?? []).map(
+            parentOptionStableIds: (option.parentLinks ?? []).map(
               (link) => link.parentOption.stableId,
             ),
           };
@@ -944,9 +905,7 @@ export class AdminMenuService {
       data: {
         nameEn,
         nameZh: body.nameZh?.trim() || null,
-        sortOrder: Number.isFinite(body.sortOrder)
-          ? (body.sortOrder as number)
-          : 0,
+        sortOrder: Number.isFinite(body.sortOrder) ? (body.sortOrder as number) : 0,
         defaultMinSelect: Number.isFinite(body.defaultMinSelect)
           ? Math.max(0, Math.floor(body.defaultMinSelect as number))
           : 0,
@@ -975,13 +934,13 @@ export class AdminMenuService {
     },
   ) {
     const stableId = templateGroupStableId.trim();
-
     const exists = await this.prisma.menuOptionGroupTemplate.findFirst({
       where: { stableId, deletedAt: null },
       select: { id: true },
     });
-    if (!exists)
+    if (!exists) {
       throw new NotFoundException(`Template group not found: ${stableId}`);
+    }
 
     const nameEn =
       body.nameEn === undefined ? undefined : (body.nameEn ?? '').trim();
@@ -989,35 +948,33 @@ export class AdminMenuService {
       throw new BadRequestException('nameEn is required');
     }
 
-    const updateData = {
-      nameEn,
-      nameZh:
-        body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
-      sortOrder:
-        body.sortOrder === undefined
-          ? undefined
-          : Number.isFinite(body.sortOrder)
-            ? Math.floor(body.sortOrder)
-            : 0,
-      defaultMinSelect:
-        body.defaultMinSelect === undefined
-          ? undefined
-          : Number.isFinite(body.defaultMinSelect)
-            ? Math.max(0, Math.floor(body.defaultMinSelect))
-            : 0,
-      defaultMaxSelect:
-        body.defaultMaxSelect === undefined
-          ? undefined
-          : body.defaultMaxSelect === null
-            ? null
-            : Number.isFinite(body.defaultMaxSelect)
-              ? Math.max(0, Math.floor(body.defaultMaxSelect))
-              : null,
-    };
-
     await this.prisma.menuOptionGroupTemplate.update({
       where: { stableId },
-      data: updateData,
+      data: {
+        nameEn,
+        nameZh:
+          body.nameZh === undefined ? undefined : body.nameZh?.trim() || null,
+        sortOrder:
+          body.sortOrder === undefined
+            ? undefined
+            : Number.isFinite(body.sortOrder)
+              ? Math.floor(body.sortOrder)
+              : 0,
+        defaultMinSelect:
+          body.defaultMinSelect === undefined
+            ? undefined
+            : Number.isFinite(body.defaultMinSelect)
+              ? Math.max(0, Math.floor(body.defaultMinSelect))
+              : 0,
+        defaultMaxSelect:
+          body.defaultMaxSelect === undefined
+            ? undefined
+            : body.defaultMaxSelect === null
+              ? null
+              : Number.isFinite(body.defaultMaxSelect)
+                ? Math.max(0, Math.floor(body.defaultMaxSelect))
+                : null,
+      },
     });
 
     return { ok: true };
@@ -1034,13 +991,13 @@ export class AdminMenuService {
     },
   ) {
     const groupStableId = templateGroupStableId.trim();
-
     const group = await this.prisma.menuOptionGroupTemplate.findFirst({
       where: { stableId: groupStableId, deletedAt: null },
       select: { id: true, stableId: true },
     });
-    if (!group)
+    if (!group) {
       throw new NotFoundException(`Template group not found: ${groupStableId}`);
+    }
 
     const nameEn = (body.nameEn ?? '').trim();
     if (!nameEn) throw new BadRequestException('nameEn is required');
@@ -1051,10 +1008,11 @@ export class AdminMenuService {
         where: { stableId: targetItemStableId, deletedAt: null },
         select: { id: true },
       });
-      if (!exists)
+      if (!exists) {
         throw new BadRequestException(
           `Invalid targetItemStableId: ${targetItemStableId}`,
         );
+      }
     }
 
     const created = await this.prisma.menuOptionTemplateChoice.create({
@@ -1089,7 +1047,6 @@ export class AdminMenuService {
     },
   ) {
     const stableId = optionStableId.trim();
-
     const exists = await this.prisma.menuOptionTemplateChoice.findFirst({
       where: { stableId, deletedAt: null },
       select: { id: true, templateGroupId: true },
@@ -1127,7 +1084,6 @@ export class AdminMenuService {
     };
 
     if (body.childOptionStableIds === undefined) {
-      // ✅ 标准 2：只允许创建时写入 stableId（这里不更新 stableId）
       await this.prisma.menuOptionTemplateChoice.update({
         where: { stableId },
         data: updateData,
@@ -1142,7 +1098,6 @@ export class AdminMenuService {
           .filter((id) => id && id !== stableId),
       ),
     );
-
     const childOptions =
       childStableIds.length > 0
         ? await this.prisma.menuOptionTemplateChoice.findMany({
@@ -1154,58 +1109,60 @@ export class AdminMenuService {
             select: { id: true, stableId: true },
           })
         : [];
-
     const foundChildStableIds = new Set(
       childOptions.map((option) => option.stableId),
     );
     const missingChildStableIds = childStableIds.filter(
       (id) => !foundChildStableIds.has(id),
     );
-
     if (missingChildStableIds.length > 0) {
       throw new BadRequestException(
         `Invalid child options: ${missingChildStableIds.join(', ')}`,
       );
     }
 
-    const ops: Prisma.PrismaPromise<unknown>[] = [];
+    const operations: Prisma.PrismaPromise<unknown>[] = [];
     if (Object.values(updateData).some((value) => value !== undefined)) {
-      ops.push(
+      operations.push(
         this.prisma.menuOptionTemplateChoice.update({
           where: { stableId },
           data: updateData,
         }),
       );
     }
-
-    ops.push(
+    operations.push(
       this.prisma.menuOptionChoiceLink.deleteMany({
         where: { parentOptionId: exists.id },
       }),
     );
-
     if (childOptions.length > 0) {
-      ops.push(
+      operations.push(
         this.prisma.menuOptionChoiceLink.createMany({
-          data: childOptions.map((opt) => ({
+          data: childOptions.map((option) => ({
             parentOptionId: exists.id,
-            childOptionId: opt.id,
+            childOptionId: option.id,
           })),
         }),
       );
     }
-
-    await this.prisma.$transaction(ops);
+    await this.prisma.$transaction(operations);
 
     return { ok: true };
   }
 
   async setTemplateOptionAvailability(
     optionStableId: string,
-    mode: AvailabilityMode,
-  ) {
+    mode: CatalogAvailabilityMode,
+  ): Promise<{
+    ok: true;
+    availability: {
+      stableId: string;
+      isAvailable: boolean;
+      tempUnavailableUntil: string | null;
+      effectiveAvailability: boolean;
+    };
+  }> {
     const stableId = optionStableId.trim();
-
     const exists = await this.prisma.menuOptionTemplateChoice.findFirst({
       where: { stableId, deletedAt: null },
       select: { id: true },
@@ -1229,107 +1186,42 @@ export class AdminMenuService {
       },
     });
 
-    await this.syncUberOptionAvailabilitySafely(
-      updated.stableId,
-      isAvailableNow(
-        availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
-      ),
-    );
-
-    return { ok: true };
-  }
-
-  private presentUberAvailabilitySync(sync: UberEatsAvailabilitySyncResult) {
     return {
-      ...sync,
-      stores: sync.stores.map(({ storeStableId, ...store }) => ({
-        ...store,
-        storeId: storeStableId,
-      })),
+      ok: true,
+      availability: {
+        stableId: updated.stableId,
+        isAvailable: updated.isAvailable,
+        tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
+        effectiveAvailability: isAvailableNow(
+          availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
+        ),
+      },
     };
   }
 
-  private async syncUberMenuItemAvailabilitySafely(
-    menuItemStableId: string,
-    isAvailable: boolean,
-  ): Promise<UberEatsAvailabilitySyncResult> {
-    try {
-      return await this.uberEatsService.syncUberMenuItemAvailability({
-        menuItemStableId,
-        isAvailable,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : `${error}`;
-      this.logger.warn(
-        `Failed to sync Uber menu item availability: item=${menuItemStableId}, isAvailable=${isAvailable}, error=${message}`,
-      );
-      return {
-        status: 'FAILED',
-        stores: [
-          {
-            storeStableId: 'unknown',
-            status: 'FAILED',
-            error: { code: 'UNKNOWN', message, retryable: true },
-          },
-        ],
-      };
-    }
-  }
-
-  private async syncUberOptionAvailabilitySafely(
-    optionChoiceStableId: string,
-    isAvailable: boolean,
-  ) {
-    try {
-      await this.uberEatsService.syncUberOptionItemAvailability({
-        optionChoiceStableId,
-        isAvailable,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : `${error}`;
-      this.logger.warn(
-        `Failed to sync Uber option availability: option=${optionChoiceStableId}, isAvailable=${isAvailable}, error=${message}`,
-      );
-    }
-  }
-
-  // ✅ 标准 3：软删除（deletedAt 写入），不物理删除，保证 stableId 永不复用
   async deleteTemplateOption(optionStableId: string) {
     const stableId = optionStableId.trim();
-
-    // 1. 先查找存在的选项以获取其内部 ID (需要用到 id 来清理关联表)
     const existing = await this.prisma.menuOptionTemplateChoice.findFirst({
       where: { stableId, deletedAt: null },
       select: { id: true },
     });
+    if (!existing) throw new NotFoundException(`Option not found: ${stableId}`);
 
-    if (!existing) {
-      throw new NotFoundException(`Option not found: ${stableId}`);
-    }
-
-    // 2. 使用事务同时执行：清理关联 + 软删除本体
     await this.prisma.$transaction([
-      // 步骤 A: 物理删除关联表中的死链接
-      // 无论是作为父亲(parent)还是孩子(child)，只要涉及这个选项，关系都删掉
       this.prisma.menuOptionChoiceLink.deleteMany({
         where: {
           OR: [{ parentOptionId: existing.id }, { childOptionId: existing.id }],
         },
       }),
-
-      // 步骤 B: 对选项本体执行软删除
       this.prisma.menuOptionTemplateChoice.update({
         where: { id: existing.id },
-        data: {
-          deletedAt: new Date(),
-        },
+        data: { deletedAt: new Date() },
       }),
     ]);
 
     return { ok: true };
   }
 
-  // ========= Bindings =========
   async bindTemplateGroupToItem(
     itemStableId: string,
     body: {
@@ -1338,7 +1230,6 @@ export class AdminMenuService {
       maxSelect: number | null;
       sortOrder: number;
       isEnabled: boolean;
-      /** Empty means the option affects every packaging used by the item. */
       affectedPackagingTypeStableIds?: string[];
     },
   ) {
@@ -1348,9 +1239,7 @@ export class AdminMenuService {
         id: true,
         packagings: {
           orderBy: { sortOrder: 'asc' },
-          select: {
-            packagingType: { select: { stableId: true } },
-          },
+          select: { packagingType: { select: { stableId: true } } },
         },
       },
     });
@@ -1379,30 +1268,29 @@ export class AdminMenuService {
       }
     }
 
-    const tg = await this.prisma.menuOptionGroupTemplate.findFirst({
+    const templateGroup = await this.prisma.menuOptionGroupTemplate.findFirst({
       where: { stableId: body.templateGroupStableId.trim(), deletedAt: null },
       select: { id: true },
     });
-    if (!tg)
+    if (!templateGroup) {
       throw new NotFoundException(
         `Template group not found: ${body.templateGroupStableId}`,
       );
+    }
 
     await this.prisma.menuItemOptionGroup.upsert({
       where: {
         itemId_templateGroupId: {
           itemId: item.id,
-          templateGroupId: tg.id,
+          templateGroupId: templateGroup.id,
         },
       },
       create: {
         itemId: item.id,
-        templateGroupId: tg.id,
+        templateGroupId: templateGroup.id,
         minSelect: Math.max(0, Math.floor(body.minSelect ?? 0)),
         maxSelect:
-          body.maxSelect == null
-            ? null
-            : Math.max(0, Math.floor(body.maxSelect)),
+          body.maxSelect == null ? null : Math.max(0, Math.floor(body.maxSelect)),
         sortOrder: Number.isFinite(body.sortOrder)
           ? Math.floor(body.sortOrder)
           : 0,
@@ -1412,9 +1300,7 @@ export class AdminMenuService {
       update: {
         minSelect: Math.max(0, Math.floor(body.minSelect ?? 0)),
         maxSelect:
-          body.maxSelect == null
-            ? null
-            : Math.max(0, Math.floor(body.maxSelect)),
+          body.maxSelect == null ? null : Math.max(0, Math.floor(body.maxSelect)),
         sortOrder: Number.isFinite(body.sortOrder)
           ? Math.floor(body.sortOrder)
           : 0,
@@ -1436,20 +1322,21 @@ export class AdminMenuService {
     });
     if (!item) throw new NotFoundException(`Item not found: ${itemStableId}`);
 
-    const tg = await this.prisma.menuOptionGroupTemplate.findFirst({
+    const templateGroup = await this.prisma.menuOptionGroupTemplate.findFirst({
       where: { stableId: templateGroupStableId.trim(), deletedAt: null },
       select: { id: true },
     });
-    if (!tg)
+    if (!templateGroup) {
       throw new NotFoundException(
         `Template group not found: ${templateGroupStableId}`,
       );
+    }
 
     await this.prisma.menuItemOptionGroup.delete({
       where: {
         itemId_templateGroupId: {
           itemId: item.id,
-          templateGroupId: tg.id,
+          templateGroupId: templateGroup.id,
         },
       },
     });
@@ -1470,11 +1357,7 @@ export class AdminMenuService {
         ...(weekday ? { weekday } : { weekday: { in: [1, 2, 3, 4, 5, 6, 7] } }),
       },
       include: {
-        item: {
-          select: {
-            basePriceCents: true,
-          },
-        },
+        item: { select: { basePriceCents: true } },
       },
       orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
@@ -1485,7 +1368,6 @@ export class AdminMenuService {
         basePriceCents,
         special,
       );
-
       return {
         stableId: special.stableId,
         weekday: special.weekday,
@@ -1556,9 +1438,6 @@ export class AdminMenuService {
         return minutes;
       };
 
-      const startDate = raw.startDate ? parseIsoOrNull(raw.startDate) : null;
-      const endDate = raw.endDate ? parseIsoOrNull(raw.endDate) : null;
-
       return {
         stableId: raw.stableId?.trim() || null,
         weekday,
@@ -1576,8 +1455,8 @@ export class AdminMenuService {
           typeof raw.discountPercent === 'number'
             ? Math.trunc(raw.discountPercent)
             : null,
-        startDate,
-        endDate,
+        startDate: raw.startDate ? parseIsoOrNull(raw.startDate) : null,
+        endDate: raw.endDate ? parseIsoOrNull(raw.endDate) : null,
         startMinutes: parseMinutes(raw.startMinutes),
         endMinutes: parseMinutes(raw.endMinutes),
         disallowCoupons:
@@ -1592,9 +1471,7 @@ export class AdminMenuService {
     const uniqueKeySet = new Set<string>();
     for (const special of normalized) {
       const key = `${special.weekday}:${special.itemStableId}`;
-      if (uniqueKeySet.has(key)) {
-        duplicates.add(key);
-      }
+      if (uniqueKeySet.has(key)) duplicates.add(key);
       uniqueKeySet.add(key);
     }
     if (duplicates.size > 0) {
@@ -1619,7 +1496,6 @@ export class AdminMenuService {
           `Menu item not found: ${special.itemStableId}`,
         );
       }
-
       if (special.pricingMode === SpecialPricingMode.OVERRIDE_PRICE) {
         if (typeof special.overridePriceCents !== 'number') {
           throw new BadRequestException(
@@ -1673,10 +1549,7 @@ export class AdminMenuService {
 
     await this.prisma.$transaction(async (tx) => {
       const existing = await tx.menuDailySpecial.findMany({
-        where: {
-          weekday: { in: weekdays },
-          deletedAt: null,
-        },
+        where: { weekday: { in: weekdays }, deletedAt: null },
       });
       const existingByStableId = new Map(
         existing.map((special) => [special.stableId, special]),
@@ -1686,57 +1559,43 @@ export class AdminMenuService {
           .map((special) => special.stableId)
           .filter((stableId): stableId is string => Boolean(stableId)),
       );
-
       const toSoftDelete = existing.filter(
         (special) => !incomingStableIds.has(special.stableId),
       );
-
       if (toSoftDelete.length > 0) {
         await tx.menuDailySpecial.updateMany({
-          where: { stableId: { in: toSoftDelete.map((s) => s.stableId) } },
+          where: { stableId: { in: toSoftDelete.map((special) => special.stableId) } },
           data: { deletedAt: new Date() },
         });
       }
 
       for (const special of normalized) {
+        const data = {
+          weekday: special.weekday,
+          itemStableId: special.itemStableId,
+          pricingMode: special.pricingMode,
+          overridePriceCents: special.overridePriceCents,
+          discountDeltaCents: special.discountDeltaCents,
+          discountPercent: special.discountPercent,
+          startDate: special.startDate,
+          endDate: special.endDate,
+          startMinutes: special.startMinutes,
+          endMinutes: special.endMinutes,
+          disallowCoupons: special.disallowCoupons,
+          isEnabled: special.isEnabled,
+          sortOrder: special.sortOrder,
+          deletedAt: null,
+        };
         if (special.stableId && existingByStableId.has(special.stableId)) {
           await tx.menuDailySpecial.update({
             where: { stableId: special.stableId },
-            data: {
-              weekday: special.weekday,
-              itemStableId: special.itemStableId,
-              pricingMode: special.pricingMode,
-              overridePriceCents: special.overridePriceCents,
-              discountDeltaCents: special.discountDeltaCents,
-              discountPercent: special.discountPercent,
-              startDate: special.startDate,
-              endDate: special.endDate,
-              startMinutes: special.startMinutes,
-              endMinutes: special.endMinutes,
-              disallowCoupons: special.disallowCoupons,
-              isEnabled: special.isEnabled,
-              sortOrder: special.sortOrder,
-              deletedAt: null,
-            },
+            data,
           });
         } else {
           await tx.menuDailySpecial.create({
             data: {
               ...(special.stableId ? { stableId: special.stableId } : {}),
-              weekday: special.weekday,
-              itemStableId: special.itemStableId,
-              pricingMode: special.pricingMode,
-              overridePriceCents: special.overridePriceCents,
-              discountDeltaCents: special.discountDeltaCents,
-              discountPercent: special.discountPercent,
-              startDate: special.startDate,
-              endDate: special.endDate,
-              startMinutes: special.startMinutes,
-              endMinutes: special.endMinutes,
-              disallowCoupons: special.disallowCoupons,
-              isEnabled: special.isEnabled,
-              sortOrder: special.sortOrder,
-              deletedAt: null,
+              ...data,
             },
           });
         }

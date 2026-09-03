@@ -148,7 +148,7 @@
       "apps/api/src/accounting/accounting.service.ts",
       "apps/api/src/promotions/promotions.service.ts",
       "apps/api/src/menu/public-menu.service.ts",
-      "apps/api/src/admin/menu/admin-menu.service.ts",
+      "apps/api/src/menu/catalog-admin.service.ts",
       "apps/api/src/pos/pos-exchange-rate.service.ts",
       "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
       "apps/api/src/pos/pos-store-status.service.ts",
@@ -296,6 +296,14 @@
       "apps/api/src/orchestration/pos-card-payment-orchestration.module.ts"
     ]
   },
+  "adminCatalogOwnershipBoundary": {
+    "ownerService": "apps/api/src/menu/catalog-admin.service.ts",
+    "publicSurface": "apps/api/src/menu/public-api.ts",
+    "adminController": "apps/api/src/admin/menu/admin-menu.controller.ts",
+    "adminModule": "apps/api/src/admin/menu/admin-menu.module.ts",
+    "availabilityOrchestration": "apps/api/src/admin/menu/admin-menu-availability-orchestration.service.ts",
+    "retiredAdminService": "apps/api/src/admin/menu/admin-menu.service.ts"
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -369,7 +377,7 @@
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 2,
     "identity-customer-benefits -> messaging-notifications": 24,
-    "identity-customer-benefits -> runtime-data-ci-ops": 21,
+    "identity-customer-benefits -> runtime-data-ci-ops": 19,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
     "messaging-notifications -> runtime-data-ci-ops": 10,
