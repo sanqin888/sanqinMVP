@@ -125,12 +125,12 @@ raising other architecture debt allowances:
   Admin Prisma imports so `identity-customer-benefits -> runtime-data-ci-ops`
   contracts from 23 to 21.
 
-The legacy implementation files remain under `apps/api/src/coupons` temporarily
-because they still combine Prisma persistence and direct Messaging delivery. A
-physical move before those dependencies are separately contracted would only
-move debt between contexts and require raising baseline limits. The later
-Offers -> Messaging slice remains the next prerequisite for relocating trigger
-implementation cleanly.
+The legacy implementation files remain under `apps/api/src/coupons` temporarily.
+Slice 2 deliberately did not move them while Prisma persistence and direct Messaging
+delivery were still combined, because that would only have moved debt between
+contexts and raised baseline limits. Slice 4 now satisfies the Messaging-boundary
+prerequisite; physical relocation of the remaining persistence implementation is a
+separate ownership move and is not bundled into this boundary-only slice.
 
 The Payments-facing coupon HOLD/COMMIT/RELEASE path remains unchanged in this
 slice. The Clover compatibility entries are now governed separately: POS Terminal
@@ -202,9 +202,9 @@ without moving Benefits persistence ownership into Orders.
 
 ## Slice 3 — Admin Catalog ownership contraction
 
-Status: **LOCAL implementation complete, pending review/CI**.  
-Base: `origin/dev@6a022c8c`; branch
-`refactor/phase3-slice3-admin-catalog-ownership`.
+Status: **MERGED** via PR #2141 / merge `a29aae1d` on 2026-09-03.  
+Reviewed PR head `0fb3db83`; Web/API GitHub Actions completed successfully before
+merge.
 
 This slice moves the Admin menu management owner from the Admin adapter into the
 Catalog context without changing Admin HTTP routes or menu persistence semantics:
@@ -245,8 +245,40 @@ contract changes are part of Slice 3.
 
 ### Slice 4 — Offers -> Messaging boundary
 
-Coupon issuance/trigger behavior must request Messaging through a public
-capability instead of directly importing `NotificationService`.
+Status: **LOCAL implementation complete, pending user review/remote CI**.  
+Base: `origin/dev@a29aae1d`; branch
+`refactor/phase3-slice4-offers-messaging-boundary`.
+
+This slice contracts the two remaining direct Catalog/Pricing/Offers ->
+Messaging/Notifications imports without changing coupon eligibility, issuance,
+notification timing, template selection, provider execution, HTTP behavior, Prisma
+schema, Web Clover or Uber behavior:
+
+- Messaging now exposes `notifications/public-api.ts` with the narrow
+  `COUPON_ISSUED_NOTIFICATION` capability and contract instead of requiring Offers
+  to inject the concrete `NotificationService`.
+- `CouponProgramTriggerService` injects the Messaging-owned port and maps the
+  existing Prisma User/CouponProgram records once into an explicit notification
+  snapshot. Only `userStableId` crosses as user identity; the full Prisma models and
+  User DB UUID no longer cross the Offers -> Messaging boundary.
+- `NotificationService` implements that port and preserves the existing gift title,
+  locale, template, `MessagingSend.userId`, metadata and email-provider behavior.
+  `EmailService` resolves the existing internal `MessagingSend.userId` relation from
+  `userStableId` inside the Messaging persistence boundary, while its legacy
+  `userId` input remains available to untouched Messaging callers in this slice.
+- `CouponsModule` imports `NotificationModule` only through the Messaging public
+  surface. Existing non-Offers callers of `NotificationService` are intentionally
+  outside this slice and remain later Messaging-boundary debt.
+- Characterization coverage now checks both the Offers-side snapshot mapping and
+  the Messaging-side preservation of the DB audit link / trigger metadata.
+- The architecture baseline removes the
+  `catalog-pricing-offers -> messaging-notifications` direct-import allowance,
+  contracting that measured debt from `2 -> 0`. Any future deep import in that
+  direction is therefore a new-edge CI failure; public `public-api/contracts/ports`
+  traffic remains allowed.
+
+Local lint/build/test commands are intentionally not run before review under the
+repository workflow. Remote GitHub Actions is the validation gate after approval.
 
 ### Slice 5 — Catalog availability / Uber orchestration contraction
 

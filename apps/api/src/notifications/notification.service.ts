@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  MessagingTemplateType,
-  type CouponProgramTriggerType,
-  type User,
-} from '@prisma/client';
+import { MessagingTemplateType, type User } from '@prisma/client';
+import type {
+  CouponIssuedNotificationInput,
+  CouponIssuedNotificationPort,
+  CouponIssuedNotificationReason,
+} from './contracts/coupon-issued-notification.contract';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
@@ -13,7 +14,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 const GIFT_CONTENT_MAP: Record<
-  CouponProgramTriggerType,
+  CouponIssuedNotificationReason,
   {
     zh: { title: string; message: string };
     en: { title: string; message: string };
@@ -86,7 +87,7 @@ class NotificationRateLimiter {
 }
 
 @Injectable()
-export class NotificationService {
+export class NotificationService implements CouponIssuedNotificationPort {
   private readonly logger = new Logger(NotificationService.name);
   private readonly marketingLimiter = new NotificationRateLimiter();
 
@@ -442,35 +443,26 @@ export class NotificationService {
     });
   }
 
-  async notifyCouponIssued(params: {
-    user: User;
-    program: {
-      tittleCh?: string | null;
-      tittleEn?: string | null;
-      programStableId: string;
-      giftValue?: string | null;
-      triggerType: CouponProgramTriggerType | null;
-    };
-  }) {
-    const { user, program } = params;
-    if (!program.triggerType || !GIFT_CONTENT_MAP[program.triggerType]) {
+  async notifyCouponIssued(input: CouponIssuedNotificationInput) {
+    const { recipient, program } = input;
+    if (!program.reason || !GIFT_CONTENT_MAP[program.reason]) {
       return { ok: false, error: 'unsupported_trigger_type' };
     }
-    if (!user.email) {
+    if (!recipient.email) {
       return { ok: false, error: 'reward email unavailable' };
     }
 
-    const locale = user.language === 'ZH' ? 'zh' : 'en';
-    const content = GIFT_CONTENT_MAP[program.triggerType][locale];
+    const locale = recipient.language === 'ZH' ? 'zh' : 'en';
+    const content = GIFT_CONTENT_MAP[program.reason][locale];
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
     const giftName =
       locale === 'zh'
-        ? (program.tittleCh ?? program.tittleEn ?? program.programStableId)
-        : (program.tittleEn ?? program.tittleCh ?? program.programStableId);
+        ? (program.titleZh ?? program.titleEn ?? program.programStableId)
+        : (program.titleEn ?? program.titleZh ?? program.programStableId);
     const userName =
-      this.formatUserName(user) ||
+      this.formatUserName(recipient) ||
       (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer');
     const vars = {
       ...baseVars,
@@ -488,15 +480,15 @@ export class NotificationService {
     });
 
     return this.emailService.sendEmail({
-      to: user.email,
+      to: recipient.email,
       subject,
       html,
       text,
       tags: { type: 'gift_issued' },
-      locale: user.language === 'ZH' ? 'zh-CN' : 'en',
+      locale: recipient.language === 'ZH' ? 'zh-CN' : 'en',
       templateType: MessagingTemplateType.SIGNUP_WELCOME,
-      userId: user.id,
-      metadata: { triggerType: program.triggerType },
+      userStableId: recipient.userStableId,
+      metadata: { triggerType: program.reason },
     });
   }
 

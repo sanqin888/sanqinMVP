@@ -312,8 +312,8 @@ COMMIT contraction is recorded as Slice 2C follow-up.
 
 ### 2026-09-03 — Phase 3 Slice 3: Admin Catalog ownership contraction
 
-**PR/SHA:** local branch `refactor/phase3-slice3-admin-catalog-ownership` from `origin/dev@6a022c8c`  
-**State:** SOURCE / LOCAL REVIEW  
+**PR/SHA:** PR #2141 / merge `a29aae1d` (reviewed head `0fb3db83`)  
+**State:** CI  
 **Result:** Admin menu CRUD/read-model/application decisions moved into Catalog-owned
 `CatalogAdminService` exposed through `menu/public-api.ts`; the legacy
 `AdminMenuService` was deleted. Admin menu composition no longer owns Prisma or
@@ -331,16 +331,38 @@ marked DEFERRED after its atomic-transaction readiness audit.
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
+### 2026-09-03 — Phase 3 Slice 4: Offers -> Messaging boundary
+
+**PR/SHA:** local branch `refactor/phase3-slice4-offers-messaging-boundary` from `origin/dev@a29aae1d`  
+**State:** LOCAL  
+**Result:** Coupon-triggered gift notification delivery now crosses the
+Messaging/Notifications context only through `notifications/public-api.ts` and the
+Messaging-owned `COUPON_ISSUED_NOTIFICATION` port. `CouponProgramTriggerService`
+no longer injects the concrete `NotificationService` or passes Prisma User/
+CouponProgram models across the boundary; it maps a narrow recipient/program
+snapshot carrying only `userStableId` as user identity. Messaging resolves the
+existing internal `MessagingSend.userId` audit relation from that stable identity
+inside its own persistence boundary. `CouponsModule` likewise imports the
+notification composition module only from the
+public surface. The measured `catalog-pricing-offers -> messaging-notifications`
+direct-import debt is contracted from 2 to 0 and its baseline allowance is removed,
+so a future direct edge in that direction fails the central architecture gate. No
+Prisma schema/migration, coupon issuance rules, notification timing/template/provider,
+Web Clover or Uber runtime behavior is intentionally changed.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`.
+
 ## Current position
 
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1, Slice 2 and Slice 2B are merged. Slice 2C is **DEFERRED** after
-  readiness review because the current Benefits COMMIT + Order creation atomic
-  transaction has no safe Prisma-free cross-context replacement yet. Slice 3 is
-  source-complete locally and pending user review/remote CI; its temporary Admin
-  availability/Uber coordination is explicitly assigned to Slice 5.
+- Phase 3: Slice 1, Slice 2, Slice 2B and Slice 3 are merged; Slice 2C is
+  **DEFERRED** after readiness review because the current Benefits COMMIT + Order
+  creation atomic transaction has no safe Prisma-free cross-context replacement yet.
+  Slice 4 is source-complete locally and pending user review/remote CI. Slice 5
+  remains the explicit follow-up for the temporary Admin availability/Uber
+  coordination left by Slice 3.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

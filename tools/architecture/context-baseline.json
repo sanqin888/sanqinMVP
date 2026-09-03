@@ -359,7 +359,6 @@
     "brand-store -> store-operations-pos-print": 1,
     "catalog-pricing-offers -> architecture-foundation": 2,
     "catalog-pricing-offers -> identity-customer-benefits": 3,
-    "catalog-pricing-offers -> messaging-notifications": 2,
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> architecture-foundation": 9,
     "commerce-orders-fulfillment -> brand-store": 2,
