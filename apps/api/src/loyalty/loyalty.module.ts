@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { CouponsModule } from '../coupons/public-api';
 import { LoyaltyService } from './loyalty.service';
 import { LoyaltyController } from './loyalty.controller';
 import { LoyaltyEventProcessor } from './loyalty-event.processor';
@@ -14,7 +15,7 @@ import {
 import { PrismaLoyaltyPolicyWriter } from './loyalty-policy-prisma.writer';
 
 @Module({
-  imports: [PrismaModule, PosDeviceModule, MessagingModule],
+  imports: [PrismaModule, PosDeviceModule, MessagingModule, CouponsModule],
   providers: [
     LoyaltyService,
     PrismaLoyaltyPolicyWriter,

@@ -12,46 +12,14 @@ import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Prisma } from '@prisma/client';
+import type {
+  CouponProgramAdminInput,
+  CouponTemplateAdminInput,
+} from '../../coupons/public-api';
 import { AdminCouponsService } from './admin-coupons.service';
 
-type CouponTemplatePayload = {
-  couponStableId?: string;
-  tittleCh?: string | null;
-  titleEn?: string | null;
-  description?: string | null;
-  stackingPolicy?: 'EXCLUSIVE' | 'STACKABLE';
-  validFrom?: string | null;
-  validTo?: string | null;
-  useRule: Prisma.InputJsonValue;
-  issueRule?: Prisma.InputJsonValue | null;
-};
-
-type CouponProgramPayload = {
-  programStableId?: string;
-  tittleCh: string;
-  tittleEn?: string | null;
-  giftValue?: string | null;
-  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
-  distributionType?:
-    | 'AUTOMATIC_TRIGGER'
-    | 'MANUAL_CLAIM'
-    | 'PROMO_CODE'
-    | 'ADMIN_PUSH';
-  triggerType?:
-    | 'SIGNUP_COMPLETED'
-    | 'REFERRAL_QUALIFIED'
-    | 'MARKETING_OPT_IN'
-    | 'BIRTHDAY_MONTH'
-    | 'TIER_UPGRADE'
-    | null;
-  validFrom?: string | null;
-  validTo?: string | null;
-  promoCode?: string | null;
-  totalLimit?: number | null;
-  perUserLimit?: number | null;
-  items: Prisma.InputJsonValue;
-};
+type CouponTemplatePayload = CouponTemplateAdminInput;
+type CouponProgramPayload = CouponProgramAdminInput;
 
 type IssueProgramPayload = {
   userStableId?: string;

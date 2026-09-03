@@ -1,6 +1,7 @@
 // apps/api/src/membership/membership.service.ts
 import {
   BadRequestException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -20,7 +21,10 @@ import { normalizePhone } from '../common/utils/phone';
 import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
-import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import {
+  COUPON_PROGRAM_TRIGGER,
+  type CouponProgramTriggerPort,
+} from '../benefits/public-api';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { NotificationService } from '../notifications/notification.service';
 import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
@@ -38,7 +42,8 @@ export class MembershipService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
-    private readonly couponTriggerService: CouponProgramTriggerService,
+    @Inject(COUPON_PROGRAM_TRIGGER)
+    private readonly couponTriggerService: CouponProgramTriggerPort,
     private readonly emailVerification: EmailVerificationService,
     private readonly notificationService: NotificationService,
   ) {}
@@ -339,7 +344,7 @@ export class MembershipService {
     try {
       await this.couponTriggerService.issueProgramsForUser(
         'SIGNUP_COMPLETED',
-        user,
+        user.userStableId,
       );
 
       if (user.referredByUserId) {
@@ -349,7 +354,7 @@ export class MembershipService {
         if (referrer) {
           await this.couponTriggerService.issueProgramsForUser(
             'REFERRAL_QUALIFIED',
-            referrer,
+            referrer.userStableId,
           );
         }
       }
@@ -1819,7 +1824,7 @@ export class MembershipService {
       // 2. 原有的逻辑保持不变（如果有优惠券，它自己会发第二封）
       await this.couponTriggerService.issueProgramsForUser(
         'MARKETING_OPT_IN',
-        fullUser,
+        fullUser.userStableId,
       );
     } catch (error) {
       this.logger.error(

@@ -185,6 +185,48 @@ for (const absolutePath of sourceFiles) {
 
 const failures = [];
 
+const legacyCouponBenefitsModulePath = 'apps/api/src/coupons/coupons.module.ts';
+if (existsSync(join(REPOSITORY_ROOT, legacyCouponBenefitsModulePath))) {
+  const legacyCouponBenefitsModuleSource = readFileSync(
+    join(REPOSITORY_ROOT, legacyCouponBenefitsModulePath),
+    'utf8',
+  );
+  if (/\@Global\s*\(\s*\)/.test(legacyCouponBenefitsModuleSource)) {
+    failures.push(
+      'Coupon Benefits wiring must remain explicit; apps/api/src/coupons/coupons.module.ts cannot be @Global()',
+    );
+  }
+}
+
+const legacyCouponBenefitImplementationTargets = [
+  'apps/api/src/coupons/coupons.module',
+  'apps/api/src/coupons/coupon-program-claim.service',
+  'apps/api/src/coupons/coupon-program-eligibility.service',
+  'apps/api/src/coupons/coupon-program-issuer.service',
+  'apps/api/src/coupons/coupon-program-trigger.service',
+];
+for (const absolutePath of sourceFiles) {
+  const sourcePath = repositoryPath(absolutePath);
+  if (sourcePath.startsWith('apps/api/src/coupons/')) continue;
+  const source = readFileSync(absolutePath, 'utf8');
+  for (const specifier of importSpecifiers(source)) {
+    if (!specifier.startsWith('.')) continue;
+    const targetPath = resolveTarget(absolutePath, specifier);
+    if (
+      legacyCouponBenefitImplementationTargets.some(
+        (target) => targetPath === target || targetPath === target + '.ts',
+      )
+    ) {
+      failures.push(
+        'Coupon benefit implementations are private; use benefits/public-api or benefits/contracts: ' +
+          sourcePath +
+          ' -> ' +
+          specifier,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

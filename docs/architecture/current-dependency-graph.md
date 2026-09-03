@@ -1,10 +1,10 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 1 base: branch created from `origin/dev@e69b913d` (2026-09-03).
+Phase 3 Slice 2 base: branch created from `origin/dev@8cc42340` (2026-09-03).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the Phase 3 Slice 1 Pricing
-public-boundary contraction.
+by `tools/architecture/context-baseline.json` after the Phase 3 Slice 2 Offers /
+Benefits boundary contraction.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
@@ -21,7 +21,7 @@ Phase 3 slice boundary.
 | 1 | architecture-foundation | `apps/api/src/common`, `libs/foundation` (`@shared/foundation`) |
 | 2 | brand-store | `homepage`, `location`, `store` |
 | 3 | catalog-pricing-offers | `application/menu`, `coupons`, `menu`, `promotions`, `libs/shared` |
-| 4 | identity-customer-benefits | `admin`, `auth`, `loyalty`, `membership`, `phone-verification` |
+| 4 | identity-customer-benefits | `admin`, `auth`, `benefits`, `loyalty`, `membership`, `phone-verification` |
 | 5 | commerce-orders-fulfillment | `deliveries`, `orders`, `libs/order` |
 | 6 | payments-clover | `clover`, `orchestration`, `payments` |
 | 7 | store-operations-pos-print | `pos`, `tools/printer-server` |
@@ -42,7 +42,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 7; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 23; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 14; brand-store 4; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 21; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
@@ -244,12 +244,25 @@ pair fails CI.
   baseline, contracting that direct-import debt from 5 to 0.
 - Loyalty's two promotion-engine imports and Admin's Promotions module wiring now
   use the same public surface, lowering
-  `identity-customer-benefits -> catalog-pricing-offers` from 10 to 7.
-- PR #2132, merged before this slice, exposed the Orders ingestion boundary to
-  Uber and lowered `external-channels -> commerce-orders-fulfillment` from 5 to 1;
+  `identity-customer-benefits -> catalog-pricing-offers` from 10 to 7 in Slice 1.
+- Slice 2 adds an explicit `apps/api/src/benefits` owner root and Benefits-owned
+  coupon claim/trigger/admin-issuance contracts. `CouponsModule` is no longer
+  global and exports only those narrow tokens instead of concrete services.
+- Auth, Loyalty, Membership, Promotions and Admin now consume coupon-entitlement
+  behavior through `benefits/public-api.ts`; CouponTemplate/CouponProgram
+  validation and CRUD are exposed through `coupons/public-api.ts`. The remaining
+  `identity-customer-benefits -> catalog-pricing-offers` allowance is therefore
+  removed, contracting that direct-import debt from 7 to 0. Removing Admin's two
+  direct Prisma imports also contracts `identity-customer-benefits ->
+  runtime-data-ci-ops` from 23 to 21.
+- The legacy Coupon implementation stays physically under `coupons` until its
+  Prisma/Messaging dependencies can be contracted without raising another debt
+  allowance. Payments-facing coupon HOLD/COMMIT/RELEASE remains unchanged.
+- PR #2132, merged before Phase 3, exposed the Orders ingestion boundary to Uber
+  and lowered `external-channels -> commerce-orders-fulfillment` from 5 to 1;
   this document now reflects that already-merged baseline change as well.
 
-## Carried debt outside Phase 3 Slice 1
+## Carried debt outside Phase 3 Slice 2
 
 - `web.api-envelope-direct-payload.v1` was closed on 2026-09-02. Checkout now has
   zero regular JSON browser direct fetches, and the architecture scanner no longer

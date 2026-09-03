@@ -111,7 +111,7 @@ describe('MembershipOnboardingService', () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(issueProgramsForUser).toHaveBeenCalledWith(
       'REFERRAL_QUALIFIED',
-      referrer,
+      referrer.userStableId,
     );
   });
 

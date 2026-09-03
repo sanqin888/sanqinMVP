@@ -1,16 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
-import {
-  type CouponProgram,
-  type CouponProgramTriggerType,
-  type User,
-} from '@prisma/client';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { type CouponProgram, type User } from '@prisma/client';
+import type {
+  CouponProgramTriggerPort,
+  CouponProgramTriggerType,
+} from '../benefits/contracts/coupon-program.contract';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponProgramEligibilityService } from './coupon-program-eligibility.service';
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
 import { NotificationService } from '../notifications/notification.service';
 
 @Injectable()
-export class CouponProgramTriggerService {
+export class CouponProgramTriggerService implements CouponProgramTriggerPort {
   private readonly logger = new Logger(CouponProgramTriggerService.name);
 
   constructor(
@@ -22,8 +22,13 @@ export class CouponProgramTriggerService {
 
   async issueProgramsForUser(
     triggerType: CouponProgramTriggerType,
-    user: User,
+    userStableId: string,
   ) {
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
     const programs = await this.findActivePrograms(triggerType);
     if (programs.length === 0) return { issuedCount: 0 };
 

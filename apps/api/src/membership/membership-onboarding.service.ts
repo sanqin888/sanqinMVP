@@ -1,13 +1,17 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeEmail } from '../common/utils/email';
-import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import {
+  COUPON_PROGRAM_TRIGGER,
+  type CouponProgramTriggerPort,
+} from '../benefits/public-api';
 
 const MINIMUM_MEMBERSHIP_AGE = 13;
 const LEGACY_REFERRAL_CUTOFF = new Date('2026-08-22T16:45:00.000Z');
@@ -19,7 +23,8 @@ export class MembershipOnboardingService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly couponTriggerService: CouponProgramTriggerService,
+    @Inject(COUPON_PROGRAM_TRIGGER)
+    private readonly couponTriggerService: CouponProgramTriggerPort,
   ) {}
 
   async getStatus(userStableId: string) {
@@ -130,7 +135,7 @@ export class MembershipOnboardingService {
 
       await this.couponTriggerService.issueProgramsForUser(
         'REFERRAL_QUALIFIED',
-        referrer,
+        referrer.userStableId,
       );
     } catch (error) {
       this.logger.error(

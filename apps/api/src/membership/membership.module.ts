@@ -11,7 +11,7 @@ import {
   MembershipPublicController,
 } from './membership.controller';
 import { NotificationModule } from '../notifications/notification.module';
-import { CouponsModule } from '../coupons/coupons.module';
+import { CouponsModule } from '../coupons/public-api';
 
 @Module({
   imports: [

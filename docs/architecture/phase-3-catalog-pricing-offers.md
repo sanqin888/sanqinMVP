@@ -45,12 +45,11 @@ Changes:
   goes from 10 to 7. Removing the Commerce -> Catalog allowance means a new
   non-public import in that direction fails the central architecture scanner.
 
-## Remaining Phase 3 work
+## Slice 2 — Offers / Benefits ownership normalization
 
-### Slice 2 — Offers / Benefits ownership normalization
+Status: **implemented in Slice 2**.
 
-Separate coupon-program definition from customer-held entitlement behavior.
-Target ownership:
+The target ownership remains:
 
 - Offers: CouponTemplate/CouponProgram definitions, use rules, stacking rules and
   program configuration.
@@ -59,8 +58,42 @@ Target ownership:
 - Pricing: receives an already validated coupon candidate and calculates the
   monetary result.
 
-Do not move the Payments-facing coupon HOLD/COMMIT/RELEASE path merely to tidy
-files while the two Clover compatibility entries remain externally frozen.
+This slice establishes that ownership at the public/module boundary without
+mechanically relocating the legacy Prisma/Messaging implementations and thereby
+raising other architecture debt allowances:
+
+- added `apps/api/src/benefits` as an explicit Identity / Customer / Benefits owner
+  root;
+- added Benefits-owned claim, trigger and admin-issuance contracts/tokens with
+  stableId-based inputs instead of Prisma `User` leakage;
+- kept composition explicit without adding a pass-through Benefits facade: the
+  legacy `CouponsModule` is now non-global and imported only through its public
+  surface while Benefits owns the stable contracts/tokens;
+- stopped exporting concrete claim/eligibility/issuer/trigger services from the
+  legacy module;
+- Auth, Loyalty, Membership, Promotions and Admin now consume only Benefits public
+  capabilities for customer-held coupon behavior;
+- CouponTemplate/CouponProgram validation and CRUD now sit behind the Offers public
+  capability, leaving `AdminCouponsService` as a thin authenticated management
+  facade instead of a second persistence owner;
+- moved Admin `ADMIN_PUSH` user lookup and entitlement issuance out of
+  `AdminCouponsService` into the Benefits capability;
+- removed the final `identity-customer-benefits -> catalog-pricing-offers` direct
+  import allowance, contracting that measured debt from 7 to 0, and removed two
+  Admin Prisma imports so `identity-customer-benefits -> runtime-data-ci-ops`
+  contracts from 23 to 21.
+
+The legacy implementation files remain under `apps/api/src/coupons` temporarily
+because they still combine Prisma persistence and direct Messaging delivery. A
+physical move before those dependencies are separately contracted would only
+move debt between contexts and require raising baseline limits. The later
+Offers -> Messaging slice remains the next prerequisite for relocating trigger
+implementation cleanly.
+
+The Payments-facing coupon HOLD/COMMIT/RELEASE path remains unchanged while the
+two Clover compatibility entries are externally frozen.
+
+## Remaining Phase 3 work
 
 ### Slice 3 — Admin Catalog ownership contraction
 
