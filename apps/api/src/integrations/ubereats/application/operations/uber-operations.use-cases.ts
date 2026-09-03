@@ -86,10 +86,7 @@ const resolvePersistedTicketStoreStableId = async (
 ): Promise<string> => {
   const rows = await mappings.listMappings();
   const canonical = rows
-    .find(
-      (mapping) =>
-        mapping.posExternalStoreId?.trim() === persistedStoreScopeId,
-    )
+    .find((mapping) => mapping.posExternalStoreId?.trim() === persistedStoreScopeId)
     ?.posExternalStoreId?.trim();
   if (canonical) return canonical;
 
