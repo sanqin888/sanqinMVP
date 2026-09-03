@@ -45,7 +45,7 @@ semantics; it does not authorize a schema or migration change.
 | `PaymentCheckoutAttempt.storeId` | Stable business store identity (documented in schema) | Expose/type as `storeStableId` |
 | `Order.userId` | Optional user database UUID | Keep repository/internal or rename/type as `UserDbId`; public contracts use stable identity |
 | `AccountingTransaction.orderId` and settlement `orderId` | Scalar string with no explicit identity space | Resolve owner and identity type before crossing a context boundary |
-| Uber configuration `storeId @default("default")` | Implicit single-store compatibility identity | Backfill explicit `storeStableId`, measure fallback use, then remove the default |
+| Uber persistence `storeId` | Required SanQ store stable identity; Prisma no longer supplies an implicit `"default"` value | Every new write must pass explicit store identity. Do not backfill Test Store/sandbox history for this contraction; remove those verification-era rows selectively during Uber Production Cutover Cleanup after verification approval. |
 | BusinessHour/Holiday `storeId` | Store DB UUID with legacy default UUID | Move public contracts to stable identity and keep conversion inside persistence |
 
 ## Rules for new work

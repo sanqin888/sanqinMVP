@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@45e38d95` (2026-09-02).
+`origin/dev@fed618bd` (2026-09-02).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -11,9 +11,20 @@ safe default values unrelated to an old version) is not compatibility debt.
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `brand-store.default-store-identity.v1` | active / Uber slice 1 VERIFIED / slice 2 staged, verification-gated | implicit `default`/configured fallback → explicit `storeStableId`; PR #2119 / `7110dd46` is production-verified. Slice 2 contracts Operations/OpsTicket runtime fallback: Admin Operations/Reconciliation now requires canonical SanQ `storeStableId`, reconciliation orders are store-scoped, `MENU_PUBLISH` retry context remains canonical `storeStableId`, provider `uberStoreId` is retained only where Store Status calls the Uber store API, and new store-status failure tickets persist canonical `storeStableId`. Historical provider-UUID tickets remain visible/retryable only through an explicit mapping compatibility read. Future item-availability failures are also corrected to create `MENU_ITEM_AVAILABILITY` tickets rather than malformed `MENU_PUBLISH` tickets. `failedSyncEvents` remains a range-level Uber telemetry count because current event producers do not provide a reliable SanQ store identity. No historical row or Prisma default is changed in this slice. | Deploy slice 2 independently, then actively verify Operations list/summary, reconciliation generation, historical ticket visibility/retry safety, POS pause/resume failure/success behavior, and item-availability failure/retry behavior with sanitized log/DB evidence. Only after user confirmation may the 15 legacy store-status rows, 3 malformed historical availability rows, and eight Prisma `@default("default")` declarations enter persistence contraction. | Before Phase 2 exit / before Uber production traffic |
+| `brand-store.default-store-identity.v1` | active / Uber slices 1-2 VERIFIED / persistence contraction staged, verification-gated | implicit `default`/configured fallback → explicit `storeStableId`; PR #2119 / `7110dd46` and PR #2122 / `53688897` are production-verified. The persistence contraction removes the eight Uber Prisma `storeId @default("default")` defaults so missing store identity fails instead of being silently persisted as `default`. Existing rows are intentionally preserved exactly as-is. | Deploy this persistence slice independently, then actively verify Admin Uber/Reconciliation/OpsTicket pages, create a new Reconciliation Report with `storeId=4750_Yonge_Street`, POS pause 15 min + manual resume, item availability off/on, zero newly-created `storeId='default'` rows, and no missing-store Prisma/validation errors. After user confirmation, reassess whether the Uber persistence portion can be CLOSED. | Before Phase 2 exit / before Uber production traffic |
 | `payments.pos-card-legacy.v1` | frozen | direct paid Order → Unified Payment Core + Terminal + finalize | Clover support blocker resolved; real device accepted; one settlement cycle reconciled; legacy calls zero | Before Phase 5B exit |
 | `payments.web-checkout-v1.v1` | frozen | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | External validation unblocked; Web cutover accepted; one settlement cycle reconciled; old calls zero | Before Phase 5B exit |
+
+The historical Uber Test Store/sandbox rows are **not** backfilled as part of
+`brand-store.default-store-identity.v1` and must not be treated as a closure
+blocker for this persistence contraction. This includes legacy provider-UUID
+OpsTickets, malformed historical availability tickets, historical
+`storeId='default'` rows, and other verification-era Uber records. After Uber
+verification is approved and Production cutover begins, handle them in a separate
+**Uber Production Cutover Cleanup**: re-audit each Uber table and selectively
+remove sandbox/test history. Do not indiscriminately clear OAuth connections,
+Store mappings, menu configuration, or other state that Production initialization
+still requires.
 
 The two payment entries are frozen boundaries, not work queues. Architecture
 scanning may observe them, but modularization must not change their production

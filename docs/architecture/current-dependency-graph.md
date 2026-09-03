@@ -238,10 +238,13 @@ pair fails CI.
 - Payments/Clover legacy paths remain frozen by their compatibility entries.
 - Brand/Store configuration persistence contraction is complete;
   `brand-store.default-store-identity.v1` remains the primary Phase 2 Brand/Store
-  work. The UberEats structural freeze was explicitly lifted on 2026-09-02 so the
-  remaining Uber Store-identity normalization may proceed before real production
-  traffic, but each Uber code slice is gated by focused post-deploy active
-  verification and user confirmation before the next slice begins.
+  work. Uber Store-identity slices 1 and 2 are production VERIFIED. The current
+  persistence contraction removes the eight remaining Uber Prisma `storeId`
+  defaults without rewriting historical Test Store/sandbox rows; those verification
+  records are not a backfill/closure blocker and are reserved for a separate Uber
+  Production Cutover Cleanup after verification approval. Each Uber code slice
+  remains gated by focused post-deploy active verification and user confirmation
+  before the next slice begins.
 
 ## Reading the graph
 
