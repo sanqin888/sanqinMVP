@@ -7,6 +7,7 @@ const createJestConfig = nextJest({
 /** @type {import("jest").Config} */
 const config = {
   clearMocks: true,
+  modulePathIgnorePatterns: ["<rootDir>/.next/"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },

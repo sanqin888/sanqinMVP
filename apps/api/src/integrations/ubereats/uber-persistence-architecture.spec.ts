@@ -4,7 +4,7 @@ import {
   importViolations,
   portMethodReturnTypeViolations,
   scanTypeScript,
-} from './test/architecture-test.utils';
+} from '../../test/architecture-test.utils';
 
 describe('Uber Eats persistence architecture', () => {
   it('keeps Prisma out of application, domain and api production code', () => {

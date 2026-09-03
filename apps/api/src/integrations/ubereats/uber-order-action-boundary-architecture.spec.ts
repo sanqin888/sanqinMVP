@@ -3,7 +3,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import {
   importSpecifiers,
   scanTypeScript,
-} from './test/architecture-test.utils';
+} from '../../test/architecture-test.utils';
 
 const ROOT = resolve(__dirname);
 const ORDERS = join(ROOT, 'application/orders');

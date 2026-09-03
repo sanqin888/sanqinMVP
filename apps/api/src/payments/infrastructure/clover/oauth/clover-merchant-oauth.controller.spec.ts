@@ -24,8 +24,7 @@ describe('CloverMerchantOAuthController HTTP redirect contract', () => {
   let app: INestApplication;
   let httpServer: Server;
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [CloverMerchantOAuthController],
       providers: [
@@ -46,7 +45,11 @@ describe('CloverMerchantOAuthController HTTP redirect contract', () => {
     httpServer = app.getHttpServer() as unknown as Server;
   });
 
-  afterEach(async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterAll(async () => {
     await app.close();
   });
 

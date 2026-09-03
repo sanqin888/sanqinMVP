@@ -1,27 +1,84 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { readFileSync, readdirSync, type Dirent } from 'node:fs';
+import { extname, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 
 export type SourceFile = { path: string; source: string };
 
-/** The single recursive scanner used by all Uber Eats architecture checks. */
-export const scanTypeScript = (
+type ScanOptions = {
+  productionOnly?: boolean;
+  extensions?: readonly string[];
+};
+
+const directoryEntriesCache = new Map<string, readonly Dirent[]>();
+const sourceCache = new Map<string, string>();
+const scanCache = new Map<string, readonly SourceFile[]>();
+const importSpecifiersCache = new Map<string, readonly string[]>();
+const parsedSourceFileCache = new Map<string, ts.SourceFile>();
+
+const cachedDirectoryEntries = (root: string): readonly Dirent[] => {
+  const cached = directoryEntriesCache.get(root);
+  if (cached) return cached;
+  const entries = readdirSync(root, { withFileTypes: true });
+  directoryEntriesCache.set(root, entries);
+  return entries;
+};
+
+const cachedSource = (path: string): string => {
+  const cached = sourceCache.get(path);
+  if (cached !== undefined) return cached;
+  const source = readFileSync(path, 'utf8');
+  sourceCache.set(path, source);
+  return source;
+};
+
+const parsedSourceFile = (file: SourceFile): ts.SourceFile => {
+  const cached = parsedSourceFileCache.get(file.path);
+  if (cached) return cached;
+  const sourceFile = ts.createSourceFile(
+    file.path,
+    file.source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  parsedSourceFileCache.set(file.path, sourceFile);
+  return sourceFile;
+};
+
+export const scanTextFiles = (
   root: string,
-  options: { productionOnly?: boolean } = {},
-): SourceFile[] =>
-  readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+  options: ScanOptions = {},
+): SourceFile[] => {
+  const extensions = [...(options.extensions ?? ['.ts'])].sort();
+  const cacheKey = `${root}\u0000${options.productionOnly === true ? 'prod' : 'all'}\u0000${extensions.join(',')}`;
+  const cached = scanCache.get(cacheKey);
+  if (cached) return [...cached];
+
+  const files = cachedDirectoryEntries(root).flatMap((entry) => {
     const path = join(root, entry.name);
-    if (entry.isDirectory()) return scanTypeScript(path, options);
-    if (!entry.isFile() || !path.endsWith('.ts')) return [];
+    if (entry.isDirectory()) return scanTextFiles(path, options);
+    if (!entry.isFile() || !extensions.includes(extname(path))) return [];
     if (
       options.productionOnly &&
       (path.includes('.spec.') || path.includes(`${sep}test${sep}`))
-    )
+    ) {
       return [];
-    return [{ path, source: readFileSync(path, 'utf8') }];
+    }
+    return [{ path, source: cachedSource(path) }];
   });
 
+  scanCache.set(cacheKey, files);
+  return [...files];
+};
+
+/** Shared recursive scanner used by API architecture checks. */
+export const scanTypeScript = (
+  root: string,
+  options: { productionOnly?: boolean } = {},
+): SourceFile[] => scanTextFiles(root, { ...options, extensions: ['.ts'] });
+
 export const importSpecifiers = (source: string): string[] => {
+  const cached = importSpecifiersCache.get(source);
+  if (cached) return [...cached];
   const matches = [
     ...source.matchAll(
       /(?:import|export)\s+(?:type\s+)?[\s\S]*?\sfrom\s+['"]([^'"]+)['"]/g,
@@ -29,7 +86,9 @@ export const importSpecifiers = (source: string): string[] => {
     ...source.matchAll(/import\s*['"]([^'"]+)['"]/g),
     ...source.matchAll(/(?:import\s*\(|require\s*\()\s*['"]([^'"]+)['"]\s*\)/g),
   ];
-  return [...new Set(matches.map((match) => match[1]))];
+  const specifiers = [...new Set(matches.map((match) => match[1]))];
+  importSpecifiersCache.set(source, specifiers);
+  return [...specifiers];
 };
 
 export const importViolations = (
@@ -53,12 +112,7 @@ export type InterfaceMethods = { interfaceName: string; methods: string[] };
 
 /** Reads interface method declarations structurally, without relying on text layout. */
 export const interfaceMethods = (file: SourceFile): InterfaceMethods[] => {
-  const sourceFile = ts.createSourceFile(
-    file.path,
-    file.source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const sourceFile = parsedSourceFile(file);
 
   return sourceFile.statements.flatMap((node) =>
     ts.isInterfaceDeclaration(node)
@@ -80,12 +134,7 @@ export const interfaceMethods = (file: SourceFile): InterfaceMethods[] => {
 export const constructorDependencyTypes = (
   file: SourceFile,
 ): Array<{ className: string; parameterTypes: string[][] }> => {
-  const sourceFile = ts.createSourceFile(
-    file.path,
-    file.source,
-    ts.ScriptTarget.Latest,
-    true,
-  );
+  const sourceFile = parsedSourceFile(file);
   const typeNames = (node: ts.TypeNode): string[] => {
     const names: string[] = [];
     const visit = (child: ts.Node) => {

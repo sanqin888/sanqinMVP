@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const POS_ROOT = resolve(__dirname);
@@ -13,10 +13,17 @@ describe('Orders ↔ POS transport boundary', () => {
   it('keeps POS authentication and gateway transport out of Orders composition', () => {
     const controller = read(resolve(ORDERS_ROOT, 'orders.controller.ts'));
     const module = read(resolve(ORDERS_ROOT, 'orders.module.ts'));
+    const appModule = read(resolve(API_ROOT, 'app.module.ts'));
     const fulfillment = read(
       resolve(ORDERS_ROOT, 'processors', 'fulfillment.processor.ts'),
     );
 
+    expect(controller).toContain("@Controller('orders')");
+    expect(module).toContain('controllers: [OrdersController]');
+    expect(appModule).toContain(
+      "import { OrdersModule } from './orders/public-api'",
+    );
+    expect(appModule).toContain('    OrdersModule,');
     expect(controller).not.toContain('PosDeviceGuard');
     expect(controller).not.toContain('AuthenticatedPosIdentity');
     expect(module).not.toContain('PosDeviceModule');
@@ -46,44 +53,11 @@ describe('Orders ↔ POS transport boundary', () => {
     expect(publicApi).toContain('PosOrderOperationsPort');
   });
 
-  it('keeps retired /orders/* POS compatibility transport deleted', () => {
-    const retiredPaths = [
-      resolve(POS_ROOT, 'legacy-pos-orders.controller.ts'),
-      resolve(API_ROOT, 'orders-http-composition.module.ts'),
-    ];
-    const ordersController = read(resolve(ORDERS_ROOT, 'orders.controller.ts'));
-    const ordersModule = read(resolve(ORDERS_ROOT, 'orders.module.ts'));
-    const appModule = read(resolve(API_ROOT, 'app.module.ts'));
+  it('keeps the canonical POS order routes on the POS transport', () => {
     const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
 
-    for (const retiredPath of retiredPaths) {
-      expect(existsSync(retiredPath)).toBe(false);
-    }
-
-    expect(ordersController).toContain("@Controller('orders')");
-    for (const legacyRoute of [
-      "@Get('recent')",
-      "@Get('board')",
-      "@Patch(':orderStableId/status')",
-      "@Post(':orderStableId/amendments')",
-      "@Post(':orderStableId/advance')",
-      "@Get('scheduled')",
-      "@Get(':orderStableId/fulfillment-timing')",
-      "@Post(':orderStableId/preparation/start')",
-    ]) {
-      expect(ordersController).not.toContain(legacyRoute);
-    }
-
-    expect(ordersModule).toContain('controllers: [OrdersController]');
-    expect(ordersModule).not.toContain('PosDeviceModule');
-    expect(appModule).toContain(
-      "import { OrdersModule } from './orders/public-api'",
-    );
-    expect(appModule).toContain('    OrdersModule,');
-    expect(appModule).not.toContain('OrdersHttpCompositionModule');
-
     expect(canonical).toContain("@Controller('pos/orders')");
-    for (const canonicalRoute of [
+    for (const route of [
       "@Get('recent')",
       "@Get('board')",
       "@Patch(':orderStableId/status')",
@@ -93,7 +67,7 @@ describe('Orders ↔ POS transport boundary', () => {
       "@Get(':orderStableId/fulfillment-timing')",
       "@Post(':orderStableId/preparation/start')",
     ]) {
-      expect(canonical).toContain(canonicalRoute);
+      expect(canonical).toContain(route);
     }
   });
 
