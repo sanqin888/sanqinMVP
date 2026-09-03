@@ -176,17 +176,15 @@ describe('CatalogAdminService availability persistence', () => {
         tempUnavailableUntil: Date | null;
       };
       let capturedData: AvailabilityUpdateData | undefined;
-      const update = jest.fn(
-        (input: { data: AvailabilityUpdateData }) => {
-          capturedData = input.data;
-          return Promise.resolve({
-            stableId: 'dish-1',
-            ...input.data,
-            visibility: 'PUBLIC',
-            isVisibleOnMainMenu: true,
-          });
-        },
-      );
+      const update = jest.fn((input: { data: AvailabilityUpdateData }) => {
+        capturedData = input.data;
+        return Promise.resolve({
+          stableId: 'dish-1',
+          ...input.data,
+          visibility: 'PUBLIC',
+          isVisibleOnMainMenu: true,
+        });
+      });
       const service = new CatalogAdminService(
         {
           menuItem: {
