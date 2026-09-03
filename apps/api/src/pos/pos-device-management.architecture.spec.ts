@@ -48,7 +48,6 @@ describe('POS device management boundary', () => {
     expect(publicApi).toContain('POS_DEVICE_MANAGEMENT');
     expect(publicApi).not.toContain('PosDeviceService');
   });
-
 });
 
 describe('POS device authentication boundary', () => {
