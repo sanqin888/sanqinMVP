@@ -7,7 +7,7 @@ import {
 import { LoyaltyService } from './loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderEventsBus } from '../messaging/order-events.bus';
-import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engine';
+import { resolvePromotionLoyaltyMultiplier } from '../promotions/public-api';
 
 @Injectable()
 export class LoyaltyEventProcessor implements OnModuleInit, OnModuleDestroy {

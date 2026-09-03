@@ -1,17 +1,18 @@
 # Current 12-context dependency graph
 
-Phase 2 closeout base: `origin/dev@0917f66c` (2026-09-02).
+Phase 3 Slice 1 base: branch created from `origin/dev@e69b913d` (2026-09-03).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` at the Phase 2 closeout boundary.
+by `tools/architecture/context-baseline.json` after the Phase 3 Slice 1 Pricing
+public-boundary contraction.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
 counts below.
 
 The CI architecture scanner is authoritative for the exact source scan. This
-file is the human-readable closeout snapshot and must be refreshed again at the
-end of the next phase.
+file is the human-readable working snapshot and must be refreshed again at each
+Phase 3 slice boundary.
 
 ## Context map
 
@@ -41,11 +42,11 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 23; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 7; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 23; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
-| external-channels | architecture-foundation 11; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
+| external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
@@ -230,7 +231,25 @@ pair fails CI.
   exchange rate `5.2`; POS pause/resume both returned 200, Uber status sync succeeded in both
   directions, final StoreConfig state is open, and API/worker error scans were clean.
 
-## Carried debt outside this closeout
+## Phase 3 Catalog / Pricing / Offers started
+
+- Phase 3 Slice 1 is tracked in
+  `docs/architecture/phase-3-catalog-pricing-offers.md`.
+- Orders now consumes Pricing only through `apps/api/src/promotions/public-api.ts`.
+  The public surface exposes the existing promotion evaluator/types plus a narrow
+  `PROMOTION_CONTEXT_READER`; `OrdersService` no longer imports the Pricing
+  service, evaluator, engine or coupon adapter internals directly.
+- The corresponding architecture allowance
+  `commerce-orders-fulfillment -> catalog-pricing-offers` is removed from the
+  baseline, contracting that direct-import debt from 5 to 0.
+- Loyalty's two promotion-engine imports and Admin's Promotions module wiring now
+  use the same public surface, lowering
+  `identity-customer-benefits -> catalog-pricing-offers` from 10 to 7.
+- PR #2132, merged before this slice, exposed the Orders ingestion boundary to
+  Uber and lowered `external-channels -> commerce-orders-fulfillment` from 5 to 1;
+  this document now reflects that already-merged baseline change as well.
+
+## Carried debt outside Phase 3 Slice 1
 
 - `web.api-envelope-direct-payload.v1` was closed on 2026-09-02. Checkout now has
   zero regular JSON browser direct fetches, and the architecture scanner no longer

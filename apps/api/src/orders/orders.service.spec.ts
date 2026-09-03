@@ -10,7 +10,7 @@ import {
 import type { LoyaltyPolicyReaderPort } from '../loyalty/public-api';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
-import { PromotionsService } from '../promotions/promotions.service';
+import type { PromotionContextReaderPort } from '../promotions/public-api';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
@@ -288,7 +288,7 @@ describe('OrdersService', () => {
       loyalty as unknown as LoyaltyService,
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
-      promotions as unknown as PromotionsService,
+      promotions as unknown as PromotionContextReaderPort,
       uberDirect as unknown as UberDirectService,
       locationService as unknown as LocationService,
       notificationService as unknown as NotificationService,

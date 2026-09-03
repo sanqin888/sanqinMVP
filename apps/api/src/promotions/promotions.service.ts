@@ -1,26 +1,28 @@
 // apps/api/src/promotions/promotions.service.ts
 import { Inject, Injectable } from '@nestjs/common';
-import type { Channel } from '@prisma/client';
+import type { Channel } from '@shared/order';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveStoreNow } from './daily-specials';
-import type { PromotionRuleLike } from './promotion-rule.adapter';
+import type {
+  OrderPromotionContext,
+  PromotionContextReaderPort,
+} from './promotion-context.contract';
 import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
 
 @Injectable()
-export class PromotionsService {
+export class PromotionsService implements PromotionContextReaderPort {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
   ) {}
 
-  async getOrderPromotionContext(channel: Channel): Promise<{
-    rules: PromotionRuleLike[];
-    now: ReturnType<typeof resolveStoreNow>;
-  }> {
+  async getOrderPromotionContext(
+    channel: Channel,
+  ): Promise<OrderPromotionContext> {
     const [storeConfig, rules] = await Promise.all([
       this.brandStoreConfigReader.getConfiguredStoreSnapshot(),
       this.prisma.promotionRule.findMany({

@@ -66,9 +66,16 @@ import {
 } from './order-item-components';
 import { isAvailableNow } from '@shared/menu';
 import {
+  PROMOTION_CONTEXT_READER,
+  evaluateOrderPromotions,
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
   resolveStoreNow,
+  type CouponPromotionLike,
+  type PromotionContextReaderPort,
+  type PromotionOrderEvaluation,
+  type PromotionOrderLine,
+  type PromotionSource,
 } from '../promotions/public-api';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
@@ -82,14 +89,6 @@ import {
   type BrandStoreConfigReaderPort,
   type StoreConfigSnapshot,
 } from '../store/public-api';
-import type { CouponPromotionLike } from '../promotions/coupon-promotion.adapter';
-import {
-  evaluateOrderPromotions,
-  type PromotionOrderEvaluation,
-  type PromotionOrderLine,
-} from '../promotions/order-promotion-evaluator';
-import type { PromotionSource } from '../promotions/promotion-engine';
-import { PromotionsService } from '../promotions/promotions.service';
 import { buildOrderPricingDisplay } from './order-pricing-display';
 import {
   resolveRequestedLoyaltyPoints,
@@ -406,7 +405,8 @@ export class OrdersService {
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
-    private readonly promotions: PromotionsService,
+    @Inject(PROMOTION_CONTEXT_READER)
+    private readonly promotions: PromotionContextReaderPort,
     private readonly uberDirect: UberDirectService,
     private readonly locationService: LocationService,
     private readonly notificationService: NotificationService,
