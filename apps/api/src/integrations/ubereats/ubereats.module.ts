@@ -81,7 +81,8 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
           };
         },
         getStoreAutoAcceptOnlineOrders: async (storeStableId) =>
-          (await readStorePolicy(storeStableId))?.autoAcceptOnlineOrders ?? true,
+          (await readStorePolicy(storeStableId))?.autoAcceptOnlineOrders ??
+          true,
       };
     },
   },

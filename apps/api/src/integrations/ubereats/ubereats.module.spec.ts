@@ -110,7 +110,9 @@ describe('UberEats compositions', () => {
     const missingReader = {
       getStoreSnapshot: jest
         .fn()
-        .mockRejectedValue(new BrandStoreConfigUnavailableError('missing config')),
+        .mockRejectedValue(
+          new BrandStoreConfigUnavailableError('missing config'),
+        ),
     };
     const missingQuery = provider!.useFactory!(missingReader as never);
 
