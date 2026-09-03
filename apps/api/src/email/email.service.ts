@@ -38,6 +38,7 @@ export class EmailService {
     templateType: MessagingTemplateType;
     templateVersion?: string;
     userId?: string;
+    userStableId?: string;
     metadata?: Record<string, unknown> | null;
     skipSuppression?: boolean;
   }): Promise<{
@@ -51,6 +52,7 @@ export class EmailService {
       templateType,
       templateVersion,
       userId,
+      userStableId,
       metadata,
       skipSuppression,
       ...payload
@@ -66,7 +68,9 @@ export class EmailService {
         templateType,
         templateVersion: templateVersion ?? null,
         locale: locale ? this.resolveLanguageEnum(locale) : null,
-        userId: userId ?? null,
+        ...(userStableId
+          ? { user: { connect: { userStableId } } }
+          : { userId: userId ?? null }),
         statusLatest: MessagingSendStatus.QUEUED,
         metadata: this.buildSendMetadata({
           base: metadata,
