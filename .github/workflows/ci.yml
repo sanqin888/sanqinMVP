@@ -41,14 +41,32 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Restore Next.js CI cache
+        if: matrix.app == 'web'
+        uses: actions/cache/restore@v4
+        with:
+          path: apps/web/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**', 'libs/**') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Build shared libraries
         run: |
-          pnpm --filter @shared/foundation build
-          pnpm --filter @shared/menu build
-          pnpm --filter @shared/order build
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
 
       - name: Generate Prisma Client (api only)
         if: matrix.app == 'api'
@@ -60,7 +78,7 @@ jobs:
 
       - name: Lint (api)
         if: matrix.app == 'api'
-        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts"
+        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
 
       - name: Lint (web)
         if: matrix.app == 'web'
@@ -76,15 +94,31 @@ jobs:
           SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
         run: pnpm --filter web exec next build --turbopack
 
+      - name: Save Next.js CI cache
+        if: matrix.app == 'web' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: apps/web/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**', 'libs/**') }}
+
       - name: Strict declaration check (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} exec tsc -p tsconfig.strict.json --pretty false
 
       - name: Strict declaration check (shared libraries)
         if: matrix.app == 'api'
         run: |
-          pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false
-          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
-          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
+          pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false &
+          foundation_pid=$!
+          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false &
+          menu_pid=$!
+          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
 
       - name: Test (api)
         if: matrix.app == 'api'
