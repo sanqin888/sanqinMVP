@@ -28,9 +28,7 @@ describe('Uber Eats store identity architecture', () => {
       ...schema.matchAll(/model\s+(Uber\w+)\s*\{([\s\S]*?)\n\}/g),
     ]
       .filter((match) =>
-        /\bstoreId\s+String\b[^\n]*@default\(\s*"default"\s*\)/.test(
-          match[2],
-        ),
+        /\bstoreId\s+String\b[^\n]*@default\(\s*"default"\s*\)/.test(match[2]),
       )
       .map((match) => match[1]);
 
