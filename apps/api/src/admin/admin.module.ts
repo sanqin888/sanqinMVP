@@ -13,7 +13,7 @@ import { AdminStaffController } from './staff/admin-staff.controller';
 import { AuthModule } from '../auth/auth.module';
 import { AdminCouponsModule } from './coupons/admin-coupons.module';
 import { AdminPromotionsModule } from './promotions/admin-promotions.module';
-import { PromotionsModule } from '../promotions/promotions.module';
+import { PromotionsModule } from '../promotions/public-api';
 import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
 import { EmailModule } from '../email/email.module';

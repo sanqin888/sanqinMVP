@@ -10,7 +10,7 @@ import {
 import { createHash } from 'crypto';
 import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolvePromotionLoyaltyMultiplier } from '../promotions/promotion-engine';
+import { resolvePromotionLoyaltyMultiplier } from '../promotions/public-api';
 import type {
   LoyaltyPolicyReaderPort,
   LoyaltyPolicySnapshot,
