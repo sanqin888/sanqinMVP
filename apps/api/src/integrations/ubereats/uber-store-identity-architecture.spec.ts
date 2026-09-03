@@ -97,7 +97,9 @@ describe('Uber Eats store identity architecture', () => {
     expect(orderUseCases!.source).not.toContain('posStoreId');
     expect(orderPorts!.source).not.toContain('posStoreId');
     expect(orderPersistence!.source).not.toContain('posStoreId');
-    expect(orderPersistence!.source).toContain('storeStableId: input.storeStableId');
+    expect(orderPersistence!.source).toContain(
+      'storeStableId: input.storeStableId',
+    );
     expect(orderIngestion!.source).toContain('storeId: input.storeStableId');
     expect(menuController!.source).toContain('storeStableId: dto.storeId');
   });
