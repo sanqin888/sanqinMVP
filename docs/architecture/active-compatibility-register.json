@@ -75,8 +75,7 @@
         "apps/web/src/lib/api/brand-store.ts",
         "PR #2119 Uber explicit-store-context production verification",
         "PR #2122 Uber Operations/OpsTicket identity production verification",
-        "PR #2124 Uber persistence default contraction plus production DB/log verification on 2026-09-02",
-        "docs/architecture/phase-2-closeout.md"
+        "PR #2124 Uber persistence default contraction plus production DB/log verification on 2026-09-02"
       ]
     },
     {
