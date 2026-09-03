@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "0917f66c",
-  "updatedAt": "2026-09-02",
+  "baselineCommit": "c47c2ca5",
+  "updatedAt": "2026-09-03",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -16,7 +16,7 @@
   "active": [
     {
       "compat_id": "payments.pos-card-legacy.v1",
-      "status": "frozen",
+      "status": "active_preproduction",
       "old_owner": "POS CARD /pos/orders direct paid-order creation",
       "new_owner": "Unified Payment Core plus Clover Terminal followed by idempotent order finalization",
       "dual_write_or_read": [
@@ -25,29 +25,29 @@
       ],
       "parity_metric": "Terminal payment/provider truth, amount, surcharge, final order binding and refund outcome parity across one complete settlement cycle",
       "rollback": "Set the rollout flag false to route new POS operations back to legacy CARD without rewriting payment history",
-      "exit_criteria": "Clover account blocker resolved, real-device acceptance complete, one settlement cycle reconciled, legacy invocation metric is zero",
-      "remove_pr": "Payments/Clover Phase G legacy POS contraction PR",
-      "deadline": "Before Phase 5B Payments/Clover exit; clock resumes when Clover sandbox identity blocker is resolved",
-      "freeze_reason": "Clover Developer sandbox test merchant does not recognize the developer identity; awaiting Clover support",
+      "exit_criteria": "Real-device acceptance complete after Clover access is restored, one settlement cycle reconciled, legacy invocation metric is zero before compatibility deletion",
+      "remove_pr": "Payments/Clover legacy POS contraction PR after terminal cutover acceptance",
+      "deadline": "Before Phase 5B Payments/Clover exit; structural modularization may proceed while Clover sandbox identity access is blocked, but real-device cutover gates remain pending",
+      "governance_note": "POS Clover Terminal is a pre-production prototype. Structural modularization is allowed before real-device access is restored when production Web Ecommerce behavior and historical payment facts are unchanged.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 9 and 11"
       ]
     },
     {
       "compat_id": "payments.web-checkout-v1.v1",
-      "status": "frozen",
+      "status": "guarded_production",
       "old_owner": "CheckoutIntent, CloverPayController/CloverService and Clover Ecommerce /v1 charge path",
       "new_owner": "Channel-neutral Unified Payment Core using canonical Clover Platform v3 truth",
       "dual_write_or_read": [
-        "Legacy Web Ecommerce remains the production path until Phase G",
-        "Unified core exists but Web traffic must not be switched early"
+        "Legacy Web Ecommerce remains the production path until an explicitly accepted Web cutover",
+        "Unified core exists but Web traffic must not be switched merely to simplify POS Terminal modularization"
       ],
       "parity_metric": "Payment ID, amount, surcharge, refund, settlement and old-path invocation metrics across one complete settlement cycle",
       "rollback": "Keep legacy Web routing available until the new Web consumer is accepted; traffic rollback must not rewrite historical facts",
-      "exit_criteria": "Uber/Clover external blockers no longer constrain validation, Web cutover is accepted, one settlement cycle matches, old calls are zero",
-      "remove_pr": "Payments/Clover Phase G legacy Web contraction PR",
-      "deadline": "Before Phase 5B Payments/Clover exit; clock resumes when external verification blockers are resolved",
-      "freeze_reason": "Clover sandbox identity verification is blocked; current Web production behavior is explicitly frozen",
+      "exit_criteria": "Web cutover is explicitly accepted after required validation, one settlement cycle matches, and old calls are zero before compatibility deletion",
+      "remove_pr": "Payments/Clover legacy Web contraction PR after guarded Web cutover acceptance",
+      "deadline": "Before Phase 5B Payments/Clover exit; production-path modularization may proceed earlier only when it is a documented critical blocker and the guarded active-verification requirements are met",
+      "governance_note": "Production Web Clover is protected by default, not absolutely frozen. A minimal Web-impacting modularization change is allowed when the production path is a critical progress blocker, after documenting impact, alternatives and rollback/forward-fix handling; focused regression coverage and post-deployment user-confirmed active payment verification are mandatory.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
       ]

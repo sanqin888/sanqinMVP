@@ -63,10 +63,15 @@ Checkout now has zero direct browser `fetch` calls and no page-local
 removed, so the scanner will reject any future reintroduction as new direct-fetch
 debt. `web.api-envelope-direct-payload.v1` is therefore closed.
 
-### Frozen Payments/Clover entries
+### Payments/Clover entries
 
-`payments.pos-card-legacy.v1` and `payments.web-checkout-v1.v1` remain frozen.
-This closeout makes no production payment-path change.
+At the time of Phase 1 closeout, `payments.pos-card-legacy.v1` and
+`payments.web-checkout-v1.v1` were both recorded as frozen and this closeout made
+no production payment-path change. That governance was revised on 2026-09-03:
+POS Clover Terminal is now active pre-production modularization work, while Web
+Clover Ecommerce is guarded production and may be changed only when it is a
+documented critical modularization blocker with the required active verification
+gate. See `AGENTS.md` section 19 and the current compatibility register.
 
 ## Reviewed but not deleted
 
@@ -113,10 +118,13 @@ closeout because those production protocol paths were not structurally changed.
 
 Brand/Store Phase 2 originally began while both payment and Uber provider paths
 were structurally frozen. The Uber structural freeze was explicitly lifted on
-2026-09-02 so the remaining Store-identity contraction can be completed before
-real Uber production traffic; Payments/Clover remains frozen while its external
-blocker is open. Before any schema migration or package-boundary change, follow
-the repository's explicit authorization requirements. Uber work must additionally
+2026-09-02 so the remaining Store-identity contraction could be completed before
+real Uber production traffic. The Payments/Clover whole-context freeze was later
+revised on 2026-09-03: POS Terminal prototype modularization may proceed before
+real-device access is restored, while production Web Ecommerce remains guarded and
+requires the documented critical-blocker justification plus active verification
+when touched. Before any schema migration or package-boundary change, follow the
+repository's explicit authorization requirements. Uber work must additionally
 follow the per-slice active verification gate in `AGENTS.md` before advancing to
 the next Uber code slice.
 

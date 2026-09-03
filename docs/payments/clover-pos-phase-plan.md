@@ -1,7 +1,7 @@
 # SanQ 支付域模块化 + Clover POS 实时同步分阶段实施方案
 
-**状态：** Phase Execution Plan v3  
-**日期：** 2026-08-26  
+**状态：** Phase Execution Plan v3（2026-09-03 governance revision）  
+**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
 ## 0. 总体原则
@@ -20,9 +20,14 @@
 10. Payments 不得直接依赖 Orders internals。
 11. 每阶段完成后必须给出改动报告，再决定是否进入下一阶段。
 12. 所有代码修改前继续遵守 `AGENTS.md`、GitHub Actions、architecture tests 和现有模块边界。
-13. 新核心从 Phase D 起即按 Web / POS 最终共用设计，但 Phase D 只允许 POS 接入；现有 Web 生产链路必须保持原行为直到 POS 实测稳定。
-14. 会被并发消费并改变 external due 的内部权益（积分、储值余额、优惠券）必须先 HOLD；支付成功后 COMMIT，明确失败后 RELEASE，UNKNOWN/RECONCILING 继续 HELD。
-15. external payment 发起前必须持久化 immutable order/pricing snapshot 和 tender allocation；进入 PROCESSING 后 recovery 不得按当前价格/促销重新定价。
+13. 新核心从 Phase D 起即按 Web / POS 最终共用设计。POS Clover Terminal 当前属于 pre-production prototype，其结构性模块化不再等待 Clover developer/sandbox merchant 阻塞解除；但 real-device 验收、feature-flag 切流和 settlement 证明仍按后续门禁执行。
+14. 现有 Web Clover Ecommerce 是 guarded production path：默认保持生产行为不变；如果它成为模块化关键进度阻塞，可按 charter 1.1 做最小必要修改。任何 Web-impacting slice 必须先记录影响/替代方案/回退策略，并在部署后给出并完成受影响场景的主动实测，用户确认前不得标记 production verified。
+15. 会被并发消费并改变 external due 的内部权益（积分、储值余额、优惠券）必须先 HOLD；支付成功后 COMMIT，明确失败后 RELEASE，UNKNOWN/RECONCILING 继续 HELD。
+16. external payment 发起前必须持久化 immutable order/pricing snapshot 和 tender allocation；进入 PROCESSING 后 recovery 不得按当前价格/促销重新定价。
+
+### 0.1 2026-09-03 模块化执行规则修订
+
+Clover developer/sandbox merchant 身份问题现在只阻塞**真实设备验收、支付切流和需要真实 Clover 事实的验证**，不再阻塞 POS Terminal 原型内部的模块化/边界整理。生产 Web Clover 也不再是绝对冻结区；当且仅当它成为明确的模块化关键阻塞时，可以修改，但必须使用最小影响方案并执行 charter 1.1 的 guarded-production 验证门禁。不得把“允许修改”解释为提前进入 Phase G/H cutover 或删除 legacy compatibility。
 
 执行顺序：
 
@@ -433,12 +438,16 @@ POS
 
 ## Web 生产边界
 
-Phase D 只能建设 Web 未来可复用的通用 contract / model，不得：
+Phase D 默认只建设 Web 未来可复用的通用 contract / model，不主动改变生产
+Web Clover 行为。若 Web 生产路径本身成为模块化关键阻塞，则可按本计划
+0.1 / charter 1.1 的 guarded-production 例外做最小必要修改，并必须附带部署
+后的主动支付实测；这不改变以下 cutover 禁止项：
 
-- 改 Web checkout API 行为；
-- 把 Web 流量切到新核心；
-- 删除/替换 `CheckoutIntent`、`CloverPayController` 或旧 Web reconciliation；
-- 为了统一而同时切换两条生产支付链路。
+- 不得仅为了 POS Terminal 模块化而改变 Web checkout API 行为；
+- 不得把 Web 流量切到新核心；
+- 不得把删除 `CheckoutIntent`、`CloverPayController` 或旧 Web reconciliation
+  当作普通内部重构；
+- 不得为了统一而同时切换两条生产支付链路。
 
 ## Architecture Test 收紧
 

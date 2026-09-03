@@ -289,7 +289,18 @@ pair fails CI.
 - `web.api-envelope-direct-payload.v1` was closed on 2026-09-02. Checkout now has
   zero regular JSON browser direct fetches, and the architecture scanner no longer
   carries a Checkout allowance.
-- Payments/Clover legacy paths remain frozen by their compatibility entries.
+- Payments/Clover is no longer frozen as one context. The dependency counts above
+  are unchanged by this documentation-only policy revision. POS Clover Terminal is
+  active pre-production modularization work and may be structurally contracted
+  before real-device access returns when production Web Ecommerce behavior is
+  unchanged. The current Web Clover path remains guarded production; a Web-impacting
+  modularization change is allowed only when it is a documented critical blocker
+  and must carry focused regression coverage plus post-deployment active payment
+  verification before being marked production verified.
+- A central chronological modularization index now lives at
+  `docs/architecture/modularization-worklog.md`. Creating the worklog and making it
+  a required per-slice progress record is documentation governance only and does
+  not change the dependency counts or architecture baseline in this snapshot.
 - Phase 2 Brand/Store identity and configuration contraction is **CLOSED** at
   `origin/dev@0917f66c`. `brand-store.business-config.v1`,
   `benefits.business-config-loyalty-policy.v1`, `pos-device.admin-db-id.v1`, and
