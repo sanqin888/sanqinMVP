@@ -46,9 +46,18 @@ jobs:
 
       - name: Build shared libraries
         run: |
-          pnpm --filter @shared/foundation build
-          pnpm --filter @shared/menu build
-          pnpm --filter @shared/order build
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
 
       - name: Generate Prisma Client (api only)
         if: matrix.app == 'api'
@@ -60,7 +69,7 @@ jobs:
 
       - name: Lint (api)
         if: matrix.app == 'api'
-        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts"
+        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
 
       - name: Lint (web)
         if: matrix.app == 'web'
@@ -82,9 +91,18 @@ jobs:
       - name: Strict declaration check (shared libraries)
         if: matrix.app == 'api'
         run: |
-          pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false
-          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
-          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
+          pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false &
+          foundation_pid=$!
+          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false &
+          menu_pid=$!
+          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
 
       - name: Test (api)
         if: matrix.app == 'api'
