@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -15,8 +16,12 @@ import {
 } from '@prisma/client';
 import type { CreateOrderInput } from '@shared/order';
 
-import { LoyaltyService } from '../loyalty/loyalty.service';
-import { MembershipService } from '../membership/membership.service';
+import {
+  PAYMENT_COUPON_RESERVATION,
+  PAYMENT_TENDER_RESERVATION,
+  type PaymentCouponReservationPort,
+  type PaymentTenderReservationPort,
+} from '../benefits/public-api';
 import {
   OrdersService,
   type PreparedPaymentOrderSnapshot,
@@ -61,8 +66,10 @@ export class PaymentCheckoutAttemptService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
-    private readonly loyalty: LoyaltyService,
-    private readonly membership: MembershipService,
+    @Inject(PAYMENT_TENDER_RESERVATION)
+    private readonly paymentTenderReservations: PaymentTenderReservationPort,
+    @Inject(PAYMENT_COUPON_RESERVATION)
+    private readonly paymentCouponReservations: PaymentCouponReservationPort,
   ) {}
 
   async prepare(
@@ -330,8 +337,8 @@ export class PaymentCheckoutAttemptService {
 
   async releaseReservations(attemptId: string): Promise<void> {
     await Promise.all([
-      this.loyalty.releasePaymentTender(attemptId),
-      this.membership.releasePaymentCoupons(attemptId),
+      this.paymentTenderReservations.releasePaymentTender(attemptId),
+      this.paymentCouponReservations.releasePaymentCoupons(attemptId),
     ]);
   }
 
@@ -397,16 +404,15 @@ export class PaymentCheckoutAttemptService {
     if (checkout.status !== 'PREPARING') return checkout;
     const snapshot = checkout.snapshot;
     try {
-      await this.loyalty.holdPaymentTender({
+      await this.paymentTenderReservations.holdPaymentTender({
         attemptId: checkout.attemptId,
         userStableId: snapshot.order.userStableId,
         pointsValueCents: snapshot.tender.pointsCents,
         balanceCents: snapshot.tender.balanceCents,
         expiresAt: checkout.expiresAt,
       });
-      await this.membership.holdPaymentCoupons({
+      await this.paymentCouponReservations.holdPaymentCoupons({
         attemptId: checkout.attemptId,
-        userId: snapshot.userId ?? undefined,
         userStableId: snapshot.order.userStableId,
         couponStableId: snapshot.order.couponStableId,
         selectedUserCouponId: snapshot.order.selectedUserCouponId,

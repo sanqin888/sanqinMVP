@@ -12,6 +12,10 @@ import {
   COUPON_PROGRAM_TRIGGER,
   type CouponProgramTriggerPort,
 } from '../benefits/public-api';
+import type {
+  HoldPaymentTenderReservationInput,
+  PaymentTenderReservationPort,
+} from '../benefits/contracts/payment-benefit-reservation.contract';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePromotionLoyaltyMultiplier } from '../promotions/public-api';
 import type {
@@ -150,7 +154,9 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 }
 
 @Injectable()
-export class LoyaltyService implements LoyaltyPolicyReaderPort {
+export class LoyaltyService
+  implements LoyaltyPolicyReaderPort, PaymentTenderReservationPort
+{
   constructor(
     private readonly prisma: PrismaService,
     @Inject(COUPON_PROGRAM_TRIGGER)
@@ -335,18 +341,9 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
     };
   }
 
-  async holdPaymentTender(params: {
-    attemptId: string;
-    userStableId?: string;
-    pointsValueCents: number;
-    balanceCents: number;
-    expiresAt: Date;
-  }): Promise<{
-    reservationId: string | null;
-    userId: string | null;
-    pointsValueCents: number;
-    balanceCents: number;
-  }> {
+  async holdPaymentTender(
+    params: HoldPaymentTenderReservationInput,
+  ): Promise<void> {
     const attemptId = params.attemptId.trim();
     const pointsValueCents = normalizeLoyaltyCents(params.pointsValueCents);
     const balanceCents = normalizeLoyaltyCents(params.balanceCents);
@@ -354,12 +351,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
       throw new BadRequestException('payment attemptId is required');
     }
     if (pointsValueCents === 0 && balanceCents === 0) {
-      return {
-        reservationId: null,
-        userId: null,
-        pointsValueCents: 0,
-        balanceCents: 0,
-      };
+      return;
     }
     if (!params.userStableId?.trim()) {
       throw new BadRequestException(
@@ -412,12 +404,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
             'payment tender reservation identity was reused with different facts',
           );
         }
-        return {
-          reservationId: existing.id,
-          userId,
-          pointsValueCents: existing.pointsValueCents,
-          balanceCents: existing.balanceCents,
-        };
+        return;
       }
 
       const held = await tx.loyaltyTenderReservation.aggregate({
@@ -440,7 +427,7 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
         );
       }
 
-      const reservation = await tx.loyaltyTenderReservation.create({
+      await tx.loyaltyTenderReservation.create({
         data: {
           attemptId,
           accountId: account.id,
@@ -452,13 +439,6 @@ export class LoyaltyService implements LoyaltyPolicyReaderPort {
           expiresAt: params.expiresAt,
         },
       });
-
-      return {
-        reservationId: reservation.id,
-        userId,
-        pointsValueCents,
-        balanceCents,
-      };
     });
   }
 

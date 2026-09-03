@@ -227,6 +227,62 @@ for (const absolutePath of sourceFiles) {
   }
 }
 
+const paymentBenefitsReservationBoundary =
+  config.paymentBenefitsReservationBoundary ?? null;
+if (paymentBenefitsReservationBoundary) {
+  const ownerContext = paymentBenefitsReservationBoundary.ownerContext;
+  const ownerRoots = (paymentBenefitsReservationBoundary.ownerRoots ?? []).map(
+    toPosix,
+  );
+  const publicContract = toPosix(
+    paymentBenefitsReservationBoundary.publicContract ?? '',
+  );
+  const publicCompositionModule = toPosix(
+    paymentBenefitsReservationBoundary.publicCompositionModule ?? '',
+  );
+  const protectedConsumers =
+    paymentBenefitsReservationBoundary.protectedConsumers ?? [];
+
+  for (const publicPath of [publicContract, publicCompositionModule]) {
+    if (!publicPath || !existsSync(join(REPOSITORY_ROOT, publicPath))) {
+      failures.push(
+        'payment Benefits reservation public boundary is missing: ' +
+          (publicPath || '<missing-path>'),
+      );
+    }
+  }
+
+  for (const sourcePath of protectedConsumers) {
+    const absolutePath = join(REPOSITORY_ROOT, sourcePath);
+    if (!existsSync(absolutePath)) {
+      failures.push(
+        'payment Benefits reservation protected consumer is missing: ' + sourcePath,
+      );
+      continue;
+    }
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const specifier of importSpecifiers(source)) {
+      if (!specifier.startsWith('.')) continue;
+      const targetPath = resolveTarget(absolutePath, specifier);
+      const targetsReservationOwner = ownerRoots.some(
+        (root) => targetPath === root || targetPath.startsWith(root + '/'),
+      );
+      if (
+        targetsReservationOwner &&
+        contextOf(targetPath) === ownerContext &&
+        !isPublicSurface(targetPath)
+      ) {
+        failures.push(
+          'payment preparation must use Benefits public reservation contracts: ' +
+            sourcePath +
+            ' -> ' +
+            specifier,
+        );
+      }
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

@@ -1,10 +1,10 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 2 base: branch created from `origin/dev@8cc42340` (2026-09-03).
+Phase 3 Slice 2B local base: branch created from `origin/dev@4fc982cd` (2026-09-03).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the Phase 3 Slice 2 Offers /
-Benefits boundary contraction.
+by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 2B POS
+Payment Benefits reservation boundary contraction.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
@@ -44,7 +44,7 @@ pair fails CI.
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
 | identity-customer-benefits | architecture-foundation 14; brand-store 4; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 21; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
-| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
+| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
@@ -257,7 +257,22 @@ pair fails CI.
   runtime-data-ci-ops` from 23 to 21.
 - The legacy Coupon implementation stays physically under `coupons` until its
   Prisma/Messaging dependencies can be contracted without raising another debt
-  allowance. Payments-facing coupon HOLD/COMMIT/RELEASE remains unchanged.
+  allowance. Slice 2 itself left Payments-facing coupon HOLD/COMMIT/RELEASE unchanged.
+- Slice 2B contracts Unified Payment preparation against Benefits: the payment
+  checkout service now injects Benefits-owned Points/Balance and Coupon reservation
+  ports, and the POS payment composition module imports the Benefits public
+  reservation module instead of `LoyaltyModule` / `MembershipModule` directly.
+  Coupon HOLD carries `userStableId` rather than the snapshot's internal User DB UUID.
+  Four production deep imports disappear, lowering `payments-clover ->
+  identity-customer-benefits` from 17 to 13 with the baseline reduced in the same
+  local change. The central scanner and Payments architecture test protect these
+  migrated consumers from regressing to Loyalty/Membership internals.
+- Slice 2B deliberately leaves transaction-bound COMMIT inside
+  `OrdersService.createFromConfirmedPaymentSnapshot()` so Points/Balance COMMIT,
+  Coupon COMMIT and Order creation remain atomic in one Prisma transaction. A safe
+  Slice 2C may contract that boundary later without exposing `Prisma.TransactionClient`
+  as an ordinary cross-context public contract. Production Web Clover and Prisma
+  schema/migrations are unchanged by Slice 2B.
 - Pre-Phase-3 Uber boundary hardening is now **PRODUCTION VERIFIED** (2026-09-03):
   - PR #2130 / `32d3925f` contracted Uber Store Policy ownership so order admission
     reads auto-accept/allergen policy through `UBER_STORE_CONFIG_QUERY` ->
