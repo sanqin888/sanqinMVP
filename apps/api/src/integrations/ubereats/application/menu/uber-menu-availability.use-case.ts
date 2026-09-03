@@ -30,7 +30,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
       UberMenuAvailabilityPort['syncUberMenuItemAvailability']
     >[0],
   ) {
-    const requestedStoreId = input.storeId?.trim() || undefined;
+    const requestedStoreStableId = input.storeStableId?.trim() || undefined;
     const publishable = await this.queries.isMenuItemPublishable(
       input.menuItemStableId,
     );
@@ -38,7 +38,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
 
     if (publishable) {
       const [mappings, suspendUntil] = await Promise.all([
-        this.queries.findProvisionedStores(requestedStoreId),
+        this.queries.findProvisionedStores(requestedStoreStableId),
         this.queries.findMenuItemSuspendUntil(input.menuItemStableId),
       ]);
       for (const mapping of mappings) {
@@ -50,21 +50,21 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
             suspendUntil,
           );
           stores.push({
-            storeId: mapping.storeId,
+            storeStableId: mapping.storeStableId,
             uberStoreId: mapping.uberStoreId,
             status: 'SYNCED',
           });
         } catch (error) {
           const message = errorMessage(error);
           await this.commands.createItemPublishFailure({
-            storeId: mapping.storeId,
+            storeStableId: mapping.storeStableId,
             uberStoreId: mapping.uberStoreId,
             menuItemStableId: input.menuItemStableId,
             isAvailable: input.isAvailable,
             error: message,
           });
           stores.push({
-            storeId: mapping.storeId,
+            storeStableId: mapping.storeStableId,
             uberStoreId: mapping.uberStoreId,
             status: 'FAILED',
             error: message,
@@ -80,7 +80,10 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
         menuItemStableId: input.menuItemStableId,
         isAvailable: input.isAvailable,
         status,
-        stores,
+        stores: stores.map(({ storeStableId, ...store }) => ({
+          ...store,
+          storeId: storeStableId,
+        })),
       },
     );
     return { status, stores };
@@ -91,9 +94,9 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
       UberMenuAvailabilityPort['syncUberOptionItemAvailability']
     >[0],
   ) {
-    const requestedStoreId = input.storeId?.trim() || undefined;
+    const requestedStoreStableId = input.storeStableId?.trim() || undefined;
     const [mappings, suspendUntil] = await Promise.all([
-      this.queries.findProvisionedStores(requestedStoreId),
+      this.queries.findProvisionedStores(requestedStoreStableId),
       this.queries.findOptionSuspendUntil(input.optionChoiceStableId),
     ]);
     const stores: UberAvailabilitySyncResult['stores'] = [];
@@ -106,13 +109,13 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
           suspendUntil,
         );
         stores.push({
-          storeId: mapping.storeId,
+          storeStableId: mapping.storeStableId,
           uberStoreId: mapping.uberStoreId,
           status: 'SYNCED',
         });
       } catch (error) {
         stores.push({
-          storeId: mapping.storeId,
+          storeStableId: mapping.storeStableId,
           uberStoreId: mapping.uberStoreId,
           status: 'FAILED',
           error: errorMessage(error),
@@ -123,23 +126,26 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     await this.telemetry.captureEvent(
       'ubereats_option_item_availability_synced',
       {
-        storeId: requestedStoreId ?? null,
+        storeId: requestedStoreStableId ?? null,
         optionChoiceStableId: input.optionChoiceStableId,
         isAvailable: input.isAvailable,
         status,
-        stores,
+        stores: stores.map(({ storeStableId, ...store }) => ({
+          ...store,
+          storeId: storeStableId,
+        })),
       },
     );
     return { status, stores };
   }
 
   private async updateUberItemAvailability(
-    mapping: { storeId: string; uberStoreId: string },
+    mapping: { storeStableId: string; uberStoreId: string },
     stableId: string,
     isAvailable: boolean,
     suspendUntil: Date | null,
   ) {
-    const itemId = buildUberNodeId('item', mapping.storeId, stableId);
+    const itemId = buildUberNodeId('item', mapping.storeStableId, stableId);
     const taskId = randomUUID();
     const suspendUntilEpochSeconds =
       !isAvailable && suspendUntil && suspendUntil.getTime() > Date.now()

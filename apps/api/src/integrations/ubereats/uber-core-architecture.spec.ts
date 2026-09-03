@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import {
   importViolations,
   scanTypeScript,
-} from './test/architecture-test.utils';
+} from '../../test/architecture-test.utils';
 
 const UBER_EATS_ROOT = resolve(__dirname);
 const CORE_ROOTS = [

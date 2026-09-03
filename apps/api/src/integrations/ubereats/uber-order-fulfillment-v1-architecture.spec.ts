@@ -1,30 +1,22 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { scanTextFiles } from '../../test/architecture-test.utils';
 
 const ROOT = resolve(__dirname);
-const TEXT_EXTENSIONS = new Set(['.ts', '.json', '.md']);
+const TEXT_EXTENSIONS = ['.ts', '.json', '.md'] as const;
 const forbiddenOrderFragments = [
   ['/v2/eats/', 'order'].join(''),
   ['accept', '_pos_order'].join(''),
   ['deny', '_pos_order'].join(''),
 ] as const;
 
-const files = (directory: string): string[] =>
-  readdirSync(directory).flatMap((name) => {
-    const path = join(directory, name);
-    if (statSync(path).isDirectory()) return files(path);
-    const extension = path.slice(path.lastIndexOf('.'));
-    return TEXT_EXTENSIONS.has(extension) ? [path] : [];
-  });
-
 describe('Uber Order Fulfillment API 1.0.0 architecture', () => {
   it('does not allow legacy Order detail/action API fragments to return anywhere in the bounded context', () => {
     const violations: string[] = [];
-    for (const path of files(ROOT)) {
-      const source = readFileSync(path, 'utf8');
+    for (const file of scanTextFiles(ROOT, { extensions: TEXT_EXTENSIONS })) {
       for (const fragment of forbiddenOrderFragments) {
-        if (source.includes(fragment)) {
-          violations.push(`${relative(ROOT, path)} -> ${fragment}`);
+        if (file.source.includes(fragment)) {
+          violations.push(`${relative(ROOT, file.path)} -> ${fragment}`);
         }
       }
     }

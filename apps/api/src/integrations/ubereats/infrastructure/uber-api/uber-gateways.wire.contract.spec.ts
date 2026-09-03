@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { UberHttpClient, UberApiError } from './uber-http.client';
 import { UberApiGatewayTransport } from './uber-api.gateway';
 import { UberApiConfigService } from './uber-api-config.service';
@@ -42,10 +42,13 @@ const fixture = (path: string): Record<string, unknown> => {
 };
 
 describe('Uber gateways wire contract v1', () => {
-  it('resolves the order gateway transport and configuration through Nest tokens', async () => {
-    const module = await Test.createTestingModule({
+  let wiringModule: TestingModule;
+
+  beforeAll(async () => {
+    wiringModule = await Test.createTestingModule({
       providers: [
         UberOrderGateway,
+        UberOrderDetailGatewayAdapter,
         {
           provide: UberApiGatewayTransport,
           useValue: createUberTransportFake(),
@@ -54,22 +57,21 @@ describe('Uber gateways wire contract v1', () => {
           provide: UberApiConfigService,
           useValue: { resourceHrefAllowedOrigins: 'https://api.uber.com' },
         },
-      ],
-    }).compile();
-
-    expect(module.get(UberOrderGateway)).toBeInstanceOf(UberOrderGateway);
-  });
-
-  it('resolves the order detail adapter telemetry dependency through its Nest token', async () => {
-    const module = await Test.createTestingModule({
-      providers: [
-        UberOrderDetailGatewayAdapter,
-        { provide: UberOrderGateway, useValue: {} },
         { provide: UBER_TELEMETRY_PORT, useValue: { workflowLog: jest.fn() } },
       ],
     }).compile();
+  });
 
-    expect(module.get(UberOrderDetailGatewayAdapter)).toBeInstanceOf(
+  afterAll(async () => {
+    await wiringModule.close();
+  });
+
+  it('resolves the order gateway transport and configuration through Nest tokens', () => {
+    expect(wiringModule.get(UberOrderGateway)).toBeInstanceOf(UberOrderGateway);
+  });
+
+  it('resolves the order detail adapter telemetry dependency through its Nest token', () => {
+    expect(wiringModule.get(UberOrderDetailGatewayAdapter)).toBeInstanceOf(
       UberOrderDetailGatewayAdapter,
     );
   });

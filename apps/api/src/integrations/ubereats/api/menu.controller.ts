@@ -267,7 +267,7 @@ export class UberEatsMenuController {
     await this.availability.syncUberMenuItemAvailability({
       menuItemStableId: stableId,
       isAvailable: dto.isAvailable,
-      storeId: dto.storeId,
+      storeStableId: dto.storeId,
     });
     return presentMenuMutation();
   }
@@ -281,7 +281,7 @@ export class UberEatsMenuController {
     await this.availability.syncUberOptionItemAvailability({
       optionChoiceStableId: stableId,
       isAvailable: dto.isAvailable,
-      storeId: dto.storeId,
+      storeStableId: dto.storeId,
     });
     return presentMenuMutation();
   }

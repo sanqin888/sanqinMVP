@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "fed618bd",
+  "baselineCommit": "0917f66c",
   "updatedAt": "2026-09-02",
   "requiredFields": [
     "compat_id",
@@ -14,65 +14,6 @@
     "deadline"
   ],
   "active": [
-    {
-      "compat_id": "brand-store.default-store-identity.v1",
-      "status": "active",
-      "old_owner": "Implicit literal default store identity in Uber channel tables, BusinessHour/Holiday persistence defaults, and single-store helpers",
-      "new_owner": "Explicit Store.storeStableId at public boundaries with owner-local storeDbId conversion at persistence boundaries",
-      "dual_write_or_read": [
-        "Staff Brand/Store schedule reads and writes plus StoreStatus now pass storeStableId through STORE_SCHEDULE_READER/WRITER and resolve storeDbId only inside the Store Prisma adapter",
-        "BusinessHour and Holiday no longer carry hard-coded store DB UUID defaults in Prisma; the store-scope migration keeps the physical storeId column, exposes it as storeDbId in Prisma, and changes BusinessHour uniqueness to storeDbId + weekday",
-        "Authenticated POS Orders and Daily Summary browser timezone context now comes from /pos/store-context: PosDeviceGuard supplies the authenticated device storeStableId and the POS adapter reads that exact Store snapshot through BRAND_STORE_CONFIG_READER instead of falling back to /staff/store/config",
-        "Authenticated POS order creation, recent/board reads, per-order management/printing/status actions, scheduled-order timing/manual preparation, and managed refund entry points carry the PosDeviceGuard storeStableId through store-scoped Orders boundaries. The first NULL-store contraction batch is now staged: store-scoped Orders and scheduling queries match only canonical storeId, scheduled preparation no longer accepts storeId IS NULL, and accepted/reprint/amendment print dispatch fails closed instead of guessing the configured store when order.storeId is missing; production Order.storeId IS NULL was verified as zero before this contraction",
-        "Authenticated POS store-status reads, pause/resume writes, and timed-pause compare-and-set reconciliation now carry PosDeviceGuard storeStableId through the Brand/Store reader/writer boundary. The configured-store connectivity watchdog resolves its deployment store once, scopes ACTIVE PosDevice heartbeats to that Store relation, and passes the same explicit storeStableId through StoreStatus and pause reconciliation instead of relying on owner-internal fallback selection. StoreConfig pause/resume persistence is canonical-only because the former singleton BusinessConfig compatibility persistence has been fully contracted",
-        "Canonical Admin Web Store config, hours, and holidays calls require storeStableId and use only /staff/stores/:storeStableId/*; the selector establishes ?store= from the Store directory before Store settings load, and the second contraction batch removes the legacy /staff/store/* transport adapter entirely so Admin Store transport no longer resolves a configured fallback identity",
-        "The third contraction batch removes the remaining /admin/business/* config/hours/holidays/temporary-close compatibility transport and retires the standalone BusinessHoursModule after source and deployed-log checks found no real consumers; canonical /staff/brand/* and /staff/stores/:storeStableId/* remain the only Admin Brand/Store transport",
-        "The fourth contraction batch separates BrandStoreConfigWriterPort into Brand-only updateBrandConfig and explicit storeStableId-scoped updateStoreConfig, removes the retired combined Admin Business response/update shape, gives deployment-level Store readers the explicit getConfiguredStoreSnapshot name, and threads authenticated POS storeStableId into exchange-rate quoting. POS exchange-rate timezone is Store-owned while wechatAlipayExchangeRate remains Brand-owned fallback; the Bank of Canada cached rate remains preferred over that fallback",
-        "First Uber Store-identity code slice (PR #2119 / 7110dd46) is VERIFIED in production on 2026-09-02: no-argument StoreConfig reads were removed, Uber menu BusinessHour/config reads are scoped by explicit storeStableId, menu draft/publish config reads are canonical-store-only, menu-side literal-default normalization is removed, and automatic store-status sync uses each mapping's SanQ store context. Focused active verification passed Admin Uber page loading, item config save/revert, option config save/revert, Draft/Diff, POS Uber pause/resume, and item availability sync. Dry Run returned 8 RESOURCE_DELETED risks, all traced to the pre-existing Soft Drink publishToUberEats=false source flag removing Soft Drink plus its seven drink options from the candidate full-menu payload; no identity/context regression was found and no formal publish was performed from that risky payload",
-        "Second Uber Operations/OpsTicket identity slice is VERIFIED in production on 2026-09-02 and contracts the remaining runtime default-store normalization without changing Prisma schema or historical rows: Operations report/ticket transport now requires explicit SanQ storeStableId, reconciliation order reads are store-scoped, MENU_PUBLISH retry context remains canonical storeStableId, provider identity is retained only where Store Status must call the Uber store API, and new store-status failure tickets persist canonical storeStableId. The 15 historical provider-UUID STORE_STATUS_SYNC tickets remain readable/retryable through an explicit UberStoreMapping compatibility scope until the later authorized data contraction. A pre-existing availability-alert bug is also corrected so future item-availability failures create MENU_ITEM_AVAILABILITY tickets with retry-compatible context instead of malformed MENU_PUBLISH tickets. failedSyncEvents remains a range-level Uber telemetry count because the existing event producers do not provide a reliable SanQ store identity; it is explicitly not presented as store-scoped by this slice. The 15 legacy store-status rows, 3 already-malformed historical availability rows, and eight Prisma storeId @default(\"default\") declarations were deliberately not mutated by Slice 2. Only the eight schema defaults proceed into the current persistence contraction; historical Test Store rows remain unchanged for Production Cutover Cleanup and are not closure blockers",
-        "Third Uber persistence contraction removes only the database/schema default from UberItemChannelConfig, UberCategoryConfig, UberModifierGroupConfig, UberOptionItemConfig, UberOptionChildGroupBinding, UberMenuPublishVersion, UberReconciliationReport, and UberOpsTicket. The migration contains only ALTER COLUMN storeId DROP DEFAULT statements and intentionally performs no UPDATE, DELETE, backfill, or historical-row repair. Historical provider-UUID OpsTickets, malformed availability tickets, storeId='default' rows, and other Test Store/sandbox verification records are not closure blockers for this slice; after Uber verification they move to a separate Uber Production Cutover Cleanup that re-audits and selectively deletes test history while preserving Production-required OAuth connection, Store mapping, menu configuration, and other initialization state",
-        "The user explicitly lifted the UberEats structural-change freeze on 2026-09-02 so this remaining Store-identity work can be completed before real Uber production traffic. UberEats changes must now proceed in independently deployable slices; after each deployed slice, its affected capabilities require focused active verification and explicit user confirmation before the next UberEats code slice begins"
-      ],
-      "parity_metric": "Production verification on 2026-09-02 confirmed the explicit-store runtime path: new Reconciliation/OpsTicket writes use canonical storeStableId=4750_Yonge_Street, and POS pause/resume plus item availability succeeded. Historical Test Store data is intentionally not normalized for this contraction and includes 15 provider-UUID STORE_STATUS_SYNC OpsTickets, 3 malformed historical availability tickets, 1 UberReconciliationReport with storeId='default', plus other sandbox verification records; these rows are scheduled for the separate Uber Production Cutover Cleanup and are not persistence-contraction blockers. Production menu/config rows are canonical 4750_Yonge_Street scoped; UberOpsTicket is the known exception with 15 provider-UUID STORE_STATUS_SYNC rows and 3 canonical 4750_Yonge_Street MENU_PUBLISH rows, and the provisioned mapping links provider store 47f93365-f7dc-4b49-9e3b-a99e9915e558 to 4750_Yonge_Street. No real /api/v1/staff/store/* request appeared after deployment while canonical /api/v1/staff/stores/4750_Yonge_Street/* reads/writes returned 200. Uber slice 1 production verification on 2026-09-02 passed Admin page, item/option save-revert, Draft/Diff, POS pause/resume and availability sync. Publish Dry Run reached the canonical store-scoped safety path successfully; its 8 RESOURCE_DELETED findings were explained exactly by the existing Soft Drink publishToUberEats=false source state rather than store-context loss. Remaining Uber exit work is actively unblocked but verification-gated: each Store-identity slice must deploy independently, run focused active smoke checks with sanitized log/DB evidence where useful, and receive user confirmation before the next slice. Do not wait for organic traffic as the parity signal.",
-      "rollback": "For the persistence slice, forward-fix application/schema errors rather than restoring implicit default-store writes. The DROP DEFAULT migration preserves all row data and can be reversed only by re-adding the database default if an emergency rollback is explicitly authorized; do not reinterpret or rewrite historical provider IDs/test rows.",
-      "exit_criteria": "All new Uber persistence writes require explicit SanQ store identity where SanQ Store identity is intended; provider uberStoreId remains distinct; runtime literal-default normalization and the eight Prisma storeId defaults are absent; the persistence slice passes focused production verification with zero new storeId='default' rows and no missing-store errors. Historical Test Store/sandbox rows are not backfill or closure blockers and are handled later by Uber Production Cutover Cleanup.",
-      "remove_pr": "Phase 2 store identity contraction PR",
-      "deadline": "Before Phase 2 Brand/Store exit",
-      "evidence": [
-        "apps/api/prisma/schema.prisma BusinessHour/Holiday and Uber*Config models",
-        "apps/api/src/store/store-schedule.contract.ts",
-        "apps/api/src/store/brand-store-config.reader.ts",
-        "apps/api/src/store/store-status.service.ts",
-        "apps/api/src/pos/pos-summary.controller.ts",
-        "apps/api/src/pos/pos-orders.controller.ts",
-        "apps/api/src/pos/pos-orders.service.ts",
-        "apps/api/src/pos/pos-store-status.controller.ts",
-        "apps/api/src/pos/pos-store-status.service.ts",
-        "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
-        "apps/api/src/store/store-status.controller.ts",
-        "apps/api/src/store/store-status.service.ts",
-        "apps/api/src/orders/orders.controller.ts",
-        "apps/api/src/orders/orders.service.ts",
-        "apps/api/src/orders/order-scheduling-query.service.ts",
-        "apps/api/src/orders/order-preparation.service.ts",
-        "apps/api/src/orders/processors/fulfillment.processor.ts",
-        "apps/api/src/orders/processors/fulfillment.processor.spec.ts",
-        "apps/api/src/admin/admin.module.ts",
-        "apps/api/src/admin/business/staff-brand-store.controller.ts",
-        "apps/api/src/admin/business/staff-brand-store.controller.spec.ts",
-        "tools/architecture/context-baseline.json",
-        "tools/architecture/scan-architecture.mjs",
-        "apps/web/src/lib/api/pos-session.ts",
-        "apps/web/src/lib/api/brand-store.ts",
-        "apps/web/src/features/admin/brand-store/AdminStoreContextSelector.tsx",
-        "apps/web/src/features/admin/brand-store/StoreSettingsPageClient.tsx",
-        "PR #2119 / 7110dd46 Uber explicit-store-context contraction plus focused production verification on 2026-09-02",
-        "PR #2122 / 53688897 Uber Operations/OpsTicket identity contraction plus focused production verification on 2026-09-02",
-        "apps/api/src/integrations/ubereats/uber-store-identity-architecture.spec.ts",
-        "apps/api/prisma/migrations/20260903022000_contract_uber_store_id_defaults/migration.sql",
-        "SanQ full-site modularization audit section 3.3, 6.2 and 6.8"
-      ]
-    },
     {
       "compat_id": "payments.pos-card-legacy.v1",
       "status": "frozen",
@@ -113,6 +54,31 @@
     }
   ],
   "closed": [
+    {
+      "compat_id": "brand-store.default-store-identity.v1",
+      "status": "closed",
+      "old_owner": "Implicit literal/configured default Store identity across Brand/Store, POS/Orders, Admin transport, and Uber persistence paths",
+      "new_owner": "Explicit Store.storeStableId at public/business boundaries with owner-local storeDbId conversion only where persistence relations require it; Uber provider uberStoreId remains a distinct external identity",
+      "dual_write_or_read": "Removed. Canonical Admin Store transport is /staff/stores/:storeStableId/*, authenticated POS/Orders paths carry the guarded storeStableId, Brand/Store persistence no longer relies on BusinessConfig/default-store compatibility, Uber runtime/report/ticket/config writers require explicit SanQ Store identity, and the eight Uber Prisma storeId database defaults are removed.",
+      "parity_metric": "Completed production verification on 2026-09-02 after PR #2124 deployment. Migration 20260903022000_contract_uber_store_id_defaults applied successfully; all eight contracted Uber storeId columns remain NOT NULL and have no database default. A new UberReconciliationReport persisted storeId=4750_Yonge_Street after deployment. POS pause 15 minutes and manual resume both reached Uber store-status with provider status 200/outcome SUCCEEDED; published item availability updates reached Uber with status 204/SYNCED. No post-migration row in the eight contracted tables used storeId='default', and API/ubereats-worker scans showed no missing-store, Prisma required-field, or constraint error. Historical Test Store/sandbox rows, including the one legacy default Reconciliation row and provider-UUID OpsTickets, remained unchanged by design and are not Phase 2 closure blockers.",
+      "rollback": "Forward-fix only. Do not restore implicit default-store transport/runtime behavior or Prisma storeId defaults. Historical Test Store/sandbox rows remain untouched until the separately authorized Uber Production Cutover Cleanup.",
+      "exit_criteria": "Completed: public/runtime Store identity is explicit, internal DB IDs and provider Uber Store IDs remain distinct from SanQ storeStableId, BusinessConfig/default-store compatibility is contracted, the eight Uber Prisma storeId defaults are absent, focused production verification passed, zero new default-store persistence was observed, and historical sandbox rows are explicitly excluded from the Phase 2 closure gate.",
+      "remove_pr": "PR #2119 / 7110dd46, PR #2122 / 53688897, PR #2124 / 0917f66c",
+      "deadline": "Completed 2026-09-02",
+      "evidence": [
+        "apps/api/prisma/schema.prisma",
+        "apps/api/prisma/migrations/20260903022000_contract_uber_store_id_defaults/migration.sql",
+        "apps/api/src/integrations/ubereats/uber-store-identity-architecture.spec.ts",
+        "tools/architecture/scan-architecture.mjs",
+        "apps/api/src/store/public-api.ts and Brand/Store reader/writer contracts",
+        "apps/api/src/pos/public-api.ts and POS store-scoped controllers/services",
+        "apps/api/src/orders/public-api.ts and store-scoped Orders services",
+        "apps/web/src/lib/api/brand-store.ts",
+        "PR #2119 Uber explicit-store-context production verification",
+        "PR #2122 Uber Operations/OpsTicket identity production verification",
+        "PR #2124 Uber persistence default contraction plus production DB/log verification on 2026-09-02"
+      ]
+    },
     {
       "compat_id": "web.api-envelope-direct-payload.v1",
       "status": "closed",
@@ -172,6 +138,7 @@
         "apps/api/src/pos/pos-device-management.contract.ts",
         "apps/api/src/pos/pos-device.service.ts",
         "apps/api/src/pos/pos-device-management.architecture.spec.ts",
+        "tools/architecture/scan-architecture.mjs",
         "apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts",
         "apps/api/src/admin/pos-devices/dto/create-pos-device.dto.ts",
         "apps/api/src/store/brand-store-config.contract.ts",

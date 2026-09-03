@@ -146,7 +146,7 @@ describe('Uber scheduled finalize persistence', () => {
         paidAt: new Date('2026-08-21T13:55:15.000Z'),
         cancellation: null,
       },
-      posStoreId: '4750_Yonge_Street',
+      storeStableId: '4750_Yonge_Street',
       eventType: 'orders.scheduled.notification',
       cursor: {
         eventId: 'scheduled-event-replay',

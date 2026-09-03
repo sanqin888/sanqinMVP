@@ -32,7 +32,7 @@ const parsedOrder = {
 
 const baseInput = {
   order: parsedOrder,
-  posStoreId: '4750_Yonge_Street',
+  storeStableId: '4750_Yonge_Street',
   eventType: 'orders.notification',
   cursor: {
     eventId: 'evt-order-1',
@@ -100,51 +100,6 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
         resourceVersion: '42',
         sequence: 7,
       },
-    });
-  });
-
-  it('reads the store-scoped allergy policy through Store.storeStableId', async () => {
-    const findUnique = jest.fn().mockResolvedValue({
-      config: {
-        allergyHandlingMode: 'DENY_LIST',
-        unsupportedAllergens: ['PEANUTS', 'SHELLFISH'],
-      },
-    });
-    const adapter = new UberOrderImportPrismaAdapter(
-      { store: { findUnique } } as never,
-      {} as never,
-    );
-
-    await expect(
-      adapter.getStoreAllergyPolicy('4750_Yonge_Street'),
-    ).resolves.toEqual({
-      mode: 'DENY_LIST',
-      unsupportedAllergens: ['PEANUTS', 'SHELLFISH'],
-    });
-    expect(findUnique).toHaveBeenCalledWith({
-      where: { storeStableId: '4750_Yonge_Street' },
-      select: {
-        config: {
-          select: {
-            allergyHandlingMode: true,
-            unsupportedAllergens: true,
-          },
-        },
-      },
-    });
-  });
-
-  it('defaults a missing store allergy config to RELAY_ALL', async () => {
-    const adapter = new UberOrderImportPrismaAdapter(
-      { store: { findUnique: jest.fn().mockResolvedValue(null) } } as never,
-      {} as never,
-    );
-
-    await expect(
-      adapter.getStoreAllergyPolicy('unknown-store'),
-    ).resolves.toEqual({
-      mode: 'RELAY_ALL',
-      unsupportedAllergens: [],
     });
   });
 
@@ -291,6 +246,11 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       action: null,
     });
 
+    expect(ingest).toHaveBeenCalledWith(
+      expect.objectContaining({ storeStableId: '4750_Yonge_Street' }),
+      expect.any(Object),
+      expect.any(Function),
+    );
     expect(inboxUpsert).not.toHaveBeenCalled();
     expect(inboxUpdate).not.toHaveBeenCalled();
   });

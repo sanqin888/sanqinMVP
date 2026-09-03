@@ -28,11 +28,6 @@ export type UberOrderModifierSnapshotMapping =
     externalItemId: string;
   };
 
-export type UberStoreAllergyPolicy = {
-  mode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
-  unsupportedAllergens: string[];
-};
-
 export type UberOrderCancellationDecision = {
   kind: 'CANCELLED' | 'REJECTED';
   cancelledBy: string | null;
@@ -79,12 +74,10 @@ export interface UberOrderImportRepositoryPort {
   } | null>;
   /** Standalone admission DENY creates no local Order; failure webhook may arrive afterward. */
   hasSucceededDenial?(externalOrderId: string): Promise<boolean>;
-  getPosStoreConnectivity?(posStoreId: string): Promise<{
+  getPosStoreConnectivity?(storeStableId: string): Promise<{
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
     lastHeartbeatAt: Date | null;
   }>;
-  getStoreAllergyPolicy?(posStoreId: string): Promise<UberStoreAllergyPolicy>;
-  getStoreAutoAcceptOnlineOrders?(posStoreId: string): Promise<boolean>;
   saveExistingOrderCancellation(input: {
     orderId: string;
     externalOrderId: string;
@@ -93,7 +86,7 @@ export interface UberOrderImportRepositoryPort {
   }): Promise<void>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
-    posStoreId: string;
+    storeStableId: string;
     eventType: string;
     cursor: UberOrderEventCursor;
     menuMappings: UberOrderMenuMapping[];

@@ -3,6 +3,10 @@ import {
   UBER_TELEMETRY_PORT,
 } from '../../application/shared/uber-telemetry.port';
 import {
+  type UberStoreConfigQueryPort,
+  UBER_STORE_CONFIG_QUERY,
+} from '../../application/shared/uber-store-config.port';
+import {
   type UberWorkerWakePort,
   UBER_WORKER_WAKE_PORT,
 } from '../../application/shared/uber-worker-wake.port';
@@ -149,14 +153,22 @@ export function createOrdersWiring(): Provider[] {
         UBER_ORDER_DETAIL_QUERY,
         UberOrderActionService,
         UBER_STORE_MAPPING_REPOSITORY,
+        UBER_STORE_CONFIG_QUERY,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
         gateway: UberOrderDetailQueryPort,
         actions: UberOrderActionService,
         storeMappings: UberStoreMappingRepositoryPort,
+        storeConfig: UberStoreConfigQueryPort,
       ) =>
-        new ImportUberOrderUseCase(repository, gateway, actions, storeMappings),
+        new ImportUberOrderUseCase(
+          repository,
+          gateway,
+          actions,
+          storeMappings,
+          storeConfig,
+        ),
     },
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
     {
@@ -166,14 +178,22 @@ export function createOrdersWiring(): Provider[] {
         UBER_ORDER_DETAIL_QUERY,
         UberOrderActionService,
         UBER_STORE_MAPPING_REPOSITORY,
+        UBER_STORE_CONFIG_QUERY,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
         gateway: UberOrderDetailQueryPort,
         actions: UberOrderActionService,
         storeMappings: UberStoreMappingRepositoryPort,
+        storeConfig: UberStoreConfigQueryPort,
       ) =>
-        new CancelUberOrderUseCase(repository, gateway, actions, storeMappings),
+        new CancelUberOrderUseCase(
+          repository,
+          gateway,
+          actions,
+          storeMappings,
+          storeConfig,
+        ),
     },
     {
       provide: RequestUberOrderActionUseCase,

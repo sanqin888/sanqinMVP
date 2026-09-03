@@ -22,6 +22,16 @@ export {
   type PosScheduledOrderSummaryDto,
 } from './pos-order-operations.contract';
 export {
+  ORDER_INGESTION,
+  type IngestionResult,
+  type NormalizedOrderInput,
+  type NormalizedOrderItem,
+  type OrderIngestionPolicies,
+  type OrderIngestionPort,
+  type OrderIngestionWithinTransaction,
+} from './order-ingestion.contract';
+export { ORDER_INGESTION_PROVIDER } from './order-ingestion.provider';
+export {
   POS_PRINT_JOB_DISPATCH_REQUESTED,
   type PosPrintJobDispatchRequest,
   type PosPrintJobDispatchResult,

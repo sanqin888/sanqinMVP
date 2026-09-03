@@ -4,7 +4,7 @@ import {
   formatSourceViolation,
   importViolations,
   scanTypeScript,
-} from '../test/architecture-test.utils';
+} from '../../../test/architecture-test.utils';
 
 const CONTRACTS_ROOT = resolve(__dirname);
 const productionFiles = scanTypeScript(CONTRACTS_ROOT, {

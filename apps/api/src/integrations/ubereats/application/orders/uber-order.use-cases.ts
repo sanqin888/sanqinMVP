@@ -18,6 +18,7 @@ import type { UberOrderAdmissionDecision } from '../../domain/orders/uber-order-
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import { UberApplicationError } from '../shared/uber-application.error';
+import type { UberStoreConfigQueryPort } from '../shared/uber-store-config.port';
 import { UberOrderAdmissionService } from './uber-order-admission.service';
 
 export { UberOrderStoreMappingError } from './uber-order-admission.service';
@@ -31,8 +32,13 @@ export class ImportUberOrderUseCase {
     private readonly detailGateway: UberOrderDetailQueryPort,
     private readonly actions: UberOrderActionService,
     storeMappings: UberStoreMappingRepositoryPort,
+    private readonly storeConfig: UberStoreConfigQueryPort,
   ) {
-    this.admission = new UberOrderAdmissionService(repository, storeMappings);
+    this.admission = new UberOrderAdmissionService(
+      repository,
+      storeMappings,
+      storeConfig,
+    );
   }
 
   async execute(
@@ -130,13 +136,13 @@ export class ImportUberOrderUseCase {
 
       await this.repository.saveImportedOrder({
         order: detail.order,
-        posStoreId: admission.posStoreId,
+        storeStableId: admission.storeStableId,
         eventType: normalizedEventType,
         cursor,
         menuMappings: admission.menuMappings,
         modifierSnapshotMappings: await this.buildModifierSnapshotMappings(
           detail.order,
-          admission.posStoreId,
+          admission.storeStableId,
         ),
         cancellation: null,
         actionIntent: null,
@@ -171,18 +177,18 @@ export class ImportUberOrderUseCase {
 
     const imported = await this.repository.saveImportedOrder({
       order,
-      posStoreId: admission.posStoreId,
+      storeStableId: admission.storeStableId,
       eventType: normalizedEventType,
       cursor,
       menuMappings: admission.menuMappings,
       modifierSnapshotMappings: await this.buildModifierSnapshotMappings(
         order,
-        admission.posStoreId,
+        admission.storeStableId,
       ),
       cancellation: null,
       actionIntent: await this.buildAdmissionIntent(
         order.externalOrderId,
-        admission.posStoreId,
+        admission.storeStableId,
         admission.decision,
       ),
       receivedAt: new Date(),
@@ -201,7 +207,7 @@ export class ImportUberOrderUseCase {
 
   private async buildModifierSnapshotMappings(
     order: ParsedUberOrder,
-    posStoreId: string,
+    storeStableId: string,
   ): Promise<UberOrderModifierSnapshotMapping[]> {
     if (!order.items.some((item) => item.modifiers.length > 0)) return [];
     const sources = this.repository.findModifierSnapshotSources
@@ -209,13 +215,13 @@ export class ImportUberOrderUseCase {
       : [];
     return sources.map((source) => ({
       ...source,
-      externalItemId: buildUberNodeId('item', posStoreId, source.stableId),
+      externalItemId: buildUberNodeId('item', storeStableId, source.stableId),
     }));
   }
 
   private async buildAdmissionIntent(
     externalOrderId: string,
-    posStoreId: string,
+    storeStableId: string,
     decision: UberOrderAdmissionDecision,
   ): Promise<UberOrderImportActionIntent | null> {
     if (decision.kind === 'DENY') {
@@ -225,9 +231,8 @@ export class ImportUberOrderUseCase {
         denial: decision.denial,
       });
     }
-    const autoAcceptEnabled = this.repository.getStoreAutoAcceptOnlineOrders
-      ? await this.repository.getStoreAutoAcceptOnlineOrders(posStoreId)
-      : true;
+    const autoAcceptEnabled =
+      await this.storeConfig.getStoreAutoAcceptOnlineOrders(storeStableId);
     return autoAcceptEnabled
       ? this.actions.buildIntent({ externalOrderId, action: 'ACCEPT' })
       : null;

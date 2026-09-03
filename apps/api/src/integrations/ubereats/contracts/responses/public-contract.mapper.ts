@@ -24,7 +24,7 @@ export const presentAvailabilitySync = (
 ): UberEatsAvailabilitySyncResult => ({
   status: presentAvailabilityStatus(result.status),
   stores: result.stores.map((store) => ({
-    storeId: store.storeId,
+    storeStableId: store.storeStableId,
     status: presentAvailabilityStatus(store.status),
     ...(store.error ? { error: publicSyncError(store.error) } : {}),
   })),

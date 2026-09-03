@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -14,9 +14,12 @@ import {
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
+import {
+  ORDER_INGESTION,
+  type NormalizedOrderItem,
+  type OrderIngestionPort,
+} from '../../../../orders/public-api';
 import { resolveConfiguredStoreStableId } from '../../../../store/public-api';
-import type { NormalizedOrderItem } from '../../../../orders/order-ingestion.service';
-import { OrderIngestionService } from '../../../../orders/order-ingestion.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderCancellationDecision,
@@ -37,7 +40,8 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ingestion: OrderIngestionService,
+    @Inject(ORDER_INGESTION)
+    private readonly ingestion: OrderIngestionPort,
   ) {}
 
   async findMenuMappings(
@@ -116,8 +120,8 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return denial?.status === 'SUCCEEDED';
   }
 
-  async getPosStoreConnectivity(posStoreId: string) {
-    if (posStoreId !== resolveConfiguredStoreStableId()) {
+  async getPosStoreConnectivity(storeStableId: string) {
+    if (storeStableId !== resolveConfiguredStoreStableId()) {
       return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
     }
     const devices = await this.prisma.posDevice.findMany({
@@ -129,39 +133,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
     );
     return resolvePosConnectivityStatus(devices, Date.now(), offlineAfterMs);
-  }
-
-  async getStoreAllergyPolicy(posStoreId: string) {
-    const store = await this.prisma.store.findUnique({
-      where: { storeStableId: posStoreId },
-      select: {
-        config: {
-          select: {
-            allergyHandlingMode: true,
-            unsupportedAllergens: true,
-          },
-        },
-      },
-    });
-    const config = store?.config;
-    const mode =
-      config?.allergyHandlingMode === 'DENY_LIST'
-        ? ('DENY_LIST' as const)
-        : config?.allergyHandlingMode === 'DENY_ALL'
-          ? ('DENY_ALL' as const)
-          : ('RELAY_ALL' as const);
-    return {
-      mode,
-      unsupportedAllergens: config?.unsupportedAllergens ?? [],
-    };
-  }
-
-  async getStoreAutoAcceptOnlineOrders(posStoreId: string): Promise<boolean> {
-    const store = await this.prisma.store.findUnique({
-      where: { storeStableId: posStoreId },
-      select: { config: { select: { autoAcceptOnlineOrders: true } } },
-    });
-    return store?.config?.autoAcceptOnlineOrders ?? true;
   }
 
   async saveExistingOrderCancellation(
@@ -258,7 +229,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         paymentMethod: PaymentMethod.UBEREATS,
         externalOrderId: input.order.externalOrderId,
         clientRequestId: `ubereats:${input.order.externalOrderId}`,
-        storeId: input.posStoreId,
+        storeStableId: input.storeStableId,
         status: this.toPrismaStatus(targetStatus),
         paidAt: input.order.paidAt,
         fulfillmentType:

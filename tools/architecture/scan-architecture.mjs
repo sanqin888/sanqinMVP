@@ -2158,6 +2158,177 @@ if (benefitsLoyaltyPolicyOwnership) {
   }
 }
 
+const requireClosedCompatibility = (compatId) => {
+  const entry = (registry.closed ?? []).find(
+    (candidate) =>
+      candidate.compat_id === compatId && candidate.status === 'closed',
+  );
+  if (!entry) {
+    failures.push(`required closed compatibility is not closed: ${compatId}`);
+    return false;
+  }
+  return true;
+};
+
+const readCompatibilityGuardSource = (sourcePath) => {
+  const normalizedPath = toPosix(sourcePath);
+  const absolutePath = join(REPOSITORY_ROOT, normalizedPath);
+  if (!existsSync(absolutePath)) {
+    failures.push(`closed compatibility guard source missing: ${normalizedPath}`);
+    return null;
+  }
+  return readFileSync(absolutePath, 'utf8');
+};
+
+if (requireClosedCompatibility('pos-device.admin-db-id.v1')) {
+  const controller = readCompatibilityGuardSource(
+    'apps/api/src/admin/pos-devices/admin-pos-devices.controller.ts',
+  );
+  const createDto = readCompatibilityGuardSource(
+    'apps/api/src/admin/pos-devices/dto/create-pos-device.dto.ts',
+  );
+  const posContract = readCompatibilityGuardSource(
+    'apps/api/src/pos/pos-device-management.contract.ts',
+  );
+  const posModule = readCompatibilityGuardSource(
+    'apps/api/src/pos/pos-device.module.ts',
+  );
+  const posPublicApi = readCompatibilityGuardSource(
+    'apps/api/src/pos/public-api.ts',
+  );
+  const posService = readCompatibilityGuardSource(
+    'apps/api/src/pos/pos-device.service.ts',
+  );
+  const storeContract = readCompatibilityGuardSource(
+    'apps/api/src/store/brand-store-config.contract.ts',
+  );
+  const storeModule = readCompatibilityGuardSource(
+    'apps/api/src/store/brand-store-config.module.ts',
+  );
+  const storePublicApi = readCompatibilityGuardSource(
+    'apps/api/src/store/public-api.ts',
+  );
+  const storeReader = readCompatibilityGuardSource(
+    'apps/api/src/store/brand-store-config.reader.ts',
+  );
+
+  if (
+    createDto &&
+    (!createDto.includes('storeStableId: string') ||
+      /\bstoreId\??\s*:/.test(createDto) ||
+      createDto.includes('IsUUID'))
+  ) {
+    failures.push(
+      'closed pos-device.admin-db-id.v1 must keep Admin create DTO on storeStableId only',
+    );
+  }
+  if (
+    controller &&
+    (!controller.includes("BadRequestException('storeStableId is required')") ||
+      !controller.includes("@Patch(':deviceStableId/reset-code')") ||
+      !controller.includes("@Patch(':deviceStableId/status')") ||
+      !controller.includes("@Delete(':deviceStableId')") ||
+      controller.includes('UUID_PATTERN') ||
+      controller.includes('pos_device_admin_compatibility_used'))
+  ) {
+    failures.push(
+      'closed pos-device.admin-db-id.v1 must keep Admin device routes on stable business IDs only',
+    );
+  }
+
+  for (const [sourcePath, source] of [
+    ['apps/api/src/pos/pos-device-management.contract.ts', posContract],
+    ['apps/api/src/pos/pos-device.module.ts', posModule],
+    ['apps/api/src/pos/public-api.ts', posPublicApi],
+    ['apps/api/src/pos/pos-device.service.ts', posService],
+  ]) {
+    if (
+      source &&
+      [
+        'POS_DEVICE_ADMIN_COMPATIBILITY',
+        'PosDeviceAdminCompatibilityPort',
+        '@compat pos-device.admin-db-id.v1',
+      ].some((token) => source.includes(token))
+    ) {
+      failures.push(
+        `closed pos-device.admin-db-id.v1 compatibility symbol returned: ${sourcePath}`,
+      );
+    }
+  }
+  if (
+    posService &&
+    (posService.includes('resolveDeviceStableId') ||
+      posService.includes('resolveStoreStableId('))
+  ) {
+    failures.push(
+      'closed pos-device.admin-db-id.v1 must not restore device/store DB-ID resolvers in POS service',
+    );
+  }
+
+  for (const [sourcePath, source] of [
+    ['apps/api/src/store/brand-store-config.contract.ts', storeContract],
+    ['apps/api/src/store/brand-store-config.module.ts', storeModule],
+    ['apps/api/src/store/public-api.ts', storePublicApi],
+    ['apps/api/src/store/brand-store-config.reader.ts', storeReader],
+  ]) {
+    if (
+      source &&
+      [
+        'STORE_LEGACY_DB_ID_RESOLVER',
+        'StoreLegacyDbIdResolverPort',
+        'resolveStoreStableIdByDbId',
+        '@compat pos-device.admin-db-id.v1',
+      ].some((token) => source.includes(token))
+    ) {
+      failures.push(
+        `closed pos-device.admin-db-id.v1 Store compatibility symbol returned: ${sourcePath}`,
+      );
+    }
+  }
+}
+
+if (requireClosedCompatibility('brand-store.default-store-identity.v1')) {
+  const operationsRoot = join(
+    REPOSITORY_ROOT,
+    'apps/api/src/integrations/ubereats/application/operations',
+  );
+  for (const absolutePath of walk(operationsRoot)) {
+    const source = readFileSync(absolutePath, 'utf8');
+    if (/\bnormalizeUberStoreId\b|['"]default['"]/.test(source)) {
+      failures.push(
+        `closed brand-store.default-store-identity.v1 implicit Uber Operations store returned: ${repositoryPath(absolutePath)}`,
+      );
+    }
+  }
+
+  const prismaSchemaPath = join(REPOSITORY_ROOT, 'apps/api/prisma/schema.prisma');
+  const prismaSchema = readFileSync(prismaSchemaPath, 'utf8');
+  for (const match of prismaSchema.matchAll(/model\s+(Uber\w+)\s*\{([\s\S]*?)\n\}/g)) {
+    if (/\bstoreId\s+String\b[^\n]*@default\(\s*"default"\s*\)/.test(match[2])) {
+      failures.push(
+        `closed brand-store.default-store-identity.v1 Prisma default returned: ${match[1]}.storeId`,
+      );
+    }
+  }
+
+  const persistenceRoot = join(
+    REPOSITORY_ROOT,
+    'apps/api/src/integrations/ubereats/infrastructure/persistence',
+  );
+  for (const absolutePath of walk(persistenceRoot)) {
+    const source = readFileSync(absolutePath, 'utf8');
+    if (
+      /\bstoreId\s*:\s*['"]default['"]|\b(?:storeId|storeStableId)\s*(?:\?\?|\|\|)\s*['"]default['"]/.test(
+        source,
+      )
+    ) {
+      failures.push(
+        `closed brand-store.default-store-identity.v1 implicit Uber persistence write returned: ${repositoryPath(absolutePath)}`,
+      );
+    }
+  }
+}
+
 if (config.contexts.length !== 12 || new Set(config.contexts.map(({ id }) => id)).size !== 12) {
   failures.push('context-baseline.json must define exactly 12 unique contexts');
 }

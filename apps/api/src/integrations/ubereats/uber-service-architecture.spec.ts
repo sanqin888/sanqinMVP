@@ -8,7 +8,7 @@ import {
   importViolations,
   scanTypeScript,
   writeGatewayViolations,
-} from './test/architecture-test.utils';
+} from '../../test/architecture-test.utils';
 
 const SOURCE_ROOT = resolve(__dirname, '../..');
 const BOUNDED_CONTEXT_ROOT = resolve(__dirname);
@@ -540,7 +540,7 @@ describe('Uber Eats bounded-context architecture', () => {
       'application/operations/uber-operations.use-cases.ts',
     ]) {
       const source =
-        scanTypeScript(BOUNDED_CONTEXT_ROOT, { productionOnly: true }).find(
+        boundedContextFiles.find(
           (file) => file.path === join(BOUNDED_CONTEXT_ROOT, path),
         )?.source ?? '';
       expect(source).not.toMatch(/PrismaService|UberHttpClient/);

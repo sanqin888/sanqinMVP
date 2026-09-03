@@ -44,6 +44,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Build shared libraries
+        run: |
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
+
       - name: Generate Prisma Client (api only)
         if: matrix.app == 'api'
         run: pnpm --filter api prisma:generate
@@ -52,11 +67,23 @@ jobs:
         if: matrix.app == 'api'
         run: node tools/architecture/scan-architecture.mjs --check
 
-      - name: Lint (${{ matrix.app }})
-        run: pnpm --filter ${{ matrix.app }} lint
+      - name: Lint (api)
+        if: matrix.app == 'api'
+        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
 
-      - name: Build (${{ matrix.app }})
-        run: pnpm --filter ${{ matrix.app }} build
+      - name: Lint (web)
+        if: matrix.app == 'web'
+        run: pnpm --filter web lint
+
+      - name: Build (api)
+        if: matrix.app == 'api'
+        run: pnpm --filter api exec nest build
+
+      - name: Build (web)
+        if: matrix.app == 'web'
+        env:
+          SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
+        run: pnpm --filter web exec next build --turbopack
 
       - name: Strict declaration check (${{ matrix.app }})
         run: pnpm --filter ${{ matrix.app }} exec tsc -p tsconfig.strict.json --pretty false
@@ -64,9 +91,23 @@ jobs:
       - name: Strict declaration check (shared libraries)
         if: matrix.app == 'api'
         run: |
-          pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false
-          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false
-          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false
+          pnpm --filter @shared/foundation exec tsc -p tsconfig.strict.json --pretty false &
+          foundation_pid=$!
+          pnpm --filter @shared/menu exec tsc -p tsconfig.strict.json --pretty false &
+          menu_pid=$!
+          pnpm --filter @shared/order exec tsc -p tsconfig.strict.json --pretty false &
+          order_pid=$!
 
-      - name: Test (${{ matrix.app }})
-        run: pnpm --filter ${{ matrix.app }} test
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
+
+      - name: Test (api)
+        if: matrix.app == 'api'
+        run: pnpm --filter api exec jest
+
+      - name: Test (web)
+        if: matrix.app == 'web'
+        run: pnpm --filter web test
