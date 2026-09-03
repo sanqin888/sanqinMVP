@@ -185,6 +185,219 @@ for (const absolutePath of sourceFiles) {
 
 const failures = [];
 
+const legacyCouponBenefitsModulePath = 'apps/api/src/coupons/coupons.module.ts';
+if (existsSync(join(REPOSITORY_ROOT, legacyCouponBenefitsModulePath))) {
+  const legacyCouponBenefitsModuleSource = readFileSync(
+    join(REPOSITORY_ROOT, legacyCouponBenefitsModulePath),
+    'utf8',
+  );
+  if (/\@Global\s*\(\s*\)/.test(legacyCouponBenefitsModuleSource)) {
+    failures.push(
+      'Coupon Benefits wiring must remain explicit; apps/api/src/coupons/coupons.module.ts cannot be @Global()',
+    );
+  }
+}
+
+const legacyCouponBenefitImplementationTargets = [
+  'apps/api/src/coupons/coupons.module',
+  'apps/api/src/coupons/coupon-program-claim.service',
+  'apps/api/src/coupons/coupon-program-eligibility.service',
+  'apps/api/src/coupons/coupon-program-issuer.service',
+  'apps/api/src/coupons/coupon-program-trigger.service',
+];
+for (const absolutePath of sourceFiles) {
+  const sourcePath = repositoryPath(absolutePath);
+  if (sourcePath.startsWith('apps/api/src/coupons/')) continue;
+  const source = readFileSync(absolutePath, 'utf8');
+  for (const specifier of importSpecifiers(source)) {
+    if (!specifier.startsWith('.')) continue;
+    const targetPath = resolveTarget(absolutePath, specifier);
+    if (
+      legacyCouponBenefitImplementationTargets.some(
+        (target) => targetPath === target || targetPath === target + '.ts',
+      )
+    ) {
+      failures.push(
+        'Coupon benefit implementations are private; use benefits/public-api or benefits/contracts: ' +
+          sourcePath +
+          ' -> ' +
+          specifier,
+      );
+    }
+  }
+}
+
+const paymentBenefitsReservationBoundary =
+  config.paymentBenefitsReservationBoundary ?? null;
+if (paymentBenefitsReservationBoundary) {
+  const ownerContext = paymentBenefitsReservationBoundary.ownerContext;
+  const ownerRoots = (paymentBenefitsReservationBoundary.ownerRoots ?? []).map(
+    toPosix,
+  );
+  const publicContract = toPosix(
+    paymentBenefitsReservationBoundary.publicContract ?? '',
+  );
+  const publicCompositionModule = toPosix(
+    paymentBenefitsReservationBoundary.publicCompositionModule ?? '',
+  );
+  const protectedConsumers =
+    paymentBenefitsReservationBoundary.protectedConsumers ?? [];
+
+  for (const publicPath of [publicContract, publicCompositionModule]) {
+    if (!publicPath || !existsSync(join(REPOSITORY_ROOT, publicPath))) {
+      failures.push(
+        'payment Benefits reservation public boundary is missing: ' +
+          (publicPath || '<missing-path>'),
+      );
+    }
+  }
+
+  for (const sourcePath of protectedConsumers) {
+    const absolutePath = join(REPOSITORY_ROOT, sourcePath);
+    if (!existsSync(absolutePath)) {
+      failures.push(
+        'payment Benefits reservation protected consumer is missing: ' + sourcePath,
+      );
+      continue;
+    }
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const specifier of importSpecifiers(source)) {
+      if (!specifier.startsWith('.')) continue;
+      const targetPath = resolveTarget(absolutePath, specifier);
+      const targetsReservationOwner = ownerRoots.some(
+        (root) => targetPath === root || targetPath.startsWith(root + '/'),
+      );
+      if (
+        targetsReservationOwner &&
+        contextOf(targetPath) === ownerContext &&
+        !isPublicSurface(targetPath)
+      ) {
+        failures.push(
+          'payment preparation must use Benefits public reservation contracts: ' +
+            sourcePath +
+            ' -> ' +
+            specifier,
+        );
+      }
+    }
+  }
+}
+
+const adminCatalogOwnershipBoundary = config.adminCatalogOwnershipBoundary ?? null;
+if (adminCatalogOwnershipBoundary) {
+  const ownerService = toPosix(
+    adminCatalogOwnershipBoundary.ownerService ?? '',
+  );
+  const publicSurface = toPosix(
+    adminCatalogOwnershipBoundary.publicSurface ?? '',
+  );
+  const adminController = toPosix(
+    adminCatalogOwnershipBoundary.adminController ?? '',
+  );
+  const adminModule = toPosix(adminCatalogOwnershipBoundary.adminModule ?? '');
+  const availabilityOrchestration = toPosix(
+    adminCatalogOwnershipBoundary.availabilityOrchestration ?? '',
+  );
+  const retiredAdminService = toPosix(
+    adminCatalogOwnershipBoundary.retiredAdminService ?? '',
+  );
+
+  for (const sourcePath of [
+    ownerService,
+    publicSurface,
+    adminController,
+    adminModule,
+    availabilityOrchestration,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        'Admin Catalog ownership boundary file is missing: ' +
+          (sourcePath || '<missing-path>'),
+      );
+    }
+  }
+
+  if (
+    retiredAdminService &&
+    existsSync(join(REPOSITORY_ROOT, retiredAdminService))
+  ) {
+    failures.push(
+      `retired Admin menu business service must stay deleted: ${retiredAdminService}`,
+    );
+  }
+
+  const ownerSourcePath = join(REPOSITORY_ROOT, ownerService);
+  if (existsSync(ownerSourcePath)) {
+    const source = readFileSync(ownerSourcePath, 'utf8');
+    if (!source.includes('export class CatalogAdminService')) {
+      failures.push(
+        `Catalog must own the Admin menu management use case: ${ownerService}`,
+      );
+    }
+    if (/integrations\/ubereats/.test(source)) {
+      failures.push(
+        `Catalog Admin management must not own Uber provider coordination: ${ownerService}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, adminController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from '../../menu/public-api'") ||
+      !source.includes('CatalogAdminService') ||
+      source.includes('AdminMenuService') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `Admin menu controller must consume the Catalog public management use case: ${adminController}`,
+      );
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, adminModule);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    if (
+      !source.includes("from '../../menu/public-api'") ||
+      !source.includes('PublicMenuModule') ||
+      source.includes('PrismaService') ||
+      source.includes('BrandStoreConfigModule') ||
+      source.includes('AdminMenuService')
+    ) {
+      failures.push(
+        `Admin menu composition must wire Catalog through its public module without owning persistence: ${adminModule}`,
+      );
+    }
+  }
+
+  const orchestrationPath = join(REPOSITORY_ROOT, availabilityOrchestration);
+  if (existsSync(orchestrationPath)) {
+    const source = readFileSync(orchestrationPath, 'utf8');
+    if (
+      !source.includes("from '../../menu/public-api'") ||
+      !source.includes("from '../../integrations/ubereats/public-api'") ||
+      source.includes('PrismaService') ||
+      source.includes('BRAND_STORE_CONFIG_READER')
+    ) {
+      failures.push(
+        `Admin availability orchestration may coordinate only Catalog and Uber public capabilities: ${availabilityOrchestration}`,
+      );
+    }
+  }
+
+  const adminMenuRoot = join(REPOSITORY_ROOT, 'apps/api/src/admin/menu');
+  for (const file of walk(adminMenuRoot)) {
+    const source = readFileSync(file, 'utf8');
+    if (/from ['"]\.\.\/\.\.\/prisma\//.test(source)) {
+      failures.push(
+        `Admin menu must not regain direct Prisma ownership: ${toPosix(relative(REPOSITORY_ROOT, file))}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

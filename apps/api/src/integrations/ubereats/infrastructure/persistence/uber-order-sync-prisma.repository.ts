@@ -13,6 +13,7 @@ const pendingStatuses = [
 const pendingOrderSelect = {
   orderStableId: true,
   clientRequestId: true,
+  pickupCode: true,
   status: true,
   totalCents: true,
   createdAt: true,
@@ -49,6 +50,7 @@ export class UberOrderSyncPrismaRepository implements UberOrderSyncRepositoryPor
     return rows.map((row: PendingOrderRow) => ({
       orderStableId: row.orderStableId,
       externalOrderId: row.clientRequestId?.replace('ubereats:', '') ?? null,
+      pickupCode: row.pickupCode,
       status: toUberOrderStatus(row.status),
       totalCents: row.totalCents,
       createdAt: row.createdAt,

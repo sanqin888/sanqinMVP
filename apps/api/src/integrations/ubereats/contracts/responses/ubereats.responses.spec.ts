@@ -105,7 +105,17 @@ describe('Uber Eats public response contracts', () => {
       ],
     }).items[0];
     const order = presentPendingOrders({
-      items: [{ ...internal, externalOrderId: 'o1', status: 'PENDING' }],
+      items: [
+        {
+          ...internal,
+          externalOrderId: 'o1',
+          orderStableId: 'sanq-order-1',
+          pickupCode: '0560B',
+          status: 'pending',
+          totalCents: 1468,
+          createdAt: new Date(0),
+        },
+      ],
     }).items[0];
     const ticket = presentOpsTickets({
       items: [
@@ -128,6 +138,11 @@ describe('Uber Eats public response contracts', () => {
     );
     expect(Object.keys(menuItem).sort()).toEqual([...fixture.menuItem].sort());
     expect(Object.keys(order).sort()).toEqual([...fixture.pendingOrder].sort());
+    expect(order).toMatchObject({
+      orderStableId: 'sanq-order-1',
+      pickupCode: '0560B',
+      totalCents: 1468,
+    });
     expect(Object.keys(ticket).sort()).toEqual([...fixture.opsTicket].sort());
     expect(
       JSON.stringify({ store, connection, menuItem, order, ticket }),

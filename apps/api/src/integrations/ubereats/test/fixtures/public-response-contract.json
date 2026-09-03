@@ -53,7 +53,10 @@
   ],
   "pendingOrder": [
     "externalOrderId",
+    "orderStableId",
+    "pickupCode",
     "status",
+    "totalCents",
     "storeId",
     "createdAt",
     "updatedAt"

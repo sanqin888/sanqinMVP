@@ -5,7 +5,10 @@ import type {
 
 export class UberPendingOrderResponse {
   externalOrderId!: string;
+  orderStableId!: string | null;
+  pickupCode!: string | null;
   status!: string;
+  totalCents!: number;
   storeId!: string | null;
   createdAt!: string | null;
   updatedAt!: string | null;

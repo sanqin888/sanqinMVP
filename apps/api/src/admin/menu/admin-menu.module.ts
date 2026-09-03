@@ -2,16 +2,14 @@
 
 import { Module } from '@nestjs/common';
 import { AdminMenuController } from './admin-menu.controller';
-import { AdminMenuService } from './admin-menu.service';
-import { PrismaService } from '../../prisma/prisma.service';
+import { AdminMenuAvailabilityOrchestrationService } from './admin-menu-availability-orchestration.service';
 import { AuthModule } from '../../auth/auth.module';
 import { UberEatsModule } from '../../integrations/ubereats/ubereats.module';
-import { BrandStoreConfigModule } from '../../store/public-api';
+import { PublicMenuModule } from '../../menu/public-api';
 
 @Module({
-  imports: [AuthModule, UberEatsModule, BrandStoreConfigModule],
+  imports: [AuthModule, UberEatsModule, PublicMenuModule],
   controllers: [AdminMenuController],
-  providers: [AdminMenuService, PrismaService],
-  exports: [AdminMenuService],
+  providers: [AdminMenuAvailabilityOrchestrationService],
 })
 export class AdminMenuModule {}

@@ -10,12 +10,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AdminMenuService } from './admin-menu.service';
+import { AdminMenuAvailabilityOrchestrationService } from './admin-menu-availability-orchestration.service';
 import {
   AdminMenuFullResponse,
   DailySpecialDto,
   TemplateGroupFullDto,
 } from '@shared/menu';
+import { CatalogAdminService } from '../../menu/public-api';
 import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
@@ -25,11 +26,14 @@ import { RolesGuard } from '../../auth/roles.guard';
 @Roles('ADMIN', 'STAFF')
 @Controller('admin/menu')
 export class AdminMenuController {
-  constructor(private readonly service: AdminMenuService) {}
+  constructor(
+    private readonly catalog: CatalogAdminService,
+    private readonly availability: AdminMenuAvailabilityOrchestrationService,
+  ) {}
 
   @Get('full')
   async getFullMenu(): Promise<AdminMenuFullResponse> {
-    return this.service.getFullMenu();
+    return this.catalog.getFullMenu();
   }
 
   @Get('daily-specials')
@@ -37,7 +41,7 @@ export class AdminMenuController {
     @Query('weekday') weekday?: string,
   ): Promise<{ specials: DailySpecialDto[] }> {
     const parsedWeekday = weekday ? Number(weekday) : undefined;
-    return this.service.getDailySpecials(
+    return this.catalog.getDailySpecials(
       Number.isFinite(parsedWeekday) ? parsedWeekday : undefined,
     );
   }
@@ -64,7 +68,7 @@ export class AdminMenuController {
       }>;
     },
   ): Promise<{ specials: DailySpecialDto[] }> {
-    return this.service.upsertDailySpecials(body);
+    return this.catalog.upsertDailySpecials(body);
   }
 
   @Post('categories')
@@ -77,7 +81,7 @@ export class AdminMenuController {
       isActive?: boolean;
     },
   ) {
-    return this.service.createCategory(body);
+    return this.catalog.createCategory(body);
   }
 
   @Put('categories/:categoryStableId')
@@ -97,7 +101,7 @@ export class AdminMenuController {
     sortOrder: number;
     isActive: boolean;
   }> {
-    return this.service.updateCategory(categoryStableId, body);
+    return this.catalog.updateCategory(categoryStableId, body);
   }
 
   @Post('packaging-types')
@@ -109,7 +113,7 @@ export class AdminMenuController {
       isActive?: boolean;
     },
   ) {
-    return this.service.createPackagingType(body);
+    return this.catalog.createPackagingType(body);
   }
 
   @Put('packaging-types/:packagingTypeStableId')
@@ -122,7 +126,7 @@ export class AdminMenuController {
       isActive?: boolean;
     },
   ) {
-    return this.service.updatePackagingType(packagingTypeStableId, body);
+    return this.catalog.updatePackagingType(packagingTypeStableId, body);
   }
 
   @Post('items')
@@ -154,7 +158,7 @@ export class AdminMenuController {
       tempUnavailableUntil?: string | null;
     },
   ) {
-    return this.service.createItem(body);
+    return this.catalog.createItem(body);
   }
 
   @Put('items/:itemStableId')
@@ -190,7 +194,7 @@ export class AdminMenuController {
       tempUnavailableUntil?: string | null;
     },
   ) {
-    return this.service.updateItem(itemStableId, body);
+    return this.availability.updateItem(itemStableId, body);
   }
 
   @Post('items/:itemStableId/availability')
@@ -198,13 +202,13 @@ export class AdminMenuController {
     @Param('itemStableId') itemStableId: string,
     @Body() body: { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' },
   ) {
-    return this.service.setItemAvailability(itemStableId, body.mode);
+    return this.availability.setItemAvailability(itemStableId, body.mode);
   }
 
   // ========== Option Group Templates ==========
   @Get('option-group-templates')
   async listTemplates(): Promise<TemplateGroupFullDto[]> {
-    return this.service.listOptionGroupTemplates();
+    return this.catalog.listOptionGroupTemplates();
   }
 
   @Post('option-group-templates')
@@ -218,7 +222,7 @@ export class AdminMenuController {
       defaultMaxSelect?: number | null;
     },
   ) {
-    return this.service.createOptionGroupTemplate(body);
+    return this.catalog.createOptionGroupTemplate(body);
   }
 
   @Put('option-group-templates/:templateGroupStableId')
@@ -233,7 +237,7 @@ export class AdminMenuController {
       defaultMaxSelect?: number | null;
     },
   ) {
-    return this.service.updateOptionGroupTemplate(templateGroupStableId, body);
+    return this.catalog.updateOptionGroupTemplate(templateGroupStableId, body);
   }
 
   @Post('option-group-templates/:templateGroupStableId/options')
@@ -248,7 +252,7 @@ export class AdminMenuController {
       targetItemStableId?: string | null;
     },
   ) {
-    return this.service.createTemplateOption(templateGroupStableId, body);
+    return this.catalog.createTemplateOption(templateGroupStableId, body);
   }
 
   @Put('options/:optionStableId')
@@ -264,7 +268,7 @@ export class AdminMenuController {
       targetItemStableId?: string | null;
     },
   ) {
-    return this.service.updateTemplateOption(optionStableId, body);
+    return this.catalog.updateTemplateOption(optionStableId, body);
   }
 
   @Post('options/:optionStableId/availability')
@@ -272,7 +276,7 @@ export class AdminMenuController {
     @Param('optionStableId') optionStableId: string,
     @Body() body: { mode: 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF' },
   ) {
-    return this.service.setTemplateOptionAvailability(
+    return this.availability.setTemplateOptionAvailability(
       optionStableId,
       body.mode,
     );
@@ -281,7 +285,7 @@ export class AdminMenuController {
   // ✅ 软删除：不再物理删除（保证 stableId 永不复用）
   @Delete('options/:optionStableId')
   async deleteOption(@Param('optionStableId') optionStableId: string) {
-    return this.service.deleteTemplateOption(optionStableId);
+    return this.catalog.deleteTemplateOption(optionStableId);
   }
 
   // ========== Bindings (item <-> template group) ==========
@@ -299,7 +303,7 @@ export class AdminMenuController {
       affectedPackagingTypeStableIds?: string[];
     },
   ) {
-    return this.service.bindTemplateGroupToItem(itemStableId, body);
+    return this.catalog.bindTemplateGroupToItem(itemStableId, body);
   }
 
   @Delete('items/:itemStableId/option-group-bindings/:templateGroupStableId')
@@ -307,7 +311,7 @@ export class AdminMenuController {
     @Param('itemStableId') itemStableId: string,
     @Param('templateGroupStableId') templateGroupStableId: string,
   ) {
-    return this.service.unbindTemplateGroupFromItem(
+    return this.catalog.unbindTemplateGroupFromItem(
       itemStableId,
       templateGroupStableId,
     );

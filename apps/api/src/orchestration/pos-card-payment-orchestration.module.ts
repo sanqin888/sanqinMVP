@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
-import { LoyaltyModule } from '../loyalty/loyalty.module';
-import { MembershipModule } from '../membership/membership.module';
+import { PaymentBenefitsReservationModule } from '../benefits/public-api/payment-benefits-reservation.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
@@ -21,7 +20,7 @@ import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestrati
  * Explicit composition layer for the Unified Payment Core's first consumer.
  *
  * Phase D allows this layer to coordinate provider-neutral checkout preparation,
- * Payments, Orders, Loyalty/Membership reservations and POS realtime/printing.
+ * Payments, Orders, Benefits reservations and POS realtime/printing.
  * Phase F also composes provider-neutral reverse-sync results into checkout/order
  * side effects. Raw Clover webhook contracts remain behind Payments infrastructure;
  * Web production checkout is intentionally not routed through this module yet.
@@ -31,8 +30,7 @@ import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestrati
     AuthModule,
     PaymentsModule,
     OrdersModule,
-    LoyaltyModule,
-    MembershipModule,
+    PaymentBenefitsReservationModule,
     PosDeviceModule,
     PosModule,
   ],

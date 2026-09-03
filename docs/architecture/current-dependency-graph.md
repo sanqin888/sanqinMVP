@@ -1,17 +1,19 @@
 # Current 12-context dependency graph
 
-Phase 2 closeout base: `origin/dev@0917f66c` (2026-09-02).
+Phase 3 Slice 3 local base: branch `refactor/phase3-slice3-admin-catalog-ownership`
+created from `origin/dev@6a022c8c` (2026-09-03).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` at the Phase 2 closeout boundary.
+by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 3 Admin
+Catalog ownership contraction.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
 counts below.
 
 The CI architecture scanner is authoritative for the exact source scan. This
-file is the human-readable closeout snapshot and must be refreshed again at the
-end of the next phase.
+file is the human-readable working snapshot and must be refreshed again at each
+Phase 3 slice boundary.
 
 ## Context map
 
@@ -20,7 +22,7 @@ end of the next phase.
 | 1 | architecture-foundation | `apps/api/src/common`, `libs/foundation` (`@shared/foundation`) |
 | 2 | brand-store | `homepage`, `location`, `store` |
 | 3 | catalog-pricing-offers | `application/menu`, `coupons`, `menu`, `promotions`, `libs/shared` |
-| 4 | identity-customer-benefits | `admin`, `auth`, `loyalty`, `membership`, `phone-verification` |
+| 4 | identity-customer-benefits | `admin`, `auth`, `benefits`, `loyalty`, `membership`, `phone-verification` |
 | 5 | commerce-orders-fulfillment | `deliveries`, `orders`, `libs/order` |
 | 6 | payments-clover | `clover`, `orchestration`, `payments` |
 | 7 | store-operations-pos-print | `pos`, `tools/printer-server` |
@@ -41,11 +43,11 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 14; brand-store 4; catalog-pricing-offers 10; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 23; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; catalog-pricing-offers 5; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
-| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 17; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
+| identity-customer-benefits | architecture-foundation 14; brand-store 4; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 19; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
-| external-channels | architecture-foundation 11; commerce-orders-fulfillment 5; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
+| external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
@@ -230,12 +232,105 @@ pair fails CI.
   exchange rate `5.2`; POS pause/resume both returned 200, Uber status sync succeeded in both
   directions, final StoreConfig state is open, and API/worker error scans were clean.
 
-## Carried debt outside this closeout
+## Phase 3 Catalog / Pricing / Offers started
+
+- Phase 3 Slice 1 is tracked in
+  `docs/architecture/phase-3-catalog-pricing-offers.md`.
+- Orders now consumes Pricing only through `apps/api/src/promotions/public-api.ts`.
+  The public surface exposes the existing promotion evaluator/types plus a narrow
+  `PROMOTION_CONTEXT_READER`; `OrdersService` no longer imports the Pricing
+  service, evaluator, engine or coupon adapter internals directly.
+- The corresponding architecture allowance
+  `commerce-orders-fulfillment -> catalog-pricing-offers` is removed from the
+  baseline, contracting that direct-import debt from 5 to 0.
+- Loyalty's two promotion-engine imports and Admin's Promotions module wiring now
+  use the same public surface, lowering
+  `identity-customer-benefits -> catalog-pricing-offers` from 10 to 7 in Slice 1.
+- Slice 2 adds an explicit `apps/api/src/benefits` owner root and Benefits-owned
+  coupon claim/trigger/admin-issuance contracts. `CouponsModule` is no longer
+  global and exports only those narrow tokens instead of concrete services.
+- Auth, Loyalty, Membership, Promotions and Admin now consume coupon-entitlement
+  behavior through `benefits/public-api.ts`; CouponTemplate/CouponProgram
+  validation and CRUD are exposed through `coupons/public-api.ts`. The remaining
+  `identity-customer-benefits -> catalog-pricing-offers` allowance is therefore
+  removed, contracting that direct-import debt from 7 to 0. Removing Admin's two
+  direct Prisma imports also contracts `identity-customer-benefits ->
+  runtime-data-ci-ops` from 23 to 21.
+- The legacy Coupon implementation stays physically under `coupons` until its
+  Prisma/Messaging dependencies can be contracted without raising another debt
+  allowance. Slice 2 itself left Payments-facing coupon HOLD/COMMIT/RELEASE unchanged.
+- Slice 2B is **MERGED** via PR #2139 / `6a022c8c`. Unified Payment preparation now
+  injects Benefits-owned Points/Balance and Coupon reservation ports, and the POS
+  payment composition module imports the Benefits public reservation module instead
+  of `LoyaltyModule` / `MembershipModule` directly. Coupon HOLD carries
+  `userStableId` rather than the snapshot's internal User DB UUID. Four production
+  deep imports disappeared, lowering `payments-clover -> identity-customer-benefits`
+  from 17 to 13; CI architecture/lint/build/test gates were green before merge.
+- Slice 2C is **DEFERRED** after a 2026-09-03 readiness audit. The transaction-bound
+  COMMIT remains inside `OrdersService.createFromConfirmedPaymentSnapshot()` because
+  Points/Balance COMMIT, Coupon COMMIT and Order creation currently protect one
+  atomic Prisma transaction. Replacing only the two COMMIT calls would not remove
+  the broader `OrdersService` Benefits dependency, while splitting the transaction
+  or publishing `Prisma.TransactionClient` would violate the current transaction
+  boundary rules. Revisit only after a safe transaction-scoped capability exists.
+- Slice 3 locally moves Admin menu CRUD/read-model/application decisions into
+  Catalog-owned `CatalogAdminService` exposed via `menu/public-api.ts`. The legacy
+  `AdminMenuService` is deleted; Admin controller/module no longer own Prisma or
+  Brand/Store configuration reads. The two removed Admin Prisma imports contract
+  `identity-customer-benefits -> runtime-data-ci-ops` from 21 to 19. A new Catalog
+  Prisma import is offset by deleting the redundant local `PrismaService` provider
+  from `PromotionsModule`, so `catalog-pricing-offers -> runtime-data-ci-ops` remains
+  10 rather than increasing.
+- Slice 3 intentionally keeps only availability/provider coordination in
+  `AdminMenuAvailabilityOrchestrationService`: item update availability changes,
+  explicit item availability, and option availability persist through Catalog and
+  then call the Uber public availability port. This is **temporary Slice 5 debt**;
+  Slice 5 must move that coordination out of Admin without changing the verified
+  Uber availability behavior. Production Web Clover, Prisma schema/migrations and
+  Uber wire contracts are unchanged by Slice 3.
+- Pre-Phase-3 Uber boundary hardening is now **PRODUCTION VERIFIED** (2026-09-03):
+  - PR #2130 / `32d3925f` contracted Uber Store Policy ownership so order admission
+    reads auto-accept/allergen policy through `UBER_STORE_CONFIG_QUERY` ->
+    `BRAND_STORE_CONFIG_READER` instead of persistence-adapter policy methods.
+  - PR #2131 / `4b615f49` contracted Uber store identity naming: SanQ store context
+    is explicitly `storeStableId`, provider identity remains `uberStoreId`, and
+    persistence still writes the SanQ stable ID into `Order.storeId`.
+  - PR #2132 / `0c0a678e` exposed Orders ingestion through the public
+    `ORDER_INGESTION` boundary, removed Uber's concrete `OrderIngestionService`
+    dependency, preserved the same-transaction Uber action/cancellation callback,
+    and lowered `external-channels -> commerce-orders-fulfillment` from 5 to 1.
+  - Active production/sandbox verification covered auto-accept ON, auto-accept OFF
+    with manual acceptance, immediate order completion, Uber cancel/refund, and a
+    scheduled order moving from scheduled queue into active preparation. The
+    scheduled activation produced one print job with kitchen/customer delivery
+    ACKs; three test orders persisted under `4750_Yonge_Street`, no duplicate
+    ingestion was found, webhook processing completed on first attempt, and the
+    Uber worker error/warn/failure scan was clean.
+  - The allergen DENY_LIST case is recorded as **N/A (Uber Test Store limitation)**
+    because the sandbox customer flow does not expose an allergen-entry control;
+    it is not a failed verification item.
+- PR #2134 / `e69b913d` fixed the Admin Uber pending-order read contract/UI mismatch:
+  `orderStableId` and `totalCents` are returned again, `pickupCode` is exposed, and
+  the table now shows a human-readable pickup code while truncating the two long
+  IDs. CI is green; production UI re-verification remains pending the next deploy.
+
+## Carried debt outside Phase 3 Slice 2
 
 - `web.api-envelope-direct-payload.v1` was closed on 2026-09-02. Checkout now has
   zero regular JSON browser direct fetches, and the architecture scanner no longer
   carries a Checkout allowance.
-- Payments/Clover legacy paths remain frozen by their compatibility entries.
+- Payments/Clover is no longer frozen as one context. The dependency counts above
+  are unchanged by this documentation-only policy revision. POS Clover Terminal is
+  active pre-production modularization work and may be structurally contracted
+  before real-device access returns when production Web Ecommerce behavior is
+  unchanged. The current Web Clover path remains guarded production; a Web-impacting
+  modularization change is allowed only when it is a documented critical blocker
+  and must carry focused regression coverage plus post-deployment active payment
+  verification before being marked production verified.
+- A central chronological modularization index now lives at
+  `docs/architecture/modularization-worklog.md`. Creating the worklog and making it
+  a required per-slice progress record is documentation governance only and does
+  not change the dependency counts or architecture baseline in this snapshot.
 - Phase 2 Brand/Store identity and configuration contraction is **CLOSED** at
   `origin/dev@0917f66c`. `brand-store.business-config.v1`,
   `benefits.business-config-loyalty-policy.v1`, `pos-device.admin-db-id.v1`, and

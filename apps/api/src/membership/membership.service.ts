@@ -1,6 +1,7 @@
 // apps/api/src/membership/membership.service.ts
 import {
   BadRequestException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -20,7 +21,14 @@ import { normalizePhone } from '../common/utils/phone';
 import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
-import { CouponProgramTriggerService } from '../coupons/coupon-program-trigger.service';
+import {
+  COUPON_PROGRAM_TRIGGER,
+  type CouponProgramTriggerPort,
+} from '../benefits/public-api';
+import type {
+  HoldPaymentCouponReservationInput,
+  PaymentCouponReservationPort,
+} from '../benefits/contracts/payment-benefit-reservation.contract';
 import { EmailVerificationService } from '../email/email-verification.service';
 import { NotificationService } from '../notifications/notification.service';
 import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
@@ -32,13 +40,14 @@ const createStableId = (prefix: string): string => {
 };
 
 @Injectable()
-export class MembershipService {
+export class MembershipService implements PaymentCouponReservationPort {
   private readonly logger = new Logger(MembershipService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
-    private readonly couponTriggerService: CouponProgramTriggerService,
+    @Inject(COUPON_PROGRAM_TRIGGER)
+    private readonly couponTriggerService: CouponProgramTriggerPort,
     private readonly emailVerification: EmailVerificationService,
     private readonly notificationService: NotificationService,
   ) {}
@@ -339,7 +348,7 @@ export class MembershipService {
     try {
       await this.couponTriggerService.issueProgramsForUser(
         'SIGNUP_COMPLETED',
-        user,
+        user.userStableId,
       );
 
       if (user.referredByUserId) {
@@ -349,7 +358,7 @@ export class MembershipService {
         if (referrer) {
           await this.couponTriggerService.issueProgramsForUser(
             'REFERRAL_QUALIFIED',
-            referrer,
+            referrer.userStableId,
           );
         }
       }
@@ -1333,37 +1342,33 @@ export class MembershipService {
     return { coupon };
   }
 
-  async holdPaymentCoupons(params: {
-    attemptId: string;
-    userId?: string;
-    userStableId?: string;
-    couponStableId?: string;
-    selectedUserCouponId?: string;
-    expiresAt: Date;
-  }): Promise<{
-    couponId: string | null;
-    selectedUserCouponId: string | null;
-  }> {
+  async holdPaymentCoupons(
+    params: HoldPaymentCouponReservationInput,
+  ): Promise<void> {
     const attemptId = params.attemptId.trim();
+    const userStableId = params.userStableId?.trim();
     if (!attemptId) {
       throw new BadRequestException('payment attemptId is required');
     }
     if (!params.couponStableId && !params.selectedUserCouponId) {
-      return { couponId: null, selectedUserCouponId: null };
+      return;
     }
 
     return this.prisma.$transaction(async (tx) => {
-      let couponId: string | null = null;
       if (params.couponStableId) {
-        if (!params.userId) {
+        if (!userStableId) {
           throw new BadRequestException(
-            'userId is required when holding a coupon',
+            'userStableId is required when holding a coupon',
           );
         }
+        const user = await tx.user.findUnique({
+          where: { userStableId },
+          select: { id: true },
+        });
         const coupon = await tx.coupon.findUnique({
           where: { couponStableId: params.couponStableId },
         });
-        if (!coupon || coupon.userId !== params.userId) {
+        if (!user || !coupon || coupon.userId !== user.id) {
           throw new BadRequestException('coupon not found for user');
         }
         const status = this.couponStatus({
@@ -1396,12 +1401,10 @@ export class MembershipService {
             throw new BadRequestException('coupon is not available');
           }
         }
-        couponId = coupon.id;
       }
 
-      let selectedUserCouponId: string | null = null;
       if (params.selectedUserCouponId) {
-        if (!params.userStableId) {
+        if (!userStableId) {
           throw new BadRequestException(
             'userStableId is required when holding a user coupon',
           );
@@ -1409,7 +1412,7 @@ export class MembershipService {
         const userCoupon = await tx.userCoupon.findFirst({
           where: {
             id: params.selectedUserCouponId,
-            userStableId: params.userStableId,
+            userStableId,
           },
           include: { coupon: true },
         });
@@ -1435,7 +1438,7 @@ export class MembershipService {
           const held = await tx.userCoupon.updateMany({
             where: {
               id: userCoupon.id,
-              userStableId: params.userStableId,
+              userStableId,
               status: 'AVAILABLE',
             },
             data: {
@@ -1449,10 +1452,7 @@ export class MembershipService {
             throw new BadRequestException('coupon is not available');
           }
         }
-        selectedUserCouponId = userCoupon.id;
       }
-
-      return { couponId, selectedUserCouponId };
     });
   }
 
@@ -1819,7 +1819,7 @@ export class MembershipService {
       // 2. 原有的逻辑保持不变（如果有优惠券，它自己会发第二封）
       await this.couponTriggerService.issueProgramsForUser(
         'MARKETING_OPT_IN',
-        fullUser,
+        fullUser.userStableId,
       );
     } catch (error) {
       this.logger.error(

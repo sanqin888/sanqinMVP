@@ -35,6 +35,22 @@ node tools/architecture/scan-architecture.mjs --report
   compatibility writer and must update canonical storage plus the compatibility
   copy transactionally. The deleted `common/store-id.ts` path cannot return, and
   configured store identity has one implementation owner;
+- Benefits coupon claims/triggers/admin issuance are exposed through
+  `benefits/public-api.ts`; the legacy Coupons implementation module must remain
+  non-global, concrete coupon benefit services cannot be deep-imported outside
+  their implementation root, and migrated Identity consumers cannot regain a
+  direct Catalog/Offers dependency;
+- Unified payment preparation consumes points/balance and coupon HOLD/RELEASE only
+  through the registered Benefits payment-reservation contracts/composition
+  surface. `PaymentCheckoutAttemptService` and its POS composition module cannot
+  deep-import Loyalty/Membership implementations again; lowering the matching
+  `payments-clover -> identity-customer-benefits` allowance is part of the same
+  contraction;
+- Admin menu CRUD/read-model decisions are owned by Catalog through
+  `menu/public-api.ts`; `apps/api/src/admin/menu/**` cannot regain direct Prisma
+  ownership. The temporary Admin availability orchestrator may coordinate Catalog
+  and the Uber public availability port only; moving that provider coordination out
+  of Admin remains an explicit later Slice 5 contraction;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

@@ -39,6 +39,7 @@
       "paths": [
         "apps/api/src/admin",
         "apps/api/src/auth",
+        "apps/api/src/benefits",
         "apps/api/src/loyalty",
         "apps/api/src/membership",
         "apps/api/src/phone-verification"
@@ -147,7 +148,7 @@
       "apps/api/src/accounting/accounting.service.ts",
       "apps/api/src/promotions/promotions.service.ts",
       "apps/api/src/menu/public-menu.service.ts",
-      "apps/api/src/admin/menu/admin-menu.service.ts",
+      "apps/api/src/menu/catalog-admin.service.ts",
       "apps/api/src/pos/pos-exchange-rate.service.ts",
       "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
       "apps/api/src/pos/pos-store-status.service.ts",
@@ -281,6 +282,28 @@
     "contractionMigration": "apps/api/prisma/migrations/20260901235900_contract_loyalty_policy_storage/migration.sql",
     "allowedBusinessConfigPolicyFiles": []
   },
+  "paymentBenefitsReservationBoundary": {
+    "ownerContext": "identity-customer-benefits",
+    "ownerRoots": [
+      "apps/api/src/benefits",
+      "apps/api/src/loyalty",
+      "apps/api/src/membership"
+    ],
+    "publicContract": "apps/api/src/benefits/public-api.ts",
+    "publicCompositionModule": "apps/api/src/benefits/public-api/payment-benefits-reservation.module.ts",
+    "protectedConsumers": [
+      "apps/api/src/orchestration/payment-checkout-attempt.service.ts",
+      "apps/api/src/orchestration/pos-card-payment-orchestration.module.ts"
+    ]
+  },
+  "adminCatalogOwnershipBoundary": {
+    "ownerService": "apps/api/src/menu/catalog-admin.service.ts",
+    "publicSurface": "apps/api/src/menu/public-api.ts",
+    "adminController": "apps/api/src/admin/menu/admin-menu.controller.ts",
+    "adminModule": "apps/api/src/admin/menu/admin-menu.module.ts",
+    "availabilityOrchestration": "apps/api/src/admin/menu/admin-menu-availability-orchestration.service.ts",
+    "retiredAdminService": "apps/api/src/admin/menu/admin-menu.service.ts"
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -340,7 +363,6 @@
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> architecture-foundation": 9,
     "commerce-orders-fulfillment -> brand-store": 2,
-    "commerce-orders-fulfillment -> catalog-pricing-offers": 5,
     "commerce-orders-fulfillment -> identity-customer-benefits": 11,
     "commerce-orders-fulfillment -> messaging-notifications": 8,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 14,
@@ -352,18 +374,17 @@
     "external-channels -> runtime-data-ci-ops": 24,
     "identity-customer-benefits -> architecture-foundation": 14,
     "identity-customer-benefits -> brand-store": 4,
-    "identity-customer-benefits -> catalog-pricing-offers": 10,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 2,
     "identity-customer-benefits -> messaging-notifications": 24,
-    "identity-customer-benefits -> runtime-data-ci-ops": 23,
+    "identity-customer-benefits -> runtime-data-ci-ops": 19,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
     "messaging-notifications -> runtime-data-ci-ops": 10,
     "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
     "payments-clover -> commerce-orders-fulfillment": 10,
-    "payments-clover -> identity-customer-benefits": 17,
+    "payments-clover -> identity-customer-benefits": 13,
     "payments-clover -> messaging-notifications": 3,
     "payments-clover -> runtime-data-ci-ops": 8,
     "payments-clover -> store-operations-pos-print": 11,

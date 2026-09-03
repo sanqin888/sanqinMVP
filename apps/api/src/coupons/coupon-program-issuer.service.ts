@@ -1,5 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type CouponProgram, type User } from '@prisma/client';
+import type {
+  AdminCouponProgramIssueInput,
+  CouponProgramAdminIssuerPort,
+} from '../benefits/contracts/coupon-program.contract';
 import { generateStableId } from '../common/utils/stable-id';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -16,8 +24,36 @@ import {
 } from './coupon-use-rule';
 
 @Injectable()
-export class CouponProgramIssuerService {
+export class CouponProgramIssuerService implements CouponProgramAdminIssuerPort {
   constructor(private readonly prisma: PrismaService) {}
+
+  async issueAdminPushProgram(
+    programStableId: string,
+    input: AdminCouponProgramIssueInput,
+  ): Promise<{ issuedCount: number }> {
+    const program = await this.prisma.couponProgram.findUnique({
+      where: { programStableId },
+    });
+    if (!program) throw new NotFoundException('Program not found');
+    if (program.distributionType !== 'ADMIN_PUSH') {
+      throw new BadRequestException('Program is not ADMIN_PUSH');
+    }
+
+    const userStableId = input.userStableId?.trim();
+    const normalizedPhone = input.normalizedPhone?.trim();
+    if (!userStableId && !normalizedPhone) {
+      throw new BadRequestException('userStableId or phone is required');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: userStableId
+        ? { userStableId }
+        : { phone: normalizedPhone ?? undefined },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return this.issueProgramToUser(program, user);
+  }
 
   async issueProgramToUser(
     program: CouponProgram,
@@ -25,7 +61,13 @@ export class CouponProgramIssuerService {
     options?: { tx?: Prisma.TransactionClient },
   ) {
     const items = parseProgramItems(program.items);
-    await ensureProgramItemsExist(this.prisma, items);
+    await ensureProgramItemsExist(
+      (stableIds) =>
+        this.prisma.couponTemplate.count({
+          where: { couponStableId: { in: stableIds } },
+        }),
+      items,
+    );
 
     const templates = await this.prisma.couponTemplate.findMany({
       where: {

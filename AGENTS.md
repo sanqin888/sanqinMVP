@@ -342,8 +342,9 @@ Default delivery workflow:
 1. Make the requested source changes only inside `mcp-workspace` on a feature
    branch created from the latest `origin/dev`.
 2. Do not run lint, build, test, or CI-reproduction checks in the default local
-   phase. Review the final diff and workspace status, then stop and provide a
-   change report for user review.
+   phase. For modularization code changes, complete the documentation synchronization
+   gate in section 19 before review. Then review the final diff and workspace status,
+   stop, and provide a change report for user review.
 3. Do not push a branch, create a pull request, merge, deploy, execute a
    production mutation, or run a production database migration before that user
    review and explicit approval for remote delivery.
@@ -762,19 +763,45 @@ changed when required by the approved modularization task, subject to the normal
 architecture-boundary rules in this file and the Uber-specific verification gate
 below.
 
-The Clover developer/sandbox merchant identity blocker is still open. Until the
-user explicitly confirms that blocker is closed:
+The Clover developer/sandbox merchant identity blocker is still open, but it no
+longer freezes the whole Payments/Clover context. Apply the freeze by **production
+impact**, not by directory name:
 
-* do not structurally reorganize Payments/Clover OAuth, terminal communication,
-  provider infrastructure, unified-payment orchestration, or their direct
-  Orders/POS contracts;
-* do not delete current Clover/payment compatibility paths or widen payment
-  feature-flag rollout;
-* narrowly scoped Clover provider-verification or support-requested fixes are
-  allowed, but they must preserve current module boundaries and receive normal
-  focused regression coverage;
-* if a Clover support response requires an architecture change, present its
-  impact and alternatives and obtain explicit authorization before implementation.
+* the POS <-> Clover Terminal path is a pre-production prototype with no completed
+  real-device acceptance. It may be refactored, contracted, renamed, or have its
+  Payments/POS/provider boundaries improved during modularization, including
+  terminal communication, terminal-specific orchestration, reconciliation and
+  feature-flagged code, provided the change does not alter the live Web Ecommerce
+  payment path or rewrite production payment facts;
+* the production Web Clover Ecommerce path remains protected by default. Preserve
+  its current checkout execution, amount/currency/payment-ID validation, payment
+  status/reconciliation behavior, surcharge handling, order-finalization behavior,
+  refund behavior, and historical payment semantics unless changing that path is
+  necessary to remove a material modularization blocker;
+* if production Web Clover code becomes a **critical modularization progress
+  blocker**, it may be changed after first documenting why the blocker cannot be
+  removed safely outside the production path, the exact production behaviors and
+  contracts affected, the smallest viable change, rollback/forward-fix strategy,
+  and reasonable alternatives. This is authorization to make such a scoped
+  modularization change; it is not permission for unrelated payment redesign or
+  early Phase G traffic cutover;
+* every change that can affect the production Web Clover path must include focused
+  regression coverage and a post-deployment **active verification checklist** for
+  the user. The checklist must identify concrete payment scenarios to execute and
+  the expected UI/API behavior plus relevant sanitized payment/order/log evidence.
+  The affected Web Clover slice is not considered production-verified until the
+  user confirms those active tests passed;
+* shared Unified Payment Core, provider, orchestration, persistence or public
+  contract code is judged by actual production Web usage. It may be changed for
+  POS Terminal modularization only when the Web behavior is unchanged; if Web
+  behavior is affected, the guarded-Web rules above apply;
+* do not delete a live Web/payment compatibility path or widen Web payment
+  feature-flag rollout merely because the POS prototype is being modularized.
+  Compatibility contraction and traffic cutover still require their registered
+  exit criteria, parity/reconciliation evidence and explicit cutover decision;
+* a Clover support response that requires a broader architecture or external
+  protocol change still requires an impact/alternatives report before that broader
+  change is implemented.
 
 ### UberEats modification verification gate
 
@@ -814,12 +841,59 @@ Productive modularization work may proceed in this order:
    Store-identity contraction under the verification gate above, then
    Catalog/Pricing/Offers;
 5. Identity/Customer/Benefits and Messaging boundaries;
-6. Orders/Fulfillment after characterization coverage, with extra care around the
-   still-frozen payment contracts and any UberEats flows affected by the current
+6. Orders/Fulfillment after characterization coverage, with extra care around any
+   production Web payment behavior and any UberEats flows affected by the current
    verified slice;
-7. Payments/Clover and POS terminal critical cutovers after the Clover blocker is
-   resolved; UberEats may proceed before that point under its slice verification
-   gate.
+7. Payments/POS Terminal modularization may proceed before Clover real-device
+   access is restored when the work is isolated from production Web Ecommerce.
+   Real-device acceptance, payment traffic cutover, settlement proof and legacy
+   deletion still wait for their explicit gates. Production Web Clover may also be
+   changed when it is a documented critical modularization blocker, subject to the
+   guarded-Web verification rules above.
+
+### Modularization documentation synchronization gate
+
+A modularization code slice is not locally complete until its progress is recorded
+in **multiple relevant repository documents** in the same change. Do not leave the
+implementation ahead of the written migration state.
+
+At minimum, every modularization code change must update **at least three progress
+documents in the same change**:
+
+1. the **current phase/work-package document** under `docs/architecture/**` with
+   the slice status, exact ownership/boundary change, behavior intentionally kept
+   unchanged, verification state, and remaining/next work;
+2. `docs/architecture/current-dependency-graph.md`. If the slice changes a public
+   boundary, direct-import debt, context ownership, architecture allowance, or how
+   the graph should be interpreted, refresh those facts. If the graph/debt counts
+   are genuinely unchanged, add a concise dated/slice note explicitly recording
+   that the implementation was reviewed and produced **no graph/baseline change**.
+   Do not skip this document merely because the count is unchanged; and
+3. `docs/architecture/modularization-worklog.md` with exactly one chronological
+   entry for the batch. Record the date, Phase/Slice/work-package, PR/SHA when
+   available (otherwise local branch/state), concise ownership/boundary change,
+   measurable architecture or compatibility effect when applicable, the highest
+   status actually reached, and links to the detailed owner documents. When CI,
+   deployment, or active verification advances the same batch later, update that
+   entry's state/evidence rather than creating a duplicate implementation entry.
+
+Additionally update every applicable owner/source-of-truth document:
+
+* `docs/architecture/active-compatibility-register.json` **and** its Markdown view
+  whenever compatibility is added, reclassified, contracted, closed, unfrozen, or
+  its exit/verification gate changes;
+* the relevant architecture/implementation charter or phase plan (for example
+  `docs/payments/**`) when the slice changes a lasting provider, payment, rollout,
+  cutover, recovery, or verification rule;
+* ID inventory, migration/runbook, production verification, or other architecture
+  documents when their recorded facts, status, evidence, or next-step guidance are
+  changed by the implementation.
+
+Documentation must describe the state actually reached. Do not mark CI, deployment,
+provider verification, active testing, parity, or production behavior as completed
+before that evidence exists. After deployment or user-operated active verification,
+update the applicable progress documents again so they distinguish source-complete,
+CI-green, deployed, and production-verified states.
 
 Each modularization PR should establish or improve one enforceable boundary and
 remain deployable on its own. Recompute or rerun applicable dependency/architecture
