@@ -269,9 +269,12 @@ describe('Payments bounded-context architecture', () => {
   });
 
   it('keeps payment preparation on Benefits reservation public contracts instead of Loyalty/Membership internals', () => {
-    const protectedFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orchestration'), {
-      productionOnly: true,
-    }).filter(
+    const protectedFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      {
+        productionOnly: true,
+      },
+    ).filter(
       ({ path }) =>
         path.endsWith('payment-checkout-attempt.service.ts') ||
         path.endsWith('pos-card-payment-orchestration.module.ts'),
@@ -283,7 +286,9 @@ describe('Payments bounded-context architecture', () => {
       ),
     ).toEqual([]);
 
-    const imports = protectedFiles.flatMap(({ source }) => importSpecifiers(source));
+    const imports = protectedFiles.flatMap(({ source }) =>
+      importSpecifiers(source),
+    );
     expect(imports).toContain('../benefits/public-api');
     expect(imports).toContain(
       '../benefits/public-api/payment-benefits-reservation.module',

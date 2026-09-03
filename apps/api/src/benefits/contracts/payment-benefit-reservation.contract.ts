@@ -1,9 +1,5 @@
-export const PAYMENT_TENDER_RESERVATION = Symbol(
-  'PAYMENT_TENDER_RESERVATION',
-);
-export const PAYMENT_COUPON_RESERVATION = Symbol(
-  'PAYMENT_COUPON_RESERVATION',
-);
+export const PAYMENT_TENDER_RESERVATION = Symbol('PAYMENT_TENDER_RESERVATION');
+export const PAYMENT_COUPON_RESERVATION = Symbol('PAYMENT_COUPON_RESERVATION');
 
 export type HoldPaymentTenderReservationInput = {
   attemptId: string;

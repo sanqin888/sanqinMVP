@@ -238,12 +238,12 @@ describe('PaymentCheckoutAttemptService', () => {
       }),
     ).rejects.toThrow('coupon race');
 
-    expect(harness.paymentTenderReservations.releasePaymentTender).toHaveBeenCalledWith(
-      'attempt-1',
-    );
-    expect(harness.paymentCouponReservations.releasePaymentCoupons).toHaveBeenCalledWith(
-      'attempt-1',
-    );
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledWith('attempt-1');
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
@@ -266,8 +266,12 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(first.status).toBe('CANCELLED');
     expect(second.status).toBe('CANCELLED');
-    expect(harness.paymentTenderReservations.releasePaymentTender).toHaveBeenCalledTimes(1);
-    expect(harness.paymentCouponReservations.releasePaymentCoupons).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('reuses the persisted immutable snapshot without requoting on duplicate start', async () => {
@@ -286,8 +290,12 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(first.id).toBe(second.id);
     expect(harness.orders.preparePaymentOrder).toHaveBeenCalledTimes(1);
-    expect(harness.paymentTenderReservations.holdPaymentTender).toHaveBeenCalledTimes(1);
-    expect(harness.paymentCouponReservations.holdPaymentCoupons).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentTenderReservations.holdPaymentTender,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentCouponReservations.holdPaymentCoupons,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('rejects the same attempt when the store or order draft changes', async () => {
@@ -333,12 +341,12 @@ describe('PaymentCheckoutAttemptService', () => {
     await expect(harness.service.prepare(input)).rejects.toMatchObject({
       response: { code: 'PAYMENT_PREPARATION_EXPIRED' },
     });
-    expect(harness.paymentTenderReservations.releasePaymentTender).toHaveBeenCalledWith(
-      'attempt-1',
-    );
-    expect(harness.paymentCouponReservations.releasePaymentCoupons).toHaveBeenCalledWith(
-      'attempt-1',
-    );
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledWith('attempt-1');
     expect(harness.getRow()?.status).toBe('FAILED');
   });
 
@@ -357,12 +365,12 @@ describe('PaymentCheckoutAttemptService', () => {
 
     expect(cancelled.cancelled).toBe(true);
     expect(cancelled.checkout.status).toBe('CANCELLED');
-    expect(harness.paymentTenderReservations.releasePaymentTender).toHaveBeenCalledWith(
-      'attempt-1',
-    );
-    expect(harness.paymentCouponReservations.releasePaymentCoupons).toHaveBeenCalledWith(
-      'attempt-1',
-    );
+    expect(
+      harness.paymentTenderReservations.releasePaymentTender,
+    ).toHaveBeenCalledWith('attempt-1');
+    expect(
+      harness.paymentCouponReservations.releasePaymentCoupons,
+    ).toHaveBeenCalledWith('attempt-1');
   });
 
   it('does not release reservations when a stale failure races after provider processing started', async () => {
