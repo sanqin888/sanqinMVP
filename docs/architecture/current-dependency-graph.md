@@ -1,10 +1,10 @@
 # Current 12-context dependency graph
 
-Phase 2 Admin Brand/Store + POS-device identity cutover base: `origin/dev@443b1a5c` (2026-08-31).
+Phase 2 closeout base: `origin/dev@0917f66c` (2026-09-02).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the Phase 1 modularization
-slices. Test files and registered composition roots are excluded. Imports through
+by `tools/architecture/context-baseline.json` at the Phase 2 closeout boundary.
+Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
 counts below.
@@ -66,7 +66,7 @@ pair fails CI.
 - Existing cycles remain migration debt for later phases. Phase 1 did not create
   a new direct context pair; CI rejects any such regression.
 
-## Phase 2 Brand/Store boundary started
+## Phase 2 Brand/Store boundary closed
 
 - `apps/api/src/store/public-api.ts` now defines the narrow canonical Brand/Store
   configuration read contract. It exposes stable store identity and canonical
@@ -170,7 +170,7 @@ pair fails CI.
   so unscoped list aliases, inbound Store/device DB UUID translation, the POS
   compatibility port/provider, and the Brand/Store legacy DB-ID resolver are absent.
 
-## Phase 2 Benefits loyalty policy reader/writer boundary active
+## Phase 2 Benefits loyalty policy reader/writer boundary closed
 
 - `apps/api/src/loyalty/public-api.ts` exposes narrow `LOYALTY_POLICY_READER` and
   `LOYALTY_POLICY_WRITER` contracts owned by Identity/Customer/Benefits. Loyalty
@@ -236,15 +236,18 @@ pair fails CI.
   zero regular JSON browser direct fetches, and the architecture scanner no longer
   carries a Checkout allowance.
 - Payments/Clover legacy paths remain frozen by their compatibility entries.
-- Brand/Store configuration persistence contraction is complete;
-  `brand-store.default-store-identity.v1` remains the primary Phase 2 Brand/Store
-  work. Uber Store-identity slices 1 and 2 are production VERIFIED. The current
-  persistence contraction removes the eight remaining Uber Prisma `storeId`
-  defaults without rewriting historical Test Store/sandbox rows; those verification
-  records are not a backfill/closure blocker and are reserved for a separate Uber
-  Production Cutover Cleanup after verification approval. Each Uber code slice
-  remains gated by focused post-deploy active verification and user confirmation
-  before the next slice begins.
+- Phase 2 Brand/Store identity and configuration contraction is **CLOSED** at
+  `origin/dev@0917f66c`. `brand-store.business-config.v1`,
+  `benefits.business-config-loyalty-policy.v1`, `pos-device.admin-db-id.v1`, and
+  `brand-store.default-store-identity.v1` are all closed. The final Uber persistence
+  migration removed the eight implicit `storeId` database defaults while preserving
+  historical Test Store/sandbox rows exactly as-is. Post-deploy verification proved
+  explicit `4750_Yonge_Street` Reconciliation persistence, successful POS pause/resume
+  Uber status sync, successful published-item availability sync, zero new
+  `storeId='default'` persistence, and clean API/worker error scans. Historical Uber
+  verification records remain scheduled for the separate Uber Production Cutover
+  Cleanup after verification approval and are not modularization debt or a Phase 2
+  closure blocker.
 
 ## Reading the graph
 

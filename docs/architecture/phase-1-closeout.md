@@ -119,3 +119,7 @@ blocker is open. Before any schema migration or package-boundary change, follow
 the repository's explicit authorization requirements. Uber work must additionally
 follow the per-slice active verification gate in `AGENTS.md` before advancing to
 the next Uber code slice.
+
+Phase 2 subsequently completed and is formally closed at `origin/dev@0917f66c`;
+see `docs/architecture/phase-2-closeout.md` for the final boundary and production
+verification record.
