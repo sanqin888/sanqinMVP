@@ -258,9 +258,31 @@ pair fails CI.
 - The legacy Coupon implementation stays physically under `coupons` until its
   Prisma/Messaging dependencies can be contracted without raising another debt
   allowance. Payments-facing coupon HOLD/COMMIT/RELEASE remains unchanged.
-- PR #2132, merged before Phase 3, exposed the Orders ingestion boundary to Uber
-  and lowered `external-channels -> commerce-orders-fulfillment` from 5 to 1;
-  this document now reflects that already-merged baseline change as well.
+- Pre-Phase-3 Uber boundary hardening is now **PRODUCTION VERIFIED** (2026-09-03):
+  - PR #2130 / `32d3925f` contracted Uber Store Policy ownership so order admission
+    reads auto-accept/allergen policy through `UBER_STORE_CONFIG_QUERY` ->
+    `BRAND_STORE_CONFIG_READER` instead of persistence-adapter policy methods.
+  - PR #2131 / `4b615f49` contracted Uber store identity naming: SanQ store context
+    is explicitly `storeStableId`, provider identity remains `uberStoreId`, and
+    persistence still writes the SanQ stable ID into `Order.storeId`.
+  - PR #2132 / `0c0a678e` exposed Orders ingestion through the public
+    `ORDER_INGESTION` boundary, removed Uber's concrete `OrderIngestionService`
+    dependency, preserved the same-transaction Uber action/cancellation callback,
+    and lowered `external-channels -> commerce-orders-fulfillment` from 5 to 1.
+  - Active production/sandbox verification covered auto-accept ON, auto-accept OFF
+    with manual acceptance, immediate order completion, Uber cancel/refund, and a
+    scheduled order moving from scheduled queue into active preparation. The
+    scheduled activation produced one print job with kitchen/customer delivery
+    ACKs; three test orders persisted under `4750_Yonge_Street`, no duplicate
+    ingestion was found, webhook processing completed on first attempt, and the
+    Uber worker error/warn/failure scan was clean.
+  - The allergen DENY_LIST case is recorded as **N/A (Uber Test Store limitation)**
+    because the sandbox customer flow does not expose an allergen-entry control;
+    it is not a failed verification item.
+- PR #2134 / `e69b913d` fixed the Admin Uber pending-order read contract/UI mismatch:
+  `orderStableId` and `totalCents` are returned again, `pickupCode` is exposed, and
+  the table now shows a human-readable pickup code while truncating the two long
+  IDs. CI is green; production UI re-verification remains pending the next deploy.
 
 ## Carried debt outside Phase 3 Slice 2
 
