@@ -19,7 +19,7 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
     });
   });
 
-  it('门店筛选同时接受 POS storeId 与 Uber storeId，并返回 canonical POS storeId', async () => {
+  it('门店筛选保留旧 Uber storeId 兼容，并返回 canonical storeStableId', async () => {
     const findMany = jest
       .fn()
       .mockResolvedValue([
@@ -30,7 +30,7 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
     } as never);
 
     await expect(adapter.findProvisionedStores('uber-a')).resolves.toEqual([
-      { storeId: 'pos-a', uberStoreId: 'uber-a' },
+      { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
     expect(findMany).toHaveBeenCalledWith({
       where: {
@@ -48,7 +48,7 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
     } as never);
 
     await adapter.createItemPublishFailure({
-      storeId: 'store-stable-1',
+      storeStableId: 'store-stable-1',
       uberStoreId: 'uber-store-1',
       menuItemStableId: 'item-stable-1',
       isAvailable: false,

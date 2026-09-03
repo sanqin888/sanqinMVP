@@ -337,7 +337,7 @@ export class RetryUberOpsTicketUseCase {
         if (!ticket.menuItemStableId)
           throw invalidOperationsInput('商品状态工单缺少 menuItemStableId');
         await this.menuAvailability.syncUberMenuItemAvailability({
-          storeId: storeStableId,
+          storeStableId,
           menuItemStableId: ticket.menuItemStableId,
           isAvailable: parseAvailabilityContext(ticket.context).isAvailable,
         });

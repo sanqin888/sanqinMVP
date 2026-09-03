@@ -74,7 +74,7 @@ export interface UberOrderImportRepositoryPort {
   } | null>;
   /** Standalone admission DENY creates no local Order; failure webhook may arrive afterward. */
   hasSucceededDenial?(externalOrderId: string): Promise<boolean>;
-  getPosStoreConnectivity?(posStoreId: string): Promise<{
+  getPosStoreConnectivity?(storeStableId: string): Promise<{
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
     lastHeartbeatAt: Date | null;
   }>;
@@ -86,7 +86,7 @@ export interface UberOrderImportRepositoryPort {
   }): Promise<void>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
-    posStoreId: string;
+    storeStableId: string;
     eventType: string;
     cursor: UberOrderEventCursor;
     menuMappings: UberOrderMenuMapping[];

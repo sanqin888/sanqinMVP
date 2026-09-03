@@ -19,9 +19,9 @@ export type UberStoreScopedInput = {
   storeId: string;
 };
 
-export type UberOptionalStoreScopedInput = {
-  /** Optional store filter; omission intentionally means all provisioned stores. */
-  storeId?: string;
+export type UberOptionalStoreStableScopedInput = {
+  /** Optional SanQ storeStableId filter; omission intentionally means all provisioned stores. */
+  storeStableId?: string;
 };
 
 export type UberPreparationType = 'PREPARED' | 'PREPACKAGED';
@@ -251,7 +251,7 @@ export function isPermanentPublicHttpsUrl(value: string): boolean {
 }
 
 /** Convert the site's stored image path into the public URL Uber can fetch. */
-export type SyncAvailabilityInput = UberOptionalStoreScopedInput & {
+export type SyncAvailabilityInput = UberOptionalStoreStableScopedInput & {
   menuItemStableId: string;
   isAvailable: boolean;
 };
@@ -265,7 +265,7 @@ export type UberAvailabilitySyncStatus =
 export type UberAvailabilitySyncResult = {
   status: UberAvailabilitySyncStatus;
   stores: Array<{
-    storeId: string;
+    storeStableId: string;
     uberStoreId: string | null;
     status: UberAvailabilitySyncStatus;
     versionStableId?: string;
@@ -273,7 +273,7 @@ export type UberAvailabilitySyncResult = {
   }>;
 };
 
-export type SyncOptionAvailabilityInput = UberOptionalStoreScopedInput & {
+export type SyncOptionAvailabilityInput = UberOptionalStoreStableScopedInput & {
   optionChoiceStableId: string;
   isAvailable: boolean;
 };

@@ -8,7 +8,7 @@ describe('Uber Eats cross-context contracts', () => {
   it('locks required fields, enums, and structured error semantics at compile time', () => {
     const availability = {
       status: 'SYNC_REQUESTED',
-      stores: [{ storeId: 'store-1', status: 'SYNC_REQUESTED' }],
+      stores: [{ storeStableId: 'store-1', status: 'SYNC_REQUESTED' }],
     } satisfies UberEatsAvailabilitySyncResult;
     const action = {
       ok: false,

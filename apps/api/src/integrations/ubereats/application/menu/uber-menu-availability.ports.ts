@@ -21,13 +21,13 @@ export interface UberMenuAvailabilityQueryPort {
   findMenuItemSuspendUntil(menuItemStableId: string): Promise<Date | null>;
   findOptionSuspendUntil(optionChoiceStableId: string): Promise<Date | null>;
   findProvisionedStores(
-    storeId?: string,
-  ): Promise<Array<{ storeId: string; uberStoreId: string }>>;
+    storeStableId?: string,
+  ): Promise<Array<{ storeStableId: string; uberStoreId: string }>>;
 }
 
 export interface UberMenuAvailabilityCommandPort {
   createItemPublishFailure(input: {
-    storeId: string;
+    storeStableId: string;
     uberStoreId: string;
     menuItemStableId: string;
     isAvailable: boolean;

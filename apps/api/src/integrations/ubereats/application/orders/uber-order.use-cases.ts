@@ -136,13 +136,13 @@ export class ImportUberOrderUseCase {
 
       await this.repository.saveImportedOrder({
         order: detail.order,
-        posStoreId: admission.posStoreId,
+        storeStableId: admission.storeStableId,
         eventType: normalizedEventType,
         cursor,
         menuMappings: admission.menuMappings,
         modifierSnapshotMappings: await this.buildModifierSnapshotMappings(
           detail.order,
-          admission.posStoreId,
+          admission.storeStableId,
         ),
         cancellation: null,
         actionIntent: null,
@@ -177,18 +177,18 @@ export class ImportUberOrderUseCase {
 
     const imported = await this.repository.saveImportedOrder({
       order,
-      posStoreId: admission.posStoreId,
+      storeStableId: admission.storeStableId,
       eventType: normalizedEventType,
       cursor,
       menuMappings: admission.menuMappings,
       modifierSnapshotMappings: await this.buildModifierSnapshotMappings(
         order,
-        admission.posStoreId,
+        admission.storeStableId,
       ),
       cancellation: null,
       actionIntent: await this.buildAdmissionIntent(
         order.externalOrderId,
-        admission.posStoreId,
+        admission.storeStableId,
         admission.decision,
       ),
       receivedAt: new Date(),
@@ -207,7 +207,7 @@ export class ImportUberOrderUseCase {
 
   private async buildModifierSnapshotMappings(
     order: ParsedUberOrder,
-    posStoreId: string,
+    storeStableId: string,
   ): Promise<UberOrderModifierSnapshotMapping[]> {
     if (!order.items.some((item) => item.modifiers.length > 0)) return [];
     const sources = this.repository.findModifierSnapshotSources
@@ -215,13 +215,13 @@ export class ImportUberOrderUseCase {
       : [];
     return sources.map((source) => ({
       ...source,
-      externalItemId: buildUberNodeId('item', posStoreId, source.stableId),
+      externalItemId: buildUberNodeId('item', storeStableId, source.stableId),
     }));
   }
 
   private async buildAdmissionIntent(
     externalOrderId: string,
-    posStoreId: string,
+    storeStableId: string,
     decision: UberOrderAdmissionDecision,
   ): Promise<UberOrderImportActionIntent | null> {
     if (decision.kind === 'DENY') {
@@ -232,7 +232,7 @@ export class ImportUberOrderUseCase {
       });
     }
     const autoAcceptEnabled =
-      await this.storeConfig.getStoreAutoAcceptOnlineOrders(posStoreId);
+      await this.storeConfig.getStoreAutoAcceptOnlineOrders(storeStableId);
     return autoAcceptEnabled
       ? this.actions.buildIntent({ externalOrderId, action: 'ACCEPT' })
       : null;

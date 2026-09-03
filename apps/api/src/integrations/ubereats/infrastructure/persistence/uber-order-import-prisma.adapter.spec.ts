@@ -32,7 +32,7 @@ const parsedOrder = {
 
 const baseInput = {
   order: parsedOrder,
-  posStoreId: '4750_Yonge_Street',
+  storeStableId: '4750_Yonge_Street',
   eventType: 'orders.notification',
   cursor: {
     eventId: 'evt-order-1',

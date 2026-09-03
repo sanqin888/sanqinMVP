@@ -45,20 +45,25 @@ export class UberMenuAvailabilityPrismaAdapter
     return option?.tempUnavailableUntil ?? null;
   }
 
-  async findProvisionedStores(storeId?: string) {
+  async findProvisionedStores(storeStableId?: string) {
     const mappings = await this.prisma.uberStoreMapping.findMany({
       where: {
         isProvisioned: true,
-        ...(storeId
+        ...(storeStableId
           ? {
-              OR: [{ posExternalStoreId: storeId }, { uberStoreId: storeId }],
+              // Legacy transport compatibility: the existing HTTP storeId may
+              // still carry an Uber store id.
+              OR: [
+                { posExternalStoreId: storeStableId },
+                { uberStoreId: storeStableId },
+              ],
             }
           : {}),
       },
       select: { posExternalStoreId: true, uberStoreId: true },
     });
     return mappings.map((mapping) => ({
-      storeId: mapping.posExternalStoreId?.trim() || mapping.uberStoreId,
+      storeStableId: mapping.posExternalStoreId?.trim() || mapping.uberStoreId,
       uberStoreId: mapping.uberStoreId,
     }));
   }
@@ -70,7 +75,7 @@ export class UberMenuAvailabilityPrismaAdapter
   ) {
     await this.prisma.uberOpsTicket.create({
       data: {
-        storeId: input.storeId,
+        storeId: input.storeStableId,
         type: UberOpsTicketType.MENU_ITEM_AVAILABILITY,
         status: UberOpsTicketStatus.OPEN,
         priority: UberOpsTicketPriority.HIGH,

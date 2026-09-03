@@ -35,6 +35,65 @@ describe('Uber Eats store identity architecture', () => {
     expect(persistence!.source).not.toContain('storeId: uberStoreId');
   });
 
+  it('uses explicit SanQ storeStableId naming across availability and order admission', () => {
+    const applicationFiles = scanTypeScript(join(__dirname, 'application'), {
+      productionOnly: true,
+    });
+    const persistenceFiles = scanTypeScript(
+      join(__dirname, 'infrastructure', 'persistence'),
+      { productionOnly: true },
+    );
+    const apiFiles = scanTypeScript(join(__dirname, 'api'), {
+      productionOnly: true,
+    });
+    const publicApi = scanTypeScript(__dirname, {
+      productionOnly: true,
+    }).find((file) => file.path.endsWith('public-api.ts'));
+    const crossContextResponses = scanTypeScript(
+      join(__dirname, 'contracts', 'responses'),
+      { productionOnly: true },
+    ).find((file) => file.path.endsWith('cross-context.responses.ts'));
+    const availability = applicationFiles.find((file) =>
+      file.path.endsWith('uber-menu-availability.use-case.ts'),
+    );
+    const admission = applicationFiles.find((file) =>
+      file.path.endsWith('uber-order-admission.service.ts'),
+    );
+    const orderUseCases = applicationFiles.find((file) =>
+      file.path.endsWith('uber-order.use-cases.ts'),
+    );
+    const orderPorts = applicationFiles.find((file) =>
+      file.path.endsWith('uber-order.ports.ts'),
+    );
+    const orderPersistence = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-order-import-prisma.adapter.ts'),
+    );
+    const menuController = apiFiles.find((file) =>
+      file.path.endsWith('menu.controller.ts'),
+    );
+
+    expect(publicApi).toBeDefined();
+    expect(crossContextResponses).toBeDefined();
+    expect(availability).toBeDefined();
+    expect(admission).toBeDefined();
+    expect(orderUseCases).toBeDefined();
+    expect(orderPorts).toBeDefined();
+    expect(orderPersistence).toBeDefined();
+    expect(menuController).toBeDefined();
+    expect(publicApi!.source).toContain('storeStableId?: string;');
+    expect(crossContextResponses!.source).toContain('storeStableId: string;');
+    expect(availability!.source).toContain('storeId: mapping.uberStoreId');
+    expect(availability!.source).toContain(
+      'storeStableId: mapping.storeStableId',
+    );
+    expect(admission!.source).not.toContain('posStoreId');
+    expect(orderUseCases!.source).not.toContain('posStoreId');
+    expect(orderPorts!.source).not.toContain('posStoreId');
+    expect(orderPersistence!.source).not.toContain('posStoreId');
+    expect(orderPersistence!.source).toContain('storeId: input.storeStableId');
+    expect(menuController!.source).toContain('storeStableId: dto.storeId');
+  });
+
   it('keeps Uber order store policy reads behind UBER_STORE_CONFIG_QUERY', () => {
     const persistenceFiles = scanTypeScript(
       join(__dirname, 'infrastructure', 'persistence'),
