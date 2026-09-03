@@ -293,8 +293,8 @@ rather than reconstructing the timeline later from scattered documents.
 
 ### 2026-09-03 — Phase 3 Slice 2B: POS Payment Benefits reservation boundary contraction
 
-**PR/SHA:** local branch `refactor/phase3-slice2b-payment-benefits-reservations` from `origin/dev@4fc982cd`  
-**State:** LOCAL  
+**PR/SHA:** PR #2139 / merge `6a022c8c`  
+**State:** MERGED / CI GREEN  
 **Result:** Unified Payment preparation now uses Benefits-owned narrow Points/Balance
 and Coupon reservation contracts for HOLD/RELEASE instead of directly injecting
 `LoyaltyService` / `MembershipService`. POS payment composition also wires the
@@ -310,14 +310,37 @@ COMMIT contraction is recorded as Slice 2C follow-up.
 `docs/payments/clover-pos-integration-charter.md`,
 `docs/payments/clover-pos-phase-plan.md`.
 
+### 2026-09-03 — Phase 3 Slice 3: Admin Catalog ownership contraction
+
+**PR/SHA:** local branch `refactor/phase3-slice3-admin-catalog-ownership` from `origin/dev@6a022c8c`  
+**State:** SOURCE / LOCAL REVIEW  
+**Result:** Admin menu CRUD/read-model/application decisions moved into Catalog-owned
+`CatalogAdminService` exposed through `menu/public-api.ts`; the legacy
+`AdminMenuService` was deleted. Admin menu composition no longer owns Prisma or
+Brand/Store configuration reads. Availability-affecting item updates, explicit item
+availability and option availability remain in a narrow Admin orchestration service
+that persists through Catalog and calls only the Uber public availability capability;
+this temporary coordination is explicitly assigned to Slice 5. Removing two Admin
+Prisma imports contracts `identity-customer-benefits -> runtime-data-ci-ops` from 21
+to 19. A redundant local Prisma provider/import was removed from `PromotionsModule`
+so the new Catalog persistence implementation does not raise
+`catalog-pricing-offers -> runtime-data-ci-ops` above 10. A permanent scanner guard
+prevents Admin menu Prisma ownership, the retired service, or Uber coordination from
+moving into Catalog. Slice 2B was also updated to PR #2139 / `6a022c8c`; Slice 2C is
+marked DEFERRED after its atomic-transaction readiness audit.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
+
 ## Current position
 
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1 and Slice 2 merged; Slice 2B is complete locally and pending
-  review/CI. Slice 2C is a transaction-bound COMMIT design follow-up, not part of
-  the current source change.
+- Phase 3: Slice 1, Slice 2 and Slice 2B are merged. Slice 2C is **DEFERRED** after
+  readiness review because the current Benefits COMMIT + Order creation atomic
+  transaction has no safe Prisma-free cross-context replacement yet. Slice 3 is
+  source-complete locally and pending user review/remote CI; its temporary Admin
+  availability/Uber coordination is explicitly assigned to Slice 5.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

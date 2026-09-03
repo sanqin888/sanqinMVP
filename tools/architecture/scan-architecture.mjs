@@ -283,6 +283,121 @@ if (paymentBenefitsReservationBoundary) {
   }
 }
 
+const adminCatalogOwnershipBoundary = config.adminCatalogOwnershipBoundary ?? null;
+if (adminCatalogOwnershipBoundary) {
+  const ownerService = toPosix(
+    adminCatalogOwnershipBoundary.ownerService ?? '',
+  );
+  const publicSurface = toPosix(
+    adminCatalogOwnershipBoundary.publicSurface ?? '',
+  );
+  const adminController = toPosix(
+    adminCatalogOwnershipBoundary.adminController ?? '',
+  );
+  const adminModule = toPosix(adminCatalogOwnershipBoundary.adminModule ?? '');
+  const availabilityOrchestration = toPosix(
+    adminCatalogOwnershipBoundary.availabilityOrchestration ?? '',
+  );
+  const retiredAdminService = toPosix(
+    adminCatalogOwnershipBoundary.retiredAdminService ?? '',
+  );
+
+  for (const sourcePath of [
+    ownerService,
+    publicSurface,
+    adminController,
+    adminModule,
+    availabilityOrchestration,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        'Admin Catalog ownership boundary file is missing: ' +
+          (sourcePath || '<missing-path>'),
+      );
+    }
+  }
+
+  if (
+    retiredAdminService &&
+    existsSync(join(REPOSITORY_ROOT, retiredAdminService))
+  ) {
+    failures.push(
+      `retired Admin menu business service must stay deleted: ${retiredAdminService}`,
+    );
+  }
+
+  const ownerSourcePath = join(REPOSITORY_ROOT, ownerService);
+  if (existsSync(ownerSourcePath)) {
+    const source = readFileSync(ownerSourcePath, 'utf8');
+    if (!source.includes('export class CatalogAdminService')) {
+      failures.push(
+        `Catalog must own the Admin menu management use case: ${ownerService}`,
+      );
+    }
+    if (/integrations\/ubereats/.test(source)) {
+      failures.push(
+        `Catalog Admin management must not own Uber provider coordination: ${ownerService}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, adminController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from '../../menu/public-api'") ||
+      !source.includes('CatalogAdminService') ||
+      source.includes('AdminMenuService') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `Admin menu controller must consume the Catalog public management use case: ${adminController}`,
+      );
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, adminModule);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    if (
+      !source.includes("from '../../menu/public-api'") ||
+      !source.includes('PublicMenuModule') ||
+      source.includes('PrismaService') ||
+      source.includes('BrandStoreConfigModule') ||
+      source.includes('AdminMenuService')
+    ) {
+      failures.push(
+        `Admin menu composition must wire Catalog through its public module without owning persistence: ${adminModule}`,
+      );
+    }
+  }
+
+  const orchestrationPath = join(REPOSITORY_ROOT, availabilityOrchestration);
+  if (existsSync(orchestrationPath)) {
+    const source = readFileSync(orchestrationPath, 'utf8');
+    if (
+      !source.includes("from '../../menu/public-api'") ||
+      !source.includes("from '../../integrations/ubereats/public-api'") ||
+      source.includes('PrismaService') ||
+      source.includes('BRAND_STORE_CONFIG_READER')
+    ) {
+      failures.push(
+        `Admin availability orchestration may coordinate only Catalog and Uber public capabilities: ${availabilityOrchestration}`,
+      );
+    }
+  }
+
+  const adminMenuRoot = join(REPOSITORY_ROOT, 'apps/api/src/admin/menu');
+  for (const file of walk(adminMenuRoot)) {
+    const source = readFileSync(file, 'utf8');
+    if (/from ['"]\.\.\/\.\.\/prisma\//.test(source)) {
+      failures.push(
+        `Admin menu must not regain direct Prisma ownership: ${toPosix(relative(REPOSITORY_ROOT, file))}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

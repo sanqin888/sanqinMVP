@@ -1,10 +1,11 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 2B local base: branch created from `origin/dev@4fc982cd` (2026-09-03).
+Phase 3 Slice 3 local base: branch `refactor/phase3-slice3-admin-catalog-ownership`
+created from `origin/dev@6a022c8c` (2026-09-03).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 2B POS
-Payment Benefits reservation boundary contraction.
+by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 3 Admin
+Catalog ownership contraction.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
@@ -42,7 +43,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; messaging-notifications 2; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 14; brand-store 4; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 21; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 14; brand-store 4; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 19; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
@@ -258,21 +259,35 @@ pair fails CI.
 - The legacy Coupon implementation stays physically under `coupons` until its
   Prisma/Messaging dependencies can be contracted without raising another debt
   allowance. Slice 2 itself left Payments-facing coupon HOLD/COMMIT/RELEASE unchanged.
-- Slice 2B contracts Unified Payment preparation against Benefits: the payment
-  checkout service now injects Benefits-owned Points/Balance and Coupon reservation
-  ports, and the POS payment composition module imports the Benefits public
-  reservation module instead of `LoyaltyModule` / `MembershipModule` directly.
-  Coupon HOLD carries `userStableId` rather than the snapshot's internal User DB UUID.
-  Four production deep imports disappear, lowering `payments-clover ->
-  identity-customer-benefits` from 17 to 13 with the baseline reduced in the same
-  local change. The central scanner and Payments architecture test protect these
-  migrated consumers from regressing to Loyalty/Membership internals.
-- Slice 2B deliberately leaves transaction-bound COMMIT inside
-  `OrdersService.createFromConfirmedPaymentSnapshot()` so Points/Balance COMMIT,
-  Coupon COMMIT and Order creation remain atomic in one Prisma transaction. A safe
-  Slice 2C may contract that boundary later without exposing `Prisma.TransactionClient`
-  as an ordinary cross-context public contract. Production Web Clover and Prisma
-  schema/migrations are unchanged by Slice 2B.
+- Slice 2B is **MERGED** via PR #2139 / `6a022c8c`. Unified Payment preparation now
+  injects Benefits-owned Points/Balance and Coupon reservation ports, and the POS
+  payment composition module imports the Benefits public reservation module instead
+  of `LoyaltyModule` / `MembershipModule` directly. Coupon HOLD carries
+  `userStableId` rather than the snapshot's internal User DB UUID. Four production
+  deep imports disappeared, lowering `payments-clover -> identity-customer-benefits`
+  from 17 to 13; CI architecture/lint/build/test gates were green before merge.
+- Slice 2C is **DEFERRED** after a 2026-09-03 readiness audit. The transaction-bound
+  COMMIT remains inside `OrdersService.createFromConfirmedPaymentSnapshot()` because
+  Points/Balance COMMIT, Coupon COMMIT and Order creation currently protect one
+  atomic Prisma transaction. Replacing only the two COMMIT calls would not remove
+  the broader `OrdersService` Benefits dependency, while splitting the transaction
+  or publishing `Prisma.TransactionClient` would violate the current transaction
+  boundary rules. Revisit only after a safe transaction-scoped capability exists.
+- Slice 3 locally moves Admin menu CRUD/read-model/application decisions into
+  Catalog-owned `CatalogAdminService` exposed via `menu/public-api.ts`. The legacy
+  `AdminMenuService` is deleted; Admin controller/module no longer own Prisma or
+  Brand/Store configuration reads. The two removed Admin Prisma imports contract
+  `identity-customer-benefits -> runtime-data-ci-ops` from 21 to 19. A new Catalog
+  Prisma import is offset by deleting the redundant local `PrismaService` provider
+  from `PromotionsModule`, so `catalog-pricing-offers -> runtime-data-ci-ops` remains
+  10 rather than increasing.
+- Slice 3 intentionally keeps only availability/provider coordination in
+  `AdminMenuAvailabilityOrchestrationService`: item update availability changes,
+  explicit item availability, and option availability persist through Catalog and
+  then call the Uber public availability port. This is **temporary Slice 5 debt**;
+  Slice 5 must move that coordination out of Admin without changing the verified
+  Uber availability behavior. Production Web Clover, Prisma schema/migrations and
+  Uber wire contracts are unchanged by Slice 3.
 - Pre-Phase-3 Uber boundary hardening is now **PRODUCTION VERIFIED** (2026-09-03):
   - PR #2130 / `32d3925f` contracted Uber Store Policy ownership so order admission
     reads auto-accept/allergen policy through `UBER_STORE_CONFIG_QUERY` ->
