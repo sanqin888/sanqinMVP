@@ -11,9 +11,13 @@ promotion calculation, and Benefits owns customer-held entitlements. Orders,
 Admin, Loyalty and other contexts must consume those capabilities through public
 contracts instead of importing Pricing internals.
 
-The phase does not change frozen Payments/Clover traffic, historical Uber sandbox
-compatibility, or provider wire behavior unless a later slice is separately
-approved and verified.
+The phase does not change production Web Clover behavior by default, historical
+Uber sandbox compatibility, or provider wire behavior unless a later slice is
+separately justified and verified. POS Clover Terminal is no longer structurally
+frozen: pre-production Terminal modularization may proceed when it does not alter
+live Web Ecommerce behavior. If production Web Clover becomes a critical
+modularization blocker, the guarded-production exception in `AGENTS.md` and the
+Payments charter applies, including post-deployment active payment verification.
 
 ## Pre-Phase-3 Uber boundary verification baseline
 
@@ -128,8 +132,11 @@ move debt between contexts and require raising baseline limits. The later
 Offers -> Messaging slice remains the next prerequisite for relocating trigger
 implementation cleanly.
 
-The Payments-facing coupon HOLD/COMMIT/RELEASE path remains unchanged while the
-two Clover compatibility entries are externally frozen.
+The Payments-facing coupon HOLD/COMMIT/RELEASE path remains unchanged in this
+slice. The Clover compatibility entries are now governed separately: POS Terminal
+is active pre-production work, while Web Ecommerce is guarded production and may
+only be changed when it is a documented critical modularization blocker with the
+required active verification gate.
 
 ## Remaining Phase 3 work
 
@@ -167,5 +174,18 @@ context pairs or cycles were introduced, and document the next phase boundary.
   After that cleanup, delete the compatibility code/annotations together and
   tighten the central scanner so a closed compat ID cannot remain in production
   source.
-- Payments/Clover compatibility remains frozen and is not a Phase 3 cleanup
-  target.
+- Payments/Clover is no longer a whole-context frozen zone. POS Clover Terminal
+  may be modularized as pre-production work when isolated from live Web Ecommerce.
+  Production Web Clover remains guarded and is not a routine Phase 3 cleanup
+  target; touch it only when it is a documented critical blocker and then apply
+  the required post-deployment active payment verification gate.
+
+## Progress-recording rule from 2026-09-03
+
+A central chronological index now lives at
+`docs/architecture/modularization-worklog.md`. Starting with the next Phase 3 code
+slice, each implementation batch must update this phase document, the current
+dependency graph, and exactly one worklog entry in the same local change. Later CI,
+deployment, or active-verification evidence updates the same worklog entry instead
+of creating a duplicate implementation record. This documentation rule does not
+change the Phase 3 dependency baseline by itself.

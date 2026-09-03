@@ -2,21 +2,29 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@0917f66c` (2026-09-02).
+`origin/dev@c47c2ca5` (2026-09-03).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
 
-## Active or externally frozen
+## Active / guarded compatibility
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `payments.pos-card-legacy.v1` | frozen | direct paid Order → Unified Payment Core + Terminal + finalize | Clover support blocker resolved; real device accepted; one settlement cycle reconciled; legacy calls zero | Before Phase 5B exit |
-| `payments.web-checkout-v1.v1` | frozen | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | External validation unblocked; Web cutover accepted; one settlement cycle reconciled; old calls zero | Before Phase 5B exit |
+| `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | Real-device acceptance complete; one settlement cycle reconciled; legacy calls zero before cutover cleanup | Before Phase 5B exit |
+| `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Before Phase 5B exit |
 
-The two payment entries are frozen boundaries, not work queues. Architecture
-scanning may observe them, but modularization must not change their production
-behavior while external verification remains blocked.
+The payment entries are no longer governed by a whole-context freeze. The POS
+Clover Terminal path is pre-production and may be structurally modularized before
+Clover real-device access is restored, provided the live Web Ecommerce path and
+production payment facts are unchanged. The Web Clover path remains protected by
+default because it is actively processing production payments; however, if it
+becomes a documented critical modularization blocker, a narrowly scoped change is
+allowed after recording impact, alternatives and rollback/forward-fix handling.
+Every such Web-impacting change requires focused regression coverage and an explicit
+post-deployment active verification checklist, and is not production-verified until
+the user confirms those scenarios passed. Traffic cutover, compatibility deletion
+and settlement-based exit criteria remain separately gated.
 
 ## Closed history
 
