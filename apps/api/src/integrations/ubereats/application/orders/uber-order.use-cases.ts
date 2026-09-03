@@ -18,6 +18,7 @@ import type { UberOrderAdmissionDecision } from '../../domain/orders/uber-order-
 import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import { UberApplicationError } from '../shared/uber-application.error';
+import type { UberStoreConfigQueryPort } from '../shared/uber-store-config.port';
 import { UberOrderAdmissionService } from './uber-order-admission.service';
 
 export { UberOrderStoreMappingError } from './uber-order-admission.service';
@@ -31,8 +32,13 @@ export class ImportUberOrderUseCase {
     private readonly detailGateway: UberOrderDetailQueryPort,
     private readonly actions: UberOrderActionService,
     storeMappings: UberStoreMappingRepositoryPort,
+    private readonly storeConfig: UberStoreConfigQueryPort,
   ) {
-    this.admission = new UberOrderAdmissionService(repository, storeMappings);
+    this.admission = new UberOrderAdmissionService(
+      repository,
+      storeMappings,
+      storeConfig,
+    );
   }
 
   async execute(
@@ -225,9 +231,8 @@ export class ImportUberOrderUseCase {
         denial: decision.denial,
       });
     }
-    const autoAcceptEnabled = this.repository.getStoreAutoAcceptOnlineOrders
-      ? await this.repository.getStoreAutoAcceptOnlineOrders(posStoreId)
-      : true;
+    const autoAcceptEnabled =
+      await this.storeConfig.getStoreAutoAcceptOnlineOrders(posStoreId);
     return autoAcceptEnabled
       ? this.actions.buildIntent({ externalOrderId, action: 'ACCEPT' })
       : null;

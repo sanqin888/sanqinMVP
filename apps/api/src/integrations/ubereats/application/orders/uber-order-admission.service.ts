@@ -6,6 +6,7 @@ import {
 } from '../../domain/orders/uber-order-admission.policy';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import { UberApplicationError } from '../shared/uber-application.error';
+import type { UberStoreConfigQueryPort } from '../shared/uber-store-config.port';
 import type {
   UberOrderImportRepositoryPort,
   UberOrderMenuMapping,
@@ -49,6 +50,7 @@ export class UberOrderAdmissionService {
   constructor(
     private readonly repository: UberOrderImportRepositoryPort,
     private readonly storeMappings: UberStoreMappingRepositoryPort,
+    private readonly storeConfig: UberStoreConfigQueryPort,
   ) {}
 
   invalidDetail(
@@ -128,9 +130,9 @@ export class UberOrderAdmissionService {
     eventId: string,
   ): Promise<UberOrderAdmissionResult> {
     const store = await this.resolveStoreContext(order, eventId);
-    const allergyPolicy = this.repository.getStoreAllergyPolicy
-      ? await this.repository.getStoreAllergyPolicy(store.posStoreId)
-      : { mode: 'RELAY_ALL' as const, unsupportedAllergens: [] };
+    const allergyPolicy = await this.storeConfig.getStoreAllergyPolicy(
+      store.posStoreId,
+    );
     const allergyRequest = order.allergyRequest ?? {
       hasRequest: false,
       allergens: [],

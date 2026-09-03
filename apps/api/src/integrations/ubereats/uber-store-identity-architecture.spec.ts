@@ -34,4 +34,50 @@ describe('Uber Eats store identity architecture', () => {
     expect(persistence!.source).toContain('storeId: input.storeStableId');
     expect(persistence!.source).not.toContain('storeId: uberStoreId');
   });
+
+  it('keeps Uber order store policy reads behind UBER_STORE_CONFIG_QUERY', () => {
+    const persistenceFiles = scanTypeScript(
+      join(__dirname, 'infrastructure', 'persistence'),
+      { productionOnly: true },
+    );
+    const applicationFiles = scanTypeScript(join(__dirname, 'application'), {
+      productionOnly: true,
+    });
+    const nestFiles = scanTypeScript(
+      join(__dirname, 'infrastructure', 'nest'),
+      { productionOnly: true },
+    );
+    const orderPersistence = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-order-import-prisma.adapter.ts'),
+    );
+    const admission = applicationFiles.find((file) =>
+      file.path.endsWith('uber-order-admission.service.ts'),
+    );
+    const orderUseCases = applicationFiles.find((file) =>
+      file.path.endsWith('uber-order.use-cases.ts'),
+    );
+    const orderWiring = nestFiles.find((file) =>
+      file.path.endsWith('orders.wiring.ts'),
+    );
+
+    expect(orderPersistence).toBeDefined();
+    expect(admission).toBeDefined();
+    expect(orderUseCases).toBeDefined();
+    expect(orderWiring).toBeDefined();
+    expect(orderPersistence!.source).not.toContain('getStoreAllergyPolicy(');
+    expect(orderPersistence!.source).not.toContain(
+      'getStoreAutoAcceptOnlineOrders(',
+    );
+    expect(orderPersistence!.source).not.toContain('prisma.store');
+    expect(admission!.source).toContain(
+      'this.storeConfig.getStoreAllergyPolicy(',
+    );
+    expect(orderUseCases!.source).toContain(
+      'this.storeConfig.getStoreAutoAcceptOnlineOrders(',
+    );
+    expect(orderWiring!.source).toContain('UBER_STORE_CONFIG_QUERY');
+    expect(orderWiring!.source).toContain(
+      'storeConfig: UberStoreConfigQueryPort',
+    );
+  });
 });

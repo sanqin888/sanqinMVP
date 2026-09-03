@@ -28,11 +28,6 @@ export type UberOrderModifierSnapshotMapping =
     externalItemId: string;
   };
 
-export type UberStoreAllergyPolicy = {
-  mode: 'RELAY_ALL' | 'DENY_LIST' | 'DENY_ALL';
-  unsupportedAllergens: string[];
-};
-
 export type UberOrderCancellationDecision = {
   kind: 'CANCELLED' | 'REJECTED';
   cancelledBy: string | null;
@@ -83,8 +78,6 @@ export interface UberOrderImportRepositoryPort {
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
     lastHeartbeatAt: Date | null;
   }>;
-  getStoreAllergyPolicy?(posStoreId: string): Promise<UberStoreAllergyPolicy>;
-  getStoreAutoAcceptOnlineOrders?(posStoreId: string): Promise<boolean>;
   saveExistingOrderCancellation(input: {
     orderId: string;
     externalOrderId: string;
