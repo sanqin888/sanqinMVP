@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   formatSourceViolation,
@@ -8,6 +9,36 @@ describe('Uber Eats store identity architecture', () => {
   it('keeps Operations free of implicit default store normalization', () => {
     const root = join(__dirname, 'application', 'operations');
     const forbidden = /\bnormalizeUberStoreId\b|['"]default['"]/g;
+    const violations = scanTypeScript(root, { productionOnly: true }).flatMap(
+      (file) =>
+        [...file.source.matchAll(forbidden)].map((match) =>
+          formatSourceViolation(__dirname, file, match[0]),
+        ),
+    );
+
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps Uber persistence store identity explicit in Prisma schema', () => {
+    const schema = readFileSync(
+      join(__dirname, '../../../prisma/schema.prisma'),
+      'utf8',
+    );
+    const violations = [
+      ...schema.matchAll(/model\s+(Uber\w+)\s*\{([\s\S]*?)\n\}/g),
+    ]
+      .filter((match) =>
+        /\bstoreId\s+String\b[^\n]*@default\(\s*"default"\s*\)/.test(match[2]),
+      )
+      .map((match) => match[1]);
+
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps Uber persistence code free of literal default-store writes', () => {
+    const root = join(__dirname, 'infrastructure', 'persistence');
+    const forbidden =
+      /\bstoreId\s*:\s*['"]default['"]|\b(?:storeId|storeStableId)\s*(?:\?\?|\|\|)\s*['"]default['"]/g;
     const violations = scanTypeScript(root, { productionOnly: true }).flatMap(
       (file) =>
         [...file.source.matchAll(forbidden)].map((match) =>

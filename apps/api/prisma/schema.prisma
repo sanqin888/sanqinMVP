@@ -1776,8 +1776,8 @@ model UberStoreMapping {
 
 model UberItemChannelConfig {
   id                       String    @id @default(uuid()) @db.Uuid
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId                  String    @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId                  String
   uberStoreId              String?
   menuItemStableId         String
   priceCents               Int?
@@ -1802,8 +1802,8 @@ model UberItemChannelConfig {
 
 model UberCategoryConfig {
   id                   String    @id @default(uuid()) @db.Uuid
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId              String    @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId              String
   uberStoreId          String?
   menuCategoryStableId String
   displayName          String?
@@ -1822,8 +1822,8 @@ model UberCategoryConfig {
 
 model UberModifierGroupConfig {
   id                      String    @id @default(uuid()) @db.Uuid
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId                 String    @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId                 String
   uberStoreId             String?
   templateGroupStableId   String
   displayName             String?
@@ -1843,8 +1843,8 @@ model UberModifierGroupConfig {
 
 model UberOptionItemConfig {
   id                           String    @id @default(uuid()) @db.Uuid
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId                      String    @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId                      String
   uberStoreId                  String?
   optionChoiceStableId         String
   displayName                  String?
@@ -1868,8 +1868,8 @@ model UberOptionItemConfig {
 
 model UberOptionChildGroupBinding {
   id                         String   @id @default(uuid()) @db.Uuid
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId                    String   @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId                    String
   parentOptionChoiceStableId String
   childTemplateGroupStableId String
   isBound                    Boolean  @default(true)
@@ -1886,8 +1886,8 @@ model UberMenuPublishVersion {
   versionStableId            String                  @unique @default(cuid())
   idempotencyKey             String?                 @unique
   businessVersion            String                  @default("v1")
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId                    String                  @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId                    String
   uberStoreId                String?
   status                     UberMenuPublishStatus   @default(SUBMITTED)
   totalItems                 Int
@@ -1962,8 +1962,8 @@ enum UberOpsTicketPriority {
 model UberReconciliationReport {
   id                String   @id @default(uuid()) @db.Uuid
   reportStableId    String   @unique @default(cuid())
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId           String   @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId           String
   rangeStart        DateTime
   rangeEnd          DateTime
   totalOrders       Int      @default(0)
@@ -1982,8 +1982,8 @@ model UberReconciliationReport {
 model UberOpsTicket {
   id               String                @id @default(uuid()) @db.Uuid
   ticketStableId   String                @unique @default(cuid())
-  /// POS store ID (not tenant/business ID). Legacy "default" rows must be backfilled before removing the default.
-  storeId          String                @default("default")
+  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  storeId          String
   type             UberOpsTicketType
   status           UberOpsTicketStatus   @default(OPEN)
   priority         UberOpsTicketPriority @default(MEDIUM)
