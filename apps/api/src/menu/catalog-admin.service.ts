@@ -27,10 +27,7 @@ import {
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
 
-export type CatalogAvailabilityMode =
-  | 'ON'
-  | 'PERMANENT_OFF'
-  | 'TEMP_TODAY_OFF';
+export type CatalogAvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -261,9 +258,7 @@ export class CatalogAdminService {
                 defaultMinSelect: templateGroup.defaultMinSelect,
                 defaultMaxSelect: templateGroup.defaultMaxSelect ?? null,
                 isAvailable: templateGroup.isAvailable,
-                tempUnavailableUntil: toIso(
-                  templateGroup.tempUnavailableUntil,
-                ),
+                tempUnavailableUntil: toIso(templateGroup.tempUnavailableUntil),
                 sortOrder: templateGroup.sortOrder,
               };
 
@@ -402,7 +397,9 @@ export class CatalogAdminService {
       data: {
         nameEn,
         nameZh: body.nameZh?.trim() || null,
-        sortOrder: Number.isFinite(body.sortOrder) ? (body.sortOrder as number) : 0,
+        sortOrder: Number.isFinite(body.sortOrder)
+          ? (body.sortOrder as number)
+          : 0,
         isActive: typeof body.isActive === 'boolean' ? body.isActive : true,
         deletedAt: null,
       },
@@ -516,7 +513,9 @@ export class CatalogAdminService {
         nameEn,
         nameZh: body.nameZh?.trim() || null,
         basePriceCents: Math.max(0, Math.round(body.basePriceCents)),
-        sortOrder: Number.isFinite(body.sortOrder) ? (body.sortOrder as number) : 0,
+        sortOrder: Number.isFinite(body.sortOrder)
+          ? (body.sortOrder as number)
+          : 0,
         imageUrl: body.imageUrl?.trim() || null,
         ingredientsEn: body.ingredientsEn?.trim() || null,
         ingredientsZh: body.ingredientsZh?.trim() || null,
@@ -621,7 +620,9 @@ export class CatalogAdminService {
       );
       if (packagingTypesForUpdate.length > 1) {
         const nextPackagingTypeStableIds = new Set(
-          packagingTypesForUpdate.map((packagingType) => packagingType.stableId),
+          packagingTypesForUpdate.map(
+            (packagingType) => packagingType.stableId,
+          ),
         );
         const referencedPackagingTypeStableIds = new Set(
           existing.optionGroups.flatMap(
@@ -669,7 +670,9 @@ export class CatalogAdminService {
         sortOrder:
           body.sortOrder === undefined ? undefined : Math.floor(body.sortOrder),
         imageUrl:
-          body.imageUrl === undefined ? undefined : body.imageUrl?.trim() || null,
+          body.imageUrl === undefined
+            ? undefined
+            : body.imageUrl?.trim() || null,
         ingredientsEn:
           body.ingredientsEn === undefined
             ? undefined
@@ -854,10 +857,7 @@ export class CatalogAdminService {
         sortOrder: group.sortOrder,
         options: (group.options ?? []).map((option) => {
           const selfAvailable = isAvailableNow(
-            availabilityFromDb(
-              option.isAvailable,
-              option.tempUnavailableUntil,
-            ),
+            availabilityFromDb(option.isAvailable, option.tempUnavailableUntil),
           );
           const targetAvailable =
             !option.targetItemStableId ||
@@ -899,7 +899,9 @@ export class CatalogAdminService {
       data: {
         nameEn,
         nameZh: body.nameZh?.trim() || null,
-        sortOrder: Number.isFinite(body.sortOrder) ? (body.sortOrder as number) : 0,
+        sortOrder: Number.isFinite(body.sortOrder)
+          ? (body.sortOrder as number)
+          : 0,
         defaultMinSelect: Number.isFinite(body.defaultMinSelect)
           ? Math.max(0, Math.floor(body.defaultMinSelect as number))
           : 0,
@@ -1284,7 +1286,9 @@ export class CatalogAdminService {
         templateGroupId: templateGroup.id,
         minSelect: Math.max(0, Math.floor(body.minSelect ?? 0)),
         maxSelect:
-          body.maxSelect == null ? null : Math.max(0, Math.floor(body.maxSelect)),
+          body.maxSelect == null
+            ? null
+            : Math.max(0, Math.floor(body.maxSelect)),
         sortOrder: Number.isFinite(body.sortOrder)
           ? Math.floor(body.sortOrder)
           : 0,
@@ -1294,7 +1298,9 @@ export class CatalogAdminService {
       update: {
         minSelect: Math.max(0, Math.floor(body.minSelect ?? 0)),
         maxSelect:
-          body.maxSelect == null ? null : Math.max(0, Math.floor(body.maxSelect)),
+          body.maxSelect == null
+            ? null
+            : Math.max(0, Math.floor(body.maxSelect)),
         sortOrder: Number.isFinite(body.sortOrder)
           ? Math.floor(body.sortOrder)
           : 0,
@@ -1558,7 +1564,9 @@ export class CatalogAdminService {
       );
       if (toSoftDelete.length > 0) {
         await tx.menuDailySpecial.updateMany({
-          where: { stableId: { in: toSoftDelete.map((special) => special.stableId) } },
+          where: {
+            stableId: { in: toSoftDelete.map((special) => special.stableId) },
+          },
           data: { deletedAt: new Date() },
         });
       }

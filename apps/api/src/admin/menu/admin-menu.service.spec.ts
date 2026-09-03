@@ -45,9 +45,7 @@ describe('AdminMenuAvailabilityOrchestrationService Uber status', () => {
             visibility: 'PUBLIC',
             isVisibleOnMainMenu: true,
             tempUnavailableUntil:
-              mode === 'TEMP_TODAY_OFF'
-                ? '2099-01-01T00:00:00.000Z'
-                : null,
+              mode === 'TEMP_TODAY_OFF' ? '2099-01-01T00:00:00.000Z' : null,
             effectiveAvailability: mode === 'ON',
           }),
         ),
@@ -196,12 +194,17 @@ describe('CatalogAdminService availability persistence', () => {
       expect(update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { stableId: 'dish-1' },
-          data: {
-            isAvailable,
-            tempUnavailableUntil: temporary ? expect.any(Date) : null,
-          },
+          data: expect.objectContaining({ isAvailable }),
         }),
       );
+      const updateArgument = update.mock.calls[0]?.[0] as
+        | { data: { tempUnavailableUntil: unknown } }
+        | undefined;
+      if (temporary) {
+        expect(updateArgument?.data.tempUnavailableUntil).toBeInstanceOf(Date);
+      } else {
+        expect(updateArgument?.data.tempUnavailableUntil).toBeNull();
+      }
     },
   );
 });
