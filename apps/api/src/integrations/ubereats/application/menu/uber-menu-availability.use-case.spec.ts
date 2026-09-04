@@ -2,10 +2,12 @@ import { UberMenuAvailabilityUseCase } from './uber-menu-availability.use-case';
 
 describe('UberMenuAvailabilityUseCase', () => {
   const setup = () => {
-    const queries = {
+    const catalogQueries = {
       isMenuItemPublishable: jest.fn(),
       findMenuItemSuspendUntil: jest.fn().mockResolvedValue(null),
       findOptionSuspendUntil: jest.fn().mockResolvedValue(null),
+    };
+    const queries = {
       findProvisionedStores: jest.fn(),
     };
     const commands = {
@@ -17,11 +19,13 @@ describe('UberMenuAvailabilityUseCase', () => {
     };
     const telemetry = { captureEvent: jest.fn() };
     return {
+      catalogQueries,
       queries,
       commands,
       gateway,
       telemetry,
       useCase: new UberMenuAvailabilityUseCase(
+        catalogQueries,
         queries,
         commands,
         gateway,
@@ -31,8 +35,8 @@ describe('UberMenuAvailabilityUseCase', () => {
   };
 
   it('通过 Uber item endpoint 同步单品可售状态', async () => {
-    const { useCase, queries, gateway, telemetry } = setup();
-    queries.isMenuItemPublishable.mockResolvedValue(true);
+    const { useCase, catalogQueries, queries, gateway, telemetry } = setup();
+    catalogQueries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
       { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
@@ -71,10 +75,10 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('临时下架把本地结束时间转换为 Uber Unix 秒', async () => {
-    const { useCase, queries, gateway } = setup();
+    const { useCase, catalogQueries, queries, gateway } = setup();
     const suspendUntil = new Date('2090-01-02T03:04:05.000Z');
-    queries.isMenuItemPublishable.mockResolvedValue(true);
-    queries.findMenuItemSuspendUntil.mockResolvedValue(suspendUntil);
+    catalogQueries.isMenuItemPublishable.mockResolvedValue(true);
+    catalogQueries.findMenuItemSuspendUntil.mockResolvedValue(suspendUntil);
     queries.findProvisionedStores.mockResolvedValue([
       { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
@@ -93,8 +97,8 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('菜品同步失败时记录失败工单并返回 FAILED', async () => {
-    const { useCase, queries, commands, gateway } = setup();
-    queries.isMenuItemPublishable.mockResolvedValue(true);
+    const { useCase, catalogQueries, queries, commands, gateway } = setup();
+    catalogQueries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([
       { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
@@ -118,8 +122,8 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('显式 storeStableId 只作为 SanQ 门店筛选传给 mapping query', async () => {
-    const { useCase, queries } = setup();
-    queries.isMenuItemPublishable.mockResolvedValue(true);
+    const { useCase, catalogQueries, queries } = setup();
+    catalogQueries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([]);
 
     await useCase.syncUberMenuItemAvailability({
@@ -134,8 +138,8 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('未配置 publishToUberEats 的菜品返回 SKIPPED_NOT_PUBLISHED', async () => {
-    const { useCase, queries, gateway } = setup();
-    queries.isMenuItemPublishable.mockResolvedValue(false);
+    const { useCase, catalogQueries, queries, gateway } = setup();
+    catalogQueries.isMenuItemPublishable.mockResolvedValue(false);
 
     await expect(
       useCase.syncUberMenuItemAvailability({
@@ -149,8 +153,8 @@ describe('UberMenuAvailabilityUseCase', () => {
   });
 
   it('可发布菜品没有 provisioned store 时返回 SKIPPED_NOT_PUBLISHED', async () => {
-    const { useCase, queries, gateway } = setup();
-    queries.isMenuItemPublishable.mockResolvedValue(true);
+    const { useCase, catalogQueries, queries, gateway } = setup();
+    catalogQueries.isMenuItemPublishable.mockResolvedValue(true);
     queries.findProvisionedStores.mockResolvedValue([]);
 
     await expect(
