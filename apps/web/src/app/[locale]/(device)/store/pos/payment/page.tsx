@@ -31,7 +31,6 @@ import {
 import type { PaymentMethod } from "@/lib/api/pos";
 
 type FulfillmentType = "pickup" | "dine_in";
-type PosOrderChannel = "in_store" | "ubereats";
 
 type CreatePosOrderResponse = {
   orderStableId: string;
@@ -72,7 +71,7 @@ type MemberDetailResponse = {
 };
 
 // ✅ 本地支付方式状态类型
-type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance" | "ubereats";
+type LocalPaymentMethod = "cash" | "card" | "wechat_alipay" | "store_balance";
 type DiscountOption = "5" | "10" | "15" | "other";
 type CardFlowState = "IDLE" | "WAITING" | PosCardPaymentResult["status"];
 
@@ -166,13 +165,11 @@ const STRINGS: Record<
     fulfillmentLabel: string;
     pickup: string;
     dineIn: string;
-    uberEatsChannel: string;
     paymentLabel: string;
     payCash: string;
     payCard: string;
     payWeChatAlipay: string;
     payStoreBalance: string;
-    payUberEats: string;
     balanceInsufficient: string;
     balancePaymentLabel: string;
     balancePaymentHint: string;
@@ -252,13 +249,11 @@ const STRINGS: Record<
     fulfillmentLabel: "用餐方式",
     pickup: "外带",
     dineIn: "堂食",
-    uberEatsChannel: "UberEats",
     paymentLabel: "付款方式",
     payCash: "现金",
     payCard: "银行卡",
     payWeChatAlipay: "微信或支付宝",
     payStoreBalance: "储值余额",
-    payUberEats: "UberEats",
     balanceInsufficient: "余额不足以全额支付",
     balancePaymentLabel: "余额支付",
     balancePaymentHint: "请先选择会员后使用余额支付。",
@@ -337,13 +332,11 @@ const STRINGS: Record<
     fulfillmentLabel: "Dining",
     pickup: "Pickup",
     dineIn: "Dine-in",
-    uberEatsChannel: "UberEats",
     paymentLabel: "Payment method",
     payCash: "Cash",
     payCard: "Card",
     payWeChatAlipay: "WeChat / Alipay",
     payStoreBalance: "Store Balance",
-    payUberEats: "UberEats",
     balanceInsufficient: "Insufficient balance for full payment",
     balancePaymentLabel: "Balance payment",
     balancePaymentHint: "Select a member to pay with stored balance.",
@@ -448,7 +441,6 @@ export default function StorePosPaymentPage() {
   const [snapshot, setSnapshot] = useState<PosDisplaySnapshot | null>(null);
   const [loadingSnapshot, setLoadingSnapshot] = useState(true);
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null);
-  const [orderChannel, setOrderChannel] = useState<PosOrderChannel>("in_store");
 
   const [paymentMethod, setPaymentMethod] = useState<LocalPaymentMethod>("cash");
   const [submitting, setSubmitting] = useState(false);
@@ -627,19 +619,13 @@ export default function StorePosPaymentPage() {
   const pricingStructuralKey = useMemo(
     () =>
       JSON.stringify({
-        orderChannel,
+        channel: "in_store",
         fulfillment,
         items: pricingItems,
         userStableId: memberInfo?.userStableId ?? null,
         discountCents,
       }),
-    [
-      discountCents,
-      fulfillment,
-      memberInfo?.userStableId,
-      orderChannel,
-      pricingItems,
-    ],
+    [discountCents, fulfillment, memberInfo?.userStableId, pricingItems],
   );
   const structuralPricingQuote =
     pricingQuoteStructuralKey === pricingStructuralKey ? pricingQuote : null;
@@ -683,11 +669,7 @@ export default function StorePosPaymentPage() {
   );
 
   useEffect(() => {
-    if (
-      orderChannel !== "in_store" ||
-      !fulfillment ||
-      pricingItems.length === 0
-    ) {
+    if (!fulfillment || pricingItems.length === 0) {
       setPricingQuote(null);
       setPricingQuoteKey(null);
       setPricingQuoteStructuralKey(null);
@@ -736,7 +718,6 @@ export default function StorePosPaymentPage() {
     discountCents,
     fulfillment,
     memberInfo?.userStableId,
-    orderChannel,
     pointsToRedeem,
     pricingInputKey,
     pricingItems,
@@ -818,16 +799,6 @@ export default function StorePosPaymentPage() {
     }
   }, [isFullyPaidByBalance, paymentMethod]);
 
-  useEffect(() => {
-    if (orderChannel === "ubereats" && paymentMethod !== "ubereats") {
-      setPaymentMethod("ubereats");
-      return;
-    }
-    if (orderChannel === "in_store" && paymentMethod === "ubereats") {
-      setPaymentMethod("cash");
-    }
-  }, [orderChannel, paymentMethod]);
-
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
     const serverDiscountCents =
@@ -869,16 +840,16 @@ export default function StorePosPaymentPage() {
     taxCents,
   ]);
 
-  const pricingReady =
-    orderChannel !== "in_store" ||
-    Boolean(currentPricingQuote && !pricingQuoteLoading && !pricingQuoteError);
+  const pricingReady = Boolean(
+    currentPricingQuote && !pricingQuoteLoading && !pricingQuoteError,
+  );
 
   // 更新副屏
   useEffect(() => {
     if (
       typeof window === "undefined" ||
       !computedSnapshot?.items.length ||
-      (orderChannel === "in_store" && !pricingReady)
+      !pricingReady
     ) {
       return;
     }
@@ -890,7 +861,7 @@ export default function StorePosPaymentPage() {
         channel.close();
       }
     } catch { /* ignore */ }
-  }, [computedSnapshot, orderChannel, pricingReady]);
+  }, [computedSnapshot, pricingReady]);
 
   const summarySubtotalCents = computedSnapshot?.subtotalCents ?? 0;
   const summaryTaxCents = computedSnapshot?.taxCents ?? 0;
@@ -1018,9 +989,7 @@ export default function StorePosPaymentPage() {
     if (!computedSnapshot || !fulfillment) return null;
 
     let apiPaymentMethod: PaymentMethod = "CASH";
-    if (orderChannel === "ubereats") {
-      apiPaymentMethod = "UBEREATS";
-    } else if (isFullyPaidByBalance) {
+    if (isFullyPaidByBalance) {
       apiPaymentMethod = "STORE_BALANCE";
     } else if (paymentMethod === "card") {
       apiPaymentMethod = "CARD";
@@ -1029,7 +998,7 @@ export default function StorePosPaymentPage() {
     }
 
     return {
-      channel: orderChannel,
+      channel: "in_store",
       fulfillmentType: fulfillment,
       subtotalCents: computedSnapshot.subtotalCents,
       taxCents: computedSnapshot.taxCents,
@@ -1049,7 +1018,6 @@ export default function StorePosPaymentPage() {
     fulfillment,
     isFullyPaidByBalance,
     memberInfo,
-    orderChannel,
     paymentMethod,
     pointsToRedeem,
     pricingItems,
@@ -1058,7 +1026,7 @@ export default function StorePosPaymentPage() {
   const submitOrder = async (cashMeta?: { cashReceivedCents: number; cashChangeCents: number }) => {
     setError(null);
 
-    if (orderChannel === "in_store" && !pricingReady) {
+    if (!pricingReady) {
       setError(t.pricingUnavailable);
       return;
     }
@@ -1114,20 +1082,18 @@ export default function StorePosPaymentPage() {
       });
 
       if (order.orderStableId) {
-        if (orderChannel === "in_store") {
-          try {
-            await printOrderCloud(order.orderStableId, {
-              targets: { customer: true, kitchen: true, label: true },
-              ...(cashMeta
-                ? {
-                    cashReceivedCents: cashMeta.cashReceivedCents,
-                    cashChangeCents: cashMeta.cashChangeCents,
-                  }
-                : {}),
-            });
-          } catch (e) {
-            console.warn("Failed to trigger POS print:", e);
-          }
+        try {
+          await printOrderCloud(order.orderStableId, {
+            targets: { customer: true, kitchen: true, label: true },
+            ...(cashMeta
+              ? {
+                  cashReceivedCents: cashMeta.cashReceivedCents,
+                  cashChangeCents: cashMeta.cashChangeCents,
+                }
+              : {}),
+          });
+        } catch (e) {
+          console.warn("Failed to trigger POS print:", e);
         }
         try { await advanceOrder(order.orderStableId); } catch (e) { console.warn(e); }
       }
@@ -1393,15 +1359,14 @@ export default function StorePosPaymentPage() {
 
   const handleConfirm = async () => {
     setError(null);
-    if (orderChannel === "in_store" && !pricingReady) {
+    if (!pricingReady) {
       setError(t.pricingUnavailable);
       return;
     }
 
     const shouldUseUnifiedPayment =
-      orderChannel === "in_store" &&
-      (paymentMethod === "card" ||
-        (paymentMethod === "store_balance" && isFullyPaidByBalance));
+      paymentMethod === "card" ||
+      (paymentMethod === "store_balance" && isFullyPaidByBalance);
     if (shouldUseUnifiedPayment) {
       if (cardConfirmInFlightRef.current) return;
       cardConfirmInFlightRef.current = true;
@@ -1433,7 +1398,7 @@ export default function StorePosPaymentPage() {
       }
     }
 
-    if (paymentMethod === "cash" && orderChannel === "in_store") {
+    if (paymentMethod === "cash") {
       setCashDialogError(null);
       setCashReceivedInput(String(summaryTotalCents));
       setCashDialogPrefilled(true);
@@ -1610,10 +1575,10 @@ export default function StorePosPaymentPage() {
                   <span>{t.total}</span>
                   <span>{formatMoney(summaryTotalCents)}</span>
                 </div>
-                {orderChannel === "in_store" && pricingQuoteLoading && (
+                {pricingQuoteLoading && (
                   <p className="pt-1 text-xs text-amber-200">{t.pricingUpdating}</p>
                 )}
-                {orderChannel === "in_store" && pricingQuoteError && (
+                {pricingQuoteError && (
                   <p className="pt-1 text-xs text-rose-200">{t.pricingUnavailable}</p>
                 )}
                 {paymentMethod === "wechat_alipay" && wechatAlipayQuote && (
@@ -1639,10 +1604,9 @@ export default function StorePosPaymentPage() {
             {/* 用餐方式 */}
             <div>
               <h2 className="text-sm font-semibold mb-2">{t.fulfillmentLabel}</h2>
-              <div className="grid grid-cols-3 gap-2 text-sm">
-                <button type="button" onClick={() => { setOrderChannel("in_store"); setFulfillment("pickup"); }} className={`h-10 rounded-2xl border font-medium ${fulfillment === "pickup" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.pickup}</button>
-                <button type="button" onClick={() => { setOrderChannel("in_store"); setFulfillment("dine_in"); }} className={`h-10 rounded-2xl border font-medium ${fulfillment === "dine_in" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.dineIn}</button>
-                <button type="button" onClick={() => { setOrderChannel("ubereats"); setFulfillment("pickup"); }} className={`h-10 rounded-2xl border font-medium ${orderChannel === "ubereats" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.uberEatsChannel}</button>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <button type="button" onClick={() => setFulfillment("pickup")} className={`h-10 rounded-2xl border font-medium ${fulfillment === "pickup" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.pickup}</button>
+                <button type="button" onClick={() => setFulfillment("dine_in")} className={`h-10 rounded-2xl border font-medium ${fulfillment === "dine_in" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.dineIn}</button>
               </div>
             </div>
 
@@ -1795,11 +1759,9 @@ export default function StorePosPaymentPage() {
               <h2 className="text-sm font-semibold mb-2">{t.paymentLabel}</h2>
               <p className="mb-2 text-xs text-slate-400">{t.mixedPaymentHint}</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("cash")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "cash" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCash}</button>
-                <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("card")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "card" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCard}</button>
-                <button disabled={orderChannel === "ubereats"} onClick={() => setPaymentMethod("wechat_alipay")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "wechat_alipay" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payWeChatAlipay}</button>
-                
-                <button disabled={orderChannel !== "ubereats"} onClick={() => setPaymentMethod("ubereats")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "ubereats" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-500"}`}>{t.payUberEats}</button>
+                <button onClick={() => setPaymentMethod("cash")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "cash" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCash}</button>
+                <button onClick={() => setPaymentMethod("card")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "card" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payCard}</button>
+                <button onClick={() => setPaymentMethod("wechat_alipay")} className={`h-12 rounded-2xl border font-medium ${paymentMethod === "wechat_alipay" ? "border-emerald-400 bg-emerald-500 text-slate-900" : "border-slate-600 bg-slate-900 text-slate-100"}`}>{t.payWeChatAlipay}</button>
               </div>
             </div>
 

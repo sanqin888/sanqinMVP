@@ -149,10 +149,12 @@ slices are planned:
    source on `fix/phase4-slice0a-pos-promotion-pricing` adds a narrow POS pricing quote to
    the existing Orders public capability so the POS adapter displays automatic promotions
    and the retained staff manual discount from the canonical server quote before taking
-   payment. This is a method/transport expansion on an already-existing POS -> Orders public
-   boundary; it introduces no new context edge, direct-import debt, SCC member/edge, Prisma
-   ownership, or baseline change. Offers still owns promotion policy and Orders still owns
-   order pricing truth.
+   payment. The POS payment adapter is also contracted to local `channel=in_store` only:
+   the staff UberEats channel selector/payment method and their legacy branches are removed,
+   while Uber webhook/import/runtime remains unchanged. This is a method/transport expansion
+   plus adapter cleanup on an already-existing POS -> Orders public boundary; it introduces
+   no new context edge, direct-import debt, SCC member/edge, Prisma ownership, or baseline
+   change. Offers still owns promotion policy and Orders still owns order pricing truth.
 3. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
    Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
    Pricing/Offers input contract plus boundary mapping rather than moving business

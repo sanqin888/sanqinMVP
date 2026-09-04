@@ -167,7 +167,12 @@ The hotfix keeps ownership unchanged and adds no pricing rules to POS:
    all consume the same displayed server-authoritative total. In-store payment confirmation
    is disabled while the quote is refreshing or unavailable rather than falling back to a
    stale client-only amount;
-6. focused API coverage locks same-item BOGO + manual discount coexistence and authenticated
+6. the POS payment adapter is now fixed to `channel=in_store`: the staff-facing UberEats
+   channel selector, local UberEats payment method and their legacy channel/payment branches
+   are removed. POS fulfillment remains only `pickup` / `dine_in`; Uber orders continue to
+   enter through the separate Uber integration/import path, whose runtime behavior is
+   unchanged;
+7. focused API coverage locks same-item BOGO + manual discount coexistence and authenticated
    store identity for the POS pricing route.
 
 This hotfix does not change PromotionRule configuration/evaluation semantics, Prisma schema,

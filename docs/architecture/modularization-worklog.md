@@ -551,7 +551,11 @@ total. The existing staff 5% / 10% / 15% / custom manual discount remains a sepa
 `POS_MANUAL_DISCOUNT`, keeps its current calculation/stacking behavior, and is included in
 the same server quote. Cash collection/change, customer display, WeChat/Alipay conversion
 and Clover Terminal start now share that displayed quote, and in-store confirmation is
-blocked while pricing is refreshing or unavailable. Focused tests cover same-item BOGO +
+blocked while pricing is refreshing or unavailable. By explicit follow-up authorization,
+the POS payment adapter is also fixed to local `channel=in_store`: the staff UberEats
+channel selector, local UberEats payment method, auto-switch effect and their conditional
+legacy branches are removed; POS fulfillment remains `pickup` / `dine_in` while Uber orders
+continue through the separate integration/import path. Focused tests cover same-item BOGO +
 manual discount coexistence and authenticated store identity on the quote route. This adds
 no new context edge or measured direct-import/SCC debt; Offers remains promotion-policy
 owner and Orders remains order-pricing owner. No Prisma/dependency, Web Clover Ecommerce,
