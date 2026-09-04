@@ -10,9 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import {
-  CatalogUberAvailabilityOrchestrationService,
-} from '../../application/menu/public-api';
+import { CatalogUberAvailabilityOrchestrationService } from '../../application/menu/public-api';
 import {
   AdminMenuFullResponse,
   DailySpecialDto,

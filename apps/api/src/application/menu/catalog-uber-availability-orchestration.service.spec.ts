@@ -75,15 +75,18 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     ['TEMP_TODAY_OFF', false],
     ['PERMANENT_OFF', false],
     ['ON', true],
-  ] as const)('%s returns structured SYNCED status', async (mode, available) => {
-    const { service, syncUberMenuItemAvailability } = build();
-    const result = await service.setItemAvailability('dish-1', mode);
-    expect(result.uberSync.status).toBe('SYNCED');
-    expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
-      menuItemStableId: 'dish-1',
-      isAvailable: available,
-    });
-  });
+  ] as const)(
+    '%s returns structured SYNCED status',
+    async (mode, available) => {
+      const { service, syncUberMenuItemAvailability } = build();
+      const result = await service.setItemAvailability('dish-1', mode);
+      expect(result.uberSync.status).toBe('SYNCED');
+      expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
+        menuItemStableId: 'dish-1',
+        isAvailable: available,
+      });
+    },
+  );
 
   it('preserves Admin HTTP storeId compatibility while Uber public port uses storeStableId', async () => {
     const { service } = build({

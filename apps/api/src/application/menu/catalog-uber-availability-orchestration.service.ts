@@ -95,7 +95,9 @@ export class CatalogUberAvailabilityOrchestrationService {
     }
 
     const current =
-      await this.catalogAvailability.getMenuItemAvailabilitySnapshot(itemStableId);
+      await this.catalogAvailability.getMenuItemAvailabilitySnapshot(
+        itemStableId,
+      );
     if (!current) return;
 
     const nextPublishToUberEats =
