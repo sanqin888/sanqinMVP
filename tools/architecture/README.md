@@ -81,6 +81,12 @@ node tools/architecture/scan-architecture.mjs --report
   capability adapter with no Prisma/generated-rule ownership, the retired
   `AdminPromotionsService` cannot return, and `promotionRule` Prisma delegate access is
   exclusive to the existing `PromotionsService` persistence entry;
+- Email verification challenge lifecycle and verified-email account mutation belong to
+  Identity through `IDENTITY_EMAIL_VERIFICATION`; Membership and Clover checkout consume
+  that capability through `auth/public-api.ts`. Messaging exposes only
+  `EMAIL_VERIFICATION_DELIVERY` through `email/public-api.ts`, and Messaging source may
+  not import Identity or regain `AuthChallenge` / `emailVerifiedAt` ownership. The retired
+  Messaging-owned verification service/controller must stay deleted;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

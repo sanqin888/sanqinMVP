@@ -1,4 +1,10 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Inject,
+  Post,
+} from '@nestjs/common';
 import {
   IsEmail,
   IsIn,
@@ -6,7 +12,11 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
-import { EmailVerificationService } from './email-verification.service';
+
+import {
+  IDENTITY_EMAIL_VERIFICATION,
+  type IdentityEmailVerificationPort,
+} from './email-verification.port';
 
 class SendCheckoutEmailCodeDto {
   @IsEmail()
@@ -36,7 +46,10 @@ class VerifyCheckoutEmailCodeDto {
 
 @Controller('email/checkout')
 export class EmailCheckoutVerificationController {
-  constructor(private readonly service: EmailVerificationService) {}
+  constructor(
+    @Inject(IDENTITY_EMAIL_VERIFICATION)
+    private readonly service: IdentityEmailVerificationPort,
+  ) {}
 
   @Post('send-code')
   async sendCode(@Body() body: SendCheckoutEmailCodeDto) {

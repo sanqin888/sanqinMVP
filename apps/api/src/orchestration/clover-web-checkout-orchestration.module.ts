@@ -4,6 +4,7 @@ import { CheckoutIntentsModule } from '../clover/checkout-intents.module';
 import { CloverPayController } from '../clover/clover-pay.controller';
 import { CloverModule } from '../clover/clover.module';
 import { PricingTokenService } from '../clover/pricing-token.service';
+import { IdentityEmailVerificationModule } from '../auth/public-api';
 import { EmailModule } from '../email/email.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PhoneVerificationModule } from '../phone-verification/phone-verification.module';
@@ -21,6 +22,7 @@ import { PhoneVerificationModule } from '../phone-verification/phone-verificatio
     OrdersModule,
     CheckoutIntentsModule,
     EmailModule,
+    IdentityEmailVerificationModule,
     PhoneVerificationModule,
   ],
   providers: [PricingTokenService],

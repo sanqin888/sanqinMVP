@@ -96,12 +96,12 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 16; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 22; runtime-data-ci-ops 15; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
-| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
+| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
-| messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
+| messaging-notifications | architecture-foundation 4; runtime-data-ci-ops 9; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
@@ -112,17 +112,17 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current monotonic baseline after the Slice 0A source contraction records these
+The current local monotonic baseline after the Slice 1 source contraction records these
 direct-debt totals:
 
-- identity-customer-benefits: **63**
-- payments-clover: **60**
+- identity-customer-benefits: **60**
+- payments-clover: **59**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
 - store-operations-pos-print: **31**
 - accounting-reporting-analytics: **25**
-- messaging-notifications: **16**
 - catalog-pricing-offers: **15**
+- messaging-notifications: **14**
 - brand-store: **8**
 
 The reduction in Orders/POS counts is baseline normalization of source debt that had
@@ -179,22 +179,20 @@ The prior Store temporary-close codec item is no longer a Phase 4 Slice 0 task b
 PR #2160 already moved that persistence encoding to Brand/Store and removed the final
 `brand-store -> store-operations-pos-print` direct edge.
 
-Slice 0B removes the public edge
-`catalog-pricing-offers -> commerce-orders-fulfillment`. Numeric direct-import debt is
-unchanged because both removed imports were already approved public-contract traffic.
-`commerce-orders-fulfillment -> catalog-pricing-offers` remains as the correct consumer
-flow from Orders pricing into Offers public capabilities, but Orders is no longer inside
-the legacy SCC. The contraction-only SCC baseline is therefore now:
+Slice 0B removed the public edge
+`catalog-pricing-offers -> commerce-orders-fulfillment`; Orders therefore left the legacy
+SCC while `commerce-orders-fulfillment -> catalog-pricing-offers` remained the correct
+one-way pricing-consumer dependency.
 
-- contexts: Catalog / Pricing / Offers; Identity / Customer / Benefits; Messaging /
-  Notifications;
-- `catalog-pricing-offers -> messaging-notifications`;
-- `identity-customer-benefits -> catalog-pricing-offers`;
-- `messaging-notifications -> identity-customer-benefits`.
-
-The monotonic SCC guard introduced in PR #2160 requires this smaller exact baseline in
-the same change; restoring the Catalog -> Orders reverse edge would recreate a larger SCC
-and fail the architecture gate.
+Phase 4 Slice 1 now removes the remaining owner-reversed
+`messaging-notifications -> identity-customer-benefits` public edge by moving email
+verification challenge/account ownership to Identity and leaving Messaging with delivery
+only. The former three-context Catalog / Identity / Messaging component is no longer
+strongly connected: `identity-customer-benefits -> catalog-pricing-offers` and
+`catalog-pricing-offers -> messaging-notifications` may remain as forward consumer flows,
+but there is no return path from Messaging to Identity. The local
+`legacyPublicCycleComponents` baseline is therefore empty. The monotonic SCC guard will
+reject a stale legacy component or any future public edge that recreates a cycle.
 
 ## Phase 1 boundary changes reflected here
 

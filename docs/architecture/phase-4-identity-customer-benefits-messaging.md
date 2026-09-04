@@ -245,12 +245,77 @@ BOGO/manual-discount behavior on 2026-09-04; both passed, so Slice 0B is product
 
 ### Slice 1 — Email Verification ownership normalization
 
-Status: **PLANNED**.
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice1-email-verification-owner`.
 
-Move email-verification challenge lifecycle and verified-email account mutation to the
-Identity owner. Messaging should provide only the narrow delivery capability needed to
-send the verification message. Keep existing HTTP routes/consumer behavior stable and
-do not duplicate challenge or user mutation logic.
+Readiness findings on the post-Slice-0B `dev` baseline:
+
+- `apps/api/src/email/email-verification.service.ts` was physically owned by Messaging
+  but actually owned `AuthChallenge` creation/query/expiry/consumption, checkout proof
+  token creation/validation and verified `User.email` / `emailVerifiedAt` mutation;
+- the same service imported Identity `IDENTITY_CHALLENGE_ENGINE`, and `EmailModule`
+  imported `IdentityChallengeModule`, making the remaining
+  `messaging-notifications -> identity-customer-benefits` public edge concrete ownership
+  debt rather than a delivery dependency;
+- Membership performed the member-email uniqueness/already-verified checks and then
+  passed an internal User DB UUID into the Messaging-owned verification service. A
+  read-only production check on 2026-09-04 found 39 User rows and **0** missing/blank
+  `userStableId` values, so moving the authenticated member boundary to stable identity
+  needs no legacy-account fallback;
+- production Web Clover used the same Messaging-owned service only to validate the
+  checkout email proof. The payment amount/state/provider flow does not require
+  Messaging ownership of that verification lifecycle;
+- the existing characterization spec already locked checkout OTP format, rate limit,
+  hash lookup, expiry and proof-token behavior, so the move can preserve those semantics
+  without inventing a second implementation.
+
+Implemented source shape:
+
+1. `IDENTITY_EMAIL_VERIFICATION` and `IdentityEmailVerificationPort` now define the
+   Identity-owned member/checkout verification capability; the implementation and the
+   existing `/email/checkout/send-code` + `/email/checkout/verify-code` controller live
+   under `auth/`, so the HTTP routes remain unchanged while ownership moves;
+2. Identity now owns the full `AuthChallenge` lifecycle and verified-email account
+   mutation. Member verification resolves the authenticated `userStableId` to the User
+   DB identity inside the owner and preserves the previous normalized member-email
+   address/send semantics;
+3. Messaging exposes only `EMAIL_VERIFICATION_DELIVERY` through `email/public-api.ts`.
+   The delivery capability delegates to the existing `EmailService` template/provider /
+   `MessagingSend` implementation and does not own challenges or User mutation;
+4. `MembershipController` consumes the Identity capability with `userStableId` and the
+   broad `MembershipService` no longer owns/request/confirm email-verification logic.
+   `MembershipModule` no longer imports `EmailModule` for this feature;
+5. `CloverPayController` keeps its existing contact-proof decision but injects the
+   Identity public capability instead of the Messaging implementation. The guarded Web
+   Clover amount, intent, charge, provider, order and reconciliation paths are otherwise
+   unchanged; composition only adds the Identity verification module;
+6. the old Messaging-owned verification service/controller and their old-location spec
+   are deleted. Characterization coverage moves with the owner and adds member stable-ID
+   request plus verified-account mutation cases;
+7. the central scanner now reserves email-verification lifecycle/account mutation to
+   Identity, requires the narrow Messaging delivery contract, forbids any Messaging ->
+   Identity import, prevents the retired paths from returning, and protects Membership /
+   Clover from deep-importing the old implementation.
+
+Expected monotonic direct-debt contractions recorded in the local architecture baseline
+are `identity-customer-benefits -> messaging-notifications 24 -> 22`,
+`payments-clover -> messaging-notifications 3 -> 2`,
+`messaging-notifications -> architecture-foundation 5 -> 4`, and
+`messaging-notifications -> runtime-data-ci-ops 10 -> 9`. Identity -> Runtime contracts
+`16 -> 15` while Identity -> Architecture remains `13`: AuthModule keeps its existing
+Prisma provider registration, but AuthModule/AuthService/the new verification module share
+the local `identity-prisma.ts` infrastructure import; email normalization likewise has one
+Identity-local boundary instead of duplicate cross-context imports.
+
+Removing the owner-reversed `messaging-notifications -> identity-customer-benefits`
+public edge breaks the final Catalog / Identity / Messaging SCC, so the local
+`legacyPublicCycleComponents` baseline is now empty. This is a source-state claim only:
+no local scanner/lint/build/test run is claimed under repository workflow, and no CI,
+deployment or production verification is claimed before remote review/validation.
+
+Post-deployment verification must cover member email request/confirm plus guest checkout
+email OTP through a real Web Clover payment, because the latter is guarded production
+code even though this slice changes only its verification dependency.
 
 ### Slice 2 — Messaging public delivery boundaries
 
@@ -261,10 +326,11 @@ small business-purpose delivery capabilities. Public contracts should carry stab
 contact/locale and message facts rather than Prisma `User` models or Messaging
 infrastructure types. Do not create one generic all-purpose Messaging facade.
 
-Primary architecture target is to contract the current
-`identity-customer-benefits -> messaging-notifications` direct debt of **24** and remove
-the reverse Messaging -> Identity ownership edge where verification lifecycle currently
-resides.
+After the local Slice 1 source contraction, the primary architecture target becomes the
+remaining `identity-customer-benefits -> messaging-notifications` direct debt of **22**.
+The reverse Messaging -> Identity verification-ownership edge is already removed in
+Slice 1 source and must stay absent; Slice 2 should now focus on replacing the remaining
+concrete delivery/template imports without recreating a generic Messaging facade.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 
@@ -331,8 +397,9 @@ number:
 - Safe coupon/benefit entitlement implementations no longer remain physically under
   Offers merely because of historical layout; transaction-sensitive pieces remain
   deferred rather than being moved unsafely.
-- The Catalog/Orders/Identity/Messaging legacy SCC materially shrinks and ideally
-  disappears; any remaining component must be exact, documented contraction-only debt.
+- The legacy public SCC is eliminated in Slice 1 source after Slice 0B removed Orders and
+  Slice 1 removed the Messaging -> Identity return edge; the empty baseline must remain
+  protected by the central cycle guard through remote validation and later slices.
 
 ## Guardrails and explicit deferrals
 

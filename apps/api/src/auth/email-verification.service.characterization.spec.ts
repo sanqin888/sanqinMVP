@@ -4,10 +4,11 @@ import {
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
-import { ChallengeEngine } from '../auth/challenge-engine.service';
+
+import { ChallengeEngine } from './challenge-engine.service';
 import { EmailVerificationService } from './email-verification.service';
 
-describe('EmailVerificationService OTP characterization', () => {
+describe('EmailVerificationService ownership characterization', () => {
   const originalOtpSecret = process.env.OTP_SECRET;
 
   const createService = () => {
@@ -24,17 +25,17 @@ describe('EmailVerificationService OTP characterization', () => {
       },
       $transaction: jest.fn().mockResolvedValue([]),
     };
-    const emailService = {
+    const delivery = {
       sendVerificationEmail: jest.fn(),
     };
     const challengeEngine = new ChallengeEngine();
     const service = new EmailVerificationService(
       prisma as never,
-      emailService as never,
+      delivery as never,
       challengeEngine,
     );
 
-    return { service, prisma, emailService, challengeEngine };
+    return { service, prisma, delivery, challengeEngine };
   };
 
   afterEach(() => {
@@ -47,9 +48,116 @@ describe('EmailVerificationService OTP characterization', () => {
     }
   });
 
+  it('owns member email verification from stable identity through challenge delivery', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-04T18:30:00.000Z'));
+    const { service, prisma, delivery, challengeEngine } = createService();
+    prisma.user.findUnique
+      .mockResolvedValueOnce({
+        id: 'user-db-id',
+        email: 'old@example.com',
+        emailVerifiedAt: null,
+        firstName: 'San',
+        lastName: 'Qin',
+        language: 'ZH',
+      })
+      .mockResolvedValueOnce(null);
+    prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
+    prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
+    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('000042');
+    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+    delivery.sendVerificationEmail.mockResolvedValue({
+      ok: true,
+      sendId: 'send-1',
+    });
+
+    await expect(
+      service.requestUserVerification({
+        userStableId: 'c1234567890abcdefghijklmn',
+        email: 'New@Example.com',
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(prisma.user.findUnique).toHaveBeenNthCalledWith(1, {
+      where: { userStableId: 'c1234567890abcdefghijklmn' },
+      select: {
+        id: true,
+        email: true,
+        emailVerifiedAt: true,
+        firstName: true,
+        lastName: true,
+        language: true,
+      },
+    });
+    expect(prisma.authChallenge.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-db-id',
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        addressNorm: 'new@example.com',
+        addressRaw: 'new@example.com',
+        codeHash: 'code-hash',
+        purpose: 'email_verify',
+        expiresAt: new Date('2026-09-05T18:30:00.000Z'),
+      },
+    });
+    expect(delivery.sendVerificationEmail).toHaveBeenCalledWith({
+      to: 'new@example.com',
+      token: '000042',
+      name: 'San Qin',
+      locale: 'zh',
+    });
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-1' },
+      data: { messagingSendId: 'send-1' },
+    });
+  });
+
+  it('mutates the verified user through stable identity while keeping DB identity internal', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-04T18:30:00.000Z'));
+    const { service, prisma, challengeEngine } = createService();
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-db-id' });
+    prisma.authChallenge.findFirst.mockResolvedValue({
+      id: 'challenge-1',
+      addressNorm: 'verified@example.com',
+      expiresAt: new Date('2026-09-04T18:40:00.000Z'),
+    });
+    prisma.authChallenge.update.mockReturnValue({ operation: 'consume-code' });
+    prisma.user.update.mockReturnValue({ operation: 'verify-user' });
+    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+
+    await expect(
+      service.verifyUserEmailCode({
+        userStableId: 'c1234567890abcdefghijklmn',
+        code: '123456',
+      }),
+    ).resolves.toEqual({ ok: true, email: 'verified@example.com' });
+
+    expect(prisma.authChallenge.findFirst).toHaveBeenCalledWith({
+      where: {
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        status: AuthChallengeStatus.PENDING,
+        userId: 'user-db-id',
+        codeHash: 'code-hash',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith([
+      { operation: 'consume-code' },
+      { operation: 'verify-user' },
+    ]);
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-db-id' },
+      data: {
+        emailVerifiedAt: new Date('2026-09-04T18:30:00.000Z'),
+        email: 'verified@example.com',
+      },
+    });
+  });
+
   it('selects the zero-padded OTP profile for checkout email challenges', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, emailService, challengeEngine } = createService();
+    const { service, prisma, delivery, challengeEngine } = createService();
     prisma.authChallenge.count.mockResolvedValue(0);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
@@ -59,7 +167,7 @@ describe('EmailVerificationService OTP characterization', () => {
     const hashCodeSpy = jest
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
-    emailService.sendVerificationEmail.mockResolvedValue({
+    delivery.sendVerificationEmail.mockResolvedValue({
       ok: true,
       sendId: 'send-1',
     });
@@ -88,7 +196,7 @@ describe('EmailVerificationService OTP characterization', () => {
 
   it('limits checkout requests to five per email and purpose in 24 hours', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, emailService } = createService();
+    const { service, prisma, delivery } = createService();
     prisma.authChallenge.count.mockResolvedValue(5);
 
     await expect(
@@ -111,7 +219,7 @@ describe('EmailVerificationService OTP characterization', () => {
       },
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
-    expect(emailService.sendVerificationEmail).not.toHaveBeenCalled();
+    expect(delivery.sendVerificationEmail).not.toHaveBeenCalled();
   });
 
   it('looks up checkout codes by exact hash without incrementing failed attempts', async () => {
@@ -183,8 +291,7 @@ describe('EmailVerificationService OTP characterization', () => {
       email: 'customer@example.com',
       token: '123456',
     });
-    const verificationToken =
-      'verificationToken' in result ? result.verificationToken : '';
+    const verificationToken = result.verificationToken ?? '';
 
     expect(result.ok).toBe(true);
     expect(verificationToken).toMatch(/^[0-9a-f]{64}$/);

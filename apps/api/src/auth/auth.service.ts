@@ -7,7 +7,7 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from './identity-prisma';
 import { randomBytes, createHash } from 'crypto';
 import {
   AuthChallengeStatus,
@@ -20,7 +20,7 @@ import {
   type UserRole,
 } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
-import { normalizeEmail } from '../common/utils/email';
+import { normalizeEmail } from './email-normalization';
 import { normalizePhone } from '../common/utils/phone';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';

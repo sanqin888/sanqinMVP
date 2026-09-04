@@ -923,6 +923,224 @@ if (promotionRuleOffersOwnershipBoundary) {
   }
 }
 
+const emailVerificationIdentityOwnershipBoundary =
+  config.emailVerificationIdentityOwnershipBoundary ?? null;
+if (emailVerificationIdentityOwnershipBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(emailVerificationIdentityOwnershipBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.identityContract,
+    boundary.identityService,
+    boundary.identityModule,
+    boundary.identityPublicSurface,
+    boundary.checkoutController,
+    boundary.messagingDeliveryContract,
+    boundary.messagingDeliveryModule,
+    boundary.messagingPublicSurface,
+    boundary.messagingModule,
+    boundary.membershipController,
+    boundary.membershipService,
+    boundary.cloverPayController,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Email verification ownership boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  for (const retiredPath of [
+    boundary.retiredMessagingService,
+    boundary.retiredMessagingController,
+  ]) {
+    if (retiredPath && existsSync(join(REPOSITORY_ROOT, retiredPath))) {
+      failures.push(
+        `retired Messaging-owned email verification path must stay deleted: ${retiredPath}`,
+      );
+    }
+  }
+
+  const identityContractPath = join(REPOSITORY_ROOT, boundary.identityContract);
+  if (existsSync(identityContractPath)) {
+    const source = readFileSync(identityContractPath, 'utf8');
+    if (
+      !source.includes('IDENTITY_EMAIL_VERIFICATION') ||
+      !source.includes('IdentityEmailVerificationPort') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `Identity email-verification contract must remain Prisma/provider free: ${boundary.identityContract}`,
+      );
+    }
+  }
+
+  const identityPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.identityPublicSurface,
+  );
+  if (existsSync(identityPublicSurfacePath)) {
+    const source = readFileSync(identityPublicSurfacePath, 'utf8');
+    if (
+      !source.includes('IdentityEmailVerificationModule') ||
+      !source.includes('IDENTITY_EMAIL_VERIFICATION') ||
+      !source.includes('IdentityEmailVerificationPort')
+    ) {
+      failures.push(
+        `Identity public surface must expose the email-verification owner capability: ${boundary.identityPublicSurface}`,
+      );
+    }
+  }
+
+  const identityServicePath = join(REPOSITORY_ROOT, boundary.identityService);
+  if (existsSync(identityServicePath)) {
+    const source = readFileSync(identityServicePath, 'utf8');
+    if (
+      !source.includes('implements IdentityEmailVerificationPort') ||
+      !source.includes('IDENTITY_CHALLENGE_ENGINE') ||
+      !source.includes('EMAIL_VERIFICATION_DELIVERY') ||
+      !source.includes('authChallenge') ||
+      !source.includes('emailVerifiedAt') ||
+      !source.includes("from '../email/public-api'") ||
+      source.includes("from '../email/email.service'")
+    ) {
+      failures.push(
+        `Email verification challenge/account mutation must remain Identity-owned and use only the Messaging delivery public capability: ${boundary.identityService}`,
+      );
+    }
+  }
+
+  const messagingDeliveryContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.messagingDeliveryContract,
+  );
+  if (existsSync(messagingDeliveryContractPath)) {
+    const source = readFileSync(messagingDeliveryContractPath, 'utf8');
+    if (
+      !source.includes('EMAIL_VERIFICATION_DELIVERY') ||
+      !source.includes('EmailVerificationDeliveryPort') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('AuthChallenge')
+    ) {
+      failures.push(
+        `Messaging email-verification boundary must expose delivery only: ${boundary.messagingDeliveryContract}`,
+      );
+    }
+  }
+
+  const messagingPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.messagingPublicSurface,
+  );
+  if (existsSync(messagingPublicSurfacePath)) {
+    const source = readFileSync(messagingPublicSurfacePath, 'utf8');
+    if (
+      !source.includes('EMAIL_VERIFICATION_DELIVERY') ||
+      !source.includes('EmailVerificationDeliveryPort') ||
+      !source.includes('EmailVerificationDeliveryModule')
+    ) {
+      failures.push(
+        `Messaging public surface must expose only the email-verification delivery capability: ${boundary.messagingPublicSurface}`,
+      );
+    }
+  }
+
+  const messagingModulePath = join(REPOSITORY_ROOT, boundary.messagingModule);
+  if (existsSync(messagingModulePath)) {
+    const source = readFileSync(messagingModulePath, 'utf8');
+    if (
+      source.includes('EmailVerificationService') ||
+      source.includes('IdentityChallengeModule') ||
+      source.includes('EmailCheckoutVerificationController')
+    ) {
+      failures.push(
+        `Messaging EmailModule must not regain verification lifecycle ownership: ${boundary.messagingModule}`,
+      );
+    }
+  }
+
+  const membershipControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.membershipController,
+  );
+  if (existsSync(membershipControllerPath)) {
+    const source = readFileSync(membershipControllerPath, 'utf8');
+    if (
+      !source.includes('IDENTITY_EMAIL_VERIFICATION') ||
+      !source.includes('requestUserVerification') ||
+      !source.includes('verifyUserEmailCode') ||
+      !source.includes('userStableId')
+    ) {
+      failures.push(
+        `Membership email verification must consume the Identity public capability with stable user identity: ${boundary.membershipController}`,
+      );
+    }
+  }
+
+  const membershipServicePath = join(REPOSITORY_ROOT, boundary.membershipService);
+  if (existsSync(membershipServicePath)) {
+    const source = readFileSync(membershipServicePath, 'utf8');
+    if (
+      source.includes('EmailVerificationService') ||
+      source.includes('requestEmailVerification(') ||
+      source.includes('verifyEmailCode(')
+    ) {
+      failures.push(
+        `MembershipService must not regain email-verification challenge/account ownership: ${boundary.membershipService}`,
+      );
+    }
+  }
+
+  const cloverPayControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.cloverPayController,
+  );
+  if (existsSync(cloverPayControllerPath)) {
+    const source = readFileSync(cloverPayControllerPath, 'utf8');
+    if (
+      !source.includes("from '../auth/public-api'") ||
+      !source.includes('IDENTITY_EMAIL_VERIFICATION') ||
+      source.includes('email/email-verification.service')
+    ) {
+      failures.push(
+        `Clover checkout email proof validation must consume Identity public capability without provider-flow changes: ${boundary.cloverPayController}`,
+      );
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (contextOf(sourcePath) !== 'messaging-notifications') continue;
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const specifier of importSpecifiers(source)) {
+      let targetContext = null;
+      if (specifier.startsWith('.')) {
+        targetContext = contextOf(resolveTarget(absolutePath, specifier));
+      } else if (config.publicAliases[specifier]) {
+        targetContext = config.publicAliases[specifier];
+      }
+      if (targetContext === 'identity-customer-benefits') {
+        failures.push(
+          `Messaging must not depend on Identity; verification lifecycle belongs to Identity: ${sourcePath} -> ${specifier}`,
+        );
+      }
+    }
+    if (/\.authChallenge\b|\bemailVerifiedAt\b/.test(source)) {
+      failures.push(
+        `Messaging must not own AuthChallenge or verified-email account mutation: ${sourcePath}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

@@ -4,7 +4,6 @@ import { HttpModule } from '@nestjs/axios';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { EmailService } from './email.service';
-import { EmailVerificationService } from './email-verification.service';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
 import { SesEmailProvider } from './providers/ses-email.provider';
 import { LogEmailProvider } from './providers/log-email.provider';
@@ -12,20 +11,14 @@ import { SendGridEmailProvider } from './providers/sendgrid-email.provider';
 import { SesEventProcessor } from './ses-event.processor';
 import type { EmailProvider } from './email.provider';
 import { SendGridEmailWebhookController } from './webhooks/sendgrid-email.webhook.controller';
-import { EmailCheckoutVerificationController } from './email-checkout-verification.controller';
 import { SendGridEmailWebhookService } from './webhooks/sendgrid-email.webhook.service';
 import { SendGridEmailWebhookVerifier } from './webhooks/sendgrid-email.webhook.verifier';
-import { IdentityChallengeModule } from '../auth/public-api';
 
 @Module({
-  imports: [HttpModule, PrismaModule, MessagingModule, IdentityChallengeModule],
-  controllers: [
-    SendGridEmailWebhookController,
-    EmailCheckoutVerificationController,
-  ],
+  imports: [HttpModule, PrismaModule, MessagingModule],
+  controllers: [SendGridEmailWebhookController],
   providers: [
     EmailService,
-    EmailVerificationService,
     SesEmailProvider,
     SendGridEmailProvider,
     LogEmailProvider,
@@ -49,6 +42,6 @@ import { IdentityChallengeModule } from '../auth/public-api';
       inject: [SesEmailProvider, SendGridEmailProvider, LogEmailProvider],
     },
   ],
-  exports: [EmailService, EmailVerificationService],
+  exports: [EmailService],
 })
 export class EmailModule {}

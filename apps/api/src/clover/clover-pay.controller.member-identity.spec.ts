@@ -5,7 +5,7 @@ import type { CheckoutIntentsService } from './checkout-intents.service';
 import type { OrdersService } from '../orders/orders.service';
 import type { PricingTokenService } from './pricing-token.service';
 import type { EmailService } from '../email/email.service';
-import type { EmailVerificationService } from '../email/email-verification.service';
+import type { IdentityEmailVerificationPort } from '../auth/public-api';
 import type { PhoneVerificationService } from '../phone-verification/phone-verification.service';
 import type { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 
@@ -95,7 +95,7 @@ function createHarness() {
     orders as unknown as OrdersService,
     pricingTokens as unknown as PricingTokenService,
     {} as EmailService,
-    {} as EmailVerificationService,
+    {} as IdentityEmailVerificationPort,
     {} as PhoneVerificationService,
   );
 
