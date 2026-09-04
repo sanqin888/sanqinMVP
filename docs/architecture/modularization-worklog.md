@@ -630,8 +630,8 @@ to the consolidated Phase-end batch rollout.
 
 ### 2026-09-04 — Phase 4 Slice 2A: Auth Challenge Messaging boundary contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice2a-auth-challenge-delivery`  
-**State:** LOCAL  
+**PR/SHA:** PR #2172; final head `29bf23b7`; squash merge `c8e91303`  
+**State:** CI  
 **Result:** introduced the Messaging-owned `AUTH_CHALLENGE_DELIVERY` public capability with
 four explicit delivery operations for login 2FA SMS/email, phone-enrollment SMS and
 membership-login SMS. Auth keeps OTP generation/hash, `AuthChallenge` persistence,
@@ -646,9 +646,34 @@ remain for registration welcome notifications outside 2A. The central scanner re
 this shape and the local direct-debt baseline contracts Identity -> Messaging **22 -> 15**,
 reducing total Identity outgoing direct debt **60 -> 53**. No dependency, Prisma schema /
 migration, route, OTP-policy, session/MFA, provider-wire or payment behavior is changed.
-No local lint/build/test/scanner run is claimed under repository workflow. This slice will
-not be deployed separately; production verification is deferred to the Phase 4 batch
-rollout after source closeout.  
+No local lint/build/test/scanner run is claimed under repository workflow. Final GitHub
+Actions CI #5120 passed Architecture, API/Web lint/build/strict checks and tests on final
+head `29bf23b7` before squash merge `c8e91303`. This slice is not deployed separately;
+production verification is deferred to the Phase 4 batch rollout after source closeout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2B: Phone Verification Messaging boundary contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice2b-phone-verification-delivery`  
+**State:** LOCAL  
+**Result:** introduced the Messaging-owned `PHONE_VERIFICATION_DELIVERY` public capability
+for generic/customer phone-verification SMS delivery. `PhoneVerificationService` remains the
+Identity owner of phone normalization, IP/daily rate limits, `NON_ZERO_SIX_DIGIT` OTP,
+`PHONE_VERIFICATION` hashing, `AuthChallenge` persistence, 10-minute expiry,
+attempt/revoke/consume state, verification-token validation, `messagingSendId` linkage and
+`sms_send_failed` behavior. Messaging now owns only Brand/Store messaging snapshot reads,
+OTP template rendering, `MessagingTemplateType.OTP`, provider dispatch and MessagingSend
+recording. Historical purpose semantics are preserved exactly: the template variable remains
+fixed to `verify`, while caller purpose remains the Identity challenge purpose and Messaging
+metadata. Phone Verification drops three concrete service imports and two concrete module
+imports in favor of the Messaging public capability, contracting Identity -> Messaging
+**15 -> 10** and total Identity outgoing debt **53 -> 48**. HTTP routes, Clover phone-proof
+validation and AdminMembers' current PhoneVerificationService dependency are unchanged.
+Focused characterization plus the central scanner reserve this split. No local
+lint/build/test/scanner run is claimed under repository workflow, and this slice will not be
+deployed separately before the consolidated Phase 4 rollout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
@@ -666,15 +691,16 @@ rollout after source closeout.
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 MERGED/CI;
-  SLICE 2A LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629` after CI #5092
-  and passed active Admin PromotionRule verification. The POS pricing hotfix merged via PR
-  #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount verification.
-  Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks. Slice 1
-  merged via PR #2171 as `afa1bff6` after final head `94955b27` passed CI #5116; it moves
-  email-verification ownership to Identity and removes the final legacy public SCC. Slice
-  2A locally moves Auth challenge message configuration/template/provider work behind
-  `AUTH_CHALLENGE_DELIVERY`, contracting Identity -> Messaging `22 -> 15`. Per the current
+- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A
+  MERGED/CI; SLICE 2B LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
+  after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
+  merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
+  verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
+  Slice 1 merged via PR #2171 as `afa1bff6` after final head `94955b27` passed CI #5116 and
+  removes the final legacy public SCC. Slice 2A merged via PR #2172 as `c8e91303` after final
+  head `29bf23b7` passed CI #5120, contracting Identity -> Messaging `22 -> 15`. Slice 2B
+  locally moves Phone Verification template/provider delivery behind
+  `PHONE_VERIFICATION_DELIVERY`, contracting the local baseline `15 -> 10`. Per the current
   rollout plan, Slice 1 onward are not individually deployed; the accumulated Phase 4
   changes will be deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for

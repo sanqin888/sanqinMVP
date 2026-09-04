@@ -96,7 +96,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 15; runtime-data-ci-ops 15; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 10; runtime-data-ci-ops 15; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
@@ -112,10 +112,10 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 2A source contraction records these
+The current local monotonic baseline after the Slice 2B source contraction records these
 direct-debt totals:
 
-- identity-customer-benefits: **53**
+- identity-customer-benefits: **48**
 - payments-clover: **59**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
@@ -127,9 +127,9 @@ direct-debt totals:
 
 The reduction in Orders/POS counts is baseline normalization of source debt that had
 already contracted; it does not reopen those contexts as the next primary owner phase.
-After Slice 2A, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
-at **53**, but that does not change the active Phase 4 owner scope: Identity still has
-substantial remaining Messaging/Admin/Customer/Benefits boundary debt and is a high-coupling
+After Slice 2B, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
+at **48**, but that does not change the active Phase 4 owner scope: Identity still has
+substantial remaining Admin/Customer/Benefits/Messaging boundary debt and is a high-coupling
 target for Payments, POS, Accounting, Orders, External Channels and Catalog. Payment
 ownership is not reopened merely to chase the largest numeric total mid-phase.
 
@@ -198,14 +198,26 @@ but there is no return path from Messaging to Identity. The
 future public edge that recreates the cycle. Production deployment/verification is
 intentionally deferred to the Phase 4 batch rollout.
 
-Slice 2A locally contracts Auth challenge delivery behind the Messaging-owned
+Slice 2A contracts Auth challenge delivery behind the Messaging-owned
 `AUTH_CHALLENGE_DELIVERY` public capability. Auth keeps challenge/session/MFA lifecycle;
 Messaging owns OTP configuration/template/provider dispatch. Auth's seven concrete
 Email/SMS/Messaging imports disappear while the welcome-notification pair remains, so
 `identity-customer-benefits -> messaging-notifications` contracts **22 -> 15** and total
 Identity outgoing direct debt contracts **60 -> 53**. Known-user delivery now crosses the
-public boundary with `userStableId`, not the internal User DB UUID. The source is awaiting
-review/remote CI and is not deployed separately.
+public boundary with `userStableId`, not the internal User DB UUID. PR #2172 merged as
+`c8e91303` after final head `29bf23b7` passed CI #5120; deployment remains deferred to the
+Phase 4 batch rollout.
+
+Slice 2B locally contracts the five remaining Phone Verification Messaging implementation
+imports behind the dedicated `PHONE_VERIFICATION_DELIVERY` public capability. Identity
+continues to own phone normalization, IP/daily rate limits, non-zero OTP/hash policy,
+`AuthChallenge`, 10-minute expiry, attempts/consume/token validation and `sms_send_failed`;
+Messaging owns only messaging snapshot/template/SMS provider dispatch. The historical OTP
+template purpose stays fixed at `verify`, while caller purpose remains challenge metadata and
+Messaging metadata. `identity-customer-benefits -> messaging-notifications` contracts
+**15 -> 10** and total Identity outgoing direct debt contracts **53 -> 48**. HTTP routes,
+Clover phone-proof validation and AdminMembers' current PhoneVerificationService dependency
+remain unchanged. The source is awaiting review/remote CI and will not be deployed separately.
 
 ## Phase 1 boundary changes reflected here
 

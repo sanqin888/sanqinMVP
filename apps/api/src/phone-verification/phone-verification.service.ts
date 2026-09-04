@@ -10,13 +10,13 @@ import {
   AuthChallengeStatus,
   AuthChallengeType,
   MessagingChannel,
-  MessagingTemplateType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/utils/phone';
-import { SmsService } from '../sms/sms.service';
-import { BusinessConfigService } from '../messaging/business-config.service';
-import { TemplateRenderer } from '../messaging/template-renderer';
+import {
+  PHONE_VERIFICATION_DELIVERY,
+  type PhoneVerificationDeliveryPort,
+} from '../messaging/public-api';
 import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
@@ -44,9 +44,8 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly smsService: SmsService,
-    private readonly templateRenderer: TemplateRenderer,
-    private readonly businessConfigService: BusinessConfigService,
+    @Inject(PHONE_VERIFICATION_DELIVERY)
+    private readonly phoneVerificationDelivery: PhoneVerificationDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
   ) {}
@@ -71,24 +70,6 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.ipCleanupTimer);
       this.ipCleanupTimer = undefined;
     }
-  }
-
-  private async buildVerificationMessage(
-    code: string,
-    locale?: string,
-  ): Promise<string> {
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-    return this.templateRenderer.renderSms({
-      template: 'otp',
-      locale,
-      vars: {
-        ...baseVars,
-        code,
-        expiresInMin: 10,
-        purpose: 'verify',
-      },
-    });
   }
 
   private normalizePhoneAddress(raw?: string | null): string | null {
@@ -160,13 +141,12 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    const message = await this.buildVerificationMessage(code, params.locale);
-    const smsResult = await this.smsService.sendSms({
+    const smsResult = await this.phoneVerificationDelivery.sendVerificationSms({
       phone: normalized,
-      body: message,
-      templateType: MessagingTemplateType.OTP,
+      code,
+      expiresInMin: 10,
       locale: params.locale,
-      metadata: { purpose: resolvedPurpose },
+      purpose: resolvedPurpose,
     });
 
     await this.prisma.authChallenge.update({

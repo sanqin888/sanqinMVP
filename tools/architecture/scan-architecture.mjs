@@ -1303,6 +1303,154 @@ if (authChallengeMessagingDeliveryBoundary) {
   }
 }
 
+const phoneVerificationMessagingDeliveryBoundary =
+  config.phoneVerificationMessagingDeliveryBoundary ?? null;
+if (phoneVerificationMessagingDeliveryBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(phoneVerificationMessagingDeliveryBoundary).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+  const requiredPaths = [
+    boundary.deliveryContract,
+    boundary.deliveryService,
+    boundary.deliveryModule,
+    boundary.publicSurface,
+    boundary.phoneVerificationService,
+    boundary.phoneVerificationModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Phone verification Messaging delivery boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const deliveryContractPath = join(REPOSITORY_ROOT, boundary.deliveryContract);
+  if (existsSync(deliveryContractPath)) {
+    const source = readFileSync(deliveryContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'PHONE_VERIFICATION_DELIVERY',
+      'PhoneVerificationDeliveryPort',
+      'sendVerificationSms',
+      'expiresInMin',
+      'purpose',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Phone verification delivery contract is missing ${requiredSymbol}: ${boundary.deliveryContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('SmsService') ||
+      source.includes('TemplateRenderer') ||
+      source.includes('BusinessConfigService') ||
+      source.includes('AuthChallenge') ||
+      /\buserId\b/.test(source)
+    ) {
+      failures.push(
+        `Phone verification delivery contract must remain provider/persistence/challenge free: ${boundary.deliveryContract}`,
+      );
+    }
+  }
+
+  const deliveryServicePath = join(REPOSITORY_ROOT, boundary.deliveryService);
+  if (existsSync(deliveryServicePath)) {
+    const source = readFileSync(deliveryServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'implements PhoneVerificationDeliveryPort',
+      'SmsService',
+      'TemplateRenderer',
+      'BusinessConfigService',
+      'MessagingTemplateType.OTP',
+      "purpose: 'verify'",
+      'metadata: { purpose: input.purpose }',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Messaging Phone verification delivery owner is missing ${requiredSymbol}: ${boundary.deliveryService}`,
+        );
+      }
+    }
+    if (
+      source.includes("from '../auth/") ||
+      source.includes('AuthChallengeType') ||
+      source.includes('AuthChallengeStatus') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `Messaging Phone verification delivery must not own Identity challenge lifecycle/persistence: ${boundary.deliveryService}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    if (
+      !source.includes('PhoneVerificationDeliveryModule') ||
+      !source.includes('PHONE_VERIFICATION_DELIVERY') ||
+      !source.includes('PhoneVerificationDeliveryPort')
+    ) {
+      failures.push(
+        `Messaging public surface must expose the Phone verification delivery capability: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const phoneVerificationServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.phoneVerificationService,
+  );
+  if (existsSync(phoneVerificationServicePath)) {
+    const source = readFileSync(phoneVerificationServicePath, 'utf8');
+    if (
+      !source.includes("from '../messaging/public-api'") ||
+      !source.includes('PHONE_VERIFICATION_DELIVERY') ||
+      !source.includes('PhoneVerificationDeliveryPort') ||
+      !source.includes('sendVerificationSms') ||
+      !source.includes('expiresInMin: 10') ||
+      !source.includes('purpose: resolvedPurpose') ||
+      !source.includes("error: 'sms_send_failed'") ||
+      !source.includes('messagingSendId: smsResult.sendId') ||
+      source.includes("from '../sms/sms.service'") ||
+      source.includes("from '../messaging/business-config.service'") ||
+      source.includes("from '../messaging/template-renderer'") ||
+      source.includes('MessagingTemplateType') ||
+      source.includes('buildVerificationMessage')
+    ) {
+      failures.push(
+        `PhoneVerificationService must keep challenge policy Identity-owned and use only the narrow Messaging delivery capability: ${boundary.phoneVerificationService}`,
+      );
+    }
+  }
+
+  const phoneVerificationModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.phoneVerificationModule,
+  );
+  if (existsSync(phoneVerificationModulePath)) {
+    const source = readFileSync(phoneVerificationModulePath, 'utf8');
+    if (
+      !source.includes("from '../messaging/public-api'") ||
+      !source.includes('PhoneVerificationDeliveryModule') ||
+      source.includes("from '../sms/sms.module'") ||
+      source.includes("from '../messaging/messaging.module'") ||
+      source.includes('SmsModule') ||
+      source.includes('MessagingModule')
+    ) {
+      failures.push(
+        `PhoneVerificationModule delivery wiring must use only the Messaging public module: ${boundary.phoneVerificationModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

@@ -93,6 +93,12 @@ node tools/architecture/scan-architecture.mjs --report
   rendering and `MessagingTemplateType` must not return to Auth. Messaging owns the four
   distinct login-2FA/email-2FA/phone-enrollment/member-login delivery mappings, and SMS
   audit linkage must resolve users through `userStableId` rather than a cross-context DB UUID;
+- Generic/customer phone verification delivery uses the separate Messaging-owned
+  `PHONE_VERIFICATION_DELIVERY` capability. Phone Verification keeps IP/daily rate limits,
+  `AuthChallenge`, non-zero OTP generation/hash, expiry/attempt/consume/token semantics and
+  `sms_send_failed` handling; Messaging owns only OTP template/config/provider dispatch.
+  The template purpose remains the historical fixed `verify`, while the caller purpose is
+  preserved only as Messaging metadata and Identity challenge purpose;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

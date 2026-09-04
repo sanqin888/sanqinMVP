@@ -330,8 +330,10 @@ infrastructure types. Do not create one generic all-purpose Messaging facade.
 
 #### Slice 2A — Auth Challenge Messaging boundary contraction
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice2a-auth-challenge-delivery`.
+Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2172 merged to
+`dev` as `c8e91303` from final head `29bf23b7`; GitHub Actions CI #5120 passed.
+Per the current Phase 4 rollout plan, this slice remains undeployed until the consolidated
+Phase-end rollout.
 
 Readiness audit of the merged Slice 1 baseline found **22** remaining direct
 Identity -> Messaging imports, grouped as Auth 9, Phone Verification 5, Admin 4,
@@ -364,17 +366,62 @@ Implemented source shape:
    delivery purpose/template/provider mappings, and the central scanner prevents concrete
    Email/SMS/template/config imports or DB-UUID delivery linkage from returning to Auth.
 
-The local monotonic baseline contracts
+The merged monotonic baseline contracts
 `identity-customer-benefits -> messaging-notifications 22 -> 15`; all other direct pairs
 remain unchanged. Identity's total outgoing direct debt therefore contracts **60 -> 53**.
-No dependency/lockfile, Prisma schema/migration, HTTP route, OTP policy, provider wire,
-session/MFA state machine or payment behavior is changed. Per the Phase 4 rollout plan,
-2A will not be deployed separately; production verification is deferred to the final
-Phase 4 batch deployment.
+CI #5120 passed the architecture gate, API/Web lint/build/strict checks and tests on final
+head `29bf23b7`. No dependency/lockfile, Prisma schema/migration, HTTP route, OTP policy,
+provider wire, session/MFA state machine or payment behavior is changed. Per the Phase 4
+rollout plan, 2A will not be deployed separately; production verification is deferred to
+the final Phase 4 batch deployment.
 
-Remaining Slice 2 work after 2A is expected to proceed through Phone Verification,
-Admin delivery boundaries, then Membership/Loyalty tail contraction without recreating a
-reverse Messaging -> Identity edge.
+#### Slice 2B — Phone Verification Messaging boundary contraction
+
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice2b-phone-verification-delivery`.
+
+Readiness audit of merged Slice 2A confirmed the remaining **15** direct Identity ->
+Messaging imports as Auth welcome notifications 2, Phone Verification 5, Admin 4,
+Membership 2 and Loyalty 2. Phone Verification's five imports were exactly one delivery
+concern: `PhoneVerificationService` directly imported `SmsService`, `BusinessConfigService`
+and `TemplateRenderer`, while `PhoneVerificationModule` imported `SmsModule` and
+`MessagingModule`.
+
+Implemented source shape:
+
+1. Messaging owns the dedicated `PHONE_VERIFICATION_DELIVERY` public capability with one
+   explicit `sendVerificationSms` operation. It is separate from the Slice 2A Auth challenge
+   capability and is not a generic message facade;
+2. Phone Verification remains the Identity owner of phone normalization, IP and daily rate
+   limits, `NON_ZERO_SIX_DIGIT` generation, `PHONE_VERIFICATION` hashing,
+   `AuthChallenge` persistence, 10-minute expiry, attempts/revoke/consume, verification
+   token creation/validation and `messagingSendId` linkage;
+3. Messaging owns only Brand/Store messaging snapshot reads, OTP template rendering,
+   `MessagingTemplateType.OTP`, SMS provider dispatch and `MessagingSend` recording;
+4. historical purpose semantics are preserved exactly: the OTP template variable remains
+   fixed as `purpose='verify'`, while caller purposes such as `checkout`,
+   `membership-login`, `membership-bind` and `pos-recharge` remain Identity challenge facts
+   and Messaging metadata;
+5. provider delivery failures still return a send ID for challenge audit linkage, and the
+   Identity owner preserves the public `{ ok: false, error: 'sms_send_failed' }` behavior;
+6. `/auth/phone/send-code` and `/auth/phone/verify-code`, Clover phone-proof validation and
+   AdminMembers' current PhoneVerificationService consumption are intentionally unchanged;
+7. focused characterization covers owner-side OTP/rate-limit/failure semantics plus the
+   Messaging template/metadata/provider mapping, and the central scanner prevents concrete
+   SMS/template/config/module imports from returning to Phone Verification.
+
+The local monotonic baseline contracts
+`identity-customer-benefits -> messaging-notifications 15 -> 10`; all other direct pairs
+remain unchanged. Identity total outgoing direct debt therefore contracts **53 -> 48**.
+The remaining ten Messaging direct imports are Auth welcome notifications 2, Admin 4,
+Membership 2 and Loyalty 2. No dependency/lockfile, Prisma schema/migration, route,
+Clover payment/proof behavior or external provider protocol is changed. 2B will not be
+deployed separately; production verification remains deferred to the consolidated Phase 4
+batch deployment.
+
+Remaining Slice 2 work after 2B is expected to proceed through Admin delivery boundaries,
+then Membership/Loyalty tail contraction without recreating a reverse Messaging -> Identity
+edge.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 
