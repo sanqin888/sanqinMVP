@@ -579,6 +579,69 @@ describe('OrdersService', () => {
     );
   });
 
+  it('quotes same-item BOGO for POS and keeps the manual discount stacked', async () => {
+    promotions.getOrderPromotionContext.mockResolvedValue({
+      now: DateTime.fromISO('2026-09-04T12:00:00', {
+        zone: 'America/Toronto',
+      }),
+      rules: [
+        {
+          stableId: 'bogo-1',
+          titleZh: '买一送一',
+          titleEn: 'Buy 1 Get 1 Free',
+          type: 'BUY_X_GET_Y',
+          status: 'ACTIVE',
+          priority: 175,
+          stackingPolicy: 'EXCLUSIVE',
+          excludesCoupons: true,
+          excludesItemPromotions: true,
+          channels: ['in_store'],
+          validFrom: null,
+          validTo: null,
+          weekdays: [],
+          startMinutes: null,
+          endMinutes: null,
+          config: {
+            membersOnly: false,
+            buyItemStableIds: [demoProductId],
+            buyQuantity: 1,
+            getItemStableIds: [demoProductId],
+            getQuantity: 1,
+            discountPercent: 100,
+          },
+        },
+      ],
+    });
+
+    const quote = await service.quoteOrderPricing(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        discountCents: 100,
+        items: [{ productStableId: demoProductId, qty: 2, unitPrice: 10 }],
+      },
+      { allowCustomUnitPrice: true },
+    );
+
+    expect(quote.subtotalCents).toBe(2000);
+    expect(quote.automaticPromotionDiscountCents).toBe(1000);
+    expect(quote.posManualDiscountCents).toBe(100);
+    expect(quote.taxCents).toBe(117);
+    expect(quote.totalCents).toBe(1017);
+    expect(quote.appliedDiscounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'AUTOMATIC_PROMOTION',
+          discountCents: 1000,
+        }),
+        expect.objectContaining({
+          source: 'POS_MANUAL_DISCOUNT',
+          discountCents: 100,
+        }),
+      ]),
+    );
+  });
+
   it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {
     const logSpy = jest
       .spyOn(Logger.prototype, 'log')

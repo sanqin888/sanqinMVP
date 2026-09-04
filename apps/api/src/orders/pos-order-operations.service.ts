@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrdersService } from './orders.service';
@@ -19,6 +19,16 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
 
   createForStore(...args: Parameters<OrdersService['createForStore']>) {
     return this.orders.createForStore(...args);
+  }
+
+  quotePricingForStore(
+    dto: Parameters<OrdersService['quoteOrderPricing']>[0],
+    storeStableId: string,
+  ) {
+    if (!storeStableId.trim()) {
+      throw new BadRequestException('storeStableId is required');
+    }
+    return this.orders.quoteOrderPricing(dto, { allowCustomUnitPrice: true });
   }
 
   recent(storeStableId: string, limit?: number) {

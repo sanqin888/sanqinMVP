@@ -143,9 +143,19 @@ slices are planned:
    present, the central scanner reserves the delegate to Offers, and Identity -> Runtime
    contracts `18 -> 16`. The authorized Admin response contraction also removes unused
    DB `id`/`createdAt`/`updatedAt`/`deletedAt` fields while preserving all business fields,
-   routes and request semantics. Post-deployment Admin UI smoke verification is still
-   pending.
-2. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
+   routes and request semantics. Active Admin create/edit/refresh/delete verification was
+   completed on 2026-09-04, so the original 0A ownership slice is production VERIFIED.
+2. **Slice 0A verification hotfix — POS server-authoritative promotion pricing.** Local
+   source on `fix/phase4-slice0a-pos-promotion-pricing` adds a narrow POS pricing quote to
+   the existing Orders public capability so the POS adapter displays automatic promotions
+   and the retained staff manual discount from the canonical server quote before taking
+   payment. The POS payment adapter is also contracted to local `channel=in_store` only:
+   the staff UberEats channel selector/payment method and their legacy branches are removed,
+   while Uber webhook/import/runtime remains unchanged. This is a method/transport expansion
+   plus adapter cleanup on an already-existing POS -> Orders public boundary; it introduces
+   no new context edge, direct-import debt, SCC member/edge, Prisma ownership, or baseline
+   change. Offers still owns promotion policy and Orders still owns order pricing truth.
+3. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
    Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
    Pricing/Offers input contract plus boundary mapping rather than moving business
    semantics into Foundation merely to break a cycle.

@@ -75,9 +75,11 @@ cannot later return under a stale superset allowance.
 
 ### Slice 0A — Admin PromotionRule ownership contraction
 
-Status: **CI / MERGED** via PR #2163 / `aa302629`.
-Final head `849bdcfc` passed GitHub Actions CI #5092 before merge; post-deployment Admin
-UI smoke verification has not yet been recorded.
+Status: **PRODUCTION VERIFIED** via PR #2163 / `aa302629`.
+Final head `849bdcfc` passed GitHub Actions CI #5092 before merge. On 2026-09-04 the user
+actively exercised Admin PromotionRule create, edit, refresh and delete after deployment;
+production persistence evidence showed the test rule created/updated and then soft-deleted
+as `ENDED`, so the Admin management boundary is verified.
 
 Audit findings on `origin/dev@83de9072`:
 
@@ -137,9 +139,50 @@ Measured source debt contracts
 unchanged by Slice 0A because the Admin -> Offers dependency remains public-contract
 traffic and no SCC member/edge is added or removed.
 
+#### Slice 0A verification hotfix — POS server-authoritative promotion pricing
+
+Status: **SOURCE / LOCAL REVIEW COMPLETE** on
+`fix/phase4-slice0a-pos-promotion-pricing`, based on `origin/dev@3acb7fe5`.
+
+The production verification pass exposed a separate pre-existing checkout gap: the active
+same-item BOGO rule is correctly configured for `in_store` and the Orders/Offers pricing
+engine already evaluates it, but the POS payment page previously calculated its displayed
+subtotal, manual discount, tax and tender locally and did not request the canonical Orders
+pricing quote before taking payment. That allowed the POS display/cash-change path to omit
+automatic promotions even though order creation later re-evaluated them server-side.
+
+The hotfix keeps ownership unchanged and adds no pricing rules to POS:
+
+1. `POS_ORDER_OPERATIONS` exposes a narrow authenticated `quotePricingForStore` capability
+   backed by the existing `OrdersService.quoteOrderPricing()` owner implementation;
+2. `POST /pos/orders/pricing/quote` is protected by the existing POS session/role/device
+   guards, accepts only `channel=in_store`, and forwards the authenticated store stable ID;
+3. the POS payment page requests the server quote whenever fulfillment, member redemption
+   or the existing staff manual discount changes, and treats that quote as authoritative
+   for automatic promotions, tax and total;
+4. the existing 5% / 10% / 15% / custom **POS manual discount remains intact** and is sent
+   as the existing `POS_MANUAL_DISCOUNT` input. It remains independently visible from the
+   automatic promotion amount and retains its existing calculation/stacking semantics;
+5. cash collection, customer display, WeChat/Alipay conversion and Clover Terminal start
+   all consume the same displayed server-authoritative total. In-store payment confirmation
+   is disabled while the quote is refreshing or unavailable rather than falling back to a
+   stale client-only amount;
+6. the POS payment adapter is now fixed to `channel=in_store`: the staff-facing UberEats
+   channel selector, local UberEats payment method and their legacy channel/payment branches
+   are removed. POS fulfillment remains only `pickup` / `dine_in`; Uber orders continue to
+   enter through the separate Uber integration/import path, whose runtime behavior is
+   unchanged;
+7. focused API coverage locks same-item BOGO + manual discount coexistence and authenticated
+   store identity for the POS pricing route.
+
+This hotfix does not change PromotionRule configuration/evaluation semantics, Prisma schema,
+dependencies, production Web Clover Ecommerce, Uber runtime/wire behavior, or the measured
+architecture graph/baselines. Post-deployment active payment verification is required before
+the hotfix can be marked VERIFIED.
+
 ### Slice 0B — Catalog -> Orders public-cycle edge contraction
 
-Status: **PLANNED AFTER 0A**.
+Status: **PLANNED AFTER 0A VERIFICATION HOTFIX**.
 
 Objective:
 
