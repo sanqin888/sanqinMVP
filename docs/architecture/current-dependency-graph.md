@@ -96,7 +96,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 14; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 16; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
@@ -115,7 +115,7 @@ Messaging Boundary Contraction**, tracked in
 The current monotonic baseline after the Slice 0A source contraction records these
 direct-debt totals:
 
-- identity-customer-benefits: **61**
+- identity-customer-benefits: **63**
 - payments-clover: **60**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
@@ -142,7 +142,7 @@ slices are planned:
    `PromotionsService` Prisma entry, so Catalog -> Runtime stays at `10`. The retired
    Admin service is deleted, focused characterization/mapping tests are added, the
    central scanner reserves the delegate to Offers, and Identity -> Runtime contracts
-   `18 -> 14`. The authorized Admin response contraction also removes unused DB
+   `18 -> 16`. The authorized Admin response contraction also removes unused DB
    `id`/`createdAt`/`updatedAt`/`deletedAt` fields while preserving all business fields,
    routes and request semantics.
 2. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current

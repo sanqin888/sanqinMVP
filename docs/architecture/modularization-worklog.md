@@ -522,8 +522,10 @@ scanner prevents either path from returning. Focused tests characterize manageme
 normalization/not-found behavior and prove the Admin DTO excludes persistence metadata.
 The user explicitly authorized contraction of unused Admin response fields, so DB `id`,
 `createdAt`, `updatedAt`, and `deletedAt` no longer cross the Offers boundary; the audited
-Admin Web consumer did not declare or read them. Direct debt contracts
-`identity-customer-benefits -> runtime-data-ci-ops 18 -> 14`; Catalog -> Runtime remains
+Admin Web consumer did not declare or read them. Initial CI #5088's architecture gate
+measured the true direct-import count at `16`, so the monotonic baseline/docs were
+corrected from the locally estimated `14`. Direct debt contracts
+`identity-customer-benefits -> runtime-data-ci-ops 18 -> 16`; Catalog -> Runtime remains
 `10`, and the legacy public SCC is unchanged. No dependency manifest, Prisma
 schema/migration, Web Clover behavior, Uber runtime/wire behavior, or PromotionRule
 persistence schema changes are included. Local lint/build/test/scanner execution is
@@ -544,11 +546,11 @@ intentionally deferred to GitHub Actions after user review.
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A SOURCE COMPLETE / LOCAL REVIEW**. PromotionRule management now
+- Phase 4: **SLICE 0A SOURCE / PR #2163 / CI PENDING**. PromotionRule management now
   belongs to Offers behind a Prisma-free public capability; Admin is a thin adapter and
-  Identity -> Runtime direct debt is reduced to 14 in source. GitHub CI, merge and any
+  Identity -> Runtime direct debt is reduced to 16 in source. Merge and any
   post-deployment UI verification are not yet claimed. Slice 0B remains next after 0A is
-  reviewed and merged.
+  CI-green and merged.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

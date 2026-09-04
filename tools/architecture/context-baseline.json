@@ -420,7 +420,7 @@
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 1,
     "identity-customer-benefits -> messaging-notifications": 24,
-    "identity-customer-benefits -> runtime-data-ci-ops": 14,
+    "identity-customer-benefits -> runtime-data-ci-ops": 16,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
     "messaging-notifications -> runtime-data-ci-ops": 10,

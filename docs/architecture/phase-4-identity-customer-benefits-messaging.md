@@ -33,7 +33,7 @@ already complete and is not part of this phase plan.
 
 Current direct-import totals from `tools/architecture/context-baseline.json` are:
 
-- identity-customer-benefits: **61**
+- identity-customer-benefits: **63**
 - payments-clover: **60**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
@@ -131,7 +131,7 @@ Implemented source shape:
    prevents the retired Admin Prisma/service path from returning.
 
 Measured source debt contracts
-`identity-customer-benefits -> runtime-data-ci-ops 18 -> 14` while
+`identity-customer-benefits -> runtime-data-ci-ops 18 -> 16` while
 `catalog-pricing-offers -> runtime-data-ci-ops` remains `10`. The legacy public SCC is
 unchanged by Slice 0A because the Admin -> Offers dependency remains public-contract
 traffic and no SCC member/edge is added or removed.
