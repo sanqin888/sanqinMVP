@@ -5,25 +5,24 @@ import {
   type PromotionEligibility,
   type PromotionStackingGroup,
 } from './promotion-engine';
-
-export type PromotionRuleType =
-  | 'PERCENTAGE_OFF'
-  | 'FIXED_AMOUNT_OFF'
-  | 'BUY_X_GET_Y'
-  | 'FREE_ITEM'
-  | 'LOYALTY_MULTIPLIER';
+import type {
+  PromotionRuleChannel,
+  PromotionRuleStackingPolicy,
+  PromotionRuleStatus,
+  PromotionRuleType,
+} from './promotion-rule-management.contract';
 
 export type PromotionRuleLike = {
   stableId: string;
   titleZh: string;
   titleEn: string | null;
   type: PromotionRuleType;
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
+  status: PromotionRuleStatus;
   priority: number;
-  stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
+  stackingPolicy: PromotionRuleStackingPolicy;
   excludesCoupons: boolean;
   excludesItemPromotions: boolean;
-  channels: Array<'web' | 'in_store' | 'ubereats'>;
+  channels: PromotionRuleChannel[];
   validFrom: Date | null;
   validTo: Date | null;
   weekdays: number[];

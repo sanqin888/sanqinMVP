@@ -1,22 +1,25 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 5B merged via
-PR #2153 with final CI head `71191389`, squash merge `d3316e45`, and CI #5055 green;
-active Admin/Public Menu/checkout-pricing verification completed on 2026-09-04.
+Phase 3 is **PRODUCTION VERIFIED / CLOSED** for its approved scope as of 2026-09-04.
+Slice 6 merged via PR #2157 with final PR head `8547b46c`, squash merge `b91afb6a`, and
+CI #5070 green; focused Uber menu item availability OFF -> ON, temporary suspension /
+recovery, and option availability OFF -> ON verification were completed successfully.
+Slice 2C remains explicitly DEFERRED and is not represented as completed by this
+closure.
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5B Daily
-Special -> Offers ownership contraction. Slice 5B moves persistence/policy behind
-public owner/application surfaces without increasing the direct-debt baseline;
-CI #5055 passed the authoritative architecture gate.
-Test files and registered composition roots are excluded. Imports through
-`public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
-`@shared/order` are approved public-contract traffic and do not consume the debt
-counts below.
+by `tools/architecture/context-baseline.json` after Phase 3 closure plus the merged
+post-closeout ownership/scanner hardening tail in PR #2160. Test files and registered
+composition roots are excluded. Imports through `public-api`, `contracts`, `ports`,
+`@shared/foundation`, `@shared/menu`, or `@shared/order` are approved public-contract
+traffic and do not consume the debt counts below.
 
-The CI architecture scanner is authoritative for the exact source scan. This
-file is the human-readable working snapshot and must be refreshed again at each
-Phase 3 slice boundary.
+The CI architecture scanner is authoritative for the exact source scan. This file is
+the human-readable working snapshot and must be refreshed at every modularization
+boundary change. PR #2160 merged to `dev` as `3a20c8c5`; GitHub Actions CI #5080 passed
+on final PR head `27b57f99`. The timed Store pause codec change has not yet been recorded
+as production smoke-verified, so this document claims merged/CI evidence only for that
+tail.
 
 ## Phase 3 Slice 6 cycle audit and contraction
 
@@ -37,9 +40,33 @@ Uber public capability. The first remote cycle-gate run additionally surfaced a
 pre-existing public SCC among Catalog / Orders / Identity / Messaging. Because those
 edges predate Slice 6, they are now captured as `legacyPublicCycleComponents`
 contraction-only debt: they may shrink but cannot gain a new context or internal edge.
-GitHub Actions CI #5069 passed on implementation head `7c8b374e`; the Architecture
-gate found no new direct pair and no new/expanded public-contract cycle. No local
-scanner execution is claimed here.
+GitHub Actions CI #5070 passed on final PR head `8547b46c`; the Architecture gate found
+no new direct pair and no new/expanded public-contract cycle. PR #2157 merged to `dev`
+as `b91afb6a`, and the affected Uber availability flows were then actively verified.
+No local scanner execution is claimed here.
+
+## Post-closeout tail — monotonic guards and Store temporary-closure ownership
+
+PR #2160 is **MERGED / CI GREEN**. It contracts the remaining
+`brand-store -> store-operations-pos-print` direct import from `1 -> 0`. The timed
+`temporaryCloseReason` codec (`buildAutoPauseReason` / `parseAutoPauseReason`) is now
+implemented once under Brand/Store and exposed through `store/public-api.ts`; POS uses
+that owner surface instead of owning the persistence format, while `StoreStatusService`
+no longer imports POS internals. Existing encoded values and pause/resume semantics are
+unchanged, with focused codec characterization coverage added.
+
+The architecture scanner is hardened at the same time so legacy debt can only move
+monotonically downward. A direct-import allowance whose observed count falls below its
+baseline now fails as stale until the same PR lowers/removes the allowance. Likewise a
+`legacyPublicCycleComponents` entry must exactly match the currently detected SCC
+contexts and internal public edges; if the SCC shrinks or disappears, the old superset
+baseline fails as stale. This prevents a previously removed direct edge or public-cycle
+edge from being re-authorized later by an obsolete baseline. Initial CI #5078 exercised
+that guard and exposed seven stale numeric allowances; the follow-up normalized those
+allowances to the observed source counts, and final CI #5080 passed on PR head
+`27b57f99` before squash merge `3a20c8c5`. No local scanner/lint/build/test run is
+claimed. A POS timed-pause -> Uber status -> manual recovery smoke verification remains
+to be recorded separately if/when exercised.
 
 ## Context map
 
@@ -67,17 +94,77 @@ pair fails CI.
 | Source | Remaining direct targets |
 |---|---|
 | architecture-foundation | none |
-| brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
+| brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 19; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 16; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
+
+## Phase 4 planning baseline
+
+The next formal modularization phase is **Phase 4 — Identity / Customer / Benefits +
+Messaging Boundary Contraction**, tracked in
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
+
+The current monotonic baseline after the Slice 0A source contraction records these
+direct-debt totals:
+
+- identity-customer-benefits: **63**
+- payments-clover: **60**
+- external-channels: **44**
+- commerce-orders-fulfillment: **35**
+- store-operations-pos-print: **31**
+- accounting-reporting-analytics: **25**
+- messaging-notifications: **16**
+- catalog-pricing-offers: **15**
+- brand-store: **8**
+
+The reduction in Orders/POS counts is baseline normalization of source debt that had
+already contracted; it does not reopen those contexts as the next primary owner phase.
+Identity/Customer/Benefits remains the largest outgoing direct-debt source and is also a
+high-coupling target for Payments, POS, Accounting, Orders, External Channels and
+Catalog, so Phase 4 remains the highest-leverage next boundary phase.
+
+Before the main Identity/Messaging slices, two short cross-phase readiness/contraction
+slices are planned:
+
+1. **Slice 0A — Admin PromotionRule ownership contraction.** Merged via PR #2163 /
+   `aa302629` after final GitHub Actions CI #5092 passed. PromotionRule management
+   validation/CRUD sits behind the Offers-owned `PROMOTION_RULE_MANAGEMENT` capability;
+   Admin no longer owns Prisma or Prisma-generated rule types. Raw persistence remains
+   behind the existing `PromotionsService` Prisma entry, so Catalog -> Runtime stays at
+   `10`. The retired Admin service is deleted, focused characterization/mapping tests are
+   present, the central scanner reserves the delegate to Offers, and Identity -> Runtime
+   contracts `18 -> 16`. The authorized Admin response contraction also removes unused
+   DB `id`/`createdAt`/`updatedAt`/`deletedAt` fields while preserving all business fields,
+   routes and request semantics. Post-deployment Admin UI smoke verification is still
+   pending.
+2. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
+   Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
+   Pricing/Offers input contract plus boundary mapping rather than moving business
+   semantics into Foundation merely to break a cycle.
+
+The prior Store temporary-close codec item is no longer a Phase 4 Slice 0 task because
+PR #2160 already moved that persistence encoding to Brand/Store and removed the final
+`brand-store -> store-operations-pos-print` direct edge.
+
+The current legacy public SCC remains contraction-only across Catalog / Orders /
+Identity / Messaging. Its recorded edges remain:
+
+- `catalog-pricing-offers -> commerce-orders-fulfillment`
+- `catalog-pricing-offers -> messaging-notifications`
+- `commerce-orders-fulfillment -> catalog-pricing-offers`
+- `identity-customer-benefits -> catalog-pricing-offers`
+- `messaging-notifications -> identity-customer-benefits`
+
+The monotonic SCC guard introduced in PR #2160 requires the baseline to shrink in the
+same PR whenever a member/edge disappears.
 
 ## Phase 1 boundary changes reflected here
 

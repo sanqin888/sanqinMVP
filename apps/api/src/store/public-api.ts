@@ -35,4 +35,8 @@ export {
   type StoreScheduleWriterPort,
   type StoreWeekday,
 } from './store-schedule.contract';
+export {
+  buildAutoPauseReason,
+  parseAutoPauseReason,
+} from './temporary-closure-reason';
 export { BrandStoreConfigModule } from './brand-store-config.module';

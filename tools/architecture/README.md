@@ -12,17 +12,20 @@ node tools/architecture/scan-architecture.mjs --report
 - exactly 12 registered contexts;
 - no unclassified production source roots;
 - no new direct cross-context dependency pair;
-- no increase in a recorded direct-import allowance;
+- no increase **or stale overstatement** in a recorded direct-import allowance. When
+  direct debt shrinks, the same PR must lower/remove its numeric baseline, so a retired
+  direct edge cannot remain grandfathered and later return unnoticed;
 - no new or expanded strongly connected cycle made from public-contract dependency
-  pairs that are no longer grandfathered by a recorded legacy direct-import allowance.
+  pairs that are no longer grandfathered by a live legacy direct-import allowance.
   The cycle graph includes `public-api`, `contracts`, `ports`, and registered public
   aliases, so moving both directions behind public surfaces cannot hide an A -> B -> A
   dependency. Public SCCs that already existed when Slice 6 introduced cycle detection
-  are recorded explicitly in `legacyPublicCycleComponents` as contraction-only debt:
-  a detected SCC may shrink inside that baseline, but adding a new member or any new
-  internal edge fails CI. Existing direct-debt pairs remain governed by their numeric
-  baseline; when that debt allowance is removed, the public direction automatically
-  becomes subject to the cycle gate;
+  are recorded explicitly in `legacyPublicCycleComponents` as contraction-only debt.
+  Those baselines must now match the exact current SCC membership and internal edge set:
+  any contraction requires lowering/removing the baseline in the same PR, while a new
+  member, restored edge, or new internal edge fails CI. This makes SCC debt monotonic
+  instead of allowing a previously removed cycle edge to remain authorized by a stale
+  historical superset;
 - browser/server direct `fetch` only at canonical transports or explicitly
   recorded raw/protocol exceptions, with stale allowances rejected; POS
   session/login has no direct-fetch allowance after its canonical-client cutover,
@@ -41,10 +44,10 @@ node tools/architecture/scan-architecture.mjs --report
   connectivity watchdog are registered fully migrated readers. Admin Business is
   now a canonical reader/writer consumer: it must use the Brand/Store public writer
   boundary and cannot write `BusinessConfig`, `BrandConfig`, or `StoreConfig`
-  through Prisma directly. The owner writer is the sole registered Brand/Store
-  compatibility writer and must update canonical storage plus the compatibility
-  copy transactionally. The deleted `common/store-id.ts` path cannot return, and
-  configured store identity has one implementation owner;
+  through Prisma directly. Timed temporary-closure reason encoding is also owned by
+  Brand/Store and exposed through `store/public-api.ts`; POS may consume that codec but
+  must not implement a competing persistence format. The deleted `common/store-id.ts`
+  path cannot return, and configured store identity has one implementation owner;
 - Benefits coupon claims/triggers/admin issuance are exposed through
   `benefits/public-api.ts`; the legacy Coupons implementation module must remain
   non-global, concrete coupon benefit services cannot be deep-imported outside
@@ -59,12 +62,13 @@ node tools/architecture/scan-architecture.mjs --report
 - Admin menu CRUD/read-model decisions are owned by Catalog through
   `menu/public-api.ts`; `apps/api/src/admin/menu/**` cannot regain direct Prisma or
   Uber-provider ownership. Availability/provider coordination lives in the explicit
-  `application/menu` orchestration boundary: Catalog exposes availability facts via
-  its public reader, Uber composition adapts those facts into an application query
-  port, and Uber availability persistence must remain DB-only for Uber-owned
-  store-mapping/OpsTicket facts. The retired Admin availability orchestrator cannot
-  return, and the fixed-component Uber capability guard cannot move back into
-  `CatalogAdminService`. Daily Special persistence, store-time activation and special
+  `application/menu` orchestration boundary: Catalog reads its own publication and
+  suspend-window facts and sends provider-neutral availability intent through the Uber
+  public capability. Uber runtime composition must not reverse-query Catalog, while
+  Uber availability persistence remains DB-only for Uber-owned store-mapping/OpsTicket
+  facts. The retired Admin availability orchestrator cannot return, and the
+  fixed-component Uber capability guard cannot move back into `CatalogAdminService`.
+  Daily Special persistence, store-time activation and special
   pricing policy are owned by Offers through `DAILY_SPECIAL_OFFERS`; `MenuDailySpecial`
   Prisma access is exclusive to `PromotionsService`. Catalog exposes only item stable
   IDs/base-price facts, while Admin composition, Public Menu and Orders consume the
@@ -72,7 +76,11 @@ node tools/architecture/scan-architecture.mjs --report
   Daily Special timing, they are no longer registered Brand/Store config consumers;
   `PromotionsService` remains registered there. The Catalog availability module reuses
   the narrow `CatalogAdminModule` so this HTTP-side Offers wiring does not expand the
-  Uber worker runtime dependency surface;
+  Uber worker runtime dependency surface. PromotionRule management is likewise owned by
+  Offers through `PROMOTION_RULE_MANAGEMENT`: Admin Promotions must remain a thin public-
+  capability adapter with no Prisma/generated-rule ownership, the retired
+  `AdminPromotionsService` cannot return, and `promotionRule` Prisma delegate access is
+  exclusive to the existing `PromotionsService` persistence entry;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

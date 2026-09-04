@@ -21,6 +21,14 @@ import type {
   DailySpecialOffersPort,
   DailySpecialUpsertPayload,
 } from './daily-special-offers.contract';
+import type {
+  PromotionRuleChannel,
+  PromotionRuleManagementDto,
+  PromotionRuleStackingPolicy,
+  PromotionRuleStatus,
+  PromotionRuleType,
+  PromotionRuleWriteModel,
+} from './promotion-rule-management.contract';
 
 const SPECIAL_PRICING_MODES: readonly SpecialPricingMode[] = [
   'OVERRIDE_PRICE',
@@ -54,6 +62,50 @@ function catalogItemPriceMap(
   return new Map(
     catalogItems.map((item) => [item.itemStableId, item.basePriceCents]),
   );
+}
+
+type PromotionRulePersistenceRecord = {
+  stableId: string;
+  titleZh: string;
+  titleEn: string | null;
+  description: string | null;
+  type: string;
+  status: string;
+  priority: number;
+  stackingPolicy: string;
+  excludesCoupons: boolean;
+  excludesItemPromotions: boolean;
+  channels: string[];
+  validFrom: Date | null;
+  validTo: Date | null;
+  weekdays: number[];
+  startMinutes: number | null;
+  endMinutes: number | null;
+  config: unknown;
+};
+
+function toPromotionRuleManagementDto(
+  rule: PromotionRulePersistenceRecord,
+): PromotionRuleManagementDto {
+  return {
+    stableId: rule.stableId,
+    titleZh: rule.titleZh,
+    titleEn: rule.titleEn,
+    description: rule.description,
+    type: rule.type as PromotionRuleType,
+    status: rule.status as PromotionRuleStatus,
+    priority: rule.priority,
+    stackingPolicy: rule.stackingPolicy as PromotionRuleStackingPolicy,
+    excludesCoupons: rule.excludesCoupons,
+    excludesItemPromotions: rule.excludesItemPromotions,
+    channels: rule.channels as PromotionRuleChannel[],
+    validFrom: toIso(rule.validFrom),
+    validTo: toIso(rule.validTo),
+    weekdays: rule.weekdays,
+    startMinutes: rule.startMinutes,
+    endMinutes: rule.endMinutes,
+    config: rule.config,
+  };
 }
 
 @Injectable()
@@ -102,6 +154,71 @@ export class PromotionsService
         config: rule.config,
       })),
     };
+  }
+
+  async listPromotionRulesForManagement(): Promise<
+    PromotionRuleManagementDto[]
+  > {
+    const rules = await this.prisma.promotionRule.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ status: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
+    });
+    return rules.map(toPromotionRuleManagementDto);
+  }
+
+  async getPromotionRuleForManagement(
+    stableId: string,
+  ): Promise<PromotionRuleManagementDto | null> {
+    const rule = await this.prisma.promotionRule.findFirst({
+      where: { stableId, deletedAt: null },
+    });
+    return rule ? toPromotionRuleManagementDto(rule) : null;
+  }
+
+  async createPromotionRuleForManagement(
+    stableId: string | undefined,
+    data: PromotionRuleWriteModel,
+  ): Promise<PromotionRuleManagementDto> {
+    const rule = await this.prisma.promotionRule.create({
+      data: {
+        ...(stableId ? { stableId } : {}),
+        ...data,
+      },
+    });
+    return toPromotionRuleManagementDto(rule);
+  }
+
+  async updatePromotionRuleForManagement(
+    stableId: string,
+    data: PromotionRuleWriteModel,
+  ): Promise<PromotionRuleManagementDto | null> {
+    const existing = await this.prisma.promotionRule.findFirst({
+      where: { stableId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) return null;
+
+    const rule = await this.prisma.promotionRule.update({
+      where: { id: existing.id },
+      data,
+    });
+    return toPromotionRuleManagementDto(rule);
+  }
+
+  async deletePromotionRuleForManagement(
+    stableId: string,
+  ): Promise<PromotionRuleManagementDto | null> {
+    const existing = await this.prisma.promotionRule.findFirst({
+      where: { stableId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) return null;
+
+    const rule = await this.prisma.promotionRule.update({
+      where: { id: existing.id },
+      data: { deletedAt: new Date(), status: 'ENDED' },
+    });
+    return toPromotionRuleManagementDto(rule);
   }
 
   async getDailySpecials(

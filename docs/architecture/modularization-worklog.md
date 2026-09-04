@@ -419,8 +419,8 @@ because replacement traffic uses public owner/application surfaces.
 
 ### 2026-09-04 — Phase 3 Slice 6: public-contract cycle guard + contraction
 
-**PR/SHA:** PR #2157; implementation head `7c8b374e`; guard commit `5ee0970d`  
-**State:** CI GREEN / DEPLOYMENT VERIFICATION PENDING  
+**PR/SHA:** PR #2157; final PR head `8547b46c`; squash merge `b91afb6a`; guard commit `5ee0970d`  
+**State:** PRODUCTION VERIFIED / CLOSED  
 **Result:** Phase 3 closeout review found that the central scanner treated
 `public-api`/`contracts`/`ports` traffic as approved but did not analyze those
 approved edges as a directed graph. Static source inspection therefore exposed a
@@ -448,24 +448,111 @@ a narrow read-compat fallback. The source graph is therefore intended to retain 
 No dependency manifest, Prisma schema/migration, production Web Clover, Uber external
 wire format, webhook/order state, or full-menu publication protocol is changed.  
 **Validation:** local lint/build/test/scanner execution intentionally deferred under
-repository workflow. GitHub Actions CI #5069 passed on implementation head `7c8b374e`:
+repository workflow. GitHub Actions CI #5070 passed on final PR head `8547b46c`:
 Architecture, API/Web lint/build, API/Web strict declaration checks, and API/Web tests
-all passed. The active Uber availability path still requires deployment verification
-before Phase 3 can be marked closed.  
+all passed. PR #2157 then merged to `dev` as `b91afb6a`. Post-deployment active
+verification completed successfully for Uber-published item availability OFF -> ON,
+temporary item suspension/recovery, and option availability OFF -> ON. Slice 6 is
+therefore production verified and closed.  
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 3 post-closeout tail: monotonic cycle baseline + Store pause codec
+
+**PR/SHA:** PR #2160; final head `27b57f99`; squash merge `3a20c8c5`  
+**State:** CI / MERGED  
+**Result:** completed the two small governance tails recorded after Slice 6 without
+reopening the closed Phase 3 scope. Brand/Store now owns the timed temporary-closure
+reason codec (`buildAutoPauseReason` / `parseAutoPauseReason`) and exposes it through
+`store/public-api.ts`; POS consumes that public owner surface and `StoreStatusService`
+no longer imports POS internals. The exact persisted `__AUTO_UNTIL__` representation,
+expiry CAS, POS broadcast and Uber store-status behavior are intentionally unchanged,
+with focused codec characterization coverage added. This contracts
+`brand-store -> store-operations-pos-print` direct debt from `1 -> 0` and removes the
+allowance from `context-baseline.json`.
+
+The architecture scanner now makes debt baselines monotonic: any observed reduction in
+a numeric direct-import allowance fails until the same change lowers/removes that
+allowance, and every `legacyPublicCycleComponents` baseline must exactly match the
+current detected SCC contexts/internal public edges. A shrunk, split or removed SCC
+therefore forces baseline contraction instead of leaving an obsolete superset that
+could later authorize a restored edge. `--report` exposes stale SCC baselines as well.
+No package/lockfile, Prisma schema/migration, HTTP contract, Web Clover path or Uber
+runtime/wire behavior is changed. Initial GitHub Actions CI #5078 failed exactly at the
+new stale-baseline guard and exposed seven pre-existing numeric allowances that had
+already contracted in source; the follow-up normalized those baselines to the observed
+counts and final GitHub Actions CI #5080 passed before merge. Runtime smoke verification
+of POS timed pause -> Uber status -> manual recovery has not yet been recorded, so the
+entry remains at CI/MERGED rather than VERIFIED.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`,
+`tools/architecture/context-baseline.json`.
+
+### 2026-09-04 — Phase 4 planning baseline synchronized
+
+**PR/SHA:** PR #2161; final head `a2841f00`; squash merge `83de9072`  
+**State:** CI / MERGED  
+**Result:** GitHub Actions CI #5083 passed for API and Web before merge. Synchronized
+the post-Phase-3 architecture state and recorded the next
+formal phase as **Phase 4 — Identity / Customer / Benefits + Messaging Boundary
+Contraction**. The plan removes the former Store pause-codec Slice 0 item because PR
+#2160 already closed that ownership edge, keeps Admin PromotionRule ownership as the
+immediate Slice 0A readiness audit, and promotes the Catalog -> Orders `Channel`
+public-cycle contraction audit to Slice 0B. Mainline Phase 4 then proceeds through Email
+Verification ownership, Messaging delivery boundaries, Customer profile/address/consent,
+Admin Members/Staff adapter contraction, Benefits implementation ownership, and final
+dependency/SCC closeout. The normalized direct-debt baseline now records Identity /
+Customer / Benefits at 65, Orders at 35, and POS at 31; the lower Orders/POS counts are
+stale-baseline corrections rather than a reason to change the selected next owner phase.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`,
+`docs/architecture/phase-3-catalog-pricing-offers.md`.
+
+### 2026-09-04 — Phase 4 Slice 0A: Admin PromotionRule ownership contraction
+
+**PR/SHA:** PR #2163; final head `849bdcfc`; squash merge `aa302629`  
+**State:** CI / MERGED  
+**Result:** moved PromotionRule management ownership out of the Admin adapter and behind
+Offers-owned `PROMOTION_RULE_MANAGEMENT`. `PromotionRuleManagementService` now owns the
+existing validation/default/calendar/channel/BOGO policy without Prisma; raw
+PromotionRule list/get/create/update/soft-delete persistence is centralized through the
+already-existing `PromotionsService` Prisma entry. `AdminPromotionsService` is deleted,
+Admin Promotions no longer imports Prisma/Prisma-generated rule types, and the central
+scanner prevents either path from returning. Focused tests characterize management
+normalization/not-found behavior and prove the Admin DTO excludes persistence metadata.
+The user explicitly authorized contraction of unused Admin response fields, so DB `id`,
+`createdAt`, `updatedAt`, and `deletedAt` no longer cross the Offers boundary; the audited
+Admin Web consumer did not declare or read them. Initial CI #5088's architecture gate
+measured the true direct-import count at `16`, so the monotonic baseline/docs were
+corrected from the locally estimated `14`. Direct debt contracts
+`identity-customer-benefits -> runtime-data-ci-ops 18 -> 16`; Catalog -> Runtime remains
+`10`, and the legacy public SCC is unchanged. No dependency manifest, Prisma
+schema/migration, Web Clover behavior, Uber runtime/wire behavior, or PromotionRule
+persistence schema changes are included. Final GitHub Actions CI #5092 passed the
+architecture gate, API lint/build/strict/test, shared strict checks, and Web
+lint/build/strict/test before merge. Post-deployment Admin UI smoke verification has not
+yet been recorded, so the slice is CI/MERGED rather than production VERIFIED.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`.
 
 ## Current position
 
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4, Slice 5 and Slice 5B are merged;
-  Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 2C remains **DEFERRED** because
-  the current Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free
-  cross-context replacement yet. Slice 6 is **CI GREEN** on PR #2157: the cycle guard
-  and Catalog/External source contraction passed CI #5069 and now require only merge,
-  deployment, and active availability verification before Phase 3 can close.
+- Phase 3: **PRODUCTION VERIFIED / CLOSED** for the approved scope on 2026-09-04.
+  Slice 6 merged through PR #2157 as `b91afb6a`, passed final CI #5070, and completed
+  active Uber availability verification. Slice 2C remains **DEFERRED** because the
+  current Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free
+  cross-context replacement yet; Phase 3 closure does not reclassify that deferred debt.
+- Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
+  passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
+  in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
+- Phase 4: **SLICE 0A CI / MERGED** via PR #2163 / `aa302629`; final CI #5092 passed.
+  PromotionRule management belongs to Offers behind a Prisma-free public capability;
+  Admin is a thin adapter and Identity -> Runtime direct debt is reduced to 16. Active
+  post-deployment Admin UI verification has not yet been recorded. Slice 0B readiness
+  audit is the next planned Phase 4 task.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

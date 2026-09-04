@@ -369,7 +369,7 @@ Actions is the authoritative graph/test gate after review.
 
 ### Slice 6 — Phase 3 closeout
 
-Status: **CI GREEN — merge / deployment verification pending**.
+Status: **PRODUCTION VERIFIED / CLOSED on 2026-09-04**.
 
 Refresh the dependency graph and compatibility records, verify no new direct
 context pairs or cycles were introduced, and document the next phase boundary.
@@ -413,17 +413,50 @@ provider intent (`publishable=true`, no Catalog suspend window) rather than sile
 reintroducing a Catalog dependency. No Prisma schema/migration or external Uber wire
 format changes are required.
 
-GitHub Actions CI #5069 passed on implementation head `7c8b374e`, including the
-Architecture gate, API/Web lint/build, strict declaration checks, and tests. Phase 3
-remains open only for merge plus post-deployment active availability verification.
+GitHub Actions CI #5070 passed on final PR head `8547b46c`, including the Architecture
+gate, API/Web lint/build, strict declaration checks, and tests. PR #2157 then merged to
+`dev` as `b91afb6a`. Post-deployment focused active verification was completed on
+2026-09-04 for Uber-published menu item availability OFF -> ON, temporary item
+suspension/recovery behavior, and option availability OFF -> ON. The user confirmed
+the exercised availability flows completed successfully, so Slice 6 and the approved
+Phase 3 scope are closed. Slice 2C remains explicitly DEFERRED because the existing
+Benefits COMMIT + Order creation atomic transaction still lacks a safe Prisma-free
+cross-context replacement.
+
+### Post-closeout tail — monotonic cycle baseline + Store pause-reason ownership
+
+Status: **MERGED / CI GREEN**. PR #2160 final head `27b57f99` passed GitHub Actions
+CI #5080 and squash-merged to `dev` as `3a20c8c5`. Phase 3 itself remains closed; this
+is a small cross-phase cleanup of two explicitly recorded governance tails. Runtime
+smoke verification of the timed pause -> Uber status -> manual recovery flow has not
+yet been recorded, so no production-verification claim is added here.
+
+- The timed `temporaryCloseReason` persistence codec is moved from POS into a single
+  Brand/Store implementation and re-exported through `store/public-api.ts`.
+  `PosStoreStatusService` continues to build/parse the exact same
+  `__AUTO_UNTIL__:<iso>|<displayReason>` representation through that owner surface,
+  while `StoreStatusService` imports its same-context implementation directly.
+- This removes the final `brand-store -> store-operations-pos-print` direct import and
+  deletes that `1` allowance from the dependency baseline. The reverse POS ->
+  Brand/Store public/config traffic remains intentional; no pause/resume, CAS, POS
+  broadcast, Uber status-sync or persisted value semantics are changed.
+- Focused codec characterization tests preserve the existing timed-pause string format
+  and parsing behavior.
+- The central scanner now rejects stale direct-import numeric allowances when observed
+  debt shrinks, forcing the same PR to lower/remove the allowance. It also requires each
+  `legacyPublicCycleComponents` entry to exactly match the current SCC contexts and
+  internal public edges. If a legacy SCC shrinks/splits/disappears, its old superset
+  baseline becomes a CI failure instead of remaining permission for a removed edge to
+  return later.
+- No dependency manifest, Prisma schema/migration, HTTP contract, Web Clover path or
+  Uber external/runtime contract changes are included. Initial CI #5078 failed at the
+  newly introduced stale-baseline guard and exposed seven pre-existing direct-debt
+  allowances that had already shrunk in source. The follow-up lowered those allowances
+  to the CI-observed current counts and refreshed the dependency graph; final CI #5080
+  passed before PR #2160 merged to `dev`.
 
 ## Deferred items that are not Slice 1 scope
 
-- Phase 2 left one small `brand-store -> store-operations-pos-print` reverse
-  import because `StoreStatusService` reads the POS-owned auto-pause reason
-  parser. Move that persistence encoding back to Brand/Store in a later small
-  contraction after the recent POS pause/resume and Uber status changes have had
-  sufficient separation from this slice.
 - Historical Uber sandbox compatibility still carries
   `@compat brand-store.default-store-identity.v1` annotations even though the
   registry entry is closed. Keep them until Uber Production Cutover Cleanup.
