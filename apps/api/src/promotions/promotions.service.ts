@@ -1,7 +1,6 @@
 // apps/api/src/promotions/promotions.service.ts
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { DailySpecialDto, SpecialPricingMode } from '@shared/menu';
-import type { Channel } from '@shared/order';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   isDailySpecialActiveNow,
@@ -84,6 +83,15 @@ type PromotionRulePersistenceRecord = {
   config: unknown;
 };
 
+function toPromotionRuleChannels(
+  channels: readonly string[],
+): PromotionRuleChannel[] {
+  return channels.filter(
+    (channel): channel is PromotionRuleChannel =>
+      channel === 'web' || channel === 'in_store',
+  );
+}
+
 function toPromotionRuleManagementDto(
   rule: PromotionRulePersistenceRecord,
 ): PromotionRuleManagementDto {
@@ -98,7 +106,7 @@ function toPromotionRuleManagementDto(
     stackingPolicy: rule.stackingPolicy as PromotionRuleStackingPolicy,
     excludesCoupons: rule.excludesCoupons,
     excludesItemPromotions: rule.excludesItemPromotions,
-    channels: rule.channels as PromotionRuleChannel[],
+    channels: toPromotionRuleChannels(rule.channels),
     validFrom: toIso(rule.validFrom),
     validTo: toIso(rule.validTo),
     weekdays: rule.weekdays,
@@ -119,7 +127,7 @@ export class PromotionsService
   ) {}
 
   async getOrderPromotionContext(
-    channel: Channel,
+    channel: PromotionRuleChannel,
   ): Promise<OrderPromotionContext> {
     const [storeConfig, rules] = await Promise.all([
       this.brandStoreConfigReader.getConfiguredStoreSnapshot(),
@@ -145,7 +153,7 @@ export class PromotionsService
         stackingPolicy: rule.stackingPolicy,
         excludesCoupons: rule.excludesCoupons,
         excludesItemPromotions: rule.excludesItemPromotions,
-        channels: rule.channels,
+        channels: toPromotionRuleChannels(rule.channels),
         validFrom: rule.validFrom,
         validTo: rule.validTo,
         weekdays: rule.weekdays,

@@ -35,7 +35,7 @@ const STACKING_POLICIES = new Set<PromotionRuleStackingPolicy>([
   'EXCLUSIVE',
   'STACKABLE',
 ]);
-const CHANNELS = new Set<PromotionRuleChannel>(['web', 'in_store', 'ubereats']);
+const CHANNELS = new Set<PromotionRuleChannel>(['web', 'in_store']);
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -288,9 +288,7 @@ function normalizeChannels(
     channels.length === 0 ||
     channels.some((channel) => !CHANNELS.has(channel))
   ) {
-    throw new BadRequestException(
-      'channels must contain a supported order channel',
-    );
+    throw new BadRequestException('channels must contain web and/or in_store');
   }
   return Array.from(new Set(channels));
 }

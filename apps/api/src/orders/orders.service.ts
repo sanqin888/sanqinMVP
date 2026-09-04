@@ -73,6 +73,7 @@ import {
   type DailySpecialOffersPort,
   type PromotionContextReaderPort,
   type PromotionOrderEvaluation,
+  type PromotionRuleChannel,
   type PromotionOrderLine,
   type PromotionSource,
 } from '../promotions/public-api';
@@ -314,6 +315,18 @@ type OrderContactPolicy = {
   allowMemberVerifiedContactFallback: boolean;
   allowUnverifiedExternalContact: boolean;
 };
+
+const PROMOTION_RULE_CHANNEL_BY_ORDER_CHANNEL = {
+  web: 'web',
+  in_store: 'in_store',
+  ubereats: null,
+} satisfies Record<CreateOrderInput['channel'], PromotionRuleChannel | null>;
+
+function resolvePromotionRuleChannel(
+  channel: CreateOrderInput['channel'],
+): PromotionRuleChannel | null {
+  return PROMOTION_RULE_CHANNEL_BY_ORDER_CHANNEL[channel];
+}
 
 type OrderReadyNotificationResult = {
   ok: boolean;
@@ -579,9 +592,10 @@ export class OrdersService {
       userId,
       couponStableId: normalizedCouponStableId ?? undefined,
     });
-    const promotionContext = await this.promotions.getOrderPromotionContext(
-      dto.channel,
-    );
+    const promotionRuleChannel = resolvePromotionRuleChannel(dto.channel);
+    const promotionContext = promotionRuleChannel
+      ? await this.promotions.getOrderPromotionContext(promotionRuleChannel)
+      : undefined;
     const promotionEvaluation = evaluateOrderPromotions({
       lines: promotionLines,
       coupon: couponInfo?.coupon
@@ -2451,9 +2465,10 @@ export class OrdersService {
       couponStableId: dto.couponStableId,
     });
 
-    const promotionContext = await this.promotions.getOrderPromotionContext(
-      dto.channel,
-    );
+    const promotionRuleChannel = resolvePromotionRuleChannel(dto.channel);
+    const promotionContext = promotionRuleChannel
+      ? await this.promotions.getOrderPromotionContext(promotionRuleChannel)
+      : undefined;
     const promotionEvaluation = evaluateOrderPromotions({
       lines: promotionLines,
       coupon: couponInfo?.coupon
@@ -3216,9 +3231,10 @@ export class OrdersService {
       null;
 
     const orderId = crypto.randomUUID();
-    const promotionContext = await this.promotions.getOrderPromotionContext(
-      dto.channel,
-    );
+    const promotionRuleChannel = resolvePromotionRuleChannel(dto.channel);
+    const promotionContext = promotionRuleChannel
+      ? await this.promotions.getOrderPromotionContext(promotionRuleChannel)
+      : undefined;
 
     // ✅ clientRequestId 由服务端生成：SQ + YYMMDD + 4位随机；并用 unique 冲突重试兜底
     for (let attempt = 0; attempt < 10; attempt++) {
