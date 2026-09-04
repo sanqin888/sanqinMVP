@@ -391,8 +391,8 @@ before Phase 3 closeout.
 
 ### 2026-09-04 — Phase 3 Slice 5B: Daily Special -> Offers ownership contraction
 
-**PR/SHA:** PR #2153 / reviewed source `848a23eb`  
-**State:** CI PENDING  
+**PR/SHA:** PR #2153 / final CI head `71191389` / squash merge `d3316e45`  
+**State:** MERGED / CI GREEN / PRODUCTION VERIFICATION PENDING  
 **Result:** Daily Special definition, persistence, store-time activation and effective
 pricing move behind the narrow Offers-owned `DAILY_SPECIAL_OFFERS` capability, implemented
 by the existing `PromotionsService` so the contraction adds no new Prisma direct edge.
@@ -411,9 +411,8 @@ belongs to `PromotionsService`, which remains registered there. No Prisma schema
 or Web transport contract, production Web Clover, or Uber runtime/wire behavior is
 intentionally changed; direct dependency debt counts are expected to remain unchanged
 because replacement traffic uses public owner/application surfaces.  
-**Next:** local review is complete; remote GitHub Actions must validate architecture/
-lint/build/strict/test gates. If merged, perform active Daily Special Admin/Public Menu/
-order pricing verification before Slice 6 closeout.  
+**CI evidence:** run #5055 passed Architecture, API/Web lint/build/strict/test gates on final head `71191389`.  
+**Next:** deploy `d3316e45`, then perform active Daily Special Admin/Public Menu/order pricing verification before Slice 6 closeout.  
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
@@ -422,12 +421,11 @@ order pricing verification before Slice 6 closeout.
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4 and Slice 5 are merged; Slice 5
-  is **PRODUCTION VERIFIED**. Slice 2C remains **DEFERRED** because the current Benefits
-  COMMIT + Order creation atomic transaction has no safe Prisma-free cross-context
-  replacement yet. Slice 5B is source-complete with local review finished and remote
-  CI pending; after merge it requires active Daily Special Admin/Public Menu/order pricing
-  verification before Slice 6 closeout.
+- Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4, Slice 5 and Slice 5B are merged;
+  Slice 5 is **PRODUCTION VERIFIED**. Slice 2C remains **DEFERRED** because the current
+  Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free cross-context
+  replacement yet. Slice 5B is **CI GREEN** and now requires active Daily Special Admin/
+  Public Menu/order pricing verification before Slice 6 closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

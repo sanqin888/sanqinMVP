@@ -1,13 +1,13 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 is **PRODUCTION VERIFIED**; Slice 5B is PR #2153 with reviewed
-source `848a23eb` and remote CI pending (2026-09-04).
+Phase 3 Slice 5 is **PRODUCTION VERIFIED**; Slice 5B merged via PR #2153 with
+final CI head `71191389`, squash merge `d3316e45`, and CI #5055 green (2026-09-04).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 5B Daily
+by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5B Daily
 Special -> Offers ownership contraction. Slice 5B moves persistence/policy behind
-public owner/application surfaces and is not expected to change the direct debt
-counts; GitHub Actions remains authoritative for the exact graph gate.
+public owner/application surfaces without increasing the direct-debt baseline;
+CI #5055 passed the authoritative architecture gate.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
