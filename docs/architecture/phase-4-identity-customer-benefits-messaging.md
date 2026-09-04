@@ -245,8 +245,10 @@ BOGO/manual-discount behavior on 2026-09-04; both passed, so Slice 0B is product
 
 ### Slice 1 — Email Verification ownership normalization
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice1-email-verification-owner`.
+Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2171 merged to
+`dev` as `afa1bff6` from final head `94955b27`; GitHub Actions CI #5116 passed.
+Per the current Phase 4 rollout plan, this slice will be deployed and actively verified
+with the rest of Phase 4 rather than as an individual production rollout.
 
 Readiness findings on the post-Slice-0B `dev` baseline:
 
@@ -297,40 +299,82 @@ Implemented source shape:
    Identity import, prevents the retired paths from returning, and protects Membership /
    Clover from deep-importing the old implementation.
 
-Expected monotonic direct-debt contractions recorded in the local architecture baseline
-are `identity-customer-benefits -> messaging-notifications 24 -> 22`,
+The merged monotonic baseline contracts
+`identity-customer-benefits -> messaging-notifications 24 -> 22`,
 `payments-clover -> messaging-notifications 3 -> 2`,
 `messaging-notifications -> architecture-foundation 5 -> 4`, and
 `messaging-notifications -> runtime-data-ci-ops 10 -> 9`. Identity -> Runtime contracts
 `16 -> 15` while Identity -> Architecture remains `13`: AuthModule keeps its existing
-Prisma provider registration, but AuthModule/AuthService/the new verification module share
-the local `identity-prisma.ts` infrastructure import; email normalization likewise has one
+Prisma provider registration, but AuthModule/AuthService/the verification module share the
+local `identity-prisma.ts` infrastructure import; email normalization likewise has one
 Identity-local boundary instead of duplicate cross-context imports.
 
 Removing the owner-reversed `messaging-notifications -> identity-customer-benefits`
-public edge breaks the final Catalog / Identity / Messaging SCC, so the local
-`legacyPublicCycleComponents` baseline is now empty. This is a source-state claim only:
-no local scanner/lint/build/test run is claimed under repository workflow, and no CI,
-deployment or production verification is claimed before remote review/validation.
+public edge breaks the final Catalog / Identity / Messaging SCC. CI #5116 accepted the
+empty `legacyPublicCycleComponents` baseline, so the repository now rejects any return of
+that legacy public cycle. Deployment and production verification remain intentionally
+pending until the Phase 4 batch rollout.
 
-Post-deployment verification must cover member email request/confirm plus guest checkout
+Phase-end active verification must cover member email request/confirm plus guest checkout
 email OTP through a real Web Clover payment, because the latter is guarded production
-code even though this slice changes only its verification dependency.
+code even though Slice 1 changed only its verification dependency.
 
 ### Slice 2 — Messaging public delivery boundaries
 
-Status: **PLANNED**.
+Status: **IN PROGRESS**.
 
 Replace cross-context imports of concrete Email/SMS/Notification/template services with
 small business-purpose delivery capabilities. Public contracts should carry stable IDs,
 contact/locale and message facts rather than Prisma `User` models or Messaging
 infrastructure types. Do not create one generic all-purpose Messaging facade.
 
-After the local Slice 1 source contraction, the primary architecture target becomes the
-remaining `identity-customer-benefits -> messaging-notifications` direct debt of **22**.
-The reverse Messaging -> Identity verification-ownership edge is already removed in
-Slice 1 source and must stay absent; Slice 2 should now focus on replacing the remaining
-concrete delivery/template imports without recreating a generic Messaging facade.
+#### Slice 2A — Auth Challenge Messaging boundary contraction
+
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice2a-auth-challenge-delivery`.
+
+Readiness audit of the merged Slice 1 baseline found **22** remaining direct
+Identity -> Messaging imports, grouped as Auth 9, Phone Verification 5, Admin 4,
+Membership 2 and Loyalty 2. Auth's nine imports were the smallest coherent first cut:
+`AuthService` directly imported `EmailService`, `SmsService`, `BusinessConfigService`,
+`TemplateRenderer` and `NotificationService`, while `AuthModule` imported `EmailModule`,
+`SmsModule`, `MessagingModule` and `NotificationModule`. The Notification pair is used by
+registration welcome notifications and is intentionally deferred; the other seven imports
+all belong to OTP/challenge delivery.
+
+Implemented source shape:
+
+1. Messaging owns `AUTH_CHALLENGE_DELIVERY` with four explicit business methods for
+   login 2FA SMS, login 2FA email, phone-enrollment SMS and membership-login SMS. It is an
+   Auth-specific capability, not a generic `sendMessage(channel, template, vars)` facade;
+2. Identity still owns code generation/hash, `AuthChallenge` persistence, rate limits,
+   expiry/attempts/revoke/consume, session/MFA state and `messagingSendId` linkage;
+3. Messaging now owns Brand/Store messaging snapshot reads, OTP template rendering,
+   `MessagingTemplateType.OTP`, provider dispatch and the historical purpose/metadata
+   mappings (`login_2fa`, `admin_login`, `verify`, `login`);
+4. Auth passes only contact, locale, code, TTL and `userStableId` where a known User is
+   involved. Login 2FA and phone-enrollment delivery no longer pass internal User DB UUIDs
+   across the context boundary;
+5. `SmsService` accepts optional `userStableId` and links `MessagingSend.user` through the
+   stable identifier when supplied, matching the existing EmailService stable-ID path;
+6. `AuthModule` replaces direct Email/SMS/Messaging module wiring with the Messaging
+   public `AuthChallengeDeliveryModule`; `NotificationModule` remains because welcome
+   notifications are outside 2A;
+7. focused characterization coverage preserves zero-padded OTP generation plus the four
+   delivery purpose/template/provider mappings, and the central scanner prevents concrete
+   Email/SMS/template/config imports or DB-UUID delivery linkage from returning to Auth.
+
+The local monotonic baseline contracts
+`identity-customer-benefits -> messaging-notifications 22 -> 15`; all other direct pairs
+remain unchanged. Identity's total outgoing direct debt therefore contracts **60 -> 53**.
+No dependency/lockfile, Prisma schema/migration, HTTP route, OTP policy, provider wire,
+session/MFA state machine or payment behavior is changed. Per the Phase 4 rollout plan,
+2A will not be deployed separately; production verification is deferred to the final
+Phase 4 batch deployment.
+
+Remaining Slice 2 work after 2A is expected to proceed through Phone Verification,
+Admin delivery boundaries, then Membership/Loyalty tail contraction without recreating a
+reverse Messaging -> Identity edge.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 
@@ -428,5 +472,8 @@ Every Phase 4 code slice must update, in the same local change:
 
 Local implementation stops after diff/status review. Remote delivery is through a
 feature PR targeting `dev`; GitHub Actions is authoritative, and merge occurs only after
-all required checks are green. Runtime-sensitive payment/Uber/Store behavior must not be
-marked VERIFIED until its required active verification is actually completed.
+all required checks are green. The current rollout plan keeps intermediate Phase 4 slices
+merged/CI-green without individual production deployment; after Phase 4 source closeout,
+the accumulated phase changes are deployed together and verified with one consolidated
+active test pass. No slice may be marked DEPLOYED/VERIFIED before that batch rollout and
+its required active verification is actually completed.

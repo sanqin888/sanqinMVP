@@ -13,7 +13,6 @@ import {
   AuthChallengeStatus,
   AuthChallengeType,
   MessagingChannel,
-  MessagingTemplateType,
   UserLanguage,
   type User,
   type TwoFactorMethod,
@@ -22,10 +21,10 @@ import {
 import argon2, { argon2id } from 'argon2';
 import { normalizeEmail } from './email-normalization';
 import { normalizePhone } from '../common/utils/phone';
-import { EmailService } from '../email/email.service';
-import { SmsService } from '../sms/sms.service';
-import { BusinessConfigService } from '../messaging/business-config.service';
-import { TemplateRenderer } from '../messaging/template-renderer';
+import {
+  AUTH_CHALLENGE_DELIVERY,
+  type AuthChallengeDeliveryPort,
+} from '../messaging/public-api';
 import { NotificationService } from '../notifications/notification.service';
 import {
   COUPON_PROGRAM_TRIGGER,
@@ -46,10 +45,8 @@ export class AuthService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly emailService: EmailService,
-    private readonly smsService: SmsService,
-    private readonly templateRenderer: TemplateRenderer,
-    private readonly businessConfigService: BusinessConfigService,
+    @Inject(AUTH_CHALLENGE_DELIVERY)
+    private readonly authChallengeDelivery: AuthChallengeDeliveryPort,
     private readonly notificationService: NotificationService,
     @Inject(COUPON_PROGRAM_TRIGGER)
     private readonly couponTriggerService: CouponProgramTriggerPort,
@@ -624,26 +621,12 @@ export class AuthService {
     });
 
     const locale = this.resolveUserLocale(user.language);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-    const message = await this.templateRenderer.renderSms({
-      template: 'otp',
-      locale,
-      vars: {
-        ...baseVars,
-        code,
-        expiresInMin: 5,
-        purpose: 'login_2fa',
-      },
-    });
-
-    const sendResult = await this.smsService.sendSms({
+    const sendResult = await this.authChallengeDelivery.sendLoginTwoFactorSms({
       phone: user.phone,
-      body: message,
-      templateType: MessagingTemplateType.OTP,
+      code,
+      expiresInMin: 5,
       locale,
-      userId: user.id,
-      metadata: { purpose: 'login_2fa' },
+      userStableId: user.userStableId,
     });
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
@@ -740,30 +723,15 @@ export class AuthService {
     });
 
     const locale = this.resolveUserLocale(user.language);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-    const { subject, html, text } = await this.templateRenderer.renderEmail({
-      template: 'otp',
-      locale,
-      vars: {
-        ...baseVars,
+    const sendResult = await this.authChallengeDelivery.sendLoginTwoFactorEmail(
+      {
+        email: user.email,
         code,
         expiresInMin: 5,
-        purpose: 'admin_login',
+        locale,
+        userStableId: user.userStableId,
       },
-    });
-
-    const sendResult = await this.emailService.sendEmail({
-      to: user.email,
-      subject,
-      text,
-      html,
-      tags: { type: 'admin_login_2fa' },
-      locale,
-      templateType: MessagingTemplateType.OTP,
-      userId: user.id,
-      metadata: { purpose: 'admin_login' },
-    });
+    );
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
       data: { messagingSendId: sendResult.sendId },
@@ -1029,29 +997,13 @@ export class AuthService {
       });
     });
 
-    // ================== 添加以下发送短信的代码 ==================
     const locale = this.resolveUserLocale(session.user.language);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-
-    const message = await this.templateRenderer.renderSms({
-      template: 'otp',
-      locale,
-      vars: {
-        ...baseVars,
-        code,
-        expiresInMin: 5,
-        purpose: 'verify',
-      },
-    });
-
-    const sendResult = await this.smsService.sendSms({
+    const sendResult = await this.authChallengeDelivery.sendPhoneEnrollmentSms({
       phone: normalized,
-      body: message,
-      templateType: MessagingTemplateType.OTP,
+      code,
+      expiresInMin: 5,
       locale,
-      userId: session.userId,
-      metadata: { purpose: 'verify' },
+      userStableId: session.user.userStableId,
     });
     await this.prisma.authChallenge.updateMany({
       where: {
@@ -1294,32 +1246,16 @@ export class AuthService {
       });
     });
 
-    // 3.真正调用短信服务发送
-    // 构建短信内容（根据需要支持多语言）
     const existingUser = await this.prisma.user.findFirst({
       where: { phone: normalized },
       select: { language: true },
     });
     const locale = this.resolveUserLocale(existingUser?.language ?? null);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-    const message = await this.templateRenderer.renderSms({
-      template: 'otp',
+    const sendResult = await this.authChallengeDelivery.sendMembershipLoginSms({
+      phone: normalized,
+      code,
+      expiresInMin: 5,
       locale,
-      vars: {
-        ...baseVars,
-        code,
-        expiresInMin: 5,
-        purpose: 'login',
-      },
-    });
-
-    const sendResult = await this.smsService.sendSms({
-      phone: normalized, // 注意：这里的 normalized 是不带 + 号的纯数字
-      body: message,
-      templateType: MessagingTemplateType.OTP,
-      locale,
-      metadata: { purpose: 'login' },
     });
     await this.prisma.authChallenge.updateMany({
       where: {

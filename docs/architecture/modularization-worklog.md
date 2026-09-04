@@ -601,8 +601,8 @@ workflow.
 
 ### 2026-09-04 — Phase 4 Slice 1: Email Verification ownership normalization
 
-**PR/SHA:** local branch `refactor/phase4-slice1-email-verification-owner`  
-**State:** LOCAL  
+**PR/SHA:** PR #2171; final head `94955b27`; squash merge `afa1bff6`  
+**State:** CI  
 **Result:** moved email-verification challenge lifecycle, checkout proof-token handling and
 verified `User.email` / `emailVerifiedAt` mutation from the Messaging `email/` area into an
 Identity-owned `IDENTITY_EMAIL_VERIFICATION` capability. Messaging now exposes only the
@@ -620,8 +620,35 @@ ownership from returning. Local monotonic baselines contract Identity -> Messagi
 22`, Identity -> Runtime `16 -> 15`, Payments -> Messaging `3 -> 2`, Messaging ->
 Foundation `5 -> 4`, and Messaging -> Runtime `10 -> 9`; the final
 Catalog/Identity/Messaging legacy public SCC is broken and
-`legacyPublicCycleComponents` becomes empty. No local scanner/lint/build/test run is claimed
-under repository workflow; no CI/deployment/active verification is claimed yet.  
+`legacyPublicCycleComponents` becomes empty. Final GitHub Actions CI #5116 passed the
+architecture gate, API/Web lint/build/strict checks and tests before squash merge
+`afa1bff6`. Per the Phase 4 rollout plan, deployment and active verification are deferred
+to the consolidated Phase-end batch rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2A: Auth Challenge Messaging boundary contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice2a-auth-challenge-delivery`  
+**State:** LOCAL  
+**Result:** introduced the Messaging-owned `AUTH_CHALLENGE_DELIVERY` public capability with
+four explicit delivery operations for login 2FA SMS/email, phone-enrollment SMS and
+membership-login SMS. Auth keeps OTP generation/hash, `AuthChallenge` persistence,
+rate-limit/expiry/attempt state and session/MFA mutation; Messaging now owns messaging
+configuration, OTP template rendering, `MessagingTemplateType.OTP`, provider dispatch and
+the historical `login_2fa` / `admin_login` / `verify` / `login` purpose metadata. Known
+User sends cross the boundary with `userStableId`; `SmsService` now supports stable-ID
+relation linkage instead of requiring the User DB UUID. `AuthService` drops concrete
+Email/SMS/BusinessConfig/TemplateRenderer imports and `AuthModule` replaces Email/SMS /
+Messaging module wiring with the public delivery module; the two Notification imports
+remain for registration welcome notifications outside 2A. The central scanner reserves
+this shape and the local direct-debt baseline contracts Identity -> Messaging **22 -> 15**,
+reducing total Identity outgoing direct debt **60 -> 53**. No dependency, Prisma schema /
+migration, route, OTP-policy, session/MFA, provider-wire or payment behavior is changed.
+No local lint/build/test/scanner run is claimed under repository workflow. This slice will
+not be deployed separately; production verification is deferred to the Phase 4 batch
+rollout after source closeout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
@@ -639,16 +666,17 @@ under repository workflow; no CI/deployment/active verification is claimed yet.
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 LOCAL** on
-  2026-09-04. Slice 0A merged via PR #2163 / `aa302629` after CI #5092 and passed active
-  Admin PromotionRule create/edit/refresh/delete verification. The POS pricing hotfix
-  merged via PR #2166 / `bb833550` after CI #5102 and passed active same-item BOGO +
-  retained manual discount + completed-order amount verification. Slice 0B merged via PR
-  #2168 / `b2d42c32` after final head `739938c5` passed CI #5107 and active checks.
-  Slice 1 source on `refactor/phase4-slice1-email-verification-owner` moves verification
-  lifecycle/account mutation to Identity, leaves Messaging with delivery only, contracts
-  the recorded direct debt, and removes the final legacy public SCC in source. Slice 1 has
-  not yet been pushed, CI-validated, deployed or actively verified.
+- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 MERGED/CI;
+  SLICE 2A LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629` after CI #5092
+  and passed active Admin PromotionRule verification. The POS pricing hotfix merged via PR
+  #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount verification.
+  Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks. Slice 1
+  merged via PR #2171 as `afa1bff6` after final head `94955b27` passed CI #5116; it moves
+  email-verification ownership to Identity and removes the final legacy public SCC. Slice
+  2A locally moves Auth challenge message configuration/template/provider work behind
+  `AUTH_CHALLENGE_DELIVERY`, contracting Identity -> Messaging `22 -> 15`. Per the current
+  rollout plan, Slice 1 onward are not individually deployed; the accumulated Phase 4
+  changes will be deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

@@ -347,6 +347,15 @@
     "retiredMessagingService": "apps/api/src/email/email-verification.service.ts",
     "retiredMessagingController": "apps/api/src/email/email-checkout-verification.controller.ts"
   },
+  "authChallengeMessagingDeliveryBoundary": {
+    "deliveryContract": "apps/api/src/messaging/contracts/auth-challenge-delivery.contract.ts",
+    "deliveryService": "apps/api/src/messaging/auth-challenge-delivery.service.ts",
+    "deliveryModule": "apps/api/src/messaging/auth-challenge-delivery.module.ts",
+    "publicSurface": "apps/api/src/messaging/public-api.ts",
+    "authService": "apps/api/src/auth/auth.service.ts",
+    "authModule": "apps/api/src/auth/auth.module.ts",
+    "smsService": "apps/api/src/sms/sms.service.ts"
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -418,7 +427,7 @@
     "identity-customer-benefits -> brand-store": 4,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 1,
-    "identity-customer-benefits -> messaging-notifications": 22,
+    "identity-customer-benefits -> messaging-notifications": 15,
     "identity-customer-benefits -> runtime-data-ci-ops": 15,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 4,

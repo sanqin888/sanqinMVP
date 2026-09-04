@@ -12,10 +12,8 @@ import { GoogleStartGuard } from './oauth/google.guard';
 import { PrismaService } from './identity-prisma';
 import { RolesGuard } from './roles.guard';
 import { MfaGuard } from './mfa.guard';
-import { EmailModule } from '../email/email.module';
 import { AdminMfaGuard } from './admin-mfa.guard';
-import { SmsModule } from '../sms/sms.module';
-import { MessagingModule } from '../messaging/messaging.module';
+import { AuthChallengeDeliveryModule } from '../messaging/public-api';
 import { NotificationModule } from '../notifications/notification.module';
 import { IdentityChallengeModule } from './challenge-engine.module';
 import { PosDeviceModule } from '../pos/public-api';
@@ -26,9 +24,7 @@ import { CouponsModule } from '../coupons/public-api';
   imports: [
     PrismaModule,
     PassportModule,
-    EmailModule,
-    SmsModule,
-    MessagingModule,
+    AuthChallengeDeliveryModule,
     NotificationModule,
     IdentityChallengeModule,
     PosDeviceModule,
