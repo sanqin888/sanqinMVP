@@ -1,8 +1,11 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 5B merged via
-PR #2153 with final CI head `71191389`, squash merge `d3316e45`, and CI #5055 green;
-active Admin/Public Menu/checkout-pricing verification completed on 2026-09-04.
+Phase 3 is **PRODUCTION VERIFIED / CLOSED** for its approved scope as of 2026-09-04.
+Slice 6 merged via PR #2157 with final PR head `8547b46c`, squash merge `b91afb6a`, and
+CI #5070 green; focused Uber menu item availability OFF -> ON, temporary suspension /
+recovery, and option availability OFF -> ON verification were completed successfully.
+Slice 2C remains explicitly DEFERRED and is not represented as completed by this
+closure.
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5B Daily
@@ -37,9 +40,10 @@ Uber public capability. The first remote cycle-gate run additionally surfaced a
 pre-existing public SCC among Catalog / Orders / Identity / Messaging. Because those
 edges predate Slice 6, they are now captured as `legacyPublicCycleComponents`
 contraction-only debt: they may shrink but cannot gain a new context or internal edge.
-GitHub Actions CI #5069 passed on implementation head `7c8b374e`; the Architecture
-gate found no new direct pair and no new/expanded public-contract cycle. No local
-scanner execution is claimed here.
+GitHub Actions CI #5070 passed on final PR head `8547b46c`; the Architecture gate found
+no new direct pair and no new/expanded public-contract cycle. PR #2157 merged to `dev`
+as `b91afb6a`, and the affected Uber availability flows were then actively verified.
+No local scanner execution is claimed here.
 
 ## Context map
 
