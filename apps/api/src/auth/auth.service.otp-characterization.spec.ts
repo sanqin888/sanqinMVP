@@ -9,6 +9,18 @@ import type { PosDeviceCredentialVerifierPort } from '../pos/public-api';
 import { AuthService } from './auth.service';
 import { ChallengeEngine } from './challenge-engine.service';
 
+type AuthLifecycleNotificationTestSeam = {
+  notifyRegistrationWelcome(user: {
+    id: string;
+    userStableId: string;
+    email: string | null;
+    phone: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    language: 'ZH' | 'EN';
+  }): void;
+};
+
 describe('AuthService OTP characterization', () => {
   const originalOtpSecret = process.env.OTP_SECRET;
 
@@ -32,10 +44,13 @@ describe('AuthService OTP characterization', () => {
       sendPhoneEnrollmentSms: jest.fn(),
       sendMembershipLoginSms: jest.fn(),
     };
+    const customerLifecycleNotification = {
+      notifyRegistrationWelcome: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new AuthService(
       prisma as never,
       authChallengeDelivery as never,
-      {} as never,
+      customerLifecycleNotification as never,
       {} as never,
       challengeEngine,
       { verifyCredentials: jest.fn() } as never,
@@ -46,6 +61,7 @@ describe('AuthService OTP characterization', () => {
       prisma,
       challengeEngine,
       authChallengeDelivery,
+      customerLifecycleNotification,
     };
   };
 
@@ -75,6 +91,33 @@ describe('AuthService OTP characterization', () => {
     } else {
       process.env.OTP_SECRET = originalOtpSecret;
     }
+  });
+
+  it('maps registration welcome to stable identity', () => {
+    const { service, customerLifecycleNotification } = createService();
+
+    (
+      service as unknown as AuthLifecycleNotificationTestSeam
+    ).notifyRegistrationWelcome({
+      id: 'user-db-id',
+      userStableId: 'customer-stable-1',
+      email: 'member@example.com',
+      phone: '+14165550100',
+      firstName: 'San',
+      lastName: 'Qin',
+      language: 'ZH',
+    });
+
+    expect(
+      customerLifecycleNotification.notifyRegistrationWelcome,
+    ).toHaveBeenCalledWith({
+      userStableId: 'customer-stable-1',
+      email: 'member@example.com',
+      phone: '+14165550100',
+      firstName: 'San',
+      lastName: 'Qin',
+      language: 'ZH',
+    });
   });
 
   it('selects the zero-padded OTP profile when creating an SMS challenge', async () => {

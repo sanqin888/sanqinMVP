@@ -25,7 +25,10 @@ import {
   AUTH_CHALLENGE_DELIVERY,
   type AuthChallengeDeliveryPort,
 } from '../messaging/public-api';
-import { NotificationService } from '../notifications/notification.service';
+import {
+  CUSTOMER_LIFECYCLE_NOTIFICATION,
+  type CustomerLifecycleNotificationPort,
+} from '../notifications/public-api';
 import {
   COUPON_PROGRAM_TRIGGER,
   type CouponProgramTriggerPort,
@@ -47,7 +50,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     @Inject(AUTH_CHALLENGE_DELIVERY)
     private readonly authChallengeDelivery: AuthChallengeDeliveryPort,
-    private readonly notificationService: NotificationService,
+    @Inject(CUSTOMER_LIFECYCLE_NOTIFICATION)
+    private readonly customerLifecycleNotification: CustomerLifecycleNotificationPort,
     @Inject(COUPON_PROGRAM_TRIGGER)
     private readonly couponTriggerService: CouponProgramTriggerPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
@@ -55,6 +59,17 @@ export class AuthService {
     @Inject(POS_DEVICE_CREDENTIAL_VERIFIER)
     private readonly posDeviceCredentialVerifier: PosDeviceCredentialVerifierPort,
   ) {}
+
+  private notifyRegistrationWelcome(user: User): void {
+    void this.customerLifecycleNotification.notifyRegistrationWelcome({
+      userStableId: user.userStableId,
+      email: user.email,
+      phone: user.phone,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      language: user.language === UserLanguage.ZH ? 'ZH' : 'EN',
+    });
+  }
 
   private async triggerSignupCompletedPrograms(user: User) {
     try {
@@ -429,7 +444,7 @@ export class AuthService {
 
     //新增：如果是新用户，发送欢迎通知
     if (isNewUser) {
-      void this.notificationService.notifyRegisterWelcome({ user });
+      this.notifyRegistrationWelcome(user);
       void this.triggerSignupCompletedPrograms(user);
     }
 
@@ -1360,7 +1375,7 @@ export class AuthService {
 
     //如果是新用户，发送欢迎通知
     if (isNewUser) {
-      void this.notificationService.notifyRegisterWelcome({ user });
+      this.notifyRegistrationWelcome(user);
       void this.triggerSignupCompletedPrograms(user);
     }
 

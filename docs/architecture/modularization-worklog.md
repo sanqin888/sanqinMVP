@@ -682,8 +682,8 @@ the consolidated Phase 4 rollout.
 
 ### 2026-09-04 — Phase 4 Slice 2C: Admin Messaging boundary contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice2c-admin-messaging-delivery`  
-**State:** LOCAL  
+**PR/SHA:** PR #2174; final head `2c18e3c5`; squash merge `e27489cf`  
+**State:** CI  
 **Result:** removed Admin's four concrete Email dependencies by introducing two independent
 Email/Messaging public capabilities rather than a generic Admin mail facade.
 `STAFF_INVITE_DELIVERY` keeps staff invite creation/resend/revoke state in Identity/Admin and
@@ -701,8 +701,36 @@ Identity outgoing direct debt **48 -> 44**. Focused characterization and a centr
 guard reserve the two capabilities, stable-ID linkage, invite forwarding, bilingual recharge
 content and `email_send_failed` fallback. No dependency, Prisma schema/migration, HTTP route,
 staff-invite state machine, recharge amount/authorization or provider protocol is changed.
-No local lint/build/test/scanner run is claimed under repository workflow; this slice will not
-be deployed separately before the consolidated Phase 4 rollout.  
+No local lint/build/test/scanner run is claimed under repository workflow. Final GitHub
+Actions CI #5126 passed Architecture, API/Web lint/build/strict checks and tests on final head
+`2c18e3c5` before squash merge `e27489cf`. This slice will not be deployed separately before
+the consolidated Phase 4 rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2D: Customer lifecycle notification boundary contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice2d-customer-lifecycle-notifications`  
+**State:** LOCAL  
+**Result:** introduced the narrow Notifications-owned `CUSTOMER_LIFECYCLE_NOTIFICATION`
+public capability for registration welcome and subscription welcome delivery. Auth keeps the
+new-user decision, registration/session/account mutation and maps only stable customer facts;
+Messaging no longer receives a Prisma `User` or User DB UUID for that path. Membership keeps
+`marketingEmailOptIn` consent ownership and calls subscription delivery only after persisted
+email + opt-in are both present; the existing `MARKETING_OPT_IN` coupon-program trigger still
+runs afterward when welcome delivery is skipped. Messaging preserves registration `welcome`
+template rendering, email-first/SMS fallback, `register_welcome` / `trigger=register` audit
+metadata and the subscription `Subscription` / `SUBSCRIPTION_CONFIRM` mapping. Registration
+email/SMS and subscription email now link MessagingSend by `userStableId`. Auth and Membership
+services/modules use `notifications/public-api.ts`, contracting Identity -> Messaging
+**6 -> 2** and total Identity outgoing direct debt **44 -> 40**. Focused characterization and
+a central scanner guard reserve the stable-ID-only contract, fallback behavior and
+Membership-owned consent gate. No dependency, Prisma schema/migration, HTTP route,
+registration/session flow, marketing-consent API, coupon issuance behavior, provider wire or
+notification-template meaning is changed. No local lint/build/test/scanner run is claimed
+under repository workflow; this slice will not be deployed separately before the consolidated
+Phase 4 rollout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
@@ -720,8 +748,8 @@ be deployed separately before the consolidated Phase 4 rollout.
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B
-  MERGED/CI; SLICE 2C LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
+- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
+  MERGED/CI; SLICE 2D LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -729,11 +757,12 @@ be deployed separately before the consolidated Phase 4 rollout.
   removes the final legacy public SCC. Slice 2A merged via PR #2172 as `c8e91303` after final
   head `29bf23b7` passed CI #5120, contracting Identity -> Messaging `22 -> 15`. Slice 2B
   merged via PR #2173 as `41428324` after final head `d63bc307` passed CI #5123, contracting
-  the baseline `15 -> 10`. Slice 2C locally removes Admin's remaining concrete Email
-  dependencies through staff-invite and member-recharge public capabilities, contracting the
-  local baseline `10 -> 6`. Per the current rollout plan, Slice 1 onward are not individually
-  deployed; the accumulated Phase 4 changes will be deployed and actively verified together
-  after source closeout.
+  the baseline `15 -> 10`. Slice 2C merged via PR #2174 as `e27489cf` after final head
+  `2c18e3c5` passed CI #5126, contracting `10 -> 6`. Slice 2D locally contracts Auth and
+  Membership lifecycle notification delivery behind `CUSTOMER_LIFECYCLE_NOTIFICATION`,
+  contracting the local baseline `6 -> 2`. Per the current rollout plan, Slice 1 onward are
+  not individually deployed; the accumulated Phase 4 changes will be deployed and actively
+  verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

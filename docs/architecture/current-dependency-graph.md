@@ -96,7 +96,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 6; runtime-data-ci-ops 15; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 2; runtime-data-ci-ops 15; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
@@ -112,10 +112,10 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 2C source contraction records these
+The current local monotonic baseline after the Slice 2D source contraction records these
 direct-debt totals:
 
-- identity-customer-benefits: **44**
+- identity-customer-benefits: **40**
 - payments-clover: **59**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
@@ -127,8 +127,8 @@ direct-debt totals:
 
 The reduction in Orders/POS counts is baseline normalization of source debt that had
 already contracted; it does not reopen those contexts as the next primary owner phase.
-After Slice 2C, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
-at **44**, but that does not change the active Phase 4 owner scope: Identity still has
+After Slice 2D, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
+at **40**, but that does not change the active Phase 4 owner scope: Identity still has
 substantial remaining Customer/Benefits/Messaging boundary debt and is a high-coupling
 target for Payments, POS, Accounting, Orders, External Channels and Catalog. Payment
 ownership is not reopened merely to chase the largest numeric total mid-phase.
@@ -220,17 +220,29 @@ after final head `d63bc307` passed CI #5123; HTTP routes, Clover phone-proof val
 AdminMembers' current PhoneVerificationService dependency remain unchanged. Deployment stays
 deferred to the Phase 4 batch rollout.
 
-Slice 2C locally contracts Admin's four concrete Email dependencies into two narrow Email
-public capabilities. Staff invite create/resend/revoke state remains in Identity/Admin while
+Slice 2C contracts Admin's four concrete Email dependencies into two narrow Email public
+capabilities. Staff invite create/resend/revoke state remains in Identity/Admin while
 `STAFF_INVITE_DELIVERY` delegates the existing invite email path. POS member recharge email
 OTP keeps contact/profile matching, challenge lifecycle and recharge-token semantics in
 Identity, while `MEMBER_RECHARGE_EMAIL_DELIVERY` owns the bilingual message body,
 `MessagingTemplateType.OTP`, `pos_recharge_otp` tag and provider dispatch. The delivery
-boundary now uses `userStableId` rather than the internal User DB UUID. Admin no longer imports
+boundary uses `userStableId` rather than the internal User DB UUID. Admin no longer imports
 `EmailService` or `EmailModule`; `identity-customer-benefits -> messaging-notifications`
-contracts **10 -> 6** and total Identity outgoing debt contracts **48 -> 44**. The remaining
-six direct Messaging imports are Auth welcome notifications 2, Membership 2 and Loyalty 2.
-The source is awaiting review/remote CI and will not be deployed separately.
+contracts **10 -> 6** and total Identity outgoing debt contracts **48 -> 44**. PR #2174 merged
+as `e27489cf` after final head `2c18e3c5` passed CI #5126; deployment remains deferred to the
+Phase 4 batch rollout.
+
+Slice 2D locally contracts Auth and Membership lifecycle notifications behind the narrow
+`CUSTOMER_LIFECYCLE_NOTIFICATION` public capability. Auth retains the new-user decision and
+maps only stable customer/contact/name/language facts for registration welcome delivery.
+Membership retains the persisted marketing-consent decision and invokes subscription welcome
+only after `email + marketingEmailOptIn` are true; the existing marketing opt-in coupon trigger
+still runs afterward. Messaging retains template rendering, registration email-to-SMS fallback,
+provider routing and audit metadata, but registration/subscription sends now link by
+`userStableId` rather than the User DB UUID. `identity-customer-benefits ->
+messaging-notifications` contracts **6 -> 2** and total Identity outgoing debt contracts
+**44 -> 40**. The only remaining direct Messaging imports are Loyalty's `OrderEventsBus` and
+`MessagingModule`; the source is awaiting review/remote CI and will not be deployed separately.
 
 ## Phase 1 boundary changes reflected here
 

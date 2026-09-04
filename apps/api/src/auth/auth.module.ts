@@ -14,7 +14,7 @@ import { RolesGuard } from './roles.guard';
 import { MfaGuard } from './mfa.guard';
 import { AdminMfaGuard } from './admin-mfa.guard';
 import { AuthChallengeDeliveryModule } from '../messaging/public-api';
-import { NotificationModule } from '../notifications/notification.module';
+import { NotificationModule } from '../notifications/public-api';
 import { IdentityChallengeModule } from './challenge-engine.module';
 import { PosDeviceModule } from '../pos/public-api';
 import { CouponsModule } from '../coupons/public-api';

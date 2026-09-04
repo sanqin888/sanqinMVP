@@ -10,7 +10,7 @@ import {
   MembershipController,
   MembershipPublicController,
 } from './membership.controller';
-import { NotificationModule } from '../notifications/notification.module';
+import { NotificationModule } from '../notifications/public-api';
 import { CouponsModule } from '../coupons/public-api';
 
 @Module({

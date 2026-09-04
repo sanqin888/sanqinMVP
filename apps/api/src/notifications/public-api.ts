@@ -5,4 +5,11 @@ export {
   type CouponIssuedNotificationReason,
   type CouponIssuedNotificationResult,
 } from './contracts/coupon-issued-notification.contract';
+export {
+  CUSTOMER_LIFECYCLE_NOTIFICATION,
+  type CustomerLifecycleNotificationLanguage,
+  type CustomerLifecycleNotificationPort,
+  type RegistrationWelcomeNotificationInput,
+  type SubscriptionWelcomeNotificationInput,
+} from './contracts/customer-lifecycle-notification.contract';
 export { NotificationModule } from './notification.module';

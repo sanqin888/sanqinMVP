@@ -5,6 +5,11 @@ import type {
   CouponIssuedNotificationPort,
   CouponIssuedNotificationReason,
 } from './contracts/coupon-issued-notification.contract';
+import type {
+  CustomerLifecycleNotificationPort,
+  RegistrationWelcomeNotificationInput,
+  SubscriptionWelcomeNotificationInput,
+} from './contracts/customer-lifecycle-notification.contract';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
@@ -87,7 +92,9 @@ class NotificationRateLimiter {
 }
 
 @Injectable()
-export class NotificationService implements CouponIssuedNotificationPort {
+export class NotificationService
+  implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort
+{
   private readonly logger = new Logger(NotificationService.name);
   private readonly marketingLimiter = new NotificationRateLimiter();
 
@@ -178,16 +185,18 @@ export class NotificationService implements CouponIssuedNotificationPort {
     };
   }
 
-  async notifyRegisterWelcome(params: { user: User }) {
-    const locale = params.user.language === 'ZH' ? 'zh' : 'en';
+  async notifyRegistrationWelcome(
+    input: RegistrationWelcomeNotificationInput,
+  ): Promise<void> {
+    const locale = input.language === 'ZH' ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const claimUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership/login`;
 
-    return this.sendEmailFirst({
-      email: params.user.email,
-      phone: params.user.phone,
-      context: `register_welcome:${params.user.id}`,
+    await this.sendEmailFirst({
+      email: input.email,
+      phone: input.phone,
+      context: `register_welcome:${input.userStableId}`,
       sendEmail: async () => {
         const { subject, html, text } = await this.templateRenderer.renderEmail(
           {
@@ -196,21 +205,21 @@ export class NotificationService implements CouponIssuedNotificationPort {
             vars: {
               ...baseVars,
               userName:
-                this.formatUserName(params.user) ||
+                this.formatUserName(input) ||
                 (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
               claimUrl,
             },
           },
         );
         return this.emailService.sendEmail({
-          to: params.user.email!,
+          to: input.email!,
           subject,
           html,
           text,
           tags: { type: 'register_welcome' },
-          locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+          locale: input.language === 'ZH' ? 'zh-CN' : 'en',
           templateType: MessagingTemplateType.SIGNUP_WELCOME,
-          userId: params.user.id,
+          userStableId: input.userStableId,
           metadata: { trigger: 'register' },
         });
       },
@@ -221,11 +230,11 @@ export class NotificationService implements CouponIssuedNotificationPort {
           vars: { ...baseVars, claimUrl },
         });
         return this.smsService.sendSms({
-          phone: params.user.phone!,
+          phone: input.phone!,
           body,
           templateType: MessagingTemplateType.SIGNUP_WELCOME,
           locale,
-          userId: params.user.id,
+          userStableId: input.userStableId,
           metadata: {
             trigger: 'register',
             ...(fallbackReason
@@ -408,12 +417,10 @@ export class NotificationService implements CouponIssuedNotificationPort {
     };
   }
 
-  async notifySubscriptionWelcome(params: { user: User }) {
-    if (!params.user.email || !params.user.marketingEmailOptIn) {
-      return { ok: false, error: 'marketing opt-in missing' };
-    }
-
-    const locale = params.user.language === 'ZH' ? 'zh' : 'en';
+  async notifySubscriptionWelcome(
+    input: SubscriptionWelcomeNotificationInput,
+  ): Promise<void> {
+    const locale = input.language === 'ZH' ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
     const manageUrl = `${process.env.PUBLIC_BASE_URL}/${locale}/membership`;
@@ -424,21 +431,21 @@ export class NotificationService implements CouponIssuedNotificationPort {
       vars: {
         ...baseVars,
         userName:
-          this.formatUserName(params.user) ||
+          this.formatUserName(input) ||
           (locale === 'zh' ? '亲爱的顾客' : 'Dear Customer'),
         manageUrl,
       },
     });
 
-    return this.emailService.sendEmail({
-      to: params.user.email,
+    await this.emailService.sendEmail({
+      to: input.email,
       subject,
       html,
       text,
       tags: { type: 'welcome' },
-      locale: params.user.language === 'ZH' ? 'zh-CN' : 'en',
+      locale: input.language === 'ZH' ? 'zh-CN' : 'en',
       templateType: MessagingTemplateType.SUBSCRIPTION_CONFIRM,
-      userId: params.user.id,
+      userStableId: input.userStableId,
       metadata: { trigger: 'marketing_opt_in' },
     });
   }
