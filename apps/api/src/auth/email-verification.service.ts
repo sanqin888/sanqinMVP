@@ -1,66 +1,107 @@
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
   MessagingChannel,
 } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from './email.service';
-import { normalizeEmail } from '../common/utils/email';
+
+import {
+  EMAIL_VERIFICATION_DELIVERY,
+  type EmailVerificationDeliveryPort,
+} from '../email/public-api';
+import { PrismaService } from './identity-prisma';
 import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
-} from '../auth/public-api';
+} from './challenge-engine.port';
+import { normalizeEmail } from './email-normalization';
+import type {
+  EmailVerificationResult,
+  IdentityEmailVerificationPort,
+  RequestCheckoutEmailVerificationInput,
+  RequestUserEmailVerificationInput,
+  ValidateCheckoutEmailVerificationInput,
+  VerifyCheckoutEmailCodeInput,
+  VerifyUserEmailCodeInput,
+} from './email-verification.port';
 
 @Injectable()
-export class EmailVerificationService {
+export class EmailVerificationService implements IdentityEmailVerificationPort {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly emailService: EmailService,
+    @Inject(EMAIL_VERIFICATION_DELIVERY)
+    private readonly delivery: EmailVerificationDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
   ) {}
 
-  async requestVerification(params: {
-    userId: string;
-    email: string;
-    name?: string | null;
-  }) {
-    const normalized = normalizeEmail(params.email);
-    if (!normalized) {
-      return { ok: false, error: 'invalid_email' };
+  async requestUserVerification(
+    params: RequestUserEmailVerificationInput,
+  ): Promise<EmailVerificationResult> {
+    const email = normalizeEmail(params.email);
+    if (!email) {
+      throw new BadRequestException('invalid_email');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId: params.userStableId },
+      select: {
+        id: true,
+        email: true,
+        emailVerifiedAt: true,
+        firstName: true,
+        lastName: true,
+        language: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+
+    const emailOwner = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (emailOwner && emailOwner.id !== user.id) {
+      throw new BadRequestException('email_in_use');
+    }
+
+    if (user.email === email && user.emailVerifiedAt) {
+      return { ok: true, alreadyVerified: true };
     }
 
     const expiresAt = this.challengeEngine.expiresAt(
       new Date(),
       24 * 60 * 60 * 1000,
     );
-    const user = await this.prisma.user.findUnique({
-      where: { id: params.userId },
-      select: { language: true },
-    });
-
     const token = this.challengeEngine.generateCode('ZERO_PADDED');
     const codeHash = this.challengeEngine.hashCode(token, 'OTP');
 
     const challenge = await this.prisma.authChallenge.create({
       data: {
-        userId: params.userId,
+        userId: user.id,
         type: AuthChallengeType.EMAIL_VERIFY,
         channel: MessagingChannel.EMAIL,
-        addressNorm: normalized,
-        addressRaw: params.email,
+        addressNorm: email,
+        addressRaw: email,
         codeHash,
         purpose: 'email_verify',
         expiresAt,
       },
     });
 
-    const sendResult = await this.emailService.sendVerificationEmail({
-      to: params.email,
+    const sendResult = await this.delivery.sendVerificationEmail({
+      to: email,
       token,
-      name: params.name ?? null,
-      locale: user?.language === 'ZH' ? 'zh' : 'en',
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
+      locale: user.language === 'ZH' ? 'zh' : 'en',
     });
 
     await this.prisma.authChallenge.update({
@@ -71,11 +112,9 @@ export class EmailVerificationService {
     return { ok: true };
   }
 
-  async requestCheckoutVerification(params: {
-    email: string;
-    locale?: string;
-    purpose?: 'checkout';
-  }) {
+  async requestCheckoutVerification(
+    params: RequestCheckoutEmailVerificationInput,
+  ): Promise<EmailVerificationResult> {
     const normalized = normalizeEmail(params.email);
     if (!normalized) {
       return { ok: false, error: 'invalid_email' };
@@ -116,7 +155,7 @@ export class EmailVerificationService {
       },
     });
 
-    const sendResult = await this.emailService.sendVerificationEmail({
+    const sendResult = await this.delivery.sendVerificationEmail({
       to: params.email,
       token,
       name: null,
@@ -131,11 +170,9 @@ export class EmailVerificationService {
     return { ok: true };
   }
 
-  async verifyCheckoutToken(params: {
-    email: string;
-    token: string;
-    purpose?: 'checkout';
-  }) {
+  async verifyCheckoutToken(
+    params: VerifyCheckoutEmailCodeInput,
+  ): Promise<EmailVerificationResult> {
     const normalized = normalizeEmail(params.email);
     const codeHash = this.challengeEngine.hashCode(params.token.trim(), 'OTP');
     const now = new Date();
@@ -196,10 +233,9 @@ export class EmailVerificationService {
     };
   }
 
-  async validateCheckoutVerificationToken(params: {
-    email: string;
-    verificationToken: string;
-  }): Promise<boolean> {
+  async validateCheckoutVerificationToken(
+    params: ValidateCheckoutEmailVerificationInput,
+  ): Promise<boolean> {
     const normalized = normalizeEmail(params.email);
     const token = params.verificationToken.trim();
     if (!normalized || !token) return false;
@@ -220,7 +256,7 @@ export class EmailVerificationService {
     return Boolean(challenge);
   }
 
-  async verifyToken(token: string) {
+  async verifyToken(token: string): Promise<EmailVerificationResult> {
     const codeHash = this.challengeEngine.hashCode(token, 'OTP');
     const now = new Date();
 
@@ -264,8 +300,23 @@ export class EmailVerificationService {
     return { ok: true };
   }
 
-  async verifyTokenForUser(params: { token: string; userId: string }) {
-    const codeHash = this.challengeEngine.hashCode(params.token, 'OTP');
+  async verifyUserEmailCode(
+    params: VerifyUserEmailCodeInput,
+  ): Promise<EmailVerificationResult> {
+    const code = params.code.trim();
+    if (!code) {
+      throw new BadRequestException('code_required');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId: params.userStableId },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new NotFoundException('user not found');
+    }
+
+    const codeHash = this.challengeEngine.hashCode(code, 'OTP');
     const now = new Date();
 
     const record = await this.prisma.authChallenge.findFirst({
@@ -273,7 +324,7 @@ export class EmailVerificationService {
         type: AuthChallengeType.EMAIL_VERIFY,
         channel: MessagingChannel.EMAIL,
         status: AuthChallengeStatus.PENDING,
-        userId: params.userId,
+        userId: user.id,
         codeHash,
       },
       orderBy: { createdAt: 'desc' },
@@ -297,7 +348,7 @@ export class EmailVerificationService {
         data: this.challengeEngine.consumedState(now),
       }),
       this.prisma.user.update({
-        where: { id: record.userId ?? params.userId },
+        where: { id: user.id },
         data: { emailVerifiedAt: now, email: record.addressNorm },
       }),
     ]);

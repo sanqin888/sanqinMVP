@@ -29,7 +29,6 @@ import type {
   HoldPaymentCouponReservationInput,
   PaymentCouponReservationPort,
 } from '../benefits/contracts/payment-benefit-reservation.contract';
-import { EmailVerificationService } from '../email/email-verification.service';
 import { NotificationService } from '../notifications/notification.service';
 import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
 
@@ -48,7 +47,6 @@ export class MembershipService implements PaymentCouponReservationPort {
     private readonly loyalty: LoyaltyService,
     @Inject(COUPON_PROGRAM_TRIGGER)
     private readonly couponTriggerService: CouponProgramTriggerPort,
-    private readonly emailVerification: EmailVerificationService,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -1738,67 +1736,6 @@ export class MembershipService implements PaymentCouponReservationPort {
         'Failed to update marketing consent',
       );
     }
-  }
-
-  async requestEmailVerification(params: { userId: string; email?: string }) {
-    const email = normalizeEmail(params.email ?? '');
-    if (!email) {
-      throw new BadRequestException('invalid_email');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: params.userId },
-      select: {
-        id: true,
-        email: true,
-        emailVerifiedAt: true,
-        firstName: true,
-        lastName: true,
-      },
-    });
-
-    if (!user) {
-      throw new NotFoundException('user not found');
-    }
-
-    const emailOwner = await this.prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    if (emailOwner && emailOwner.id !== user.id) {
-      throw new BadRequestException('email_in_use');
-    }
-
-    if (user.email === email && user.emailVerifiedAt) {
-      return { ok: true, alreadyVerified: true };
-    }
-
-    await this.emailVerification.requestVerification({
-      userId: user.id,
-      email,
-      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
-    });
-
-    return { ok: true };
-  }
-
-  async verifyEmailCode(params: { userId: string; code?: string }) {
-    const code = params.code?.trim() ?? '';
-    if (!code) {
-      throw new BadRequestException('code_required');
-    }
-
-    const result = await this.emailVerification.verifyTokenForUser({
-      token: code,
-      userId: params.userId,
-    });
-
-    if (!result.ok) {
-      throw new BadRequestException(result.error ?? 'token_invalid');
-    }
-
-    return { ok: true, email: result.email };
   }
 
   private async triggerMarketingOptInPrograms(user: {

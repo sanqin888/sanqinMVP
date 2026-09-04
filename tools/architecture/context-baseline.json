@@ -331,6 +331,22 @@
     "adminModule": "apps/api/src/admin/promotions/admin-promotions.module.ts",
     "retiredAdminService": "apps/api/src/admin/promotions/admin-promotions.service.ts"
   },
+  "emailVerificationIdentityOwnershipBoundary": {
+    "identityContract": "apps/api/src/auth/email-verification.port.ts",
+    "identityService": "apps/api/src/auth/email-verification.service.ts",
+    "identityModule": "apps/api/src/auth/email-verification.module.ts",
+    "identityPublicSurface": "apps/api/src/auth/public-api.ts",
+    "checkoutController": "apps/api/src/auth/email-checkout-verification.controller.ts",
+    "messagingDeliveryContract": "apps/api/src/email/contracts/email-verification-delivery.contract.ts",
+    "messagingDeliveryModule": "apps/api/src/email/email-verification-delivery.module.ts",
+    "messagingPublicSurface": "apps/api/src/email/public-api.ts",
+    "messagingModule": "apps/api/src/email/email.module.ts",
+    "membershipController": "apps/api/src/membership/membership.controller.ts",
+    "membershipService": "apps/api/src/membership/membership.service.ts",
+    "cloverPayController": "apps/api/src/clover/clover-pay.controller.ts",
+    "retiredMessagingService": "apps/api/src/email/email-verification.service.ts",
+    "retiredMessagingController": "apps/api/src/email/email-checkout-verification.controller.ts"
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -374,21 +390,7 @@
       "reason": "frozen Clover OAuth protocol adapter"
     }
   },
-  "legacyPublicCycleComponents": [
-    {
-      "contexts": [
-        "catalog-pricing-offers",
-        "identity-customer-benefits",
-        "messaging-notifications"
-      ],
-      "edges": [
-        "catalog-pricing-offers -> messaging-notifications",
-        "identity-customer-benefits -> catalog-pricing-offers",
-        "messaging-notifications -> identity-customer-benefits"
-      ],
-      "reason": "remaining pre-Slice-6 public-contract SCC after Phase 4 Slice 0B removed the Catalog -> Orders reverse edge; contraction-only baseline"
-    }
-  ],
+  "legacyPublicCycleComponents": [],
   "legacyDirectImportLimits": {
     "accounting-reporting-analytics -> architecture-foundation": 3,
     "accounting-reporting-analytics -> commerce-orders-fulfillment": 1,
@@ -416,16 +418,16 @@
     "identity-customer-benefits -> brand-store": 4,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 1,
-    "identity-customer-benefits -> messaging-notifications": 24,
-    "identity-customer-benefits -> runtime-data-ci-ops": 16,
+    "identity-customer-benefits -> messaging-notifications": 22,
+    "identity-customer-benefits -> runtime-data-ci-ops": 15,
     "identity-customer-benefits -> store-operations-pos-print": 4,
-    "messaging-notifications -> architecture-foundation": 5,
-    "messaging-notifications -> runtime-data-ci-ops": 10,
+    "messaging-notifications -> architecture-foundation": 4,
+    "messaging-notifications -> runtime-data-ci-ops": 9,
     "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
     "payments-clover -> commerce-orders-fulfillment": 10,
     "payments-clover -> identity-customer-benefits": 13,
-    "payments-clover -> messaging-notifications": 3,
+    "payments-clover -> messaging-notifications": 2,
     "payments-clover -> runtime-data-ci-ops": 8,
     "payments-clover -> store-operations-pos-print": 11,
     "store-operations-pos-print -> architecture-foundation": 7,

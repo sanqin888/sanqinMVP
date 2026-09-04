@@ -5,6 +5,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Post,
   Put,
   Param,
@@ -21,6 +22,10 @@ import { MfaGuard } from '../auth/mfa.guard';
 import { AuthService } from '../auth/auth.service';
 import { TRUSTED_DEVICE_COOKIE } from '../auth/trusted-device.constants';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import {
+  IDENTITY_EMAIL_VERIFICATION,
+  type IdentityEmailVerificationPort,
+} from '../auth/public-api';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string };
@@ -44,6 +49,8 @@ export class MembershipController {
     private readonly membership: MembershipService,
     private readonly onboarding: MembershipOnboardingService,
     private readonly auth: AuthService,
+    @Inject(IDENTITY_EMAIL_VERIFICATION)
+    private readonly emailVerification: IdentityEmailVerificationPort,
   ) {}
 
   @Get('summary')
@@ -247,15 +254,19 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body() body: { email?: string },
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new BadRequestException('userId is required');
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
     }
 
-    const result = await this.membership.requestEmailVerification({
-      userId,
-      email: body.email,
+    const result = await this.emailVerification.requestUserVerification({
+      userStableId,
+      email: body.email ?? '',
     });
+
+    if (!result.ok) {
+      throw new BadRequestException(result.error ?? 'email_send_failed');
+    }
 
     return { success: true, ...result };
   }
@@ -265,15 +276,19 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body() body: { code?: string },
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new BadRequestException('userId is required');
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
     }
 
-    const result = await this.membership.verifyEmailCode({
-      userId,
-      code: body.code,
+    const result = await this.emailVerification.verifyUserEmailCode({
+      userStableId,
+      code: body.code ?? '',
     });
+
+    if (!result.ok) {
+      throw new BadRequestException(result.error ?? 'token_invalid');
+    }
 
     return { success: true, ...result };
   }

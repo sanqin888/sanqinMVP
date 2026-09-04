@@ -1,7 +1,7 @@
 // apps/api/src/auth/auth.module.ts
 import { Global, Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaModule } from './identity-prisma';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { SessionAuthGuard } from './session-auth.guard';
@@ -9,7 +9,7 @@ import { OptionalSessionAuthGuard } from './optional-session-auth.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import { GoogleStrategy } from './oauth/google.strategy';
 import { GoogleStartGuard } from './oauth/google.guard';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from './identity-prisma';
 import { RolesGuard } from './roles.guard';
 import { MfaGuard } from './mfa.guard';
 import { EmailModule } from '../email/email.module';
