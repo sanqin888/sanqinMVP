@@ -332,8 +332,8 @@ Slice 5 is therefore production verified.
 
 ### Slice 5B — Daily Special -> Offers ownership contraction
 
-Status: **LOCAL REVIEW COMPLETE, remote CI pending**.  
-Branch: `refactor/phase3-slice5b-daily-special-offers`.
+Status: **PR #2153 OPEN / CI PENDING**.  
+Branch: `refactor/phase3-slice5b-daily-special-offers`; reviewed source commit `848a23eb`.
 
 This slice contracts the remaining half-migrated Daily Special ownership without
 renaming persistence or changing public transport contracts:

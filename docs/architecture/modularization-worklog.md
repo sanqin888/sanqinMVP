@@ -391,8 +391,8 @@ before Phase 3 closeout.
 
 ### 2026-09-04 — Phase 3 Slice 5B: Daily Special -> Offers ownership contraction
 
-**PR/SHA:** local branch `refactor/phase3-slice5b-daily-special-offers`  
-**State:** SOURCE  
+**PR/SHA:** PR #2153 / reviewed source `848a23eb`  
+**State:** CI PENDING  
 **Result:** Daily Special definition, persistence, store-time activation and effective
 pricing move behind the narrow Offers-owned `DAILY_SPECIAL_OFFERS` capability, implemented
 by the existing `PromotionsService` so the contraction adds no new Prisma direct edge.

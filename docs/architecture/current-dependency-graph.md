@@ -1,7 +1,7 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 is **PRODUCTION VERIFIED**; Slice 5B local state is branch
-`refactor/phase3-slice5b-daily-special-offers` (2026-09-04).
+Phase 3 Slice 5 is **PRODUCTION VERIFIED**; Slice 5B is PR #2153 with reviewed
+source `848a23eb` and remote CI pending (2026-09-04).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 5B Daily
