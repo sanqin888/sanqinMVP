@@ -9,11 +9,11 @@ import { AppLogger } from '../common/app-logger';
 import {
   BRAND_STORE_CONFIG_READER,
   BRAND_STORE_CONFIG_WRITER,
+  buildAutoPauseReason,
+  parseAutoPauseReason,
   type BrandStoreConfigReaderPort,
   type BrandStoreConfigWriterPort,
 } from '../store/public-api';
-
-const AUTO_UNTIL_PREFIX = '__AUTO_UNTIL__:';
 
 export type PosStoreStatusActionContext = {
   operatorUserId?: string;
@@ -21,32 +21,6 @@ export type PosStoreStatusActionContext = {
   posDeviceStableId?: string;
   posDeviceName?: string | null;
 };
-
-function parseAutoPauseReason(reason: string | null | undefined): {
-  autoResumeAt: string;
-  displayReason: string | null;
-} | null {
-  if (!reason || !reason.startsWith(AUTO_UNTIL_PREFIX)) return null;
-
-  const payload = reason.slice(AUTO_UNTIL_PREFIX.length);
-  const splitIndex = payload.indexOf('|');
-  const autoResumeAt = (
-    splitIndex >= 0 ? payload.slice(0, splitIndex) : payload
-  ).trim();
-  const displayReasonRaw = splitIndex >= 0 ? payload.slice(splitIndex + 1) : '';
-  const displayReason = displayReasonRaw.trim() || null;
-
-  if (!autoResumeAt) return null;
-  return { autoResumeAt, displayReason };
-}
-
-function buildAutoPauseReason(
-  autoResumeAt: string,
-  displayReason?: string | null,
-): string {
-  const suffix = displayReason?.trim() ? `|${displayReason.trim()}` : '|';
-  return `${AUTO_UNTIL_PREFIX}${autoResumeAt}${suffix}`;
-}
 
 @Injectable()
 export class PosStoreStatusService {
@@ -223,5 +197,3 @@ export class PosStoreStatusService {
     }
   }
 }
-
-export { parseAutoPauseReason };

@@ -134,13 +134,20 @@
       "BrandStoreConfigSnapshot",
       "BrandStoreConfigWriterPort",
       "StoreConfigUpdateInput",
+      "buildAutoPauseReason",
+      "parseAutoPauseReason",
       "BrandStoreConfigModule"
     ],
     "ownedIdentitySymbols": [
       "DEFAULT_STORE_STABLE_ID",
       "resolveConfiguredStoreStableId"
     ],
+    "ownedTemporaryClosureReasonSymbols": [
+      "buildAutoPauseReason",
+      "parseAutoPauseReason"
+    ],
     "identityImplementation": "apps/api/src/store/store-identity.ts",
+    "temporaryClosureReasonImplementation": "apps/api/src/store/temporary-closure-reason.ts",
     "contractImplementation": "apps/api/src/store/brand-store-config.contract.ts",
     "compositionModule": "apps/api/src/store/brand-store-config.module.ts",
     "forbiddenLegacyDelegates": ["businessConfig"],
@@ -385,7 +392,6 @@
     "brand-store -> accounting-reporting-analytics": 2,
     "brand-store -> architecture-foundation": 2,
     "brand-store -> runtime-data-ci-ops": 4,
-    "brand-store -> store-operations-pos-print": 1,
     "catalog-pricing-offers -> architecture-foundation": 2,
     "catalog-pricing-offers -> identity-customer-benefits": 3,
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
