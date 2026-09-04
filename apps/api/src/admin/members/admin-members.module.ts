@@ -4,7 +4,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { LoyaltyModule } from '../../loyalty/public-api';
 import { MembershipModule } from '../../membership/membership.module';
 import { PhoneVerificationModule } from '../../phone-verification/phone-verification.module';
-import { EmailModule } from '../../email/email.module';
+import { MemberRechargeEmailDeliveryModule } from '../../email/public-api';
 import { AdminMembersController } from './admin-members.controller';
 import { AdminMembersService } from './admin-members.service';
 import { IdentityChallengeModule } from '../../auth/public-api';
@@ -15,7 +15,7 @@ import { IdentityChallengeModule } from '../../auth/public-api';
     LoyaltyModule,
     MembershipModule,
     PhoneVerificationModule,
-    EmailModule,
+    MemberRechargeEmailDeliveryModule,
     IdentityChallengeModule,
   ],
   controllers: [AdminMembersController],

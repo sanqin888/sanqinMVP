@@ -99,6 +99,12 @@ node tools/architecture/scan-architecture.mjs --report
   `sms_send_failed` handling; Messaging owns only OTP template/config/provider dispatch.
   The template purpose remains the historical fixed `verify`, while the caller purpose is
   preserved only as Messaging metadata and Identity challenge purpose;
+- Admin staff invite and POS member-recharge email delivery use separate narrow Email public
+  capabilities: `STAFF_INVITE_DELIVERY` and `MEMBER_RECHARGE_EMAIL_DELIVERY`. Admin keeps
+  invite/recharge business state and challenge lifecycle; concrete `EmailService`,
+  `EmailModule`, message composition and `MessagingTemplateType` must not return to Admin.
+  Recharge delivery crosses the boundary with `userStableId`, while the Identity-owned
+  challenge may continue to reference the internal User DB ID inside its own persistence;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

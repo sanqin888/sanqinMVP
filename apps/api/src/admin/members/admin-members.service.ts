@@ -9,7 +9,6 @@ import {
   AuthChallengeStatus,
   AuthChallengeType,
   MessagingChannel,
-  MessagingTemplateType,
   Prisma,
 } from '@prisma/client';
 import { z } from 'zod';
@@ -24,7 +23,10 @@ import {
 import { MembershipService } from '../../membership/membership.service';
 import { PhoneVerificationService } from '../../phone-verification/phone-verification.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { EmailService } from '../../email/email.service';
+import {
+  MEMBER_RECHARGE_EMAIL_DELIVERY,
+  type MemberRechargeEmailDeliveryPort,
+} from '../../email/public-api';
 import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
@@ -106,7 +108,8 @@ export class AdminMembersService {
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
     private readonly phoneVerification: PhoneVerificationService,
-    private readonly emailService: EmailService,
+    @Inject(MEMBER_RECHARGE_EMAIL_DELIVERY)
+    private readonly memberRechargeEmailDelivery: MemberRechargeEmailDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
   ) {}
@@ -913,21 +916,14 @@ export class AdminMembersService {
         },
       });
 
-      const isZh = body.locale?.toLowerCase().startsWith('zh');
-      const sendResult = await this.emailService.sendEmail({
-        to: contact.addressNorm,
-        subject: isZh ? 'POS会员充值验证码' : 'POS recharge verification code',
-        text: isZh
-          ? `您的会员充值验证码：${code}。10分钟内有效。`
-          : `Your member recharge verification code is ${code}. It expires in 10 minutes.`,
-        html: isZh
-          ? `<p>您的会员充值验证码：<strong>${code}</strong></p><p>10分钟内有效。</p>`
-          : `<p>Your member recharge verification code is <strong>${code}</strong></p><p>It expires in 10 minutes.</p>`,
-        locale: body.locale,
-        templateType: MessagingTemplateType.OTP,
-        tags: { type: 'pos_recharge_otp' },
-        userId: user.id,
-      });
+      const sendResult =
+        await this.memberRechargeEmailDelivery.sendRechargeVerificationEmail({
+          to: contact.addressNorm,
+          code,
+          expiresInMin: 10,
+          locale: body.locale,
+          userStableId: user.userStableId,
+        });
 
       await this.prisma.authChallenge.update({
         where: { id: challenge.id },

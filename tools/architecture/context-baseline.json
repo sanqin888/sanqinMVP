@@ -364,6 +364,20 @@
     "phoneVerificationService": "apps/api/src/phone-verification/phone-verification.service.ts",
     "phoneVerificationModule": "apps/api/src/phone-verification/phone-verification.module.ts"
   },
+  "adminMessagingDeliveryBoundary": {
+    "staffContract": "apps/api/src/email/contracts/staff-invite-delivery.contract.ts",
+    "staffService": "apps/api/src/email/staff-invite-delivery.service.ts",
+    "staffModule": "apps/api/src/email/staff-invite-delivery.module.ts",
+    "rechargeContract": "apps/api/src/email/contracts/member-recharge-email-delivery.contract.ts",
+    "rechargeService": "apps/api/src/email/member-recharge-email-delivery.service.ts",
+    "rechargeModule": "apps/api/src/email/member-recharge-email-delivery.module.ts",
+    "emailService": "apps/api/src/email/email.service.ts",
+    "publicSurface": "apps/api/src/email/public-api.ts",
+    "adminStaffController": "apps/api/src/admin/staff/admin-staff.controller.ts",
+    "adminModule": "apps/api/src/admin/admin.module.ts",
+    "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
+    "adminMembersModule": "apps/api/src/admin/members/admin-members.module.ts"
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -435,7 +449,7 @@
     "identity-customer-benefits -> brand-store": 4,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 1,
-    "identity-customer-benefits -> messaging-notifications": 10,
+    "identity-customer-benefits -> messaging-notifications": 6,
     "identity-customer-benefits -> runtime-data-ci-ops": 15,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 4,

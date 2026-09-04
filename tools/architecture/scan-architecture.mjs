@@ -1451,6 +1451,239 @@ if (phoneVerificationMessagingDeliveryBoundary) {
   }
 }
 
+const adminMessagingDeliveryBoundary = config.adminMessagingDeliveryBoundary ?? null;
+if (adminMessagingDeliveryBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(adminMessagingDeliveryBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.staffContract,
+    boundary.staffService,
+    boundary.staffModule,
+    boundary.rechargeContract,
+    boundary.rechargeService,
+    boundary.rechargeModule,
+    boundary.emailService,
+    boundary.publicSurface,
+    boundary.adminStaffController,
+    boundary.adminModule,
+    boundary.adminMembersService,
+    boundary.adminMembersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Admin Messaging delivery boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  for (const contractPath of [boundary.staffContract, boundary.rechargeContract]) {
+    const absolutePath = join(REPOSITORY_ROOT, contractPath);
+    if (!existsSync(absolutePath)) continue;
+    const source = readFileSync(absolutePath, 'utf8');
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService') ||
+      source.includes('MessagingTemplateType') ||
+      source.includes('AuthChallenge') ||
+      /\buserId\b/.test(source)
+    ) {
+      failures.push(
+        `Admin Messaging delivery public contract must remain provider/persistence/DB-ID free: ${contractPath}`,
+      );
+    }
+  }
+
+  const staffContractPath = join(REPOSITORY_ROOT, boundary.staffContract);
+  if (existsSync(staffContractPath)) {
+    const source = readFileSync(staffContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'STAFF_INVITE_DELIVERY',
+      'StaffInviteDeliveryPort',
+      'sendStaffInvite',
+      'role: string',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Staff invite delivery contract is missing ${requiredSymbol}: ${boundary.staffContract}`,
+        );
+      }
+    }
+  }
+
+  const rechargeContractPath = join(REPOSITORY_ROOT, boundary.rechargeContract);
+  if (existsSync(rechargeContractPath)) {
+    const source = readFileSync(rechargeContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'MEMBER_RECHARGE_EMAIL_DELIVERY',
+      'MemberRechargeEmailDeliveryPort',
+      'sendRechargeVerificationEmail',
+      'userStableId',
+      'expiresInMin',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Member recharge email delivery contract is missing ${requiredSymbol}: ${boundary.rechargeContract}`,
+        );
+      }
+    }
+  }
+
+  const staffServicePath = join(REPOSITORY_ROOT, boundary.staffService);
+  if (existsSync(staffServicePath)) {
+    const source = readFileSync(staffServicePath, 'utf8');
+    if (
+      !source.includes('implements StaffInviteDeliveryPort') ||
+      !source.includes('EmailService') ||
+      !source.includes('sendStaffInviteEmail(input)') ||
+      source.includes('PrismaService') ||
+      source.includes('AuthChallenge')
+    ) {
+      failures.push(
+        `Messaging staff invite delivery must remain a narrow EmailService-backed capability: ${boundary.staffService}`,
+      );
+    }
+  }
+
+  const rechargeServicePath = join(REPOSITORY_ROOT, boundary.rechargeService);
+  if (existsSync(rechargeServicePath)) {
+    const source = readFileSync(rechargeServicePath, 'utf8');
+    if (
+      !source.includes('implements MemberRechargeEmailDeliveryPort') ||
+      !source.includes('EmailService') ||
+      !source.includes('sendMemberRechargeVerificationEmail(input)') ||
+      source.includes('@prisma/client') ||
+      source.includes('MessagingTemplateType') ||
+      source.includes('PrismaService') ||
+      source.includes('AuthChallenge')
+    ) {
+      failures.push(
+        `Messaging member recharge public delivery must remain a narrow EmailService-backed capability without new Runtime debt: ${boundary.rechargeService}`,
+      );
+    }
+  }
+
+  const emailServicePath = join(REPOSITORY_ROOT, boundary.emailService);
+  if (existsSync(emailServicePath)) {
+    const source = readFileSync(emailServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'sendMemberRechargeVerificationEmail',
+      'MessagingTemplateType.OTP',
+      "tags: { type: 'pos_recharge_otp' }",
+      'userStableId: params.userStableId',
+      'POS recharge verification code',
+      'POS会员充值验证码',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `EmailService member recharge delivery mapping is missing ${requiredSymbol}: ${boundary.emailService}`,
+        );
+      }
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'StaffInviteDeliveryModule',
+      'STAFF_INVITE_DELIVERY',
+      'StaffInviteDeliveryPort',
+      'MemberRechargeEmailDeliveryModule',
+      'MEMBER_RECHARGE_EMAIL_DELIVERY',
+      'MemberRechargeEmailDeliveryPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Email public surface is missing ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  const adminStaffControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.adminStaffController,
+  );
+  if (existsSync(adminStaffControllerPath)) {
+    const source = readFileSync(adminStaffControllerPath, 'utf8');
+    if (
+      !source.includes("from '../../email/public-api'") ||
+      !source.includes('STAFF_INVITE_DELIVERY') ||
+      !source.includes('StaffInviteDeliveryPort') ||
+      !source.includes('sendStaffInvite') ||
+      source.includes("from '../../email/email.service'") ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `AdminStaffController staff invite email must use only the narrow Email public capability: ${boundary.adminStaffController}`,
+      );
+    }
+  }
+
+  const adminModulePath = join(REPOSITORY_ROOT, boundary.adminModule);
+  if (existsSync(adminModulePath)) {
+    const source = readFileSync(adminModulePath, 'utf8');
+    if (
+      !source.includes("from '../email/public-api'") ||
+      !source.includes('StaffInviteDeliveryModule') ||
+      source.includes("from '../email/email.module'") ||
+      source.includes('EmailModule')
+    ) {
+      failures.push(
+        `AdminModule staff invite wiring must use only the Email public module: ${boundary.adminModule}`,
+      );
+    }
+  }
+
+  const adminMembersServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersService,
+  );
+  if (existsSync(adminMembersServicePath)) {
+    const source = readFileSync(adminMembersServicePath, 'utf8');
+    if (
+      !source.includes("from '../../email/public-api'") ||
+      !source.includes('MEMBER_RECHARGE_EMAIL_DELIVERY') ||
+      !source.includes('MemberRechargeEmailDeliveryPort') ||
+      !source.includes('sendRechargeVerificationEmail') ||
+      !source.includes('userStableId: user.userStableId') ||
+      !source.includes('messagingSendId: sendResult.sendId') ||
+      source.includes("from '../../email/email.service'") ||
+      source.includes('EmailService') ||
+      source.includes('MessagingTemplateType')
+    ) {
+      failures.push(
+        `AdminMembersService recharge email must keep challenge ownership in Identity and use only the narrow Email delivery capability: ${boundary.adminMembersService}`,
+      );
+    }
+  }
+
+  const adminMembersModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersModule,
+  );
+  if (existsSync(adminMembersModulePath)) {
+    const source = readFileSync(adminMembersModulePath, 'utf8');
+    if (
+      !source.includes("from '../../email/public-api'") ||
+      !source.includes('MemberRechargeEmailDeliveryModule') ||
+      source.includes("from '../../email/email.module'") ||
+      source.includes('EmailModule')
+    ) {
+      failures.push(
+        `AdminMembersModule recharge email wiring must use only the Email public module: ${boundary.adminMembersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(
