@@ -510,8 +510,8 @@ stale-baseline corrections rather than a reason to change the selected next owne
 
 ### 2026-09-04 — Phase 4 Slice 0A: Admin PromotionRule ownership contraction
 
-**PR/SHA:** PR #2163; source head `c13735f5`; base `origin/dev@1be3fe92`  
-**State:** SOURCE / CI PENDING  
+**PR/SHA:** PR #2163; final head `849bdcfc`; squash merge `aa302629`  
+**State:** CI / MERGED  
 **Result:** moved PromotionRule management ownership out of the Admin adapter and behind
 Offers-owned `PROMOTION_RULE_MANAGEMENT`. `PromotionRuleManagementService` now owns the
 existing validation/default/calendar/channel/BOGO policy without Prisma; raw
@@ -528,8 +528,10 @@ corrected from the locally estimated `14`. Direct debt contracts
 `identity-customer-benefits -> runtime-data-ci-ops 18 -> 16`; Catalog -> Runtime remains
 `10`, and the legacy public SCC is unchanged. No dependency manifest, Prisma
 schema/migration, Web Clover behavior, Uber runtime/wire behavior, or PromotionRule
-persistence schema changes are included. Local lint/build/test/scanner execution is
-intentionally deferred to GitHub Actions after user review.  
+persistence schema changes are included. Final GitHub Actions CI #5092 passed the
+architecture gate, API lint/build/strict/test, shared strict checks, and Web
+lint/build/strict/test before merge. Post-deployment Admin UI smoke verification has not
+yet been recorded, so the slice is CI/MERGED rather than production VERIFIED.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`.
 
@@ -546,11 +548,11 @@ intentionally deferred to GitHub Actions after user review.
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A SOURCE / PR #2163 / CI PENDING**. PromotionRule management now
-  belongs to Offers behind a Prisma-free public capability; Admin is a thin adapter and
-  Identity -> Runtime direct debt is reduced to 16 in source. Merge and any
-  post-deployment UI verification are not yet claimed. Slice 0B remains next after 0A is
-  CI-green and merged.
+- Phase 4: **SLICE 0A CI / MERGED** via PR #2163 / `aa302629`; final CI #5092 passed.
+  PromotionRule management belongs to Offers behind a Prisma-free public capability;
+  Admin is a thin adapter and Identity -> Runtime direct debt is reduced to 16. Active
+  post-deployment Admin UI verification has not yet been recorded. Slice 0B readiness
+  audit is the next planned Phase 4 task.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
