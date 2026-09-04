@@ -723,13 +723,14 @@ export class AuthService {
     });
 
     const locale = this.resolveUserLocale(user.language);
-    const sendResult = await this.authChallengeDelivery.sendLoginTwoFactorEmail({
-      email: user.email,
-      code,
-      expiresInMin: 5,
-      locale,
-      userStableId: user.userStableId,
-    });
+    const sendResult =
+      await this.authChallengeDelivery.sendLoginTwoFactorEmail({
+        email: user.email,
+        code,
+        expiresInMin: 5,
+        locale,
+        userStableId: user.userStableId,
+      });
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
       data: { messagingSendId: sendResult.sendId },

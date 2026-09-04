@@ -52,7 +52,9 @@ describe('AuthChallengeDeliveryService characterization', () => {
       }),
     ).resolves.toEqual({ sendId: 'send-sms-2fa' });
 
-    expect(businessConfigService.getMessagingSnapshot).toHaveBeenCalledWith('en');
+    expect(businessConfigService.getMessagingSnapshot).toHaveBeenCalledWith(
+      'en',
+    );
     expect(templateRenderer.renderSms).toHaveBeenCalledWith({
       template: 'otp',
       locale: 'en',
@@ -98,17 +100,19 @@ describe('AuthChallengeDeliveryService characterization', () => {
       }),
     ).resolves.toEqual({ sendId: 'send-email-2fa' });
 
-    expect(templateRenderer.renderEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        template: 'otp',
-        locale: 'zh-CN',
-        vars: expect.objectContaining({
-          code: '000042',
-          expiresInMin: 5,
-          purpose: 'admin_login',
-        }),
-      }),
-    );
+    expect(templateRenderer.renderEmail).toHaveBeenCalledWith({
+      template: 'otp',
+      locale: 'zh-CN',
+      vars: {
+        brandName: 'SanQ',
+        siteUrl: 'https://sanq.ca',
+        supportEmail: 'support@sanq.ca',
+        smsSignature: 'SanQ',
+        code: '000042',
+        expiresInMin: 5,
+        purpose: 'admin_login',
+      },
+    });
     expect(emailService.sendEmail).toHaveBeenCalledWith({
       to: 'admin@example.com',
       subject: 'subject',
