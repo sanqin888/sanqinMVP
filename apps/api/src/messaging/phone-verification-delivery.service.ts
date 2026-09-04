@@ -11,9 +11,7 @@ import type {
 import { TemplateRenderer } from './template-renderer';
 
 @Injectable()
-export class PhoneVerificationDeliveryService
-  implements PhoneVerificationDeliveryPort
-{
+export class PhoneVerificationDeliveryService implements PhoneVerificationDeliveryPort {
   constructor(
     private readonly smsService: SmsService,
     private readonly templateRenderer: TemplateRenderer,

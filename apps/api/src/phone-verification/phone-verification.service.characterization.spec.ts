@@ -168,7 +168,9 @@ describe('PhoneVerificationService OTP characterization', () => {
       },
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
-    expect(phoneVerificationDelivery.sendVerificationSms).not.toHaveBeenCalled();
+    expect(
+      phoneVerificationDelivery.sendVerificationSms,
+    ).not.toHaveBeenCalled();
   });
 
   it('increments attempts and revokes a challenge on the final mismatch', async () => {

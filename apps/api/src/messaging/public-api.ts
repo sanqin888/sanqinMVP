@@ -8,9 +8,7 @@ export {
   type MembershipLoginSmsDeliveryInput,
   type PhoneEnrollmentSmsDeliveryInput,
 } from './contracts/auth-challenge-delivery.contract';
-export {
-  PhoneVerificationDeliveryModule,
-} from './phone-verification-delivery.module';
+export { PhoneVerificationDeliveryModule } from './phone-verification-delivery.module';
 export {
   PHONE_VERIFICATION_DELIVERY,
   type PhoneVerificationDeliveryInput,
