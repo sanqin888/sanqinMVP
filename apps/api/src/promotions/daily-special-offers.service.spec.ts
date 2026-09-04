@@ -176,33 +176,35 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
       [{ itemStableId: 'item-1', basePriceCents: 1099 }],
     );
 
-    const updateManyArg = updateMany.mock.calls[0]?.[0] as
-      | {
-          where: { stableId: { in: string[] } };
-          data: { deletedAt: Date };
-        }
-      | undefined;
+    type UpdateManyArg = {
+      where: { stableId: { in: string[] } };
+      data: { deletedAt: Date };
+    };
+    const updateManyCalls = updateMany.mock.calls as unknown as Array<
+      [UpdateManyArg]
+    >;
+    const updateManyArg = updateManyCalls[0]?.[0];
     expect(updateManyArg?.where).toEqual({
       stableId: { in: ['old-special'] },
     });
     expect(updateManyArg?.data.deletedAt).toBeInstanceOf(Date);
     expect(update).not.toHaveBeenCalled();
 
-    const createArg = create.mock.calls[0]?.[0] as
-      | {
-          data: {
-            stableId?: string;
-            weekday: number;
-            itemStableId: string;
-            pricingMode: string;
-            overridePriceCents: number | null;
-            disallowCoupons: boolean;
-            isEnabled: boolean;
-            sortOrder: number;
-            deletedAt: Date | null;
-          };
-        }
-      | undefined;
+    type CreateArg = {
+      data: {
+        stableId?: string;
+        weekday: number;
+        itemStableId: string;
+        pricingMode: string;
+        overridePriceCents: number | null;
+        disallowCoupons: boolean;
+        isEnabled: boolean;
+        sortOrder: number;
+        deletedAt: Date | null;
+      };
+    };
+    const createCalls = create.mock.calls as unknown as Array<[CreateArg]>;
+    const createArg = createCalls[0]?.[0];
     expect(createArg?.data.stableId).toBe('new-special');
     expect(createArg?.data.weekday).toBe(1);
     expect(createArg?.data.itemStableId).toBe('item-1');
