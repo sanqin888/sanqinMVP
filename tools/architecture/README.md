@@ -76,7 +76,11 @@ node tools/architecture/scan-architecture.mjs --report
   Daily Special timing, they are no longer registered Brand/Store config consumers;
   `PromotionsService` remains registered there. The Catalog availability module reuses
   the narrow `CatalogAdminModule` so this HTTP-side Offers wiring does not expand the
-  Uber worker runtime dependency surface;
+  Uber worker runtime dependency surface. PromotionRule management is likewise owned by
+  Offers through `PROMOTION_RULE_MANAGEMENT`: Admin Promotions must remain a thin public-
+  capability adapter with no Prisma/generated-rule ownership, the retired
+  `AdminPromotionsService` cannot return, and `promotionRule` Prisma delegate access is
+  exclusive to the existing `PromotionsService` persistence entry;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

@@ -3,74 +3,56 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
-import type {
-  Channel,
-  CouponStackingPolicy,
-  PromotionRuleStatus,
-  PromotionRuleType,
-} from '@prisma/client';
 import { AdminMfaGuard } from '../../auth/admin-mfa.guard';
 import { SessionAuthGuard } from '../../auth/session-auth.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
-import { AdminPromotionsService } from './admin-promotions.service';
-
-type PromotionRuleBody = {
-  stableId?: string;
-  titleZh: string;
-  titleEn?: string | null;
-  description?: string | null;
-  type: PromotionRuleType;
-  status?: PromotionRuleStatus;
-  priority?: number;
-  stackingPolicy?: CouponStackingPolicy;
-  excludesCoupons?: boolean;
-  excludesItemPromotions?: boolean;
-  channels?: Channel[];
-  validFrom?: string | null;
-  validTo?: string | null;
-  weekdays?: number[];
-  startMinutes?: number | null;
-  endMinutes?: number | null;
-  config: unknown;
-};
+import {
+  PROMOTION_RULE_MANAGEMENT,
+  type PromotionRuleManagementInput,
+  type PromotionRuleManagementPort,
+} from '../../promotions/public-api';
 
 @UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)
 @Roles('ADMIN', 'STAFF')
 @Controller('admin/promotions/rules')
 export class AdminPromotionsController {
-  constructor(private readonly service: AdminPromotionsService) {}
+  constructor(
+    @Inject(PROMOTION_RULE_MANAGEMENT)
+    private readonly management: PromotionRuleManagementPort,
+  ) {}
 
   @Get()
   listRules() {
-    return this.service.listRules();
+    return this.management.listRules();
   }
 
   @Get(':stableId')
   getRule(@Param('stableId') stableId: string) {
-    return this.service.getRule(stableId);
+    return this.management.getRule(stableId);
   }
 
   @Post()
-  createRule(@Body() body: PromotionRuleBody) {
-    return this.service.createRule(body);
+  createRule(@Body() body: PromotionRuleManagementInput) {
+    return this.management.createRule(body);
   }
 
   @Put(':stableId')
   updateRule(
     @Param('stableId') stableId: string,
-    @Body() body: PromotionRuleBody,
+    @Body() body: PromotionRuleManagementInput,
   ) {
-    return this.service.updateRule(stableId, body);
+    return this.management.updateRule(stableId, body);
   }
 
   @Delete(':stableId')
   deleteRule(@Param('stableId') stableId: string) {
-    return this.service.deleteRule(stableId);
+    return this.management.deleteRule(stableId);
   }
 }

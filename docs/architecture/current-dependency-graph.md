@@ -96,7 +96,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 18; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 14; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
@@ -112,9 +112,10 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The latest monotonic baseline normalization makes the current direct-debt totals:
+The current monotonic baseline after the Slice 0A source contraction records these
+direct-debt totals:
 
-- identity-customer-benefits: **65**
+- identity-customer-benefits: **61**
 - payments-clover: **60**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
@@ -133,13 +134,17 @@ Catalog, so Phase 4 remains the highest-leverage next boundary phase.
 Before the main Identity/Messaging slices, two short cross-phase readiness/contraction
 slices are planned:
 
-1. **Slice 0A — Admin PromotionRule ownership contraction.** Readiness audit is
-   complete on `origin/dev@83de9072`: Admin is confirmed as a duplicate PromotionRule
-   persistence/policy owner, the Admin management path has no dedicated characterization
-   coverage, and a naive new Offers Prisma service would violate the monotonic Catalog ->
-   Runtime baseline. Implementation is awaiting authorization and should move validation
-   to an Offers management capability while reusing the existing `PromotionsService`
-   Prisma entry so Catalog -> Runtime does not increase.
+1. **Slice 0A — Admin PromotionRule ownership contraction.** Source implementation is
+   complete on `refactor/phase4-slice0a-promotion-rule-owner` from
+   `origin/dev@1be3fe92`. PromotionRule management validation/CRUD now sits behind the
+   Offers-owned `PROMOTION_RULE_MANAGEMENT` capability; Admin no longer owns Prisma or
+   Prisma-generated rule types. Raw persistence remains behind the existing
+   `PromotionsService` Prisma entry, so Catalog -> Runtime stays at `10`. The retired
+   Admin service is deleted, focused characterization/mapping tests are added, the
+   central scanner reserves the delegate to Offers, and Identity -> Runtime contracts
+   `18 -> 14`. The authorized Admin response contraction also removes unused DB
+   `id`/`createdAt`/`updatedAt`/`deletedAt` fields while preserving all business fields,
+   routes and request semantics.
 2. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
    Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
    Pricing/Offers input contract plus boundary mapping rather than moving business

@@ -3,45 +3,43 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  Channel,
-  CouponStackingPolicy,
-  Prisma,
+import type {
+  PromotionRuleChannel,
+  PromotionRuleJsonObject,
+  PromotionRuleManagementDto,
+  PromotionRuleManagementInput,
+  PromotionRuleManagementPort,
+  PromotionRuleStackingPolicy,
   PromotionRuleStatus,
   PromotionRuleType,
-} from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
-
-export type AdminPromotionRulePayload = {
-  stableId?: string;
-  titleZh: string;
-  titleEn?: string | null;
-  description?: string | null;
-  type: PromotionRuleType;
-  status?: PromotionRuleStatus;
-  priority?: number;
-  stackingPolicy?: CouponStackingPolicy;
-  excludesCoupons?: boolean;
-  excludesItemPromotions?: boolean;
-  channels?: Channel[];
-  validFrom?: string | null;
-  validTo?: string | null;
-  weekdays?: number[];
-  startMinutes?: number | null;
-  endMinutes?: number | null;
-  config: unknown;
-};
+  PromotionRuleWriteModel,
+} from './promotion-rule-management.contract';
+import { PromotionsService } from './promotions.service';
 
 type JsonObject = Record<string, unknown>;
 
-const RULE_TYPES = new Set<PromotionRuleType>(Object.values(PromotionRuleType));
-const RULE_STATUSES = new Set<PromotionRuleStatus>(
-  Object.values(PromotionRuleStatus),
-);
-const STACKING_POLICIES = new Set<CouponStackingPolicy>(
-  Object.values(CouponStackingPolicy),
-);
-const CHANNELS = new Set<Channel>(Object.values(Channel));
+const RULE_TYPES = new Set<PromotionRuleType>([
+  'PERCENTAGE_OFF',
+  'FIXED_AMOUNT_OFF',
+  'BUY_X_GET_Y',
+  'FREE_ITEM',
+  'LOYALTY_MULTIPLIER',
+]);
+const RULE_STATUSES = new Set<PromotionRuleStatus>([
+  'DRAFT',
+  'ACTIVE',
+  'PAUSED',
+  'ENDED',
+]);
+const STACKING_POLICIES = new Set<PromotionRuleStackingPolicy>([
+  'EXCLUSIVE',
+  'STACKABLE',
+]);
+const CHANNELS = new Set<PromotionRuleChannel>([
+  'web',
+  'in_store',
+  'ubereats',
+]);
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -131,7 +129,7 @@ function optionalTargetItems(record: JsonObject): string[] {
 }
 
 function addOptionalMinSpend(
-  target: Record<string, Prisma.InputJsonValue>,
+  target: PromotionRuleJsonObject,
   record: JsonObject,
 ): void {
   const minSpendCents = optionalNumber(record, 'minSpendCents', {
@@ -144,7 +142,7 @@ function addOptionalMinSpend(
 function normalizeConfig(
   type: PromotionRuleType,
   value: unknown,
-): Prisma.InputJsonValue {
+): PromotionRuleJsonObject {
   if (!isRecord(value)) {
     throw new BadRequestException('config must be an object');
   }
@@ -152,8 +150,8 @@ function normalizeConfig(
   const membersOnly = optionalBoolean(value, 'membersOnly');
 
   switch (type) {
-    case PromotionRuleType.PERCENTAGE_OFF: {
-      const config: Record<string, Prisma.InputJsonValue> = {
+    case 'PERCENTAGE_OFF': {
+      const config: PromotionRuleJsonObject = {
         membersOnly,
         discountPercent: requireNumber(value, 'discountPercent', {
           min: 1,
@@ -165,8 +163,8 @@ function normalizeConfig(
       addOptionalMinSpend(config, value);
       return config;
     }
-    case PromotionRuleType.FIXED_AMOUNT_OFF: {
-      const config: Record<string, Prisma.InputJsonValue> = {
+    case 'FIXED_AMOUNT_OFF': {
+      const config: PromotionRuleJsonObject = {
         membersOnly,
         discountCents: requireNumber(value, 'discountCents', {
           min: 1,
@@ -177,14 +175,12 @@ function normalizeConfig(
       addOptionalMinSpend(config, value);
       return config;
     }
-    case PromotionRuleType.BUY_X_GET_Y: {
+    case 'BUY_X_GET_Y': {
       const buyItemStableIds = requireStringArray(value, 'buyItemStableIds');
       const getItemStableIds = requireStringArray(value, 'getItemStableIds');
       const buySet = new Set(buyItemStableIds);
       const getSet = new Set(getItemStableIds);
-      const overlapCount = [...buySet].filter((item) =>
-        getSet.has(item),
-      ).length;
+      const overlapCount = [...buySet].filter((item) => getSet.has(item)).length;
       const sameTargets =
         buySet.size === getSet.size && overlapCount === buySet.size;
       if (overlapCount > 0 && !sameTargets) {
@@ -193,7 +189,7 @@ function normalizeConfig(
         );
       }
 
-      const config: Record<string, Prisma.InputJsonValue> = {
+      const config: PromotionRuleJsonObject = {
         membersOnly,
         buyItemStableIds,
         buyQuantity: requireNumber(value, 'buyQuantity', {
@@ -215,8 +211,8 @@ function normalizeConfig(
       addOptionalMinSpend(config, value);
       return config;
     }
-    case PromotionRuleType.FREE_ITEM: {
-      const config: Record<string, Prisma.InputJsonValue> = {
+    case 'FREE_ITEM': {
+      const config: PromotionRuleJsonObject = {
         membersOnly,
         itemStableIds: requireStringArray(value, 'itemStableIds'),
         quantity:
@@ -225,8 +221,8 @@ function normalizeConfig(
       addOptionalMinSpend(config, value);
       return config;
     }
-    case PromotionRuleType.LOYALTY_MULTIPLIER: {
-      const config: Record<string, Prisma.InputJsonValue> = {
+    case 'LOYALTY_MULTIPLIER': {
+      const config: PromotionRuleJsonObject = {
         membersOnly,
         multiplier: requireNumber(value, 'multiplier', { min: 1, max: 10 }),
       };
@@ -238,7 +234,10 @@ function normalizeConfig(
   }
 }
 
-function parseCalendarDate(value: string | null | undefined, field: string) {
+function parseCalendarDate(
+  value: string | null | undefined,
+  field: string,
+): Date | null {
   if (value === null || value === undefined || value === '') return null;
   const normalized = value.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
@@ -283,8 +282,10 @@ function normalizeWeekdays(value: number[] | undefined): number[] {
   return Array.from(new Set(value)).sort((left, right) => left - right);
 }
 
-function normalizeChannels(value: Channel[] | undefined): Channel[] {
-  const channels = value ?? [Channel.web, Channel.in_store];
+function normalizeChannels(
+  value: PromotionRuleChannel[] | undefined,
+): PromotionRuleChannel[] {
+  const channels = value ?? ['web', 'in_store'];
   if (
     channels.length === 0 ||
     channels.some((channel) => !CHANNELS.has(channel))
@@ -296,114 +297,101 @@ function normalizeChannels(value: Channel[] | undefined): Channel[] {
   return Array.from(new Set(channels));
 }
 
-@Injectable()
-export class AdminPromotionsService {
-  constructor(private readonly prisma: PrismaService) {}
-
-  async listRules() {
-    return this.prisma.promotionRule.findMany({
-      where: { deletedAt: null },
-      orderBy: [{ status: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
-    });
+function normalizePayload(
+  input: PromotionRuleManagementInput,
+): PromotionRuleWriteModel {
+  if (!RULE_TYPES.has(input.type)) {
+    throw new BadRequestException('unsupported promotion type');
+  }
+  const status = input.status ?? 'DRAFT';
+  if (!RULE_STATUSES.has(status)) {
+    throw new BadRequestException('unsupported promotion status');
+  }
+  const stackingPolicy = input.stackingPolicy ?? 'EXCLUSIVE';
+  if (!STACKING_POLICIES.has(stackingPolicy)) {
+    throw new BadRequestException('unsupported stacking policy');
+  }
+  const priority = input.priority ?? 175;
+  if (!Number.isInteger(priority) || priority < 101 || priority > 1000) {
+    throw new BadRequestException('priority must be between 101 and 1000');
+  }
+  const validFrom = parseCalendarDate(input.validFrom, 'validFrom');
+  const validTo = parseCalendarDate(input.validTo, 'validTo');
+  if (validFrom && validTo && validFrom.getTime() > validTo.getTime()) {
+    throw new BadRequestException('validFrom must be on or before validTo');
+  }
+  const startMinutes = normalizeMinutes(input.startMinutes, 'startMinutes');
+  const endMinutes = normalizeMinutes(input.endMinutes, 'endMinutes');
+  if (
+    startMinutes !== null &&
+    endMinutes !== null &&
+    endMinutes < startMinutes
+  ) {
+    throw new BadRequestException(
+      'endMinutes must be on or after startMinutes',
+    );
   }
 
-  async getRule(stableId: string) {
-    const rule = await this.prisma.promotionRule.findFirst({
-      where: { stableId, deletedAt: null },
-    });
+  return {
+    titleZh: requireText(input.titleZh, 'titleZh'),
+    titleEn: nullableText(input.titleEn),
+    description: nullableText(input.description),
+    type: input.type,
+    status,
+    priority,
+    stackingPolicy,
+    excludesCoupons: input.excludesCoupons ?? false,
+    excludesItemPromotions: input.excludesItemPromotions ?? false,
+    channels: normalizeChannels(input.channels),
+    validFrom,
+    validTo,
+    weekdays: normalizeWeekdays(input.weekdays),
+    startMinutes,
+    endMinutes,
+    config: normalizeConfig(input.type, input.config),
+  };
+}
+
+@Injectable()
+export class PromotionRuleManagementService
+  implements PromotionRuleManagementPort
+{
+  constructor(private readonly promotions: PromotionsService) {}
+
+  listRules(): Promise<PromotionRuleManagementDto[]> {
+    return this.promotions.listPromotionRulesForManagement();
+  }
+
+  async getRule(stableId: string): Promise<PromotionRuleManagementDto> {
+    const rule = await this.promotions.getPromotionRuleForManagement(stableId);
     if (!rule) throw new NotFoundException('promotion rule not found');
     return rule;
   }
 
-  async createRule(payload: AdminPromotionRulePayload) {
-    const data = this.normalizePayload(payload);
-    return this.prisma.promotionRule.create({
-      data: {
-        ...(payload.stableId?.trim()
-          ? { stableId: payload.stableId.trim() }
-          : {}),
-        ...data,
-      },
-    });
+  createRule(
+    input: PromotionRuleManagementInput,
+  ): Promise<PromotionRuleManagementDto> {
+    return this.promotions.createPromotionRuleForManagement(
+      input.stableId?.trim() || undefined,
+      normalizePayload(input),
+    );
   }
 
-  async updateRule(stableId: string, payload: AdminPromotionRulePayload) {
-    const existing = await this.prisma.promotionRule.findFirst({
-      where: { stableId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!existing) throw new NotFoundException('promotion rule not found');
-
-    return this.prisma.promotionRule.update({
-      where: { id: existing.id },
-      data: this.normalizePayload(payload),
-    });
+  async updateRule(
+    stableId: string,
+    input: PromotionRuleManagementInput,
+  ): Promise<PromotionRuleManagementDto> {
+    const rule = await this.promotions.updatePromotionRuleForManagement(
+      stableId,
+      normalizePayload(input),
+    );
+    if (!rule) throw new NotFoundException('promotion rule not found');
+    return rule;
   }
 
-  async deleteRule(stableId: string) {
-    const existing = await this.prisma.promotionRule.findFirst({
-      where: { stableId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!existing) throw new NotFoundException('promotion rule not found');
-
-    return this.prisma.promotionRule.update({
-      where: { id: existing.id },
-      data: { deletedAt: new Date(), status: PromotionRuleStatus.ENDED },
-    });
-  }
-
-  private normalizePayload(payload: AdminPromotionRulePayload) {
-    if (!RULE_TYPES.has(payload.type)) {
-      throw new BadRequestException('unsupported promotion type');
-    }
-    const status = payload.status ?? PromotionRuleStatus.DRAFT;
-    if (!RULE_STATUSES.has(status)) {
-      throw new BadRequestException('unsupported promotion status');
-    }
-    const stackingPolicy =
-      payload.stackingPolicy ?? CouponStackingPolicy.EXCLUSIVE;
-    if (!STACKING_POLICIES.has(stackingPolicy)) {
-      throw new BadRequestException('unsupported stacking policy');
-    }
-    const priority = payload.priority ?? 175;
-    if (!Number.isInteger(priority) || priority < 101 || priority > 1000) {
-      throw new BadRequestException('priority must be between 101 and 1000');
-    }
-    const validFrom = parseCalendarDate(payload.validFrom, 'validFrom');
-    const validTo = parseCalendarDate(payload.validTo, 'validTo');
-    if (validFrom && validTo && validFrom.getTime() > validTo.getTime()) {
-      throw new BadRequestException('validFrom must be on or before validTo');
-    }
-    const startMinutes = normalizeMinutes(payload.startMinutes, 'startMinutes');
-    const endMinutes = normalizeMinutes(payload.endMinutes, 'endMinutes');
-    if (
-      startMinutes !== null &&
-      endMinutes !== null &&
-      endMinutes < startMinutes
-    ) {
-      throw new BadRequestException(
-        'endMinutes must be on or after startMinutes',
-      );
-    }
-
-    return {
-      titleZh: requireText(payload.titleZh, 'titleZh'),
-      titleEn: nullableText(payload.titleEn),
-      description: nullableText(payload.description),
-      type: payload.type,
-      status,
-      priority,
-      stackingPolicy,
-      excludesCoupons: payload.excludesCoupons ?? false,
-      excludesItemPromotions: payload.excludesItemPromotions ?? false,
-      channels: normalizeChannels(payload.channels),
-      validFrom,
-      validTo,
-      weekdays: normalizeWeekdays(payload.weekdays),
-      startMinutes,
-      endMinutes,
-      config: normalizeConfig(payload.type, payload.config),
-    };
+  async deleteRule(stableId: string): Promise<PromotionRuleManagementDto> {
+    const rule = await this.promotions.deletePromotionRuleForManagement(stableId);
+    if (!rule) throw new NotFoundException('promotion rule not found');
+    return rule;
   }
 }
