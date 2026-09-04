@@ -305,7 +305,8 @@
     "availabilityOrchestration": "apps/api/src/application/menu/catalog-uber-availability-orchestration.service.ts",
     "availabilityOrchestrationPublicSurface": "apps/api/src/application/menu/public-api.ts",
     "retiredAdminAvailabilityOrchestration": "apps/api/src/admin/menu/admin-menu-availability-orchestration.service.ts",
-    "catalogAvailabilityReader": "apps/api/src/menu/catalog-availability-reader.service.ts",
+    "catalogAvailabilityReader": "apps/api/src/menu/catalog-admin.service.ts",
+    "catalogAvailabilityModule": "apps/api/src/menu/catalog-availability.module.ts",
     "uberAvailabilityWiring": "apps/api/src/integrations/ubereats/infrastructure/nest/menu.wiring.ts",
     "uberAvailabilityPersistenceAdapter": "apps/api/src/integrations/ubereats/infrastructure/persistence/uber-menu-availability-prisma.adapter.ts",
     "retiredAdminService": "apps/api/src/admin/menu/admin-menu.service.ts"

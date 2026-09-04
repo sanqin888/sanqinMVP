@@ -307,6 +307,9 @@ if (adminCatalogOwnershipBoundary) {
   const catalogAvailabilityReader = toPosix(
     adminCatalogOwnershipBoundary.catalogAvailabilityReader ?? '',
   );
+  const catalogAvailabilityModule = toPosix(
+    adminCatalogOwnershipBoundary.catalogAvailabilityModule ?? '',
+  );
   const uberAvailabilityWiring = toPosix(
     adminCatalogOwnershipBoundary.uberAvailabilityWiring ?? '',
   );
@@ -325,6 +328,7 @@ if (adminCatalogOwnershipBoundary) {
     availabilityOrchestration,
     availabilityOrchestrationPublicSurface,
     catalogAvailabilityReader,
+    catalogAvailabilityModule,
     uberAvailabilityWiring,
     uberAvailabilityPersistenceAdapter,
   ]) {
@@ -420,12 +424,31 @@ if (adminCatalogOwnershipBoundary) {
   if (existsSync(catalogReaderPath)) {
     const source = readFileSync(catalogReaderPath, 'utf8');
     if (
-      !source.includes('CatalogAvailabilityReaderService') ||
-      !source.includes('PrismaService') ||
+      !source.includes('implements CatalogAvailabilityReaderPort') ||
+      !source.includes('getMenuItemAvailabilitySnapshot') ||
+      !source.includes('getOptionAvailabilitySnapshot') ||
       /integrations\/ubereats/.test(source)
     ) {
       failures.push(
-        `Catalog availability reader must own Catalog persistence facts without provider dependencies: ${catalogAvailabilityReader}`,
+        `Catalog owner must expose availability facts through the narrow reader contract without provider dependencies: ${catalogAvailabilityReader}`,
+      );
+    }
+  }
+
+  const catalogAvailabilityModulePath = join(
+    REPOSITORY_ROOT,
+    catalogAvailabilityModule,
+  );
+  if (existsSync(catalogAvailabilityModulePath)) {
+    const source = readFileSync(catalogAvailabilityModulePath, 'utf8');
+    if (
+      !source.includes('PublicMenuModule') ||
+      !source.includes('useExisting: CatalogAdminService') ||
+      source.includes('PrismaModule') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `Catalog availability composition must reuse the existing Catalog owner instead of adding another Prisma dependency: ${catalogAvailabilityModule}`,
       );
     }
   }

@@ -1,15 +1,14 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../prisma/prisma.module';
+import { CatalogAdminService } from './catalog-admin.service';
 import { CATALOG_AVAILABILITY_READER } from './catalog-availability-reader.contract';
-import { CatalogAvailabilityReaderService } from './catalog-availability-reader.service';
+import { PublicMenuModule } from './public-menu.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PublicMenuModule],
   providers: [
-    CatalogAvailabilityReaderService,
     {
       provide: CATALOG_AVAILABILITY_READER,
-      useExisting: CatalogAvailabilityReaderService,
+      useExisting: CatalogAdminService,
     },
   ],
   exports: [CATALOG_AVAILABILITY_READER],
