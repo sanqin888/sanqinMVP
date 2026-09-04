@@ -1,7 +1,7 @@
 # Current 12-context dependency graph
 
 Phase 3 Slice 5 merged state: PR #2145 / `6438f934` (2026-09-03), with a
-Web adapter verification follow-up on branch
+Web adapter verification follow-up in PR #2148 on
 `fix/slice5-admin-item-availability-payload`.
 
 This snapshot records the **remaining direct cross-context import debt** enforced

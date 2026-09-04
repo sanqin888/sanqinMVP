@@ -282,7 +282,7 @@ repository workflow. Remote GitHub Actions is the validation gate after approval
 ### Slice 5 — Catalog availability / Uber orchestration contraction
 
 Status: **MERGED via PR #2145 / `6438f934`; production verification follow-up in progress**.  
-Follow-up branch: `fix/slice5-admin-item-availability-payload`.
+Follow-up: PR #2148 on `fix/slice5-admin-item-availability-payload`.
 
 This slice completes the temporary availability/provider boundary left by Slice 3
 without changing Catalog availability semantics or Uber wire behavior:

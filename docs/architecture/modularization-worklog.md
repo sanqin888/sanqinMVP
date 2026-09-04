@@ -354,7 +354,7 @@ Web Clover or Uber runtime behavior is intentionally changed.
 
 ### 2026-09-03 — Phase 3 Slice 5: Catalog availability / Uber orchestration contraction
 
-**PR/SHA:** PR #2145 / `6438f934`; verification follow-up branch `fix/slice5-admin-item-availability-payload`  
+**PR/SHA:** PR #2145 / `6438f934`; verification follow-up PR #2148 on `fix/slice5-admin-item-availability-payload`  
 **State:** MERGED / PRODUCTION VERIFICATION FOLLOW-UP  
 **Result:** The temporary Admin-owned menu availability/Uber coordination from
 Slice 3 is removed. Admin menu now consumes a public Catalog/Uber application
