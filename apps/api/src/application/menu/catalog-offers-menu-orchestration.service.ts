@@ -75,10 +75,11 @@ export class CatalogOffersMenuOrchestrationService {
       payload,
       writableCatalogItems,
     );
-    const readableCatalogItems =
-      await this.catalog.getMenuItemPricingSnapshots({
+    const readableCatalogItems = await this.catalog.getMenuItemPricingSnapshots(
+      {
         includeDeleted: true,
-      });
+      },
+    );
     return this.dailySpecialOffers.getDailySpecials(
       undefined,
       readableCatalogItems,
