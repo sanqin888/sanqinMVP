@@ -105,6 +105,12 @@ node tools/architecture/scan-architecture.mjs --report
   `EmailModule`, message composition and `MessagingTemplateType` must not return to Admin.
   Recharge delivery crosses the boundary with `userStableId`, while the Identity-owned
   challenge may continue to reference the internal User DB ID inside its own persistence;
+- Registration and marketing-opt-in welcome delivery use the Notifications-owned
+  `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Membership
+  keeps persisted marketing-consent ownership. Neither consumer may deep-import
+  `NotificationService`/`notification.module`, pass Prisma `User`/DB `userId`, or move consent
+  into Messaging. Registration email/SMS fallback and subscription email delivery link audit
+  records through `userStableId`;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

@@ -424,8 +424,10 @@ the consolidated Phase 4 batch deployment.
 
 #### Slice 2C — Admin Messaging boundary contraction
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice2c-admin-messaging-delivery`.
+Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2174 merged to
+`dev` as `e27489cf` from final head `2c18e3c5`; GitHub Actions CI #5126 passed.
+Per the current Phase 4 rollout plan, this slice remains undeployed until the consolidated
+Phase-end rollout.
 
 Readiness audit of merged Slice 2B confirmed the remaining **10** direct Identity ->
 Messaging imports as Auth welcome notifications 2, Admin 4, Membership 2 and Loyalty 2.
@@ -461,18 +463,63 @@ Implemented source shape:
    recharge OTP bilingual content/stable-user linkage, `messagingSendId` audit linkage and
    the existing `email_send_failed` fallback behavior.
 
-The local monotonic baseline contracts
+The merged monotonic baseline contracts
 `identity-customer-benefits -> messaging-notifications 10 -> 6`; all other direct pairs
 remain unchanged. Identity total outgoing direct debt therefore contracts **48 -> 44**.
-The remaining six Messaging direct imports are Auth welcome notifications 2, Membership 2
-and Loyalty 2. No dependency/lockfile, Prisma schema/migration, HTTP route, staff invite
-state machine, recharge authorization/amount behavior, payment provider behavior or external
-wire protocol is changed. 2C will not be deployed separately; production verification stays
-part of the consolidated Phase 4 batch rollout.
+CI #5126 passed the architecture gate, API/Web lint/build/strict checks and tests on final
+head `2c18e3c5` before squash merge `e27489cf`. The remaining six Messaging direct imports
+are Auth welcome notifications 2, Membership 2 and Loyalty 2. No dependency/lockfile,
+Prisma schema/migration, HTTP route, staff invite state machine, recharge authorization/amount
+behavior, payment provider behavior or external wire protocol is changed. 2C will not be
+deployed separately; production verification stays part of the consolidated Phase 4 batch
+rollout.
 
-Remaining Slice 2 work after 2C is expected to contract the Auth/Membership notification
-pairings and the Loyalty messaging tail without recreating a reverse Messaging -> Identity
-edge.
+#### Slice 2D — Customer lifecycle notification boundary contraction
+
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice2d-customer-lifecycle-notifications`.
+
+Readiness audit of merged Slice 2C confirmed the remaining **6** direct Identity ->
+Messaging imports as Auth registration-welcome notifications 2, Membership subscription-
+welcome notifications 2 and Loyalty messaging/event wiring 2. Auth and Membership share one
+coherent Customer lifecycle delivery concern: Identity decides that a new registration or
+marketing opt-in happened, while Messaging owns template rendering, channel routing, provider
+delivery and MessagingSend audit linkage.
+
+Implemented source shape:
+
+1. Notifications exposes the narrow `CUSTOMER_LIFECYCLE_NOTIFICATION` capability with two
+   explicit operations: `notifyRegistrationWelcome` and `notifySubscriptionWelcome`. It is
+   not a generic notification facade;
+2. the public contract accepts only `userStableId`, contact/name/language facts required for
+   delivery. It does not expose Prisma `User`, internal `userId`, provider services or customer
+   consent fields;
+3. Auth keeps the `isNewUser` decision and registration/session/account mutation. Both new-user
+   entry paths map the Identity-owned User to stable customer facts before invoking Messaging;
+4. Membership keeps the `marketingEmailOptIn` consent decision. The subscription welcome is
+   invoked only when the persisted user has both email and marketing opt-in, while the existing
+   `MARKETING_OPT_IN` coupon-program trigger still runs afterward even when welcome delivery is
+   skipped;
+5. Messaging preserves the historical registration `welcome` template, email-first/SMS-fallback
+   routing, `register_welcome` tag, `trigger=register` metadata and subscription `Subscription`
+   template / `SUBSCRIPTION_CONFIRM` mapping. Registration email/SMS and subscription email now
+   link MessagingSend by `userStableId` instead of crossing the User DB UUID;
+6. Auth and Membership service/module imports now use `notifications/public-api.ts`; direct
+   `NotificationService` / `notification.module` imports cannot return under the central
+   scanner guard. Focused characterization locks stable-ID mapping, fallback behavior and the
+   Membership-owned consent gate.
+
+The local monotonic baseline contracts
+`identity-customer-benefits -> messaging-notifications 6 -> 2`; all other direct pairs remain
+unchanged. Identity total outgoing direct debt therefore contracts **44 -> 40**. The final two
+Messaging direct imports are Loyalty's `OrderEventsBus` and `MessagingModule`. No dependency /
+lockfile, Prisma schema/migration, HTTP route, registration/session behavior, marketing-consent
+API, coupon issuance semantics, provider wire protocol or notification template meaning is
+changed. 2D will not be deployed separately; production verification remains part of the
+consolidated Phase 4 batch rollout.
+
+Remaining Slice 2 work after 2D is expected to contract the final Loyalty messaging/event tail
+without recreating a reverse Messaging -> Identity edge.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 

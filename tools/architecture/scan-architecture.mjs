@@ -1684,6 +1684,191 @@ if (adminMessagingDeliveryBoundary) {
   }
 }
 
+const customerLifecycleNotificationBoundary =
+  config.customerLifecycleNotificationBoundary ?? null;
+if (customerLifecycleNotificationBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(customerLifecycleNotificationBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.service,
+    boundary.module,
+    boundary.publicSurface,
+    boundary.authService,
+    boundary.authModule,
+    boundary.membershipService,
+    boundary.membershipModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Customer lifecycle notification boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_LIFECYCLE_NOTIFICATION',
+      'CustomerLifecycleNotificationPort',
+      'notifyRegistrationWelcome',
+      'notifySubscriptionWelcome',
+      'userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer lifecycle notification contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService') ||
+      source.includes('SmsService') ||
+      source.includes('NotificationService') ||
+      /\buserId\b/.test(source) ||
+      source.includes('marketingEmailOptIn')
+    ) {
+      failures.push(
+        `Customer lifecycle notification public contract must remain provider/persistence/DB-ID/consent free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const servicePath = join(REPOSITORY_ROOT, boundary.service);
+  if (existsSync(servicePath)) {
+    const source = readFileSync(servicePath, 'utf8');
+    for (const requiredSymbol of [
+      'implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort',
+      'notifyRegistrationWelcome',
+      'notifySubscriptionWelcome',
+      'context: `register_welcome:${input.userStableId}`',
+      'userStableId: input.userStableId',
+      "metadata: { trigger: 'register' }",
+      "metadata: { trigger: 'marketing_opt_in' }",
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Messaging customer lifecycle notification owner is missing ${requiredSymbol}: ${boundary.service}`,
+        );
+      }
+    }
+    if (
+      source.includes('notifyRegisterWelcome') ||
+      source.includes('notifySubscriptionWelcome(params: { user:') ||
+      source.includes("error: 'marketing opt-in missing'")
+    ) {
+      failures.push(
+        `Messaging customer lifecycle notification must not regain Prisma User or customer-consent ownership: ${boundary.service}`,
+      );
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, boundary.module);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    if (
+      !source.includes('CUSTOMER_LIFECYCLE_NOTIFICATION') ||
+      !source.includes('useExisting: NotificationService')
+    ) {
+      failures.push(
+        `NotificationModule must export the customer lifecycle notification capability: ${boundary.module}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_LIFECYCLE_NOTIFICATION',
+      'CustomerLifecycleNotificationPort',
+      'RegistrationWelcomeNotificationInput',
+      'SubscriptionWelcomeNotificationInput',
+      'NotificationModule',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Notifications public surface is missing ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  const authServicePath = join(REPOSITORY_ROOT, boundary.authService);
+  if (existsSync(authServicePath)) {
+    const source = readFileSync(authServicePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('CUSTOMER_LIFECYCLE_NOTIFICATION') ||
+      !source.includes('CustomerLifecycleNotificationPort') ||
+      !source.includes('notifyRegistrationWelcome') ||
+      !source.includes('userStableId: user.userStableId') ||
+      source.includes("from '../notifications/notification.service'") ||
+      source.includes('NotificationService')
+    ) {
+      failures.push(
+        `Auth registration welcome must use only the customer lifecycle notification public capability: ${boundary.authService}`,
+      );
+    }
+  }
+
+  const authModulePath = join(REPOSITORY_ROOT, boundary.authModule);
+  if (existsSync(authModulePath)) {
+    const source = readFileSync(authModulePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('NotificationModule') ||
+      source.includes("from '../notifications/notification.module'")
+    ) {
+      failures.push(
+        `AuthModule notification wiring must use only the Notifications public surface: ${boundary.authModule}`,
+      );
+    }
+  }
+
+  const membershipServicePath = join(REPOSITORY_ROOT, boundary.membershipService);
+  if (existsSync(membershipServicePath)) {
+    const source = readFileSync(membershipServicePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('CUSTOMER_LIFECYCLE_NOTIFICATION') ||
+      !source.includes('CustomerLifecycleNotificationPort') ||
+      !source.includes('fullUser.email && fullUser.marketingEmailOptIn') ||
+      !source.includes('notifySubscriptionWelcome') ||
+      !source.includes('userStableId: fullUser.userStableId') ||
+      source.includes("from '../notifications/notification.service'") ||
+      source.includes('NotificationService')
+    ) {
+      failures.push(
+        `Membership subscription welcome must keep consent Identity-owned and use only the Notifications public capability: ${boundary.membershipService}`,
+      );
+    }
+  }
+
+  const membershipModulePath = join(REPOSITORY_ROOT, boundary.membershipModule);
+  if (existsSync(membershipModulePath)) {
+    const source = readFileSync(membershipModulePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('NotificationModule') ||
+      source.includes("from '../notifications/notification.module'")
+    ) {
+      failures.push(
+        `MembershipModule notification wiring must use only the Notifications public surface: ${boundary.membershipModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

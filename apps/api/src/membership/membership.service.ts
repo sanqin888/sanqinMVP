@@ -29,7 +29,10 @@ import type {
   HoldPaymentCouponReservationInput,
   PaymentCouponReservationPort,
 } from '../benefits/contracts/payment-benefit-reservation.contract';
-import { NotificationService } from '../notifications/notification.service';
+import {
+  CUSTOMER_LIFECYCLE_NOTIFICATION,
+  type CustomerLifecycleNotificationPort,
+} from '../notifications/public-api';
 import type { OrderItemOptionsSnapshot } from '../orders/order-item-options';
 
 const MICRO_PER_POINT = 1_000_000;
@@ -47,7 +50,8 @@ export class MembershipService implements PaymentCouponReservationPort {
     private readonly loyalty: LoyaltyService,
     @Inject(COUPON_PROGRAM_TRIGGER)
     private readonly couponTriggerService: CouponProgramTriggerPort,
-    private readonly notificationService: NotificationService,
+    @Inject(CUSTOMER_LIFECYCLE_NOTIFICATION)
+    private readonly customerLifecycleNotification: CustomerLifecycleNotificationPort,
   ) {}
 
   private hashToken(token: string): string {
@@ -1745,15 +1749,29 @@ export class MembershipService implements PaymentCouponReservationPort {
     try {
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.id },
+        select: {
+          userStableId: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          language: true,
+          marketingEmailOptIn: true,
+        },
       });
       if (!fullUser) return;
 
-      // 1. 先发一封通用的订阅感谢信
-      await this.notificationService.notifySubscriptionWelcome({
-        user: fullUser,
-      });
+      // Customer consent remains Identity-owned; Messaging only performs delivery.
+      if (fullUser.email && fullUser.marketingEmailOptIn) {
+        await this.customerLifecycleNotification.notifySubscriptionWelcome({
+          userStableId: fullUser.userStableId,
+          email: fullUser.email,
+          firstName: fullUser.firstName,
+          lastName: fullUser.lastName,
+          language: fullUser.language === UserLanguage.ZH ? 'ZH' : 'EN',
+        });
+      }
 
-      // 2. 原有的逻辑保持不变（如果有优惠券，它自己会发第二封）
+      // 原有的逻辑保持不变（如果有优惠券，它自己会发第二封）
       await this.couponTriggerService.issueProgramsForUser(
         'MARKETING_OPT_IN',
         fullUser.userStableId,

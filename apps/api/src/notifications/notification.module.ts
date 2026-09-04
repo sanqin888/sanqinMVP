@@ -3,6 +3,9 @@ import { EmailModule } from '../email/email.module';
 import { SmsModule } from '../sms/sms.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { COUPON_ISSUED_NOTIFICATION } from './contracts/coupon-issued-notification.contract';
+import {
+  CUSTOMER_LIFECYCLE_NOTIFICATION,
+} from './contracts/customer-lifecycle-notification.contract';
 import { NotificationService } from './notification.service';
 
 @Module({
@@ -13,7 +16,15 @@ import { NotificationService } from './notification.service';
       provide: COUPON_ISSUED_NOTIFICATION,
       useExisting: NotificationService,
     },
+    {
+      provide: CUSTOMER_LIFECYCLE_NOTIFICATION,
+      useExisting: NotificationService,
+    },
   ],
-  exports: [NotificationService, COUPON_ISSUED_NOTIFICATION],
+  exports: [
+    NotificationService,
+    COUPON_ISSUED_NOTIFICATION,
+    CUSTOMER_LIFECYCLE_NOTIFICATION,
+  ],
 })
 export class NotificationModule {}
