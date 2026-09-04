@@ -75,23 +75,58 @@ cannot later return under a stale superset allowance.
 
 ### Slice 0A — Admin PromotionRule ownership contraction
 
-Status: **READINESS AUDIT NEXT**.
+Status: **READINESS AUDIT COMPLETE / IMPLEMENTATION AWAITING AUTHORIZATION**.
 
-Objective:
+Audit findings on `origin/dev@83de9072`:
 
-- confirm every PromotionRule read/write consumer, current Admin HTTP contract and
-  characterization/test coverage;
-- move PromotionRule management policy and persistence ownership behind the
-  Catalog/Pricing/Offers public boundary;
-- keep Admin as a guarded transport adapter rather than a second PromotionRule owner;
-- preserve current routes, payload semantics, validation rules, soft-delete behavior,
-  persistence schema and runtime promotion evaluation.
+- production `PromotionRule` Prisma access exists in exactly two owner paths:
+  `PromotionsService` performs the canonical active-rule read used by pricing, while
+  `AdminPromotionsService` independently performs list/get/create/update/soft-delete;
+  the latter is therefore a duplicate Admin persistence/business owner;
+- `AdminPromotionsService` also owns all strict write policy: rule/status/stacking/channel
+  validation, default priority/status/stacking/channels, calendar/minute/weekdays
+  normalization, type-specific config normalization, BOGO overlap invariants and the
+  delete -> `ENDED` soft-delete behavior;
+- `AdminPromotionsController` imports Prisma-generated rule/status/stacking/channel
+  types, and `AdminPromotionsModule` imports `PrismaModule`; Admin is therefore coupled
+  to both persistence and Prisma-generated owner types;
+- repository route-consumer search finds the Admin Automatic Promotions Web page as the
+  active source consumer. It uses list/create/update/delete and only the business
+  stable-ID/rule fields. No API/Admin promotion characterization spec currently protects
+  this management behavior; existing promotion tests cover runtime evaluation/adapter
+  behavior instead;
+- the current Admin responses are raw Prisma models and therefore also expose the
+  internal PromotionRule DB UUID/persistence metadata even though the Web consumer does
+  not use them. Removing that unused DB identity is owner-aligned, but it is a transport
+  response contraction and requires explicit authorization rather than being hidden in
+  an ownership refactor;
+- the monotonic architecture baseline prevents a naive move to a new Offers Prisma
+  service: `catalog-pricing-offers -> runtime-data-ci-ops` is currently `10` and may not
+  increase. The implementation must reuse the existing Promotions owner Prisma import
+  rather than add another direct runtime-data import.
 
-Known readiness signal at planning time: the Admin promotion service still directly
-injects `PrismaService` and implements PromotionRule validation/CRUD, while runtime
-promotion evaluation already reads `PromotionRule` from the Promotions/Offers owner.
-The readiness audit must determine the smallest owner-side management contract before
-any code change.
+Recommended implementation shape:
+
+1. add an Offers-owned `PROMOTION_RULE_MANAGEMENT` public contract with non-Prisma
+   input/output types;
+2. move the strict normalization/validation into an Offers-owned management application
+   service with focused characterization tests;
+3. keep raw PromotionRule persistence behind the existing `PromotionsService` Prisma
+   entry (same-context calls only), so Catalog -> Runtime stays at `10` instead of
+   introducing a new Prisma import;
+4. have `AdminPromotionsController` inject the public management capability directly,
+   delete `AdminPromotionsService`, remove `PrismaModule` from the Admin promotions
+   adapter, and remove Prisma-generated rule types from that controller;
+5. preserve all existing `/admin/promotions/rules` routes, request semantics,
+   validation/defaults, list ordering, not-found behavior, soft-delete semantics,
+   persistence schema and runtime evaluation;
+6. add a central architecture guard reserving `promotionRule` Prisma access to the
+   Offers owner and preventing the retired Admin Prisma/service path from returning.
+
+Expected direct-debt effect from local owner imports is
+`identity-customer-benefits -> runtime-data-ci-ops 18 -> 16` while
+`catalog-pricing-offers -> runtime-data-ci-ops` remains `10`. The exact baseline must
+be lowered to the CI-observed count in the implementation PR under the monotonic guard.
 
 ### Slice 0B — Catalog -> Orders public-cycle edge contraction
 

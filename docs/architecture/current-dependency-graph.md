@@ -133,10 +133,13 @@ Catalog, so Phase 4 remains the highest-leverage next boundary phase.
 Before the main Identity/Messaging slices, two short cross-phase readiness/contraction
 slices are planned:
 
-1. **Slice 0A — Admin PromotionRule ownership contraction.** Audit the current Admin
-   PromotionRule HTTP/service/tests and all read/write consumers, then move management
-   policy/persistence ownership behind the Offers owner boundary while keeping Admin a
-   thin transport adapter. This is the immediate next readiness audit.
+1. **Slice 0A — Admin PromotionRule ownership contraction.** Readiness audit is
+   complete on `origin/dev@83de9072`: Admin is confirmed as a duplicate PromotionRule
+   persistence/policy owner, the Admin management path has no dedicated characterization
+   coverage, and a naive new Offers Prisma service would violate the monotonic Catalog ->
+   Runtime baseline. Implementation is awaiting authorization and should move validation
+   to an Offers management capability while reusing the existing `PromotionsService`
+   Prisma entry so Catalog -> Runtime does not increase.
 2. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
    Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
    Pricing/Offers input contract plus boundary mapping rather than moving business

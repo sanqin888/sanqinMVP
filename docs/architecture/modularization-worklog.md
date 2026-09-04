@@ -490,9 +490,10 @@ entry remains at CI/MERGED rather than VERIFIED.
 
 ### 2026-09-04 — Phase 4 planning baseline synchronized
 
-**PR/SHA:** PR #2161 / `docs/phase4-plan-status-sync`  
-**State:** SOURCE / CI PENDING  
-**Result:** synchronized the post-Phase-3 architecture state and recorded the next
+**PR/SHA:** PR #2161; final head `a2841f00`; squash merge `83de9072`  
+**State:** CI / MERGED  
+**Result:** GitHub Actions CI #5083 passed for API and Web before merge. Synchronized
+the post-Phase-3 architecture state and recorded the next
 formal phase as **Phase 4 — Identity / Customer / Benefits + Messaging Boundary
 Contraction**. The plan removes the former Store pause-codec Slice 0 item because PR
 #2160 already closed that ownership edge, keeps Admin PromotionRule ownership as the
@@ -520,8 +521,11 @@ stale-baseline corrections rather than a reason to change the selected next owne
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **PLANNED / READINESS AUDIT NEXT**. Immediate next work is Slice 0A Admin
-  PromotionRule ownership readiness; no Phase 4 business source change is claimed yet.
+- Phase 4: **SLICE 0A READINESS AUDIT COMPLETE / IMPLEMENTATION AWAITING AUTHORIZATION**.
+  The audit on `origin/dev@83de9072` confirms Admin as a duplicate PromotionRule
+  persistence/policy owner, identifies the missing management characterization coverage,
+  and defines a no-new-Prisma-import Offers implementation shape. No Phase 4 business
+  source change is claimed yet.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
