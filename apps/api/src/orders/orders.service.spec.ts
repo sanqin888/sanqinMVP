@@ -524,6 +524,26 @@ describe('OrdersService', () => {
     expect(quote.totalCents).toBe(1130);
   });
 
+  it('maps only SanQ-priced order channels into PromotionRule applicability', async () => {
+    await service.quoteOrderPricing({
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      items: [{ productStableId: demoProductId, qty: 1 }],
+    });
+
+    expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith('web');
+
+    promotions.getOrderPromotionContext.mockClear();
+    const uberQuote = await service.quoteOrderPricing({
+      channel: 'ubereats',
+      fulfillmentType: 'pickup',
+      items: [{ productStableId: demoProductId, qty: 1 }],
+    });
+
+    expect(promotions.getOrderPromotionContext).not.toHaveBeenCalled();
+    expect(uberQuote.automaticPromotionDiscountCents).toBe(0);
+  });
+
   it('applies automatic promotions and keeps POS manual discount in server pricing', async () => {
     promotions.getOrderPromotionContext.mockResolvedValue({
       now: DateTime.fromISO('2026-08-21T12:00:00', {

@@ -11,7 +11,7 @@ export type PromotionRuleStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
 
 export type PromotionRuleStackingPolicy = 'EXCLUSIVE' | 'STACKABLE';
 
-export type PromotionRuleChannel = 'web' | 'in_store' | 'ubereats';
+export type PromotionRuleChannel = 'web' | 'in_store';
 
 export type PromotionRuleManagementInput = {
   stableId?: string;

@@ -1,3 +1,4 @@
+import type { PromotionRuleManagementInput } from './promotion-rule-management.contract';
 import { PromotionRuleManagementService } from './promotion-rule-management.service';
 
 function createPersistenceStub() {
@@ -78,7 +79,7 @@ describe('PromotionRuleManagementService', () => {
       stackingPolicy: 'STACKABLE',
       excludesCoupons: true,
       excludesItemPromotions: true,
-      channels: ['ubereats', 'web', 'ubereats'],
+      channels: ['in_store', 'web', 'in_store'],
       validFrom: '2026-09-04',
       validTo: '2026-09-05',
       weekdays: [7, 6],
@@ -101,7 +102,7 @@ describe('PromotionRuleManagementService', () => {
         stackingPolicy: 'STACKABLE',
         excludesCoupons: true,
         excludesItemPromotions: true,
-        channels: ['ubereats', 'web'],
+        channels: ['in_store', 'web'],
         validFrom: new Date(Date.UTC(2026, 8, 4)),
         validTo: new Date(Date.UTC(2026, 8, 5)),
         weekdays: [6, 7],
@@ -116,6 +117,23 @@ describe('PromotionRuleManagementService', () => {
           discountPercent: 100,
         },
       }),
+    );
+  });
+
+  it('rejects the Orders-only UberEats channel from PromotionRule management', () => {
+    const service = new PromotionRuleManagementService(
+      createPersistenceStub() as never,
+    );
+    // Simulate untyped JSON from an older cached Admin bundle.
+    const input = {
+      titleZh: 'Uber-only rule',
+      type: 'PERCENTAGE_OFF',
+      channels: ['ubereats'],
+      config: { discountPercent: 10 },
+    } as unknown as PromotionRuleManagementInput;
+
+    expect(() => service.createRule(input)).toThrow(
+      'channels must contain web and/or in_store',
     );
   });
 

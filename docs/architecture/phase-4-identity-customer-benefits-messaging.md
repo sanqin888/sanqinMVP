@@ -183,17 +183,59 @@ the hotfix can be marked VERIFIED.
 
 ### Slice 0B — Catalog -> Orders public-cycle edge contraction
 
-Status: **PLANNED AFTER 0A VERIFICATION HOTFIX**.
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice0b-promotion-channel`. The Slice 0A POS pricing hotfix remains
+CI/MERGED with its post-deployment active verification still pending, so Slice 0B is not
+claimed CI-green, deployed or production-verified.
 
-Objective:
+Readiness findings before implementation:
 
-- audit the current Pricing/Offers dependency on `Channel` from `@shared/order`;
-- determine whether that is the complete `catalog-pricing-offers ->
-  commerce-orders-fulfillment` public edge;
-- prefer a provider-neutral Pricing/Offers channel input contract with one boundary
-  mapping from Orders rather than moving business-specific channel semantics into
-  Architecture Foundation solely to break a cycle;
-- lower the exact SCC baseline in the same change if the edge disappears.
+- the complete production `catalog-pricing-offers -> commerce-orders-fulfillment`
+  dependency was exactly two type imports of Orders-owned `Channel`: one in
+  `promotion-context.contract.ts` and one in `promotions.service.ts`; no other Offers /
+  Menu / Coupons / Catalog production source imports `@shared/order` or Orders internals;
+- Offers only needs a PromotionRule applicability dimension. It does not need Order
+  lifecycle, fulfillment, payment or provider-wire semantics;
+- Uber order ingestion is a separate External Channels -> Orders ingestion flow. It
+  persists Uber-provided subtotal/discount/tax/delivery/total facts and does not call
+  `PROMOTION_CONTEXT_READER` or the SanQ PromotionRule evaluator;
+- the Admin PromotionRule editor nevertheless exposed an `Uber Eats` channel option even
+  though no runtime flow consumed that configuration. A read-only production query found
+  **0** `PromotionRule` rows whose `channels` array contained `ubereats`, so deleting the
+  dead capability requires no data backfill, Prisma schema change or migration.
+
+Implemented source shape:
+
+1. `PromotionRuleChannel` is contracted to the Offers-owned applicability set
+   `'web' | 'in_store'`; `PromotionContextReaderPort` and `PromotionsService` consume that
+   owner type and no longer import `@shared/order`;
+2. Orders owns the translation from its broader order-source channel set through an
+   exhaustive mapping: `web -> web`, `in_store -> in_store`, `ubereats -> null`. A null
+   mapping means the Orders pricing path supplies no PromotionRule context; it does not
+   remove `Order Channel.ubereats` or alter provider order persistence;
+3. the Admin automatic-promotion page now exposes only Web/POS applicability, and the
+   Offers management validator explicitly rejects the historical dead `ubereats` input.
+   No compatibility shim is kept because there is no persisted rule using the value and
+   the only discovered source consumer is the same-repository authenticated Admin page;
+4. focused characterization coverage locks Web/In-store owner queries, rejects UberEats
+   PromotionRule management input, preserves the existing POS BOGO + manual-discount
+   tests, and proves an Orders `ubereats` quote does not invoke PromotionRule context;
+5. `tools/architecture/context-baseline.json` contracts the exact legacy SCC from four
+   contexts/five internal edges to three contexts/three internal edges. Orders exits the
+   SCC. `commerce-orders-fulfillment -> catalog-pricing-offers` remains as the correct
+   one-way Orders consumer dependency, while the removed reverse edge is
+   `catalog-pricing-offers -> commerce-orders-fulfillment`.
+
+Measured numeric direct-import debt is unchanged because the removed `@shared/order`
+imports were approved public traffic. The remaining legacy SCC is Catalog -> Messaging ->
+Identity -> Catalog. No dependency/lockfile, Prisma schema/migration, Benefits COMMIT /
+Order transaction boundary, Web Clover provider execution, POS manual-discount rule,
+PromotionRule evaluation algorithm, or Uber runtime/wire behavior is intentionally
+changed.
+
+Because Orders pricing is shared by production Web/POS flows, remote/deployment
+verification should explicitly cover `web -> web` promotion pricing plus the existing
+`in_store` BOGO/manual-discount behavior before Slice 0B is marked production verified.
 
 ### Slice 1 — Email Verification ownership normalization
 
@@ -271,7 +313,8 @@ number:
 - Admin PromotionRule management has one Offers owner; Admin has no duplicate Prisma /
   business-rule implementation for it.
 - `catalog-pricing-offers -> commerce-orders-fulfillment` public-cycle dependency is
-  removed if Slice 0B confirms `Channel` is the only required reverse semantic edge.
+  removed at source by Slice 0B after confirming `Channel` was the only reverse semantic
+  edge; remote CI/deployment verification remains pending while the slice is LOCAL.
 - Email verification challenge/account mutation belongs to Identity; Messaging owns
   delivery only.
 - Identity/Customer/Benefits cross-context callers use narrow Messaging public

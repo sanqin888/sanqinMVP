@@ -566,6 +566,32 @@ verification is still required before this hotfix is marked production VERIFIED.
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`.
 
+### 2026-09-04 — Phase 4 Slice 0B: PromotionRule channel ownership + Catalog -> Orders cycle contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice0b-promotion-channel`; not pushed  
+**State:** LOCAL  
+**Result:** readiness audit confirmed the complete production Catalog/Offers -> Orders
+public dependency was the two `@shared/order` `Channel` type imports used by PromotionRule
+context selection. Promotion applicability is now owned by Offers as
+`PromotionRuleChannel = 'web' | 'in_store'`; Orders exhaustively maps its broader order
+channel set so Web/POS continue into PromotionRule context while `ubereats` maps to no
+PromotionRule context. The authenticated Admin PromotionRule editor and owner validator
+remove the historical Uber Eats applicability option. Before source changes, a read-only
+production query found zero PromotionRule rows containing `ubereats`, so no data backfill,
+Prisma schema change or migration is needed. Uber order ingestion remains separate and
+continues to persist Uber-provided order amounts without invoking SanQ PromotionRule
+pricing. Focused source tests characterize Web/In-store selection, reject the dead Admin
+UberEats input, preserve existing POS BOGO + manual-discount coverage, and assert an
+Orders UberEats quote does not call the PromotionRule reader. The two removed imports were
+public traffic, so numeric direct-import debt remains unchanged; the public edge
+`catalog-pricing-offers -> commerce-orders-fulfillment` disappears and the exact legacy
+SCC contracts from Catalog/Orders/Identity/Messaging with five internal edges to
+Catalog/Identity/Messaging with three. Orders -> Catalog remains as the intended one-way
+pricing consumer dependency. No local lint/build/test/scanner run is claimed under the
+repository workflow, and no CI/deployment/production verification is claimed yet.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -586,8 +612,11 @@ verification is still required before this hotfix is marked production VERIFIED.
   and the retained staff manual discount are now server-authoritative before payment, and
   the POS checkout adapter is fixed to local `channel=in_store` with the manual UberEats
   channel/payment legacy branches removed. Post-deployment active POS verification remains
-  pending; Slice 0B readiness audit can proceed independently, but 0B implementation should
-  not be closed before this hotfix is actively verified.
+  pending. **Slice 0B is LOCAL / REVIEW PENDING** on
+  `refactor/phase4-slice0b-promotion-channel`: Offers no longer imports Orders `Channel`,
+  PromotionRule applicability is Web/POS only, and the legacy public SCC is contracted at
+  source; it must not be marked CI/deployed/verified until remote validation and the
+  required active pricing verification are complete.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

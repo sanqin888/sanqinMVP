@@ -155,26 +155,39 @@ slices are planned:
    plus adapter cleanup on an already-existing POS -> Orders public boundary; it introduces
    no new context edge, direct-import debt, SCC member/edge, Prisma ownership, or baseline
    change. Offers still owns promotion policy and Orders still owns order pricing truth.
-3. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
-   Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
-   Pricing/Offers input contract plus boundary mapping rather than moving business
-   semantics into Foundation merely to break a cycle.
+3. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Local source work on
+   `refactor/phase4-slice0b-promotion-channel` confirms the reverse dependency was exactly
+   the two Offers imports of Orders-owned `Channel`. Promotion applicability now uses the
+   Offers-owned `PromotionRuleChannel = 'web' | 'in_store'`; Orders performs one exhaustive
+   boundary mapping (`web -> web`, `in_store -> in_store`, `ubereats -> no PromotionRule
+   context`). The authenticated Admin PromotionRule editor exposes only Web/POS channels,
+   and the owner validator rejects the historical dead `ubereats` configuration value.
+   Production data was read-only audited before implementation and contained **0**
+   PromotionRule rows whose `channels` array included `ubereats`. No schema/migration or
+   data rewrite is required. Uber order ingestion/runtime/wire behavior is unchanged and
+   continues to persist provider-supplied order amounts through the separate ingestion
+   path rather than SanQ PromotionRule evaluation.
 
 The prior Store temporary-close codec item is no longer a Phase 4 Slice 0 task because
 PR #2160 already moved that persistence encoding to Brand/Store and removed the final
 `brand-store -> store-operations-pos-print` direct edge.
 
-The current legacy public SCC remains contraction-only across Catalog / Orders /
-Identity / Messaging. Its recorded edges remain:
+Slice 0B removes the public edge
+`catalog-pricing-offers -> commerce-orders-fulfillment`. Numeric direct-import debt is
+unchanged because both removed imports were already approved public-contract traffic.
+`commerce-orders-fulfillment -> catalog-pricing-offers` remains as the correct consumer
+flow from Orders pricing into Offers public capabilities, but Orders is no longer inside
+the legacy SCC. The contraction-only SCC baseline is therefore now:
 
-- `catalog-pricing-offers -> commerce-orders-fulfillment`
-- `catalog-pricing-offers -> messaging-notifications`
-- `commerce-orders-fulfillment -> catalog-pricing-offers`
-- `identity-customer-benefits -> catalog-pricing-offers`
-- `messaging-notifications -> identity-customer-benefits`
+- contexts: Catalog / Pricing / Offers; Identity / Customer / Benefits; Messaging /
+  Notifications;
+- `catalog-pricing-offers -> messaging-notifications`;
+- `identity-customer-benefits -> catalog-pricing-offers`;
+- `messaging-notifications -> identity-customer-benefits`.
 
-The monotonic SCC guard introduced in PR #2160 requires the baseline to shrink in the
-same PR whenever a member/edge disappears.
+The monotonic SCC guard introduced in PR #2160 requires this smaller exact baseline in
+the same change; restoring the Catalog -> Orders reverse edge would recreate a larger SCC
+and fail the architecture gate.
 
 ## Phase 1 boundary changes reflected here
 
