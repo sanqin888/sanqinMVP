@@ -153,18 +153,16 @@ describe('PromotionsService PromotionRule management persistence', () => {
     };
     const findMany = jest.fn().mockResolvedValue([persistedRule]);
     const findFirst = jest.fn().mockResolvedValue({ id: persistedRule.id });
-    const update = jest
-      .fn()
-      .mockImplementation(
-        (args: {
-          where: { id: string };
-          data: { status: string; deletedAt: Date };
-        }) => ({
-          ...persistedRule,
-          status: args.data.status,
-          deletedAt: args.data.deletedAt,
-        }),
-      );
+    const update = jest.fn(
+      (args: {
+        where: { id: string };
+        data: { status: string; deletedAt: Date };
+      }) => ({
+        ...persistedRule,
+        status: args.data.status,
+        deletedAt: args.data.deletedAt,
+      }),
+    );
     const service = new PromotionsService(
       {
         promotionRule: { findMany, findFirst, update },
