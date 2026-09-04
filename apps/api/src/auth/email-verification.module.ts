@@ -8,7 +8,11 @@ import { IDENTITY_EMAIL_VERIFICATION } from './email-verification.port';
 import { EmailVerificationService } from './email-verification.service';
 
 @Module({
-  imports: [PrismaModule, IdentityChallengeModule, EmailVerificationDeliveryModule],
+  imports: [
+    PrismaModule,
+    IdentityChallengeModule,
+    EmailVerificationDeliveryModule,
+  ],
   controllers: [EmailCheckoutVerificationController],
   providers: [
     EmailVerificationService,
