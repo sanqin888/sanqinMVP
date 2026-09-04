@@ -332,8 +332,10 @@ Slice 5 is therefore production verified.
 
 ### Slice 5B — Daily Special -> Offers ownership contraction
 
-Status: **MERGED / CI GREEN; production verification pending**.  
+Status: **PRODUCTION VERIFIED**.  
 PR #2153; final CI head `71191389`; squash merge `d3316e45`; CI #5055 passed Architecture, API/Web lint/build/strict/test gates.
+
+Active verification on 2026-09-04 confirmed the migrated Daily Special flow end-to-end within the store-hours constraint: Admin Daily Special GET/bulk PUT returned 200, Public Menu regenerated and returned 200 with the expected special display, and checkout pricing quote returned 200 with the expected Daily Special price. The store was outside business hours, so a persisted order could not be created; the user confirmed the checkout pricing result and explicitly accepted this active verification in place of an impossible off-hours order submission. Slice 5B is therefore production verified.
 
 This slice contracts the remaining half-migrated Daily Special ownership without
 renaming persistence or changing public transport contracts:
