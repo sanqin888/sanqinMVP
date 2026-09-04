@@ -539,8 +539,8 @@ ownership slice is production VERIFIED.
 
 ### 2026-09-04 — Phase 4 Slice 0A verification hotfix: POS server-authoritative promotion pricing
 
-**PR/SHA:** local branch `fix/phase4-slice0a-pos-promotion-pricing`; base `origin/dev@3acb7fe5`  
-**State:** SOURCE / LOCAL REVIEW COMPLETE  
+**PR/SHA:** PR #2166; final head `567a1aba`; squash merge `bb833550`  
+**State:** CI / MERGED  
 **Result:** active POS verification exposed a pre-existing pricing-preview gap: the Orders /
 Offers engine already evaluated the active `in_store` same-item BOGO rule, but the POS
 payment page displayed and collected against its own client-side subtotal/manual-discount/
@@ -559,8 +559,10 @@ continue through the separate integration/import path. Focused tests cover same-
 manual discount coexistence and authenticated store identity on the quote route. This adds
 no new context edge or measured direct-import/SCC debt; Offers remains promotion-policy
 owner and Orders remains order-pricing owner. No Prisma/dependency, Web Clover Ecommerce,
-or Uber runtime/wire behavior change is included. Local lint/build/test/scanner execution
-is intentionally deferred to GitHub Actions after user review.  
+or Uber runtime/wire behavior change is included. Final GitHub Actions CI #5102 passed the
+architecture gate, API lint/build/strict/test, shared strict checks, and Web
+lint/build/strict/test before squash merge. Post-deployment active POS pricing/payment
+verification is still required before this hotfix is marked production VERIFIED.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`.
 
@@ -579,11 +581,13 @@ is intentionally deferred to GitHub Actions after user review.
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A PRODUCTION VERIFIED** via PR #2163 / `aa302629`; final CI #5092
   passed and the user completed active Admin PromotionRule create/edit/refresh/delete
-  verification. A separate **Slice 0A POS pricing verification hotfix is SOURCE / LOCAL
-  REVIEW COMPLETE** on `fix/phase4-slice0a-pos-promotion-pricing` to make automatic
-  promotions and the retained staff manual discount server-authoritative before payment.
-  Slice 0B readiness audit remains next after this hotfix is CI-green, deployed and
-  actively verified.
+  verification. The separate **Slice 0A POS pricing verification hotfix is CI / MERGED**
+  via PR #2166 / `bb833550`; final head `567a1aba` passed CI #5102. Automatic promotions
+  and the retained staff manual discount are now server-authoritative before payment, and
+  the POS checkout adapter is fixed to local `channel=in_store` with the manual UberEats
+  channel/payment legacy branches removed. Post-deployment active POS verification remains
+  pending; Slice 0B readiness audit can proceed independently, but 0B implementation should
+  not be closed before this hotfix is actively verified.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
