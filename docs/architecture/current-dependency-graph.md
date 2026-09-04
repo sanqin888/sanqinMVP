@@ -59,8 +59,10 @@ baseline now fails as stale until the same PR lowers/removes the allowance. Like
 `legacyPublicCycleComponents` entry must exactly match the currently detected SCC
 contexts and internal public edges; if the SCC shrinks or disappears, the old superset
 baseline fails as stale. This prevents a previously removed direct edge or public-cycle
-edge from being re-authorized later by an obsolete baseline. GitHub Actions validation
-is pending user review; no local scanner/lint/build/test run is claimed.
+edge from being re-authorized later by an obsolete baseline. Initial CI #5078 exercised
+that guard and exposed seven stale numeric allowances; those are now normalized to the
+CI-observed current counts above and a replacement CI run is pending. No local
+scanner/lint/build/test run is claimed.
 
 ## Context map
 
@@ -90,10 +92,10 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 19; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 18; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |

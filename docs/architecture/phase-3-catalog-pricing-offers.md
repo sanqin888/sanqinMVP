@@ -425,7 +425,7 @@ cross-context replacement.
 
 ### Post-closeout tail — monotonic cycle baseline + Store pause-reason ownership
 
-Status: **SOURCE COMPLETE / REVIEW PENDING** on
+Status: **SOURCE COMPLETE / CI RERUN PENDING** in PR #2160 on
 `refactor/phase3-tail-cycle-store-status`. Phase 3 itself remains closed; this is a
 small cross-phase cleanup of two explicitly recorded governance tails.
 
@@ -447,9 +447,11 @@ small cross-phase cleanup of two explicitly recorded governance tails.
   baseline becomes a CI failure instead of remaining permission for a removed edge to
   return later.
 - No dependency manifest, Prisma schema/migration, HTTP contract, Web Clover path or
-  Uber external/runtime contract changes are included. Local lint/build/test/scanner
-  execution remains deferred to GitHub Actions after user review under repository
-  workflow.
+  Uber external/runtime contract changes are included. Initial CI #5078 failed at the
+  newly introduced stale-baseline guard and exposed seven pre-existing direct-debt
+  allowances that had already shrunk in source. The follow-up lowers those allowances
+  to the CI-observed current counts and refreshes the dependency graph before rerunning
+  GitHub Actions.
 
 ## Deferred items that are not Slice 1 scope
 

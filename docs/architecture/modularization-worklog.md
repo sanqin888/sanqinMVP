@@ -459,8 +459,8 @@ therefore production verified and closed.
 
 ### 2026-09-04 — Phase 3 post-closeout tail: monotonic cycle baseline + Store pause codec
 
-**PR/SHA:** local branch `refactor/phase3-tail-cycle-store-status`; remote PR not created  
-**State:** SOURCE / REVIEW PENDING  
+**PR/SHA:** PR #2160; initial head `b454caa7`; follow-up head pending after CI baseline normalization  
+**State:** SOURCE / CI RERUN PENDING  
 **Result:** completed the two small governance tails recorded after Slice 6 without
 reopening the closed Phase 3 scope. Brand/Store now owns the timed temporary-closure
 reason codec (`buildAutoPauseReason` / `parseAutoPauseReason`) and exposes it through
@@ -478,8 +478,10 @@ current detected SCC contexts/internal public edges. A shrunk, split or removed 
 therefore forces baseline contraction instead of leaving an obsolete superset that
 could later authorize a restored edge. `--report` exposes stale SCC baselines as well.
 No package/lockfile, Prisma schema/migration, HTTP contract, Web Clover path or Uber
-runtime/wire behavior is changed. Local lint/build/test/scanner execution is deferred
-under repository workflow; GitHub Actions validation starts only after user review.  
+runtime/wire behavior is changed. Initial GitHub Actions CI #5078 failed exactly at the
+new stale-baseline guard and exposed seven pre-existing numeric allowances that had
+already contracted in source; the follow-up normalizes those baselines to CI-observed
+current counts and refreshes the human dependency graph before rerunning CI.  
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`,
 `tools/architecture/context-baseline.json`.

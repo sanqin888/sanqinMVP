@@ -395,12 +395,12 @@
     "catalog-pricing-offers -> architecture-foundation": 2,
     "catalog-pricing-offers -> identity-customer-benefits": 3,
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
-    "commerce-orders-fulfillment -> architecture-foundation": 9,
+    "commerce-orders-fulfillment -> architecture-foundation": 8,
     "commerce-orders-fulfillment -> brand-store": 2,
-    "commerce-orders-fulfillment -> identity-customer-benefits": 11,
+    "commerce-orders-fulfillment -> identity-customer-benefits": 5,
     "commerce-orders-fulfillment -> messaging-notifications": 8,
-    "commerce-orders-fulfillment -> runtime-data-ci-ops": 14,
-    "commerce-orders-fulfillment -> store-operations-pos-print": 6,
+    "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
+    "commerce-orders-fulfillment -> store-operations-pos-print": 2,
     "external-channels -> architecture-foundation": 11,
     "external-channels -> commerce-orders-fulfillment": 1,
     "external-channels -> identity-customer-benefits": 6,
@@ -411,7 +411,7 @@
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 1,
     "identity-customer-benefits -> messaging-notifications": 24,
-    "identity-customer-benefits -> runtime-data-ci-ops": 19,
+    "identity-customer-benefits -> runtime-data-ci-ops": 18,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
     "messaging-notifications -> runtime-data-ci-ops": 10,
@@ -424,9 +424,9 @@
     "payments-clover -> store-operations-pos-print": 11,
     "store-operations-pos-print -> architecture-foundation": 7,
     "store-operations-pos-print -> brand-store": 2,
-    "store-operations-pos-print -> commerce-orders-fulfillment": 10,
+    "store-operations-pos-print -> commerce-orders-fulfillment": 2,
     "store-operations-pos-print -> external-channels": 1,
     "store-operations-pos-print -> identity-customer-benefits": 14,
-    "store-operations-pos-print -> runtime-data-ci-ops": 8
+    "store-operations-pos-print -> runtime-data-ci-ops": 5
   }
 }
