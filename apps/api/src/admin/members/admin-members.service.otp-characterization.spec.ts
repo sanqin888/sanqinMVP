@@ -35,8 +35,8 @@ describe('AdminMembersService recharge OTP characterization', () => {
       sendCode: jest.fn(),
       verifyCode: jest.fn(),
     };
-    const emailService = {
-      sendEmail: jest.fn(),
+    const memberRechargeEmailDelivery = {
+      sendRechargeVerificationEmail: jest.fn(),
     };
     const challengeEngine = new ChallengeEngine();
     const service = new AdminMembersService(
@@ -45,7 +45,7 @@ describe('AdminMembersService recharge OTP characterization', () => {
       loyaltyPolicyReader as never,
       {} as never,
       phoneVerification as never,
-      emailService as never,
+      memberRechargeEmailDelivery as never,
       challengeEngine,
     );
 
@@ -54,7 +54,7 @@ describe('AdminMembersService recharge OTP characterization', () => {
       prisma,
       loyalty,
       phoneVerification,
-      emailService,
+      memberRechargeEmailDelivery,
       challengeEngine,
     };
   };
@@ -83,7 +83,8 @@ describe('AdminMembersService recharge OTP characterization', () => {
 
   it('creates each email recharge code without a service-level rate-limit query', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, emailService, challengeEngine } = createService();
+    const { service, prisma, memberRechargeEmailDelivery, challengeEngine } =
+      createService();
     mockMember(service, emailMember);
     const generateCodeSpy = jest
       .spyOn(challengeEngine, 'generateCode')
@@ -92,7 +93,12 @@ describe('AdminMembersService recharge OTP characterization', () => {
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
-    emailService.sendEmail.mockResolvedValue({ ok: true, sendId: 'send-1' });
+    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
+      {
+        ok: true,
+        sendId: 'send-1',
+      },
+    );
 
     await expect(
       service.sendRechargeCode('member-stable-id', {
@@ -117,6 +123,45 @@ describe('AdminMembersService recharge OTP characterization', () => {
       },
     });
     expect(prisma.authChallenge.count).not.toHaveBeenCalled();
+    expect(
+      memberRechargeEmailDelivery.sendRechargeVerificationEmail,
+    ).toHaveBeenCalledWith({
+      to: 'member@example.com',
+      code: '100000',
+      expiresInMin: 10,
+      locale: 'en',
+      userStableId: 'member-stable-id',
+    });
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-1' },
+      data: { messagingSendId: 'send-1' },
+    });
+  });
+
+  it('preserves email_send_failed when recharge delivery fails without a provider error', async () => {
+    const { service, prisma, memberRechargeEmailDelivery, challengeEngine } =
+      createService();
+    mockMember(service, emailMember);
+    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('123456');
+    prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-failed' });
+    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
+      {
+        ok: false,
+        sendId: 'send-failed',
+      },
+    );
+
+    await expect(
+      service.sendRechargeCode('member-stable-id', {
+        email: 'member@example.com',
+        locale: 'zh-CN',
+      }),
+    ).resolves.toEqual({ ok: false, error: 'email_send_failed' });
+
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-failed' },
+      data: { messagingSendId: 'send-failed' },
+    });
   });
 
   it('increments attempts and revokes an email recharge code on the final mismatch', async () => {

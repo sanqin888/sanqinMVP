@@ -377,8 +377,10 @@ the final Phase 4 batch deployment.
 
 #### Slice 2B — Phone Verification Messaging boundary contraction
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice2b-phone-verification-delivery`.
+Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2173 merged to
+`dev` as `41428324` from final head `d63bc307`; GitHub Actions CI #5123 passed.
+Per the current Phase 4 rollout plan, this slice remains undeployed until the consolidated
+Phase-end rollout.
 
 Readiness audit of merged Slice 2A confirmed the remaining **15** direct Identity ->
 Messaging imports as Auth welcome notifications 2, Phone Verification 5, Admin 4,
@@ -410,17 +412,66 @@ Implemented source shape:
    Messaging template/metadata/provider mapping, and the central scanner prevents concrete
    SMS/template/config/module imports from returning to Phone Verification.
 
-The local monotonic baseline contracts
+The merged monotonic baseline contracts
 `identity-customer-benefits -> messaging-notifications 15 -> 10`; all other direct pairs
 remain unchanged. Identity total outgoing direct debt therefore contracts **53 -> 48**.
-The remaining ten Messaging direct imports are Auth welcome notifications 2, Admin 4,
-Membership 2 and Loyalty 2. No dependency/lockfile, Prisma schema/migration, route,
-Clover payment/proof behavior or external provider protocol is changed. 2B will not be
-deployed separately; production verification remains deferred to the consolidated Phase 4
-batch deployment.
+CI #5123 passed the architecture gate, API/Web lint/build/strict checks and tests on final
+head `d63bc307` before squash merge `41428324`. The remaining ten Messaging direct imports
+are Auth welcome notifications 2, Admin 4, Membership 2 and Loyalty 2. No dependency/lockfile,
+Prisma schema/migration, route, Clover payment/proof behavior or external provider protocol
+is changed. 2B will not be deployed separately; production verification remains deferred to
+the consolidated Phase 4 batch deployment.
 
-Remaining Slice 2 work after 2B is expected to proceed through Admin delivery boundaries,
-then Membership/Loyalty tail contraction without recreating a reverse Messaging -> Identity
+#### Slice 2C — Admin Messaging boundary contraction
+
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice2c-admin-messaging-delivery`.
+
+Readiness audit of merged Slice 2B confirmed the remaining **10** direct Identity ->
+Messaging imports as Auth welcome notifications 2, Admin 4, Membership 2 and Loyalty 2.
+Admin's four imports split into two independent email delivery concerns rather than one
+coherent generic Admin mail service: `AdminStaffController` / `AdminModule` directly used
+`EmailService` / `EmailModule` for staff invites, while `AdminMembersService` /
+`AdminMembersModule` directly used the same concrete email layer for POS member recharge
+email OTP delivery.
+
+Implemented source shape:
+
+1. Email/Messaging owns the narrow `STAFF_INVITE_DELIVERY` capability. Admin Staff keeps
+   invite creation/resend/revoke state, inviter lookup, request locale handling and dev-only
+   invite URL response behavior; delivery delegates to the existing
+   `EmailService.sendStaffInviteEmail()` implementation;
+2. the staff delivery public contract carries only email/token/locale/inviter display facts
+   plus the existing `ADMIN | STAFF | ACCOUNTANT` role values. It does not expose Prisma,
+   `EmailService` or persistence IDs. Existing invite email role rendering is intentionally
+   unchanged: `ADMIN` retains the Admin/管理员 label while non-Admin roles retain the existing
+   Staff/普通员工 wording;
+3. Email/Messaging separately owns `MEMBER_RECHARGE_EMAIL_DELIVERY`. Admin Members still
+   owns contact/profile matching, `NON_ZERO_SIX_DIGIT` code generation, OTP hashing,
+   `AuthChallenge` creation/verification/consume state, recharge verification-token handling
+   and `messagingSendId` linkage;
+4. the recharge delivery capability now owns the existing English/Chinese subject/text/html,
+   `MessagingTemplateType.OTP`, `pos_recharge_otp` tag and provider/MessagingSend call.
+   The cross-context user identity changes from internal `user.id` to `userStableId`; the
+   Identity-owned `AuthChallenge.userId` relation remains internal and unchanged;
+5. Admin Staff and Admin Members modules now import only their respective `email/public-api`
+   delivery modules. Concrete `EmailService`, `EmailModule` and Admin-owned
+   `MessagingTemplateType` usage cannot return under the new central scanner guard;
+6. focused characterization preserves staff invite forwarding (including `ACCOUNTANT`),
+   recharge OTP bilingual content/stable-user linkage, `messagingSendId` audit linkage and
+   the existing `email_send_failed` fallback behavior.
+
+The local monotonic baseline contracts
+`identity-customer-benefits -> messaging-notifications 10 -> 6`; all other direct pairs
+remain unchanged. Identity total outgoing direct debt therefore contracts **48 -> 44**.
+The remaining six Messaging direct imports are Auth welcome notifications 2, Membership 2
+and Loyalty 2. No dependency/lockfile, Prisma schema/migration, HTTP route, staff invite
+state machine, recharge authorization/amount behavior, payment provider behavior or external
+wire protocol is changed. 2C will not be deployed separately; production verification stays
+part of the consolidated Phase 4 batch rollout.
+
+Remaining Slice 2 work after 2C is expected to contract the Auth/Membership notification
+pairings and the Loyalty messaging tail without recreating a reverse Messaging -> Identity
 edge.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary

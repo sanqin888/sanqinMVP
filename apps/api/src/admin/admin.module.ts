@@ -15,7 +15,7 @@ import { AdminCouponsModule } from './coupons/admin-coupons.module';
 import { AdminPromotionsModule } from './promotions/admin-promotions.module';
 import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
-import { EmailModule } from '../email/email.module';
+import { StaffInviteDeliveryModule } from '../email/public-api';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { HomepageContentModule } from '../homepage/homepage-content.module';
 import { AdminHomepageController } from './homepage/admin-homepage.controller';
@@ -32,7 +32,7 @@ import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.co
     AdminPromotionsModule,
     AdminMembersModule,
     AdminPosDevicesModule,
-    EmailModule,
+    StaffInviteDeliveryModule,
     UberEatsModule,
     HomepageContentModule,
     LoyaltyModule,

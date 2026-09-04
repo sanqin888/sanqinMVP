@@ -4,6 +4,7 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   NotFoundException,
   Param,
   Patch,
@@ -18,7 +19,10 @@ import { Roles } from '../../auth/roles.decorator';
 import { RolesGuard } from '../../auth/roles.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
-import { EmailService } from '../../email/email.service';
+import {
+  STAFF_INVITE_DELIVERY,
+  type StaffInviteDeliveryPort,
+} from '../../email/public-api';
 import type { UserRole, UserStatus } from '@prisma/client';
 import type { Request } from 'express';
 
@@ -54,7 +58,8 @@ export class AdminStaffController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
-    private readonly emailService: EmailService,
+    @Inject(STAFF_INVITE_DELIVERY)
+    private readonly staffInviteDelivery: StaffInviteDeliveryPort,
   ) {}
 
   private normalizeLocale(v: unknown): 'en' | 'zh' {
@@ -253,7 +258,7 @@ export class AdminStaffController {
       role: body.role ?? 'STAFF',
     });
 
-    await this.emailService.sendStaffInviteEmail({
+    await this.staffInviteDelivery.sendStaffInvite({
       to: invite.email,
       token,
       role: invite.role,
@@ -285,7 +290,7 @@ export class AdminStaffController {
     const { invite, token } =
       await this.authService.resendStaffInvite(inviteStableId);
 
-    await this.emailService.sendStaffInviteEmail({
+    await this.staffInviteDelivery.sendStaffInvite({
       to: invite.email,
       token,
       role: invite.role,

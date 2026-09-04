@@ -656,8 +656,8 @@ production verification is deferred to the Phase 4 batch rollout after source cl
 
 ### 2026-09-04 — Phase 4 Slice 2B: Phone Verification Messaging boundary contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice2b-phone-verification-delivery`  
-**State:** LOCAL  
+**PR/SHA:** PR #2173; final head `d63bc307`; squash merge `41428324`  
+**State:** CI  
 **Result:** introduced the Messaging-owned `PHONE_VERIFICATION_DELIVERY` public capability
 for generic/customer phone-verification SMS delivery. `PhoneVerificationService` remains the
 Identity owner of phone normalization, IP/daily rate limits, `NON_ZERO_SIX_DIGIT` OTP,
@@ -672,8 +672,37 @@ imports in favor of the Messaging public capability, contracting Identity -> Mes
 **15 -> 10** and total Identity outgoing debt **53 -> 48**. HTTP routes, Clover phone-proof
 validation and AdminMembers' current PhoneVerificationService dependency are unchanged.
 Focused characterization plus the central scanner reserve this split. No local
-lint/build/test/scanner run is claimed under repository workflow, and this slice will not be
-deployed separately before the consolidated Phase 4 rollout.  
+lint/build/test/scanner run is claimed under repository workflow. Final GitHub Actions CI
+#5123 passed Architecture, API/Web lint/build/strict checks and tests on final head
+`d63bc307` before squash merge `41428324`. This slice will not be deployed separately before
+the consolidated Phase 4 rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2C: Admin Messaging boundary contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice2c-admin-messaging-delivery`  
+**State:** LOCAL  
+**Result:** removed Admin's four concrete Email dependencies by introducing two independent
+Email/Messaging public capabilities rather than a generic Admin mail facade.
+`STAFF_INVITE_DELIVERY` keeps staff invite creation/resend/revoke state in Identity/Admin and
+delegates the existing `EmailService.sendStaffInviteEmail()` behavior, preserving
+`ADMIN` / `STAFF` / `ACCOUNTANT` role inputs and current email-role wording.
+`MEMBER_RECHARGE_EMAIL_DELIVERY` keeps member-contact matching, OTP generation/hash,
+`AuthChallenge`, recharge-token verification and `messagingSendId` linkage in Admin Members,
+while Messaging owns the existing bilingual subject/text/html,
+`MessagingTemplateType.OTP`, `pos_recharge_otp` tag and provider/MessagingSend call. Recharge
+email user linkage now crosses the context boundary with `userStableId` rather than internal
+User DB UUID; the Identity-owned challenge relation remains internal. `AdminStaffController`,
+`AdminModule`, `AdminMembersService` and `AdminMembersModule` no longer import concrete
+`EmailService` / `EmailModule`, contracting Identity -> Messaging **10 -> 6** and total
+Identity outgoing direct debt **48 -> 44**. Focused characterization and a central scanner
+guard reserve the two capabilities, stable-ID linkage, invite forwarding, bilingual recharge
+content and `email_send_failed` fallback. No dependency, Prisma schema/migration, HTTP route,
+staff-invite state machine, recharge amount/authorization or provider protocol is changed.
+No local lint/build/test/scanner run is claimed under repository workflow; this slice will not
+be deployed separately before the consolidated Phase 4 rollout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
@@ -691,18 +720,20 @@ deployed separately before the consolidated Phase 4 rollout.
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A
-  MERGED/CI; SLICE 2B LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
+- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B
+  MERGED/CI; SLICE 2C LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
   Slice 1 merged via PR #2171 as `afa1bff6` after final head `94955b27` passed CI #5116 and
   removes the final legacy public SCC. Slice 2A merged via PR #2172 as `c8e91303` after final
   head `29bf23b7` passed CI #5120, contracting Identity -> Messaging `22 -> 15`. Slice 2B
-  locally moves Phone Verification template/provider delivery behind
-  `PHONE_VERIFICATION_DELIVERY`, contracting the local baseline `15 -> 10`. Per the current
-  rollout plan, Slice 1 onward are not individually deployed; the accumulated Phase 4
-  changes will be deployed and actively verified together after source closeout.
+  merged via PR #2173 as `41428324` after final head `d63bc307` passed CI #5123, contracting
+  the baseline `15 -> 10`. Slice 2C locally removes Admin's remaining concrete Email
+  dependencies through staff-invite and member-recharge public capabilities, contracting the
+  local baseline `10 -> 6`. Per the current rollout plan, Slice 1 onward are not individually
+  deployed; the accumulated Phase 4 changes will be deployed and actively verified together
+  after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
