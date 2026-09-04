@@ -419,8 +419,8 @@ because replacement traffic uses public owner/application surfaces.
 
 ### 2026-09-04 — Phase 3 Slice 6: public-contract cycle guard + contraction
 
-**PR/SHA:** PR #2157; guard commit `5ee0970d`; branch `refactor/phase3-slice6-cycle-guard`  
-**State:** SOURCE / REMOTE VALIDATION PENDING  
+**PR/SHA:** PR #2157; implementation head `7c8b374e`; guard commit `5ee0970d`  
+**State:** CI GREEN / DEPLOYMENT VERIFICATION PENDING  
 **Result:** Phase 3 closeout review found that the central scanner treated
 `public-api`/`contracts`/`ports` traffic as approved but did not analyze those
 approved edges as a directed graph. Static source inspection therefore exposed a
@@ -448,9 +448,10 @@ a narrow read-compat fallback. The source graph is therefore intended to retain 
 No dependency manifest, Prisma schema/migration, production Web Clover, Uber external
 wire format, webhook/order state, or full-menu publication protocol is changed.  
 **Validation:** local lint/build/test/scanner execution intentionally deferred under
-repository workflow; GitHub Actions on PR #2157 is the authoritative post-contraction
-graph/type/test gate. The active Uber availability path still requires deployment
-verification before Phase 3 can be marked closed.  
+repository workflow. GitHub Actions CI #5069 passed on implementation head `7c8b374e`:
+Architecture, API/Web lint/build, API/Web strict declaration checks, and API/Web tests
+all passed. The active Uber availability path still requires deployment verification
+before Phase 3 can be marked closed.  
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
@@ -462,9 +463,9 @@ verification before Phase 3 can be marked closed.
 - Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4, Slice 5 and Slice 5B are merged;
   Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 2C remains **DEFERRED** because
   the current Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free
-  cross-context replacement yet. Slice 6 is **IN PROGRESS**: the cycle guard and
-  Catalog/External source contraction are on PR #2157, pending authoritative CI and
-  post-deployment active availability verification before Phase 3 can close.
+  cross-context replacement yet. Slice 6 is **CI GREEN** on PR #2157: the cycle guard
+  and Catalog/External source contraction passed CI #5069 and now require only merge,
+  deployment, and active availability verification before Phase 3 can close.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

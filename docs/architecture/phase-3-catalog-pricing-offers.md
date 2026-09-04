@@ -369,7 +369,7 @@ Actions is the authoritative graph/test gate after review.
 
 ### Slice 6 — Phase 3 closeout
 
-Status: **IN PROGRESS — cycle contracted / remote validation pending**.
+Status: **CI GREEN — merge / deployment verification pending**.
 
 Refresh the dependency graph and compatibility records, verify no new direct
 context pairs or cycles were introduced, and document the next phase boundary.
@@ -413,9 +413,9 @@ provider intent (`publishable=true`, no Catalog suspend window) rather than sile
 reintroducing a Catalog dependency. No Prisma schema/migration or external Uber wire
 format changes are required.
 
-Phase 3 remains open until the updated branch passes the authoritative GitHub Actions
-architecture/type/test gates and the active availability path is re-verified after
-deployment.
+GitHub Actions CI #5069 passed on implementation head `7c8b374e`, including the
+Architecture gate, API/Web lint/build, strict declaration checks, and tests. Phase 3
+remains open only for merge plus post-deployment active availability verification.
 
 ## Deferred items that are not Slice 1 scope
 

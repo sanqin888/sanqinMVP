@@ -37,8 +37,9 @@ Uber public capability. The first remote cycle-gate run additionally surfaced a
 pre-existing public SCC among Catalog / Orders / Identity / Messaging. Because those
 edges predate Slice 6, they are now captured as `legacyPublicCycleComponents`
 contraction-only debt: they may shrink but cannot gain a new context or internal edge.
-GitHub Actions remains authoritative for the post-change graph and cycle result; no
-local scanner execution is claimed here.
+GitHub Actions CI #5069 passed on implementation head `7c8b374e`; the Architecture
+gate found no new direct pair and no new/expanded public-contract cycle. No local
+scanner execution is claimed here.
 
 ## Context map
 
