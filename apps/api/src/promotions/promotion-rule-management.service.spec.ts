@@ -158,12 +158,12 @@ describe('PromotionRuleManagementService', () => {
     },
   ])(
     'rejects $name with the existing Admin error contract',
-    async ({ input, message }) => {
+    ({ input, message }) => {
       const service = new PromotionRuleManagementService(
         createPersistenceStub() as never,
       );
 
-      await expect(service.createRule(input)).rejects.toThrow(message);
+      expect(() => service.createRule(input)).toThrow(message);
     },
   );
 
