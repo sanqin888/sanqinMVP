@@ -26,11 +26,12 @@ jobs:
         if: matrix.app == 'api'
         run: python3 -m py_compile ops/sanq-mcp/server.py
 
-      # 先安装 pnpm。
-      # 不指定 version，使用 package.json 中的 packageManager 版本。
+      # 先安装 pnpm。固定到仓库当前使用的 pnpm 9.0.0，避免 action-setup v6
+      # 在 GitHub-hosted runner 上先 bootstrap 新版 pnpm 再降级所产生的分钟级波动。
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@v5
         with:
+          version: 9.0.0
           run_install: false
 
       # 再安装 Node，并启用 pnpm cache。
