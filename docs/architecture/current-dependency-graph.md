@@ -18,20 +18,23 @@ The CI architecture scanner is authoritative for the exact source scan. This
 file is the human-readable working snapshot and must be refreshed again at each
 Phase 3 slice boundary.
 
-## Phase 3 Slice 6 cycle audit finding
+## Phase 3 Slice 6 cycle audit and contraction
 
 Static closeout review found one public-contract cycle that the previous scanner
 could not reject because public imports were counted separately from direct debt:
 
 `catalog-pricing-offers -> external-channels -> catalog-pricing-offers`
 
-The forward edge is the Catalog/Uber availability application orchestration using
-Uber's public availability port; the reverse edge is Uber menu wiring adapting the
-Catalog public availability reader. Slice 6 adds a strongly-connected-component
-cycle gate over public dependency pairs that are not still grandfathered by an
-explicit legacy direct-import allowance. The current Catalog/External cycle must be
-contracted before Phase 3 can be marked CLOSED; no business ownership move is made
-in the scanner-only batch.
+Slice 6 first adds a strongly-connected-component cycle gate over public dependency
+pairs that are not still grandfathered by an explicit legacy direct-import allowance.
+The same slice then contracts the exposed cycle at source: Catalog availability
+orchestration now supplies publication and suspend-window facts to the Uber public
+availability command, while Uber menu wiring/API/worker composition no longer imports
+Catalog availability surfaces. The reverse `external-channels -> catalog-pricing-offers`
+public edge is therefore removed in source; the intended remaining availability
+coordination direction is `catalog-pricing-offers -> external-channels` through the
+Uber public capability. GitHub Actions remains authoritative for the post-change graph
+and cycle result; no local scanner execution is claimed here.
 
 ## Context map
 

@@ -671,12 +671,12 @@ if (adminCatalogOwnershipBoundary) {
   if (existsSync(uberAvailabilityWiringPath)) {
     const source = readFileSync(uberAvailabilityWiringPath, 'utf8');
     if (
-      !source.includes("from '../../../../menu/public-api'") ||
-      !source.includes('CATALOG_AVAILABILITY_READER') ||
-      !source.includes('UBER_MENU_CATALOG_AVAILABILITY_QUERY')
+      source.includes("from '../../../../menu/public-api'") ||
+      source.includes('CATALOG_AVAILABILITY_READER') ||
+      source.includes('UBER_MENU_CATALOG_AVAILABILITY_QUERY')
     ) {
       failures.push(
-        `Uber composition must adapt Catalog availability through the public reader into an Uber application query port: ${uberAvailabilityWiring}`,
+        `Uber availability composition must not reverse-query Catalog; Catalog-owned availability facts must enter through the Uber public command boundary: ${uberAvailabilityWiring}`,
       );
     }
   }
@@ -693,7 +693,7 @@ if (adminCatalogOwnershipBoundary) {
       /\.menuItem\b|\.menuOptionTemplateChoice\b/.test(source)
     ) {
       failures.push(
-        `Uber availability persistence must stay DB-only for Uber-owned mapping/ticket facts; Catalog adaptation belongs in composition wiring: ${uberAvailabilityPersistenceAdapter}`,
+        `Uber availability persistence must stay DB-only for Uber-owned mapping/ticket facts and must not reintroduce Catalog reads: ${uberAvailabilityPersistenceAdapter}`,
       );
     }
   }

@@ -369,7 +369,7 @@ Actions is the authoritative graph/test gate after review.
 
 ### Slice 6 — Phase 3 closeout
 
-Status: **IN PROGRESS — cycle guard/source audit**.
+Status: **IN PROGRESS — cycle contracted / remote validation pending**.
 
 Refresh the dependency graph and compatibility records, verify no new direct
 context pairs or cycles were introduced, and document the next phase boundary.
@@ -390,10 +390,28 @@ a direct allowance is removed later, its public direction automatically enters t
 cycle gate. The scanner report also exposes detected public-contract cycle
 components and their edges.
 
-The currently identified Catalog <-> External Channels public cycle remains a
-Phase 3 closeout blocker and must be contracted before Phase 3 is marked CLOSED;
-this scanner batch intentionally does not move that business/orchestration ownership
-without a separately reviewed boundary change.
+The identified Catalog <-> External Channels public cycle is now source-contracted
+under the separately authorized boundary change. Catalog availability orchestration
+reads the Catalog-owned publication/suspend facts and passes provider-neutral values
+(`publishable`, effective availability and ISO `suspendUntil`) into the Uber public
+availability command. Uber no longer imports `menu/public-api.ts`, no longer adapts
+`CATALOG_AVAILABILITY_READER`, and neither the API nor dedicated worker runtime imports
+`CatalogAvailabilityModule`; the remaining public direction is therefore Catalog ->
+External Channels only. Uber converts the public ISO suspend time inside its boundary
+before calling the provider gateway.
+
+Availability failure tickets now snapshot `publishable` and `suspendUntil` together
+with `isAvailable`, so a retry no longer needs to reverse-query Catalog. Historical
+tickets that contain only `isAvailable` remain retryable with the prior effective
+fallback (`publishable=true`, no suspend-until). The provider-specific Uber Admin
+availability endpoints remain direct Uber commands and therefore use explicit
+provider intent (`publishable=true`, no Catalog suspend window) rather than silently
+reintroducing a Catalog dependency. No Prisma schema/migration or external Uber wire
+format changes are required.
+
+Phase 3 remains open until the updated branch passes the authoritative GitHub Actions
+architecture/type/test gates and the active availability path is re-verified after
+deployment.
 
 ## Deferred items that are not Slice 1 scope
 

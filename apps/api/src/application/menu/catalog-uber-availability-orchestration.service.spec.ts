@@ -41,7 +41,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
       getMenuItemAvailabilitySnapshot: jest.fn().mockResolvedValue({
         stableId: 'dish-1',
         visibility: 'PUBLIC',
-        publishToUberEats: false,
+        publishToUberEats: true,
         tempUnavailableUntil: null,
         hasFixedComponents: false,
       }),
@@ -84,6 +84,9 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
       expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
         menuItemStableId: 'dish-1',
         isAvailable: available,
+        publishable: true,
+        suspendUntil:
+          mode === 'TEMP_TODAY_OFF' ? '2099-01-01T00:00:00.000Z' : null,
       });
     },
   );
@@ -124,6 +127,8 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
       menuItemStableId: 'dish-1',
       isAvailable: true,
+      publishable: true,
+      suspendUntil: null,
     });
 
     syncUberMenuItemAvailability.mockClear();
@@ -140,6 +145,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     expect(syncUberOptionItemAvailability).toHaveBeenCalledWith({
       optionChoiceStableId: 'option-1',
       isAvailable: false,
+      suspendUntil: null,
     });
   });
 

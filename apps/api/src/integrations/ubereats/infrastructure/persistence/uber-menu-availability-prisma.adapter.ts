@@ -56,6 +56,8 @@ export class UberMenuAvailabilityPrismaAdapter
         lastError: input.error,
         context: {
           isAvailable: input.isAvailable,
+          publishable: input.publishable,
+          suspendUntil: input.suspendUntil?.toISOString() ?? null,
         },
       },
     });

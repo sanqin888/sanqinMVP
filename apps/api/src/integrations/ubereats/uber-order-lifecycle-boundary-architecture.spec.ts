@@ -39,8 +39,9 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     );
     expect(worker).not.toMatch(/FulfillmentProcessor|PosGateway|OrdersModule/);
     expect(uberModule).toMatch(
-      /createUberEatsWorkerRuntimeModule[\s\S]*imports:\s*\[\s*PrismaModule,\s*BrandStoreConfigModule,\s*CatalogAvailabilityModule\s*\]/,
+      /createUberEatsWorkerRuntimeModule[\s\S]*imports:\s*\[\s*PrismaModule,\s*BrandStoreConfigModule\s*\]/,
     );
+    expect(uberModule).not.toContain('CatalogAvailabilityModule');
   });
 
   it('shares preparation policy through the existing public shared Order package', () => {
