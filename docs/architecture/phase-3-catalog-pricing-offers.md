@@ -369,7 +369,7 @@ Actions is the authoritative graph/test gate after review.
 
 ### Slice 6 — Phase 3 closeout
 
-Status: **CI GREEN — merge / deployment verification pending**.
+Status: **PRODUCTION VERIFIED / CLOSED on 2026-09-04**.
 
 Refresh the dependency graph and compatibility records, verify no new direct
 context pairs or cycles were introduced, and document the next phase boundary.
@@ -413,9 +413,15 @@ provider intent (`publishable=true`, no Catalog suspend window) rather than sile
 reintroducing a Catalog dependency. No Prisma schema/migration or external Uber wire
 format changes are required.
 
-GitHub Actions CI #5069 passed on implementation head `7c8b374e`, including the
-Architecture gate, API/Web lint/build, strict declaration checks, and tests. Phase 3
-remains open only for merge plus post-deployment active availability verification.
+GitHub Actions CI #5070 passed on final PR head `8547b46c`, including the Architecture
+gate, API/Web lint/build, strict declaration checks, and tests. PR #2157 then merged to
+`dev` as `b91afb6a`. Post-deployment focused active verification was completed on
+2026-09-04 for Uber-published menu item availability OFF -> ON, temporary item
+suspension/recovery behavior, and option availability OFF -> ON. The user confirmed
+the exercised availability flows completed successfully, so Slice 6 and the approved
+Phase 3 scope are closed. Slice 2C remains explicitly DEFERRED because the existing
+Benefits COMMIT + Order creation atomic transaction still lacks a safe Prisma-free
+cross-context replacement.
 
 ## Deferred items that are not Slice 1 scope
 

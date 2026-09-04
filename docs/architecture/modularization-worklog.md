@@ -419,8 +419,8 @@ because replacement traffic uses public owner/application surfaces.
 
 ### 2026-09-04 — Phase 3 Slice 6: public-contract cycle guard + contraction
 
-**PR/SHA:** PR #2157; implementation head `7c8b374e`; guard commit `5ee0970d`  
-**State:** CI GREEN / DEPLOYMENT VERIFICATION PENDING  
+**PR/SHA:** PR #2157; final PR head `8547b46c`; squash merge `b91afb6a`; guard commit `5ee0970d`  
+**State:** PRODUCTION VERIFIED / CLOSED  
 **Result:** Phase 3 closeout review found that the central scanner treated
 `public-api`/`contracts`/`ports` traffic as approved but did not analyze those
 approved edges as a directed graph. Static source inspection therefore exposed a
@@ -448,10 +448,12 @@ a narrow read-compat fallback. The source graph is therefore intended to retain 
 No dependency manifest, Prisma schema/migration, production Web Clover, Uber external
 wire format, webhook/order state, or full-menu publication protocol is changed.  
 **Validation:** local lint/build/test/scanner execution intentionally deferred under
-repository workflow. GitHub Actions CI #5069 passed on implementation head `7c8b374e`:
+repository workflow. GitHub Actions CI #5070 passed on final PR head `8547b46c`:
 Architecture, API/Web lint/build, API/Web strict declaration checks, and API/Web tests
-all passed. The active Uber availability path still requires deployment verification
-before Phase 3 can be marked closed.  
+all passed. PR #2157 then merged to `dev` as `b91afb6a`. Post-deployment active
+verification completed successfully for Uber-published item availability OFF -> ON,
+temporary item suspension/recovery, and option availability OFF -> ON. Slice 6 is
+therefore production verified and closed.  
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
@@ -460,12 +462,11 @@ before Phase 3 can be marked closed.
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4, Slice 5 and Slice 5B are merged;
-  Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 2C remains **DEFERRED** because
-  the current Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free
-  cross-context replacement yet. Slice 6 is **CI GREEN** on PR #2157: the cycle guard
-  and Catalog/External source contraction passed CI #5069 and now require only merge,
-  deployment, and active availability verification before Phase 3 can close.
+- Phase 3: **PRODUCTION VERIFIED / CLOSED** for the approved scope on 2026-09-04.
+  Slice 6 merged through PR #2157 as `b91afb6a`, passed final CI #5070, and completed
+  active Uber availability verification. Slice 2C remains **DEFERRED** because the
+  current Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free
+  cross-context replacement yet; Phase 3 closure does not reclassify that deferred debt.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
