@@ -141,8 +141,9 @@ traffic and no SCC member/edge is added or removed.
 
 #### Slice 0A verification hotfix — POS server-authoritative promotion pricing
 
-Status: **SOURCE / LOCAL REVIEW COMPLETE** on
-`fix/phase4-slice0a-pos-promotion-pricing`, based on `origin/dev@3acb7fe5`.
+Status: **CI / MERGED** via PR #2166 / `bb833550`.
+Final head `567a1aba` passed GitHub Actions CI #5102 before merge; post-deployment active
+POS pricing/payment verification is still required before marking this hotfix VERIFIED.
 
 The production verification pass exposed a separate pre-existing checkout gap: the active
 same-item BOGO rule is correctly configured for `in_store` and the Orders/Offers pricing

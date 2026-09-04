@@ -145,11 +145,11 @@ slices are planned:
    DB `id`/`createdAt`/`updatedAt`/`deletedAt` fields while preserving all business fields,
    routes and request semantics. Active Admin create/edit/refresh/delete verification was
    completed on 2026-09-04, so the original 0A ownership slice is production VERIFIED.
-2. **Slice 0A verification hotfix — POS server-authoritative promotion pricing.** Local
-   source on `fix/phase4-slice0a-pos-promotion-pricing` adds a narrow POS pricing quote to
-   the existing Orders public capability so the POS adapter displays automatic promotions
-   and the retained staff manual discount from the canonical server quote before taking
-   payment. The POS payment adapter is also contracted to local `channel=in_store` only:
+2. **Slice 0A verification hotfix — POS server-authoritative promotion pricing.** PR #2166
+   merged as `bb833550` after final head `567a1aba` passed CI #5102. It adds a narrow POS
+   pricing quote to the existing Orders public capability so the POS adapter displays
+   automatic promotions and the retained staff manual discount from the canonical server
+   quote before taking payment. The POS payment adapter is also contracted to local `channel=in_store` only:
    the staff UberEats channel selector/payment method and their legacy branches are removed,
    while Uber webhook/import/runtime remains unchanged. This is a method/transport expansion
    plus adapter cleanup on an already-existing POS -> Orders public boundary; it introduces
