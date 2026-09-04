@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
+import { NotificationModule } from '../notifications/public-api';
 import { PrismaModule } from '../prisma/prisma.module';
-import { NotificationModule } from '../notifications/notification.module';
 import { CouponOfferPolicyService } from './coupon-offer-policy.service';
 import {
   COUPON_OFFER_ADMIN,

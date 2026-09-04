@@ -312,8 +312,8 @@ COMMIT contraction is recorded as Slice 2C follow-up.
 
 ### 2026-09-03 — Phase 3 Slice 3: Admin Catalog ownership contraction
 
-**PR/SHA:** local branch `refactor/phase3-slice3-admin-catalog-ownership` from `origin/dev@6a022c8c`  
-**State:** SOURCE / LOCAL REVIEW  
+**PR/SHA:** PR #2141 / merge `a29aae1d` (reviewed head `0fb3db83`)  
+**State:** CI  
 **Result:** Admin menu CRUD/read-model/application decisions moved into Catalog-owned
 `CatalogAdminService` exposed through `menu/public-api.ts`; the legacy
 `AdminMenuService` was deleted. Admin menu composition no longer owns Prisma or
@@ -331,16 +331,70 @@ marked DEFERRED after its atomic-transaction readiness audit.
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
+### 2026-09-03 — Phase 3 Slice 4: Offers -> Messaging boundary
+
+**PR/SHA:** PR #2142 / merge `3629bc3b`  
+**State:** CI  
+**Result:** Coupon-triggered gift notification delivery now crosses the
+Messaging/Notifications context only through `notifications/public-api.ts` and the
+Messaging-owned `COUPON_ISSUED_NOTIFICATION` port. `CouponProgramTriggerService`
+no longer injects the concrete `NotificationService` or passes Prisma User/
+CouponProgram models across the boundary; it maps a narrow recipient/program
+snapshot carrying only `userStableId` as user identity. Messaging resolves the
+existing internal `MessagingSend.userId` audit relation from that stable identity
+inside its own persistence boundary. `CouponsModule` likewise imports the
+notification composition module only from the
+public surface. The measured `catalog-pricing-offers -> messaging-notifications`
+direct-import debt is contracted from 2 to 0 and its baseline allowance is removed,
+so a future direct edge in that direction fails the central architecture gate. No
+Prisma schema/migration, coupon issuance rules, notification timing/template/provider,
+Web Clover or Uber runtime behavior is intentionally changed.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-03 — Phase 3 Slice 5: Catalog availability / Uber orchestration contraction
+
+**PR/SHA:** local branch `refactor/phase3-slice5-catalog-uber-availability`  
+**State:** SOURCE  
+**Result:** The temporary Admin-owned menu availability/Uber coordination from
+Slice 3 is removed. Admin menu now consumes a public Catalog/Uber application
+orchestration module instead of wiring `UberEatsModule` directly. Catalog owns a
+narrow availability reader that projects menu-item publication intent,
+suspend-until and fixed-component composition facts; Uber composition adapts that
+reader into a narrow application query port, while Uber availability persistence no
+longer reads `MenuItem` or `MenuOptionTemplateChoice` Prisma delegates and remains
+DB-only for Uber store mappings / OpsTickets. The fixed-component Uber publication
+capability guard moves out of `CatalogAdminService` into the orchestration layer,
+while item/option availability persistence, best-effort Uber failure handling and
+the Admin `storeId` compatibility response remain unchanged. Admin Web now uses the
+public `SYNC_REQUESTED` status instead of stale internal `PENDING`. The central
+scanner is tightened so the deleted Admin orchestration, direct Admin Uber wiring,
+provider policy inside Catalog management, and direct Catalog Prisma reads from the
+Uber availability adapter cannot return. Removing the old Admin logger import and
+direct `UberEatsModule` wiring lowers `identity-customer-benefits ->
+architecture-foundation` from 14 to 13 and `identity-customer-benefits ->
+external-channels` from 2 to 1; replacement traffic uses public surfaces, so no new
+debt pair is introduced. No Prisma schema/migration,
+production Web Clover, Uber webhook/order state or wire-contract change is included.
+Production verification remains pending after CI/deploy.  
+**Next:** after Slice 5 active verification, perform Slice 5B to move Daily Special
+management/persistence ownership from Catalog into Offers/Pricing before Phase 3
+closeout.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
+
 ## Current position
 
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1, Slice 2 and Slice 2B are merged. Slice 2C is **DEFERRED** after
-  readiness review because the current Benefits COMMIT + Order creation atomic
-  transaction has no safe Prisma-free cross-context replacement yet. Slice 3 is
-  source-complete locally and pending user review/remote CI; its temporary Admin
-  availability/Uber coordination is explicitly assigned to Slice 5.
+- Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3 and Slice 4 are merged; Slice 2C is
+  **DEFERRED** after readiness review because the current Benefits COMMIT + Order
+  creation atomic transaction has no safe Prisma-free cross-context replacement yet.
+  Slice 5 is source-complete locally and pending user review/remote CI plus the
+  required active Uber availability verification after deployment. Slice 5B is
+  planned next to move Daily Special ownership from Catalog into Offers/Pricing
+  before Slice 6 closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

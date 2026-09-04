@@ -1,4 +1,3 @@
-import type { User } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 
@@ -59,23 +58,20 @@ describe('NotificationService.notifyCouponIssued', () => {
   });
 
   it('uses english gift title for english users when both localized titles are available', async () => {
-    const user = {
-      id: 'u_1',
-      language: 'EN',
-      phone: '+15551234567',
-      email: 'john@example.com',
-      firstName: 'John',
-      lastName: 'Doe',
-    } as unknown as User;
-
     await service.notifyCouponIssued({
-      user,
+      recipient: {
+        userStableId: 'customer-stable-1',
+        language: 'EN',
+        email: 'john@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+      },
       program: {
-        tittleCh: '新人礼包',
-        tittleEn: 'Welcome Gift',
+        titleZh: '新人礼包',
+        titleEn: 'Welcome Gift',
         programStableId: 'prog_1',
         giftValue: '50',
-        triggerType: 'SIGNUP_COMPLETED',
+        reason: 'SIGNUP_COMPLETED',
       },
     });
 
@@ -86,6 +82,12 @@ describe('NotificationService.notifyCouponIssued', () => {
     expect(payload.locale).toBe('en');
     expect(payload.vars.giftName).toBe('Welcome Gift');
     expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userStableId: 'customer-stable-1',
+        metadata: { triggerType: 'SIGNUP_COMPLETED' },
+      }),
+    );
     expect(templateRenderer.renderSms).not.toHaveBeenCalled();
     expect(smsService.sendSms).not.toHaveBeenCalled();
   });

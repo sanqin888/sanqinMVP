@@ -1,13 +1,16 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { type CouponProgram, type User } from '@prisma/client';
 import type {
   CouponProgramTriggerPort,
   CouponProgramTriggerType,
 } from '../benefits/contracts/coupon-program.contract';
+import {
+  COUPON_ISSUED_NOTIFICATION,
+  type CouponIssuedNotificationPort,
+} from '../notifications/public-api';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponProgramEligibilityService } from './coupon-program-eligibility.service';
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
-import { NotificationService } from '../notifications/notification.service';
 
 @Injectable()
 export class CouponProgramTriggerService implements CouponProgramTriggerPort {
@@ -17,7 +20,8 @@ export class CouponProgramTriggerService implements CouponProgramTriggerPort {
     private readonly prisma: PrismaService,
     private readonly issuer: CouponProgramIssuerService,
     private readonly eligibility: CouponProgramEligibilityService,
-    private readonly notificationService: NotificationService,
+    @Inject(COUPON_ISSUED_NOTIFICATION)
+    private readonly couponIssuedNotification: CouponIssuedNotificationPort,
   ) {}
 
   async issueProgramsForUser(
@@ -119,9 +123,21 @@ export class CouponProgramTriggerService implements CouponProgramTriggerPort {
 
     if (coupons.length === 0) return;
 
-    await this.notificationService.notifyCouponIssued({
-      user,
-      program,
+    await this.couponIssuedNotification.notifyCouponIssued({
+      recipient: {
+        userStableId: user.userStableId,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        language: user.language,
+      },
+      program: {
+        titleZh: program.tittleCh,
+        titleEn: program.tittleEn,
+        programStableId: program.programStableId,
+        giftValue: program.giftValue,
+        reason: program.triggerType,
+      },
     });
   }
 }

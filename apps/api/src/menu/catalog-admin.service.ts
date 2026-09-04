@@ -26,6 +26,11 @@ import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
+import type {
+  CatalogAvailabilityReaderPort,
+  CatalogMenuItemAvailabilitySnapshot,
+  CatalogOptionAvailabilitySnapshot,
+} from './catalog-availability-reader.contract';
 
 export type CatalogAvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -68,12 +73,57 @@ function nextMidnightLocal(): Date {
 }
 
 @Injectable()
-export class CatalogAdminService {
+export class CatalogAdminService implements CatalogAvailabilityReaderPort {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
   ) {}
+
+  async getMenuItemAvailabilitySnapshot(
+    menuItemStableId: string,
+  ): Promise<CatalogMenuItemAvailabilitySnapshot | null> {
+    const stableId = menuItemStableId.trim();
+    if (!stableId) return null;
+
+    const item = await this.prisma.menuItem.findFirst({
+      where: { stableId, deletedAt: null },
+      select: {
+        stableId: true,
+        visibility: true,
+        publishToUberEats: true,
+        tempUnavailableUntil: true,
+        fixedComponents: { select: { id: true } },
+      },
+    });
+    if (!item) return null;
+
+    return {
+      stableId: item.stableId,
+      visibility: item.visibility,
+      publishToUberEats: item.publishToUberEats,
+      tempUnavailableUntil: toIso(item.tempUnavailableUntil),
+      hasFixedComponents: item.fixedComponents.length > 0,
+    };
+  }
+
+  async getOptionAvailabilitySnapshot(
+    optionChoiceStableId: string,
+  ): Promise<CatalogOptionAvailabilitySnapshot | null> {
+    const stableId = optionChoiceStableId.trim();
+    if (!stableId) return null;
+
+    const option = await this.prisma.menuOptionTemplateChoice.findFirst({
+      where: { stableId, deletedAt: null },
+      select: { stableId: true, tempUnavailableUntil: true },
+    });
+    if (!option) return null;
+
+    return {
+      stableId: option.stableId,
+      tempUnavailableUntil: toIso(option.tempUnavailableUntil),
+    };
+  }
 
   async updateCategory(
     categoryStableId: string,
@@ -547,6 +597,19 @@ export class CatalogAdminService {
     return { stableId: created.stableId };
   }
 
+  async validateFixedComponentComposition(
+    itemStableId: string,
+    fixedComponents: Array<{
+      componentItemStableId: string;
+      quantity: number;
+      sortOrder?: number;
+    }>,
+  ): Promise<void> {
+    const stableId = (itemStableId ?? '').trim();
+    if (!stableId) throw new BadRequestException('itemStableId is required');
+    await this.resolveFixedComponents(stableId, fixedComponents);
+  }
+
   async updateItem(
     itemStableId: string,
     body: {
@@ -588,8 +651,6 @@ export class CatalogAdminService {
       where: { stableId, deletedAt: null },
       select: {
         id: true,
-        publishToUberEats: true,
-        fixedComponents: { select: { id: true } },
         optionGroups: {
           select: { affectedPackagingTypeStableIds: true },
         },
@@ -644,17 +705,6 @@ export class CatalogAdminService {
       body.fixedComponents === undefined
         ? undefined
         : await this.resolveFixedComponents(stableId, body.fixedComponents);
-    const nextHasFixedComponents =
-      fixedComponentsForUpdate === undefined
-        ? existing.fixedComponents.length > 0
-        : fixedComponentsForUpdate.length > 0;
-    const nextPublishToUberEats =
-      body.publishToUberEats ?? existing.publishToUberEats;
-    if (nextHasFixedComponents && nextPublishToUberEats) {
-      throw new BadRequestException(
-        'Fixed combo items cannot be published to Uber Eats until fixed-component modifier context is supported',
-      );
-    }
 
     const updated = await this.prisma.menuItem.update({
       where: { stableId },

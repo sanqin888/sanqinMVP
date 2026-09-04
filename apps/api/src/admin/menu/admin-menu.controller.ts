@@ -10,7 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AdminMenuAvailabilityOrchestrationService } from './admin-menu-availability-orchestration.service';
+import { CatalogUberAvailabilityOrchestrationService } from '../../application/menu/public-api';
 import {
   AdminMenuFullResponse,
   DailySpecialDto,
@@ -28,7 +28,7 @@ import { RolesGuard } from '../../auth/roles.guard';
 export class AdminMenuController {
   constructor(
     private readonly catalog: CatalogAdminService,
-    private readonly availability: AdminMenuAvailabilityOrchestrationService,
+    private readonly availability: CatalogUberAvailabilityOrchestrationService,
   ) {}
 
   @Get('full')
