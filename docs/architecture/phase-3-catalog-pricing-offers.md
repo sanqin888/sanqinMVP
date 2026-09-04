@@ -245,9 +245,8 @@ contract changes are part of Slice 3.
 
 ### Slice 4 — Offers -> Messaging boundary
 
-Status: **LOCAL implementation complete, pending user review/remote CI**.  
-Base: `origin/dev@a29aae1d`; branch
-`refactor/phase3-slice4-offers-messaging-boundary`.
+Status: **MERGED / CI GREEN** via PR #2142 / `3629bc3b` on 2026-09-03.  
+Web/API GitHub Actions completed successfully for the merged change.
 
 This slice contracts the two remaining direct Catalog/Pricing/Offers ->
 Messaging/Notifications imports without changing coupon eligibility, issuance,
@@ -282,19 +281,55 @@ repository workflow. Remote GitHub Actions is the validation gate after approval
 
 ### Slice 5 — Catalog availability / Uber orchestration contraction
 
-**Explicit follow-up from Slice 3:** move the temporary
-`AdminMenuAvailabilityOrchestrationService` coordination out of the Admin adapter.
-Catalog must continue to own availability persistence/effective-availability facts,
-while an explicit orchestration boundary coordinates those facts with the Uber
-public availability capability. Also re-audit the existing `publishToUberEats`
-fixed-component compatibility guard so provider capability constraints do not
-silently become permanent Catalog policy.
+Status: **LOCAL implementation complete, pending user review/remote CI**.  
+Branch: `refactor/phase3-slice5-catalog-uber-availability`.
 
-Slice 5 must preserve the currently verified behavior for item availability,
-availability-affecting item update and option availability, including best-effort
-Uber failure handling and the Admin response `storeId` compatibility mapping.
-Because this changes the active Uber operational path, it requires the existing
-per-slice production verification gate before advancing further.
+This slice completes the temporary availability/provider boundary left by Slice 3
+without changing Catalog availability semantics or Uber wire behavior:
+
+- deleted the Admin-owned `AdminMenuAvailabilityOrchestrationService`; Admin menu
+  now consumes a public application orchestration surface and no longer wires
+  `UberEatsModule` directly;
+- added a Catalog-owned availability reader contract/module. Menu-item publication
+  intent, effective suspend-until inputs and fixed-component composition facts are
+  projected from Catalog persistence through `menu/public-api.ts`;
+- Uber availability composition now adapts the Catalog public availability reader
+  into a narrow Uber application query port. `UberMenuAvailabilityPrismaAdapter` no
+  longer reads `MenuItem` or `MenuOptionTemplateChoice` Prisma delegates and remains
+  DB-only for Uber-owned store mapping and OpsTicket persistence;
+- moved the fixed-component / `publishToUberEats` provider-capability guard out of
+  `CatalogAdminService` and into the cross-context Catalog/Uber orchestration layer,
+  so current Uber limitations no longer become Catalog invariants;
+- preserved the existing mutation order and failure semantics: Catalog persists
+  first, Uber sync is best-effort, availability-affecting `updateItem` fields alone
+  trigger item sync, option availability still syncs through the Uber public port,
+  and Admin response stores continue to expose compatibility `storeId` values;
+- aligned the Admin Web availability status type with the existing public contract by
+  using `SYNC_REQUESTED` instead of the stale internal `PENDING` label;
+- strengthened the central architecture scanner so the deleted Admin orchestration
+  cannot return, Admin menu cannot wire Uber directly, Catalog management cannot
+  regain the fixed-component provider policy, and the Uber availability persistence
+  adapter cannot regain direct Catalog Prisma reads.
+
+Removing the old Admin logger dependency and direct `UberEatsModule` wiring lowers
+`identity-customer-benefits -> architecture-foundation` from 14 to 13 and
+`identity-customer-benefits -> external-channels` from 2 to 1. Replacement
+cross-context traffic uses public surfaces, so no new debt pair is introduced. No
+Prisma schema/migration, production Web Clover,
+Uber webhook/order state, full-menu publication protocol, or external wire contract
+is changed. Because this changes the active Uber operational availability path, the
+slice remains subject to the per-slice production verification gate after CI/deploy.
+
+### Slice 5B — Daily Special -> Offers ownership contraction
+
+Status: **PLANNED after Slice 5 production verification**.
+
+Before Phase 3 closeout, move `MenuDailySpecial` management/persistence ownership
+out of `CatalogAdminService` and behind an Offers/Pricing public capability while
+preserving existing Admin routes, Web contracts and pricing behavior. Catalog keeps
+menu-item/base-price facts; Offers owns daily-special definition, activation and
+special-price policy. Do not rename the Prisma model or require a migration merely
+for ownership cleanup.
 
 ### Slice 6 — Phase 3 closeout
 

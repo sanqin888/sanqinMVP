@@ -20,7 +20,11 @@ type SavingState = {
   itemStableId: string | null;
   error: string | null;
 };
-type UberSyncStatus = 'SYNCED' | 'PENDING' | 'SKIPPED_NOT_PUBLISHED' | 'FAILED';
+type UberSyncStatus =
+  | 'SYNCED'
+  | 'SYNC_REQUESTED'
+  | 'SKIPPED_NOT_PUBLISHED'
+  | 'FAILED';
 
 type AvailabilityTarget = {
   stableId: string;
@@ -1094,7 +1098,7 @@ export default function AdminMenuPage() {
                         </div>
                         {uberSyncByItem[item.stableId] && (
                           <div className="mt-1 text-xs text-sky-700" role="status">
-                            {uberSyncByItem[item.stableId] === 'PENDING'
+                            {uberSyncByItem[item.stableId] === 'SYNC_REQUESTED'
                               ? isZh ? '本地已下架、Uber 同步中' : 'Saved locally; syncing with Uber'
                               : uberSyncByItem[item.stableId] === 'FAILED'
                                 ? isZh ? 'Uber 同步失败，可重试' : 'Uber sync failed; retry available'

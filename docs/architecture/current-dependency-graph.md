@@ -1,12 +1,11 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 4 local base: branch
-`refactor/phase3-slice4-offers-messaging-boundary` created from
-`origin/dev@a29aae1d` (2026-09-03).
+Phase 3 Slice 5 local state: branch
+`refactor/phase3-slice5-catalog-uber-availability` (2026-09-03).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 4
-Offers -> Messaging boundary contraction.
+by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 5
+Catalog availability / Uber orchestration contraction.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
@@ -44,7 +43,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 14; brand-store 4; commerce-orders-fulfillment 1; external-channels 2; messaging-notifications 24; runtime-data-ci-ops 19; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 19; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
@@ -282,15 +281,25 @@ pair fails CI.
   runtime-data-ci-ops` from 21 to 19. A new Catalog Prisma import is offset by
   deleting the redundant local `PrismaService` provider from `PromotionsModule`, so
   `catalog-pricing-offers -> runtime-data-ci-ops` remains 10 rather than increasing.
-- Slice 3 intentionally keeps only availability/provider coordination in
-  `AdminMenuAvailabilityOrchestrationService`: item update availability changes,
-  explicit item availability, and option availability persist through Catalog and
-  then call the Uber public availability port. This is **temporary Slice 5 debt**;
-  Slice 5 must move that coordination out of Admin without changing the verified
-  Uber availability behavior. Production Web Clover, Prisma schema/migrations and
-  Uber wire contracts are unchanged by Slice 3.
-- Slice 4 locally moves coupon-issued notification requests behind the Messaging
-  public boundary. `CouponProgramTriggerService` now injects the
+- Slice 3's temporary Admin availability/provider coordination is contracted by
+  Slice 5. `AdminMenuAvailabilityOrchestrationService` is deleted; Admin menu now
+  consumes a public application orchestration surface and no longer wires
+  `UberEatsModule` directly. Catalog availability facts are exposed through a narrow
+  public reader that Uber composition adapts into an application query port;
+  `UberMenuAvailabilityPrismaAdapter` no longer reads Catalog `MenuItem` /
+  `MenuOptionTemplateChoice` Prisma delegates and stays DB-only for Uber mapping /
+  OpsTicket facts. The fixed-component
+  `publishToUberEats` provider-capability restriction now lives in orchestration
+  rather than `CatalogAdminService`. Removing the old Admin service's foundation
+  logger import and Admin module's direct `UberEatsModule` wiring lowers
+  `identity-customer-benefits -> architecture-foundation` from 14 to 13 and
+  `identity-customer-benefits -> external-channels` from 2 to 1. The replacement
+  cross-context calls use public surfaces, so no new debt pair is introduced. The
+  scanner is tightened to prevent the old Admin/provider and Uber/Catalog persistence
+  paths from returning. Production Web Clover, Prisma schema/migrations and Uber
+  wire contracts remain unchanged.
+- Slice 4 is merged via PR #2142 / `3629bc3b`; coupon-issued notification requests
+  now cross the Messaging public boundary. `CouponProgramTriggerService` injects the
   `COUPON_ISSUED_NOTIFICATION` port from `notifications/public-api.ts`, maps the
   current User/CouponProgram records into a narrow snapshot, and no longer imports
   `NotificationService`. `CouponsModule` also imports `NotificationModule` only via

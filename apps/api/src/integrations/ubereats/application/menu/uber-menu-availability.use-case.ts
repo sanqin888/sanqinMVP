@@ -5,6 +5,7 @@ import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type {
   UberMenuAvailabilityCommandPort,
   UberMenuAvailabilityQueryPort,
+  UberMenuCatalogAvailabilityQueryPort,
 } from './uber-menu-availability.ports';
 import type {
   UberAvailabilitySyncResult,
@@ -19,6 +20,7 @@ const errorMessage = (error: unknown) =>
 /** Synchronizes SanQ availability by stableId through Uber's sparse item update API. */
 export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
   constructor(
+    private readonly catalogQueries: UberMenuCatalogAvailabilityQueryPort,
     private readonly queries: UberMenuAvailabilityQueryPort,
     private readonly commands: UberMenuAvailabilityCommandPort,
     private readonly gateway: UberMenuGatewayPort,
@@ -31,7 +33,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     >[0],
   ) {
     const requestedStoreStableId = input.storeStableId?.trim() || undefined;
-    const publishable = await this.queries.isMenuItemPublishable(
+    const publishable = await this.catalogQueries.isMenuItemPublishable(
       input.menuItemStableId,
     );
     const stores: UberAvailabilitySyncResult['stores'] = [];
@@ -39,7 +41,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     if (publishable) {
       const [mappings, suspendUntil] = await Promise.all([
         this.queries.findProvisionedStores(requestedStoreStableId),
-        this.queries.findMenuItemSuspendUntil(input.menuItemStableId),
+        this.catalogQueries.findMenuItemSuspendUntil(input.menuItemStableId),
       ]);
       for (const mapping of mappings) {
         try {
@@ -97,7 +99,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     const requestedStoreStableId = input.storeStableId?.trim() || undefined;
     const [mappings, suspendUntil] = await Promise.all([
       this.queries.findProvisionedStores(requestedStoreStableId),
-      this.queries.findOptionSuspendUntil(input.optionChoiceStableId),
+      this.catalogQueries.findOptionSuspendUntil(input.optionChoiceStableId),
     ]);
     const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const mapping of mappings) {

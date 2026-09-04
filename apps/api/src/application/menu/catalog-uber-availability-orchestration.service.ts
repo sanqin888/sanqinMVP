@@ -1,24 +1,31 @@
-import { Inject, Injectable } from '@nestjs/common';
-
-import { AppLogger } from '../../common/app-logger';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import {
   UBER_EATS_MENU_AVAILABILITY,
   type UberEatsAvailabilitySyncResult,
   type UberEatsMenuAvailabilityPort,
 } from '../../integrations/ubereats/public-api';
 import {
+  CATALOG_AVAILABILITY_READER,
   CatalogAdminService,
   type CatalogAvailabilityMode,
+  type CatalogAvailabilityReaderPort,
 } from '../../menu/public-api';
 
 @Injectable()
-export class AdminMenuAvailabilityOrchestrationService {
-  private readonly logger = new AppLogger(
-    AdminMenuAvailabilityOrchestrationService.name,
+export class CatalogUberAvailabilityOrchestrationService {
+  private readonly logger = new Logger(
+    CatalogUberAvailabilityOrchestrationService.name,
   );
 
   constructor(
     private readonly catalog: CatalogAdminService,
+    @Inject(CATALOG_AVAILABILITY_READER)
+    private readonly catalogAvailability: CatalogAvailabilityReaderPort,
     @Inject(UBER_EATS_MENU_AVAILABILITY)
     private readonly uberEatsService: UberEatsMenuAvailabilityPort,
   ) {}
@@ -27,6 +34,7 @@ export class AdminMenuAvailabilityOrchestrationService {
     itemStableId: string,
     body: Parameters<CatalogAdminService['updateItem']>[1],
   ) {
+    await this.assertUberFixedComponentCompatibility(itemStableId, body);
     const result = await this.catalog.updateItem(itemStableId, body);
     if (
       body.isAvailable !== undefined ||
@@ -73,6 +81,44 @@ export class AdminMenuAvailabilityOrchestrationService {
       result.availability.effectiveAvailability,
     );
     return { ok: true };
+  }
+
+  private async assertUberFixedComponentCompatibility(
+    itemStableId: string,
+    body: Parameters<CatalogAdminService['updateItem']>[1],
+  ) {
+    if (
+      body.publishToUberEats === undefined &&
+      body.fixedComponents === undefined
+    ) {
+      return;
+    }
+
+    const current =
+      await this.catalogAvailability.getMenuItemAvailabilitySnapshot(itemStableId);
+    if (!current) return;
+
+    const nextPublishToUberEats =
+      body.publishToUberEats ?? current.publishToUberEats;
+    if (!nextPublishToUberEats) return;
+
+    if (body.fixedComponents !== undefined) {
+      await this.catalog.validateFixedComponentComposition(
+        itemStableId,
+        body.fixedComponents,
+      );
+    }
+
+    const nextHasFixedComponents =
+      body.fixedComponents === undefined
+        ? current.hasFixedComponents
+        : body.fixedComponents.length > 0;
+
+    if (nextPublishToUberEats && nextHasFixedComponents) {
+      throw new BadRequestException(
+        'Fixed combo items cannot be published to Uber Eats until fixed-component modifier context is supported',
+      );
+    }
   }
 
   private presentUberAvailabilitySync(sync: UberEatsAvailabilitySyncResult) {

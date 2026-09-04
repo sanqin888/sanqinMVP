@@ -547,6 +547,19 @@ export class CatalogAdminService {
     return { stableId: created.stableId };
   }
 
+  async validateFixedComponentComposition(
+    itemStableId: string,
+    fixedComponents: Array<{
+      componentItemStableId: string;
+      quantity: number;
+      sortOrder?: number;
+    }>,
+  ): Promise<void> {
+    const stableId = (itemStableId ?? '').trim();
+    if (!stableId) throw new BadRequestException('itemStableId is required');
+    await this.resolveFixedComponents(stableId, fixedComponents);
+  }
+
   async updateItem(
     itemStableId: string,
     body: {
@@ -588,8 +601,6 @@ export class CatalogAdminService {
       where: { stableId, deletedAt: null },
       select: {
         id: true,
-        publishToUberEats: true,
-        fixedComponents: { select: { id: true } },
         optionGroups: {
           select: { affectedPackagingTypeStableIds: true },
         },
@@ -644,17 +655,6 @@ export class CatalogAdminService {
       body.fixedComponents === undefined
         ? undefined
         : await this.resolveFixedComponents(stableId, body.fixedComponents);
-    const nextHasFixedComponents =
-      fixedComponentsForUpdate === undefined
-        ? existing.fixedComponents.length > 0
-        : fixedComponentsForUpdate.length > 0;
-    const nextPublishToUberEats =
-      body.publishToUberEats ?? existing.publishToUberEats;
-    if (nextHasFixedComponents && nextPublishToUberEats) {
-      throw new BadRequestException(
-        'Fixed combo items cannot be published to Uber Eats until fixed-component modifier context is supported',
-      );
-    }
 
     const updated = await this.prisma.menuItem.update({
       where: { stableId },

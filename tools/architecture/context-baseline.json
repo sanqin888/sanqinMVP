@@ -7,6 +7,7 @@
     "compositionRootsExcluded": [
       "apps/api/src/app.module.ts",
       "apps/api/src/app.bootstrap.ts",
+      "apps/api/src/application/menu/catalog-uber-availability-orchestration.module.ts",
       "apps/api/src/main.ts",
       "apps/api/src/ubereats-worker.main.ts"
     ]
@@ -301,7 +302,12 @@
     "publicSurface": "apps/api/src/menu/public-api.ts",
     "adminController": "apps/api/src/admin/menu/admin-menu.controller.ts",
     "adminModule": "apps/api/src/admin/menu/admin-menu.module.ts",
-    "availabilityOrchestration": "apps/api/src/admin/menu/admin-menu-availability-orchestration.service.ts",
+    "availabilityOrchestration": "apps/api/src/application/menu/catalog-uber-availability-orchestration.service.ts",
+    "availabilityOrchestrationPublicSurface": "apps/api/src/application/menu/public-api.ts",
+    "retiredAdminAvailabilityOrchestration": "apps/api/src/admin/menu/admin-menu-availability-orchestration.service.ts",
+    "catalogAvailabilityReader": "apps/api/src/menu/catalog-availability-reader.service.ts",
+    "uberAvailabilityWiring": "apps/api/src/integrations/ubereats/infrastructure/nest/menu.wiring.ts",
+    "uberAvailabilityPersistenceAdapter": "apps/api/src/integrations/ubereats/infrastructure/persistence/uber-menu-availability-prisma.adapter.ts",
     "retiredAdminService": "apps/api/src/admin/menu/admin-menu.service.ts"
   },
   "dependencyBoundaries": [
@@ -371,10 +377,10 @@
     "external-channels -> identity-customer-benefits": 6,
     "external-channels -> messaging-notifications": 2,
     "external-channels -> runtime-data-ci-ops": 24,
-    "identity-customer-benefits -> architecture-foundation": 14,
+    "identity-customer-benefits -> architecture-foundation": 13,
     "identity-customer-benefits -> brand-store": 4,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
-    "identity-customer-benefits -> external-channels": 2,
+    "identity-customer-benefits -> external-channels": 1,
     "identity-customer-benefits -> messaging-notifications": 24,
     "identity-customer-benefits -> runtime-data-ci-ops": 19,
     "identity-customer-benefits -> store-operations-pos-print": 4,

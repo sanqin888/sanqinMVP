@@ -298,6 +298,21 @@ if (adminCatalogOwnershipBoundary) {
   const availabilityOrchestration = toPosix(
     adminCatalogOwnershipBoundary.availabilityOrchestration ?? '',
   );
+  const availabilityOrchestrationPublicSurface = toPosix(
+    adminCatalogOwnershipBoundary.availabilityOrchestrationPublicSurface ?? '',
+  );
+  const retiredAdminAvailabilityOrchestration = toPosix(
+    adminCatalogOwnershipBoundary.retiredAdminAvailabilityOrchestration ?? '',
+  );
+  const catalogAvailabilityReader = toPosix(
+    adminCatalogOwnershipBoundary.catalogAvailabilityReader ?? '',
+  );
+  const uberAvailabilityWiring = toPosix(
+    adminCatalogOwnershipBoundary.uberAvailabilityWiring ?? '',
+  );
+  const uberAvailabilityPersistenceAdapter = toPosix(
+    adminCatalogOwnershipBoundary.uberAvailabilityPersistenceAdapter ?? '',
+  );
   const retiredAdminService = toPosix(
     adminCatalogOwnershipBoundary.retiredAdminService ?? '',
   );
@@ -308,6 +323,10 @@ if (adminCatalogOwnershipBoundary) {
     adminController,
     adminModule,
     availabilityOrchestration,
+    availabilityOrchestrationPublicSurface,
+    catalogAvailabilityReader,
+    uberAvailabilityWiring,
+    uberAvailabilityPersistenceAdapter,
   ]) {
     if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
       failures.push(
@@ -317,13 +336,13 @@ if (adminCatalogOwnershipBoundary) {
     }
   }
 
-  if (
-    retiredAdminService &&
-    existsSync(join(REPOSITORY_ROOT, retiredAdminService))
-  ) {
-    failures.push(
-      `retired Admin menu business service must stay deleted: ${retiredAdminService}`,
-    );
+  for (const retiredPath of [
+    retiredAdminService,
+    retiredAdminAvailabilityOrchestration,
+  ]) {
+    if (retiredPath && existsSync(join(REPOSITORY_ROOT, retiredPath))) {
+      failures.push(`retired Admin menu path must stay deleted: ${retiredPath}`);
+    }
   }
 
   const ownerSourcePath = join(REPOSITORY_ROOT, ownerService);
@@ -334,9 +353,12 @@ if (adminCatalogOwnershipBoundary) {
         `Catalog must own the Admin menu management use case: ${ownerService}`,
       );
     }
-    if (/integrations\/ubereats/.test(source)) {
+    if (
+      /integrations\/ubereats/.test(source) ||
+      source.includes('Fixed combo items cannot be published to Uber Eats')
+    ) {
       failures.push(
-        `Catalog Admin management must not own Uber provider coordination: ${ownerService}`,
+        `Catalog Admin management must not own Uber provider policy or coordination: ${ownerService}`,
       );
     }
   }
@@ -346,12 +368,15 @@ if (adminCatalogOwnershipBoundary) {
     const source = readFileSync(controllerPath, 'utf8');
     if (
       !source.includes("from '../../menu/public-api'") ||
+      !source.includes("from '../../application/menu/public-api'") ||
       !source.includes('CatalogAdminService') ||
+      !source.includes('CatalogUberAvailabilityOrchestrationService') ||
+      source.includes('AdminMenuAvailabilityOrchestrationService') ||
       source.includes('AdminMenuService') ||
       source.includes('PrismaService')
     ) {
       failures.push(
-        `Admin menu controller must consume the Catalog public management use case: ${adminController}`,
+        `Admin menu controller must consume Catalog and availability orchestration only through public application surfaces: ${adminController}`,
       );
     }
   }
@@ -361,13 +386,16 @@ if (adminCatalogOwnershipBoundary) {
     const source = readFileSync(modulePath, 'utf8');
     if (
       !source.includes("from '../../menu/public-api'") ||
+      !source.includes("from '../../application/menu/public-api'") ||
       !source.includes('PublicMenuModule') ||
+      !source.includes('CatalogUberAvailabilityOrchestrationModule') ||
+      source.includes('UberEatsModule') ||
       source.includes('PrismaService') ||
       source.includes('BrandStoreConfigModule') ||
       source.includes('AdminMenuService')
     ) {
       failures.push(
-        `Admin menu composition must wire Catalog through its public module without owning persistence: ${adminModule}`,
+        `Admin menu composition must remain an adapter and must not wire Uber provider infrastructure directly: ${adminModule}`,
       );
     }
   }
@@ -378,11 +406,60 @@ if (adminCatalogOwnershipBoundary) {
     if (
       !source.includes("from '../../menu/public-api'") ||
       !source.includes("from '../../integrations/ubereats/public-api'") ||
+      !source.includes('Fixed combo items cannot be published to Uber Eats') ||
       source.includes('PrismaService') ||
       source.includes('BRAND_STORE_CONFIG_READER')
     ) {
       failures.push(
-        `Admin availability orchestration may coordinate only Catalog and Uber public capabilities: ${availabilityOrchestration}`,
+        `Catalog/Uber availability orchestration may coordinate only public owner capabilities and provider policy: ${availabilityOrchestration}`,
+      );
+    }
+  }
+
+  const catalogReaderPath = join(REPOSITORY_ROOT, catalogAvailabilityReader);
+  if (existsSync(catalogReaderPath)) {
+    const source = readFileSync(catalogReaderPath, 'utf8');
+    if (
+      !source.includes('CatalogAvailabilityReaderService') ||
+      !source.includes('PrismaService') ||
+      /integrations\/ubereats/.test(source)
+    ) {
+      failures.push(
+        `Catalog availability reader must own Catalog persistence facts without provider dependencies: ${catalogAvailabilityReader}`,
+      );
+    }
+  }
+
+  const uberAvailabilityWiringPath = join(
+    REPOSITORY_ROOT,
+    uberAvailabilityWiring,
+  );
+  if (existsSync(uberAvailabilityWiringPath)) {
+    const source = readFileSync(uberAvailabilityWiringPath, 'utf8');
+    if (
+      !source.includes("from '../../../../menu/public-api'") ||
+      !source.includes('CATALOG_AVAILABILITY_READER') ||
+      !source.includes('UBER_MENU_CATALOG_AVAILABILITY_QUERY')
+    ) {
+      failures.push(
+        `Uber composition must adapt Catalog availability through the public reader into an Uber application query port: ${uberAvailabilityWiring}`,
+      );
+    }
+  }
+
+  const uberAvailabilityAdapterPath = join(
+    REPOSITORY_ROOT,
+    uberAvailabilityPersistenceAdapter,
+  );
+  if (existsSync(uberAvailabilityAdapterPath)) {
+    const source = readFileSync(uberAvailabilityAdapterPath, 'utf8');
+    if (
+      source.includes("from '../../../../menu/public-api'") ||
+      source.includes('CATALOG_AVAILABILITY_READER') ||
+      /\.menuItem\b|\.menuOptionTemplateChoice\b/.test(source)
+    ) {
+      failures.push(
+        `Uber availability persistence must stay DB-only for Uber-owned mapping/ticket facts; Catalog adaptation belongs in composition wiring: ${uberAvailabilityPersistenceAdapter}`,
       );
     }
   }
@@ -393,6 +470,11 @@ if (adminCatalogOwnershipBoundary) {
     if (/from ['"]\.\.\/\.\.\/prisma\//.test(source)) {
       failures.push(
         `Admin menu must not regain direct Prisma ownership: ${toPosix(relative(REPOSITORY_ROOT, file))}`,
+      );
+    }
+    if (/integrations\/ubereats/.test(source)) {
+      failures.push(
+        `Admin menu must not regain direct Uber provider coordination: ${toPosix(relative(REPOSITORY_ROOT, file))}`,
       );
     }
   }

@@ -17,151 +17,7 @@ jest.mock(
   }),
   { virtual: true },
 );
-import {
-  UBER_EATS_MENU_AVAILABILITY,
-  type UberEatsMenuAvailabilityPort,
-} from '../../integrations/ubereats/public-api';
-import { CatalogAdminService } from '../../menu/catalog-admin.service';
-import { AdminMenuAvailabilityOrchestrationService } from './admin-menu-availability-orchestration.service';
-
-describe('AdminMenuAvailabilityOrchestrationService Uber status', () => {
-  const build = (syncResult: unknown) => {
-    const catalog = {
-      updateItem: jest.fn().mockResolvedValue({
-        ok: true,
-        availability: {
-          stableId: 'dish-1',
-          isAvailable: true,
-          tempUnavailableUntil: null,
-          effectiveAvailability: true,
-        },
-      }),
-      setItemAvailability: jest
-        .fn()
-        .mockImplementation((_stableId: string, mode: string) =>
-          Promise.resolve({
-            stableId: 'dish-1',
-            isAvailable: mode !== 'PERMANENT_OFF',
-            visibility: 'PUBLIC',
-            isVisibleOnMainMenu: true,
-            tempUnavailableUntil:
-              mode === 'TEMP_TODAY_OFF' ? '2099-01-01T00:00:00.000Z' : null,
-            effectiveAvailability: mode === 'ON',
-          }),
-        ),
-      setTemplateOptionAvailability: jest.fn().mockResolvedValue({
-        ok: true,
-        availability: {
-          stableId: 'option-1',
-          isAvailable: false,
-          tempUnavailableUntil: null,
-          effectiveAvailability: false,
-        },
-      }),
-    };
-    const syncUberMenuItemAvailability = jest
-      .fn()
-      .mockResolvedValue(syncResult);
-    const syncUberOptionItemAvailability = jest
-      .fn()
-      .mockResolvedValue(syncResult);
-    const uberProvider: {
-      provide: typeof UBER_EATS_MENU_AVAILABILITY;
-      useValue: jest.Mocked<UberEatsMenuAvailabilityPort>;
-    } = {
-      provide: UBER_EATS_MENU_AVAILABILITY,
-      useValue: {
-        syncUberMenuItemAvailability,
-        syncUberOptionItemAvailability,
-      },
-    };
-    return {
-      service: new AdminMenuAvailabilityOrchestrationService(
-        catalog as never,
-        uberProvider.useValue,
-      ),
-      catalog,
-      syncUberMenuItemAvailability,
-      syncUberOptionItemAvailability,
-    };
-  };
-
-  it.each([
-    ['TEMP_TODAY_OFF', false],
-    ['PERMANENT_OFF', false],
-    ['ON', true],
-  ] as const)('%s 返回结构化 SYNCED 状态', async (mode, available) => {
-    const { service, syncUberMenuItemAvailability } = build({
-      status: 'SYNCED',
-      stores: [],
-    });
-    const result = await service.setItemAvailability('dish-1', mode);
-    expect(result.uberSync.status).toBe('SYNCED');
-    expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
-      menuItemStableId: 'dish-1',
-      isAvailable: available,
-    });
-  });
-
-  it('Admin HTTP 响应保留 storeId 字段，同时 Uber public port 使用 storeStableId', async () => {
-    const { service } = build({
-      status: 'SYNCED',
-      stores: [{ storeStableId: '4750_Yonge_Street', status: 'SYNCED' }],
-    });
-
-    const result = await service.setItemAvailability('dish-1', 'ON');
-
-    expect(result.uberSync.stores).toEqual([
-      { storeId: '4750_Yonge_Street', status: 'SYNCED' },
-    ]);
-  });
-
-  it('上游异常不会伪装成功，并返回可重试的 FAILED 状态', async () => {
-    const { service, syncUberMenuItemAvailability } = build(null);
-    syncUberMenuItemAvailability.mockRejectedValue(new Error('upstream'));
-    const result = await service.setItemAvailability('dish-1', 'PERMANENT_OFF');
-    expect(result.uberSync).toEqual(
-      expect.objectContaining({ status: 'FAILED' }),
-    );
-  });
-
-  it('updateItem 只在 availability 字段变化时同步 Uber，并保持 HTTP ok 响应', async () => {
-    const { service, catalog, syncUberMenuItemAvailability } = build({
-      status: 'SYNCED',
-      stores: [],
-    });
-
-    await expect(
-      service.updateItem('dish-1', { isAvailable: true }),
-    ).resolves.toEqual({ ok: true });
-    expect(catalog.updateItem).toHaveBeenCalledWith('dish-1', {
-      isAvailable: true,
-    });
-    expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
-      menuItemStableId: 'dish-1',
-      isAvailable: true,
-    });
-
-    syncUberMenuItemAvailability.mockClear();
-    await service.updateItem('dish-1', { nameEn: 'Updated' });
-    expect(syncUberMenuItemAvailability).not.toHaveBeenCalled();
-  });
-
-  it('option availability 仍通过 Uber public port 同步', async () => {
-    const { service, syncUberOptionItemAvailability } = build({
-      status: 'SYNCED',
-      stores: [],
-    });
-
-    await expect(
-      service.setTemplateOptionAvailability('option-1', 'PERMANENT_OFF'),
-    ).resolves.toEqual({ ok: true });
-    expect(syncUberOptionItemAvailability).toHaveBeenCalledWith({
-      optionChoiceStableId: 'option-1',
-      isAvailable: false,
-    });
-  });
-});
+import { CatalogAdminService } from './catalog-admin.service';
 
 describe('CatalogAdminService availability persistence', () => {
   it.each([
@@ -256,8 +112,6 @@ describe('CatalogAdminService fixed combo composition', () => {
         menuItem: {
           findFirst: jest.fn().mockResolvedValue({
             id: 'combo-db-id',
-            publishToUberEats: false,
-            fixedComponents: [],
             optionGroups: [],
           }),
           findMany: jest
@@ -304,33 +158,6 @@ describe('CatalogAdminService fixed combo composition', () => {
     });
   });
 
-  it('blocks Uber Eats publishing while fixed component context is unsupported', async () => {
-    const update = jest.fn();
-    const service = new CatalogAdminService(
-      {
-        menuItem: {
-          findFirst: jest.fn().mockResolvedValue({
-            id: 'combo-db-id',
-            publishToUberEats: true,
-            fixedComponents: [],
-            optionGroups: [],
-          }),
-          findMany: jest.fn().mockResolvedValue([{ stableId: 'hulatang' }]),
-          update,
-        },
-        menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
-      } as never,
-      {} as never,
-    );
-
-    await expect(
-      service.updateItem('breakfast-combo', {
-        fixedComponents: [{ componentItemStableId: 'hulatang', quantity: 1 }],
-      }),
-    ).rejects.toThrow('Fixed combo items cannot be published to Uber Eats');
-    expect(update).not.toHaveBeenCalled();
-  });
-
   it('rejects a fixed combo containing itself', async () => {
     const update = jest.fn();
     const service = new CatalogAdminService(
@@ -338,8 +165,6 @@ describe('CatalogAdminService fixed combo composition', () => {
         menuItem: {
           findFirst: jest.fn().mockResolvedValue({
             id: 'combo-db-id',
-            publishToUberEats: false,
-            fixedComponents: [],
             optionGroups: [],
           }),
           update,

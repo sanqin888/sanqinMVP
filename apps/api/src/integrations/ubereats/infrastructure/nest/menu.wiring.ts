@@ -1,4 +1,8 @@
 import type { Provider } from '@nestjs/common';
+import {
+  CATALOG_AVAILABILITY_READER,
+  type CatalogAvailabilityReaderPort,
+} from '../../../../menu/public-api';
 import { LoadUberMenuWorkflowUseCase } from '../../application/menu/load-uber-menu-workflow.use-case';
 import { QueryUberMenuConfigUseCase } from '../../application/menu/query-uber-menu-config.use-case';
 import { UpsertUberItemChannelConfigUseCase } from '../../application/menu/upsert-uber-item-channel-config.use-case';
@@ -63,12 +67,14 @@ import {
   UBER_MENU_UNIT_OF_WORK,
   type UberMenuUnitOfWork,
 } from '../../application/menu/uber-menu-repositories.ports';
-import { UBER_MENU_AVAILABILITY_PORT } from '../../application/menu/uber-menu-availability.ports';
 import {
+  UBER_MENU_AVAILABILITY_PORT,
   type UberMenuAvailabilityCommandPort,
   type UberMenuAvailabilityQueryPort,
   UBER_MENU_AVAILABILITY_COMMAND,
   UBER_MENU_AVAILABILITY_QUERY,
+  UBER_MENU_CATALOG_AVAILABILITY_QUERY,
+  type UberMenuCatalogAvailabilityQueryPort,
 } from '../../application/menu/uber-menu-availability.ports';
 import type { UberTelemetryPort } from '../../application/shared/uber-telemetry.port';
 import { UBER_TELEMETRY_PORT } from '../../application/shared/uber-telemetry.port';
@@ -177,6 +183,35 @@ export function createMenuWiring(): Provider[] {
     {
       provide: UBER_BUSINESS_SCHEDULE_QUERY_PORT,
       useExisting: UberMenuSupportingQueriesPrismaAdapter,
+    },
+    {
+      provide: UBER_MENU_CATALOG_AVAILABILITY_QUERY,
+      inject: [CATALOG_AVAILABILITY_READER],
+      useFactory: (
+        catalog: CatalogAvailabilityReaderPort,
+      ): UberMenuCatalogAvailabilityQueryPort => ({
+        isMenuItemPublishable: async (menuItemStableId) => {
+          const item =
+            await catalog.getMenuItemAvailabilitySnapshot(menuItemStableId);
+          return Boolean(
+            item && item.visibility === 'PUBLIC' && item.publishToUberEats,
+          );
+        },
+        findMenuItemSuspendUntil: async (menuItemStableId) => {
+          const item =
+            await catalog.getMenuItemAvailabilitySnapshot(menuItemStableId);
+          return item?.tempUnavailableUntil
+            ? new Date(item.tempUnavailableUntil)
+            : null;
+        },
+        findOptionSuspendUntil: async (optionChoiceStableId) => {
+          const option =
+            await catalog.getOptionAvailabilitySnapshot(optionChoiceStableId);
+          return option?.tempUnavailableUntil
+            ? new Date(option.tempUnavailableUntil)
+            : null;
+        },
+      }),
     },
     UberMenuAvailabilityPrismaAdapter,
     {
@@ -365,18 +400,26 @@ export function createMenuWiring(): Provider[] {
     {
       provide: UberMenuAvailabilityUseCase,
       inject: [
+        UBER_MENU_CATALOG_AVAILABILITY_QUERY,
         UBER_MENU_AVAILABILITY_QUERY,
         UBER_MENU_AVAILABILITY_COMMAND,
         UBER_MENU_GATEWAY,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
+        catalogQueries: UberMenuCatalogAvailabilityQueryPort,
         queries: UberMenuAvailabilityQueryPort,
         commands: UberMenuAvailabilityCommandPort,
         gateway: UberMenuGatewayPort,
         telemetry: UberTelemetryPort,
       ) =>
-        new UberMenuAvailabilityUseCase(queries, commands, gateway, telemetry),
+        new UberMenuAvailabilityUseCase(
+          catalogQueries,
+          queries,
+          commands,
+          gateway,
+          telemetry,
+        ),
     },
     {
       provide: UBER_MENU_AVAILABILITY_PORT,

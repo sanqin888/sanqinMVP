@@ -47,10 +47,14 @@ node tools/architecture/scan-architecture.mjs --report
   `payments-clover -> identity-customer-benefits` allowance is part of the same
   contraction;
 - Admin menu CRUD/read-model decisions are owned by Catalog through
-  `menu/public-api.ts`; `apps/api/src/admin/menu/**` cannot regain direct Prisma
-  ownership. The temporary Admin availability orchestrator may coordinate Catalog
-  and the Uber public availability port only; moving that provider coordination out
-  of Admin remains an explicit later Slice 5 contraction;
+  `menu/public-api.ts`; `apps/api/src/admin/menu/**` cannot regain direct Prisma or
+  Uber-provider ownership. Availability/provider coordination lives in the explicit
+  `application/menu` orchestration boundary: Catalog exposes availability facts via
+  its public reader, Uber composition adapts those facts into an application query
+  port, and Uber availability persistence must remain DB-only for Uber-owned
+  store-mapping/OpsTicket facts. The retired Admin availability orchestrator cannot
+  return, and the fixed-component Uber capability guard cannot move back into
+  `CatalogAdminService`;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,
