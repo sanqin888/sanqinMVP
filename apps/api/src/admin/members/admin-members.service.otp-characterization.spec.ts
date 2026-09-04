@@ -93,10 +93,12 @@ describe('AdminMembersService recharge OTP characterization', () => {
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
-    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue({
-      ok: true,
-      sendId: 'send-1',
-    });
+    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
+      {
+        ok: true,
+        sendId: 'send-1',
+      },
+    );
 
     await expect(
       service.sendRechargeCode('member-stable-id', {
@@ -142,10 +144,12 @@ describe('AdminMembersService recharge OTP characterization', () => {
     mockMember(service, emailMember);
     jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('123456');
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-failed' });
-    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue({
-      ok: false,
-      sendId: 'send-failed',
-    });
+    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
+      {
+        ok: false,
+        sendId: 'send-failed',
+      },
+    );
 
     await expect(
       service.sendRechargeCode('member-stable-id', {

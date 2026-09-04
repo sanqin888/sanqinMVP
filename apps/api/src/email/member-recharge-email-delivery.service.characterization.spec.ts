@@ -7,7 +7,9 @@ describe('MemberRechargeEmailDeliveryService characterization', () => {
       ok: true,
       sendId: 'send-1',
     });
-    const service = new MemberRechargeEmailDeliveryService(emailService as never);
+    const service = new MemberRechargeEmailDeliveryService(
+      emailService as never,
+    );
 
     await expect(
       service.sendRechargeVerificationEmail({
@@ -19,7 +21,9 @@ describe('MemberRechargeEmailDeliveryService characterization', () => {
       }),
     ).resolves.toEqual({ ok: true, sendId: 'send-1' });
 
-    expect(emailService.sendMemberRechargeVerificationEmail).toHaveBeenCalledWith({
+    expect(
+      emailService.sendMemberRechargeVerificationEmail,
+    ).toHaveBeenCalledWith({
       to: 'member@example.com',
       code: '100000',
       expiresInMin: 10,
@@ -35,7 +39,9 @@ describe('MemberRechargeEmailDeliveryService characterization', () => {
       error: 'suppressed',
       sendId: 'send-failed',
     });
-    const service = new MemberRechargeEmailDeliveryService(emailService as never);
+    const service = new MemberRechargeEmailDeliveryService(
+      emailService as never,
+    );
 
     await expect(
       service.sendRechargeVerificationEmail({
