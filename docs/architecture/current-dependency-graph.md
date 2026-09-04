@@ -8,16 +8,18 @@ Slice 2C remains explicitly DEFERRED and is not represented as completed by this
 closure.
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after Phase 3 closure plus the local
-post-closeout ownership/scanner hardening tail. Test files and registered composition
-roots are excluded. Imports through `public-api`, `contracts`, `ports`,
+by `tools/architecture/context-baseline.json` after Phase 3 closure plus the merged
+post-closeout ownership/scanner hardening tail in PR #2160. Test files and registered
+composition roots are excluded. Imports through `public-api`, `contracts`, `ports`,
 `@shared/foundation`, `@shared/menu`, or `@shared/order` are approved public-contract
 traffic and do not consume the debt counts below.
 
 The CI architecture scanner is authoritative for the exact source scan. This file is
 the human-readable working snapshot and must be refreshed at every modularization
-boundary change. The post-closeout tail below is currently source-only and still awaits
-user review plus GitHub Actions validation.
+boundary change. PR #2160 merged to `dev` as `3a20c8c5`; GitHub Actions CI #5080 passed
+on final PR head `27b57f99`. The timed Store pause codec change has not yet been recorded
+as production smoke-verified, so this document claims merged/CI evidence only for that
+tail.
 
 ## Phase 3 Slice 6 cycle audit and contraction
 
@@ -45,7 +47,7 @@ No local scanner execution is claimed here.
 
 ## Post-closeout tail — monotonic guards and Store temporary-closure ownership
 
-Local source state on `refactor/phase3-tail-cycle-store-status` contracts the remaining
+PR #2160 is **MERGED / CI GREEN**. It contracts the remaining
 `brand-store -> store-operations-pos-print` direct import from `1 -> 0`. The timed
 `temporaryCloseReason` codec (`buildAutoPauseReason` / `parseAutoPauseReason`) is now
 implemented once under Brand/Store and exposed through `store/public-api.ts`; POS uses
@@ -60,9 +62,11 @@ baseline now fails as stale until the same PR lowers/removes the allowance. Like
 contexts and internal public edges; if the SCC shrinks or disappears, the old superset
 baseline fails as stale. This prevents a previously removed direct edge or public-cycle
 edge from being re-authorized later by an obsolete baseline. Initial CI #5078 exercised
-that guard and exposed seven stale numeric allowances; those are now normalized to the
-CI-observed current counts above and a replacement CI run is pending. No local
-scanner/lint/build/test run is claimed.
+that guard and exposed seven stale numeric allowances; the follow-up normalized those
+allowances to the observed source counts, and final CI #5080 passed on PR head
+`27b57f99` before squash merge `3a20c8c5`. No local scanner/lint/build/test run is
+claimed. A POS timed-pause -> Uber status -> manual recovery smoke verification remains
+to be recorded separately if/when exercised.
 
 ## Context map
 
@@ -101,6 +105,58 @@ pair fails CI.
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
+
+## Phase 4 planning baseline
+
+The next formal modularization phase is **Phase 4 — Identity / Customer / Benefits +
+Messaging Boundary Contraction**, tracked in
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
+
+The latest monotonic baseline normalization makes the current direct-debt totals:
+
+- identity-customer-benefits: **65**
+- payments-clover: **60**
+- external-channels: **44**
+- commerce-orders-fulfillment: **35**
+- store-operations-pos-print: **31**
+- accounting-reporting-analytics: **25**
+- messaging-notifications: **16**
+- catalog-pricing-offers: **15**
+- brand-store: **8**
+
+The reduction in Orders/POS counts is baseline normalization of source debt that had
+already contracted; it does not reopen those contexts as the next primary owner phase.
+Identity/Customer/Benefits remains the largest outgoing direct-debt source and is also a
+high-coupling target for Payments, POS, Accounting, Orders, External Channels and
+Catalog, so Phase 4 remains the highest-leverage next boundary phase.
+
+Before the main Identity/Messaging slices, two short cross-phase readiness/contraction
+slices are planned:
+
+1. **Slice 0A — Admin PromotionRule ownership contraction.** Audit the current Admin
+   PromotionRule HTTP/service/tests and all read/write consumers, then move management
+   policy/persistence ownership behind the Offers owner boundary while keeping Admin a
+   thin transport adapter. This is the immediate next readiness audit.
+2. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
+   Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
+   Pricing/Offers input contract plus boundary mapping rather than moving business
+   semantics into Foundation merely to break a cycle.
+
+The prior Store temporary-close codec item is no longer a Phase 4 Slice 0 task because
+PR #2160 already moved that persistence encoding to Brand/Store and removed the final
+`brand-store -> store-operations-pos-print` direct edge.
+
+The current legacy public SCC remains contraction-only across Catalog / Orders /
+Identity / Messaging. Its recorded edges remain:
+
+- `catalog-pricing-offers -> commerce-orders-fulfillment`
+- `catalog-pricing-offers -> messaging-notifications`
+- `commerce-orders-fulfillment -> catalog-pricing-offers`
+- `identity-customer-benefits -> catalog-pricing-offers`
+- `messaging-notifications -> identity-customer-benefits`
+
+The monotonic SCC guard introduced in PR #2160 requires the baseline to shrink in the
+same PR whenever a member/edge disappears.
 
 ## Phase 1 boundary changes reflected here
 
