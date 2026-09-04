@@ -281,8 +281,8 @@ repository workflow. Remote GitHub Actions is the validation gate after approval
 
 ### Slice 5 — Catalog availability / Uber orchestration contraction
 
-Status: **LOCAL implementation complete, pending user review/remote CI**.  
-Branch: `refactor/phase3-slice5-catalog-uber-availability`.
+Status: **MERGED via PR #2145 / `6438f934`; production verification follow-up in progress**.  
+Follow-up branch: `fix/slice5-admin-item-availability-payload`.
 
 This slice completes the temporary availability/provider boundary left by Slice 3
 without changing Catalog availability semantics or Uber wire behavior:
@@ -319,6 +319,15 @@ Prisma schema/migration, production Web Clover,
 Uber webhook/order state, full-menu publication protocol, or external wire contract
 is changed. Because this changes the active Uber operational availability path, the
 slice remains subject to the per-slice production verification gate after CI/deploy.
+
+Active verification on 2026-09-03 confirmed item permanent OFF/ON, temporary-today
+availability sync and option OFF/ON against the Uber sandbox with HTTP 204 / SYNCED
+telemetry and no new OpsTicket. The ordinary item-edit check exposed one Web adapter
+tail: `handleSaveItem` still serialized the unchanged `isAvailable` value, so a name-
+only edit incorrectly triggered the backend's availability-affecting update path.
+The follow-up branch removes availability fields from the ordinary item PUT payload
+and adds a Web regression test; Slice 5 remains pending one final name-only edit
+verification after that fix is deployed.
 
 ### Slice 5B — Daily Special -> Offers ownership contraction
 
