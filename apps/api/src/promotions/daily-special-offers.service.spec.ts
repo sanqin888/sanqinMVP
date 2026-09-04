@@ -133,9 +133,34 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
   });
 
   it('keeps the existing transactional soft-delete/create write semantics inside Offers', async () => {
-    const create = jest.fn().mockResolvedValue({});
+    type UpdateManyArg = {
+      where: { stableId: { in: string[] } };
+      data: { deletedAt: Date };
+    };
+    type CreateArg = {
+      data: {
+        stableId?: string;
+        weekday: number;
+        itemStableId: string;
+        pricingMode: string;
+        overridePriceCents: number | null;
+        disallowCoupons: boolean;
+        isEnabled: boolean;
+        sortOrder: number;
+        deletedAt: Date | null;
+      };
+    };
+    let updateManyArg: UpdateManyArg | undefined;
+    let createArg: CreateArg | undefined;
+    const create = jest.fn((args: CreateArg) => {
+      createArg = args;
+      return Promise.resolve({});
+    });
     const update = jest.fn().mockResolvedValue({});
-    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const updateMany = jest.fn((args: UpdateManyArg) => {
+      updateManyArg = args;
+      return Promise.resolve({ count: 1 });
+    });
     const tx = {
       menuDailySpecial: {
         findMany: jest
@@ -176,35 +201,11 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
       [{ itemStableId: 'item-1', basePriceCents: 1099 }],
     );
 
-    type UpdateManyArg = {
-      where: { stableId: { in: string[] } };
-      data: { deletedAt: Date };
-    };
-    const updateManyCalls = updateMany.mock.calls as unknown as Array<
-      [UpdateManyArg]
-    >;
-    const updateManyArg = updateManyCalls[0]?.[0];
     expect(updateManyArg?.where).toEqual({
       stableId: { in: ['old-special'] },
     });
     expect(updateManyArg?.data.deletedAt).toBeInstanceOf(Date);
     expect(update).not.toHaveBeenCalled();
-
-    type CreateArg = {
-      data: {
-        stableId?: string;
-        weekday: number;
-        itemStableId: string;
-        pricingMode: string;
-        overridePriceCents: number | null;
-        disallowCoupons: boolean;
-        isEnabled: boolean;
-        sortOrder: number;
-        deletedAt: Date | null;
-      };
-    };
-    const createCalls = create.mock.calls as unknown as Array<[CreateArg]>;
-    const createArg = createCalls[0]?.[0];
     expect(createArg?.data.stableId).toBe('new-special');
     expect(createArg?.data.weekday).toBe(1);
     expect(createArg?.data.itemStableId).toBe('item-1');
