@@ -16,8 +16,7 @@ describe('temporary closure reason codec', () => {
   });
 
   it('parses timed pauses and keeps ordinary reasons outside the codec', () => {
-    const encoded =
-      '__AUTO_UNTIL__:2026-08-25T09:15:00-04:00| maintenance ';
+    const encoded = '__AUTO_UNTIL__:2026-08-25T09:15:00-04:00| maintenance ';
 
     expect(parseAutoPauseReason(encoded)).toEqual({
       autoResumeAt: '2026-08-25T09:15:00-04:00',
