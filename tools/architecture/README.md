@@ -13,6 +13,16 @@ node tools/architecture/scan-architecture.mjs --report
 - no unclassified production source roots;
 - no new direct cross-context dependency pair;
 - no increase in a recorded direct-import allowance;
+- no new or expanded strongly connected cycle made from public-contract dependency
+  pairs that are no longer grandfathered by a recorded legacy direct-import allowance.
+  The cycle graph includes `public-api`, `contracts`, `ports`, and registered public
+  aliases, so moving both directions behind public surfaces cannot hide an A -> B -> A
+  dependency. Public SCCs that already existed when Slice 6 introduced cycle detection
+  are recorded explicitly in `legacyPublicCycleComponents` as contraction-only debt:
+  a detected SCC may shrink inside that baseline, but adding a new member or any new
+  internal edge fails CI. Existing direct-debt pairs remain governed by their numeric
+  baseline; when that debt allowance is removed, the public direction automatically
+  becomes subject to the cycle gate;
 - browser/server direct `fetch` only at canonical transports or explicitly
   recorded raw/protocol exceptions, with stale allowances rejected; POS
   session/login has no direct-fetch allowance after its canonical-client cutover,

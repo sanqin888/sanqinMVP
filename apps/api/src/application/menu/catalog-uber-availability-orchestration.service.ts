@@ -43,6 +43,7 @@ export class CatalogUberAvailabilityOrchestrationService {
       await this.syncUberMenuItemAvailabilitySafely(
         result.availability.stableId,
         result.availability.effectiveAvailability,
+        result.availability.tempUnavailableUntil,
       );
     }
     return { ok: true };
@@ -56,6 +57,7 @@ export class CatalogUberAvailabilityOrchestrationService {
     const uberSync = await this.syncUberMenuItemAvailabilitySafely(
       updated.stableId,
       updated.effectiveAvailability,
+      updated.tempUnavailableUntil,
     );
 
     return {
@@ -79,6 +81,7 @@ export class CatalogUberAvailabilityOrchestrationService {
     await this.syncUberOptionAvailabilitySafely(
       result.availability.stableId,
       result.availability.effectiveAvailability,
+      result.availability.tempUnavailableUntil,
     );
     return { ok: true };
   }
@@ -136,11 +139,22 @@ export class CatalogUberAvailabilityOrchestrationService {
   private async syncUberMenuItemAvailabilitySafely(
     menuItemStableId: string,
     isAvailable: boolean,
+    suspendUntil: string | null,
   ): Promise<UberEatsAvailabilitySyncResult> {
     try {
+      const snapshot =
+        await this.catalogAvailability.getMenuItemAvailabilitySnapshot(
+          menuItemStableId,
+        );
       return await this.uberEatsService.syncUberMenuItemAvailability({
         menuItemStableId,
         isAvailable,
+        publishable: Boolean(
+          snapshot &&
+          snapshot.visibility === 'PUBLIC' &&
+          snapshot.publishToUberEats,
+        ),
+        suspendUntil,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : `${error}`;
@@ -163,11 +177,13 @@ export class CatalogUberAvailabilityOrchestrationService {
   private async syncUberOptionAvailabilitySafely(
     optionChoiceStableId: string,
     isAvailable: boolean,
+    suspendUntil: string | null,
   ) {
     try {
       await this.uberEatsService.syncUberOptionItemAvailability({
         optionChoiceStableId,
         isAvailable,
+        suspendUntil,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : `${error}`;

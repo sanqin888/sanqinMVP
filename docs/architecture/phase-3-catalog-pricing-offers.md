@@ -369,8 +369,53 @@ Actions is the authoritative graph/test gate after review.
 
 ### Slice 6 — Phase 3 closeout
 
+Status: **CI GREEN — merge / deployment verification pending**.
+
 Refresh the dependency graph and compatibility records, verify no new direct
 context pairs or cycles were introduced, and document the next phase boundary.
+
+The closeout audit found that the existing central scanner counted public-contract
+imports but did not evaluate them as a directed graph. That allowed Slice 5 to form
+a hidden public-surface cycle: Catalog application orchestration imports the Uber
+availability public capability, while Uber menu wiring imports the Catalog
+availability public reader. Both directions are valid surfaces individually, so the
+old direct-debt gate remained green.
+
+Slice 6 therefore adds a Tarjan strongly-connected-component gate over public
+contract dependency pairs. To avoid turning known legacy deep-import debt into an
+unrelated all-red migration, a pair that still has an explicit
+`legacyDirectImportLimits` allowance remains grandfathered by that existing debt
+record. The first remote run also exposed a pre-existing four-context public SCC
+(Catalog / Orders / Identity / Messaging) that predates Slice 6. That component is
+recorded in `legacyPublicCycleComponents` as contraction-only baseline debt: its
+current contexts/edges may disappear, but a new member or a new internal edge fails
+CI. Public-only cycles outside that baseline fail immediately; as a direct allowance
+is removed later, its public direction automatically enters the cycle gate. The
+scanner report exposes all detected public-contract cycles, the legacy baseline, and
+new/expanded cycles separately.
+
+The identified Catalog <-> External Channels public cycle is now source-contracted
+under the separately authorized boundary change. Catalog availability orchestration
+reads the Catalog-owned publication/suspend facts and passes provider-neutral values
+(`publishable`, effective availability and ISO `suspendUntil`) into the Uber public
+availability command. Uber no longer imports `menu/public-api.ts`, no longer adapts
+`CATALOG_AVAILABILITY_READER`, and neither the API nor dedicated worker runtime imports
+`CatalogAvailabilityModule`; the remaining public direction is therefore Catalog ->
+External Channels only. Uber converts the public ISO suspend time inside its boundary
+before calling the provider gateway.
+
+Availability failure tickets now snapshot `publishable` and `suspendUntil` together
+with `isAvailable`, so a retry no longer needs to reverse-query Catalog. Historical
+tickets that contain only `isAvailable` remain retryable with the prior effective
+fallback (`publishable=true`, no suspend-until). The provider-specific Uber Admin
+availability endpoints remain direct Uber commands and therefore use explicit
+provider intent (`publishable=true`, no Catalog suspend window) rather than silently
+reintroducing a Catalog dependency. No Prisma schema/migration or external Uber wire
+format changes are required.
+
+GitHub Actions CI #5069 passed on implementation head `7c8b374e`, including the
+Architecture gate, API/Web lint/build, strict declaration checks, and tests. Phase 3
+remains open only for merge plus post-deployment active availability verification.
 
 ## Deferred items that are not Slice 1 scope
 

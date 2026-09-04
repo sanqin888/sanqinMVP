@@ -358,6 +358,24 @@
       "reason": "frozen Clover OAuth protocol adapter"
     }
   },
+  "legacyPublicCycleComponents": [
+    {
+      "contexts": [
+        "catalog-pricing-offers",
+        "commerce-orders-fulfillment",
+        "identity-customer-benefits",
+        "messaging-notifications"
+      ],
+      "edges": [
+        "catalog-pricing-offers -> commerce-orders-fulfillment",
+        "catalog-pricing-offers -> messaging-notifications",
+        "commerce-orders-fulfillment -> catalog-pricing-offers",
+        "identity-customer-benefits -> catalog-pricing-offers",
+        "messaging-notifications -> identity-customer-benefits"
+      ],
+      "reason": "pre-Slice-6 public-contract SCC discovered when cycle detection was introduced; contraction-only baseline"
+    }
+  ],
   "legacyDirectImportLimits": {
     "accounting-reporting-analytics -> architecture-foundation": 3,
     "accounting-reporting-analytics -> commerce-orders-fulfillment": 1,

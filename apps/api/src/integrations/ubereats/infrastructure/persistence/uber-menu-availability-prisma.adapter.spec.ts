@@ -34,6 +34,8 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
       uberStoreId: 'uber-store-1',
       menuItemStableId: 'item-stable-1',
       isAvailable: false,
+      publishable: true,
+      suspendUntil: new Date('2090-01-02T03:04:05.000Z'),
       error: 'upstream unavailable',
     });
 
@@ -49,6 +51,8 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
         lastError: 'upstream unavailable',
         context: {
           isAvailable: false,
+          publishable: true,
+          suspendUntil: '2090-01-02T03:04:05.000Z',
         },
       },
     });

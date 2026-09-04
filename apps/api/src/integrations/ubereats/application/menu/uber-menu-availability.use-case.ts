@@ -5,7 +5,6 @@ import type { UberTelemetryPort } from '../shared/uber-telemetry.port';
 import type {
   UberMenuAvailabilityCommandPort,
   UberMenuAvailabilityQueryPort,
-  UberMenuCatalogAvailabilityQueryPort,
 } from './uber-menu-availability.ports';
 import type {
   UberAvailabilitySyncResult,
@@ -20,7 +19,6 @@ const errorMessage = (error: unknown) =>
 /** Synchronizes SanQ availability by stableId through Uber's sparse item update API. */
 export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
   constructor(
-    private readonly catalogQueries: UberMenuCatalogAvailabilityQueryPort,
     private readonly queries: UberMenuAvailabilityQueryPort,
     private readonly commands: UberMenuAvailabilityCommandPort,
     private readonly gateway: UberMenuGatewayPort,
@@ -33,23 +31,19 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     >[0],
   ) {
     const requestedStoreStableId = input.storeStableId?.trim() || undefined;
-    const publishable = await this.catalogQueries.isMenuItemPublishable(
-      input.menuItemStableId,
-    );
     const stores: UberAvailabilitySyncResult['stores'] = [];
 
-    if (publishable) {
-      const [mappings, suspendUntil] = await Promise.all([
-        this.queries.findProvisionedStores(requestedStoreStableId),
-        this.catalogQueries.findMenuItemSuspendUntil(input.menuItemStableId),
-      ]);
+    if (input.publishable) {
+      const mappings = await this.queries.findProvisionedStores(
+        requestedStoreStableId,
+      );
       for (const mapping of mappings) {
         try {
           await this.updateUberItemAvailability(
             mapping,
             input.menuItemStableId,
             input.isAvailable,
-            suspendUntil,
+            input.suspendUntil,
           );
           stores.push({
             storeStableId: mapping.storeStableId,
@@ -63,6 +57,8 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
             uberStoreId: mapping.uberStoreId,
             menuItemStableId: input.menuItemStableId,
             isAvailable: input.isAvailable,
+            publishable: input.publishable,
+            suspendUntil: input.suspendUntil,
             error: message,
           });
           stores.push({
@@ -97,10 +93,9 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     >[0],
   ) {
     const requestedStoreStableId = input.storeStableId?.trim() || undefined;
-    const [mappings, suspendUntil] = await Promise.all([
-      this.queries.findProvisionedStores(requestedStoreStableId),
-      this.catalogQueries.findOptionSuspendUntil(input.optionChoiceStableId),
-    ]);
+    const mappings = await this.queries.findProvisionedStores(
+      requestedStoreStableId,
+    );
     const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const mapping of mappings) {
       try {
@@ -108,7 +103,7 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
           mapping,
           input.optionChoiceStableId,
           input.isAvailable,
-          suspendUntil,
+          input.suspendUntil,
         );
         stores.push({
           storeStableId: mapping.storeStableId,

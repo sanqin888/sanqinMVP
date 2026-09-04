@@ -336,10 +336,15 @@ export class RetryUberOpsTicketUseCase {
       } else if (ticket.type === UberOpsTicketType.MENU_ITEM_AVAILABILITY) {
         if (!ticket.menuItemStableId)
           throw invalidOperationsInput('商品状态工单缺少 menuItemStableId');
+        const availabilityContext = parseAvailabilityContext(ticket.context);
         await this.menuAvailability.syncUberMenuItemAvailability({
           storeStableId,
           menuItemStableId: ticket.menuItemStableId,
-          isAvailable: parseAvailabilityContext(ticket.context).isAvailable,
+          isAvailable: availabilityContext.isAvailable,
+          publishable: availabilityContext.publishable,
+          suspendUntil: availabilityContext.suspendUntil
+            ? new Date(availabilityContext.suspendUntil)
+            : null,
         });
       } else {
         throw invalidOperationsInput(`工单类型 ${ticket.type} 不支持重试`);
@@ -454,7 +459,18 @@ const parseAvailabilityContext = (
   const c = requireContext(value);
   if (typeof c.isAvailable !== 'boolean')
     throw invalidOperationsInput('商品状态工单缺少布尔值 isAvailable');
-  return { isAvailable: c.isAvailable };
+  if (
+    c.suspendUntil !== undefined &&
+    c.suspendUntil !== null &&
+    (typeof c.suspendUntil !== 'string' ||
+      Number.isNaN(Date.parse(c.suspendUntil)))
+  )
+    throw invalidOperationsInput('商品状态工单的 suspendUntil 非法');
+  return {
+    isAvailable: c.isAvailable,
+    publishable: typeof c.publishable === 'boolean' ? c.publishable : true,
+    suspendUntil: typeof c.suspendUntil === 'string' ? c.suspendUntil : null,
+  };
 };
 const parseStoreContext = (value: unknown): StoreStatusSyncContext => {
   const c = requireContext(value);

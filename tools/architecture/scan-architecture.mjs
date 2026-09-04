@@ -130,6 +130,63 @@ const unknownSourceRoots = new Set();
 const compatAnnotations = new Set();
 
 const increment = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
+const parseContextEdge = (edge) => {
+  const [source, target] = edge.split(' -> ');
+  return { source, target };
+};
+const findStronglyConnectedComponents = (nodes, edges) => {
+  const adjacency = new Map(nodes.map((node) => [node, []]));
+  for (const edge of edges) {
+    const { source, target } = parseContextEdge(edge);
+    adjacency.get(source)?.push(target);
+  }
+
+  let nextIndex = 0;
+  const indexByNode = new Map();
+  const lowLinkByNode = new Map();
+  const stack = [];
+  const onStack = new Set();
+  const components = [];
+
+  const visit = (node) => {
+    indexByNode.set(node, nextIndex);
+    lowLinkByNode.set(node, nextIndex);
+    nextIndex += 1;
+    stack.push(node);
+    onStack.add(node);
+
+    for (const target of adjacency.get(node) ?? []) {
+      if (!indexByNode.has(target)) {
+        visit(target);
+        lowLinkByNode.set(
+          node,
+          Math.min(lowLinkByNode.get(node), lowLinkByNode.get(target)),
+        );
+      } else if (onStack.has(target)) {
+        lowLinkByNode.set(
+          node,
+          Math.min(lowLinkByNode.get(node), indexByNode.get(target)),
+        );
+      }
+    }
+
+    if (lowLinkByNode.get(node) !== indexByNode.get(node)) return;
+
+    const component = [];
+    while (stack.length > 0) {
+      const member = stack.pop();
+      onStack.delete(member);
+      component.push(member);
+      if (member === node) break;
+    }
+    components.push(component.sort());
+  };
+
+  for (const node of nodes) {
+    if (!indexByNode.has(node)) visit(node);
+  }
+  return components;
+};
 const hasUseClientDirective = (source) =>
   /(?:^|\n)\s*['"]use client['"]\s*;/.test(source.slice(0, 1024));
 const countDirectFetchCalls = (source) =>
@@ -182,6 +239,47 @@ for (const absolutePath of sourceFiles) {
     increment(publicSurface ? publicCounts : directCounts, edge);
   }
 }
+
+const legacyDirectEdges = new Set(Object.keys(config.legacyDirectImportLimits));
+const cycleGuardEdges = [...publicCounts.keys()].filter(
+  (edge) => !legacyDirectEdges.has(edge),
+);
+const contextIds = config.contexts.map(({ id }) => id);
+const publicContractCycles = findStronglyConnectedComponents(
+  contextIds,
+  cycleGuardEdges,
+)
+  .filter((component) => component.length > 1)
+  .map((contexts) => {
+    const members = new Set(contexts);
+    const edges = cycleGuardEdges
+      .filter((edge) => {
+        const { source, target } = parseContextEdge(edge);
+        return members.has(source) && members.has(target);
+      })
+      .sort();
+    return { contexts, edges };
+  });
+const legacyPublicCycleComponents = Array.isArray(
+  config.legacyPublicCycleComponents,
+)
+  ? config.legacyPublicCycleComponents.filter(
+      (baseline) =>
+        Array.isArray(baseline?.contexts) && Array.isArray(baseline?.edges),
+    )
+  : [];
+const isWithinLegacyPublicCycleBaseline = (cycle) =>
+  legacyPublicCycleComponents.some((baseline) => {
+    const baselineContexts = new Set(baseline.contexts);
+    const baselineEdges = new Set(baseline.edges);
+    return (
+      cycle.contexts.every((context) => baselineContexts.has(context)) &&
+      cycle.edges.every((edge) => baselineEdges.has(edge))
+    );
+  });
+const newPublicContractCycles = publicContractCycles.filter(
+  (cycle) => !isWithinLegacyPublicCycleBaseline(cycle),
+);
 
 const failures = [];
 
@@ -593,12 +691,12 @@ if (adminCatalogOwnershipBoundary) {
   if (existsSync(uberAvailabilityWiringPath)) {
     const source = readFileSync(uberAvailabilityWiringPath, 'utf8');
     if (
-      !source.includes("from '../../../../menu/public-api'") ||
-      !source.includes('CATALOG_AVAILABILITY_READER') ||
-      !source.includes('UBER_MENU_CATALOG_AVAILABILITY_QUERY')
+      source.includes("from '../../../../menu/public-api'") ||
+      source.includes('CATALOG_AVAILABILITY_READER') ||
+      source.includes('UBER_MENU_CATALOG_AVAILABILITY_QUERY')
     ) {
       failures.push(
-        `Uber composition must adapt Catalog availability through the public reader into an Uber application query port: ${uberAvailabilityWiring}`,
+        `Uber availability composition must not reverse-query Catalog; Catalog-owned availability facts must enter through the Uber public command boundary: ${uberAvailabilityWiring}`,
       );
     }
   }
@@ -615,7 +713,7 @@ if (adminCatalogOwnershipBoundary) {
       /\.menuItem\b|\.menuOptionTemplateChoice\b/.test(source)
     ) {
       failures.push(
-        `Uber availability persistence must stay DB-only for Uber-owned mapping/ticket facts; Catalog adaptation belongs in composition wiring: ${uberAvailabilityPersistenceAdapter}`,
+        `Uber availability persistence must stay DB-only for Uber-owned mapping/ticket facts and must not reintroduce Catalog reads: ${uberAvailabilityPersistenceAdapter}`,
       );
     }
   }
@@ -2783,6 +2881,49 @@ if (requireClosedCompatibility('brand-store.default-store-identity.v1')) {
 if (config.contexts.length !== 12 || new Set(config.contexts.map(({ id }) => id)).size !== 12) {
   failures.push('context-baseline.json must define exactly 12 unique contexts');
 }
+if (
+  config.legacyPublicCycleComponents !== undefined &&
+  !Array.isArray(config.legacyPublicCycleComponents)
+) {
+  failures.push('legacyPublicCycleComponents must be an array when configured');
+}
+if (
+  Array.isArray(config.legacyPublicCycleComponents) &&
+  config.legacyPublicCycleComponents.length !== legacyPublicCycleComponents.length
+) {
+  failures.push(
+    'each legacy public-cycle baseline must define contexts and edges arrays',
+  );
+}
+for (const baseline of legacyPublicCycleComponents) {
+  const baselineContexts = new Set(baseline.contexts);
+  if (
+    baselineContexts.size !== baseline.contexts.length ||
+    baseline.contexts.some((context) => !contextIds.includes(context))
+  ) {
+    failures.push(
+      'legacy public-cycle baseline contains duplicate or unknown contexts: ' +
+        baseline.contexts.join(', '),
+    );
+  }
+  if (typeof baseline.reason !== 'string' || !baseline.reason.trim()) {
+    failures.push('legacy public-cycle baseline must include a reason');
+  }
+  for (const edge of baseline.edges) {
+    const { source, target } = parseContextEdge(edge);
+    if (
+      !source ||
+      !target ||
+      !baselineContexts.has(source) ||
+      !baselineContexts.has(target) ||
+      legacyDirectEdges.has(edge)
+    ) {
+      failures.push(
+        'invalid legacy public-cycle baseline edge: ' + edge,
+      );
+    }
+  }
+}
 if (unknownSourceRoots.size > 0) {
   failures.push(
     'unclassified source roots: ' + [...unknownSourceRoots].sort().join(', '),
@@ -2803,6 +2944,15 @@ for (const [edge, count] of [...directCounts.entries()].sort()) {
         count,
     );
   }
+}
+
+for (const cycle of newPublicContractCycles) {
+  failures.push(
+    'new or expanded public-contract context cycle detected: contexts=' +
+      cycle.contexts.join(', ') +
+      '; edges=' +
+      cycle.edges.join(', '),
+  );
 }
 
 const requiredFields = registry.requiredFields ?? [];
@@ -2846,6 +2996,9 @@ const report = {
   publicContractImports: Object.fromEntries(
     [...publicCounts.entries()].sort(),
   ),
+  publicContractCycles,
+  newPublicContractCycles,
+  legacyPublicCycleComponents,
   webBrowserDirectFetch: Object.fromEntries(
     [...browserDirectFetchCounts.entries()].sort(),
   ),

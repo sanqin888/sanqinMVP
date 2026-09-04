@@ -417,6 +417,44 @@ because replacement traffic uses public owner/application surfaces.
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
+### 2026-09-04 — Phase 3 Slice 6: public-contract cycle guard + contraction
+
+**PR/SHA:** PR #2157; implementation head `7c8b374e`; guard commit `5ee0970d`  
+**State:** CI GREEN / DEPLOYMENT VERIFICATION PENDING  
+**Result:** Phase 3 closeout review found that the central scanner treated
+`public-api`/`contracts`/`ports` traffic as approved but did not analyze those
+approved edges as a directed graph. Static source inspection therefore exposed a
+hidden `catalog-pricing-offers -> external-channels -> catalog-pricing-offers`
+cycle across the Slice 5 availability orchestration and Uber Catalog reader wiring.
+The scanner now builds the public-contract context graph and uses a Tarjan
+strongly-connected-component check. Public pairs that still carry a registered
+legacy direct-import allowance remain governed by the existing debt baseline;
+otherwise public cycles are checked against the explicit contraction-only SCC
+baseline, and removing a future direct allowance automatically brings that direction
+under the cycle gate.
+`--report` also exposes detected cycle components/edges. CI #5066's first Architecture
+run then surfaced a pre-Slice-6 Catalog / Orders / Identity / Messaging public SCC.
+That historical SCC is recorded in `legacyPublicCycleComponents` as explicit
+contraction-only architecture debt rather than a compatibility waiver: its existing
+members/edges may shrink, but any new member or internal edge fails the cycle gate.
+
+The authorized contraction removes the reverse Uber -> Catalog edge instead of hiding
+it. Catalog orchestration now passes publication intent and suspend-window facts into
+the Uber public availability command; Uber menu wiring and both Uber runtime
+compositions no longer import Catalog availability. Availability failure tickets
+snapshot those facts for retries, while historical `{ isAvailable }` tickets retain
+a narrow read-compat fallback. The source graph is therefore intended to retain only
+`catalog-pricing-offers -> external-channels` for this availability coordination.
+No dependency manifest, Prisma schema/migration, production Web Clover, Uber external
+wire format, webhook/order state, or full-menu publication protocol is changed.  
+**Validation:** local lint/build/test/scanner execution intentionally deferred under
+repository workflow. GitHub Actions CI #5069 passed on implementation head `7c8b374e`:
+Architecture, API/Web lint/build, API/Web strict declaration checks, and API/Web tests
+all passed. The active Uber availability path still requires deployment verification
+before Phase 3 can be marked closed.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -425,7 +463,9 @@ because replacement traffic uses public owner/application surfaces.
 - Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4, Slice 5 and Slice 5B are merged;
   Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 2C remains **DEFERRED** because
   the current Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free
-  cross-context replacement yet. The next step is Slice 6 Phase 3 closeout.
+  cross-context replacement yet. Slice 6 is **CI GREEN** on PR #2157: the cycle guard
+  and Catalog/External source contraction passed CI #5069 and now require only merge,
+  deployment, and active availability verification before Phase 3 can close.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
