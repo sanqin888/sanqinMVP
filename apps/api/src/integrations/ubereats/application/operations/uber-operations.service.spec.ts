@@ -208,13 +208,13 @@ describe('Uber operations application workflows', () => {
       telemetry,
     );
 
-    await expect(
-      retry.execute('ticket-availability-1'),
-    ).resolves.toMatchObject({
-      ok: true,
-      ticketStableId: 'ticket-availability-1',
-      status: UberOpsTicketStatus.RESOLVED,
-    });
+    await expect(retry.execute('ticket-availability-1')).resolves.toMatchObject(
+      {
+        ok: true,
+        ticketStableId: 'ticket-availability-1',
+        status: UberOpsTicketStatus.RESOLVED,
+      },
+    );
     expect(menuAvailability.syncUberMenuItemAvailability).toHaveBeenCalledWith({
       storeStableId: 'store-stable-1',
       menuItemStableId: 'item-stable-1',
