@@ -32,11 +32,14 @@ export interface UberEatsMenuAvailabilityPort {
     storeStableId?: string;
     menuItemStableId: string;
     isAvailable: boolean;
+    publishable: boolean;
+    suspendUntil: string | null;
   }): Promise<UberEatsAvailabilitySyncResult>;
   syncUberOptionItemAvailability(input: {
     storeStableId?: string;
     optionChoiceStableId: string;
     isAvailable: boolean;
+    suspendUntil: string | null;
   }): Promise<UberEatsAvailabilitySyncResult>;
 }
 

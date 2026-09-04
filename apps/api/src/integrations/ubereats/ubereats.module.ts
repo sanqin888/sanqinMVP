@@ -6,7 +6,6 @@ import {
   ORDER_INGESTION_PROVIDER,
   OrdersModule,
 } from '../../orders/public-api';
-import { CatalogAvailabilityModule } from '../../menu/public-api';
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
   BRAND_STORE_CONFIG_READER,
@@ -124,7 +123,7 @@ export function createUberEatsWorkerRuntimeModule(
 ): DynamicModule {
   return {
     module: UberEatsWorkerRuntimeCompositionModule,
-    imports: [PrismaModule, BrandStoreConfigModule, CatalogAvailabilityModule],
+    imports: [PrismaModule, BrandStoreConfigModule],
     providers: [
       OrderEventsBus,
       ORDER_INGESTION_PROVIDER,
@@ -142,7 +141,6 @@ export function createUberEatsWorkerRuntimeModule(
   imports: [
     PrismaModule,
     BrandStoreConfigModule,
-    CatalogAvailabilityModule,
     AuthModule,
     MessagingModule,
     OrdersModule,

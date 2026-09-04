@@ -16,12 +16,6 @@ export interface UberMenuAvailabilityPort {
   ): Promise<UberAvailabilitySyncResult>;
 }
 
-export interface UberMenuCatalogAvailabilityQueryPort {
-  isMenuItemPublishable(menuItemStableId: string): Promise<boolean>;
-  findMenuItemSuspendUntil(menuItemStableId: string): Promise<Date | null>;
-  findOptionSuspendUntil(optionChoiceStableId: string): Promise<Date | null>;
-}
-
 export interface UberMenuAvailabilityQueryPort {
   findProvisionedStores(
     storeStableId?: string,
@@ -34,13 +28,12 @@ export interface UberMenuAvailabilityCommandPort {
     uberStoreId: string;
     menuItemStableId: string;
     isAvailable: boolean;
+    publishable: boolean;
+    suspendUntil: Date | null;
     error: string;
   }): Promise<void>;
 }
 
-export const UBER_MENU_CATALOG_AVAILABILITY_QUERY = Symbol(
-  'UBER_MENU_CATALOG_AVAILABILITY_QUERY',
-);
 export const UBER_MENU_AVAILABILITY_QUERY = Symbol(
   'UBER_MENU_AVAILABILITY_QUERY',
 );

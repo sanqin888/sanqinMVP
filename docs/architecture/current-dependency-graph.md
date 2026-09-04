@@ -1,7 +1,8 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 is **PRODUCTION VERIFIED**; Slice 5B merged via PR #2153 with
-final CI head `71191389`, squash merge `d3316e45`, and CI #5055 green (2026-09-04).
+Phase 3 Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 5B merged via
+PR #2153 with final CI head `71191389`, squash merge `d3316e45`, and CI #5055 green;
+active Admin/Public Menu/checkout-pricing verification completed on 2026-09-04.
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5B Daily
@@ -16,6 +17,29 @@ counts below.
 The CI architecture scanner is authoritative for the exact source scan. This
 file is the human-readable working snapshot and must be refreshed again at each
 Phase 3 slice boundary.
+
+## Phase 3 Slice 6 cycle audit and contraction
+
+Static closeout review found one public-contract cycle that the previous scanner
+could not reject because public imports were counted separately from direct debt:
+
+`catalog-pricing-offers -> external-channels -> catalog-pricing-offers`
+
+Slice 6 first adds a strongly-connected-component cycle gate over public dependency
+pairs that are not still grandfathered by an explicit legacy direct-import allowance.
+The same slice then contracts the exposed cycle at source: Catalog availability
+orchestration now supplies publication and suspend-window facts to the Uber public
+availability command, while Uber menu wiring/API/worker composition no longer imports
+Catalog availability surfaces. The reverse `external-channels -> catalog-pricing-offers`
+public edge is therefore removed in source; the intended remaining availability
+coordination direction is `catalog-pricing-offers -> external-channels` through the
+Uber public capability. The first remote cycle-gate run additionally surfaced a
+pre-existing public SCC among Catalog / Orders / Identity / Messaging. Because those
+edges predate Slice 6, they are now captured as `legacyPublicCycleComponents`
+contraction-only debt: they may shrink but cannot gain a new context or internal edge.
+GitHub Actions CI #5069 passed on implementation head `7c8b374e`; the Architecture
+gate found no new direct pair and no new/expanded public-contract cycle. No local
+scanner execution is claimed here.
 
 ## Context map
 

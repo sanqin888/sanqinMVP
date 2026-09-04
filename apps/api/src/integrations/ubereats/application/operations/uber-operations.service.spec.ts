@@ -150,6 +150,80 @@ describe('Uber operations application workflows', () => {
     );
   });
 
+  it('retries a historical availability ticket without re-reading Catalog', async () => {
+    const tickets = {
+      find: jest.fn().mockResolvedValue({
+        ticketStableId: 'ticket-availability-1',
+        persistedStoreScopeId: 'store-stable-1',
+        type: UberOpsTicketType.MENU_ITEM_AVAILABILITY,
+        status: UberOpsTicketStatus.OPEN,
+        priority: UberOpsTicketPriority.HIGH,
+        title: 'Availability sync failed',
+        description: null,
+        externalOrderId: null,
+        menuItemStableId: 'item-stable-1',
+        context: { isAvailable: false },
+        retryCount: 0,
+        lastError: null,
+        createdAt: new Date('2026-08-25T12:00:00.000Z'),
+        updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+        resolvedAt: null,
+      }),
+      markInProgress: jest.fn().mockResolvedValue(undefined),
+      finishRetry: jest.fn().mockResolvedValue({
+        ticketStableId: 'ticket-availability-1',
+        status: UberOpsTicketStatus.RESOLVED,
+        retryCount: 1,
+        lastError: null,
+        resolvedAt: new Date('2026-08-25T12:01:00.000Z'),
+      }),
+    };
+    const unitOfWork = {
+      transaction: jest.fn(
+        (work: (scope: { tickets: typeof tickets }) => Promise<unknown>) =>
+          work({ tickets }),
+      ),
+    };
+    const menuAvailability = {
+      syncUberMenuItemAvailability: jest.fn().mockResolvedValue({
+        status: 'SYNCED',
+        stores: [],
+      }),
+    };
+    const retry = new RetryUberOpsTicketUseCase(
+      unitOfWork as never,
+      {} as never,
+      {} as never,
+      menuAvailability as never,
+      {} as never,
+      {
+        listMappings: jest.fn().mockResolvedValue([
+          {
+            uberStoreId: 'uber-store-1',
+            posExternalStoreId: 'store-stable-1',
+            isProvisioned: true,
+          },
+        ]),
+      } as never,
+      telemetry,
+    );
+
+    await expect(retry.execute('ticket-availability-1')).resolves.toMatchObject(
+      {
+        ok: true,
+        ticketStableId: 'ticket-availability-1',
+        status: UberOpsTicketStatus.RESOLVED,
+      },
+    );
+    expect(menuAvailability.syncUberMenuItemAvailability).toHaveBeenCalledWith({
+      storeStableId: 'store-stable-1',
+      menuItemStableId: 'item-stable-1',
+      isAvailable: false,
+      publishable: true,
+      suspendUntil: null,
+    });
+  });
+
   it('retries a historical provider-scoped OFFLINE ticket through canonical store mapping', async () => {
     const tickets = {
       find: jest.fn().mockResolvedValue({

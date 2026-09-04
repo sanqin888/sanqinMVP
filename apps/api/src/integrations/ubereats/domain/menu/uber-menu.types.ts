@@ -254,6 +254,8 @@ export function isPermanentPublicHttpsUrl(value: string): boolean {
 export type SyncAvailabilityInput = UberOptionalStoreStableScopedInput & {
   menuItemStableId: string;
   isAvailable: boolean;
+  publishable: boolean;
+  suspendUntil: Date | null;
 };
 
 export type UberAvailabilitySyncStatus =
@@ -276,4 +278,5 @@ export type UberAvailabilitySyncResult = {
 export type SyncOptionAvailabilityInput = UberOptionalStoreStableScopedInput & {
   optionChoiceStableId: string;
   isAvailable: boolean;
+  suspendUntil: Date | null;
 };

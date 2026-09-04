@@ -34,7 +34,11 @@ export type UberDomainJson =
   | null
   | UberDomainJson[]
   | { [key: string]: UberDomainJson };
-export type MenuItemAvailabilityContext = { isAvailable: boolean };
+export type MenuItemAvailabilityContext = {
+  isAvailable: boolean;
+  publishable: boolean;
+  suspendUntil: string | null;
+};
 export type StoreStatusSyncContext = {
   uberStoreId: string;
   targetStatus: 'ONLINE' | 'PAUSED';

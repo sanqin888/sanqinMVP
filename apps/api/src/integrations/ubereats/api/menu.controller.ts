@@ -268,6 +268,8 @@ export class UberEatsMenuController {
       menuItemStableId: stableId,
       isAvailable: dto.isAvailable,
       storeStableId: dto.storeId,
+      publishable: true,
+      suspendUntil: null,
     });
     return presentMenuMutation();
   }
@@ -282,6 +284,7 @@ export class UberEatsMenuController {
       optionChoiceStableId: stableId,
       isAvailable: dto.isAvailable,
       storeStableId: dto.storeId,
+      suspendUntil: null,
     });
     return presentMenuMutation();
   }
