@@ -3,20 +3,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppLogger } from '../common/app-logger';
 import {
-  DailySpecialDto,
   isAvailableNow,
   PublicMenuCategoryDto,
   PublicMenuResponse,
 } from '@shared/menu';
 import {
-  isDailySpecialActiveNow,
-  resolveEffectivePriceCents,
-  resolveStoreNow,
+  DAILY_SPECIAL_OFFERS,
+  type DailySpecialOffersPort,
 } from '../promotions/public-api';
-import {
-  BRAND_STORE_CONFIG_READER,
-  type BrandStoreConfigReaderPort,
-} from '../store/public-api';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -40,25 +34,11 @@ export class PublicMenuService {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(BRAND_STORE_CONFIG_READER)
-    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(DAILY_SPECIAL_OFFERS)
+    private readonly dailySpecialOffers: DailySpecialOffersPort,
   ) {}
 
   async getPublicMenu(): Promise<PublicMenuResponse> {
-    const { timezone } =
-      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
-    const now = resolveStoreNow(timezone || 'America/Toronto');
-    const weekday = now.weekday;
-
-    const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({
-      where: {
-        weekday,
-        isEnabled: true,
-        deletedAt: null,
-      },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    });
-
     const categories = await this.prisma.menuCategory.findMany({
       where: {
         deletedAt: null,
@@ -112,12 +92,19 @@ export class PublicMenuService {
       },
     });
 
+    const catalogItems = (categories ?? []).flatMap((category) =>
+      (category.items ?? []).map((item) => ({
+        itemStableId: item.stableId,
+        basePriceCents: item.basePriceCents,
+      })),
+    );
+    const { specials: activeDailySpecials } =
+      await this.dailySpecialOffers.getActiveDailySpecials(catalogItems);
     const specialsByItemStableId = new Map<
       string,
-      (typeof rawDailySpecials)[number]
+      (typeof activeDailySpecials)[number]
     >();
-    rawDailySpecials.forEach((special) => {
-      if (!isDailySpecialActiveNow(special, now)) return;
+    activeDailySpecials.forEach((special) => {
       if (!specialsByItemStableId.has(special.itemStableId)) {
         specialsByItemStableId.set(special.itemStableId, special);
       }
@@ -171,9 +158,7 @@ export class PublicMenuService {
         .filter((it) => availablePublicItemStableIds.has(it.stableId))
         .map((it) => {
           const activeSpecial = specialsByItemStableId.get(it.stableId) ?? null;
-          const effectivePriceCents = activeSpecial
-            ? resolveEffectivePriceCents(it.basePriceCents, activeSpecial)
-            : undefined;
+          const effectivePriceCents = activeSpecial?.effectivePriceCents;
 
           const optionGroups = (it.optionGroups ?? [])
             .filter((link) => {
@@ -287,43 +272,12 @@ export class PublicMenuService {
       };
     });
 
-    const itemBasePriceMap = new Map(
-      result.flatMap((cat) =>
-        (cat.items ?? []).map((item) => [item.stableId, item.basePriceCents]),
-      ),
+    const publicResultItemStableIds = new Set(
+      result.flatMap((category) => category.items.map((item) => item.stableId)),
     );
-
-    const dailySpecials: DailySpecialDto[] = [];
-    for (const special of rawDailySpecials) {
-      if (!isDailySpecialActiveNow(special, now)) continue;
-      const basePriceCents = itemBasePriceMap.get(special.itemStableId);
-      if (basePriceCents === undefined) continue;
-      const effectivePriceCents = resolveEffectivePriceCents(
-        basePriceCents,
-        special,
-      );
-
-      dailySpecials.push({
-        stableId: special.stableId,
-        weekday: special.weekday,
-        itemStableId: special.itemStableId,
-        pricingMode: special.pricingMode,
-        overridePriceCents: special.overridePriceCents ?? null,
-        discountDeltaCents: special.discountDeltaCents ?? null,
-        discountPercent: special.discountPercent ?? null,
-        startDate: toIso(special.startDate),
-        endDate: toIso(special.endDate),
-        startMinutes: special.startMinutes ?? null,
-        endMinutes: special.endMinutes ?? null,
-        disallowCoupons: special.disallowCoupons,
-        isEnabled: special.isEnabled,
-        sortOrder: special.sortOrder,
-        basePriceCents,
-        effectivePriceCents,
-      });
-    }
-
-    dailySpecials.sort((a, b) => a.sortOrder - b.sortOrder);
+    const dailySpecials = activeDailySpecials.filter((special) =>
+      publicResultItemStableIds.has(special.itemStableId),
+    );
 
     this.logger.log(`Public menu generated: categories=${result.length}`);
     return { categories: result, dailySpecials };

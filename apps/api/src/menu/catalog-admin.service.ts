@@ -1,31 +1,19 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import { SpecialPricingMode } from '@prisma/client';
 import {
   AdminMenuCategoryDto,
-  AdminMenuFullResponse,
   AdminMenuOptionGroupBindingDto,
-  DailySpecialDto,
   isAvailableNow,
+  MenuPackagingTypeDto,
   TemplateGroupFullDto,
   TemplateGroupLiteDto,
 } from '@shared/menu';
 
-import {
-  isDailySpecialActiveNow,
-  resolveEffectivePriceCents,
-  resolveStoreNow,
-} from '../promotions/public-api';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  BRAND_STORE_CONFIG_READER,
-  type BrandStoreConfigReaderPort,
-} from '../store/public-api';
 import type {
   CatalogAvailabilityReaderPort,
   CatalogMenuItemAvailabilitySnapshot,
@@ -33,6 +21,24 @@ import type {
 } from './catalog-availability-reader.contract';
 
 export type CatalogAvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
+
+export type CatalogAdminMenuItemDto = Omit<
+  AdminMenuCategoryDto['items'][number],
+  'effectivePriceCents' | 'activeSpecial'
+>;
+
+export type CatalogAdminMenuCategoryDto = Omit<
+  AdminMenuCategoryDto,
+  'items'
+> & {
+  items: CatalogAdminMenuItemDto[];
+};
+
+export type CatalogAdminMenuSnapshot = {
+  categories: CatalogAdminMenuCategoryDto[];
+  templatesLite: TemplateGroupLiteDto[];
+  packagingTypes: MenuPackagingTypeDto[];
+};
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -74,11 +80,7 @@ function nextMidnightLocal(): Date {
 
 @Injectable()
 export class CatalogAdminService implements CatalogAvailabilityReaderPort {
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject(BRAND_STORE_CONFIG_READER)
-    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getMenuItemAvailabilitySnapshot(
     menuItemStableId: string,
@@ -193,20 +195,7 @@ export class CatalogAdminService implements CatalogAvailabilityReaderPort {
     }
   }
 
-  async getFullMenu(): Promise<AdminMenuFullResponse> {
-    const { timezone } =
-      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
-    const now = resolveStoreNow(timezone || 'America/Toronto');
-    const weekday = now.weekday;
-    const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({
-      where: {
-        weekday,
-        isEnabled: true,
-        deletedAt: null,
-      },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    });
-
+  async getFullMenu(): Promise<CatalogAdminMenuSnapshot> {
     const [categories, templateGroups, packagingTypes] = await Promise.all([
       this.prisma.menuCategory.findMany({
         where: { deletedAt: null },
@@ -278,20 +267,10 @@ export class CatalogAdminService implements CatalogAvailabilityReaderPort {
       isActive: type.isActive,
       sortOrder: type.sortOrder,
     }));
-    const categoryDtos: AdminMenuCategoryDto[] = (categories ?? []).map(
+    const categoryDtos: CatalogAdminMenuCategoryDto[] = (categories ?? []).map(
       (category) => {
         const categoryStableId = category.stableId;
         const items = (category.items ?? []).map((item) => {
-          const activeSpecial =
-            rawDailySpecials.find(
-              (special) =>
-                special.itemStableId === item.stableId &&
-                isDailySpecialActiveNow(special, now),
-            ) ?? null;
-          const effectivePriceCents = activeSpecial
-            ? resolveEffectivePriceCents(item.basePriceCents, activeSpecial)
-            : undefined;
-
           const optionGroups: AdminMenuOptionGroupBindingDto[] = (
             item.optionGroups ?? []
           )
@@ -331,16 +310,6 @@ export class CatalogAdminService implements CatalogAvailabilityReaderPort {
             nameEn: item.nameEn,
             nameZh: item.nameZh ?? null,
             basePriceCents: item.basePriceCents,
-            effectivePriceCents,
-            activeSpecial: activeSpecial
-              ? {
-                  stableId: activeSpecial.stableId,
-                  effectivePriceCents:
-                    effectivePriceCents ?? item.basePriceCents,
-                  pricingMode: activeSpecial.pricingMode,
-                  disallowCoupons: activeSpecial.disallowCoupons,
-                }
-              : null,
             isAvailable: item.isAvailable,
             visibility: item.visibility,
             isVisibleOnMainMenu: item.isVisibleOnMainMenu,
@@ -381,57 +350,25 @@ export class CatalogAdminService implements CatalogAvailabilityReaderPort {
       },
     );
 
-    const itemBasePriceMap = new Map(
-      categoryDtos.flatMap((category) =>
-        (category.items ?? []).map((item) => [
-          item.stableId,
-          item.basePriceCents,
-        ]),
-      ),
-    );
-    const dailySpecials: DailySpecialDto[] = [];
-
-    for (const special of rawDailySpecials) {
-      if (!isDailySpecialActiveNow(special, now)) continue;
-      const basePriceCents = itemBasePriceMap.get(special.itemStableId);
-      if (basePriceCents === undefined) continue;
-      const effectivePriceCents = resolveEffectivePriceCents(
-        basePriceCents,
-        special,
-      );
-
-      dailySpecials.push({
-        stableId: special.stableId,
-        weekday: special.weekday,
-        itemStableId: special.itemStableId,
-        pricingMode: special.pricingMode,
-        overridePriceCents: special.overridePriceCents ?? null,
-        discountDeltaCents: special.discountDeltaCents ?? null,
-        discountPercent: special.discountPercent ?? null,
-        startDate: toIso(special.startDate),
-        endDate: toIso(special.endDate),
-        startMinutes: special.startMinutes ?? null,
-        endMinutes: special.endMinutes ?? null,
-        disallowCoupons: special.disallowCoupons,
-        isEnabled: special.isEnabled,
-        sortOrder: special.sortOrder,
-        basePriceCents,
-        effectivePriceCents,
-      });
-    }
-
-    dailySpecials.sort(
-      (a, b) =>
-        (a as { sortOrder: number }).sortOrder -
-        (b as { sortOrder: number }).sortOrder,
-    );
-
     return {
       categories: categoryDtos,
       templatesLite,
-      dailySpecials,
       packagingTypes: packagingTypeDtos,
     };
+  }
+
+  async getMenuItemPricingSnapshots(options?: {
+    includeDeleted?: boolean;
+  }): Promise<Array<{ itemStableId: string; basePriceCents: number }>> {
+    const items = await this.prisma.menuItem.findMany({
+      where: options?.includeDeleted ? {} : { deletedAt: null },
+      select: { stableId: true, basePriceCents: true },
+    });
+
+    return items.map((item) => ({
+      itemStableId: item.stableId,
+      basePriceCents: item.basePriceCents,
+    }));
   }
 
   async createCategory(body: {
@@ -1392,269 +1329,6 @@ export class CatalogAdminService implements CatalogAvailabilityReaderPort {
     });
 
     return { ok: true };
-  }
-
-  async getDailySpecials(
-    weekday?: number,
-  ): Promise<{ specials: DailySpecialDto[] }> {
-    if (weekday !== undefined && (weekday < 1 || weekday > 7)) {
-      throw new BadRequestException('weekday must be between 1 and 7');
-    }
-
-    const specials = await this.prisma.menuDailySpecial.findMany({
-      where: {
-        deletedAt: null,
-        ...(weekday ? { weekday } : { weekday: { in: [1, 2, 3, 4, 5, 6, 7] } }),
-      },
-      include: {
-        item: { select: { basePriceCents: true } },
-      },
-      orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-    });
-
-    const results: DailySpecialDto[] = specials.map((special) => {
-      const basePriceCents = special.item?.basePriceCents ?? 0;
-      const effectivePriceCents = resolveEffectivePriceCents(
-        basePriceCents,
-        special,
-      );
-      return {
-        stableId: special.stableId,
-        weekday: special.weekday,
-        itemStableId: special.itemStableId,
-        pricingMode: special.pricingMode,
-        overridePriceCents: special.overridePriceCents ?? null,
-        discountDeltaCents: special.discountDeltaCents ?? null,
-        discountPercent: special.discountPercent ?? null,
-        startDate: toIso(special.startDate),
-        endDate: toIso(special.endDate),
-        startMinutes: special.startMinutes ?? null,
-        endMinutes: special.endMinutes ?? null,
-        disallowCoupons: special.disallowCoupons,
-        isEnabled: special.isEnabled,
-        sortOrder: special.sortOrder,
-        basePriceCents,
-        effectivePriceCents,
-      };
-    });
-
-    return { specials: results };
-  }
-
-  async upsertDailySpecials(payload: {
-    specials: Array<{
-      stableId?: string | null;
-      weekday: number;
-      itemStableId: string;
-      pricingMode: SpecialPricingMode;
-      overridePriceCents?: number | null;
-      discountDeltaCents?: number | null;
-      discountPercent?: number | null;
-      startDate?: string | null;
-      endDate?: string | null;
-      startMinutes?: number | null;
-      endMinutes?: number | null;
-      disallowCoupons?: boolean;
-      isEnabled?: boolean;
-      sortOrder?: number;
-    }>;
-  }): Promise<{ specials: DailySpecialDto[] }> {
-    if (!payload || !Array.isArray(payload.specials)) {
-      throw new BadRequestException('specials must be an array');
-    }
-
-    const normalized = payload.specials.map((raw) => {
-      const weekday = Number(raw.weekday);
-      if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
-        throw new BadRequestException('weekday must be between 1 and 7');
-      }
-      const itemStableId = raw.itemStableId?.trim();
-      if (!itemStableId) {
-        throw new BadRequestException('itemStableId is required');
-      }
-      if (!Object.values(SpecialPricingMode).includes(raw.pricingMode)) {
-        throw new BadRequestException('pricingMode is invalid');
-      }
-
-      const parseMinutes = (value: number | null | undefined) => {
-        if (value === null || value === undefined) return null;
-        if (!Number.isFinite(value)) {
-          throw new BadRequestException('minutes must be a number');
-        }
-        const minutes = Math.trunc(value);
-        if (minutes < 0 || minutes > 24 * 60 - 1) {
-          throw new BadRequestException('minutes must be between 0 and 1439');
-        }
-        return minutes;
-      };
-
-      return {
-        stableId: raw.stableId?.trim() || null,
-        weekday,
-        itemStableId,
-        pricingMode: raw.pricingMode,
-        overridePriceCents:
-          typeof raw.overridePriceCents === 'number'
-            ? Math.trunc(raw.overridePriceCents)
-            : null,
-        discountDeltaCents:
-          typeof raw.discountDeltaCents === 'number'
-            ? Math.trunc(raw.discountDeltaCents)
-            : null,
-        discountPercent:
-          typeof raw.discountPercent === 'number'
-            ? Math.trunc(raw.discountPercent)
-            : null,
-        startDate: raw.startDate ? parseIsoOrNull(raw.startDate) : null,
-        endDate: raw.endDate ? parseIsoOrNull(raw.endDate) : null,
-        startMinutes: parseMinutes(raw.startMinutes),
-        endMinutes: parseMinutes(raw.endMinutes),
-        disallowCoupons:
-          typeof raw.disallowCoupons === 'boolean' ? raw.disallowCoupons : true,
-        isEnabled: typeof raw.isEnabled === 'boolean' ? raw.isEnabled : true,
-        sortOrder:
-          typeof raw.sortOrder === 'number' ? Math.trunc(raw.sortOrder) : 0,
-      };
-    });
-
-    const duplicates = new Set<string>();
-    const uniqueKeySet = new Set<string>();
-    for (const special of normalized) {
-      const key = `${special.weekday}:${special.itemStableId}`;
-      if (uniqueKeySet.has(key)) duplicates.add(key);
-      uniqueKeySet.add(key);
-    }
-    if (duplicates.size > 0) {
-      throw new BadRequestException(
-        'duplicate daily specials found for the same weekday and item',
-      );
-    }
-
-    const itemStableIds = normalized.map((special) => special.itemStableId);
-    const items = await this.prisma.menuItem.findMany({
-      where: { stableId: { in: itemStableIds }, deletedAt: null },
-      select: { stableId: true, basePriceCents: true },
-    });
-    const itemPriceMap = new Map(
-      items.map((item) => [item.stableId, item.basePriceCents]),
-    );
-
-    for (const special of normalized) {
-      const basePriceCents = itemPriceMap.get(special.itemStableId);
-      if (basePriceCents === undefined) {
-        throw new BadRequestException(
-          `Menu item not found: ${special.itemStableId}`,
-        );
-      }
-      if (special.pricingMode === SpecialPricingMode.OVERRIDE_PRICE) {
-        if (typeof special.overridePriceCents !== 'number') {
-          throw new BadRequestException(
-            'overridePriceCents is required for OVERRIDE_PRICE',
-          );
-        }
-        if (special.overridePriceCents < 0) {
-          throw new BadRequestException(
-            'overridePriceCents must be non-negative',
-          );
-        }
-      }
-      if (special.pricingMode === SpecialPricingMode.DISCOUNT_DELTA) {
-        if (typeof special.discountDeltaCents !== 'number') {
-          throw new BadRequestException(
-            'discountDeltaCents is required for DISCOUNT_DELTA',
-          );
-        }
-        if (special.discountDeltaCents < 0) {
-          throw new BadRequestException(
-            'discountDeltaCents must be non-negative',
-          );
-        }
-      }
-      if (special.pricingMode === SpecialPricingMode.DISCOUNT_PERCENT) {
-        if (
-          typeof special.discountPercent !== 'number' ||
-          special.discountPercent < 1 ||
-          special.discountPercent > 100
-        ) {
-          throw new BadRequestException(
-            'discountPercent must be between 1 and 100',
-          );
-        }
-      }
-
-      const effectivePriceCents = resolveEffectivePriceCents(
-        basePriceCents,
-        special,
-      );
-      if (effectivePriceCents > basePriceCents) {
-        throw new BadRequestException(
-          'daily special price cannot exceed base price',
-        );
-      }
-    }
-
-    const weekdays = Array.from(
-      new Set(normalized.map((special) => special.weekday)),
-    );
-
-    await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.menuDailySpecial.findMany({
-        where: { weekday: { in: weekdays }, deletedAt: null },
-      });
-      const existingByStableId = new Map(
-        existing.map((special) => [special.stableId, special]),
-      );
-      const incomingStableIds = new Set(
-        normalized
-          .map((special) => special.stableId)
-          .filter((stableId): stableId is string => Boolean(stableId)),
-      );
-      const toSoftDelete = existing.filter(
-        (special) => !incomingStableIds.has(special.stableId),
-      );
-      if (toSoftDelete.length > 0) {
-        await tx.menuDailySpecial.updateMany({
-          where: {
-            stableId: { in: toSoftDelete.map((special) => special.stableId) },
-          },
-          data: { deletedAt: new Date() },
-        });
-      }
-
-      for (const special of normalized) {
-        const data = {
-          weekday: special.weekday,
-          itemStableId: special.itemStableId,
-          pricingMode: special.pricingMode,
-          overridePriceCents: special.overridePriceCents,
-          discountDeltaCents: special.discountDeltaCents,
-          discountPercent: special.discountPercent,
-          startDate: special.startDate,
-          endDate: special.endDate,
-          startMinutes: special.startMinutes,
-          endMinutes: special.endMinutes,
-          disallowCoupons: special.disallowCoupons,
-          isEnabled: special.isEnabled,
-          sortOrder: special.sortOrder,
-          deletedAt: null,
-        };
-        if (special.stableId && existingByStableId.has(special.stableId)) {
-          await tx.menuDailySpecial.update({
-            where: { stableId: special.stableId },
-            data,
-          });
-        } else {
-          await tx.menuDailySpecial.create({
-            data: {
-              ...(special.stableId ? { stableId: special.stableId } : {}),
-              ...data,
-            },
-          });
-        }
-      }
-    });
-
-    return this.getDailySpecials();
   }
 
   private async resolveFixedComponents(

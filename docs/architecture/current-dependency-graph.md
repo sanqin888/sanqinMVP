@@ -1,13 +1,13 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 merged state: PR #2145 / `6438f934` (2026-09-03), with a
-Web adapter verification follow-up in PR #2148 on
-`fix/slice5-admin-item-availability-payload`.
+Phase 3 Slice 5 is **PRODUCTION VERIFIED**; Slice 5B is PR #2153 with reviewed
+source `848a23eb` and remote CI pending (2026-09-04).
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5
-Catalog availability / Uber orchestration contraction. The follow-up changes only
-the Admin Web transport payload and does not change dependency counts.
+by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 5B Daily
+Special -> Offers ownership contraction. Slice 5B moves persistence/policy behind
+public owner/application surfaces and is not expected to change the direct debt
+counts; GitHub Actions remains authoritative for the exact graph gate.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
@@ -300,10 +300,21 @@ pair fails CI.
   scanner is tightened to prevent the old Admin/provider and Uber/Catalog persistence
   paths from returning. Production Web Clover, Prisma schema/migrations and Uber
   wire contracts remain unchanged. Active verification passed item permanent OFF/ON,
-  temporary-today availability and option OFF/ON. A remaining Admin Web adapter tail
-  was found because ordinary item saves still serialized unchanged `isAvailable`,
-  causing a name-only PUT to trigger availability sync; the follow-up removes that
-  field from the ordinary edit payload without changing the dependency graph.
+  temporary-today availability and option OFF/ON. PR #2148 removed the stale
+  `isAvailable` field from ordinary Admin item saves; after hard refresh, final
+  verification at 00:11:00/00:11:05 Toronto observed two normal item PUT 200s and zero
+  Uber availability updates in the surrounding minute. Slice 5 is production verified.
+- Slice 5B locally contracts Daily Special ownership into Offers. The existing
+  `PromotionsService` implements the new `DAILY_SPECIAL_OFFERS` capability and remains
+  the sole `MenuDailySpecial` persistence owner for store-time activation/effective
+  pricing without adding a new Prisma direct edge. Catalog supplies only item stable-ID/base-
+  price facts; Admin full-menu/list/bulk-write composition lives in `application/menu`,
+  and Public Menu / Orders consume the Offers public capability rather than the
+  `menuDailySpecial` Prisma delegate. `CatalogAdminModule` isolates the reusable Catalog
+  owner provider so Uber worker availability composition does not inherit HTTP-side
+  Daily Special/StoreConfig wiring. The central scanner now reserves
+  `MenuDailySpecial` Prisma access exclusively for the Offers service. No direct debt
+  pair/count is expected to change because replacement traffic uses public surfaces.
 - Slice 4 is merged via PR #2142 / `3629bc3b`; coupon-issued notification requests
   now cross the Messaging public boundary. `CouponProgramTriggerService` injects the
   `COUPON_ISSUED_NOTIFICATION` port from `notifications/public-api.ts`, maps the

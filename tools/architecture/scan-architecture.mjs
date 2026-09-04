@@ -295,6 +295,24 @@ if (adminCatalogOwnershipBoundary) {
     adminCatalogOwnershipBoundary.adminController ?? '',
   );
   const adminModule = toPosix(adminCatalogOwnershipBoundary.adminModule ?? '');
+  const offersOrchestration = toPosix(
+    adminCatalogOwnershipBoundary.offersOrchestration ?? '',
+  );
+  const offersOrchestrationPublicSurface = toPosix(
+    adminCatalogOwnershipBoundary.offersOrchestrationPublicSurface ?? '',
+  );
+  const dailySpecialOffersService = toPosix(
+    adminCatalogOwnershipBoundary.dailySpecialOffersService ?? '',
+  );
+  const dailySpecialOffersPublicSurface = toPosix(
+    adminCatalogOwnershipBoundary.dailySpecialOffersPublicSurface ?? '',
+  );
+  const publicMenuService = toPosix(
+    adminCatalogOwnershipBoundary.publicMenuService ?? '',
+  );
+  const ordersService = toPosix(
+    adminCatalogOwnershipBoundary.ordersService ?? '',
+  );
   const availabilityOrchestration = toPosix(
     adminCatalogOwnershipBoundary.availabilityOrchestration ?? '',
   );
@@ -325,6 +343,12 @@ if (adminCatalogOwnershipBoundary) {
     publicSurface,
     adminController,
     adminModule,
+    offersOrchestration,
+    offersOrchestrationPublicSurface,
+    dailySpecialOffersService,
+    dailySpecialOffersPublicSurface,
+    publicMenuService,
+    ordersService,
     availabilityOrchestration,
     availabilityOrchestrationPublicSurface,
     catalogAvailabilityReader,
@@ -365,6 +389,15 @@ if (adminCatalogOwnershipBoundary) {
         `Catalog Admin management must not own Uber provider policy or coordination: ${ownerService}`,
       );
     }
+    if (
+      source.includes('menuDailySpecial') ||
+      source.includes('isDailySpecialActiveNow') ||
+      source.includes('resolveEffectivePriceCents')
+    ) {
+      failures.push(
+        `Catalog Admin management must not own Daily Special persistence or pricing policy: ${ownerService}`,
+      );
+    }
   }
 
   const controllerPath = join(REPOSITORY_ROOT, adminController);
@@ -374,6 +407,7 @@ if (adminCatalogOwnershipBoundary) {
       !source.includes("from '../../menu/public-api'") ||
       !source.includes("from '../../application/menu/public-api'") ||
       !source.includes('CatalogAdminService') ||
+      !source.includes('CatalogOffersMenuOrchestrationService') ||
       !source.includes('CatalogUberAvailabilityOrchestrationService') ||
       source.includes('AdminMenuAvailabilityOrchestrationService') ||
       source.includes('AdminMenuService') ||
@@ -391,7 +425,8 @@ if (adminCatalogOwnershipBoundary) {
     if (
       !source.includes("from '../../menu/public-api'") ||
       !source.includes("from '../../application/menu/public-api'") ||
-      !source.includes('PublicMenuModule') ||
+      !source.includes('CatalogAdminModule') ||
+      !source.includes('CatalogOffersMenuOrchestrationModule') ||
       !source.includes('CatalogUberAvailabilityOrchestrationModule') ||
       source.includes('UberEatsModule') ||
       source.includes('PrismaService') ||
@@ -400,6 +435,104 @@ if (adminCatalogOwnershipBoundary) {
     ) {
       failures.push(
         `Admin menu composition must remain an adapter and must not wire Uber provider infrastructure directly: ${adminModule}`,
+      );
+    }
+  }
+
+  const offersOrchestrationPath = join(REPOSITORY_ROOT, offersOrchestration);
+  if (existsSync(offersOrchestrationPath)) {
+    const source = readFileSync(offersOrchestrationPath, 'utf8');
+    if (
+      !source.includes("from '../../menu/public-api'") ||
+      !source.includes("from '../../promotions/public-api'") ||
+      !source.includes('DAILY_SPECIAL_OFFERS') ||
+      !source.includes('getMenuItemPricingSnapshots') ||
+      source.includes('PrismaService') ||
+      source.includes('BRAND_STORE_CONFIG_READER')
+    ) {
+      failures.push(
+        `Catalog/Offers menu orchestration may coordinate only public owner capabilities: ${offersOrchestration}`,
+      );
+    }
+  }
+
+  const offersOrchestrationPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    offersOrchestrationPublicSurface,
+  );
+  if (existsSync(offersOrchestrationPublicSurfacePath)) {
+    const source = readFileSync(offersOrchestrationPublicSurfacePath, 'utf8');
+    if (
+      !source.includes('CatalogOffersMenuOrchestrationModule') ||
+      !source.includes('CatalogOffersMenuOrchestrationService')
+    ) {
+      failures.push(
+        `Catalog/Offers orchestration must remain exposed only through the application public surface: ${offersOrchestrationPublicSurface}`,
+      );
+    }
+  }
+
+  const dailySpecialOffersPath = join(
+    REPOSITORY_ROOT,
+    dailySpecialOffersService,
+  );
+  if (existsSync(dailySpecialOffersPath)) {
+    const source = readFileSync(dailySpecialOffersPath, 'utf8');
+    if (
+      !source.includes(
+        'implements PromotionContextReaderPort, DailySpecialOffersPort',
+      ) ||
+      !source.includes('menuDailySpecial') ||
+      !source.includes('BRAND_STORE_CONFIG_READER') ||
+      source.includes('prisma.menuItem') ||
+      source.includes('menuItem.find')
+    ) {
+      failures.push(
+        `Offers must exclusively own Daily Special persistence/activation without reading Catalog Prisma delegates: ${dailySpecialOffersService}`,
+      );
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (!sourcePath.startsWith('apps/api/src/')) continue;
+    if (sourcePath === dailySpecialOffersService) continue;
+    const source = readFileSync(absolutePath, 'utf8');
+    if (source.includes('menuDailySpecial')) {
+      failures.push(
+        `MenuDailySpecial Prisma access belongs exclusively to Offers: ${sourcePath}`,
+      );
+    }
+  }
+
+  for (const consumerPath of [publicMenuService, ordersService]) {
+    const fullPath = join(REPOSITORY_ROOT, consumerPath);
+    if (!existsSync(fullPath)) continue;
+    const source = readFileSync(fullPath, 'utf8');
+    if (
+      !source.includes("from '../promotions/public-api'") ||
+      !source.includes('DAILY_SPECIAL_OFFERS') ||
+      source.includes('menuDailySpecial')
+    ) {
+      failures.push(
+        `Daily Special consumers must use the Offers public capability instead of direct persistence: ${consumerPath}`,
+      );
+    }
+  }
+
+  const offersPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    dailySpecialOffersPublicSurface,
+  );
+  if (existsSync(offersPublicSurfacePath)) {
+    const source = readFileSync(offersPublicSurfacePath, 'utf8');
+    if (
+      !source.includes('DAILY_SPECIAL_OFFERS') ||
+      !source.includes('DailySpecialOffersModule') ||
+      !source.includes('DailySpecialOffersPort')
+    ) {
+      failures.push(
+        `Offers public surface must expose the narrow Daily Special capability: ${dailySpecialOffersPublicSurface}`,
       );
     }
   }
@@ -442,7 +575,7 @@ if (adminCatalogOwnershipBoundary) {
   if (existsSync(catalogAvailabilityModulePath)) {
     const source = readFileSync(catalogAvailabilityModulePath, 'utf8');
     if (
-      !source.includes('PublicMenuModule') ||
+      !source.includes('CatalogAdminModule') ||
       !source.includes('useExisting: CatalogAdminService') ||
       source.includes('PrismaModule') ||
       source.includes('PrismaService')

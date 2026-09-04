@@ -4,21 +4,12 @@ import { AuthModule } from '../auth/auth.module';
 import { CouponsModule } from '../coupons/public-api';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { PromotionsController } from './promotions.controller';
-import { PromotionsService } from './promotions.service';
-import { PROMOTION_CONTEXT_READER } from './promotion-context.contract';
-import { BrandStoreConfigModule } from '../store/public-api';
+import { PromotionsCoreModule } from './promotions-core.module';
 
 @Module({
-  imports: [AuthModule, CouponsModule, BrandStoreConfigModule],
+  imports: [AuthModule, CouponsModule, PromotionsCoreModule],
   controllers: [PromotionsController],
-  providers: [
-    PromotionsService,
-    {
-      provide: PROMOTION_CONTEXT_READER,
-      useExisting: PromotionsService,
-    },
-    SessionAuthGuard,
-  ],
-  exports: [PROMOTION_CONTEXT_READER],
+  providers: [SessionAuthGuard],
+  exports: [PromotionsCoreModule],
 })
 export class PromotionsModule {}
