@@ -748,6 +748,181 @@ if (adminCatalogOwnershipBoundary) {
   }
 }
 
+const promotionRuleOffersOwnershipBoundary =
+  config.promotionRuleOffersOwnershipBoundary ?? null;
+if (promotionRuleOffersOwnershipBoundary) {
+  const managementContract = toPosix(
+    promotionRuleOffersOwnershipBoundary.managementContract ?? '',
+  );
+  const managementService = toPosix(
+    promotionRuleOffersOwnershipBoundary.managementService ?? '',
+  );
+  const ownerPersistenceService = toPosix(
+    promotionRuleOffersOwnershipBoundary.ownerPersistenceService ?? '',
+  );
+  const promotionRulePublicSurface = toPosix(
+    promotionRuleOffersOwnershipBoundary.publicSurface ?? '',
+  );
+  const promotionRuleAdminController = toPosix(
+    promotionRuleOffersOwnershipBoundary.adminController ?? '',
+  );
+  const promotionRuleAdminModule = toPosix(
+    promotionRuleOffersOwnershipBoundary.adminModule ?? '',
+  );
+  const retiredAdminPromotionsService = toPosix(
+    promotionRuleOffersOwnershipBoundary.retiredAdminService ?? '',
+  );
+
+  for (const sourcePath of [
+    managementContract,
+    managementService,
+    ownerPersistenceService,
+    promotionRulePublicSurface,
+    promotionRuleAdminController,
+    promotionRuleAdminModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `PromotionRule Offers ownership boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  if (
+    retiredAdminPromotionsService &&
+    existsSync(join(REPOSITORY_ROOT, retiredAdminPromotionsService))
+  ) {
+    failures.push(
+      `retired Admin PromotionRule owner must stay deleted: ${retiredAdminPromotionsService}`,
+    );
+  }
+
+  const managementContractPath = join(REPOSITORY_ROOT, managementContract);
+  if (existsSync(managementContractPath)) {
+    const source = readFileSync(managementContractPath, 'utf8');
+    if (
+      !source.includes('PROMOTION_RULE_MANAGEMENT') ||
+      !source.includes('PromotionRuleManagementPort') ||
+      !source.includes('PromotionRuleManagementInput') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `PromotionRule management contract must remain a Prisma-free Offers public capability: ${managementContract}`,
+      );
+    }
+  }
+
+  const managementServicePath = join(REPOSITORY_ROOT, managementService);
+  if (existsSync(managementServicePath)) {
+    const source = readFileSync(managementServicePath, 'utf8');
+    if (
+      !source.includes('export class PromotionRuleManagementService') ||
+      !source.includes('implements PromotionRuleManagementPort') ||
+      !source.includes('PromotionsService') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('.promotionRule')
+    ) {
+      failures.push(
+        `PromotionRule management policy must stay in Offers without direct Prisma persistence: ${managementService}`,
+      );
+    }
+  }
+
+  const ownerPersistencePath = join(REPOSITORY_ROOT, ownerPersistenceService);
+  if (existsSync(ownerPersistencePath)) {
+    const source = readFileSync(ownerPersistencePath, 'utf8');
+    for (const requiredSymbol of [
+      'listPromotionRulesForManagement',
+      'getPromotionRuleForManagement',
+      'createPromotionRuleForManagement',
+      'updatePromotionRuleForManagement',
+      'deletePromotionRuleForManagement',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Offers PromotionRule persistence entry is missing ${requiredSymbol}: ${ownerPersistenceService}`,
+        );
+      }
+    }
+    if (!source.includes('prisma.promotionRule')) {
+      failures.push(
+        `Offers PromotionRule persistence must remain behind the existing PromotionsService Prisma entry: ${ownerPersistenceService}`,
+      );
+    }
+  }
+
+  const promotionRulePublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    promotionRulePublicSurface,
+  );
+  if (existsSync(promotionRulePublicSurfacePath)) {
+    const source = readFileSync(promotionRulePublicSurfacePath, 'utf8');
+    if (
+      !source.includes('PROMOTION_RULE_MANAGEMENT') ||
+      !source.includes('PromotionRuleManagementPort') ||
+      !source.includes('PromotionRuleManagementInput')
+    ) {
+      failures.push(
+        `Offers public surface must expose the narrow PromotionRule management capability: ${promotionRulePublicSurface}`,
+      );
+    }
+  }
+
+  const promotionRuleAdminControllerPath = join(
+    REPOSITORY_ROOT,
+    promotionRuleAdminController,
+  );
+  if (existsSync(promotionRuleAdminControllerPath)) {
+    const source = readFileSync(promotionRuleAdminControllerPath, 'utf8');
+    if (
+      !source.includes("from '../../promotions/public-api'") ||
+      !source.includes('PROMOTION_RULE_MANAGEMENT') ||
+      !source.includes('PromotionRuleManagementPort') ||
+      source.includes('AdminPromotionsService') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `Admin Promotions controller must remain a thin Offers public-capability adapter: ${promotionRuleAdminController}`,
+      );
+    }
+  }
+
+  const promotionRuleAdminModulePath = join(
+    REPOSITORY_ROOT,
+    promotionRuleAdminModule,
+  );
+  if (existsSync(promotionRuleAdminModulePath)) {
+    const source = readFileSync(promotionRuleAdminModulePath, 'utf8');
+    if (
+      !source.includes("from '../../promotions/public-api'") ||
+      !source.includes('PromotionsModule') ||
+      source.includes('AdminPromotionsService') ||
+      source.includes('PrismaModule') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `Admin Promotions module must wire only the Offers public module and auth guards: ${promotionRuleAdminModule}`,
+      );
+    }
+  }
+
+  const promotionRuleDelegatePattern = /\.promotionRule\b/;
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (!sourcePath.startsWith('apps/api/src/')) continue;
+    if (sourcePath === ownerPersistenceService) continue;
+    const source = readFileSync(absolutePath, 'utf8');
+    if (promotionRuleDelegatePattern.test(source)) {
+      failures.push(
+        `PromotionRule Prisma access belongs exclusively to the Offers persistence owner: ${sourcePath}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

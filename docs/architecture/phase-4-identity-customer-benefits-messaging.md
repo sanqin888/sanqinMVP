@@ -33,7 +33,7 @@ already complete and is not part of this phase plan.
 
 Current direct-import totals from `tools/architecture/context-baseline.json` are:
 
-- identity-customer-benefits: **65**
+- identity-customer-benefits: **63**
 - payments-clover: **60**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
@@ -75,7 +75,8 @@ cannot later return under a stale superset allowance.
 
 ### Slice 0A — Admin PromotionRule ownership contraction
 
-Status: **READINESS AUDIT COMPLETE / IMPLEMENTATION AWAITING AUTHORIZATION**.
+Status: **SOURCE / PR #2163 / CI PENDING** on
+`refactor/phase4-slice0a-promotion-rule-owner`, based on `origin/dev@1be3fe92`.
 
 Audit findings on `origin/dev@83de9072`:
 
@@ -105,28 +106,35 @@ Audit findings on `origin/dev@83de9072`:
   increase. The implementation must reuse the existing Promotions owner Prisma import
   rather than add another direct runtime-data import.
 
-Recommended implementation shape:
+Implemented source shape:
 
-1. add an Offers-owned `PROMOTION_RULE_MANAGEMENT` public contract with non-Prisma
+1. added an Offers-owned `PROMOTION_RULE_MANAGEMENT` public contract with non-Prisma
    input/output types;
-2. move the strict normalization/validation into an Offers-owned management application
-   service with focused characterization tests;
-3. keep raw PromotionRule persistence behind the existing `PromotionsService` Prisma
-   entry (same-context calls only), so Catalog -> Runtime stays at `10` instead of
-   introducing a new Prisma import;
-4. have `AdminPromotionsController` inject the public management capability directly,
-   delete `AdminPromotionsService`, remove `PrismaModule` from the Admin promotions
-   adapter, and remove Prisma-generated rule types from that controller;
-5. preserve all existing `/admin/promotions/rules` routes, request semantics,
+2. moved the strict normalization/validation into `PromotionRuleManagementService`,
+   which has focused characterization coverage and no Prisma dependency;
+3. kept raw PromotionRule persistence behind the existing `PromotionsService` Prisma
+   entry (same-context calls only), so Catalog -> Runtime remains `10` instead of
+   introducing another Prisma import;
+4. `AdminPromotionsController` now injects the Offers public management capability,
+   `AdminPromotionsService` is deleted, `AdminPromotionsModule` no longer imports
+   `PrismaModule`, and the controller no longer imports Prisma-generated rule types;
+5. all existing `/admin/promotions/rules` routes, request semantics,
    validation/defaults, list ordering, not-found behavior, soft-delete semantics,
-   persistence schema and runtime evaluation;
-6. add a central architecture guard reserving `promotionRule` Prisma access to the
-   Offers owner and preventing the retired Admin Prisma/service path from returning.
+   persistence schema and runtime evaluation are preserved;
+6. the authorized Admin response contraction now returns only the stable business rule
+   DTO. Internal PromotionRule DB `id`, `createdAt`, `updatedAt`, and `deletedAt` no
+   longer cross the Offers boundary. The audited Admin Web consumer never declared or
+   read those fields, so existing cached bundles remain field-independent and no
+   compatibility shim is introduced;
+7. the central architecture scanner now reserves `promotionRule` Prisma access to the
+   Offers persistence owner, requires the Prisma-free public management capability, and
+   prevents the retired Admin Prisma/service path from returning.
 
-Expected direct-debt effect from local owner imports is
+Measured source debt contracts
 `identity-customer-benefits -> runtime-data-ci-ops 18 -> 16` while
-`catalog-pricing-offers -> runtime-data-ci-ops` remains `10`. The exact baseline must
-be lowered to the CI-observed count in the implementation PR under the monotonic guard.
+`catalog-pricing-offers -> runtime-data-ci-ops` remains `10`. The legacy public SCC is
+unchanged by Slice 0A because the Admin -> Offers dependency remains public-contract
+traffic and no SCC member/edge is added or removed.
 
 ### Slice 0B — Catalog -> Orders public-cycle edge contraction
 

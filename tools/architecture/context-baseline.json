@@ -322,6 +322,15 @@
     "uberAvailabilityPersistenceAdapter": "apps/api/src/integrations/ubereats/infrastructure/persistence/uber-menu-availability-prisma.adapter.ts",
     "retiredAdminService": "apps/api/src/admin/menu/admin-menu.service.ts"
   },
+  "promotionRuleOffersOwnershipBoundary": {
+    "managementContract": "apps/api/src/promotions/promotion-rule-management.contract.ts",
+    "managementService": "apps/api/src/promotions/promotion-rule-management.service.ts",
+    "ownerPersistenceService": "apps/api/src/promotions/promotions.service.ts",
+    "publicSurface": "apps/api/src/promotions/public-api.ts",
+    "adminController": "apps/api/src/admin/promotions/admin-promotions.controller.ts",
+    "adminModule": "apps/api/src/admin/promotions/admin-promotions.module.ts",
+    "retiredAdminService": "apps/api/src/admin/promotions/admin-promotions.service.ts"
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -411,7 +420,7 @@
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 1,
     "identity-customer-benefits -> messaging-notifications": 24,
-    "identity-customer-benefits -> runtime-data-ci-ops": 18,
+    "identity-customer-benefits -> runtime-data-ci-ops": 16,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 5,
     "messaging-notifications -> runtime-data-ci-ops": 10,

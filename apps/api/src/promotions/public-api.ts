@@ -17,6 +17,16 @@ export {
   type PromotionContextReaderPort,
 } from './promotion-context.contract';
 export {
+  PROMOTION_RULE_MANAGEMENT,
+  type PromotionRuleChannel,
+  type PromotionRuleManagementDto,
+  type PromotionRuleManagementInput,
+  type PromotionRuleManagementPort,
+  type PromotionRuleStackingPolicy,
+  type PromotionRuleStatus,
+  type PromotionRuleType,
+} from './promotion-rule-management.contract';
+export {
   evaluateOrderPromotions,
   type PromotionOrderEvaluation,
   type PromotionOrderLine,

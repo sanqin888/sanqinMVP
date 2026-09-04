@@ -508,6 +508,31 @@ stale-baseline corrections rather than a reason to change the selected next owne
 `docs/architecture/current-dependency-graph.md`,
 `docs/architecture/phase-3-catalog-pricing-offers.md`.
 
+### 2026-09-04 — Phase 4 Slice 0A: Admin PromotionRule ownership contraction
+
+**PR/SHA:** PR #2163; source head `c13735f5`; base `origin/dev@1be3fe92`  
+**State:** SOURCE / CI PENDING  
+**Result:** moved PromotionRule management ownership out of the Admin adapter and behind
+Offers-owned `PROMOTION_RULE_MANAGEMENT`. `PromotionRuleManagementService` now owns the
+existing validation/default/calendar/channel/BOGO policy without Prisma; raw
+PromotionRule list/get/create/update/soft-delete persistence is centralized through the
+already-existing `PromotionsService` Prisma entry. `AdminPromotionsService` is deleted,
+Admin Promotions no longer imports Prisma/Prisma-generated rule types, and the central
+scanner prevents either path from returning. Focused tests characterize management
+normalization/not-found behavior and prove the Admin DTO excludes persistence metadata.
+The user explicitly authorized contraction of unused Admin response fields, so DB `id`,
+`createdAt`, `updatedAt`, and `deletedAt` no longer cross the Offers boundary; the audited
+Admin Web consumer did not declare or read them. Initial CI #5088's architecture gate
+measured the true direct-import count at `16`, so the monotonic baseline/docs were
+corrected from the locally estimated `14`. Direct debt contracts
+`identity-customer-benefits -> runtime-data-ci-ops 18 -> 16`; Catalog -> Runtime remains
+`10`, and the legacy public SCC is unchanged. No dependency manifest, Prisma
+schema/migration, Web Clover behavior, Uber runtime/wire behavior, or PromotionRule
+persistence schema changes are included. Local lint/build/test/scanner execution is
+intentionally deferred to GitHub Actions after user review.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -521,11 +546,11 @@ stale-baseline corrections rather than a reason to change the selected next owne
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A READINESS AUDIT COMPLETE / IMPLEMENTATION AWAITING AUTHORIZATION**.
-  The audit on `origin/dev@83de9072` confirms Admin as a duplicate PromotionRule
-  persistence/policy owner, identifies the missing management characterization coverage,
-  and defines a no-new-Prisma-import Offers implementation shape. No Phase 4 business
-  source change is claimed yet.
+- Phase 4: **SLICE 0A SOURCE / PR #2163 / CI PENDING**. PromotionRule management now
+  belongs to Offers behind a Prisma-free public capability; Admin is a thin adapter and
+  Identity -> Runtime direct debt is reduced to 16 in source. Merge and any
+  post-deployment UI verification are not yet claimed. Slice 0B remains next after 0A is
+  CI-green and merged.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
