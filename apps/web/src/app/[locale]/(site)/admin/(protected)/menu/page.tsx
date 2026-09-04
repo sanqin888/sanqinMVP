@@ -472,7 +472,6 @@ export default function AdminMenuPage() {
         nameEn: item.nameEn,
         nameZh: item.nameZh ?? undefined,
         basePriceCents: item.basePriceCents,
-        isAvailable: item.isAvailable,
         visibility: item.visibility,
         isVisibleOnMainMenu: item.isVisibleOnMainMenu,
         publishToUberEats: item.publishToUberEats,

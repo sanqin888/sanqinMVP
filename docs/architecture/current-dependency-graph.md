@@ -1,11 +1,13 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 local state: branch
-`refactor/phase3-slice5-catalog-uber-availability` (2026-09-03).
+Phase 3 Slice 5 merged state: PR #2145 / `6438f934` (2026-09-03), with a
+Web adapter verification follow-up in PR #2148 on
+`fix/slice5-admin-item-availability-payload`.
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the local Phase 3 Slice 5
-Catalog availability / Uber orchestration contraction.
+by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5
+Catalog availability / Uber orchestration contraction. The follow-up changes only
+the Admin Web transport payload and does not change dependency counts.
 Test files and registered composition roots are excluded. Imports through
 `public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
 `@shared/order` are approved public-contract traffic and do not consume the debt
@@ -297,7 +299,11 @@ pair fails CI.
   cross-context calls use public surfaces, so no new debt pair is introduced. The
   scanner is tightened to prevent the old Admin/provider and Uber/Catalog persistence
   paths from returning. Production Web Clover, Prisma schema/migrations and Uber
-  wire contracts remain unchanged.
+  wire contracts remain unchanged. Active verification passed item permanent OFF/ON,
+  temporary-today availability and option OFF/ON. A remaining Admin Web adapter tail
+  was found because ordinary item saves still serialized unchanged `isAvailable`,
+  causing a name-only PUT to trigger availability sync; the follow-up removes that
+  field from the ordinary edit payload without changing the dependency graph.
 - Slice 4 is merged via PR #2142 / `3629bc3b`; coupon-issued notification requests
   now cross the Messaging public boundary. `CouponProgramTriggerService` injects the
   `COUPON_ISSUED_NOTIFICATION` port from `notifications/public-api.ts`, maps the
