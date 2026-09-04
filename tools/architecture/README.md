@@ -54,7 +54,15 @@ node tools/architecture/scan-architecture.mjs --report
   port, and Uber availability persistence must remain DB-only for Uber-owned
   store-mapping/OpsTicket facts. The retired Admin availability orchestrator cannot
   return, and the fixed-component Uber capability guard cannot move back into
-  `CatalogAdminService`;
+  `CatalogAdminService`. Daily Special persistence, store-time activation and special
+  pricing policy are owned by Offers through `DAILY_SPECIAL_OFFERS`; `MenuDailySpecial`
+  Prisma access is exclusive to `PromotionsService`. Catalog exposes only item stable
+  IDs/base-price facts, while Admin composition, Public Menu and Orders consume the
+  Offers public capability. Because Catalog/Public Menu no longer read StoreConfig for
+  Daily Special timing, they are no longer registered Brand/Store config consumers;
+  `PromotionsService` remains registered there. The Catalog availability module reuses
+  the narrow `CatalogAdminModule` so this HTTP-side Offers wiring does not expand the
+  Uber worker runtime dependency surface;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

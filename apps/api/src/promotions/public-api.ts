@@ -3,6 +3,14 @@ export {
   resolveEffectivePriceCents,
   resolveStoreNow,
 } from './daily-specials';
+export { DailySpecialOffersModule } from './daily-special-offers.module';
+export {
+  DAILY_SPECIAL_OFFERS,
+  type DailySpecialCatalogItemSnapshot,
+  type DailySpecialOffersPort,
+  type DailySpecialUpsertEntry,
+  type DailySpecialUpsertPayload,
+} from './daily-special-offers.contract';
 export {
   PROMOTION_CONTEXT_READER,
   type OrderPromotionContext,

@@ -10,7 +10,10 @@ import {
 import type { LoyaltyPolicyReaderPort } from '../loyalty/public-api';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
-import type { PromotionContextReaderPort } from '../promotions/public-api';
+import type {
+  DailySpecialOffersPort,
+  PromotionContextReaderPort,
+} from '../promotions/public-api';
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
@@ -74,9 +77,6 @@ describe('OrdersService', () => {
     menuOptionTemplateChoice: {
       findMany: jest.Mock;
     };
-    menuDailySpecial: {
-      findMany: jest.Mock;
-    };
     user: {
       findMany: jest.Mock;
       findUnique: jest.Mock;
@@ -111,6 +111,7 @@ describe('OrdersService', () => {
     markCouponUsedForOrder: jest.Mock;
   };
   let promotions: { getOrderPromotionContext: jest.Mock };
+  let dailySpecialOffers: { getActiveDailySpecials: jest.Mock };
   let uberDirect: { createDelivery: jest.Mock };
   let locationService: { geocode: jest.Mock };
   let notificationService: {
@@ -181,9 +182,6 @@ describe('OrdersService', () => {
       menuOptionTemplateChoice: {
         findMany: jest.fn().mockResolvedValue([]),
       },
-      menuDailySpecial: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
       user: {
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
@@ -246,6 +244,9 @@ describe('OrdersService', () => {
         now: null,
       }),
     };
+    dailySpecialOffers = {
+      getActiveDailySpecials: jest.fn().mockResolvedValue({ specials: [] }),
+    };
 
     uberDirect = {
       createDelivery: jest.fn(),
@@ -289,6 +290,7 @@ describe('OrdersService', () => {
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
       promotions as unknown as PromotionContextReaderPort,
+      dailySpecialOffers as unknown as DailySpecialOffersPort,
       uberDirect as unknown as UberDirectService,
       locationService as unknown as LocationService,
       notificationService as unknown as NotificationService,
@@ -342,40 +344,21 @@ describe('OrdersService', () => {
     ).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the canonical store timezone for daily-special pricing', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-08-31T04:30:00.000Z'));
-    brandStoreConfigReader.getConfiguredStoreSnapshot.mockResolvedValue({
-      ...defaultStoreConfigSnapshot,
-      timezone: 'Pacific/Honolulu',
-    });
+  it('reads daily-special pricing through the Offers capability', async () => {
     const internalService = service as unknown as {
       calculateLineItems: (
         items: Array<{ productId: string; qty: number }>,
       ) => Promise<unknown>;
     };
 
-    try {
-      await internalService.calculateLineItems([
-        { productId: demoProductId, qty: 1 },
-      ]);
+    await internalService.calculateLineItems([
+      { productId: demoProductId, qty: 1 },
+    ]);
 
-      expect(prisma.menuDailySpecial.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            weekday: 7,
-            isEnabled: true,
-            deletedAt: null,
-            itemStableId: { in: [demoProductId] },
-          },
-        }),
-      );
-      expect(
-        brandStoreConfigReader.getConfiguredStoreSnapshot,
-      ).toHaveBeenCalled();
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith([
+      { itemStableId: demoProductId, basePriceCents: 1000 },
+    ]);
+    expect('menuDailySpecial' in prisma).toBe(false);
   });
 
   it('keeps the same option stable id when selected in different component group paths', () => {

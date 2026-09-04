@@ -281,8 +281,8 @@ repository workflow. Remote GitHub Actions is the validation gate after approval
 
 ### Slice 5 — Catalog availability / Uber orchestration contraction
 
-Status: **MERGED via PR #2145 / `6438f934`; production verification follow-up in progress**.  
-Follow-up: PR #2148 on `fix/slice5-admin-item-availability-payload`.
+Status: **PRODUCTION VERIFIED**.  
+Implementation: PR #2145 / `6438f934`; Web verification fix PR #2148 / merge `bf82d40d`.
 
 This slice completes the temporary availability/provider boundary left by Slice 3
 without changing Catalog availability semantics or Uber wire behavior:
@@ -323,22 +323,47 @@ slice remains subject to the per-slice production verification gate after CI/dep
 Active verification on 2026-09-03 confirmed item permanent OFF/ON, temporary-today
 availability sync and option OFF/ON against the Uber sandbox with HTTP 204 / SYNCED
 telemetry and no new OpsTicket. The ordinary item-edit check exposed one Web adapter
-tail: `handleSaveItem` still serialized the unchanged `isAvailable` value, so a name-
-only edit incorrectly triggered the backend's availability-affecting update path.
-The follow-up branch removes availability fields from the ordinary item PUT payload
-and adds a Web regression test; Slice 5 remains pending one final name-only edit
-verification after that fix is deployed.
+tail: `handleSaveItem` still serialized the unchanged `isAvailable` value, so PR #2148
+removed availability fields from the ordinary item PUT payload and added a Web
+regression test. After deployment and a hard refresh, the final 2026-09-04 verification
+recorded ordinary item PUTs at 00:11:00 and 00:11:05 Toronto with HTTP 200 and **zero**
+`uber.menu.item.availability.update` calls in the surrounding 00:10:30–00:11:30 window.
+Slice 5 is therefore production verified.
 
 ### Slice 5B — Daily Special -> Offers ownership contraction
 
-Status: **PLANNED after Slice 5 production verification**.
+Status: **MERGED / CI GREEN; production verification pending**.  
+PR #2153; final CI head `71191389`; squash merge `d3316e45`; CI #5055 passed Architecture, API/Web lint/build/strict/test gates.
 
-Before Phase 3 closeout, move `MenuDailySpecial` management/persistence ownership
-out of `CatalogAdminService` and behind an Offers/Pricing public capability while
-preserving existing Admin routes, Web contracts and pricing behavior. Catalog keeps
-menu-item/base-price facts; Offers owns daily-special definition, activation and
-special-price policy. Do not rename the Prisma model or require a migration merely
-for ownership cleanup.
+This slice contracts the remaining half-migrated Daily Special ownership without
+renaming persistence or changing public transport contracts:
+
+- added the narrow Offers capability `DAILY_SPECIAL_OFFERS`; existing Offers core
+  `PromotionsService` now implements it and remains the sole production owner of
+  `MenuDailySpecial` Prisma reads/writes, store-time activation and special-price
+  calculation, avoiding any new Prisma dependency edge;
+- removed Daily Special persistence/policy from `CatalogAdminService`. Catalog now
+  exposes only item stable-ID/base-price snapshots needed to validate or price an
+  Offers definition; Admin reads may explicitly include soft-deleted items to preserve
+  historical Daily Special display, while writes still validate only live items;
+- added explicit `CatalogOffersMenuOrchestrationService` composition for Admin full
+  menu plus Daily Special list/bulk-write routes. Existing Admin HTTP paths, body
+  shapes and response DTOs remain unchanged;
+- Public Menu and Orders no longer read `menuDailySpecial` directly. They pass their
+  existing Catalog item/base-price facts to the Offers capability and consume the
+  returned active/effective-price DTOs;
+- split the reusable Catalog owner provider into `CatalogAdminModule`, allowing the
+  Uber availability worker composition to keep its narrow Catalog dependency without
+  inheriting HTTP-side Daily Special/StoreConfig wiring;
+- tightened the architecture scanner so `MenuDailySpecial` Prisma access outside the
+  Offers service, Daily Special policy returning to Catalog, or direct persistence
+  returning to Public Menu/Orders fails CI.
+
+No Prisma schema/migration, Admin/Web contract, Daily Special pricing rule, production
+Web Clover path, or Uber wire/runtime behavior is intentionally changed. Dependency
+traffic added by this slice uses owner `public-api`/application composition surfaces,
+so the direct cross-context debt counts are expected to remain unchanged; GitHub
+Actions is the authoritative graph/test gate after review.
 
 ### Slice 6 — Phase 3 closeout
 

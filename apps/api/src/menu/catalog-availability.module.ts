@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { CatalogAdminService } from './catalog-admin.service';
 import { CATALOG_AVAILABILITY_READER } from './catalog-availability-reader.contract';
-import { PublicMenuModule } from './public-menu.module';
+import { CatalogAdminModule } from './catalog-admin.module';
 
 @Module({
-  imports: [PublicMenuModule],
+  imports: [CatalogAdminModule],
   providers: [
     {
       provide: CATALOG_AVAILABILITY_READER,

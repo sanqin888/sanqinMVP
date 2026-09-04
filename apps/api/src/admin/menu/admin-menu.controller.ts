@@ -10,7 +10,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { CatalogUberAvailabilityOrchestrationService } from '../../application/menu/public-api';
+import {
+  CatalogOffersMenuOrchestrationService,
+  CatalogUberAvailabilityOrchestrationService,
+} from '../../application/menu/public-api';
 import {
   AdminMenuFullResponse,
   DailySpecialDto,
@@ -28,12 +31,13 @@ import { RolesGuard } from '../../auth/roles.guard';
 export class AdminMenuController {
   constructor(
     private readonly catalog: CatalogAdminService,
+    private readonly menuOffers: CatalogOffersMenuOrchestrationService,
     private readonly availability: CatalogUberAvailabilityOrchestrationService,
   ) {}
 
   @Get('full')
   async getFullMenu(): Promise<AdminMenuFullResponse> {
-    return this.catalog.getFullMenu();
+    return this.menuOffers.getFullMenu();
   }
 
   @Get('daily-specials')
@@ -41,7 +45,7 @@ export class AdminMenuController {
     @Query('weekday') weekday?: string,
   ): Promise<{ specials: DailySpecialDto[] }> {
     const parsedWeekday = weekday ? Number(weekday) : undefined;
-    return this.catalog.getDailySpecials(
+    return this.menuOffers.getDailySpecials(
       Number.isFinite(parsedWeekday) ? parsedWeekday : undefined,
     );
   }
@@ -68,7 +72,7 @@ export class AdminMenuController {
       }>;
     },
   ): Promise<{ specials: DailySpecialDto[] }> {
-    return this.catalog.upsertDailySpecials(body);
+    return this.menuOffers.upsertDailySpecials(body);
   }
 
   @Post('categories')

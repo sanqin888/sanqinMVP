@@ -3,13 +3,12 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PublicMenuController } from './public-menu.controller';
 import { PublicMenuService } from './public-menu.service';
-import { CatalogAdminService } from './catalog-admin.service';
-import { BrandStoreConfigModule } from '../store/public-api';
+import { DailySpecialOffersModule } from '../promotions/public-api';
 
 @Module({
-  imports: [PrismaModule, BrandStoreConfigModule],
+  imports: [PrismaModule, DailySpecialOffersModule],
   controllers: [PublicMenuController],
-  providers: [PublicMenuService, CatalogAdminService],
-  exports: [PublicMenuService, CatalogAdminService],
+  providers: [PublicMenuService],
+  exports: [PublicMenuService],
 })
 export class PublicMenuModule {}

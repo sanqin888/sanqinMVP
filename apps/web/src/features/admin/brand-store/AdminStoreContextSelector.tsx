@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Store, X } from 'lucide-react';
+import { ChevronDown, Plus, Store, X } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -193,23 +193,28 @@ export function AdminStoreContextSelector({
             <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
               {isZh ? '当前门店' : 'Current store'}
             </span>
-            <span className="relative block">
-              <Store
-                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-              <select
-                value={selectedStoreStableId}
-                onChange={(event) => navigateToStore(event.target.value)}
-                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#87362E] focus:ring-2 focus:ring-[#87362E]/15"
-              >
-                {stores.map((store) => (
-                  <option key={store.storeStableId} value={store.storeStableId}>
-                    {store.storeName} · {store.storeStableId}
-                    {store.isActive ? '' : isZh ? '（停用）' : ' (inactive)'}
-                  </option>
-                ))}
-              </select>
+            <span className="flex min-h-11 w-full items-center rounded-xl border border-slate-300 bg-white transition focus-within:border-[#87362E] focus-within:ring-2 focus-within:ring-[#87362E]/15">
+              <span className="flex w-10 shrink-0 items-center justify-center text-slate-400">
+                <Store className="size-4" aria-hidden="true" />
+              </span>
+              <span className="relative min-w-0 flex-1">
+                <select
+                  value={selectedStoreStableId}
+                  onChange={(event) => navigateToStore(event.target.value)}
+                  className="min-h-10 w-full appearance-none bg-transparent py-2 pl-0 pr-10 text-sm font-semibold text-slate-900 outline-none"
+                >
+                  {stores.map((store) => (
+                    <option key={store.storeStableId} value={store.storeStableId}>
+                      {store.storeName} · {store.storeStableId}
+                      {store.isActive ? '' : isZh ? '（停用）' : ' (inactive)'}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-500"
+                  aria-hidden="true"
+                />
+              </span>
             </span>
           </label>
 
