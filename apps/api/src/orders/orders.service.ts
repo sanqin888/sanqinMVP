@@ -320,10 +320,7 @@ const PROMOTION_RULE_CHANNEL_BY_ORDER_CHANNEL = {
   web: 'web',
   in_store: 'in_store',
   ubereats: null,
-} satisfies Record<
-  CreateOrderInput['channel'],
-  PromotionRuleChannel | null
->;
+} satisfies Record<CreateOrderInput['channel'], PromotionRuleChannel | null>;
 
 function resolvePromotionRuleChannel(
   channel: CreateOrderInput['channel'],

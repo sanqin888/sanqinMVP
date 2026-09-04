@@ -288,9 +288,7 @@ function normalizeChannels(
     channels.length === 0 ||
     channels.some((channel) => !CHANNELS.has(channel))
   ) {
-    throw new BadRequestException(
-      'channels must contain web and/or in_store',
-    );
+    throw new BadRequestException('channels must contain web and/or in_store');
   }
   return Array.from(new Set(channels));
 }
