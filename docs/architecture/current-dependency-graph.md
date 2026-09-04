@@ -1,7 +1,8 @@
 # Current 12-context dependency graph
 
-Phase 3 Slice 5 is **PRODUCTION VERIFIED**; Slice 5B merged via PR #2153 with
-final CI head `71191389`, squash merge `d3316e45`, and CI #5055 green (2026-09-04).
+Phase 3 Slice 5 and Slice 5B are **PRODUCTION VERIFIED**. Slice 5B merged via
+PR #2153 with final CI head `71191389`, squash merge `d3316e45`, and CI #5055 green;
+active Admin/Public Menu/checkout-pricing verification completed on 2026-09-04.
 
 This snapshot records the **remaining direct cross-context import debt** enforced
 by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5B Daily
