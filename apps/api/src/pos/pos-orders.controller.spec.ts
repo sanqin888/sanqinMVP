@@ -1,4 +1,8 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 import { PosOrdersController } from './pos-orders.controller';
 
@@ -7,6 +11,7 @@ describe('PosOrdersController Uber orders', () => {
     board: jest.fn(),
     recent: jest.fn(),
     createForStore: jest.fn(),
+    quotePricingForStore: jest.fn(),
     getByStableIdForStore: jest.fn(),
     updateStatusForStore: jest.fn(),
     listUpcomingScheduledForStore: jest.fn(),
@@ -42,6 +47,50 @@ describe('PosOrdersController Uber orders', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     posCardPaymentFeature.isEnabled.mockReturnValue(false);
+  });
+
+  it('POS pricing quote uses authenticated store identity through Orders public API', async () => {
+    const dto = {
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      items: [{ productStableId: 'item-1', qty: 2 }],
+      discountCents: 100,
+    } as const;
+    const quote = {
+      subtotalCents: 2000,
+      displaySubtotalCents: 2000,
+      couponDiscountCents: 0,
+      automaticPromotionDiscountCents: 1000,
+      posManualDiscountCents: 100,
+      loyaltyRedeemCents: 0,
+      taxCents: 117,
+      deliveryFeeCents: 0,
+      totalCents: 1017,
+      appliedDiscounts: [],
+    };
+    orders.quotePricingForStore.mockResolvedValue(quote);
+
+    await expect(controller.quotePricing(posRequest, dto as never)).resolves.toEqual(
+      quote,
+    );
+    expect(orders.quotePricingForStore).toHaveBeenCalledWith(
+      dto,
+      '4750_Yonge_Street',
+    );
+  });
+
+  it('POS pricing quote rejects non in-store channels', () => {
+    expect(() =>
+      controller.quotePricing(
+        posRequest,
+        {
+          channel: 'ubereats',
+          fulfillmentType: 'pickup',
+          items: [],
+        } as never,
+      ),
+    ).toThrow(BadRequestException);
+    expect(orders.quotePricingForStore).not.toHaveBeenCalled();
   });
 
   it('feature flag=false 时保留 legacy POS CARD 创建路径', async () => {

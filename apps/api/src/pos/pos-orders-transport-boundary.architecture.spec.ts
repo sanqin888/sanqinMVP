@@ -58,6 +58,7 @@ describe('Orders ↔ POS transport boundary', () => {
 
     expect(canonical).toContain("@Controller('pos/orders')");
     for (const route of [
+      "@Post('pricing/quote')",
       "@Get('recent')",
       "@Get('board')",
       "@Patch(':orderStableId/status')",

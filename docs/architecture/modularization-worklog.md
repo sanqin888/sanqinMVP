@@ -511,7 +511,7 @@ stale-baseline corrections rather than a reason to change the selected next owne
 ### 2026-09-04 — Phase 4 Slice 0A: Admin PromotionRule ownership contraction
 
 **PR/SHA:** PR #2163; final head `849bdcfc`; squash merge `aa302629`  
-**State:** CI / MERGED  
+**State:** PRODUCTION VERIFIED  
 **Result:** moved PromotionRule management ownership out of the Admin adapter and behind
 Offers-owned `PROMOTION_RULE_MANAGEMENT`. `PromotionRuleManagementService` now owns the
 existing validation/default/calendar/channel/BOGO policy without Prisma; raw
@@ -530,10 +530,35 @@ corrected from the locally estimated `14`. Direct debt contracts
 schema/migration, Web Clover behavior, Uber runtime/wire behavior, or PromotionRule
 persistence schema changes are included. Final GitHub Actions CI #5092 passed the
 architecture gate, API lint/build/strict/test, shared strict checks, and Web
-lint/build/strict/test before merge. Post-deployment Admin UI smoke verification has not
-yet been recorded, so the slice is CI/MERGED rather than production VERIFIED.  
+lint/build/strict/test before merge. On 2026-09-04 the user actively completed Admin
+PromotionRule create, edit, refresh and delete; production persistence evidence confirmed
+the test rule was created/updated and then soft-deleted as `ENDED`, so the original 0A
+ownership slice is production VERIFIED.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`.
+
+### 2026-09-04 — Phase 4 Slice 0A verification hotfix: POS server-authoritative promotion pricing
+
+**PR/SHA:** local branch `fix/phase4-slice0a-pos-promotion-pricing`; base `origin/dev@3acb7fe5`  
+**State:** SOURCE / LOCAL REVIEW COMPLETE  
+**Result:** active POS verification exposed a pre-existing pricing-preview gap: the Orders /
+Offers engine already evaluated the active `in_store` same-item BOGO rule, but the POS
+payment page displayed and collected against its own client-side subtotal/manual-discount/
+tax calculation before order creation. Added an authenticated `POST /pos/orders/pricing/quote`
+adapter through the existing `POS_ORDER_OPERATIONS` public boundary and made the POS
+payment page consume the canonical Orders quote for automatic promotions, tax and order
+total. The existing staff 5% / 10% / 15% / custom manual discount remains a separate
+`POS_MANUAL_DISCOUNT`, keeps its current calculation/stacking behavior, and is included in
+the same server quote. Cash collection/change, customer display, WeChat/Alipay conversion
+and Clover Terminal start now share that displayed quote, and in-store confirmation is
+blocked while pricing is refreshing or unavailable. Focused tests cover same-item BOGO +
+manual discount coexistence and authenticated store identity on the quote route. This adds
+no new context edge or measured direct-import/SCC debt; Offers remains promotion-policy
+owner and Orders remains order-pricing owner. No Prisma/dependency, Web Clover Ecommerce,
+or Uber runtime/wire behavior change is included. Local lint/build/test/scanner execution
+is intentionally deferred to GitHub Actions after user review.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`.
 
 ## Current position
 
@@ -548,11 +573,13 @@ yet been recorded, so the slice is CI/MERGED rather than production VERIFIED.
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A CI / MERGED** via PR #2163 / `aa302629`; final CI #5092 passed.
-  PromotionRule management belongs to Offers behind a Prisma-free public capability;
-  Admin is a thin adapter and Identity -> Runtime direct debt is reduced to 16. Active
-  post-deployment Admin UI verification has not yet been recorded. Slice 0B readiness
-  audit is the next planned Phase 4 task.
+- Phase 4: **SLICE 0A PRODUCTION VERIFIED** via PR #2163 / `aa302629`; final CI #5092
+  passed and the user completed active Admin PromotionRule create/edit/refresh/delete
+  verification. A separate **Slice 0A POS pricing verification hotfix is SOURCE / LOCAL
+  REVIEW COMPLETE** on `fix/phase4-slice0a-pos-promotion-pricing` to make automatic
+  promotions and the retained staff manual discount server-authoritative before payment.
+  Slice 0B readiness audit remains next after this hotfix is CI-green, deployed and
+  actively verified.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

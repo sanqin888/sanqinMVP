@@ -37,6 +37,7 @@ import {
   type PosOrderFulfillmentTimingDto,
   type PosOrderJsonInput,
   type PosOrderOperationsPort,
+  type PosOrderPricingQuote,
 } from '../orders/public-api';
 import {
   OrderAmendmentItemAction,
@@ -194,6 +195,24 @@ export class PosOrdersController {
     private readonly posOrders: PosOrdersService,
     private readonly posCardPaymentFeature: PosCardPaymentFeatureConfig,
   ) {}
+
+  @Post('pricing/quote')
+  @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(CreateOrderSchema))
+  quotePricing(
+    @Req() req: PosDeviceRequest,
+    @Body() dto: CreateOrderInput,
+  ): Promise<PosOrderPricingQuote> {
+    if (dto.channel !== 'in_store') {
+      throw new BadRequestException(
+        'POS pricing quote only allows channel=in_store',
+      );
+    }
+    return this.orders.quotePricingForStore(
+      dto,
+      this.requireStoreStableId(req),
+    );
+  }
 
   @Post()
   @HttpCode(201)

@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
-import type { CreateOrderInput } from "@shared/order";
+import type { CreateOrderInput, OrderDiscountDisplayEntry } from "@shared/order";
 
 /**
  * =========================
@@ -20,6 +20,27 @@ export async function fetchRecentOrders<T = unknown>(limit = 10) {
 
 export async function fetchOrderById<T = unknown>(id: string) {
   return apiFetch<T>(`/pos/orders/${enc(id)}`);
+}
+
+export type PosOrderPricingQuote = {
+  subtotalCents: number;
+  displaySubtotalCents: number;
+  couponDiscountCents: number;
+  automaticPromotionDiscountCents: number;
+  posManualDiscountCents: number;
+  loyaltyRedeemCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
+};
+
+export async function quotePosOrderPricing(input: CreateOrderInput) {
+  return apiFetch<PosOrderPricingQuote>("/pos/orders/pricing/quote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function updateOrderStatus<T = unknown>(

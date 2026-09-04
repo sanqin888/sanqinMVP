@@ -14,12 +14,14 @@ import {
   fetchPosCardTerminalConfig,
   printOrderCloud,
   quotePosCadToCny,
+  quotePosOrderPricing,
   recoverPosCardPayment,
   startPosCardPayment,
   type PosCardPaymentRequest,
   type PosCardPaymentResult,
   type PosCardTerminalConfig,
   type PosExchangeRateQuote,
+  type PosOrderPricingQuote,
 } from "@/lib/api/pos";
 import {
   POS_DISPLAY_CHANNEL,
@@ -215,6 +217,9 @@ const STRINGS: Record<
     discountOther: string;
     discountOtherHint: string;
     discountApplied: string;
+    automaticPromotionApplied: string;
+    pricingUpdating: string;
+    pricingUnavailable: string;
     cashDialogTitle: string;
     cashDialogAmountLabel: string;
     cashDialogCancel: string;
@@ -297,7 +302,10 @@ const STRINGS: Record<
     discountTitle: "折扣 / 优惠",
     discountOther: "其他金额",
     discountOtherHint: "输入优惠金额（分）",
-    discountApplied: "折扣优惠",
+    discountApplied: "人工折扣",
+    automaticPromotionApplied: "自动优惠",
+    pricingUpdating: "正在重新计算优惠和应付金额…",
+    pricingUnavailable: "暂时无法取得服务器报价，请稍后重试后再收款。",
     cashDialogTitle: "现金收款",
     cashDialogAmountLabel: "收款金额（分）",
     cashDialogCancel: "取消",
@@ -380,7 +388,10 @@ const STRINGS: Record<
     discountTitle: "Discount",
     discountOther: "Other",
     discountOtherHint: "Enter discount amount (cents)",
-    discountApplied: "Discount",
+    discountApplied: "Manual discount",
+    automaticPromotionApplied: "Automatic promotion",
+    pricingUpdating: "Recalculating promotions and total…",
+    pricingUnavailable: "Server pricing is temporarily unavailable. Retry before taking payment.",
     cashDialogTitle: "Cash collection",
     cashDialogAmountLabel: "Amount received (cents)",
     cashDialogCancel: "Cancel",
@@ -449,6 +460,11 @@ export default function StorePosPaymentPage() {
   
   const [wechatAlipayQuote, setWechatAlipayQuote] =
     useState<PosExchangeRateQuote | null>(null);
+  const [pricingQuote, setPricingQuote] = useState<PosOrderPricingQuote | null>(null);
+  const [pricingQuoteKey, setPricingQuoteKey] = useState<string | null>(null);
+  const [pricingQuoteStructuralKey, setPricingQuoteStructuralKey] = useState<string | null>(null);
+  const [pricingQuoteLoading, setPricingQuoteLoading] = useState(false);
+  const [pricingQuoteError, setPricingQuoteError] = useState(false);
   const [earnRate, setEarnRate] = useState(0.01);
   const [tierMultipliers, setTierMultipliers] = useState({
     BRONZE: 1,
@@ -591,41 +607,169 @@ export default function StorePosPaymentPage() {
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [showOtherDiscountKeypad]);
 
-  const discountedSubtotalCents = Math.max(0, baseSubtotalCents - discountCents);
+  const localDiscountedSubtotalCents = Math.max(
+    0,
+    baseSubtotalCents - discountCents,
+  );
+
+  const pricingItems = useMemo<NonNullable<CreateOrderInput["items"]>>(() => {
+    return normalizedSnapshotItems.map((item) => ({
+      productStableId: item.stableId,
+      qty: item.quantity,
+      unitPrice: item.unitPriceCents / 100,
+      displayName: locale === "zh" ? item.nameZh : item.nameEn,
+      nameEn: item.nameEn,
+      nameZh: item.nameZh,
+      options: item.options,
+    }));
+  }, [locale, normalizedSnapshotItems]);
+
+  const pricingStructuralKey = useMemo(
+    () =>
+      JSON.stringify({
+        orderChannel,
+        fulfillment,
+        items: pricingItems,
+        userStableId: memberInfo?.userStableId ?? null,
+        discountCents,
+      }),
+    [
+      discountCents,
+      fulfillment,
+      memberInfo?.userStableId,
+      orderChannel,
+      pricingItems,
+    ],
+  );
+  const structuralPricingQuote =
+    pricingQuoteStructuralKey === pricingStructuralKey ? pricingQuote : null;
+  const preLoyaltySubtotalCents = structuralPricingQuote
+    ? Math.max(
+        0,
+        structuralPricingQuote.subtotalCents -
+          structuralPricingQuote.automaticPromotionDiscountCents -
+          structuralPricingQuote.posManualDiscountCents -
+          structuralPricingQuote.couponDiscountCents,
+      )
+    : localDiscountedSubtotalCents;
 
   // --- 积分逻辑 ---
 
-const maxRedeemableCentsForOrder = useMemo(() => {
-  if (!memberInfo) return 0;
-  if (discountedSubtotalCents <= 0) return 0;
-  return Math.min(memberInfo.availableDiscountCents, discountedSubtotalCents);
-}, [discountedSubtotalCents, memberInfo]);
+  const maxRedeemableCentsForOrder = useMemo(() => {
+    if (!memberInfo) return 0;
+    if (preLoyaltySubtotalCents <= 0) return 0;
+    return Math.min(memberInfo.availableDiscountCents, preLoyaltySubtotalCents);
+  }, [memberInfo, preLoyaltySubtotalCents]);
 
-// 把输入金额转成 cents（整数）并 clamp 到最大可抵扣
-const redeemCents = useMemo(() => {
-  if (!memberInfo || !redeemPointsInput) return 0;
+  // 把输入金额转成 cents（整数）并 clamp 到最大可抵扣
+  const redeemCents = useMemo(() => {
+    if (!memberInfo || !redeemPointsInput) return 0;
 
-  const raw = redeemPointsInput.trim();
-  if (!raw) return 0;
+    const raw = redeemPointsInput.trim();
+    if (!raw) return 0;
 
-  const val = Number(raw);
-  if (!Number.isFinite(val) || val <= 0) return 0;
+    const val = Number(raw);
+    if (!Number.isFinite(val) || val <= 0) return 0;
 
-  const cents = Math.round(val * 100);
-  return Math.min(cents, maxRedeemableCentsForOrder);
-}, [memberInfo, redeemPointsInput, maxRedeemableCentsForOrder]);
+    const cents = Math.round(val * 100);
+    return Math.min(cents, maxRedeemableCentsForOrder);
+  }, [memberInfo, redeemPointsInput, maxRedeemableCentsForOrder]);
 
-// 兼容你后面还在用 pointsToRedeem 的地方：这里把“抵扣金额”也当作 points（带小数）
-// 如果你后端 pointsToRedeem 已支持小数：直接传这个就行
-// 如果后端只支持整数：你需要后端改为接收 redeemCents（见文末备注）
-const pointsToRedeem = redeemCents / 100;
+  // 保留现有 POS pointsToRedeem 输入语义；最终抵扣金额由服务器报价确认。
+  const pointsToRedeem = redeemCents / 100;
+  const pricingInputKey = useMemo(
+    () => JSON.stringify({ pricingStructuralKey, pointsToRedeem }),
+    [pointsToRedeem, pricingStructuralKey],
+  );
 
-const loyaltyRedeemCents = redeemCents;
+  useEffect(() => {
+    if (
+      orderChannel !== "in_store" ||
+      !fulfillment ||
+      pricingItems.length === 0
+    ) {
+      setPricingQuote(null);
+      setPricingQuoteKey(null);
+      setPricingQuoteStructuralKey(null);
+      setPricingQuoteLoading(false);
+      setPricingQuoteError(false);
+      return;
+    }
+
+    let active = true;
+    setPricingQuoteLoading(true);
+    setPricingQuoteError(false);
+
+    const timer = window.setTimeout(() => {
+      void quotePosOrderPricing({
+        channel: "in_store",
+        fulfillmentType: fulfillment,
+        items: pricingItems,
+        ...(memberInfo?.userStableId
+          ? { userStableId: memberInfo.userStableId }
+          : {}),
+        ...(pointsToRedeem > 0 ? { pointsToRedeem } : {}),
+        ...(discountCents > 0 ? { discountCents } : {}),
+      })
+        .then((quote) => {
+          if (!active) return;
+          setPricingQuote(quote);
+          setPricingQuoteKey(pricingInputKey);
+          setPricingQuoteStructuralKey(pricingStructuralKey);
+          setPricingQuoteError(false);
+        })
+        .catch((quoteError: unknown) => {
+          console.error("POS pricing quote failed", quoteError);
+          if (!active) return;
+          setPricingQuoteError(true);
+        })
+        .finally(() => {
+          if (active) setPricingQuoteLoading(false);
+        });
+    }, 150);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    discountCents,
+    fulfillment,
+    memberInfo?.userStableId,
+    orderChannel,
+    pointsToRedeem,
+    pricingInputKey,
+    pricingItems,
+    pricingStructuralKey,
+  ]);
+
+  const currentPricingQuote =
+    pricingQuoteKey === pricingInputKey ? pricingQuote : null;
+  const automaticPromotionDiscountCents =
+    currentPricingQuote?.automaticPromotionDiscountCents ?? 0;
+  const appliedManualDiscountCents =
+    currentPricingQuote?.posManualDiscountCents ?? discountCents;
+  const loyaltyRedeemCents =
+    currentPricingQuote?.loyaltyRedeemCents ?? redeemCents;
+  const pricingSubtotalCents =
+    currentPricingQuote?.subtotalCents ?? baseSubtotalCents;
 
   // --- 余额使用逻辑 (Partial) ---
-  const effectiveSubtotalAfterPointsCents = Math.max(0, discountedSubtotalCents - loyaltyRedeemCents);
-  const taxCents = Math.round(effectiveSubtotalAfterPointsCents * TAX_RATE);
-  const totalAfterPointsCents = effectiveSubtotalAfterPointsCents + taxCents;
+  const effectiveSubtotalAfterPointsCents = currentPricingQuote
+    ? Math.max(
+        0,
+        currentPricingQuote.subtotalCents -
+          currentPricingQuote.automaticPromotionDiscountCents -
+          currentPricingQuote.posManualDiscountCents -
+          currentPricingQuote.couponDiscountCents -
+          currentPricingQuote.loyaltyRedeemCents,
+      )
+    : Math.max(0, localDiscountedSubtotalCents - loyaltyRedeemCents);
+  const taxCents =
+    currentPricingQuote?.taxCents ??
+    Math.round(effectiveSubtotalAfterPointsCents * TAX_RATE);
+  const totalAfterPointsCents =
+    currentPricingQuote?.totalCents ?? effectiveSubtotalAfterPointsCents + taxCents;
 
   // 用户输入的余额支付金额
   const balanceToUseCents = useMemo(() => {
@@ -686,41 +830,58 @@ const loyaltyRedeemCents = redeemCents;
 
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
+    const serverDiscountCents =
+      automaticPromotionDiscountCents +
+      appliedManualDiscountCents +
+      (currentPricingQuote?.couponDiscountCents ?? 0);
     return {
       ...snapshot,
       items: normalizedSnapshotItems,
-      subtotalCents: discountedSubtotalCents,
-      discountCents,
+      subtotalCents: pricingSubtotalCents,
+      discountCents: serverDiscountCents,
       taxCents,
-      // 注意：这里 totalCents 在 POS 副屏通常显示“应付金额”。
-      // 如果使用了部分余额，副屏可能需要显示剩余应付？
-      // 暂时保持显示最终需支付现金/卡的部分
-      totalCents: finalDisplayTotalCents, 
+      // 副屏金额与服务器报价保持一致；余额抵扣后显示剩余应付。
+      totalCents: finalDisplayTotalCents,
       loyalty: memberInfo
         ? {
             userStableId: memberInfo.userStableId ?? null,
             pointsBalance: memberInfo.points,
             pointsRedeemed: pointsToRedeem,
             pointsEarned,
-            pointsBalanceAfter: Math.round((memberInfo.points - pointsToRedeem + pointsEarned) * 100) / 100,
+            pointsBalanceAfter:
+              Math.round(
+                (memberInfo.points - pointsToRedeem + pointsEarned) * 100,
+              ) / 100,
           }
         : undefined,
     } satisfies PosDisplaySnapshot;
   }, [
-    discountCents,
-    discountedSubtotalCents,
+    appliedManualDiscountCents,
+    automaticPromotionDiscountCents,
+    finalDisplayTotalCents,
     memberInfo,
+    normalizedSnapshotItems,
     pointsEarned,
     pointsToRedeem,
+    currentPricingQuote?.couponDiscountCents,
+    pricingSubtotalCents,
     snapshot,
-    normalizedSnapshotItems,
     taxCents,
-    finalDisplayTotalCents,
   ]);
+
+  const pricingReady =
+    orderChannel !== "in_store" ||
+    Boolean(currentPricingQuote && !pricingQuoteLoading && !pricingQuoteError);
 
   // 更新副屏
   useEffect(() => {
-    if (typeof window === "undefined" || !computedSnapshot?.items.length) return;
+    if (
+      typeof window === "undefined" ||
+      !computedSnapshot?.items.length ||
+      (orderChannel === "in_store" && !pricingReady)
+    ) {
+      return;
+    }
     try {
       window.localStorage.setItem(POS_DISPLAY_STORAGE_KEY, JSON.stringify(computedSnapshot));
       if ("BroadcastChannel" in window) {
@@ -729,12 +890,12 @@ const loyaltyRedeemCents = redeemCents;
         channel.close();
       }
     } catch { /* ignore */ }
-  }, [computedSnapshot]);
+  }, [computedSnapshot, orderChannel, pricingReady]);
 
   const summarySubtotalCents = computedSnapshot?.subtotalCents ?? 0;
   const summaryTaxCents = computedSnapshot?.taxCents ?? 0;
   const summaryTotalCents = computedSnapshot?.totalCents ?? 0; // 这是剩余应付
-  const summaryLoyaltyRedeemCents = redeemCents;
+  const summaryLoyaltyRedeemCents = loyaltyRedeemCents;
 
   useEffect(() => {
     let active = true;
@@ -856,16 +1017,6 @@ const loyaltyRedeemCents = redeemCents;
   const buildOrderPayload = useCallback((): CreateOrderInput | null => {
     if (!computedSnapshot || !fulfillment) return null;
 
-    const items = normalizedSnapshotItems.map((item) => ({
-      productStableId: item.stableId,
-      qty: item.quantity,
-      unitPrice: item.unitPriceCents / 100,
-      displayName: locale === "zh" ? item.nameZh : item.nameEn,
-      nameEn: item.nameEn,
-      nameZh: item.nameZh,
-      options: item.options,
-    }));
-
     let apiPaymentMethod: PaymentMethod = "CASH";
     if (orderChannel === "ubereats") {
       apiPaymentMethod = "UBEREATS";
@@ -884,7 +1035,7 @@ const loyaltyRedeemCents = redeemCents;
       taxCents: computedSnapshot.taxCents,
       totalCents: computedSnapshot.totalCents,
       paymentMethod: apiPaymentMethod,
-      items,
+      items: pricingItems,
       userStableId: memberInfo?.userStableId ?? undefined,
       pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
       balanceUsedCents: balanceToUseCents > 0 ? balanceToUseCents : undefined,
@@ -897,16 +1048,21 @@ const loyaltyRedeemCents = redeemCents;
     discountCents,
     fulfillment,
     isFullyPaidByBalance,
-    locale,
     memberInfo,
-    normalizedSnapshotItems,
     orderChannel,
     paymentMethod,
     pointsToRedeem,
+    pricingItems,
   ]);
 
   const submitOrder = async (cashMeta?: { cashReceivedCents: number; cashChangeCents: number }) => {
     setError(null);
+
+    if (orderChannel === "in_store" && !pricingReady) {
+      setError(t.pricingUnavailable);
+      return;
+    }
+
     setSubmitting(true);
 
     if (!snapshot || snapshot.items.length === 0 || !computedSnapshot) {
@@ -1236,6 +1392,12 @@ const loyaltyRedeemCents = redeemCents;
   ]);
 
   const handleConfirm = async () => {
+    setError(null);
+    if (orderChannel === "in_store" && !pricingReady) {
+      setError(t.pricingUnavailable);
+      return;
+    }
+
     const shouldUseUnifiedPayment =
       orderChannel === "in_store" &&
       (paymentMethod === "card" ||
@@ -1415,11 +1577,16 @@ const loyaltyRedeemCents = redeemCents;
                   <span className="text-slate-300">{t.subtotal}</span>
                   <span>{formatMoney(summarySubtotalCents)}</span>
                 </div>
-                {/* 积分抵扣展示 */}
-                {discountCents > 0 && (
+                {automaticPromotionDiscountCents > 0 && (
+                  <div className="flex justify-between text-emerald-200">
+                    <span className="text-slate-300">{t.automaticPromotionApplied}</span>
+                    <span>-{formatMoney(automaticPromotionDiscountCents)}</span>
+                  </div>
+                )}
+                {appliedManualDiscountCents > 0 && (
                   <div className="flex justify-between text-amber-200">
                     <span className="text-slate-300">{t.discountApplied}</span>
-                    <span>-{formatMoney(discountCents)}</span>
+                    <span>-{formatMoney(appliedManualDiscountCents)}</span>
                   </div>
                 )}
                 {summaryLoyaltyRedeemCents > 0 && (
@@ -1443,6 +1610,12 @@ const loyaltyRedeemCents = redeemCents;
                   <span>{t.total}</span>
                   <span>{formatMoney(summaryTotalCents)}</span>
                 </div>
+                {orderChannel === "in_store" && pricingQuoteLoading && (
+                  <p className="pt-1 text-xs text-amber-200">{t.pricingUpdating}</p>
+                )}
+                {orderChannel === "in_store" && pricingQuoteError && (
+                  <p className="pt-1 text-xs text-rose-200">{t.pricingUnavailable}</p>
+                )}
                 {paymentMethod === "wechat_alipay" && wechatAlipayQuote && (
                   <>
                     <div className="flex justify-between text-sm text-emerald-200">
@@ -1585,7 +1758,7 @@ const loyaltyRedeemCents = redeemCents;
 
                 <div className="flex justify-between text-xs text-amber-200">
                   <span>{t.discountApplied}</span>
-                  <span>-{formatMoney(discountCents)}</span>
+                  <span>-{formatMoney(appliedManualDiscountCents)}</span>
                 </div>
               </div>
 
@@ -1636,7 +1809,7 @@ const loyaltyRedeemCents = redeemCents;
           <div className="mt-auto pt-4 flex gap-3">
             <button onClick={handleBackKeepItems} className="flex-1 h-12 rounded-2xl border border-blue-500/60 text-sm font-medium text-blue-100 hover:bg-blue-500/10">{t.backKeepItems}</button>
             <button onClick={handleBack} className="flex-1 h-12 rounded-2xl border border-slate-600 text-sm font-medium text-slate-100 hover:bg-slate-700">{t.back}</button>
-            <button disabled={!hasItems || submitting || !snapshot || !fulfillment} onClick={handleConfirm} className="flex-[2] h-12 rounded-2xl text-sm font-bold bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400">
+            <button disabled={!hasItems || submitting || !snapshot || !fulfillment || !pricingReady} onClick={handleConfirm} className="flex-[2] h-12 rounded-2xl text-sm font-bold bg-emerald-500 text-slate-900 hover:bg-emerald-400 disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400">
               {submitting ? t.confirming : t.confirm}
             </button>
           </div>
