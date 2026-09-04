@@ -2,17 +2,15 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '../prisma/prisma.module';
-import { SmsModule } from '../sms/sms.module';
+import { PhoneVerificationDeliveryModule } from '../messaging/public-api';
 import { PhoneVerificationService } from './phone-verification.service';
 import { PhoneVerificationController } from './phone-verification.controller';
-import { MessagingModule } from '../messaging/messaging.module';
 import { IdentityChallengeModule } from '../auth/public-api';
 
 @Module({
   imports: [
     PrismaModule,
-    SmsModule,
-    MessagingModule,
+    PhoneVerificationDeliveryModule,
     IdentityChallengeModule,
     ThrottlerModule.forRoot({
       throttlers: [

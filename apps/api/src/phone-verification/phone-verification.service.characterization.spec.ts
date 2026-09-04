@@ -20,27 +20,17 @@ describe('PhoneVerificationService OTP characterization', () => {
       },
       $transaction: jest.fn().mockResolvedValue([]),
     };
-    const smsService = {
-      sendSms: jest.fn(),
-    };
-    const templateRenderer = {
-      renderSms: jest.fn().mockResolvedValue('verification message'),
-    };
-    const businessConfigService = {
-      getMessagingSnapshot: jest
-        .fn()
-        .mockResolvedValue({ baseVars: { storeName: 'SanQin' } }),
+    const phoneVerificationDelivery = {
+      sendVerificationSms: jest.fn(),
     };
     const challengeEngine = new ChallengeEngine();
     const service = new PhoneVerificationService(
       prisma as never,
-      smsService as never,
-      templateRenderer as never,
-      businessConfigService as never,
+      phoneVerificationDelivery as never,
       challengeEngine,
     );
 
-    return { service, prisma, smsService, challengeEngine };
+    return { service, prisma, phoneVerificationDelivery, challengeEngine };
   };
 
   afterEach(() => {
@@ -55,7 +45,8 @@ describe('PhoneVerificationService OTP characterization', () => {
 
   it('selects the non-zero phone-secret profile when creating a challenge', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, smsService, challengeEngine } = createService();
+    const { service, prisma, phoneVerificationDelivery, challengeEngine } =
+      createService();
     prisma.authChallenge.count.mockResolvedValue(0);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
@@ -65,7 +56,10 @@ describe('PhoneVerificationService OTP characterization', () => {
     const hashCodeSpy = jest
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
-    smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'send-1' });
+    phoneVerificationDelivery.sendVerificationSms.mockResolvedValue({
+      ok: true,
+      sendId: 'send-1',
+    });
 
     await expect(
       service.sendCode({
@@ -88,11 +82,56 @@ describe('PhoneVerificationService OTP characterization', () => {
         purpose: 'checkout',
       },
     });
+    expect(phoneVerificationDelivery.sendVerificationSms).toHaveBeenCalledWith({
+      phone: '14165550100',
+      code: '100000',
+      expiresInMin: 10,
+      locale: undefined,
+      purpose: 'checkout',
+    });
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-1' },
+      data: { messagingSendId: 'send-1' },
+    });
+  });
+
+  it('records the delivery send id and preserves sms_send_failed on provider failure', async () => {
+    const { service, prisma, phoneVerificationDelivery, challengeEngine } =
+      createService();
+    prisma.authChallenge.count.mockResolvedValue(0);
+    prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-failed' });
+    prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-failed' });
+    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('123456');
+    phoneVerificationDelivery.sendVerificationSms.mockResolvedValue({
+      ok: false,
+      sendId: 'send-failed',
+      error: 'suppressed',
+    });
+
+    await expect(
+      service.sendCode({
+        phone: '+14165550100',
+        locale: 'en',
+        purpose: 'membership-bind',
+      }),
+    ).resolves.toEqual({ ok: false, error: 'sms_send_failed' });
+
+    expect(phoneVerificationDelivery.sendVerificationSms).toHaveBeenCalledWith({
+      phone: '14165550100',
+      code: '123456',
+      expiresInMin: 10,
+      locale: 'en',
+      purpose: 'membership-bind',
+    });
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-failed' },
+      data: { messagingSendId: 'send-failed' },
+    });
   });
 
   it('counts the IP attempt before the daily limit check', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, smsService } = createService();
+    const { service, prisma, phoneVerificationDelivery } = createService();
     prisma.authChallenge.count
       .mockResolvedValueOnce(5)
       .mockResolvedValueOnce(0);
@@ -129,7 +168,7 @@ describe('PhoneVerificationService OTP characterization', () => {
       },
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
-    expect(smsService.sendSms).not.toHaveBeenCalled();
+    expect(phoneVerificationDelivery.sendVerificationSms).not.toHaveBeenCalled();
   });
 
   it('increments attempts and revokes a challenge on the final mismatch', async () => {
