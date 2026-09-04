@@ -14,7 +14,7 @@ type RuleType =
   | 'LOYALTY_MULTIPLIER';
 type RuleStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
 type StackingPolicy = 'EXCLUSIVE' | 'STACKABLE';
-type PromotionChannel = 'web' | 'in_store' | 'ubereats';
+type PromotionChannel = 'web' | 'in_store';
 
 type RuleDto = {
   stableId: string;
@@ -490,9 +490,8 @@ export default function AutomaticPromotionsPage() {
         <div>
           <div className="text-sm font-medium text-slate-700">{isZh ? '渠道' : 'Channels'}</div>
           <div className="mt-2 flex flex-wrap gap-3">
-            {(['web', 'in_store', 'ubereats'] as PromotionChannel[]).map((channel) => <label key={channel} className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.channels.includes(channel)} onChange={() => toggleChannel(channel)} />{channel === 'web' ? 'Web' : channel === 'in_store' ? 'POS' : 'Uber Eats'}</label>)}
+            {(['web', 'in_store'] as PromotionChannel[]).map((channel) => <label key={channel} className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.channels.includes(channel)} onChange={() => toggleChannel(channel)} />{channel === 'web' ? 'Web' : 'POS'}</label>)}
           </div>
-          {draft.channels.includes('ubereats') ? <p className="mt-2 text-xs font-medium text-amber-700">{isZh ? 'Uber Eats 已使用平台订单价格；只有明确需要 SanQ 二次优惠时才启用此渠道。' : 'Uber Eats already supplies platform order prices. Enable this only when a SanQ-side additional promotion is intentional.'}</p> : null}
         </div>
 
         <div className="rounded-xl border border-slate-200 p-4">
@@ -502,7 +501,6 @@ export default function AutomaticPromotionsPage() {
             <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={draft.excludesItemPromotions} onChange={(e) => patch({ excludesItemPromotions: e.target.checked })} />{isZh ? '与商品特价互斥' : 'Conflict with item specials'}</label>
           </div>
           {draft.membersOnly ? <p className="mt-2 text-xs text-slate-500">{isZh ? '仅已识别的 SanQ 会员可享此活动；可与任意现有活动类型组合。' : 'Only recognized SanQ members receive this promotion; it can be combined with any existing promotion type.'}</p> : null}
-          {draft.membersOnly && draft.channels.includes('ubereats') ? <p className="mt-1 text-xs font-medium text-amber-700">{isZh ? 'Uber Eats 订单无法识别 SanQ 会员身份，因此该渠道不会触发仅会员活动。' : 'Uber Eats orders do not carry SanQ member identity, so member-only promotions will not apply on that channel.'}</p> : null}
         </div>
 
         {error ? <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}

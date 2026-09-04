@@ -75,9 +75,11 @@ cannot later return under a stale superset allowance.
 
 ### Slice 0A — Admin PromotionRule ownership contraction
 
-Status: **CI / MERGED** via PR #2163 / `aa302629`.
-Final head `849bdcfc` passed GitHub Actions CI #5092 before merge; post-deployment Admin
-UI smoke verification has not yet been recorded.
+Status: **PRODUCTION VERIFIED** via PR #2163 / `aa302629`.
+Final head `849bdcfc` passed GitHub Actions CI #5092 before merge. On 2026-09-04 the user
+actively exercised Admin PromotionRule create, edit, refresh and delete after deployment;
+production persistence evidence showed the test rule created/updated and then soft-deleted
+as `ENDED`, so the Admin management boundary is verified.
 
 Audit findings on `origin/dev@83de9072`:
 
@@ -137,19 +139,103 @@ Measured source debt contracts
 unchanged by Slice 0A because the Admin -> Offers dependency remains public-contract
 traffic and no SCC member/edge is added or removed.
 
+#### Slice 0A verification hotfix — POS server-authoritative promotion pricing
+
+Status: **CI / MERGED** via PR #2166 / `bb833550`.
+Final head `567a1aba` passed GitHub Actions CI #5102 before merge; post-deployment active
+POS pricing/payment verification is still required before marking this hotfix VERIFIED.
+
+The production verification pass exposed a separate pre-existing checkout gap: the active
+same-item BOGO rule is correctly configured for `in_store` and the Orders/Offers pricing
+engine already evaluates it, but the POS payment page previously calculated its displayed
+subtotal, manual discount, tax and tender locally and did not request the canonical Orders
+pricing quote before taking payment. That allowed the POS display/cash-change path to omit
+automatic promotions even though order creation later re-evaluated them server-side.
+
+The hotfix keeps ownership unchanged and adds no pricing rules to POS:
+
+1. `POS_ORDER_OPERATIONS` exposes a narrow authenticated `quotePricingForStore` capability
+   backed by the existing `OrdersService.quoteOrderPricing()` owner implementation;
+2. `POST /pos/orders/pricing/quote` is protected by the existing POS session/role/device
+   guards, accepts only `channel=in_store`, and forwards the authenticated store stable ID;
+3. the POS payment page requests the server quote whenever fulfillment, member redemption
+   or the existing staff manual discount changes, and treats that quote as authoritative
+   for automatic promotions, tax and total;
+4. the existing 5% / 10% / 15% / custom **POS manual discount remains intact** and is sent
+   as the existing `POS_MANUAL_DISCOUNT` input. It remains independently visible from the
+   automatic promotion amount and retains its existing calculation/stacking semantics;
+5. cash collection, customer display, WeChat/Alipay conversion and Clover Terminal start
+   all consume the same displayed server-authoritative total. In-store payment confirmation
+   is disabled while the quote is refreshing or unavailable rather than falling back to a
+   stale client-only amount;
+6. the POS payment adapter is now fixed to `channel=in_store`: the staff-facing UberEats
+   channel selector, local UberEats payment method and their legacy channel/payment branches
+   are removed. POS fulfillment remains only `pickup` / `dine_in`; Uber orders continue to
+   enter through the separate Uber integration/import path, whose runtime behavior is
+   unchanged;
+7. focused API coverage locks same-item BOGO + manual discount coexistence and authenticated
+   store identity for the POS pricing route.
+
+This hotfix does not change PromotionRule configuration/evaluation semantics, Prisma schema,
+dependencies, production Web Clover Ecommerce, Uber runtime/wire behavior, or the measured
+architecture graph/baselines. Post-deployment active payment verification is required before
+the hotfix can be marked VERIFIED.
+
 ### Slice 0B — Catalog -> Orders public-cycle edge contraction
 
-Status: **PLANNED AFTER 0A**.
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice0b-promotion-channel`. The Slice 0A POS pricing hotfix remains
+CI/MERGED with its post-deployment active verification still pending, so Slice 0B is not
+claimed CI-green, deployed or production-verified.
 
-Objective:
+Readiness findings before implementation:
 
-- audit the current Pricing/Offers dependency on `Channel` from `@shared/order`;
-- determine whether that is the complete `catalog-pricing-offers ->
-  commerce-orders-fulfillment` public edge;
-- prefer a provider-neutral Pricing/Offers channel input contract with one boundary
-  mapping from Orders rather than moving business-specific channel semantics into
-  Architecture Foundation solely to break a cycle;
-- lower the exact SCC baseline in the same change if the edge disappears.
+- the complete production `catalog-pricing-offers -> commerce-orders-fulfillment`
+  dependency was exactly two type imports of Orders-owned `Channel`: one in
+  `promotion-context.contract.ts` and one in `promotions.service.ts`; no other Offers /
+  Menu / Coupons / Catalog production source imports `@shared/order` or Orders internals;
+- Offers only needs a PromotionRule applicability dimension. It does not need Order
+  lifecycle, fulfillment, payment or provider-wire semantics;
+- Uber order ingestion is a separate External Channels -> Orders ingestion flow. It
+  persists Uber-provided subtotal/discount/tax/delivery/total facts and does not call
+  `PROMOTION_CONTEXT_READER` or the SanQ PromotionRule evaluator;
+- the Admin PromotionRule editor nevertheless exposed an `Uber Eats` channel option even
+  though no runtime flow consumed that configuration. A read-only production query found
+  **0** `PromotionRule` rows whose `channels` array contained `ubereats`, so deleting the
+  dead capability requires no data backfill, Prisma schema change or migration.
+
+Implemented source shape:
+
+1. `PromotionRuleChannel` is contracted to the Offers-owned applicability set
+   `'web' | 'in_store'`; `PromotionContextReaderPort` and `PromotionsService` consume that
+   owner type and no longer import `@shared/order`;
+2. Orders owns the translation from its broader order-source channel set through an
+   exhaustive mapping: `web -> web`, `in_store -> in_store`, `ubereats -> null`. A null
+   mapping means the Orders pricing path supplies no PromotionRule context; it does not
+   remove `Order Channel.ubereats` or alter provider order persistence;
+3. the Admin automatic-promotion page now exposes only Web/POS applicability, and the
+   Offers management validator explicitly rejects the historical dead `ubereats` input.
+   No compatibility shim is kept because there is no persisted rule using the value and
+   the only discovered source consumer is the same-repository authenticated Admin page;
+4. focused characterization coverage locks Web/In-store owner queries, rejects UberEats
+   PromotionRule management input, preserves the existing POS BOGO + manual-discount
+   tests, and proves an Orders `ubereats` quote does not invoke PromotionRule context;
+5. `tools/architecture/context-baseline.json` contracts the exact legacy SCC from four
+   contexts/five internal edges to three contexts/three internal edges. Orders exits the
+   SCC. `commerce-orders-fulfillment -> catalog-pricing-offers` remains as the correct
+   one-way Orders consumer dependency, while the removed reverse edge is
+   `catalog-pricing-offers -> commerce-orders-fulfillment`.
+
+Measured numeric direct-import debt is unchanged because the removed `@shared/order`
+imports were approved public traffic. The remaining legacy SCC is Catalog -> Messaging ->
+Identity -> Catalog. No dependency/lockfile, Prisma schema/migration, Benefits COMMIT /
+Order transaction boundary, Web Clover provider execution, POS manual-discount rule,
+PromotionRule evaluation algorithm, or Uber runtime/wire behavior is intentionally
+changed.
+
+Because Orders pricing is shared by production Web/POS flows, remote/deployment
+verification should explicitly cover `web -> web` promotion pricing plus the existing
+`in_store` BOGO/manual-discount behavior before Slice 0B is marked production verified.
 
 ### Slice 1 — Email Verification ownership normalization
 
@@ -227,7 +313,8 @@ number:
 - Admin PromotionRule management has one Offers owner; Admin has no duplicate Prisma /
   business-rule implementation for it.
 - `catalog-pricing-offers -> commerce-orders-fulfillment` public-cycle dependency is
-  removed if Slice 0B confirms `Channel` is the only required reverse semantic edge.
+  removed at source by Slice 0B after confirming `Channel` was the only reverse semantic
+  edge; remote CI/deployment verification remains pending while the slice is LOCAL.
 - Email verification challenge/account mutation belongs to Identity; Messaging owns
   delivery only.
 - Identity/Customer/Benefits cross-context callers use narrow Messaging public

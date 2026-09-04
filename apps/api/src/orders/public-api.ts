@@ -19,6 +19,7 @@ export {
   type PosOrderFulfillmentTimingDto,
   type PosOrderJsonInput,
   type PosOrderOperationsPort,
+  type PosOrderPricingQuote,
   type PosScheduledOrderSummaryDto,
 } from './pos-order-operations.contract';
 export {

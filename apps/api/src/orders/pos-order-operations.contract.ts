@@ -1,5 +1,6 @@
 import type {
   CreateOrderInput,
+  OrderDiscountDisplayEntry,
   OrderStatus,
   PaymentMethod,
 } from '@shared/order';
@@ -63,11 +64,28 @@ export type PosOrderFullRefundResult = {
   outcome: 'pending_platform' | 'pending_manual' | 'refunded';
 };
 
+export type PosOrderPricingQuote = {
+  subtotalCents: number;
+  displaySubtotalCents: number;
+  couponDiscountCents: number;
+  automaticPromotionDiscountCents: number;
+  posManualDiscountCents: number;
+  loyaltyRedeemCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+  appliedDiscounts: OrderDiscountDisplayEntry[];
+};
+
 export interface PosOrderOperationsPort {
   createForStore(
     dto: CreateOrderInput,
     storeStableId: string,
   ): Promise<OrderDto>;
+  quotePricingForStore(
+    dto: CreateOrderInput,
+    storeStableId: string,
+  ): Promise<PosOrderPricingQuote>;
   recent(storeStableId: string, limit?: number): Promise<OrderDto[]>;
   board(storeStableId: string, query: PosOrderBoardQuery): Promise<OrderDto[]>;
   getByStableIdForStore(

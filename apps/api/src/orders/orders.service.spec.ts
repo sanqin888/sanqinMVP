@@ -524,6 +524,26 @@ describe('OrdersService', () => {
     expect(quote.totalCents).toBe(1130);
   });
 
+  it('maps only SanQ-priced order channels into PromotionRule applicability', async () => {
+    await service.quoteOrderPricing({
+      channel: 'web',
+      fulfillmentType: 'pickup',
+      items: [{ productStableId: demoProductId, qty: 1 }],
+    });
+
+    expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith('web');
+
+    promotions.getOrderPromotionContext.mockClear();
+    const uberQuote = await service.quoteOrderPricing({
+      channel: 'ubereats',
+      fulfillmentType: 'pickup',
+      items: [{ productStableId: demoProductId, qty: 1 }],
+    });
+
+    expect(promotions.getOrderPromotionContext).not.toHaveBeenCalled();
+    expect(uberQuote.automaticPromotionDiscountCents).toBe(0);
+  });
+
   it('applies automatic promotions and keeps POS manual discount in server pricing', async () => {
     promotions.getOrderPromotionContext.mockResolvedValue({
       now: DateTime.fromISO('2026-08-21T12:00:00', {
@@ -576,6 +596,69 @@ describe('OrdersService', () => {
     expect(quote.totalCents).toBe(961);
     expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith(
       'in_store',
+    );
+  });
+
+  it('quotes same-item BOGO for POS and keeps the manual discount stacked', async () => {
+    promotions.getOrderPromotionContext.mockResolvedValue({
+      now: DateTime.fromISO('2026-09-04T12:00:00', {
+        zone: 'America/Toronto',
+      }),
+      rules: [
+        {
+          stableId: 'bogo-1',
+          titleZh: '买一送一',
+          titleEn: 'Buy 1 Get 1 Free',
+          type: 'BUY_X_GET_Y',
+          status: 'ACTIVE',
+          priority: 175,
+          stackingPolicy: 'EXCLUSIVE',
+          excludesCoupons: true,
+          excludesItemPromotions: true,
+          channels: ['in_store'],
+          validFrom: null,
+          validTo: null,
+          weekdays: [],
+          startMinutes: null,
+          endMinutes: null,
+          config: {
+            membersOnly: false,
+            buyItemStableIds: [demoProductId],
+            buyQuantity: 1,
+            getItemStableIds: [demoProductId],
+            getQuantity: 1,
+            discountPercent: 100,
+          },
+        },
+      ],
+    });
+
+    const quote = await service.quoteOrderPricing(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        discountCents: 100,
+        items: [{ productStableId: demoProductId, qty: 2, unitPrice: 10 }],
+      },
+      { allowCustomUnitPrice: true },
+    );
+
+    expect(quote.subtotalCents).toBe(2000);
+    expect(quote.automaticPromotionDiscountCents).toBe(1000);
+    expect(quote.posManualDiscountCents).toBe(100);
+    expect(quote.taxCents).toBe(117);
+    expect(quote.totalCents).toBe(1017);
+    expect(quote.appliedDiscounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'AUTOMATIC_PROMOTION',
+          discountCents: 1000,
+        }),
+        expect.objectContaining({
+          source: 'POS_MANUAL_DISCOUNT',
+          discountCents: 100,
+        }),
+      ]),
     );
   });
 
