@@ -34,8 +34,9 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     const stores: UberAvailabilitySyncResult['stores'] = [];
 
     if (input.publishable) {
-      const mappings =
-        await this.queries.findProvisionedStores(requestedStoreStableId);
+      const mappings = await this.queries.findProvisionedStores(
+        requestedStoreStableId,
+      );
       for (const mapping of mappings) {
         try {
           await this.updateUberItemAvailability(
@@ -92,8 +93,9 @@ export class UberMenuAvailabilityUseCase implements UberMenuAvailabilityPort {
     >[0],
   ) {
     const requestedStoreStableId = input.storeStableId?.trim() || undefined;
-    const mappings =
-      await this.queries.findProvisionedStores(requestedStoreStableId);
+    const mappings = await this.queries.findProvisionedStores(
+      requestedStoreStableId,
+    );
     const stores: UberAvailabilitySyncResult['stores'] = [];
     for (const mapping of mappings) {
       try {

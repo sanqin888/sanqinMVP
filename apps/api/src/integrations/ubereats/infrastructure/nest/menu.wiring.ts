@@ -378,7 +378,8 @@ export function createMenuWiring(): Provider[] {
         commands: UberMenuAvailabilityCommandPort,
         gateway: UberMenuGatewayPort,
         telemetry: UberTelemetryPort,
-      ) => new UberMenuAvailabilityUseCase(queries, commands, gateway, telemetry),
+      ) =>
+        new UberMenuAvailabilityUseCase(queries, commands, gateway, telemetry),
     },
     {
       provide: UBER_MENU_AVAILABILITY_PORT,

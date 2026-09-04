@@ -151,8 +151,8 @@ export class CatalogUberAvailabilityOrchestrationService {
         isAvailable,
         publishable: Boolean(
           snapshot &&
-            snapshot.visibility === 'PUBLIC' &&
-            snapshot.publishToUberEats,
+          snapshot.visibility === 'PUBLIC' &&
+          snapshot.publishToUberEats,
         ),
         suspendUntil,
       });
