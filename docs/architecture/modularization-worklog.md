@@ -490,8 +490,8 @@ entry remains at CI/MERGED rather than VERIFIED.
 
 ### 2026-09-04 — Phase 4 planning baseline synchronized
 
-**PR/SHA:** local branch `docs/phase4-plan-status-sync` pending review  
-**State:** LOCAL  
+**PR/SHA:** PR #2161 / `docs/phase4-plan-status-sync`  
+**State:** SOURCE / CI PENDING  
 **Result:** synchronized the post-Phase-3 architecture state and recorded the next
 formal phase as **Phase 4 — Identity / Customer / Benefits + Messaging Boundary
 Contraction**. The plan removes the former Store pause-codec Slice 0 item because PR
