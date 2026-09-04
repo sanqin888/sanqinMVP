@@ -3,7 +3,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AppLogger } from '../common/app-logger';
 import { DateTime } from 'luxon';
-import { parseAutoPauseReason } from '../pos/pos-store-status.service';
+import { parseAutoPauseReason } from './temporary-closure-reason';
 import {
   BRAND_STORE_CONFIG_READER,
   STORE_SCHEDULE_READER,

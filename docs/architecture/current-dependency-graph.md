@@ -8,18 +8,16 @@ Slice 2C remains explicitly DEFERRED and is not represented as completed by this
 closure.
 
 This snapshot records the **remaining direct cross-context import debt** enforced
-by `tools/architecture/context-baseline.json` after the merged Phase 3 Slice 5B Daily
-Special -> Offers ownership contraction. Slice 5B moves persistence/policy behind
-public owner/application surfaces without increasing the direct-debt baseline;
-CI #5055 passed the authoritative architecture gate.
-Test files and registered composition roots are excluded. Imports through
-`public-api`, `contracts`, `ports`, `@shared/foundation`, `@shared/menu`, or
-`@shared/order` are approved public-contract traffic and do not consume the debt
-counts below.
+by `tools/architecture/context-baseline.json` after Phase 3 closure plus the local
+post-closeout ownership/scanner hardening tail. Test files and registered composition
+roots are excluded. Imports through `public-api`, `contracts`, `ports`,
+`@shared/foundation`, `@shared/menu`, or `@shared/order` are approved public-contract
+traffic and do not consume the debt counts below.
 
-The CI architecture scanner is authoritative for the exact source scan. This
-file is the human-readable working snapshot and must be refreshed again at each
-Phase 3 slice boundary.
+The CI architecture scanner is authoritative for the exact source scan. This file is
+the human-readable working snapshot and must be refreshed at every modularization
+boundary change. The post-closeout tail below is currently source-only and still awaits
+user review plus GitHub Actions validation.
 
 ## Phase 3 Slice 6 cycle audit and contraction
 
@@ -44,6 +42,27 @@ GitHub Actions CI #5070 passed on final PR head `8547b46c`; the Architecture gat
 no new direct pair and no new/expanded public-contract cycle. PR #2157 merged to `dev`
 as `b91afb6a`, and the affected Uber availability flows were then actively verified.
 No local scanner execution is claimed here.
+
+## Post-closeout tail — monotonic guards and Store temporary-closure ownership
+
+Local source state on `refactor/phase3-tail-cycle-store-status` contracts the remaining
+`brand-store -> store-operations-pos-print` direct import from `1 -> 0`. The timed
+`temporaryCloseReason` codec (`buildAutoPauseReason` / `parseAutoPauseReason`) is now
+implemented once under Brand/Store and exposed through `store/public-api.ts`; POS uses
+that owner surface instead of owning the persistence format, while `StoreStatusService`
+no longer imports POS internals. Existing encoded values and pause/resume semantics are
+unchanged, with focused codec characterization coverage added.
+
+The architecture scanner is hardened at the same time so legacy debt can only move
+monotonically downward. A direct-import allowance whose observed count falls below its
+baseline now fails as stale until the same PR lowers/removes the allowance. Likewise a
+`legacyPublicCycleComponents` entry must exactly match the currently detected SCC
+contexts and internal public edges; if the SCC shrinks or disappears, the old superset
+baseline fails as stale. This prevents a previously removed direct edge or public-cycle
+edge from being re-authorized later by an obsolete baseline. Initial CI #5078 exercised
+that guard and exposed seven stale numeric allowances; those are now normalized to the
+CI-observed current counts above and a replacement CI run is pending. No local
+scanner/lint/build/test run is claimed.
 
 ## Context map
 
@@ -71,12 +90,12 @@ pair fails CI.
 | Source | Remaining direct targets |
 |---|---|
 | architecture-foundation | none |
-| brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4; store-operations-pos-print 1 |
+| brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 19; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 9; brand-store 2; identity-customer-benefits 11; messaging-notifications 8; runtime-data-ci-ops 14; store-operations-pos-print 6 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 24; runtime-data-ci-ops 18; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 3; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 10; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 8 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 5; runtime-data-ci-ops 10; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |

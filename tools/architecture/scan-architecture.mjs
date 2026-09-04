@@ -268,6 +268,11 @@ const legacyPublicCycleComponents = Array.isArray(
         Array.isArray(baseline?.contexts) && Array.isArray(baseline?.edges),
     )
   : [];
+const sameStringSet = (left, right) => {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((value) => rightSet.has(value));
+};
 const isWithinLegacyPublicCycleBaseline = (cycle) =>
   legacyPublicCycleComponents.some((baseline) => {
     const baselineContexts = new Set(baseline.contexts);
@@ -277,8 +282,17 @@ const isWithinLegacyPublicCycleBaseline = (cycle) =>
       cycle.edges.every((edge) => baselineEdges.has(edge))
     );
   });
+const matchesLegacyPublicCycleBaseline = (cycle, baseline) =>
+  sameStringSet(cycle.contexts, baseline.contexts) &&
+  sameStringSet(cycle.edges, baseline.edges);
 const newPublicContractCycles = publicContractCycles.filter(
   (cycle) => !isWithinLegacyPublicCycleBaseline(cycle),
+);
+const staleLegacyPublicCycleComponents = legacyPublicCycleComponents.filter(
+  (baseline) =>
+    !publicContractCycles.some((cycle) =>
+      matchesLegacyPublicCycleBaseline(cycle, baseline),
+    ),
 );
 
 const failures = [];
@@ -972,8 +986,13 @@ if (brandStoreCanonicalConfigOwnership) {
   const publicSymbols = brandStoreCanonicalConfigOwnership.publicSymbols ?? [];
   const ownedIdentitySymbols =
     brandStoreCanonicalConfigOwnership.ownedIdentitySymbols ?? [];
+  const ownedTemporaryClosureReasonSymbols =
+    brandStoreCanonicalConfigOwnership.ownedTemporaryClosureReasonSymbols ?? [];
   const identityImplementation = toPosix(
     brandStoreCanonicalConfigOwnership.identityImplementation ?? '',
+  );
+  const temporaryClosureReasonImplementation = toPosix(
+    brandStoreCanonicalConfigOwnership.temporaryClosureReasonImplementation ?? '',
   );
   const contractImplementation = toPosix(
     brandStoreCanonicalConfigOwnership.contractImplementation ?? '',
@@ -1097,6 +1116,7 @@ if (brandStoreCanonicalConfigOwnership) {
   }
   for (const internalPath of [
     identityImplementation,
+    temporaryClosureReasonImplementation,
     contractImplementation,
     compositionModule,
   ]) {
@@ -1171,6 +1191,44 @@ if (brandStoreCanonicalConfigOwnership) {
       if (declaresSymbol(source, symbol)) {
         failures.push(
           `configured store identity must have one Brand/Store implementation owner: ${sourcePath} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  const temporaryClosureReasonImplementationPath = join(
+    REPOSITORY_ROOT,
+    temporaryClosureReasonImplementation,
+  );
+  if (
+    !temporaryClosureReasonImplementation ||
+    !existsSync(temporaryClosureReasonImplementationPath)
+  ) {
+    failures.push(
+      `temporary-closure reason implementation missing: ${temporaryClosureReasonImplementation || '<missing>'}`,
+    );
+  } else {
+    const temporaryClosureReasonSource = readFileSync(
+      temporaryClosureReasonImplementationPath,
+      'utf8',
+    );
+    for (const symbol of ownedTemporaryClosureReasonSymbols) {
+      if (!declaresSymbol(temporaryClosureReasonSource, symbol)) {
+        failures.push(
+          `temporary-closure reason implementation missing symbol: ${temporaryClosureReasonImplementation} -> ${symbol}`,
+        );
+      }
+    }
+  }
+
+  for (const absolutePath of sourceFiles) {
+    const sourcePath = repositoryPath(absolutePath);
+    if (sourcePath === temporaryClosureReasonImplementation) continue;
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const symbol of ownedTemporaryClosureReasonSymbols) {
+      if (declaresSymbol(source, symbol)) {
+        failures.push(
+          `temporary-closure reason codec must have one Brand/Store implementation owner: ${sourcePath} -> ${symbol}`,
         );
       }
     }
@@ -2946,6 +3004,29 @@ for (const [edge, count] of [...directCounts.entries()].sort()) {
   }
 }
 
+for (const [edge, limit] of Object.entries(config.legacyDirectImportLimits)) {
+  const current = directCounts.get(edge) ?? 0;
+  if (current < limit) {
+    failures.push(
+      'legacy direct-import baseline is stale; lower/remove the allowance: ' +
+        edge +
+        ' baseline=' +
+        limit +
+        ' current=' +
+        current,
+    );
+  }
+}
+
+for (const baseline of staleLegacyPublicCycleComponents) {
+  failures.push(
+    'legacy public-cycle baseline is stale; contract it to the exact current SCC or remove it: contexts=' +
+      baseline.contexts.join(', ') +
+      '; edges=' +
+      baseline.edges.join(', '),
+  );
+}
+
 for (const cycle of newPublicContractCycles) {
   failures.push(
     'new or expanded public-contract context cycle detected: contexts=' +
@@ -2999,6 +3080,7 @@ const report = {
   publicContractCycles,
   newPublicContractCycles,
   legacyPublicCycleComponents,
+  staleLegacyPublicCycleComponents,
   webBrowserDirectFetch: Object.fromEntries(
     [...browserDirectFetchCounts.entries()].sort(),
   ),

@@ -457,6 +457,35 @@ therefore production verified and closed.
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
+### 2026-09-04 — Phase 3 post-closeout tail: monotonic cycle baseline + Store pause codec
+
+**PR/SHA:** PR #2160; initial head `b454caa7`; follow-up head pending after CI baseline normalization  
+**State:** SOURCE / CI RERUN PENDING  
+**Result:** completed the two small governance tails recorded after Slice 6 without
+reopening the closed Phase 3 scope. Brand/Store now owns the timed temporary-closure
+reason codec (`buildAutoPauseReason` / `parseAutoPauseReason`) and exposes it through
+`store/public-api.ts`; POS consumes that public owner surface and `StoreStatusService`
+no longer imports POS internals. The exact persisted `__AUTO_UNTIL__` representation,
+expiry CAS, POS broadcast and Uber store-status behavior are intentionally unchanged,
+with focused codec characterization coverage added. This contracts
+`brand-store -> store-operations-pos-print` direct debt from `1 -> 0` and removes the
+allowance from `context-baseline.json`.
+
+The architecture scanner now makes debt baselines monotonic: any observed reduction in
+a numeric direct-import allowance fails until the same change lowers/removes that
+allowance, and every `legacyPublicCycleComponents` baseline must exactly match the
+current detected SCC contexts/internal public edges. A shrunk, split or removed SCC
+therefore forces baseline contraction instead of leaving an obsolete superset that
+could later authorize a restored edge. `--report` exposes stale SCC baselines as well.
+No package/lockfile, Prisma schema/migration, HTTP contract, Web Clover path or Uber
+runtime/wire behavior is changed. Initial GitHub Actions CI #5078 failed exactly at the
+new stale-baseline guard and exposed seven pre-existing numeric allowances that had
+already contracted in source; the follow-up normalizes those baselines to CI-observed
+current counts and refreshes the human dependency graph before rerunning CI.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`,
+`tools/architecture/context-baseline.json`.
+
 ## Current position
 
 - Phase 1: closed.
