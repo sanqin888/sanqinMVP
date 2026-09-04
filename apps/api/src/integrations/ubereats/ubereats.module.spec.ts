@@ -1,6 +1,7 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { AuthModule } from '../../auth/auth.module';
 import { MessagingModule } from '../../messaging/messaging.module';
+import { CatalogAvailabilityModule } from '../../menu/public-api';
 import {
   ORDER_INGESTION_PROVIDER,
   OrdersModule,
@@ -133,7 +134,11 @@ describe('UberEats compositions', () => {
     );
     const imports = workerRuntime.imports ?? [];
 
-    expect(imports).toEqual([PrismaModule, BrandStoreConfigModule]);
+    expect(imports).toEqual([
+      PrismaModule,
+      BrandStoreConfigModule,
+      CatalogAvailabilityModule,
+    ]);
     expect(imports).not.toContain(AuthModule);
     expect(imports).not.toContain(OrdersModule);
     expect(imports).not.toContain(MessagingModule);
