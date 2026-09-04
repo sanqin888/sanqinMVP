@@ -69,14 +69,16 @@ export class CatalogOffersMenuOrchestrationService {
   async upsertDailySpecials(
     payload: DailySpecialUpsertPayload,
   ): Promise<{ specials: DailySpecialDto[] }> {
-    const writableCatalogItems = await this.catalog.getMenuItemPricingSnapshots();
+    const writableCatalogItems =
+      await this.catalog.getMenuItemPricingSnapshots();
     await this.dailySpecialOffers.upsertDailySpecials(
       payload,
       writableCatalogItems,
     );
-    const readableCatalogItems = await this.catalog.getMenuItemPricingSnapshots({
-      includeDeleted: true,
-    });
+    const readableCatalogItems =
+      await this.catalog.getMenuItemPricingSnapshots({
+        includeDeleted: true,
+      });
     return this.dailySpecialOffers.getDailySpecials(
       undefined,
       readableCatalogItems,

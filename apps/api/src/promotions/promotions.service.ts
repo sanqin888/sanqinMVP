@@ -115,9 +115,7 @@ export class PromotionsService
     const specials = await this.prisma.menuDailySpecial.findMany({
       where: {
         deletedAt: null,
-        ...(weekday
-          ? { weekday }
-          : { weekday: { in: [1, 2, 3, 4, 5, 6, 7] } }),
+        ...(weekday ? { weekday } : { weekday: { in: [1, 2, 3, 4, 5, 6, 7] } }),
       },
       orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
@@ -189,7 +187,10 @@ export class PromotionsService
         isEnabled: special.isEnabled,
         sortOrder: special.sortOrder,
         basePriceCents,
-        effectivePriceCents: resolveEffectivePriceCents(basePriceCents, special),
+        effectivePriceCents: resolveEffectivePriceCents(
+          basePriceCents,
+          special,
+        ),
       });
     }
 

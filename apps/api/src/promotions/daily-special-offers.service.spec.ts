@@ -68,9 +68,9 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
   it('owns store-time activation without reading Catalog persistence', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-31T04:30:00.000Z'));
-    const findMany = jest.fn().mockResolvedValue([
-      { ...baseSpecial, weekday: 7 },
-    ]);
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ ...baseSpecial, weekday: 7 }]);
     const prisma = { menuDailySpecial: { findMany } };
     const brandStoreConfigReader = {
       getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
@@ -138,9 +138,11 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
       menuDailySpecial: {
-        findMany: jest.fn().mockResolvedValue([
-          { stableId: 'old-special', weekday: 1, itemStableId: 'item-old' },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { stableId: 'old-special', weekday: 1, itemStableId: 'item-old' },
+          ]),
         create,
         update,
         updateMany,
@@ -148,7 +150,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     };
     const transaction = jest
       .fn()
-      .mockImplementation(async (callback: (client: typeof tx) => unknown) =>
+      .mockImplementation((callback: (client: typeof tx) => unknown) =>
         callback(tx),
       );
     const service = new PromotionsService(
@@ -174,23 +176,41 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
       [{ itemStableId: 'item-1', basePriceCents: 1099 }],
     );
 
-    expect(updateMany).toHaveBeenCalledWith({
-      where: { stableId: { in: ['old-special'] } },
-      data: { deletedAt: expect.any(Date) },
+    const updateManyArg = updateMany.mock.calls[0]?.[0] as
+      | {
+          where: { stableId: { in: string[] } };
+          data: { deletedAt: Date };
+        }
+      | undefined;
+    expect(updateManyArg?.where).toEqual({
+      stableId: { in: ['old-special'] },
     });
+    expect(updateManyArg?.data.deletedAt).toBeInstanceOf(Date);
     expect(update).not.toHaveBeenCalled();
-    expect(create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        stableId: 'new-special',
-        weekday: 1,
-        itemStableId: 'item-1',
-        pricingMode: 'OVERRIDE_PRICE',
-        overridePriceCents: 799,
-        disallowCoupons: true,
-        isEnabled: true,
-        sortOrder: 2,
-        deletedAt: null,
-      }),
-    });
+
+    const createArg = create.mock.calls[0]?.[0] as
+      | {
+          data: {
+            stableId?: string;
+            weekday: number;
+            itemStableId: string;
+            pricingMode: string;
+            overridePriceCents: number | null;
+            disallowCoupons: boolean;
+            isEnabled: boolean;
+            sortOrder: number;
+            deletedAt: Date | null;
+          };
+        }
+      | undefined;
+    expect(createArg?.data.stableId).toBe('new-special');
+    expect(createArg?.data.weekday).toBe(1);
+    expect(createArg?.data.itemStableId).toBe('item-1');
+    expect(createArg?.data.pricingMode).toBe('OVERRIDE_PRICE');
+    expect(createArg?.data.overridePriceCents).toBe(799);
+    expect(createArg?.data.disallowCoupons).toBe(true);
+    expect(createArg?.data.isEnabled).toBe(true);
+    expect(createArg?.data.sortOrder).toBe(2);
+    expect(createArg?.data.deletedAt).toBeNull();
   });
 });

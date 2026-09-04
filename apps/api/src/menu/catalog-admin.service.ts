@@ -27,7 +27,10 @@ export type CatalogAdminMenuItemDto = Omit<
   'effectivePriceCents' | 'activeSpecial'
 >;
 
-export type CatalogAdminMenuCategoryDto = Omit<AdminMenuCategoryDto, 'items'> & {
+export type CatalogAdminMenuCategoryDto = Omit<
+  AdminMenuCategoryDto,
+  'items'
+> & {
   items: CatalogAdminMenuItemDto[];
 };
 

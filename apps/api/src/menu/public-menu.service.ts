@@ -273,9 +273,7 @@ export class PublicMenuService {
     });
 
     const publicResultItemStableIds = new Set(
-      result.flatMap((category) =>
-        category.items.map((item) => item.stableId),
-      ),
+      result.flatMap((category) => category.items.map((item) => item.stableId)),
     );
     const dailySpecials = activeDailySpecials.filter((special) =>
       publicResultItemStableIds.has(special.itemStableId),
