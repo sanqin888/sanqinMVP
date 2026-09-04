@@ -385,10 +385,14 @@ Slice 6 therefore adds a Tarjan strongly-connected-component gate over public
 contract dependency pairs. To avoid turning known legacy deep-import debt into an
 unrelated all-red migration, a pair that still has an explicit
 `legacyDirectImportLimits` allowance remains grandfathered by that existing debt
-record. Public-only dependency pairs without such legacy debt are cycle-checked; as
-a direct allowance is removed later, its public direction automatically enters the
-cycle gate. The scanner report also exposes detected public-contract cycle
-components and their edges.
+record. The first remote run also exposed a pre-existing four-context public SCC
+(Catalog / Orders / Identity / Messaging) that predates Slice 6. That component is
+recorded in `legacyPublicCycleComponents` as contraction-only baseline debt: its
+current contexts/edges may disappear, but a new member or a new internal edge fails
+CI. Public-only cycles outside that baseline fail immediately; as a direct allowance
+is removed later, its public direction automatically enters the cycle gate. The
+scanner report exposes all detected public-contract cycles, the legacy baseline, and
+new/expanded cycles separately.
 
 The identified Catalog <-> External Channels public cycle is now source-contracted
 under the separately authorized boundary change. Catalog availability orchestration

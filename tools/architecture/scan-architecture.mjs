@@ -260,6 +260,26 @@ const publicContractCycles = findStronglyConnectedComponents(
       .sort();
     return { contexts, edges };
   });
+const legacyPublicCycleComponents = Array.isArray(
+  config.legacyPublicCycleComponents,
+)
+  ? config.legacyPublicCycleComponents.filter(
+      (baseline) =>
+        Array.isArray(baseline?.contexts) && Array.isArray(baseline?.edges),
+    )
+  : [];
+const isWithinLegacyPublicCycleBaseline = (cycle) =>
+  legacyPublicCycleComponents.some((baseline) => {
+    const baselineContexts = new Set(baseline.contexts);
+    const baselineEdges = new Set(baseline.edges);
+    return (
+      cycle.contexts.every((context) => baselineContexts.has(context)) &&
+      cycle.edges.every((edge) => baselineEdges.has(edge))
+    );
+  });
+const newPublicContractCycles = publicContractCycles.filter(
+  (cycle) => !isWithinLegacyPublicCycleBaseline(cycle),
+);
 
 const failures = [];
 
@@ -2861,6 +2881,49 @@ if (requireClosedCompatibility('brand-store.default-store-identity.v1')) {
 if (config.contexts.length !== 12 || new Set(config.contexts.map(({ id }) => id)).size !== 12) {
   failures.push('context-baseline.json must define exactly 12 unique contexts');
 }
+if (
+  config.legacyPublicCycleComponents !== undefined &&
+  !Array.isArray(config.legacyPublicCycleComponents)
+) {
+  failures.push('legacyPublicCycleComponents must be an array when configured');
+}
+if (
+  Array.isArray(config.legacyPublicCycleComponents) &&
+  config.legacyPublicCycleComponents.length !== legacyPublicCycleComponents.length
+) {
+  failures.push(
+    'each legacy public-cycle baseline must define contexts and edges arrays',
+  );
+}
+for (const baseline of legacyPublicCycleComponents) {
+  const baselineContexts = new Set(baseline.contexts);
+  if (
+    baselineContexts.size !== baseline.contexts.length ||
+    baseline.contexts.some((context) => !contextIds.includes(context))
+  ) {
+    failures.push(
+      'legacy public-cycle baseline contains duplicate or unknown contexts: ' +
+        baseline.contexts.join(', '),
+    );
+  }
+  if (typeof baseline.reason !== 'string' || !baseline.reason.trim()) {
+    failures.push('legacy public-cycle baseline must include a reason');
+  }
+  for (const edge of baseline.edges) {
+    const { source, target } = parseContextEdge(edge);
+    if (
+      !source ||
+      !target ||
+      !baselineContexts.has(source) ||
+      !baselineContexts.has(target) ||
+      legacyDirectEdges.has(edge)
+    ) {
+      failures.push(
+        'invalid legacy public-cycle baseline edge: ' + edge,
+      );
+    }
+  }
+}
 if (unknownSourceRoots.size > 0) {
   failures.push(
     'unclassified source roots: ' + [...unknownSourceRoots].sort().join(', '),
@@ -2883,9 +2946,9 @@ for (const [edge, count] of [...directCounts.entries()].sort()) {
   }
 }
 
-for (const cycle of publicContractCycles) {
+for (const cycle of newPublicContractCycles) {
   failures.push(
-    'public-contract context cycle detected: contexts=' +
+    'new or expanded public-contract context cycle detected: contexts=' +
       cycle.contexts.join(', ') +
       '; edges=' +
       cycle.edges.join(', '),
@@ -2934,6 +2997,8 @@ const report = {
     [...publicCounts.entries()].sort(),
   ),
   publicContractCycles,
+  newPublicContractCycles,
+  legacyPublicCycleComponents,
   webBrowserDirectFetch: Object.fromEntries(
     [...browserDirectFetchCounts.entries()].sort(),
   ),

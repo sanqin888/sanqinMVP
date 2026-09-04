@@ -429,10 +429,14 @@ cycle across the Slice 5 availability orchestration and Uber Catalog reader wiri
 The scanner now builds the public-contract context graph and uses a Tarjan
 strongly-connected-component check. Public pairs that still carry a registered
 legacy direct-import allowance remain governed by the existing debt baseline;
-public-only pairs without such debt cannot form a cycle, and removing a future
-legacy direct allowance automatically brings that direction under the cycle gate.
-`--report` also exposes detected cycle components/edges; no new compatibility or
-cycle allowlist was added.
+otherwise public cycles are checked against the explicit contraction-only SCC
+baseline, and removing a future direct allowance automatically brings that direction
+under the cycle gate.
+`--report` also exposes detected cycle components/edges. CI #5066's first Architecture
+run then surfaced a pre-Slice-6 Catalog / Orders / Identity / Messaging public SCC.
+That historical SCC is recorded in `legacyPublicCycleComponents` as explicit
+contraction-only architecture debt rather than a compatibility waiver: its existing
+members/edges may shrink, but any new member or internal edge fails the cycle gate.
 
 The authorized contraction removes the reverse Uber -> Catalog edge instead of hiding
 it. Catalog orchestration now passes publication intent and suspend-window facts into

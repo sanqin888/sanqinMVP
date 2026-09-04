@@ -33,8 +33,12 @@ availability command, while Uber menu wiring/API/worker composition no longer im
 Catalog availability surfaces. The reverse `external-channels -> catalog-pricing-offers`
 public edge is therefore removed in source; the intended remaining availability
 coordination direction is `catalog-pricing-offers -> external-channels` through the
-Uber public capability. GitHub Actions remains authoritative for the post-change graph
-and cycle result; no local scanner execution is claimed here.
+Uber public capability. The first remote cycle-gate run additionally surfaced a
+pre-existing public SCC among Catalog / Orders / Identity / Messaging. Because those
+edges predate Slice 6, they are now captured as `legacyPublicCycleComponents`
+contraction-only debt: they may shrink but cannot gain a new context or internal edge.
+GitHub Actions remains authoritative for the post-change graph and cycle result; no
+local scanner execution is claimed here.
 
 ## Context map
 
