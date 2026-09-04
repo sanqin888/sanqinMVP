@@ -130,6 +130,63 @@ const unknownSourceRoots = new Set();
 const compatAnnotations = new Set();
 
 const increment = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
+const parseContextEdge = (edge) => {
+  const [source, target] = edge.split(' -> ');
+  return { source, target };
+};
+const findStronglyConnectedComponents = (nodes, edges) => {
+  const adjacency = new Map(nodes.map((node) => [node, []]));
+  for (const edge of edges) {
+    const { source, target } = parseContextEdge(edge);
+    adjacency.get(source)?.push(target);
+  }
+
+  let nextIndex = 0;
+  const indexByNode = new Map();
+  const lowLinkByNode = new Map();
+  const stack = [];
+  const onStack = new Set();
+  const components = [];
+
+  const visit = (node) => {
+    indexByNode.set(node, nextIndex);
+    lowLinkByNode.set(node, nextIndex);
+    nextIndex += 1;
+    stack.push(node);
+    onStack.add(node);
+
+    for (const target of adjacency.get(node) ?? []) {
+      if (!indexByNode.has(target)) {
+        visit(target);
+        lowLinkByNode.set(
+          node,
+          Math.min(lowLinkByNode.get(node), lowLinkByNode.get(target)),
+        );
+      } else if (onStack.has(target)) {
+        lowLinkByNode.set(
+          node,
+          Math.min(lowLinkByNode.get(node), indexByNode.get(target)),
+        );
+      }
+    }
+
+    if (lowLinkByNode.get(node) !== indexByNode.get(node)) return;
+
+    const component = [];
+    while (stack.length > 0) {
+      const member = stack.pop();
+      onStack.delete(member);
+      component.push(member);
+      if (member === node) break;
+    }
+    components.push(component.sort());
+  };
+
+  for (const node of nodes) {
+    if (!indexByNode.has(node)) visit(node);
+  }
+  return components;
+};
 const hasUseClientDirective = (source) =>
   /(?:^|\n)\s*['"]use client['"]\s*;/.test(source.slice(0, 1024));
 const countDirectFetchCalls = (source) =>
@@ -182,6 +239,27 @@ for (const absolutePath of sourceFiles) {
     increment(publicSurface ? publicCounts : directCounts, edge);
   }
 }
+
+const legacyDirectEdges = new Set(Object.keys(config.legacyDirectImportLimits));
+const cycleGuardEdges = [...publicCounts.keys()].filter(
+  (edge) => !legacyDirectEdges.has(edge),
+);
+const contextIds = config.contexts.map(({ id }) => id);
+const publicContractCycles = findStronglyConnectedComponents(
+  contextIds,
+  cycleGuardEdges,
+)
+  .filter((component) => component.length > 1)
+  .map((contexts) => {
+    const members = new Set(contexts);
+    const edges = cycleGuardEdges
+      .filter((edge) => {
+        const { source, target } = parseContextEdge(edge);
+        return members.has(source) && members.has(target);
+      })
+      .sort();
+    return { contexts, edges };
+  });
 
 const failures = [];
 
@@ -2805,6 +2883,15 @@ for (const [edge, count] of [...directCounts.entries()].sort()) {
   }
 }
 
+for (const cycle of publicContractCycles) {
+  failures.push(
+    'public-contract context cycle detected: contexts=' +
+      cycle.contexts.join(', ') +
+      '; edges=' +
+      cycle.edges.join(', '),
+  );
+}
+
 const requiredFields = registry.requiredFields ?? [];
 const entries = [...(registry.active ?? []), ...(registry.closed ?? [])];
 const registeredIds = new Set();
@@ -2846,6 +2933,7 @@ const report = {
   publicContractImports: Object.fromEntries(
     [...publicCounts.entries()].sort(),
   ),
+  publicContractCycles,
   webBrowserDirectFetch: Object.fromEntries(
     [...browserDirectFetchCounts.entries()].sort(),
   ),

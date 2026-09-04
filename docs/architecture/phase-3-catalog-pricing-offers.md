@@ -369,8 +369,31 @@ Actions is the authoritative graph/test gate after review.
 
 ### Slice 6 — Phase 3 closeout
 
+Status: **IN PROGRESS — cycle guard/source audit**.
+
 Refresh the dependency graph and compatibility records, verify no new direct
 context pairs or cycles were introduced, and document the next phase boundary.
+
+The closeout audit found that the existing central scanner counted public-contract
+imports but did not evaluate them as a directed graph. That allowed Slice 5 to form
+a hidden public-surface cycle: Catalog application orchestration imports the Uber
+availability public capability, while Uber menu wiring imports the Catalog
+availability public reader. Both directions are valid surfaces individually, so the
+old direct-debt gate remained green.
+
+Slice 6 therefore adds a Tarjan strongly-connected-component gate over public
+contract dependency pairs. To avoid turning known legacy deep-import debt into an
+unrelated all-red migration, a pair that still has an explicit
+`legacyDirectImportLimits` allowance remains grandfathered by that existing debt
+record. Public-only dependency pairs without such legacy debt are cycle-checked; as
+a direct allowance is removed later, its public direction automatically enters the
+cycle gate. The scanner report also exposes detected public-contract cycle
+components and their edges.
+
+The currently identified Catalog <-> External Channels public cycle remains a
+Phase 3 closeout blocker and must be contracted before Phase 3 is marked CLOSED;
+this scanner batch intentionally does not move that business/orchestration ownership
+without a separately reviewed boundary change.
 
 ## Deferred items that are not Slice 1 scope
 

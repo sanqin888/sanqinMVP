@@ -13,6 +13,13 @@ node tools/architecture/scan-architecture.mjs --report
 - no unclassified production source roots;
 - no new direct cross-context dependency pair;
 - no increase in a recorded direct-import allowance;
+- no strongly connected cycle made only from public-contract dependency pairs that
+  are no longer grandfathered by a recorded legacy direct-import allowance. The
+  cycle graph includes `public-api`, `contracts`, `ports`, and registered public
+  aliases, so moving both directions behind public surfaces cannot hide an A -> B -> A
+  dependency. Existing direct-debt pairs remain governed by their numeric baseline;
+  when that debt allowance is removed, the public direction automatically becomes
+  subject to the cycle gate;
 - browser/server direct `fetch` only at canonical transports or explicitly
   recorded raw/protocol exceptions, with stale allowances rejected; POS
   session/login has no direct-fetch allowance after its canonical-client cutover,
