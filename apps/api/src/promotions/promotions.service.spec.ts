@@ -153,13 +153,18 @@ describe('PromotionsService PromotionRule management persistence', () => {
     };
     const findMany = jest.fn().mockResolvedValue([persistedRule]);
     const findFirst = jest.fn().mockResolvedValue({ id: persistedRule.id });
-    const update = jest.fn().mockImplementation(
-      (args: { data: { status: string; deletedAt: Date } }) => ({
-        ...persistedRule,
-        status: args.data.status,
-        deletedAt: args.data.deletedAt,
-      }),
-    );
+    const update = jest
+      .fn()
+      .mockImplementation(
+        (args: {
+          where: { id: string };
+          data: { status: string; deletedAt: Date };
+        }) => ({
+          ...persistedRule,
+          status: args.data.status,
+          deletedAt: args.data.deletedAt,
+        }),
+      );
     const service = new PromotionsService(
       {
         promotionRule: { findMany, findFirst, update },
@@ -174,23 +179,18 @@ describe('PromotionsService PromotionRule management persistence', () => {
 
     expect(findMany).toHaveBeenCalledWith({
       where: { deletedAt: null },
-      orderBy: [
-        { status: 'asc' },
-        { priority: 'asc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ status: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
     });
     expect(findFirst).toHaveBeenCalledWith({
       where: { stableId: persistedRule.stableId, deletedAt: null },
       select: { id: true },
     });
-    expect(update).toHaveBeenCalledWith({
-      where: { id: persistedRule.id },
-      data: {
-        deletedAt: expect.any(Date),
-        status: 'ENDED',
-      },
-    });
+    expect(update).toHaveBeenCalledTimes(1);
+    const updateArgs = update.mock.calls[0]?.[0];
+    expect(updateArgs).toBeDefined();
+    expect(updateArgs?.where).toEqual({ id: persistedRule.id });
+    expect(updateArgs?.data.status).toBe('ENDED');
+    expect(updateArgs?.data.deletedAt).toBeInstanceOf(Date);
     expect(deleted).toEqual(expect.objectContaining({ status: 'ENDED' }));
     expect(deleted).not.toHaveProperty('deletedAt');
   });

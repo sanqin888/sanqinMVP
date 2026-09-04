@@ -35,11 +35,7 @@ const STACKING_POLICIES = new Set<PromotionRuleStackingPolicy>([
   'EXCLUSIVE',
   'STACKABLE',
 ]);
-const CHANNELS = new Set<PromotionRuleChannel>([
-  'web',
-  'in_store',
-  'ubereats',
-]);
+const CHANNELS = new Set<PromotionRuleChannel>(['web', 'in_store', 'ubereats']);
 
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -180,7 +176,9 @@ function normalizeConfig(
       const getItemStableIds = requireStringArray(value, 'getItemStableIds');
       const buySet = new Set(buyItemStableIds);
       const getSet = new Set(getItemStableIds);
-      const overlapCount = [...buySet].filter((item) => getSet.has(item)).length;
+      const overlapCount = [...buySet].filter((item) =>
+        getSet.has(item),
+      ).length;
       const sameTargets =
         buySet.size === getSet.size && overlapCount === buySet.size;
       if (overlapCount > 0 && !sameTargets) {
@@ -353,9 +351,7 @@ function normalizePayload(
 }
 
 @Injectable()
-export class PromotionRuleManagementService
-  implements PromotionRuleManagementPort
-{
+export class PromotionRuleManagementService implements PromotionRuleManagementPort {
   constructor(private readonly promotions: PromotionsService) {}
 
   listRules(): Promise<PromotionRuleManagementDto[]> {
@@ -390,7 +386,8 @@ export class PromotionRuleManagementService
   }
 
   async deleteRule(stableId: string): Promise<PromotionRuleManagementDto> {
-    const rule = await this.promotions.deletePromotionRuleForManagement(stableId);
+    const rule =
+      await this.promotions.deletePromotionRuleForManagement(stableId);
     if (!rule) throw new NotFoundException('promotion rule not found');
     return rule;
   }
