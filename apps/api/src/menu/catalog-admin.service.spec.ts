@@ -48,7 +48,6 @@ describe('CatalogAdminService availability persistence', () => {
             update,
           },
         } as never,
-        {} as never,
       );
 
       await service.setItemAvailability('dish-1', mode);
@@ -74,7 +73,6 @@ describe('CatalogAdminService availability reader', () => {
     });
     const service = new CatalogAdminService(
       { menuItem: { findFirst } } as never,
-      {} as never,
     );
 
     await expect(
@@ -105,7 +103,6 @@ describe('CatalogAdminService availability reader', () => {
     });
     const service = new CatalogAdminService(
       { menuOptionTemplateChoice: { findFirst } } as never,
-      {} as never,
     );
 
     await expect(
@@ -117,41 +114,44 @@ describe('CatalogAdminService availability reader', () => {
   });
 });
 
-describe('CatalogAdminService daily specials weekdays', () => {
-  it('loads specials for all seven weekdays when no weekday is specified', async () => {
-    const findMany = jest.fn().mockResolvedValue([]);
-    const service = new CatalogAdminService(
-      { menuDailySpecial: { findMany } } as never,
-      {} as never,
-    );
+describe('CatalogAdminService pricing snapshots', () => {
+  it('keeps the full Admin menu snapshot free of Offers-owned fields and persistence', async () => {
+    const prisma = {
+      menuCategory: { findMany: jest.fn().mockResolvedValue([]) },
+      menuOptionGroupTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      menuPackagingType: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new CatalogAdminService(prisma as never);
 
-    await service.getDailySpecials();
-
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          deletedAt: null,
-          weekday: { in: [1, 2, 3, 4, 5, 6, 7] },
-        },
-      }),
-    );
+    await expect(service.getFullMenu()).resolves.toEqual({
+      categories: [],
+      templatesLite: [],
+      packagingTypes: [],
+    });
+    expect('menuDailySpecial' in prisma).toBe(false);
   });
 
-  it.each([6, 7])('accepts weekend weekday %i', async (weekday) => {
-    const findMany = jest.fn().mockResolvedValue([]);
-    const service = new CatalogAdminService(
-      { menuDailySpecial: { findMany } } as never,
-      {} as never,
-    );
+  it('projects menu item stable ids and base prices without reading Offers persistence', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      { stableId: 'item-1', basePriceCents: 1299 },
+    ]);
+    const service = new CatalogAdminService({
+      menuItem: { findMany },
+    } as never);
 
-    await expect(service.getDailySpecials(weekday)).resolves.toEqual({
-      specials: [],
+    await expect(service.getMenuItemPricingSnapshots()).resolves.toEqual([
+      { itemStableId: 'item-1', basePriceCents: 1299 },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { deletedAt: null },
+      select: { stableId: true, basePriceCents: true },
     });
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { deletedAt: null, weekday },
-      }),
-    );
+
+    await service.getMenuItemPricingSnapshots({ includeDeleted: true });
+    expect(findMany).toHaveBeenLastCalledWith({
+      where: {},
+      select: { stableId: true, basePriceCents: true },
+    });
   });
 });
 
@@ -178,7 +178,6 @@ describe('CatalogAdminService fixed combo composition', () => {
         },
         menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
       } as never,
-      {} as never,
     );
 
     await service.updateItem('breakfast-combo', {
@@ -224,7 +223,6 @@ describe('CatalogAdminService fixed combo composition', () => {
           update,
         },
       } as never,
-      {} as never,
     );
 
     await expect(
@@ -254,7 +252,6 @@ describe('CatalogAdminService packaging option scope', () => {
         },
         menuItemOptionGroup: { upsert },
       } as never,
-      {} as never,
     );
 
     await service.bindTemplateGroupToItem('item-1', {
@@ -308,7 +305,6 @@ describe('CatalogAdminService packaging option scope', () => {
         menuOptionGroupTemplate: { findFirst: jest.fn() },
         menuItemOptionGroup: { upsert },
       } as never,
-      {} as never,
     );
 
     await expect(

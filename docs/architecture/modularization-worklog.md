@@ -354,8 +354,8 @@ Web Clover or Uber runtime behavior is intentionally changed.
 
 ### 2026-09-03 — Phase 3 Slice 5: Catalog availability / Uber orchestration contraction
 
-**PR/SHA:** PR #2145 / `6438f934`; verification follow-up PR #2148 on `fix/slice5-admin-item-availability-payload`  
-**State:** MERGED / PRODUCTION VERIFICATION FOLLOW-UP  
+**PR/SHA:** PR #2145 / `6438f934`; verification fix PR #2148 / merge `bf82d40d`  
+**State:** VERIFIED  
 **Result:** The temporary Admin-owned menu availability/Uber coordination from
 Slice 3 is removed. Admin menu now consumes a public Catalog/Uber application
 orchestration module instead of wiring `UberEatsModule` directly. Catalog owns a
@@ -379,12 +379,39 @@ production Web Clover, Uber webhook/order state or wire-contract change is inclu
 Active verification passed item permanent OFF/ON, temporary-today availability and
 option OFF/ON with Uber HTTP 204 / SYNCED telemetry and no new OpsTicket. The final
 ordinary item-edit check exposed a Web adapter tail: `handleSaveItem` serialized the
-unchanged `isAvailable` value, so a name-only edit still triggered Uber availability
-sync. The follow-up removes availability fields from ordinary item PUT payloads and
-adds a regression test; one final name-only edit verification remains after deploy.  
-**Next:** after that final Slice 5 verification, perform Slice 5B to move Daily Special
-management/persistence ownership from Catalog into Offers/Pricing before Phase 3
-closeout.  
+unchanged `isAvailable` value, so PR #2148 removed availability fields from ordinary
+item PUT payloads and added a regression test. After deployment and hard refresh,
+00:11:00/00:11:05 Toronto ordinary item PUTs returned 200 with zero
+`uber.menu.item.availability.update` calls in the surrounding minute. Slice 5 is
+production verified.  
+**Next:** Slice 5B contracts Daily Special ownership from Catalog into Offers/Pricing
+before Phase 3 closeout.  
+**Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 3 Slice 5B: Daily Special -> Offers ownership contraction
+
+**PR/SHA:** local branch `refactor/phase3-slice5b-daily-special-offers`  
+**State:** SOURCE  
+**Result:** Daily Special definition, persistence, store-time activation and effective
+pricing move behind the narrow Offers-owned `DAILY_SPECIAL_OFFERS` capability, implemented
+by the existing `PromotionsService` so the contraction adds no new Prisma direct edge.
+`CatalogAdminService`, `PublicMenuService` and `OrdersService` no longer access the
+`MenuDailySpecial` Prisma delegate; Catalog supplies only item stable-ID/base-price
+facts, while an explicit `CatalogOffersMenuOrchestrationService` preserves the Admin
+full-menu and Daily Special list/bulk-write contracts. Admin historical reads retain
+base prices for soft-deleted items, while writes still validate only live Catalog
+items. A dedicated `CatalogAdminModule` prevents the new HTTP-side Offers wiring from
+expanding the Uber worker availability dependency surface. The central architecture
+scanner now reserves `MenuDailySpecial` Prisma access exclusively for the Offers
+service and prevents Daily Special policy from returning to Catalog or direct
+persistence from returning to Public Menu/Orders. No Prisma schema/migration, Admin
+or Web transport contract, production Web Clover, or Uber runtime/wire behavior is
+intentionally changed; direct dependency debt counts are expected to remain unchanged
+because replacement traffic uses public owner/application surfaces.  
+**Next:** local review is complete; remote GitHub Actions must validate architecture/
+lint/build/strict/test gates. If merged, perform active Daily Special Admin/Public Menu/
+order pricing verification before Slice 6 closeout.  
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`.
 
@@ -393,13 +420,12 @@ closeout.
 - Phase 1: closed.
 - Phase 2: closed; historical Uber Test Store/sandbox cleanup is deferred to the
   separate Production Cutover Cleanup and is not Phase 2 debt.
-- Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4 and Slice 5 are merged; Slice 2C is
-  **DEFERRED** after readiness review because the current Benefits COMMIT + Order
-  creation atomic transaction has no safe Prisma-free cross-context replacement yet.
-  Slice 5 production verification is 3/4 complete and has one Web adapter follow-up
-  pending final name-only edit re-verification. Slice 5B remains blocked until that
-  verification is complete, then moves Daily Special ownership from Catalog into
-  Offers/Pricing before Slice 6 closeout.
+- Phase 3: Slice 1, Slice 2, Slice 2B, Slice 3, Slice 4 and Slice 5 are merged; Slice 5
+  is **PRODUCTION VERIFIED**. Slice 2C remains **DEFERRED** because the current Benefits
+  COMMIT + Order creation atomic transaction has no safe Prisma-free cross-context
+  replacement yet. Slice 5B is source-complete with local review finished and remote
+  CI pending; after merge it requires active Daily Special Admin/Public Menu/order pricing
+  verification before Slice 6 closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

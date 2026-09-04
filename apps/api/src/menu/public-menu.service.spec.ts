@@ -1,21 +1,17 @@
 import { PublicMenuService } from './public-menu.service';
 
-describe('PublicMenuService canonical store timezone', () => {
-  it('reads the menu day from StoreConfig without creating BusinessConfig', async () => {
-    const dailySpecialFindMany = jest.fn().mockResolvedValue([]);
+describe('PublicMenuService daily-special boundary', () => {
+  it('reads active daily specials through the Offers capability instead of Prisma', async () => {
     const categoryFindMany = jest.fn().mockResolvedValue([]);
     const prisma = {
-      menuDailySpecial: { findMany: dailySpecialFindMany },
       menuCategory: { findMany: categoryFindMany },
     };
-    const brandStoreConfigReader = {
-      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
-        timezone: 'America/Toronto',
-      }),
+    const dailySpecialOffers = {
+      getActiveDailySpecials: jest.fn().mockResolvedValue({ specials: [] }),
     };
     const service = new PublicMenuService(
       prisma as never,
-      brandStoreConfigReader as never,
+      dailySpecialOffers as never,
     );
 
     await expect(service.getPublicMenu()).resolves.toEqual({
@@ -23,11 +19,8 @@ describe('PublicMenuService canonical store timezone', () => {
       dailySpecials: [],
     });
 
-    expect(
-      brandStoreConfigReader.getConfiguredStoreSnapshot,
-    ).toHaveBeenCalledTimes(1);
-    expect(dailySpecialFindMany).toHaveBeenCalledTimes(1);
     expect(categoryFindMany).toHaveBeenCalledTimes(1);
-    expect('businessConfig' in prisma).toBe(false);
+    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith([]);
+    expect('menuDailySpecial' in prisma).toBe(false);
   });
 });

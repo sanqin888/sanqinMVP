@@ -66,12 +66,11 @@ import {
 } from './order-item-components';
 import { isAvailableNow } from '@shared/menu';
 import {
+  DAILY_SPECIAL_OFFERS,
   PROMOTION_CONTEXT_READER,
   evaluateOrderPromotions,
-  isDailySpecialActiveNow,
-  resolveEffectivePriceCents,
-  resolveStoreNow,
   type CouponPromotionLike,
+  type DailySpecialOffersPort,
   type PromotionContextReaderPort,
   type PromotionOrderEvaluation,
   type PromotionOrderLine,
@@ -407,6 +406,8 @@ export class OrdersService {
     private readonly membership: MembershipService,
     @Inject(PROMOTION_CONTEXT_READER)
     private readonly promotions: PromotionContextReaderPort,
+    @Inject(DAILY_SPECIAL_OFFERS)
+    private readonly dailySpecialOffers: DailySpecialOffersPort,
     private readonly uberDirect: UberDirectService,
     private readonly locationService: LocationService,
     private readonly notificationService: NotificationService,
@@ -2072,31 +2073,18 @@ export class OrdersService {
       }
     };
 
-    const storeConfig =
-      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
-    const now = resolveStoreNow(storeConfig.timezone);
-    const weekday = now.weekday;
-    const productStableIds = dbProducts.map((product) => product.stableId);
-
-    const rawDailySpecials =
-      productStableIds.length === 0
-        ? []
-        : await this.prisma.menuDailySpecial.findMany({
-            where: {
-              weekday,
-              isEnabled: true,
-              deletedAt: null,
-              itemStableId: { in: productStableIds },
-            },
-            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-          });
-
+    const { specials: activeDailySpecials } =
+      await this.dailySpecialOffers.getActiveDailySpecials(
+        dbProducts.map((product) => ({
+          itemStableId: product.stableId,
+          basePriceCents: product.basePriceCents,
+        })),
+      );
     const activeSpecialsByItemStableId = new Map<
       string,
-      (typeof rawDailySpecials)[number]
+      (typeof activeDailySpecials)[number]
     >();
-    rawDailySpecials.forEach((special) => {
-      if (!isDailySpecialActiveNow(special, now)) return;
+    activeDailySpecials.forEach((special) => {
       if (!activeSpecialsByItemStableId.has(special.itemStableId)) {
         activeSpecialsByItemStableId.set(special.itemStableId, special);
       }
@@ -2170,9 +2158,8 @@ export class OrdersService {
 
       const activeSpecial =
         activeSpecialsByItemStableId.get(product.stableId) ?? null;
-      const baseUnitPriceCents = activeSpecial
-        ? resolveEffectivePriceCents(product.basePriceCents, activeSpecial)
-        : product.basePriceCents;
+      const baseUnitPriceCents =
+        activeSpecial?.effectivePriceCents ?? product.basePriceCents;
       let optionsUnitPriceCents = 0;
 
       const optionGroupSnapshots = new Map<
