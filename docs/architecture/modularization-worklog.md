@@ -540,7 +540,7 @@ ownership slice is production VERIFIED.
 ### 2026-09-04 — Phase 4 Slice 0A verification hotfix: POS server-authoritative promotion pricing
 
 **PR/SHA:** PR #2166; final head `567a1aba`; squash merge `bb833550`  
-**State:** CI / MERGED  
+**State:** VERIFIED  
 **Result:** active POS verification exposed a pre-existing pricing-preview gap: the Orders /
 Offers engine already evaluated the active `in_store` same-item BOGO rule, but the POS
 payment page displayed and collected against its own client-side subtotal/manual-discount/
@@ -561,15 +561,17 @@ no new context edge or measured direct-import/SCC debt; Offers remains promotion
 owner and Orders remains order-pricing owner. No Prisma/dependency, Web Clover Ecommerce,
 or Uber runtime/wire behavior change is included. Final GitHub Actions CI #5102 passed the
 architecture gate, API lint/build/strict/test, shared strict checks, and Web
-lint/build/strict/test before squash merge. Post-deployment active POS pricing/payment
-verification is still required before this hotfix is marked production VERIFIED.  
+lint/build/strict/test before squash merge. On 2026-09-04 active production verification
+confirmed the configured same-item BOGO appears in the POS server quote, the retained staff
+manual discount stacks separately, and the completed order/payment amount matches the
+checkout total. The hotfix is production VERIFIED.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`.
 
 ### 2026-09-04 — Phase 4 Slice 0B: PromotionRule channel ownership + Catalog -> Orders cycle contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice0b-promotion-channel`; not pushed  
-**State:** LOCAL  
+**PR/SHA:** PR #2168; final head `739938c5`; squash merge `b2d42c32`  
+**State:** VERIFIED  
 **Result:** readiness audit confirmed the complete production Catalog/Offers -> Orders
 public dependency was the two `@shared/order` `Channel` type imports used by PromotionRule
 context selection. Promotion applicability is now owned by Offers as
@@ -587,8 +589,13 @@ public traffic, so numeric direct-import debt remains unchanged; the public edge
 `catalog-pricing-offers -> commerce-orders-fulfillment` disappears and the exact legacy
 SCC contracts from Catalog/Orders/Identity/Messaging with five internal edges to
 Catalog/Identity/Messaging with three. Orders -> Catalog remains as the intended one-way
-pricing consumer dependency. No local lint/build/test/scanner run is claimed under the
-repository workflow, and no CI/deployment/production verification is claimed yet.  
+pricing consumer dependency. Final GitHub Actions CI #5107 passed Architecture, API/Web
+lint/build/strict/tests on final head `739938c5` before squash merge. On 2026-09-04 active
+production verification confirmed: Admin exposes only Web/POS PromotionRule channels; POS
+same-item BOGO and the retained manual discount both apply; Web PromotionRule pricing still
+applies; and POS/Admin no longer expose UberEats PromotionRule selection. Slice 0B is
+production VERIFIED. No local lint/build/test/scanner run is claimed under the repository
+workflow.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`.
 
@@ -605,18 +612,16 @@ repository workflow, and no CI/deployment/production verification is claimed yet
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A PRODUCTION VERIFIED** via PR #2163 / `aa302629`; final CI #5092
-  passed and the user completed active Admin PromotionRule create/edit/refresh/delete
-  verification. The separate **Slice 0A POS pricing verification hotfix is CI / MERGED**
-  via PR #2166 / `bb833550`; final head `567a1aba` passed CI #5102. Automatic promotions
-  and the retained staff manual discount are now server-authoritative before payment, and
-  the POS checkout adapter is fixed to local `channel=in_store` with the manual UberEats
-  channel/payment legacy branches removed. Post-deployment active POS verification remains
-  pending. **Slice 0B is LOCAL / REVIEW PENDING** on
-  `refactor/phase4-slice0b-promotion-channel`: Offers no longer imports Orders `Channel`,
-  PromotionRule applicability is Web/POS only, and the legacy public SCC is contracted at
-  source; it must not be marked CI/deployed/verified until remote validation and the
-  required active pricing verification are complete.
+- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED** on 2026-09-04.
+  Slice 0A merged via PR #2163 / `aa302629` after CI #5092 and passed active Admin
+  PromotionRule create/edit/refresh/delete verification. The POS pricing hotfix merged via
+  PR #2166 / `bb833550` after CI #5102 and passed active same-item BOGO + retained manual
+  discount + completed-order amount verification. Slice 0B merged via PR #2168 /
+  `b2d42c32` after final head `739938c5` passed CI #5107; active checks confirmed Admin
+  exposes only Web/POS PromotionRule channels, Web PromotionRule pricing still applies,
+  POS pricing remains correct, and POS/Admin no longer expose UberEats PromotionRule
+  selection. Offers no longer imports Orders `Channel`, PromotionRule applicability is
+  Web/POS only, and the legacy public SCC is contracted to Catalog/Identity/Messaging.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

@@ -131,8 +131,8 @@ Identity/Customer/Benefits remains the largest outgoing direct-debt source and i
 high-coupling target for Payments, POS, Accounting, Orders, External Channels and
 Catalog, so Phase 4 remains the highest-leverage next boundary phase.
 
-Before the main Identity/Messaging slices, two short cross-phase readiness/contraction
-slices are planned:
+Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
+work is now complete and production verified:
 
 1. **Slice 0A — Admin PromotionRule ownership contraction.** Merged via PR #2163 /
    `aa302629` after final GitHub Actions CI #5092 passed. PromotionRule management
@@ -149,24 +149,31 @@ slices are planned:
    merged as `bb833550` after final head `567a1aba` passed CI #5102. It adds a narrow POS
    pricing quote to the existing Orders public capability so the POS adapter displays
    automatic promotions and the retained staff manual discount from the canonical server
-   quote before taking payment. The POS payment adapter is also contracted to local `channel=in_store` only:
-   the staff UberEats channel selector/payment method and their legacy branches are removed,
-   while Uber webhook/import/runtime remains unchanged. This is a method/transport expansion
-   plus adapter cleanup on an already-existing POS -> Orders public boundary; it introduces
-   no new context edge, direct-import debt, SCC member/edge, Prisma ownership, or baseline
-   change. Offers still owns promotion policy and Orders still owns order pricing truth.
-3. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Local source work on
-   `refactor/phase4-slice0b-promotion-channel` confirms the reverse dependency was exactly
-   the two Offers imports of Orders-owned `Channel`. Promotion applicability now uses the
-   Offers-owned `PromotionRuleChannel = 'web' | 'in_store'`; Orders performs one exhaustive
-   boundary mapping (`web -> web`, `in_store -> in_store`, `ubereats -> no PromotionRule
-   context`). The authenticated Admin PromotionRule editor exposes only Web/POS channels,
-   and the owner validator rejects the historical dead `ubereats` configuration value.
-   Production data was read-only audited before implementation and contained **0**
-   PromotionRule rows whose `channels` array included `ubereats`. No schema/migration or
-   data rewrite is required. Uber order ingestion/runtime/wire behavior is unchanged and
-   continues to persist provider-supplied order amounts through the separate ingestion
-   path rather than SanQ PromotionRule evaluation.
+   quote before taking payment. The POS payment adapter is also contracted to local
+   `channel=in_store` only: the staff UberEats channel selector/payment method and their
+   legacy branches are removed, while Uber webhook/import/runtime remains unchanged. Active
+   production verification on 2026-09-04 confirmed same-item BOGO pricing appears in POS,
+   the staff manual discount remains separate and stackable, and the completed order/payment
+   amount matches the server-authoritative checkout total. The hotfix is therefore
+   **PRODUCTION VERIFIED**. This is a method/transport expansion plus adapter cleanup on an
+   already-existing POS -> Orders public boundary; it introduces no new context edge,
+   direct-import debt, SCC member/edge, Prisma ownership, or baseline change. Offers still
+   owns promotion policy and Orders still owns order pricing truth.
+3. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** PR #2168 merged as
+   `b2d42c32` after final head `739938c5` passed GitHub Actions CI #5107. The reverse
+   dependency was exactly the two Offers imports of Orders-owned `Channel`. Promotion
+   applicability now uses the Offers-owned `PromotionRuleChannel = 'web' | 'in_store'`;
+   Orders performs one exhaustive boundary mapping (`web -> web`, `in_store -> in_store`,
+   `ubereats -> no PromotionRule context`). The authenticated Admin PromotionRule editor
+   exposes only Web/POS channels, and the owner validator rejects the historical dead
+   `ubereats` configuration value. Production data was read-only audited before
+   implementation and contained **0** PromotionRule rows whose `channels` array included
+   `ubereats`, so no schema/migration or data rewrite was required. Active production
+   verification on 2026-09-04 confirmed the Admin channel contraction, Web PromotionRule
+   pricing, POS BOGO/manual-discount behavior and Uber selection isolation; Slice 0B is
+   therefore **PRODUCTION VERIFIED**. Uber order ingestion/runtime/wire behavior remains
+   unchanged and continues to persist provider-supplied order amounts through the separate
+   ingestion path rather than SanQ PromotionRule evaluation.
 
 The prior Store temporary-close codec item is no longer a Phase 4 Slice 0 task because
 PR #2160 already moved that persistence encoding to Brand/Store and removed the final
