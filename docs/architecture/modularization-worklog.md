@@ -405,7 +405,9 @@ items. A dedicated `CatalogAdminModule` prevents the new HTTP-side Offers wiring
 expanding the Uber worker availability dependency surface. The central architecture
 scanner now reserves `MenuDailySpecial` Prisma access exclusively for the Offers
 service and prevents Daily Special policy from returning to Catalog or direct
-persistence from returning to Public Menu/Orders. No Prisma schema/migration, Admin
+persistence from returning to Public Menu/Orders. Catalog/Public Menu are also removed
+from the Brand/Store migrated-config-consumer registry because StoreConfig timing now
+belongs to `PromotionsService`, which remains registered there. No Prisma schema/migration, Admin
 or Web transport contract, production Web Clover, or Uber runtime/wire behavior is
 intentionally changed; direct dependency debt counts are expected to remain unchanged
 because replacement traffic uses public owner/application surfaces.  

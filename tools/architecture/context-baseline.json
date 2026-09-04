@@ -148,8 +148,6 @@
     "migratedLegacyConfigConsumers": [
       "apps/api/src/accounting/accounting.service.ts",
       "apps/api/src/promotions/promotions.service.ts",
-      "apps/api/src/menu/public-menu.service.ts",
-      "apps/api/src/menu/catalog-admin.service.ts",
       "apps/api/src/pos/pos-exchange-rate.service.ts",
       "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
       "apps/api/src/pos/pos-store-status.service.ts",
