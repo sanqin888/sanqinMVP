@@ -70,9 +70,9 @@ describe('PosOrdersController Uber orders', () => {
     };
     orders.quotePricingForStore.mockResolvedValue(quote);
 
-    await expect(controller.quotePricing(posRequest, dto as never)).resolves.toEqual(
-      quote,
-    );
+    await expect(
+      controller.quotePricing(posRequest, dto as never),
+    ).resolves.toEqual(quote);
     expect(orders.quotePricingForStore).toHaveBeenCalledWith(
       dto,
       '4750_Yonge_Street',
@@ -81,14 +81,11 @@ describe('PosOrdersController Uber orders', () => {
 
   it('POS pricing quote rejects non in-store channels', () => {
     expect(() =>
-      controller.quotePricing(
-        posRequest,
-        {
-          channel: 'ubereats',
-          fulfillmentType: 'pickup',
-          items: [],
-        } as never,
-      ),
+      controller.quotePricing(posRequest, {
+        channel: 'ubereats',
+        fulfillmentType: 'pickup',
+        items: [],
+      } as never),
     ).toThrow(BadRequestException);
     expect(orders.quotePricingForStore).not.toHaveBeenCalled();
   });
