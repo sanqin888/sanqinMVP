@@ -75,7 +75,7 @@ cannot later return under a stale superset allowance.
 
 ### Slice 0A — Admin PromotionRule ownership contraction
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW** on
+Status: **SOURCE / PR #2163 / CI PENDING** on
 `refactor/phase4-slice0a-promotion-rule-owner`, based on `origin/dev@1be3fe92`.
 
 Audit findings on `origin/dev@83de9072`:

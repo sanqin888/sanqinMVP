@@ -510,9 +510,8 @@ stale-baseline corrections rather than a reason to change the selected next owne
 
 ### 2026-09-04 — Phase 4 Slice 0A: Admin PromotionRule ownership contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice0a-promotion-rule-owner` based on
-`origin/dev@1be3fe92`; pending user review  
-**State:** SOURCE  
+**PR/SHA:** PR #2163; source head `c13735f5`; base `origin/dev@1be3fe92`  
+**State:** SOURCE / CI PENDING  
 **Result:** moved PromotionRule management ownership out of the Admin adapter and behind
 Offers-owned `PROMOTION_RULE_MANAGEMENT`. `PromotionRuleManagementService` now owns the
 existing validation/default/calendar/channel/BOGO policy without Prisma; raw
