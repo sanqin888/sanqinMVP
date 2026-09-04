@@ -134,17 +134,17 @@ Catalog, so Phase 4 remains the highest-leverage next boundary phase.
 Before the main Identity/Messaging slices, two short cross-phase readiness/contraction
 slices are planned:
 
-1. **Slice 0A — Admin PromotionRule ownership contraction.** Source implementation is
-   complete on `refactor/phase4-slice0a-promotion-rule-owner` from
-   `origin/dev@1be3fe92`. PromotionRule management validation/CRUD now sits behind the
-   Offers-owned `PROMOTION_RULE_MANAGEMENT` capability; Admin no longer owns Prisma or
-   Prisma-generated rule types. Raw persistence remains behind the existing
-   `PromotionsService` Prisma entry, so Catalog -> Runtime stays at `10`. The retired
-   Admin service is deleted, focused characterization/mapping tests are added, the
-   central scanner reserves the delegate to Offers, and Identity -> Runtime contracts
-   `18 -> 16`. The authorized Admin response contraction also removes unused DB
-   `id`/`createdAt`/`updatedAt`/`deletedAt` fields while preserving all business fields,
-   routes and request semantics.
+1. **Slice 0A — Admin PromotionRule ownership contraction.** Merged via PR #2163 /
+   `aa302629` after final GitHub Actions CI #5092 passed. PromotionRule management
+   validation/CRUD sits behind the Offers-owned `PROMOTION_RULE_MANAGEMENT` capability;
+   Admin no longer owns Prisma or Prisma-generated rule types. Raw persistence remains
+   behind the existing `PromotionsService` Prisma entry, so Catalog -> Runtime stays at
+   `10`. The retired Admin service is deleted, focused characterization/mapping tests are
+   present, the central scanner reserves the delegate to Offers, and Identity -> Runtime
+   contracts `18 -> 16`. The authorized Admin response contraction also removes unused
+   DB `id`/`createdAt`/`updatedAt`/`deletedAt` fields while preserving all business fields,
+   routes and request semantics. Post-deployment Admin UI smoke verification is still
+   pending.
 2. **Slice 0B — Catalog -> Orders public-cycle edge contraction.** Audit the current
    Offers dependency on `Channel` from `@shared/order`; prefer a provider-neutral
    Pricing/Offers input contract plus boundary mapping rather than moving business

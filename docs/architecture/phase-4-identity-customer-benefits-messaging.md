@@ -75,8 +75,9 @@ cannot later return under a stale superset allowance.
 
 ### Slice 0A — Admin PromotionRule ownership contraction
 
-Status: **SOURCE / PR #2163 / CI PENDING** on
-`refactor/phase4-slice0a-promotion-rule-owner`, based on `origin/dev@1be3fe92`.
+Status: **CI / MERGED** via PR #2163 / `aa302629`.
+Final head `849bdcfc` passed GitHub Actions CI #5092 before merge; post-deployment Admin
+UI smoke verification has not yet been recorded.
 
 Audit findings on `origin/dev@83de9072`:
 
