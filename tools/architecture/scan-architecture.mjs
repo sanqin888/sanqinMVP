@@ -1761,10 +1761,25 @@ if (customerLifecycleNotificationBoundary) {
         );
       }
     }
+    const registrationStart = source.indexOf('async notifyRegistrationWelcome');
+    const registrationEnd = source.indexOf('async notifyOrderReady', registrationStart);
+    const registrationSource =
+      registrationStart >= 0 && registrationEnd > registrationStart
+        ? source.slice(registrationStart, registrationEnd)
+        : '';
+    const subscriptionStart = source.indexOf('async notifySubscriptionWelcome');
+    const subscriptionEnd = source.indexOf('async notifyCouponIssued', subscriptionStart);
+    const subscriptionSource =
+      subscriptionStart >= 0 && subscriptionEnd > subscriptionStart
+        ? source.slice(subscriptionStart, subscriptionEnd)
+        : '';
     if (
       source.includes('notifyRegisterWelcome') ||
-      source.includes('notifySubscriptionWelcome(params: { user:') ||
-      source.includes("error: 'marketing opt-in missing'")
+      registrationSource.includes('params.user') ||
+      /\buserId\s*:/.test(registrationSource) ||
+      subscriptionSource.includes('params.user') ||
+      subscriptionSource.includes('marketingEmailOptIn') ||
+      /\buserId\s*:/.test(subscriptionSource)
     ) {
       failures.push(
         `Messaging customer lifecycle notification must not regain Prisma User or customer-consent ownership: ${boundary.service}`,
