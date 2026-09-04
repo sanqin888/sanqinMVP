@@ -425,9 +425,11 @@ cross-context replacement.
 
 ### Post-closeout tail — monotonic cycle baseline + Store pause-reason ownership
 
-Status: **SOURCE COMPLETE / CI RERUN PENDING** in PR #2160 on
-`refactor/phase3-tail-cycle-store-status`. Phase 3 itself remains closed; this is a
-small cross-phase cleanup of two explicitly recorded governance tails.
+Status: **MERGED / CI GREEN**. PR #2160 final head `27b57f99` passed GitHub Actions
+CI #5080 and squash-merged to `dev` as `3a20c8c5`. Phase 3 itself remains closed; this
+is a small cross-phase cleanup of two explicitly recorded governance tails. Runtime
+smoke verification of the timed pause -> Uber status -> manual recovery flow has not
+yet been recorded, so no production-verification claim is added here.
 
 - The timed `temporaryCloseReason` persistence codec is moved from POS into a single
   Brand/Store implementation and re-exported through `store/public-api.ts`.
@@ -449,9 +451,9 @@ small cross-phase cleanup of two explicitly recorded governance tails.
 - No dependency manifest, Prisma schema/migration, HTTP contract, Web Clover path or
   Uber external/runtime contract changes are included. Initial CI #5078 failed at the
   newly introduced stale-baseline guard and exposed seven pre-existing direct-debt
-  allowances that had already shrunk in source. The follow-up lowers those allowances
-  to the CI-observed current counts and refreshes the dependency graph before rerunning
-  GitHub Actions.
+  allowances that had already shrunk in source. The follow-up lowered those allowances
+  to the CI-observed current counts and refreshed the dependency graph; final CI #5080
+  passed before PR #2160 merged to `dev`.
 
 ## Deferred items that are not Slice 1 scope
 

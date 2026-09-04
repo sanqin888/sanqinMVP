@@ -459,8 +459,8 @@ therefore production verified and closed.
 
 ### 2026-09-04 — Phase 3 post-closeout tail: monotonic cycle baseline + Store pause codec
 
-**PR/SHA:** PR #2160; initial head `b454caa7`; follow-up head pending after CI baseline normalization  
-**State:** SOURCE / CI RERUN PENDING  
+**PR/SHA:** PR #2160; final head `27b57f99`; squash merge `3a20c8c5`  
+**State:** CI / MERGED  
 **Result:** completed the two small governance tails recorded after Slice 6 without
 reopening the closed Phase 3 scope. Brand/Store now owns the timed temporary-closure
 reason codec (`buildAutoPauseReason` / `parseAutoPauseReason`) and exposes it through
@@ -480,11 +480,32 @@ could later authorize a restored edge. `--report` exposes stale SCC baselines as
 No package/lockfile, Prisma schema/migration, HTTP contract, Web Clover path or Uber
 runtime/wire behavior is changed. Initial GitHub Actions CI #5078 failed exactly at the
 new stale-baseline guard and exposed seven pre-existing numeric allowances that had
-already contracted in source; the follow-up normalizes those baselines to CI-observed
-current counts and refreshes the human dependency graph before rerunning CI.  
+already contracted in source; the follow-up normalized those baselines to the observed
+counts and final GitHub Actions CI #5080 passed before merge. Runtime smoke verification
+of POS timed pause -> Uber status -> manual recovery has not yet been recorded, so the
+entry remains at CI/MERGED rather than VERIFIED.  
 **Details:** `docs/architecture/phase-3-catalog-pricing-offers.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/README.md`,
 `tools/architecture/context-baseline.json`.
+
+### 2026-09-04 — Phase 4 planning baseline synchronized
+
+**PR/SHA:** PR #2161 / `docs/phase4-plan-status-sync`  
+**State:** SOURCE / CI PENDING  
+**Result:** synchronized the post-Phase-3 architecture state and recorded the next
+formal phase as **Phase 4 — Identity / Customer / Benefits + Messaging Boundary
+Contraction**. The plan removes the former Store pause-codec Slice 0 item because PR
+#2160 already closed that ownership edge, keeps Admin PromotionRule ownership as the
+immediate Slice 0A readiness audit, and promotes the Catalog -> Orders `Channel`
+public-cycle contraction audit to Slice 0B. Mainline Phase 4 then proceeds through Email
+Verification ownership, Messaging delivery boundaries, Customer profile/address/consent,
+Admin Members/Staff adapter contraction, Benefits implementation ownership, and final
+dependency/SCC closeout. The normalized direct-debt baseline now records Identity /
+Customer / Benefits at 65, Orders at 35, and POS at 31; the lower Orders/POS counts are
+stale-baseline corrections rather than a reason to change the selected next owner phase.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`,
+`docs/architecture/phase-3-catalog-pricing-offers.md`.
 
 ## Current position
 
@@ -496,6 +517,11 @@ current counts and refreshes the human dependency graph before rerunning CI.
   active Uber availability verification. Slice 2C remains **DEFERRED** because the
   current Benefits COMMIT + Order creation atomic transaction has no safe Prisma-free
   cross-context replacement yet; Phase 3 closure does not reclassify that deferred debt.
+- Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
+  passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
+  in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
+- Phase 4: **PLANNED / READINESS AUDIT NEXT**. Immediate next work is Slice 0A Admin
+  PromotionRule ownership readiness; no Phase 4 business source change is claimed yet.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
