@@ -141,9 +141,12 @@ traffic and no SCC member/edge is added or removed.
 
 #### Slice 0A verification hotfix — POS server-authoritative promotion pricing
 
-Status: **CI / MERGED** via PR #2166 / `bb833550`.
-Final head `567a1aba` passed GitHub Actions CI #5102 before merge; post-deployment active
-POS pricing/payment verification is still required before marking this hotfix VERIFIED.
+Status: **PRODUCTION VERIFIED** via PR #2166 / `bb833550`.
+Final head `567a1aba` passed GitHub Actions CI #5102 before merge. On 2026-09-04 the
+post-deployment active POS check confirmed the configured same-item BOGO is reflected in
+the server-authoritative checkout quote, the retained staff manual discount stacks as a
+separate discount, and the completed order/payment amount remains consistent with the
+checkout total.
 
 The production verification pass exposed a separate pre-existing checkout gap: the active
 same-item BOGO rule is correctly configured for `in_store` and the Orders/Offers pricing
@@ -178,15 +181,18 @@ The hotfix keeps ownership unchanged and adds no pricing rules to POS:
 
 This hotfix does not change PromotionRule configuration/evaluation semantics, Prisma schema,
 dependencies, production Web Clover Ecommerce, Uber runtime/wire behavior, or the measured
-architecture graph/baselines. Post-deployment active payment verification is required before
-the hotfix can be marked VERIFIED.
+architecture graph/baselines. The required post-deployment POS pricing/payment verification
+completed successfully on 2026-09-04, so this hotfix is production VERIFIED.
 
 ### Slice 0B — Catalog -> Orders public-cycle edge contraction
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice0b-promotion-channel`. The Slice 0A POS pricing hotfix remains
-CI/MERGED with its post-deployment active verification still pending, so Slice 0B is not
-claimed CI-green, deployed or production-verified.
+Status: **PRODUCTION VERIFIED** via PR #2168 / `b2d42c32`.
+Final head `739938c5` passed GitHub Actions CI #5107 before squash merge. On 2026-09-04 the
+post-deployment active checks confirmed the Admin PromotionRule editor exposes only Web/POS,
+the configured POS BOGO still combines with the retained manual discount, Web PromotionRule
+pricing still applies through the `web -> web` boundary mapping, and the POS/Admin surfaces
+remain isolated from UberEats PromotionRule selection. Uber ingestion/runtime/wire behavior
+was not changed by this slice.
 
 Readiness findings before implementation:
 
@@ -233,9 +239,9 @@ Order transaction boundary, Web Clover provider execution, POS manual-discount r
 PromotionRule evaluation algorithm, or Uber runtime/wire behavior is intentionally
 changed.
 
-Because Orders pricing is shared by production Web/POS flows, remote/deployment
-verification should explicitly cover `web -> web` promotion pricing plus the existing
-`in_store` BOGO/manual-discount behavior before Slice 0B is marked production verified.
+Because Orders pricing is shared by production Web/POS flows, production verification
+explicitly covered `web -> web` PromotionRule pricing plus the existing `in_store`
+BOGO/manual-discount behavior on 2026-09-04; both passed, so Slice 0B is production VERIFIED.
 
 ### Slice 1 — Email Verification ownership normalization
 
@@ -314,7 +320,8 @@ number:
   business-rule implementation for it.
 - `catalog-pricing-offers -> commerce-orders-fulfillment` public-cycle dependency is
   removed at source by Slice 0B after confirming `Channel` was the only reverse semantic
-  edge; remote CI/deployment verification remains pending while the slice is LOCAL.
+  edge; PR #2168 / CI #5107 merged the contraction and the 2026-09-04 active Web/POS/Admin
+  checks completed successfully, so Slice 0B is production VERIFIED.
 - Email verification challenge/account mutation belongs to Identity; Messaging owns
   delivery only.
 - Identity/Customer/Benefits cross-context callers use narrow Messaging public
