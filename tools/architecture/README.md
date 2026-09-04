@@ -87,6 +87,12 @@ node tools/architecture/scan-architecture.mjs --report
   `EMAIL_VERIFICATION_DELIVERY` through `email/public-api.ts`, and Messaging source may
   not import Identity or regain `AuthChallenge` / `emailVerifiedAt` ownership. The retired
   Messaging-owned verification service/controller must stay deleted;
+- Auth challenge delivery uses the Messaging-owned `AUTH_CHALLENGE_DELIVERY` capability.
+  Auth keeps challenge/session/MFA lifecycle and sends only contact, locale, code, TTL and
+  stable user identity; concrete Email/SMS services, messaging configuration, template
+  rendering and `MessagingTemplateType` must not return to Auth. Messaging owns the four
+  distinct login-2FA/email-2FA/phone-enrollment/member-login delivery mappings, and SMS
+  audit linkage must resolve users through `userStableId` rather than a cross-context DB UUID;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

@@ -1141,6 +1141,168 @@ if (emailVerificationIdentityOwnershipBoundary) {
   }
 }
 
+const authChallengeMessagingDeliveryBoundary =
+  config.authChallengeMessagingDeliveryBoundary ?? null;
+if (authChallengeMessagingDeliveryBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(authChallengeMessagingDeliveryBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.deliveryContract,
+    boundary.deliveryService,
+    boundary.deliveryModule,
+    boundary.publicSurface,
+    boundary.authService,
+    boundary.authModule,
+    boundary.smsService,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Auth challenge Messaging delivery boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const deliveryContractPath = join(REPOSITORY_ROOT, boundary.deliveryContract);
+  if (existsSync(deliveryContractPath)) {
+    const source = readFileSync(deliveryContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'AUTH_CHALLENGE_DELIVERY',
+      'AuthChallengeDeliveryPort',
+      'sendLoginTwoFactorSms',
+      'sendLoginTwoFactorEmail',
+      'sendPhoneEnrollmentSms',
+      'sendMembershipLoginSms',
+      'userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Auth challenge delivery contract is missing ${requiredSymbol}: ${boundary.deliveryContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService') ||
+      source.includes('SmsService') ||
+      source.includes('TemplateRenderer') ||
+      source.includes('BusinessConfigService') ||
+      /\buserId\b/.test(source)
+    ) {
+      failures.push(
+        `Auth challenge delivery contract must remain stable-ID/provider/persistence free: ${boundary.deliveryContract}`,
+      );
+    }
+  }
+
+  const deliveryServicePath = join(REPOSITORY_ROOT, boundary.deliveryService);
+  if (existsSync(deliveryServicePath)) {
+    const source = readFileSync(deliveryServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'implements AuthChallengeDeliveryPort',
+      'EmailService',
+      'SmsService',
+      'TemplateRenderer',
+      'BusinessConfigService',
+      "purpose: 'login_2fa'",
+      "purpose: 'admin_login'",
+      "purpose: 'verify'",
+      "purpose: 'login'",
+      'userStableId: input.userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Messaging Auth challenge delivery owner is missing ${requiredSymbol}: ${boundary.deliveryService}`,
+        );
+      }
+    }
+    if (
+      source.includes("from '../auth/") ||
+      source.includes('AuthChallengeType') ||
+      source.includes('AuthChallengeStatus') ||
+      source.includes('PrismaService')
+    ) {
+      failures.push(
+        `Messaging Auth challenge delivery must not own Identity challenge lifecycle/persistence: ${boundary.deliveryService}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    if (
+      !source.includes('AuthChallengeDeliveryModule') ||
+      !source.includes('AUTH_CHALLENGE_DELIVERY') ||
+      !source.includes('AuthChallengeDeliveryPort')
+    ) {
+      failures.push(
+        `Messaging public surface must expose the Auth challenge delivery capability: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const authServicePath = join(REPOSITORY_ROOT, boundary.authService);
+  if (existsSync(authServicePath)) {
+    const source = readFileSync(authServicePath, 'utf8');
+    if (
+      !source.includes("from '../messaging/public-api'") ||
+      !source.includes('AUTH_CHALLENGE_DELIVERY') ||
+      !source.includes('AuthChallengeDeliveryPort') ||
+      !source.includes('sendLoginTwoFactorSms') ||
+      !source.includes('sendLoginTwoFactorEmail') ||
+      !source.includes('sendPhoneEnrollmentSms') ||
+      !source.includes('sendMembershipLoginSms') ||
+      !source.includes('userStableId: user.userStableId') ||
+      !source.includes('userStableId: session.user.userStableId') ||
+      source.includes("from '../email/email.service'") ||
+      source.includes("from '../sms/sms.service'") ||
+      source.includes("from '../messaging/business-config.service'") ||
+      source.includes("from '../messaging/template-renderer'") ||
+      source.includes('MessagingTemplateType')
+    ) {
+      failures.push(
+        `AuthService challenge sends must use the narrow Messaging public capability with stable user identity: ${boundary.authService}`,
+      );
+    }
+  }
+
+  const authModulePath = join(REPOSITORY_ROOT, boundary.authModule);
+  if (existsSync(authModulePath)) {
+    const source = readFileSync(authModulePath, 'utf8');
+    if (
+      !source.includes("from '../messaging/public-api'") ||
+      !source.includes('AuthChallengeDeliveryModule') ||
+      source.includes('EmailModule') ||
+      source.includes('SmsModule') ||
+      source.includes('MessagingModule')
+    ) {
+      failures.push(
+        `AuthModule challenge delivery wiring must use only the Messaging public module: ${boundary.authModule}`,
+      );
+    }
+  }
+
+  const smsServicePath = join(REPOSITORY_ROOT, boundary.smsService);
+  if (existsSync(smsServicePath)) {
+    const source = readFileSync(smsServicePath, 'utf8');
+    if (
+      !source.includes('userStableId?: string') ||
+      !source.includes('connect: { userStableId: params.userStableId }')
+    ) {
+      failures.push(
+        `SmsService must support stable user identity for cross-context delivery audit linkage: ${boundary.smsService}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

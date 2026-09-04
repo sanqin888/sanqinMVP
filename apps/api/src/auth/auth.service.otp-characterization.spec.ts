@@ -26,19 +26,15 @@ describe('AuthService OTP characterization', () => {
       $transaction: jest.fn().mockResolvedValue([]),
     };
     const challengeEngine = new ChallengeEngine();
-    const emailService = { sendEmail: jest.fn() };
-    const smsService = { sendSms: jest.fn() };
-    const templateRenderer = {
-      renderEmail: jest.fn(),
-      renderSms: jest.fn(),
+    const authChallengeDelivery = {
+      sendLoginTwoFactorSms: jest.fn(),
+      sendLoginTwoFactorEmail: jest.fn(),
+      sendPhoneEnrollmentSms: jest.fn(),
+      sendMembershipLoginSms: jest.fn(),
     };
-    const businessConfigService = { getMessagingSnapshot: jest.fn() };
     const service = new AuthService(
       prisma as never,
-      emailService as never,
-      smsService as never,
-      templateRenderer as never,
-      businessConfigService as never,
+      authChallengeDelivery as never,
       {} as never,
       {} as never,
       challengeEngine,
@@ -49,9 +45,7 @@ describe('AuthService OTP characterization', () => {
       service,
       prisma,
       challengeEngine,
-      smsService,
-      templateRenderer,
-      businessConfigService,
+      authChallengeDelivery,
     };
   };
 
@@ -61,6 +55,7 @@ describe('AuthService OTP characterization', () => {
     mfaVerifiedAt: null,
     user: {
       id: 'user-db-id',
+      userStableId: 'c1234567890abcdefghijklmn',
       role: 'ADMIN',
       phone: '+14165550100',
       phoneVerifiedAt: new Date('2026-08-01T00:00:00.000Z'),
@@ -84,14 +79,8 @@ describe('AuthService OTP characterization', () => {
 
   it('selects the zero-padded OTP profile when creating an SMS challenge', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const {
-      service,
-      prisma,
-      challengeEngine,
-      smsService,
-      templateRenderer,
-      businessConfigService,
-    } = createService();
+    const { service, prisma, challengeEngine, authChallengeDelivery } =
+      createService();
     jest.spyOn(service, 'getSession').mockResolvedValue(session as never);
     prisma.authChallenge.findFirst.mockResolvedValue(null);
     prisma.authChallenge.count.mockResolvedValue(0);
@@ -103,11 +92,9 @@ describe('AuthService OTP characterization', () => {
     const hashCodeSpy = jest
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
-    businessConfigService.getMessagingSnapshot.mockResolvedValue({
-      baseVars: { storeName: 'SanQin' },
+    authChallengeDelivery.sendLoginTwoFactorSms.mockResolvedValue({
+      sendId: 'send-1',
     });
-    templateRenderer.renderSms.mockResolvedValue('verification message');
-    smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'send-1' });
 
     await expect(
       service.requestTwoFactorSms({ sessionId: 'session-id' }),
@@ -118,6 +105,17 @@ describe('AuthService OTP characterization', () => {
 
     expect(generateCodeSpy).toHaveBeenCalledWith('ZERO_PADDED');
     expect(hashCodeSpy).toHaveBeenCalledWith('000042', 'OTP');
+    expect(authChallengeDelivery.sendLoginTwoFactorSms).toHaveBeenCalledWith({
+      phone: '+14165550100',
+      code: '000042',
+      expiresInMin: 5,
+      locale: 'en',
+      userStableId: 'c1234567890abcdefghijklmn',
+    });
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-1' },
+      data: { messagingSendId: 'send-1' },
+    });
   });
 
   it('blocks an SMS request when either SMS or email has a recent pending challenge', async () => {
@@ -252,9 +250,6 @@ describe('AuthService POS device authentication boundary', () => {
     };
     const service = new AuthService(
       prisma as never,
-      {} as never,
-      {} as never,
-      {} as never,
       {} as never,
       {} as never,
       {} as never,

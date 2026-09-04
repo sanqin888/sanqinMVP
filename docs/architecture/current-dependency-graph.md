@@ -96,7 +96,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 22; runtime-data-ci-ops 15; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 15; runtime-data-ci-ops 15; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
@@ -112,10 +112,10 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 1 source contraction records these
+The current local monotonic baseline after the Slice 2A source contraction records these
 direct-debt totals:
 
-- identity-customer-benefits: **60**
+- identity-customer-benefits: **53**
 - payments-clover: **59**
 - external-channels: **44**
 - commerce-orders-fulfillment: **35**
@@ -127,9 +127,11 @@ direct-debt totals:
 
 The reduction in Orders/POS counts is baseline normalization of source debt that had
 already contracted; it does not reopen those contexts as the next primary owner phase.
-Identity/Customer/Benefits remains the largest outgoing direct-debt source and is also a
-high-coupling target for Payments, POS, Accounting, Orders, External Channels and
-Catalog, so Phase 4 remains the highest-leverage next boundary phase.
+After Slice 2A, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
+at **53**, but that does not change the active Phase 4 owner scope: Identity still has
+substantial remaining Messaging/Admin/Customer/Benefits boundary debt and is a high-coupling
+target for Payments, POS, Accounting, Orders, External Channels and Catalog. Payment
+ownership is not reopened merely to chase the largest numeric total mid-phase.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:
@@ -184,15 +186,26 @@ Slice 0B removed the public edge
 SCC while `commerce-orders-fulfillment -> catalog-pricing-offers` remained the correct
 one-way pricing-consumer dependency.
 
-Phase 4 Slice 1 now removes the remaining owner-reversed
+Phase 4 Slice 1 removes the remaining owner-reversed
 `messaging-notifications -> identity-customer-benefits` public edge by moving email
 verification challenge/account ownership to Identity and leaving Messaging with delivery
-only. The former three-context Catalog / Identity / Messaging component is no longer
-strongly connected: `identity-customer-benefits -> catalog-pricing-offers` and
+only. PR #2171 merged as `afa1bff6` after final head `94955b27` passed CI #5116. The former
+three-context Catalog / Identity / Messaging component is no longer strongly connected:
+`identity-customer-benefits -> catalog-pricing-offers` and
 `catalog-pricing-offers -> messaging-notifications` may remain as forward consumer flows,
-but there is no return path from Messaging to Identity. The local
-`legacyPublicCycleComponents` baseline is therefore empty. The monotonic SCC guard will
-reject a stale legacy component or any future public edge that recreates a cycle.
+but there is no return path from Messaging to Identity. The
+`legacyPublicCycleComponents` baseline is empty and the monotonic SCC guard rejects any
+future public edge that recreates the cycle. Production deployment/verification is
+intentionally deferred to the Phase 4 batch rollout.
+
+Slice 2A locally contracts Auth challenge delivery behind the Messaging-owned
+`AUTH_CHALLENGE_DELIVERY` public capability. Auth keeps challenge/session/MFA lifecycle;
+Messaging owns OTP configuration/template/provider dispatch. Auth's seven concrete
+Email/SMS/Messaging imports disappear while the welcome-notification pair remains, so
+`identity-customer-benefits -> messaging-notifications` contracts **22 -> 15** and total
+Identity outgoing direct debt contracts **60 -> 53**. Known-user delivery now crosses the
+public boundary with `userStableId`, not the internal User DB UUID. The source is awaiting
+review/remote CI and is not deployed separately.
 
 ## Phase 1 boundary changes reflected here
 
