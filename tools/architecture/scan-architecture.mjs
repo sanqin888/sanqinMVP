@@ -1984,8 +1984,7 @@ if (adminCustomerSecurityBoundary) {
     const source = readFileSync(membershipModulePath, 'utf8');
     if (
       !source.includes('CUSTOMER_ADMINISTRATION') ||
-      !source.includes('useExisting: CustomerService') ||
-      !source.includes('exports: [MembershipService, CUSTOMER_ADMINISTRATION]')
+      !source.includes('useExisting: CustomerService')
     ) {
       failures.push(
         `MembershipModule must wire Customer Administration to the existing Customer owner: ${boundary.membershipModule}`,
@@ -2267,6 +2266,348 @@ if (adminCustomerSecurityBoundary) {
     ) {
       failures.push(
         `AdminMembersModule must compose Customer/Auth owner public modules after Slice 4B: ${boundary.adminMembersModule}`,
+      );
+    }
+  }
+}
+
+const adminMemberOrdersReadBoundary = config.adminMemberOrdersReadBoundary ?? null;
+if (adminMemberOrdersReadBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(adminMemberOrdersReadBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.orderSchema,
+    boundary.orderMigration,
+    boundary.customerExistenceContract,
+    boundary.customerExistenceService,
+    boundary.customerPublicSurface,
+    boundary.membershipModule,
+    boundary.authPublicSurface,
+    boundary.ordersModule,
+    boundary.adminMemberOrdersController,
+    boundary.adminMemberOrdersReadService,
+    boundary.adminMembersController,
+    boundary.adminMembersService,
+    boundary.ordersService,
+    boundary.loyaltyService,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Admin member Orders read boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const orderSchemaPath = join(REPOSITORY_ROOT, boundary.orderSchema);
+  if (existsSync(orderSchemaPath)) {
+    const source = readFileSync(orderSchemaPath, 'utf8');
+    if (
+      !/model Order \{[\s\S]*?userId\s+String\?[\s\S]*?userStableId\s+String\?/.test(
+        source,
+      ) ||
+      !source.includes('@@index([userStableId, createdAt])')
+    ) {
+      failures.push(
+        `Order must retain legacy userId while owning nullable userStableId plus the member-read index: ${boundary.orderSchema}`,
+      );
+    }
+  }
+
+  const orderMigrationPath = join(REPOSITORY_ROOT, boundary.orderMigration);
+  if (existsSync(orderMigrationPath)) {
+    const source = readFileSync(orderMigrationPath, 'utf8');
+    for (const requiredSymbol of [
+      'ADD COLUMN "userStableId" TEXT',
+      'SET "userStableId" = u."userStableId"',
+      'o."userId" = u."id"',
+      'member_order_count',
+      'populated_stable_id_count',
+      'mismatched_stable_id_count',
+      'orphan_user_id_count',
+      'Order_userStableId_createdAt_idx',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Order userStableId migration is missing ${requiredSymbol}: ${boundary.orderMigration}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'random()',
+      'clock_timestamp()',
+      'gen_random_uuid()',
+      'ALTER COLUMN "userStableId" SET NOT NULL',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Order userStableId migration must stay deterministic/additive/nullable (${forbiddenSymbol}): ${boundary.orderMigration}`,
+        );
+      }
+    }
+  }
+
+  const customerExistenceContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.customerExistenceContract,
+  );
+  if (existsSync(customerExistenceContractPath)) {
+    const source = readFileSync(customerExistenceContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_EXISTENCE_READER',
+      'CustomerExistenceReaderPort',
+      'customerExists',
+      'userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer existence public contract is missing ${requiredSymbol}: ${boundary.customerExistenceContract}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      'PrismaService',
+      /\buserId\b/,
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Customer existence public contract must remain framework/persistence/DB-ID free (${forbiddenSymbol}): ${boundary.customerExistenceContract}`,
+        );
+      }
+    }
+  }
+
+  const customerExistenceServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.customerExistenceService,
+  );
+  if (existsSync(customerExistenceServicePath)) {
+    const source = readFileSync(customerExistenceServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'implements CustomerExistenceReaderPort',
+      'where: { userStableId }',
+      'select: { userStableId: true }',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer existence owner is missing ${requiredSymbol}: ${boundary.customerExistenceService}`,
+        );
+      }
+    }
+    if (source.includes('select: { id: true }')) {
+      failures.push(
+        `Customer existence owner must not expose the User DB UUID through its read capability: ${boundary.customerExistenceService}`,
+      );
+    }
+  }
+
+  const customerPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.customerPublicSurface,
+  );
+  if (existsSync(customerPublicSurfacePath)) {
+    const source = readFileSync(customerPublicSurfacePath, 'utf8');
+    if (
+      !source.includes("from './customer-existence.contract'") ||
+      !source.includes('CUSTOMER_EXISTENCE_READER') ||
+      !source.includes('CustomerExistenceReaderPort') ||
+      source.includes("from './customer-existence.service'")
+    ) {
+      failures.push(
+        `Customer public surface must expose only the existence contract, not its concrete implementation: ${boundary.customerPublicSurface}`,
+      );
+    }
+  }
+
+  const membershipModulePath = join(REPOSITORY_ROOT, boundary.membershipModule);
+  if (existsSync(membershipModulePath)) {
+    const source = readFileSync(membershipModulePath, 'utf8');
+    if (
+      !source.includes('CustomerExistenceService') ||
+      !source.includes('CUSTOMER_EXISTENCE_READER') ||
+      !source.includes('useExisting: CustomerExistenceService')
+    ) {
+      failures.push(
+        `MembershipModule must wire the narrow Customer existence capability: ${boundary.membershipModule}`,
+      );
+    }
+  }
+
+  const authPublicSurfacePath = join(REPOSITORY_ROOT, boundary.authPublicSurface);
+  if (existsSync(authPublicSurfacePath)) {
+    const source = readFileSync(authPublicSurfacePath, 'utf8');
+    if (!source.includes("export { AdminMfaGuard } from './admin-mfa.guard'")) {
+      failures.push(
+        `Orders-owned Admin member transport must consume Admin MFA through the Identity public surface: ${boundary.authPublicSurface}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    for (const requiredSymbol of [
+      "from '../membership/public-api'",
+      'AdminMemberOrdersController',
+      'AdminMemberOrdersReadService',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `OrdersModule must compose the member Orders read boundary (${requiredSymbol}): ${boundary.ordersModule}`,
+        );
+      }
+    }
+    if (source.includes("from '../membership/membership.module'")) {
+      failures.push(
+        `OrdersModule must not deep-import MembershipModule after Slice 4C: ${boundary.ordersModule}`,
+      );
+    }
+  }
+
+  const adminMemberOrdersControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMemberOrdersController,
+  );
+  if (existsSync(adminMemberOrdersControllerPath)) {
+    const source = readFileSync(adminMemberOrdersControllerPath, 'utf8');
+    for (const requiredSymbol of [
+      "from '../auth/public-api'",
+      "from '../membership/public-api'",
+      '@UseGuards(SessionAuthGuard, AdminMfaGuard, RolesGuard)',
+      "@Roles('ADMIN', 'STAFF')",
+      "@Controller('admin/members')",
+      "@Get(':userStableId/orders')",
+      "@Get(':userStableId/top-items')",
+      'customerExistence.customerExists',
+      "throw new NotFoundException('member not found')",
+      "throw new BadRequestException('userStableId is required')",
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders-owned Admin member transport is missing ${requiredSymbol}: ${boundary.adminMemberOrdersController}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@prisma/client',
+      'PrismaService',
+      "from '../admin/",
+      /\buserId\b/,
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Orders-owned Admin member transport must stay stable-ID/owner-boundary only (${forbiddenSymbol}): ${boundary.adminMemberOrdersController}`,
+        );
+      }
+    }
+  }
+
+  const adminMemberOrdersReadServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMemberOrdersReadService,
+  );
+  if (existsSync(adminMemberOrdersReadServicePath)) {
+    const source = readFileSync(adminMemberOrdersReadServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'where: { userStableId }',
+      "status: { in: ['paid', 'making', 'ready', 'completed'] }",
+      "orderBy: { createdAt: 'desc' }",
+      'Number.parseInt(limitRaw, 10) || 50',
+      'Math.max(1, Math.min(parsedLimit, 50))',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders member read model must preserve legacy behavior (${requiredSymbol}): ${boundary.adminMemberOrdersReadService}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of ['this.prisma.user', 'userId:']) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Orders member read model must query by Order.userStableId without User persistence/DB UUID (${forbiddenSymbol}): ${boundary.adminMemberOrdersReadService}`,
+        );
+      }
+    }
+  }
+
+  const adminMembersControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersController,
+  );
+  if (existsSync(adminMembersControllerPath)) {
+    const source = readFileSync(adminMembersControllerPath, 'utf8');
+    for (const forbiddenSymbol of [
+      "@Get(':userStableId/orders')",
+      "@Get(':userStableId/top-items')",
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminMembersController must not reclaim Orders-owned member read transport (${forbiddenSymbol}): ${boundary.adminMembersController}`,
+        );
+      }
+    }
+  }
+
+  const adminMembersServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersService,
+  );
+  if (existsSync(adminMembersServicePath)) {
+    const source = readFileSync(adminMembersServicePath, 'utf8');
+    for (const forbiddenSymbol of [
+      'this.prisma.orderItem.findMany',
+      'listOrders(',
+      'listTopPurchasedItems(',
+      "from '../../orders/public-api'",
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminMembersService must not reclaim Orders member read ownership (${forbiddenSymbol}): ${boundary.adminMembersService}`,
+        );
+      }
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'userStableId: snapshot.order.userStableId ?? null',
+      'userStableId: normalizedUserStableId ?? null',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders member creation must dual-write stable identity (${requiredSymbol}): ${boundary.ordersService}`,
+        );
+      }
+    }
+  }
+
+  const loyaltyServicePath = join(REPOSITORY_ROOT, boundary.loyaltyService);
+  if (existsSync(loyaltyServicePath)) {
+    const source = readFileSync(loyaltyServicePath, 'utf8');
+    if (
+      !/tx\.order\.create\([\s\S]*?userId,[\s\S]*?userStableId: normalizedUserStableId,[\s\S]*?subtotalCents: cents/.test(
+        source,
+      )
+    ) {
+      failures.push(
+        `Loyalty top-up synthetic Orders must dual-write userStableId: ${boundary.loyaltyService}`,
       );
     }
   }

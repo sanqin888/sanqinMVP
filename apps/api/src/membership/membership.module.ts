@@ -9,6 +9,7 @@ import {
 } from '../auth/public-api';
 import { MembershipService } from './membership.service';
 import { CustomerService } from './customer.service';
+import { CustomerExistenceService } from './customer-existence.service';
 import {
   MembershipController,
   MembershipPublicController,
@@ -16,6 +17,7 @@ import {
 import { NotificationModule } from '../notifications/public-api';
 import { CouponsModule } from '../coupons/public-api';
 import { CUSTOMER_ADMINISTRATION } from './customer-administration.contract';
+import { CUSTOMER_EXISTENCE_READER } from './customer-existence.contract';
 
 @Module({
   imports: [
@@ -30,12 +32,21 @@ import { CUSTOMER_ADMINISTRATION } from './customer-administration.contract';
   providers: [
     MembershipService,
     CustomerService,
+    CustomerExistenceService,
     {
       provide: CUSTOMER_ADMINISTRATION,
       useExisting: CustomerService,
     },
+    {
+      provide: CUSTOMER_EXISTENCE_READER,
+      useExisting: CustomerExistenceService,
+    },
   ],
   controllers: [MembershipController, MembershipPublicController],
-  exports: [MembershipService, CUSTOMER_ADMINISTRATION],
+  exports: [
+    MembershipService,
+    CUSTOMER_ADMINISTRATION,
+    CUSTOMER_EXISTENCE_READER,
+  ],
 })
 export class MembershipModule {}

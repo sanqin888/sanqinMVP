@@ -118,6 +118,14 @@ node tools/architecture/scan-architecture.mjs --report
   ID through both the explicit `trustedDeviceStableId` field and the legacy browser/PWA `id` alias,
   and revokes trusted devices by stable ID. `MembershipService` and `AdminMembersService` cannot
   regain trusted-device/session persistence or expose the Prisma UUID through browser contracts;
+- Phase 4 Slice 4C makes Orders own the Admin member order-history/top-item read models. The existing
+  `/admin/members/:userStableId/orders` and `/top-items` route shapes remain, but their controller and
+  Prisma queries live under Orders and use nullable `Order.userStableId`, not a User DB UUID. The
+  additive migration deterministically backfills from the historical `Order.userId` mapping with
+  count/mismatch/orphan checks and adds the `(userStableId, createdAt)` index. New member orders and
+  Loyalty top-up synthetic orders dual-write both identities. The DB-ID-free
+  `CUSTOMER_EXISTENCE_READER` preserves missing-member semantics without Orders reading User
+  persistence, Admin cannot regain Order/OrderItem persistence, and the SCC guard must remain empty;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

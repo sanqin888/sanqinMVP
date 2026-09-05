@@ -683,9 +683,9 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **4A MERGED / CI GREEN; 4B STAGE 1 LOCAL SOURCE COMPLETE / REVIEW PENDING**.
-4C/4D remain planned; the TrustedDevice stable-ID contraction remains an explicitly gated
-4B Stage 2 because it requires Prisma schema/migration work.
+Status: **4A + 4B MERGED / CI GREEN; 4C LOCAL SOURCE COMPLETE / REVIEW PENDING; 4D PLANNED**.
+The TrustedDevice Stage 2 migration is merged but remains unapplied until the consolidated Phase 4
+rollout; Slice 4C now carries the separately authorized additive Order member stable-ID migration.
 
 #### Slice 4A — Staff Administration ownership contraction
 
@@ -735,10 +735,10 @@ Per the Phase 4 rollout policy, Slice 4A will not be deployed separately.
 
 #### Slice 4B — Customer + Security admin boundary
 
-Status: **STAGE 1 MERGED / CI GREEN; STAGE 2 LOCAL SOURCE COMPLETE / REVIEW PENDING**.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**.
 Stage 1 merged via PR #2180 as `252cd26f` after final head `a2f52ddf` passed GitHub Actions CI #5150.
-Stage 2 is on `refactor/phase4-slice4b-trusted-device-stable-id` with the schema/migration work explicitly
-authorized by the user.
+Stage 2 merged via PR #2181 as `060e9417` after final head `f2cbf835` passed GitHub Actions CI #5153;
+the authorized TrustedDevice migration remains unapplied in production until the consolidated Phase 4 rollout.
 
 Stage 1 established the Customer/Auth owner boundaries. Stage 2 closes the deferred TrustedDevice
 identity tail without changing the existing browser route shapes:
@@ -789,13 +789,52 @@ post-migration verification must confirm TrustedDevice total = populated stable 
 IDs, then exercise member device list/trust/revoke plus Admin device list/revoke before 4B is marked
 production verified.
 
+#### Slice 4C — Orders member read routes
+
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice4c-orders-member-reads`.
+
+The approved implementation keeps the existing Admin/POS HTTP contract while moving the two
+Orders-owned read models out of Identity/Admin:
+
+1. `Order.userStableId String?` is added as an additive Orders-owned member business identity while
+   the historical `Order.userId` field remains untouched. The authorized migration deterministically
+   backfills `Order.userStableId` from the existing `Order.userId -> User.id` mapping, verifies member
+   order count = populated stable IDs, rejects mismatched values and orphan User DB IDs, then adds
+   `@@index([userStableId, createdAt])`. A 2026-09-05 production read-only precheck found **2459** total
+   orders, **45** member-linked orders across **11** members, with **45/45** User mappings valid and
+   **0** orphans;
+2. normal Web/POS order creation and prepared-payment confirmation dual-write both `userId` and
+   `userStableId`; the Loyalty top-up synthetic Order does the same. Uber ingestion remains guest /
+   external-channel owned and does not fabricate a customer identity;
+3. `/admin/members/:userStableId/orders` and `/top-items` keep their exact route shape and
+   `SessionAuthGuard + AdminMfaGuard + RolesGuard`, `ADMIN|STAFF` authorization, but their controller
+   and Prisma read model now live inside Orders. `AdminMembersController` / `AdminMembersService`
+   no longer own those handlers or query `Order` / `OrderItem` persistence;
+4. Orders reads only `Order.userStableId`. To preserve the historical `404 member not found` behavior
+   for a real missing customer while still returning empty lists for an existing customer with no
+   orders, Customer exposes the narrow DB-ID-free `CUSTOMER_EXISTENCE_READER` boolean capability;
+   Orders does not query `User` persistence and no User DB UUID crosses the boundary;
+5. list ordering, default/legacy limit parsing, top-items `1..50` clamp, qualifying statuses
+   (`paid|making|ready|completed`), quantity aggregation and display-name fallback order remain
+   unchanged. No Web route change is required;
+6. `OrdersModule` now consumes `MembershipModule` through `membership/public-api`, contracting the
+   direct Commerce -> Identity import allowance **5 -> 4** and Commerce outgoing direct debt
+   **31 -> 30**. No Identity -> Orders public edge is added, so the public SCC baseline remains empty;
+7. the central scanner permanently requires the schema/migration, stable-ID read model, Customer
+   existence contract, Orders-owned transport, dual-write paths and Admin cleanup, while rejecting
+   User persistence access or DB-ID-based member reads from the Orders read model.
+
+No local migration application, lint/build/test/scanner run is claimed under repository workflow;
+remote CI remains deferred until user review. At Phase-end rollout the Order stable-ID migration must
+run before the new API starts querying the column. Post-migration verification must confirm every
+non-null `Order.userId` row has the matching `Order.userStableId`, then exercise Admin member orders /
+top-items plus POS member order history.
+
 #### Remaining Slice 4 plan
 
-- **4C — Orders member read routes:** re-home `/admin/members/:userStableId/orders` and `/top-items`
-  implementation inside Orders while preserving the existing route shape; do not add an
-  Identity -> Orders public edge that would recreate the Identity/Commerce SCC.
 - **4D — Recharge challenge ownership contraction:** separately assess/move POS member-recharge
-  challenge lifecycle from broad `AdminMembersService` after 4B/4C, preserving verification-token
+  challenge lifecycle from broad `AdminMembersService` after 4C, preserving verification-token
   and top-up semantics.
 
 Benefits/template coupon issuance remains Slice 5 scope rather than being moved into Customer merely
@@ -810,6 +849,21 @@ eligibility/claim/issue/trigger/entitlement implementation behind Benefits-owned
 surfaces. Do not mechanically relocate code that currently depends on a cross-owner
 Prisma transaction. Coupon program definition/use policy remains Offers-owned;
 customer entitlement/reservation behavior remains Benefits-owned.
+
+#### Slice 5A — Loyalty ledger order identity contraction
+
+Treat the remaining Admin loyalty-ledger Order enrichment as Benefits/Loyalty debt, not
+as a Slice 4C Orders read-model tail. `LoyaltyLedger` currently persists internal
+`orderId` and Admin later performs an extra `Order.id -> Order.orderStableId` lookup
+solely to present the browser-safe business identity. Slice 5A should evaluate an
+additive nullable `LoyaltyLedger.orderStableId` expand-contract migration, deterministic
+backfill from the existing `orderId -> Order.orderStableId` mapping, and transactional
+dual-write of both identities on new order-related ledger entries. The intended exit
+state is that the Benefits/Loyalty read model returns `orderStableId` directly, while
+retaining `orderId` only where an internal same-owner relation/transaction still
+requires it; Admin must no longer query Order persistence to enrich loyalty-ledger
+responses. Do not solve this by moving the loyalty-ledger route into Orders or by
+introducing a new Identity/Benefits -> Orders runtime dependency.
 
 The Phase 3 Slice 2C transaction-bound COMMIT remains deferred unless a design can
 preserve atomic Points/Balance COMMIT + Coupon COMMIT + Order creation without:

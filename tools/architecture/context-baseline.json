@@ -400,6 +400,22 @@
     "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
     "adminMembersModule": "apps/api/src/admin/members/admin-members.module.ts"
   },
+  "adminMemberOrdersReadBoundary": {
+    "orderSchema": "apps/api/prisma/schema.prisma",
+    "orderMigration": "apps/api/prisma/migrations/20260905145500_add_order_user_stable_id/migration.sql",
+    "customerExistenceContract": "apps/api/src/membership/customer-existence.contract.ts",
+    "customerExistenceService": "apps/api/src/membership/customer-existence.service.ts",
+    "customerPublicSurface": "apps/api/src/membership/public-api.ts",
+    "membershipModule": "apps/api/src/membership/membership.module.ts",
+    "authPublicSurface": "apps/api/src/auth/public-api.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts",
+    "adminMemberOrdersController": "apps/api/src/orders/admin-member-orders.controller.ts",
+    "adminMemberOrdersReadService": "apps/api/src/orders/admin-member-orders-read.service.ts",
+    "adminMembersController": "apps/api/src/admin/members/admin-members.controller.ts",
+    "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "loyaltyService": "apps/api/src/loyalty/loyalty.service.ts"
+  },
   "customerLifecycleNotificationBoundary": {
     "contract": "apps/api/src/notifications/contracts/customer-lifecycle-notification.contract.ts",
     "service": "apps/api/src/notifications/notification.service.ts",
@@ -504,7 +520,7 @@
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> architecture-foundation": 8,
     "commerce-orders-fulfillment -> brand-store": 2,
-    "commerce-orders-fulfillment -> identity-customer-benefits": 5,
+    "commerce-orders-fulfillment -> identity-customer-benefits": 4,
     "commerce-orders-fulfillment -> messaging-notifications": 4,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> store-operations-pos-print": 2,
