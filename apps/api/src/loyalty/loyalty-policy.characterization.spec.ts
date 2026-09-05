@@ -69,29 +69,6 @@ describe('Loyalty policy characterization', () => {
     expect('brandConfig' in prisma).toBe(false);
   });
 
-  it('reads committed Store Balance tender from the Loyalty ledger', async () => {
-    const aggregate = jest.fn().mockResolvedValue({
-      _sum: { deltaMicro: -15_990_000n },
-    });
-    const service = new LoyaltyService(
-      { loyaltyLedger: { aggregate } } as never,
-      {} as never,
-    );
-
-    await expect(
-      service.getSettledBalancePaymentCentsForOrder('order-db-id'),
-    ).resolves.toBe(1599);
-    expect(aggregate).toHaveBeenCalledWith({
-      where: {
-        orderId: 'order-db-id',
-        type: 'REDEEM_ON_ORDER',
-        target: 'BALANCE',
-        deltaMicro: { lt: 0n },
-      },
-      _sum: { deltaMicro: true },
-    });
-  });
-
   it('reads transaction policy only from dedicated persistence through the same tx', async () => {
     const persistedPolicy = {
       earnPtPerDollar: 0.02,

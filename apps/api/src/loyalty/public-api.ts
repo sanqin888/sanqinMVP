@@ -11,6 +11,11 @@ export {
   type LoyaltyOrderPaidSettlementPort,
 } from './loyalty-order-paid-settlement.contract';
 export {
+  LOYALTY_ORDER_USAGE_READER,
+  type LoyaltyOrderUsageReaderPort,
+  type LoyaltyOrderUsageReadResult,
+} from './loyalty-order-usage-read.contract';
+export {
   LOYALTY_POLICY_READER,
   LOYALTY_POLICY_SETTINGS_READER,
   LOYALTY_POLICY_WRITER,

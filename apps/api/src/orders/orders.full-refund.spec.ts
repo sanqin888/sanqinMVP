@@ -18,7 +18,7 @@ describe('OrdersService.createFullRefund', () => {
   const amendmentUpdate = jest.fn();
   const orderUpdateMany = jest.fn();
   const rollbackOnRefund = jest.fn();
-  const getSettledBalancePaymentCentsForOrder = jest.fn();
+  const getOrderUsage = jest.fn();
   const tx = {
     order: { findUnique: orderFindUnique, updateMany: orderUpdateMany },
     orderAmendment: {
@@ -36,7 +36,7 @@ describe('OrdersService.createFullRefund', () => {
     amendmentUpsert.mockResolvedValue({ id: 'amendment_1' });
     orderUpdateMany.mockResolvedValue({ count: 1 });
     rollbackOnRefund.mockResolvedValue(undefined);
-    getSettledBalancePaymentCentsForOrder.mockResolvedValue(0);
+    getOrderUsage.mockResolvedValue({ balancePaidCents: 0, pointsEarned: 0 });
     service = Object.create(OrdersService.prototype) as OrdersService;
     Object.assign(service, {
       prisma: {
@@ -46,7 +46,9 @@ describe('OrdersService.createFullRefund', () => {
       },
       loyalty: {
         rollbackOnRefund,
-        getSettledBalancePaymentCentsForOrder,
+      },
+      loyaltyOrderUsageReader: {
+        getOrderUsage,
       },
     });
     jest
@@ -248,7 +250,7 @@ describe('OrdersService.createFullRefund', () => {
     });
 
     await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(0);
-    expect(getSettledBalancePaymentCentsForOrder).not.toHaveBeenCalled();
+    expect(getOrderUsage).not.toHaveBeenCalled();
   });
 
   it('旧 Web 余额订单按实际余额 ledger 反推 external=0', async () => {
@@ -258,12 +260,12 @@ describe('OrdersService.createFullRefund', () => {
       paymentMethod: PaymentMethod.STORE_BALANCE,
       paymentBreakdownJson: null,
     });
-    getSettledBalancePaymentCentsForOrder.mockResolvedValue(2599);
+    getOrderUsage.mockResolvedValue({ balancePaidCents: 2599, pointsEarned: 0 });
 
     await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(0);
-    expect(getSettledBalancePaymentCentsForOrder).toHaveBeenCalledWith(
-      baseOrder.id,
-    );
+    expect(getOrderUsage).toHaveBeenCalledWith({
+      orderStableId: baseOrder.orderStableId,
+    });
   });
 
   it('旧 Web 余额加外部支付订单按实际 ledger 保留 external>0', async () => {
@@ -273,11 +275,14 @@ describe('OrdersService.createFullRefund', () => {
       paymentMethod: PaymentMethod.CARD,
       paymentBreakdownJson: null,
     });
-    getSettledBalancePaymentCentsForOrder.mockResolvedValue(1599);
+    getOrderUsage.mockResolvedValue({ balancePaidCents: 1599, pointsEarned: 0 });
 
     await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(
       1000,
     );
+    expect(getOrderUsage).toHaveBeenCalledWith({
+      orderStableId: baseOrder.orderStableId,
+    });
   });
 
   it('已有历史 PENDING_MANUAL amendment 时原位确认而不新增记录', async () => {
