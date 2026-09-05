@@ -98,6 +98,7 @@ type DeviceSession = {
 
 type TrustedDevice = {
   id: string;
+  trustedDeviceStableId: string;
   label: string | null;
   createdAt: string;
   lastSeenAt: string | null;
@@ -2955,7 +2956,7 @@ function DeviceManagementSection({
           <div className="mt-2 space-y-2 text-xs text-stone-600">
             {trustedDevices.map((device) => (
               <div
-                key={device.id}
+                key={device.trustedDeviceStableId}
                 className="rounded-lg bg-white px-2 py-2 shadow-sm ring-1 ring-[#87362E]/10"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -2981,7 +2982,9 @@ function DeviceManagementSection({
                   <button
                     type="button"
                     className="text-[10px] text-rose-600 hover:text-rose-700"
-                    onClick={() => onRevokeTrustedDevice(device.id)}
+                    onClick={() =>
+                      onRevokeTrustedDevice(device.trustedDeviceStableId)
+                    }
                   >
                     {isZh ? "移除" : "Remove"}
                   </button>

@@ -851,8 +851,8 @@ closeout.
 
 ### 2026-09-05 — Phase 4 Slice 4B Stage 1: Customer + Security admin boundary contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice4b-customer-security-admin-boundary`  
-**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**PR/SHA:** PR #2180 / merge `252cd26f` / final head `a2f52ddf`  
+**State:** MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING — GitHub Actions CI #5150 passed  
 **Result:** Customer/Admin profile mutation and address reads move behind the Customer-owned
 `CUSTOMER_ADMINISTRATION` public contract implemented by the existing `CustomerService`; the broad
 `AdminMembersService` no longer owns `UserAddress` reads or profile `User.update` persistence. The
@@ -878,6 +878,34 @@ claimed under repository workflow; GitHub Actions remains deferred until user re
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
 
+### 2026-09-05 — Phase 4 Slice 4B Stage 2: TrustedDevice stable-ID contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice4b-trusted-device-stable-id`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING — Prisma schema + migration explicitly authorized  
+**Result:** `TrustedDevice` now owns required unique `trustedDeviceStableId @default(cuid())`. The new
+additive migration deterministically/idempotently backfills legacy rows as
+`c + substring(md5(id), 1, 23)`, checks NULL/duplicate discrepancies before tightening NOT NULL, and
+adds the unique index. A read-only production precheck found **2** TrustedDevice rows and **2** distinct
+predicted stable IDs. `ACCOUNT_SECURITY_ADMINISTRATION` now owns the complete member/Admin device
+management read model, session revoke, stable-ID-scoped trusted-device revoke and session-derived label
+lookup; `MembershipService` no longer accesses `UserSession`/`TrustedDevice`, and `AdminMembersService`
+no longer performs the temporary Auth + Membership dual query. Browser/PWA responses expose explicit
+`trustedDeviceStableId`; the historical `id` field remains as a compatibility alias carrying the same
+stable ID, never the Prisma UUID, so cached bundles that read `id` remain compatible after refresh while
+new Web code uses the explicit stable field. Existing HTTP route shapes are unchanged and Auth token
+issuance/validation is not altered. The central architecture gate requires the stable field/migration,
+owner delegation and Web stable-ID use, forbids device persistence from returning to Membership/Admin,
+and rejects nondeterministic TrustedDevice backfill SQL. Numeric context debt remains unchanged at
+Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
+**0**, with an empty public SCC baseline. No local migration application, Prisma validation, lint,
+build, test or scanner execution is claimed under repository workflow; the migration SQL has not been
+applied to any database.  
+**Details:** `apps/api/prisma/schema.prisma`,
+`apps/api/prisma/migrations/20260905134000_add_trusted_device_stable_id/migration.sql`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -892,7 +920,7 @@ claimed under repository workflow; GitHub Actions remains deferred until user re
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 + 4A MERGED/CI; SLICE 4B STAGE 1 LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 + 4A + 4B STAGE 1 MERGED/CI; SLICE 4B STAGE 2 LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -913,9 +941,10 @@ claimed under repository workflow; GitHub Actions remains deferred until user re
   performs implicit User/PHONE_VERIFY mutation. Slice 4A merged via PR #2179 as `f91a849e` after
   final head `f235893e` passed CI #5144; Staff persistence, invite orchestration and staff-account
   invariants now belong to Auth/Identity, contracting Identity -> Runtime `14 -> 12` and total
-  Identity outgoing `37 -> 35`. Slice 4B Stage 1 is locally source-complete: Customer owns Admin
-  profile/address operations and Auth owns Admin session/status operations while TrustedDevice remains
-  a separately gated stable-ID migration tail. Per the current rollout plan, Slice 1 onward are not
+  Identity outgoing `37 -> 35`. Slice 4B Stage 1 merged via PR #2180 as `252cd26f` after final head
+  `a2f52ddf` passed CI #5150. Stage 2 is locally source-complete: TrustedDevice gains its stable
+  business identity and member/Admin device management moves fully behind the Auth owner without
+  exposing the Prisma UUID. Per the current rollout plan, Slice 1 onward are not
   individually deployed; the accumulated Phase 4 changes will be deployed and actively verified
   together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for

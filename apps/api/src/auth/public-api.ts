@@ -31,8 +31,10 @@ export {
   ACCOUNT_SECURITY_ADMINISTRATION,
   type AccountSecurityAdministrationErrorCode,
   AccountSecurityAdministrationError,
+  type AccountDeviceManagementDto,
   type AccountSecurityAdministrationPort,
   type AccountSessionDto,
+  type AccountTrustedDeviceDto,
   type ManagedAccountStatus,
 } from './account-security-administration.contract';
 export { Roles } from './roles.decorator';

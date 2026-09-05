@@ -157,17 +157,18 @@ existing non-atomic active-admin count/update semantics and current ADMIN/STAFF 
 intentionally preserved. Slice 4A merged through PR #2179 after final head `f235893e` passed CI #5144
 and squash-merged as `f91a849e`.
 
-Slice 4B Stage 1 then contracts Admin member Customer/Security ownership without changing the numeric
-context graph. `CUSTOMER_ADMINISTRATION` makes CustomerService the owner of Admin profile mutation and
-address reads while preserving the broader Admin birthday override semantics. The separate
-`ACCOUNT_SECURITY_ADMINISTRATION` Auth capability owns stable-ID-scoped session listing/revocation and
-ACTIVE/DISABLED account status. `AdminMembersService` delegates those operations and may not regain the
-retired `UserAddress`, profile `User.update`, or session/status persistence paths. Trusted-device
-list/revoke remains the explicitly deferred 4B Stage 2 tail because the current browser-facing
-`TrustedDevice.id` is a Prisma UUID and must not be copied into the new Auth public contract. Therefore
-Identity -> Architecture remains **13**, Identity -> Runtime **12**, Identity total **35**, Identity ->
-Messaging **0**, and the public SCC baseline remains empty. No baseline count is raised for Stage 1.
-Payment ownership is not reopened merely to chase the largest numeric total mid-phase.
+Slice 4B contracts Admin/member Customer/Security ownership without changing the numeric context graph.
+Stage 1 merged via PR #2180 as `252cd26f` after final head `a2f52ddf` passed CI #5150:
+`CUSTOMER_ADMINISTRATION` makes CustomerService the owner of Admin profile mutation/address reads, while
+`ACCOUNT_SECURITY_ADMINISTRATION` owns stable-ID-scoped session management and ACTIVE/DISABLED account
+status. Stage 2 adds `TrustedDevice.trustedDeviceStableId` through the authorized additive migration,
+moves trusted-device list/revoke and session-derived labels fully behind the Auth capability, removes
+`UserSession`/`TrustedDevice` management from `MembershipService`, and makes both explicit
+`trustedDeviceStableId` plus the legacy browser `id` alias carry the stable identity rather than the
+Prisma UUID. New Web code consumes the explicit stable field while existing route shapes remain intact.
+Therefore Identity -> Architecture remains **13**, Identity -> Runtime **12**, Identity total **35**,
+Identity -> Messaging **0**, and the public SCC baseline remains empty. No baseline count is raised for
+Stage 2. Payment ownership is not reopened merely to chase the largest numeric total mid-phase.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

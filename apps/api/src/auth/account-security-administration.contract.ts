@@ -11,10 +11,27 @@ export type AccountSessionDto = {
   mfaVerifiedAt: string | null;
   deviceInfo: string | null;
   loginLocation: string | null;
-  isCurrent: false;
+  isCurrent: boolean;
 };
 
-export type AccountSecurityAdministrationErrorCode = 'USER_NOT_FOUND';
+export type AccountTrustedDeviceDto = {
+  /** Compatibility alias for cached Web/PWA bundles. Carries the stable ID, never the DB UUID. */
+  id: string;
+  trustedDeviceStableId: string;
+  label: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  expiresAt: string;
+};
+
+export type AccountDeviceManagementDto = {
+  sessions: AccountSessionDto[];
+  trustedDevices: AccountTrustedDeviceDto[];
+};
+
+export type AccountSecurityAdministrationErrorCode =
+  | 'USER_NOT_FOUND'
+  | 'SESSION_NOT_FOUND';
 
 export class AccountSecurityAdministrationError extends Error {
   constructor(
@@ -27,10 +44,19 @@ export class AccountSecurityAdministrationError extends Error {
 }
 
 export interface AccountSecurityAdministrationPort {
-  listSessions(
+  getDeviceManagement(
     userStableId: string,
-  ): Promise<{ sessions: AccountSessionDto[] }>;
+    currentSessionId?: string,
+  ): Promise<AccountDeviceManagementDto>;
   revokeSession(userStableId: string, sessionId: string): Promise<void>;
+  revokeTrustedDevice(
+    userStableId: string,
+    trustedDeviceStableId: string,
+  ): Promise<void>;
+  getSessionDeviceLabel(
+    userStableId: string,
+    sessionId: string,
+  ): Promise<{ label?: string }>;
   setAccountStatus(
     userStableId: string,
     disabled: boolean,

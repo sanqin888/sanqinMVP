@@ -735,11 +735,13 @@ Per the Phase 4 rollout policy, Slice 4A will not be deployed separately.
 
 #### Slice 4B — Customer + Security admin boundary
 
-Status: **STAGE 1 LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice4b-customer-security-admin-boundary`.
+Status: **STAGE 1 MERGED / CI GREEN; STAGE 2 LOCAL SOURCE COMPLETE / REVIEW PENDING**.
+Stage 1 merged via PR #2180 as `252cd26f` after final head `a2f52ddf` passed GitHub Actions CI #5150.
+Stage 2 is on `refactor/phase4-slice4b-trusted-device-stable-id` with the schema/migration work explicitly
+authorized by the user.
 
-The Stage 1 implementation is an atomic source-only owner contraction and intentionally stops before
-TrustedDevice identity migration:
+Stage 1 established the Customer/Auth owner boundaries. Stage 2 closes the deferred TrustedDevice
+identity tail without changing the existing browser route shapes:
 
 1. Customer now exposes the framework/persistence-free `CUSTOMER_ADMINISTRATION` contract.
    `CustomerService` implements the capability and owns Admin profile mutation plus address reads;
@@ -751,34 +753,44 @@ TrustedDevice identity migration:
 3. Auth exposes the separate framework/Prisma-generated-free `ACCOUNT_SECURITY_ADMINISTRATION`
    capability. Its internal service resolves `userStableId` to the User DB UUID inside Identity and
    owns Admin session listing/revocation plus ACTIVE/DISABLED account-status mutation;
-4. Admin session responses preserve the existing dedupe/order/projection semantics. The combined
-   `/admin/members/:userStableId/devices` response temporarily obtains sessions from the Auth owner
-   while retaining the historical Membership trusted-device portion, so this Stage 1 does not create
-   a new canonical contract carrying `TrustedDevice.id`;
-5. `TrustedDevice.id` remains a Prisma UUID currently exposed by the historical membership/device
-   transport. Moving trusted-device list/revoke into the new Auth public contract is explicitly
-   deferred to **4B Stage 2**, which requires an authorized `trustedDeviceStableId` expand-contract
-   schema/migration and PWA contract cutover rather than cementing the DB UUID into a new boundary;
-6. Orders/top-items remain 4C, recharge challenge/token lifecycle remains 4D, and Benefits/coupon/
-   loyalty implementation remains Slice 5. No payment, Uber, provider, public route, dependency or
-   Prisma schema/migration change is included in Stage 1;
-7. focused characterization covers Admin birthday override/clear, phone normalization and
-   verification reset, stable-ID-scoped session listing/revocation and account status behavior. The
-   central scanner requires the Customer/Auth public capabilities, prevents profile/address/session/
-   status Prisma ownership from returning to Admin, and explicitly prevents TrustedDevice from being
-   added to the new account-security public contract/service during Stage 1.
+4. Stage 2 adds required unique `TrustedDevice.trustedDeviceStableId @default(cuid())`. The authorized
+   migration adds the column, deterministically/idempotently backfills existing rows as
+   `c + substring(md5(id), 1, 23)`, checks for NULL/duplicate results, then tightens NOT NULL and adds
+   the unique index. A 2026-09-05 read-only production precheck found **2** TrustedDevice rows and
+   **2** distinct predicted backfill values;
+5. `ACCOUNT_SECURITY_ADMINISTRATION` now owns the complete device-management read model, session
+   revocation, trusted-device revocation and session-derived label lookup. The owner resolves
+   `userStableId` to the User DB UUID internally and selects/revokes trusted devices only through
+   `trustedDeviceStableId`; `MembershipService` no longer reads/writes `UserSession` or
+   `TrustedDevice`, and Admin no longer performs the temporary Auth + Membership dual query;
+6. the browser response exposes explicit `trustedDeviceStableId`. For cached Web/PWA bundle
+   compatibility, the historical `id` field remains as an alias but carries the **same stable ID**,
+   never the Prisma UUID. Existing `/membership/devices/trusted/:deviceId` and Admin route shapes are
+   preserved; new Web code uses `trustedDeviceStableId` explicitly for React keys and revoke calls;
+7. trusted-device token issuance/validation remains in the existing Auth owner and is not changed by
+   the identity migration. Orders/top-items remain 4C, recharge challenge/token lifecycle remains 4D,
+   and Benefits/coupon/loyalty implementation remains Slice 5. No dependency/lockfile, payment, Uber,
+   provider or external-route change is included;
+8. focused characterization now covers current-session dedupe, stable trusted-device projection,
+   stable-ID-scoped trusted-device revoke, session-label lookup and existing account status behavior.
+   The central scanner requires the schema/migration, Auth owner capability and Web stable-ID use,
+   forbids device persistence from returning to Membership/Admin, and rejects nondeterministic
+   TrustedDevice backfill SQL.
 
 Static production-import debt remains **unchanged** at Identity -> Architecture **13**,
 Identity -> Runtime **12**, total Identity outgoing **35**, Identity -> Messaging **0**, with the
-public SCC baseline still empty. This is an ownership contraction inside the existing Identity /
-Customer / Benefits context, not a cross-context graph change. No local lint/build/test/scanner run is
-claimed under repository workflow; remote CI remains deferred until user review.
+public SCC baseline still empty. This is an ownership/data-contract contraction inside the existing
+Identity / Customer / Benefits context, not a cross-context graph change. No local Prisma application,
+lint/build/test/scanner run is claimed under repository workflow; remote CI remains deferred until user
+review. The migration SQL is generated as a reviewed repository migration but is not applied to any
+local or production database in this stage. At Phase-end rollout, `prisma migrate deploy` must complete
+**before** the new API/Web image is activated because the owner read model selects the new column. The
+post-migration verification must confirm TrustedDevice total = populated stable IDs = distinct stable
+IDs, then exercise member device list/trust/revoke plus Admin device list/revoke before 4B is marked
+production verified.
 
 #### Remaining Slice 4 plan
 
-- **4B Stage 2 — TrustedDevice stable-ID contraction:** add a stable business identity through an
-  authorized expand-contract schema/migration, migrate member/Admin device transports and only then
-  move trusted-device list/revoke behind the Auth security public capability.
 - **4C — Orders member read routes:** re-home `/admin/members/:userStableId/orders` and `/top-items`
   implementation inside Orders while preserving the existing route shape; do not add an
   Identity -> Orders public edge that would recreate the Identity/Commerce SCC.

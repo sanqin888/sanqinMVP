@@ -38,7 +38,6 @@ describe('AdminMembersService loyalty policy characterization', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
     );
 
     await expect(

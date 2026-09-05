@@ -1863,6 +1863,11 @@ if (adminCustomerSecurityBoundary) {
     boundary.accountSecurityService,
     boundary.accountSecurityModule,
     boundary.authPublicSurface,
+    boundary.trustedDeviceSchema,
+    boundary.trustedDeviceMigration,
+    boundary.membershipController,
+    boundary.membershipService,
+    boundary.membershipWeb,
     boundary.adminMembersService,
     boundary.adminMembersModule,
   ];
@@ -1997,10 +2002,14 @@ if (adminCustomerSecurityBoundary) {
     for (const requiredSymbol of [
       'ACCOUNT_SECURITY_ADMINISTRATION',
       'AccountSecurityAdministrationPort',
-      'listSessions',
+      'AccountTrustedDeviceDto',
+      'getDeviceManagement',
       'revokeSession',
+      'revokeTrustedDevice',
+      'getSessionDeviceLabel',
       'setAccountStatus',
       'userStableId',
+      'trustedDeviceStableId',
     ]) {
       if (!source.includes(requiredSymbol)) {
         failures.push(
@@ -2013,8 +2022,6 @@ if (adminCustomerSecurityBoundary) {
       '@prisma/client',
       'PrismaService',
       /\buserId\b/,
-      'TrustedDevice',
-      'trustedDevice',
     ]) {
       const matched =
         forbiddenSymbol instanceof RegExp
@@ -2037,11 +2044,16 @@ if (adminCustomerSecurityBoundary) {
     for (const requiredSymbol of [
       "from './identity-prisma'",
       'implements AccountSecurityAdministrationPort',
-      'listSessions',
+      'getDeviceManagement',
       'revokeSession',
+      'revokeTrustedDevice',
+      'getSessionDeviceLabel',
       'setAccountStatus',
       'where: { userStableId }',
+      'trustedDeviceStableId: true',
+      'id: device.trustedDeviceStableId',
       'where: { userId: userDbId, sessionId }',
+      'where: { userId: userDbId, trustedDeviceStableId }',
     ]) {
       if (!source.includes(requiredSymbol)) {
         failures.push(
@@ -2053,11 +2065,10 @@ if (adminCustomerSecurityBoundary) {
       '@nestjs/common',
       '@prisma/client',
       "from '../prisma/prisma.service'",
-      'trustedDevice.',
     ]) {
       if (source.includes(forbiddenSymbol)) {
         failures.push(
-          `Auth account-security owner must stay framework/Prisma-generated free and must not absorb the deferred TrustedDevice contract (${forbiddenSymbol}): ${boundary.accountSecurityService}`,
+          `Auth account-security owner must stay framework/Prisma-generated free (${forbiddenSymbol}): ${boundary.accountSecurityService}`,
         );
       }
     }
@@ -2095,6 +2106,112 @@ if (adminCustomerSecurityBoundary) {
     }
   }
 
+  const trustedDeviceSchemaPath = join(REPOSITORY_ROOT, boundary.trustedDeviceSchema);
+  if (existsSync(trustedDeviceSchemaPath)) {
+    const source = readFileSync(trustedDeviceSchemaPath, 'utf8');
+    if (!source.includes('trustedDeviceStableId String    @unique @default(cuid())')) {
+      failures.push(
+        `TrustedDevice must own a required unique stable business identity: ${boundary.trustedDeviceSchema}`,
+      );
+    }
+  }
+
+  const trustedDeviceMigrationPath = join(
+    REPOSITORY_ROOT,
+    boundary.trustedDeviceMigration,
+  );
+  if (existsSync(trustedDeviceMigrationPath)) {
+    const source = readFileSync(trustedDeviceMigrationPath, 'utf8');
+    for (const requiredSymbol of [
+      'ADD COLUMN "trustedDeviceStableId" TEXT',
+      "'c' || substring(md5(\"id\"::text), 1, 23)",
+      'WHERE "trustedDeviceStableId" IS NULL',
+      'ALTER COLUMN "trustedDeviceStableId" SET NOT NULL',
+      'TrustedDevice_trustedDeviceStableId_key',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `TrustedDevice stable-ID migration is missing ${requiredSymbol}: ${boundary.trustedDeviceMigration}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of ['random()', 'clock_timestamp()']) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `TrustedDevice stable-ID backfill must remain deterministic (${forbiddenSymbol}): ${boundary.trustedDeviceMigration}`,
+        );
+      }
+    }
+  }
+
+  const membershipControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.membershipController,
+  );
+  if (existsSync(membershipControllerPath)) {
+    const source = readFileSync(membershipControllerPath, 'utf8');
+    for (const requiredSymbol of [
+      'ACCOUNT_SECURITY_ADMINISTRATION',
+      'accountSecurity.getDeviceManagement',
+      'accountSecurity.revokeSession',
+      'accountSecurity.revokeTrustedDevice',
+      'accountSecurity.getSessionDeviceLabel',
+      'userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Membership device transport must delegate to the Auth security owner (${requiredSymbol}): ${boundary.membershipController}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'membership.getDeviceManagement',
+      'membership.revokeSession',
+      'membership.revokeTrustedDevice',
+      'membership.getSessionDeviceLabel',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Membership transport must not delegate device persistence back to MembershipService (${forbiddenSymbol}): ${boundary.membershipController}`,
+        );
+      }
+    }
+  }
+
+  const membershipServicePath = join(REPOSITORY_ROOT, boundary.membershipService);
+  if (existsSync(membershipServicePath)) {
+    const source = readFileSync(membershipServicePath, 'utf8');
+    for (const forbiddenSymbol of [
+      'this.prisma.trustedDevice',
+      'this.prisma.userSession',
+      'getDeviceManagement(',
+      'revokeTrustedDevice(',
+      'getSessionDeviceLabel(',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `MembershipService must not reclaim Auth-owned session/trusted-device management (${forbiddenSymbol}): ${boundary.membershipService}`,
+        );
+      }
+    }
+  }
+
+  const membershipWebPath = join(REPOSITORY_ROOT, boundary.membershipWeb);
+  if (existsSync(membershipWebPath)) {
+    const source = readFileSync(membershipWebPath, 'utf8');
+    if (
+      !source.includes('trustedDeviceStableId: string') ||
+      !source.includes('key={device.trustedDeviceStableId}') ||
+      !source.includes('onRevokeTrustedDevice(device.trustedDeviceStableId)') ||
+      source.includes('onRevokeTrustedDevice(device.id)') ||
+      source.includes('key={device.id}')
+    ) {
+      failures.push(
+        `Membership Web/PWA must use trustedDeviceStableId explicitly while the legacy id alias stays transport-only: ${boundary.membershipWeb}`,
+      );
+    }
+  }
+
   const adminMembersServicePath = join(
     REPOSITORY_ROOT,
     boundary.adminMembersService,
@@ -2109,8 +2226,9 @@ if (adminCustomerSecurityBoundary) {
       'customerAdministration.updateProfileAsAdmin',
       'ACCOUNT_SECURITY_ADMINISTRATION',
       'AccountSecurityAdministrationPort',
-      'accountSecurityAdministration.listSessions',
+      'accountSecurityAdministration.getDeviceManagement',
       'accountSecurityAdministration.revokeSession',
+      'accountSecurityAdministration.revokeTrustedDevice',
       'accountSecurityAdministration.setAccountStatus',
     ]) {
       if (!source.includes(requiredSymbol)) {
@@ -2122,7 +2240,10 @@ if (adminCustomerSecurityBoundary) {
     for (const forbiddenSymbol of [
       'this.prisma.userAddress',
       'Prisma.UserUpdateInput',
-      'this.membership.revokeSession',
+      "from '../../membership/membership.service'",
+      'this.membership.',
+      'this.prisma.userSession',
+      'this.prisma.trustedDevice',
       'this.prisma.user.update(',
     ]) {
       if (source.includes(forbiddenSymbol)) {

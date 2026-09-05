@@ -43,7 +43,6 @@ describe('AdminMembersService recharge OTP characterization', () => {
       prisma as never,
       loyalty as never,
       loyaltyPolicyReader as never,
-      {} as never,
       phoneVerification as never,
       memberRechargeEmailDelivery as never,
       challengeEngine,

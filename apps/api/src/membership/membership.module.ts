@@ -3,7 +3,10 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { AuthModule } from '../auth/auth.module';
-import { IdentityEmailVerificationModule } from '../auth/public-api';
+import {
+  AccountSecurityAdministrationModule,
+  IdentityEmailVerificationModule,
+} from '../auth/public-api';
 import { MembershipService } from './membership.service';
 import { CustomerService } from './customer.service';
 import {
@@ -19,6 +22,7 @@ import { CUSTOMER_ADMINISTRATION } from './customer-administration.contract';
     PrismaModule,
     LoyaltyModule,
     AuthModule,
+    AccountSecurityAdministrationModule,
     IdentityEmailVerificationModule,
     NotificationModule,
     CouponsModule,
