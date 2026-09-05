@@ -168,16 +168,33 @@ than the Prisma UUID. Identity -> Architecture remains **13**, Identity -> Runti
 **35**, Identity -> Messaging **0**, and the public SCC baseline remains empty. The TrustedDevice
 migration remains unapplied in production until the consolidated Phase 4 rollout.
 
-Slice 4C is **LOCAL SOURCE COMPLETE / REVIEW PENDING**. The approved additive migration adds nullable
-`Order.userStableId`, deterministically backfills it from the existing `Order.userId -> User.id`
-association with count/mismatch/orphan checks, and adds the `(userStableId, createdAt)` index. The two
-existing `/admin/members/:userStableId/orders` and `/top-items` transports move physically into Orders
-with the same guards/roles/response semantics; Admin no longer queries Order/OrderItem persistence.
-Orders queries its own `userStableId` snapshot and uses only the narrow Customer existence public
-capability to preserve `404 member not found`, so no User DB UUID crosses the boundary and no
-Identity -> Orders public edge is introduced. `OrdersModule` also switches its historical Membership
-module import to `membership/public-api`, contracting Commerce -> Identity direct debt **5 -> 4** and
-Commerce outgoing total **31 -> 30** while the public SCC baseline remains empty.
+Slice 4C is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2182. Final head
+`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`. The approved
+additive migration adds nullable `Order.userStableId`, deterministically backfills it from the existing
+`Order.userId -> User.id` association with count/mismatch/orphan checks, and adds the
+`(userStableId, createdAt)` index. The two existing `/admin/members/:userStableId/orders` and
+`/top-items` transports move physically into Orders with the same guards/roles/response semantics;
+Admin no longer queries Order/OrderItem persistence. Orders queries its own `userStableId` snapshot
+and uses only the narrow Customer existence public capability to preserve `404 member not found`, so
+no User DB UUID crosses the boundary and no Identity -> Orders public edge is introduced.
+`OrdersModule` also switches its historical Membership module import to `membership/public-api`,
+contracting Commerce -> Identity direct debt **5 -> 4** and Commerce outgoing total **31 -> 30** while
+the public SCC baseline remains empty. The Order stable-ID migration is merged but remains unapplied
+until the consolidated Phase 4 rollout.
+
+Slice 4D-A is **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice4d-a-recharge-challenge-owner`. The new Identity-owned
+`MEMBER_RECHARGE_VERIFICATION` public capability owns the existing `pos-recharge` member/contact
+resolution, email challenge persistence/delivery linkage, SMS delegation, code verification,
+verification-token creation and atomic one-time token claim. `AdminMembersService` no longer owns
+`AuthChallenge`, Phone Verification internals, recharge email delivery or the generic challenge engine;
+it keeps the unchanged amount/token input validation, post-claim idempotency-key handling and
+`LoyaltyService.applyTopup()` orchestration. Phone Verification's same-context challenge dependency now
+uses the internal challenge module/port directly to avoid an Auth public-barrel cycle. This ownership
+move does not change the numeric graph: Identity -> Architecture remains **13**, Identity -> Runtime
+**12**, Identity total **35**, Identity -> Messaging **0**, Commerce -> Identity **4**, and the public
+SCC baseline remains empty. Email/SMS rate-limit unification, recharge-specific OTP secret/randomness
+and POS handling of `{ ok:false }` send responses are explicitly deferred to the 4D-H hardening follow-up.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

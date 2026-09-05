@@ -683,9 +683,10 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **4A + 4B MERGED / CI GREEN; 4C LOCAL SOURCE COMPLETE / REVIEW PENDING; 4D PLANNED**.
-The TrustedDevice Stage 2 migration is merged but remains unapplied until the consolidated Phase 4
-rollout; Slice 4C now carries the separately authorized additive Order member stable-ID migration.
+Status: **4A + 4B + 4C MERGED / CI GREEN; 4D-A LOCAL SOURCE COMPLETE / REVIEW PENDING; 4D-H PLANNED**.
+The TrustedDevice Stage 2 and Slice 4C Order member stable-ID migrations are merged but remain unapplied
+until the consolidated Phase 4 rollout. Slice 4D-A is a schema-free ownership contraction; its security/UX
+hardening follow-up remains separate so behavior changes are not mixed into the ownership PR.
 
 #### Slice 4A — Staff Administration ownership contraction
 
@@ -768,9 +769,9 @@ identity tail without changing the existing browser route shapes:
    never the Prisma UUID. Existing `/membership/devices/trusted/:deviceId` and Admin route shapes are
    preserved; new Web code uses `trustedDeviceStableId` explicitly for React keys and revoke calls;
 7. trusted-device token issuance/validation remains in the existing Auth owner and is not changed by
-   the identity migration. Orders/top-items remain 4C, recharge challenge/token lifecycle remains 4D,
-   and Benefits/coupon/loyalty implementation remains Slice 5. No dependency/lockfile, payment, Uber,
-   provider or external-route change is included;
+   the identity migration. Orders/top-items were deferred to 4C and recharge challenge/token lifecycle
+   to 4D-A, both documented below; Benefits/coupon/loyalty implementation remains Slice 5. No
+   dependency/lockfile, payment, Uber, provider or external-route change is included;
 8. focused characterization now covers current-session dedupe, stable trusted-device projection,
    stable-ID-scoped trusted-device revoke, session-label lookup and existing account status behavior.
    The central scanner requires the schema/migration, Auth owner capability and Web stable-ID use,
@@ -791,8 +792,9 @@ production verified.
 
 #### Slice 4C — Orders member read routes
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice4c-orders-member-reads`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2182. Final head
+`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`. The authorized
+Order stable-ID migration remains unapplied until the consolidated Phase 4 rollout.
 
 The approved implementation keeps the existing Admin/POS HTTP contract while moving the two
 Orders-owned read models out of Identity/Admin:
@@ -829,17 +831,74 @@ Orders-owned read models out of Identity/Admin:
    existence contract, Orders-owned transport, dual-write paths and Admin cleanup, while rejecting
    User persistence access or DB-ID-based member reads from the Orders read model.
 
-No local migration application, lint/build/test/scanner run is claimed under repository workflow;
-remote CI remains deferred until user review. At Phase-end rollout the Order stable-ID migration must
-run before the new API starts querying the column. Post-migration verification must confirm every
-non-null `Order.userId` row has the matching `Order.userStableId`, then exercise Admin member orders /
-top-items plus POS member order history.
+No local migration application was performed. GitHub Actions CI #5158 is the authoritative validation
+for the merged Slice 4C source. At Phase-end rollout the Order stable-ID migration must run before the
+new API starts querying the column. Post-migration verification must confirm every non-null
+`Order.userId` row has the matching `Order.userStableId`, then exercise Admin member orders / top-items
+plus POS member order history.
 
-#### Remaining Slice 4 plan
+#### Slice 4D-A — Recharge challenge ownership contraction
 
-- **4D — Recharge challenge ownership contraction:** separately assess/move POS member-recharge
-  challenge lifecycle from broad `AdminMembersService` after 4C, preserving verification-token
-  and top-up semantics.
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice4d-a-recharge-challenge-owner`.
+
+The approved source contraction moves the existing POS member recharge verification lifecycle behind an
+Identity/Auth public capability without changing the HTTP routes, OTP policy, provider delivery behavior
+or Loyalty top-up semantics:
+
+1. Auth exposes the framework/persistence-free `MEMBER_RECHARGE_VERIFICATION` contract with
+   `sendCode`, `verifyCode` and `consumeVerificationToken`. Cross-boundary inputs use only
+   `userStableId`, contact/locale/code facts and the opaque verification token; no User DB UUID,
+   `AuthChallenge` persistence shape, Prisma type, provider service or Loyalty implementation is exposed;
+2. `MemberRechargeVerificationService` resolves `userStableId -> User.id` internally and owns the
+   historical recharge contact selection, including email-first behavior when a profile email exists,
+   contact mismatch errors and missing-contact errors. Email recharge continues using
+   `NON_ZERO_SIX_DIGIT`, the existing `OTP` hash secret, 10-minute expiry, `EMAIL_VERIFY`,
+   `purpose='pos-recharge'`, MessagingSend audit linkage and `email_send_failed` fallback;
+3. SMS recharge still delegates `sendCode` / `verifyCode` to the existing `PhoneVerificationService`
+   with `purpose='pos-recharge'`, preserving its existing phone normalization, rate limits, provider
+   error behavior, `PHONE_VERIFY` challenge type and verification-token semantics. The same-context
+   Phone Verification challenge imports now use `challenge-engine.port/module` directly instead of the
+   Auth public barrel so exporting the new recharge module cannot create a runtime import cycle;
+4. email code verification preserves latest-pending selection, expiry mutation, attempt increment /
+   final revoke, successful code consumption plus creation of a PENDING verification-token challenge,
+   and the rule that the token inherits the original code's expiry rather than receiving a fresh TTL;
+5. final verification-token claim preserves the existing address/channel/type/purpose binding and
+   atomic `updateMany(status=PENDING)` one-time consume guard. Expired tokens remain rejected without
+   changing the historical status-mutation behavior, and a concurrent second claim still returns
+   `verificationToken already used`;
+6. `AdminMembersService` no longer imports or mutates `AuthChallenge`, `PhoneVerificationService`,
+   `IDENTITY_CHALLENGE_ENGINE` or `MEMBER_RECHARGE_EMAIL_DELIVERY`. It delegates send/verify/claim to
+   the owner, maps owner validation/member errors back to the existing 400/404 transport behavior,
+   keeps the existing amount/token presence checks, generates the same idempotency key when absent,
+   and calls `LoyaltyService.applyTopup()` only **after** the token owner confirms the atomic claim;
+7. `AdminMembersModule` now composes only `MemberRechargeVerificationModule` for this concern. The old
+   direct Phone Verification, recharge Email delivery and challenge-engine module wiring is removed;
+8. focused characterization moves the OTP/challenge/token behavior to the Auth owner and leaves Admin
+   tests for delegation/error mapping plus the required token-claim-before-top-up order. The central
+   scanner reverses the old Phase 2C Admin-delivery guard and permanently forbids challenge/delivery
+   ownership from returning to Admin or Loyalty top-up orchestration from moving into Auth.
+
+Production read-only readiness evidence on 2026-09-05 found only **2** historical
+`purpose='pos-recharge'` challenges, both `EMAIL_VERIFY/EMAIL/PENDING`, both with `userId`, both already
+past `expiresAt`, and no pending recharge verification-token (`tokenHash`) rows. No schema/backfill or
+production data cleanup is required for 4D-A. Numeric context debt is intentionally unchanged:
+Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
+**0**, Commerce -> Identity **4**, with the public SCC baseline still empty.
+
+No local lint/build/test/scanner run is claimed under repository workflow; remote validation remains
+pending user review. No dependency/lockfile, Prisma schema/migration, route, Web/PWA, Clover, Uber,
+Loyalty amount/bonus/idempotency or transaction-boundary change is included.
+
+#### Slice 4D-H — Recharge verification security / UX hardening
+
+Status: **PLANNED / SEPARATE BEHAVIOR CHANGE**.
+
+After 4D-A is merged, separately evaluate/implement the user-approved hardening topics without mixing
+them into the ownership contraction: unified Email/SMS recharge send limits, a recharge-specific OTP
+secret/policy and cryptographically strong non-zero six-digit generation, plus POS handling of backend
+`{ ok:false }` send responses so the UI does not enter `code-sent` after provider failure. Any new
+production secret/config must follow the repository configuration/deployment gate before implementation.
 
 Benefits/template coupon issuance remains Slice 5 scope rather than being moved into Customer merely
 to empty Admin persistence.

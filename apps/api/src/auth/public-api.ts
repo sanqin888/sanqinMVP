@@ -37,6 +37,17 @@ export {
   type AccountTrustedDeviceDto,
   type ManagedAccountStatus,
 } from './account-security-administration.contract';
+export { MemberRechargeVerificationModule } from './member-recharge-verification.module';
+export {
+  MEMBER_RECHARGE_VERIFICATION,
+  type MemberRechargeConsumeTokenInput,
+  type MemberRechargeSendCodeInput,
+  type MemberRechargeVerificationErrorCode,
+  MemberRechargeVerificationError,
+  type MemberRechargeVerificationPort,
+  type MemberRechargeVerificationResult,
+  type MemberRechargeVerifyCodeInput,
+} from './member-recharge-verification.contract';
 export { AdminMfaGuard } from './admin-mfa.guard';
 export { Roles } from './roles.decorator';
 export { RolesGuard } from './roles.guard';

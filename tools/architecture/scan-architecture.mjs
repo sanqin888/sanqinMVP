@@ -1809,20 +1809,262 @@ if (adminMessagingDeliveryBoundary) {
   );
   if (existsSync(adminMembersServicePath)) {
     const source = readFileSync(adminMembersServicePath, 'utf8');
+    for (const forbiddenSymbol of [
+      "from '../../email/public-api'",
+      'MEMBER_RECHARGE_EMAIL_DELIVERY',
+      'MemberRechargeEmailDeliveryPort',
+      'sendRechargeVerificationEmail',
+      "from '../../email/email.service'",
+      'EmailService',
+      'MessagingTemplateType',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminMembersService must not reclaim recharge email delivery after Slice 4D-A (${forbiddenSymbol}): ${boundary.adminMembersService}`,
+        );
+      }
+    }
+  }
+
+  const adminMembersModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersModule,
+  );
+  if (existsSync(adminMembersModulePath)) {
+    const source = readFileSync(adminMembersModulePath, 'utf8');
+    for (const forbiddenSymbol of [
+      "from '../../email/public-api'",
+      'MemberRechargeEmailDeliveryModule',
+      "from '../../email/email.module'",
+      'EmailModule',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminMembersModule must not reclaim recharge email delivery wiring after Slice 4D-A (${forbiddenSymbol}): ${boundary.adminMembersModule}`,
+        );
+      }
+    }
+  }
+}
+
+const memberRechargeVerificationBoundary =
+  config.memberRechargeVerificationBoundary ?? null;
+if (memberRechargeVerificationBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(memberRechargeVerificationBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.service,
+    boundary.module,
+    boundary.authPublicSurface,
+    boundary.identityPrisma,
+    boundary.phoneVerificationService,
+    boundary.phoneVerificationModule,
+    boundary.adminMembersService,
+    boundary.adminMembersModule,
+    boundary.ownerSpec,
+    boundary.adminAdapterSpec,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Member recharge verification boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'MEMBER_RECHARGE_VERIFICATION',
+      'MemberRechargeVerificationPort',
+      'MemberRechargeVerificationError',
+      'sendCode',
+      'verifyCode',
+      'consumeVerificationToken',
+      'userStableId',
+      'verificationToken',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Member recharge verification public contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      'PrismaService',
+      'PhoneVerificationService',
+      'MemberRechargeEmailDeliveryPort',
+      'AuthChallenge',
+      /\buserId\b/,
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Member recharge verification public contract must remain framework/persistence/DB-ID free (${forbiddenSymbol}): ${boundary.contract}`,
+        );
+      }
+    }
+  }
+
+  const servicePath = join(REPOSITORY_ROOT, boundary.service);
+  if (existsSync(servicePath)) {
+    const source = readFileSync(servicePath, 'utf8');
+    for (const requiredSymbol of [
+      'implements MemberRechargeVerificationPort',
+      "from './identity-prisma'",
+      'MEMBER_RECHARGE_EMAIL_DELIVERY',
+      'PhoneVerificationService',
+      'IDENTITY_CHALLENGE_ENGINE',
+      "const POS_RECHARGE_PURPOSE = 'pos-recharge'",
+      "generateCode('NON_ZERO_SIX_DIGIT')",
+      "hashCode(code, 'OTP')",
+      'messagingSendId: sendResult.sendId',
+      'phoneVerification.sendCode',
+      'phoneVerification.verifyCode',
+      'this.prisma.authChallenge.findFirst',
+      'this.prisma.authChallenge.updateMany',
+      'consumeVerificationToken',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Identity member recharge verification owner is missing ${requiredSymbol}: ${boundary.service}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      "from '../prisma/prisma.service'",
+      'LoyaltyService',
+      '.applyTopup(',
+      'generateStableId',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Identity member recharge verification owner must not absorb Runtime/Loyalty top-up responsibilities (${forbiddenSymbol}): ${boundary.service}`,
+        );
+      }
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, boundary.module);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    for (const requiredSymbol of [
+      'MemberRechargeEmailDeliveryModule',
+      'PhoneVerificationModule',
+      'IdentityChallengeModule',
+      'MEMBER_RECHARGE_VERIFICATION',
+      'MemberRechargeVerificationService',
+      'exports: [MEMBER_RECHARGE_VERIFICATION]',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Member recharge verification module wiring is missing ${requiredSymbol}: ${boundary.module}`,
+        );
+      }
+    }
+  }
+
+  const authPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.authPublicSurface,
+  );
+  if (existsSync(authPublicSurfacePath)) {
+    const source = readFileSync(authPublicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'MemberRechargeVerificationModule',
+      'MEMBER_RECHARGE_VERIFICATION',
+      'MemberRechargeVerificationPort',
+      'MemberRechargeVerificationError',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Auth public surface is missing member recharge verification symbol ${requiredSymbol}: ${boundary.authPublicSurface}`,
+        );
+      }
+    }
+  }
+
+  const phoneVerificationServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.phoneVerificationService,
+  );
+  if (existsSync(phoneVerificationServicePath)) {
+    const source = readFileSync(phoneVerificationServicePath, 'utf8');
     if (
-      !source.includes("from '../../email/public-api'") ||
-      !source.includes('MEMBER_RECHARGE_EMAIL_DELIVERY') ||
-      !source.includes('MemberRechargeEmailDeliveryPort') ||
-      !source.includes('sendRechargeVerificationEmail') ||
-      !source.includes('userStableId: user.userStableId') ||
-      !source.includes('messagingSendId: sendResult.sendId') ||
-      source.includes("from '../../email/email.service'") ||
-      source.includes('EmailService') ||
-      source.includes('MessagingTemplateType')
+      !source.includes("from '../auth/challenge-engine.port'") ||
+      source.includes("from '../auth/public-api'")
     ) {
       failures.push(
-        `AdminMembersService recharge email must keep challenge ownership in Identity and use only the narrow Email delivery capability: ${boundary.adminMembersService}`,
+        `PhoneVerificationService must use the context-internal challenge port directly so the recharge owner public module cannot form a barrel cycle: ${boundary.phoneVerificationService}`,
       );
+    }
+  }
+
+  const phoneVerificationModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.phoneVerificationModule,
+  );
+  if (existsSync(phoneVerificationModulePath)) {
+    const source = readFileSync(phoneVerificationModulePath, 'utf8');
+    if (
+      !source.includes("from '../auth/challenge-engine.module'") ||
+      source.includes("from '../auth/public-api'")
+    ) {
+      failures.push(
+        `PhoneVerificationModule must use the context-internal challenge module directly so the recharge owner public module cannot form a barrel cycle: ${boundary.phoneVerificationModule}`,
+      );
+    }
+  }
+
+  const adminMembersServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersService,
+  );
+  if (existsSync(adminMembersServicePath)) {
+    const source = readFileSync(adminMembersServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'MEMBER_RECHARGE_VERIFICATION',
+      'MemberRechargeVerificationPort',
+      'memberRechargeVerification.sendCode',
+      'memberRechargeVerification.verifyCode',
+      'memberRechargeVerification.consumeVerificationToken',
+      'loyalty.applyTopup',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `AdminMembersService must delegate recharge verification while retaining Loyalty top-up orchestration (${requiredSymbol}): ${boundary.adminMembersService}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'this.prisma.authChallenge',
+      'AuthChallengeType',
+      'AuthChallengeStatus',
+      'MessagingChannel',
+      'IDENTITY_CHALLENGE_ENGINE',
+      'IdentityChallengeEnginePort',
+      'MEMBER_RECHARGE_EMAIL_DELIVERY',
+      'MemberRechargeEmailDeliveryPort',
+      'PhoneVerificationService',
+      'POS_RECHARGE_PURPOSE',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminMembersService must not reclaim the recharge challenge/token lifecycle after Slice 4D-A (${forbiddenSymbol}): ${boundary.adminMembersService}`,
+        );
+      }
     }
   }
 
@@ -1833,14 +2075,59 @@ if (adminMessagingDeliveryBoundary) {
   if (existsSync(adminMembersModulePath)) {
     const source = readFileSync(adminMembersModulePath, 'utf8');
     if (
-      !source.includes("from '../../email/public-api'") ||
-      !source.includes('MemberRechargeEmailDeliveryModule') ||
-      source.includes("from '../../email/email.module'") ||
-      source.includes('EmailModule')
+      !source.includes('MemberRechargeVerificationModule') ||
+      !source.includes("from '../../auth/public-api'")
     ) {
       failures.push(
-        `AdminMembersModule recharge email wiring must use only the Email public module: ${boundary.adminMembersModule}`,
+        `AdminMembersModule must compose the Identity recharge verification public module: ${boundary.adminMembersModule}`,
       );
+    }
+    for (const forbiddenSymbol of [
+      'PhoneVerificationModule',
+      'MemberRechargeEmailDeliveryModule',
+      'IdentityChallengeModule',
+      "from '../../email/public-api'",
+      "from '../../phone-verification/",
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminMembersModule must not wire recharge challenge/delivery internals after Slice 4D-A (${forbiddenSymbol}): ${boundary.adminMembersModule}`,
+        );
+      }
+    }
+  }
+
+  const ownerSpecPath = join(REPOSITORY_ROOT, boundary.ownerSpec);
+  if (existsSync(ownerSpecPath)) {
+    const source = readFileSync(ownerSpecPath, 'utf8');
+    for (const requiredSymbol of [
+      'NON_ZERO_SIX_DIGIT',
+      'email_send_failed',
+      "purpose: 'pos-recharge'",
+      'verificationToken already used',
+      'messagingSendId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Member recharge owner characterization is missing ${requiredSymbol}: ${boundary.ownerSpec}`,
+        );
+      }
+    }
+  }
+
+  const adminAdapterSpecPath = join(REPOSITORY_ROOT, boundary.adminAdapterSpec);
+  if (existsSync(adminAdapterSpecPath)) {
+    const source = readFileSync(adminAdapterSpecPath, 'utf8');
+    for (const requiredSymbol of [
+      'consumeVerificationToken',
+      'applyTopup',
+      'invocationCallOrder',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Admin recharge adapter characterization is missing ${requiredSymbol}: ${boundary.adminAdapterSpec}`,
+        );
+      }
     }
   }
 }

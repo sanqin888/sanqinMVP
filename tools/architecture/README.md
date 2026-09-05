@@ -103,12 +103,16 @@ node tools/architecture/scan-architecture.mjs --report
   capabilities: `STAFF_INVITE_DELIVERY` and `MEMBER_RECHARGE_EMAIL_DELIVERY`. After Phase 4
   Slice 4A, Admin reaches Staff account/invite use cases only through the Identity-owned
   `STAFF_ADMINISTRATION` public port; internal `StaffAdministrationService` owns Staff state and
-  delivery orchestration. `AdminStaffController` is a transport/authorization adapter and cannot
-  regain Prisma or the Staff delivery port. POS member-recharge challenge lifecycle remains in the broad Admin Members
-  surface until its separately planned contraction. Concrete `EmailService`, `EmailModule`, message
-  composition and `MessagingTemplateType` must not return to either caller. Recharge delivery crosses
-  the boundary with `userStableId`, while Identity-owned challenge persistence may continue to
-  reference an internal User DB ID inside its owner boundary;
+  delivery orchestration. Slice 4D-A similarly puts the `pos-recharge` OTP/challenge/token lifecycle
+  behind the Identity-owned `MEMBER_RECHARGE_VERIFICATION` capability. Admin Members keeps only
+  transport/error mapping plus the existing post-claim `LoyaltyService.applyTopup()` orchestration;
+  it cannot regain `AuthChallenge`, Phone Verification internals, the challenge engine, or recharge
+  delivery wiring. Messaging still owns provider/template delivery through
+  `MEMBER_RECHARGE_EMAIL_DELIVERY`, and SMS still delegates to the existing Phone Verification owner.
+  Recharge delivery crosses the boundary with `userStableId`, while Identity-owned challenge
+  persistence may continue to reference an internal User DB ID inside its owner boundary. Rate-limit,
+  recharge-specific secret/randomness and POS `{ ok:false }` UX hardening are intentionally deferred
+  to the separately planned 4D-H follow-up;
 - Phase 4 Slice 4B reserves Admin/member Customer/Security ownership behind two Identity-context
   capabilities. `CUSTOMER_ADMINISTRATION` is implemented by `CustomerService` and owns Admin profile
   mutation plus address reads while preserving the intentionally broader Admin birthday override.

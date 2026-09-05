@@ -3,9 +3,9 @@ import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PhoneVerificationDeliveryModule } from '../messaging/public-api';
-import { PhoneVerificationService } from './phone-verification.service';
+import { IdentityChallengeModule } from '../auth/challenge-engine.module';
 import { PhoneVerificationController } from './phone-verification.controller';
-import { IdentityChallengeModule } from '../auth/public-api';
+import { PhoneVerificationService } from './phone-verification.service';
 
 @Module({
   imports: [
