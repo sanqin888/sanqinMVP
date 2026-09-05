@@ -385,7 +385,7 @@
     "publicSurface": "apps/api/src/notifications/public-api.ts",
     "authService": "apps/api/src/auth/auth.service.ts",
     "authModule": "apps/api/src/auth/auth.module.ts",
-    "membershipService": "apps/api/src/membership/membership.service.ts",
+    "customerService": "apps/api/src/membership/customer.service.ts",
     "membershipModule": "apps/api/src/membership/membership.module.ts"
   },
   "awsMessageInfrastructureRetirementBoundary": {
@@ -416,6 +416,13 @@
     "durableOutbox": "apps/api/src/orders/processors/order-lifecycle-outbox.processor.ts",
     "uberModule": "apps/api/src/integrations/ubereats/ubereats.module.ts",
     "uberOrderImport": "apps/api/src/integrations/ubereats/infrastructure/persistence/uber-order-import-prisma.adapter.ts"
+  },
+  "customerProfileAddressConsentBoundary": {
+    "customerService": "apps/api/src/membership/customer.service.ts",
+    "membershipService": "apps/api/src/membership/membership.service.ts",
+    "membershipController": "apps/api/src/membership/membership.controller.ts",
+    "membershipModule": "apps/api/src/membership/membership.module.ts",
+    "retiredOnboardingService": "apps/api/src/membership/membership-onboarding.service.ts"
   },
   "dependencyBoundaries": [
     {

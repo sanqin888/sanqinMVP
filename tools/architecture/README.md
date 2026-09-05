@@ -106,11 +106,17 @@ node tools/architecture/scan-architecture.mjs --report
   Recharge delivery crosses the boundary with `userStableId`, while the Identity-owned
   challenge may continue to reference the internal User DB ID inside its own persistence;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
-  `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Membership
+  `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import
   `NotificationService`/`notification.module`, pass Prisma `User`/DB `userId`, or move consent
   into Messaging. Registration email/SMS fallback and subscription email delivery link audit
   records through `userStableId`;
+- Customer profile/address/consent behavior is owned by `CustomerService`, which also absorbs the
+  prior onboarding owner so birthday eligibility has one implementation. Existing membership
+  routes remain transport adapters, address access crosses the public/business surface with
+  `userStableId`/`addressStableId`, and the broad `MembershipService` may not regain profile,
+  address, consent, `AuthChallenge`/`PHONE_VERIFY`, or implicit `User` creation behavior. The
+  retired `MembershipOnboardingService` path must stay deleted;
 - Historical AWS SNS/SQS infrastructure is retired. The architecture scanner reserves deletion
   of `/webhooks/aws-sns`, its controller/service and the SES SQS event processor, and prevents
   `SNS_TOPIC_ARN`, `SES_EVENTS_SQS_QUEUE_URL` or `PRINT_SNS_TOPIC_ARN` runtime wiring from

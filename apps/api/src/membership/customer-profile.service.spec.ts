@@ -1,32 +1,21 @@
 import { BadRequestException } from '@nestjs/common';
 import { UserLanguage } from '@prisma/client';
-import type { PrismaService } from '../prisma/prisma.service';
-import type { LoyaltyService } from '../loyalty/loyalty.service';
-import type { CouponProgramTriggerPort } from '../benefits/public-api';
-import type { CustomerLifecycleNotificationPort } from '../notifications/public-api';
-import { MembershipService } from './membership.service';
+import { CustomerService } from './customer.service';
 
-describe('MembershipService profile birthday', () => {
-  const createService = () => {
-    const findUnique = jest.fn();
-    const update = jest.fn();
-    const prisma = {
-      user: {
-        findUnique,
-        update,
-      },
-    } as unknown as PrismaService;
+function createService() {
+  const findUnique = jest.fn();
+  const update = jest.fn();
+  const service = new CustomerService(
+    {
+      user: { findUnique, update },
+    } as never,
+    { issueProgramsForUser: jest.fn() } as never,
+    { notifySubscriptionWelcome: jest.fn() } as never,
+  );
+  return { service, findUnique, update };
+}
 
-    const service = new MembershipService(
-      prisma,
-      {} as unknown as LoyaltyService,
-      {} as unknown as CouponProgramTriggerPort,
-      {} as unknown as CustomerLifecycleNotificationPort,
-    );
-
-    return { service, findUnique, update };
-  };
-
+describe('CustomerService profile', () => {
   it('allows a legacy month-only member to confirm year and month once', async () => {
     const { service, findUnique, update } = createService();
     findUnique.mockResolvedValue({
@@ -118,5 +107,49 @@ describe('MembershipService profile birthday', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('updates trimmed names and language without changing birthday', async () => {
+    const { service, findUnique, update } = createService();
+    findUnique.mockResolvedValue({
+      userStableId: 'member-profile',
+      firstName: 'Old',
+      lastName: 'Name',
+      birthdayYear: 1990,
+      birthdayMonth: 5,
+      language: UserLanguage.ZH,
+    });
+    update.mockResolvedValue({
+      firstName: 'New',
+      lastName: 'Member',
+      birthdayYear: 1990,
+      birthdayMonth: 5,
+      language: UserLanguage.EN,
+    });
+
+    await expect(
+      service.updateProfile({
+        userStableId: 'member-profile',
+        firstName: ' New ',
+        lastName: ' Member ',
+        language: 'en',
+      }),
+    ).resolves.toEqual({
+      firstName: 'New',
+      lastName: 'Member',
+      birthdayYear: 1990,
+      birthdayMonth: 5,
+      language: 'en',
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          firstName: 'New',
+          lastName: 'Member',
+          language: UserLanguage.EN,
+        },
+      }),
+    );
   });
 });

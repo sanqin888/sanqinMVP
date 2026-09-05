@@ -5,7 +5,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { AuthModule } from '../auth/auth.module';
 import { IdentityEmailVerificationModule } from '../auth/public-api';
 import { MembershipService } from './membership.service';
-import { MembershipOnboardingService } from './membership-onboarding.service';
+import { CustomerService } from './customer.service';
 import {
   MembershipController,
   MembershipPublicController,
@@ -22,7 +22,7 @@ import { CouponsModule } from '../coupons/public-api';
     NotificationModule,
     CouponsModule,
   ],
-  providers: [MembershipService, MembershipOnboardingService],
+  providers: [MembershipService, CustomerService],
   controllers: [MembershipController, MembershipPublicController],
   exports: [MembershipService],
 })

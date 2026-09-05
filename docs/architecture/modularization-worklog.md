@@ -765,8 +765,8 @@ This slice will not be deployed separately before the Phase 4 consolidated rollo
 
 ### 2026-09-04 — Phase 4 Slice 2E-B: Orders event ownership + Loyalty paid-settlement inversion
 
-**PR/SHA:** local branch `refactor/phase4-slice2eb-order-events-loyalty-settlement`  
-**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**PR/SHA:** PR #2177; final head `dc07e820`; squash merge `718b2133`  
+**State:** MERGED / CI #5137 GREEN / AWAITING PHASE-END DEPLOYMENT  
 **Result:** the final Identity -> Messaging event tail is contracted without creating a reverse
 Orders public dependency. `LOYALTY_ORDER_PAID_SETTLEMENT` exposes only `orderStableId`, reward
 subtotal/redeem cents and promotion earn multiplier; `LoyaltyService` translates that stable ID to
@@ -784,11 +784,39 @@ External **42**, Messaging **10**, with the public SCC baseline still empty. The
 `LoyaltyLedger.orderId` UUID remains internal/deferred persistence debt; no schema/migration is
 introduced. Focused characterization covers stable-ID translation, failure isolation, Orders paid
 settlement payload/event preservation and Uber composition. No local lint/build/test/scanner run
-is claimed under repository workflow, and this slice will not be deployed separately before the
-Phase 4 consolidated rollout.  
+was claimed under repository workflow. Final GitHub Actions CI #5137 passed Architecture,
+API/Web lint/build/strict checks and tests on final head `dc07e820` before squash merge `718b2133`.
+This slice will not be deployed separately before the Phase 4 consolidated rollout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `apps/api/src/integrations/ubereats/ARCHITECTURE.md`,
 `tools/architecture/context-baseline.json`, `tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 3: Customer Profile / Address / Consent ownership contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice3-customer-boundary`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**Result:** the broad Membership surface no longer owns customer profile, address or marketing
+consent mutations. The old standalone `MembershipOnboardingService` is retired and replaced by one
+coherent `CustomerService` that owns onboarding, profile, shared birthday eligibility, address
+CRUD/default selection and consent transitions without multiplying Nest/Prisma owner entry points.
+Existing `/membership/onboarding`, `/membership/profile`, `/membership/marketing-consent` and
+`/membership/addresses*` transport contracts remain unchanged; the controller delegates those
+use cases to CustomerService. Consent continues to call the Messaging public lifecycle-delivery
+capability and Benefits program trigger only after Customer-owned state decisions. Address access
+uses `userStableId` -> internal user ID translation and preserves `addressStableId` externally.
+Membership summary/coupon/ledger reads now require an existing stable-ID customer and no longer
+create/update Users, consume PHONE_VERIFY challenges or bind phones as incidental read side effects.
+Readiness data found stable IDs populated for 40/40 Users and 2/2 UserAddress rows, so no schema,
+migration or backfill is needed. A central scanner boundary keeps the retired onboarding path and
+Customer mutations out of MembershipService. Focused characterization covers onboarding/referral,
+profile/birthday, consent, address ownership/default behavior and the existing-user-only summary
+boundary. Numeric direct-import debt intentionally remains unchanged at Identity **37** with
+Identity -> Messaging direct debt **0** and an empty public SCC baseline. No local lint/build/test
+or scanner run is claimed under repository workflow; remote CI is deferred until user review. This
+slice will not be deployed separately before the Phase 4 consolidated rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
 
 ## Current position
 
@@ -804,7 +832,7 @@ Phase 4 consolidated rollout.
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A MERGED/CI; SLICE 2E-B LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B MERGED/CI; SLICE 3 LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -816,11 +844,14 @@ Phase 4 consolidated rollout.
   `2c18e3c5` passed CI #5126, contracting `10 -> 6`. Slice 2D merged via PR #2175 as
   `0cb3ce11` after final head `a0fa3f85` passed CI #5130, contracting `6 -> 2`. Slice 2E-A
   merged via PR #2176 as `7746402b` after final head `11f73e88` passed CI #5132, contracting
-  Messaging total outgoing debt `14 -> 10`. Slice 2E-B locally contracts the final direct
-  Identity -> Messaging `2 -> 0`, returns OrderEventsBus to private Orders ownership and removes
-  Uber's obsolete Messaging bridge while preserving the durable outbox. Per the current rollout
-  plan, Slice 1 onward are not individually deployed; the accumulated Phase 4 changes will be
-  deployed and actively verified together after source closeout.
+  Messaging total outgoing debt `14 -> 10`. Slice 2E-B merged via PR #2177 as `718b2133` after
+  final head `dc07e820` passed CI #5137, contracting the final direct Identity -> Messaging
+  `2 -> 0`, returning OrderEventsBus to private Orders ownership and removing Uber's obsolete
+  Messaging bridge while preserving the durable outbox. Slice 3 is locally complete: CustomerService
+  now owns onboarding/profile/address/marketing-consent while the broad Membership read surface no
+  longer performs implicit User/PHONE_VERIFY mutation; numeric dependency baselines remain
+  unchanged. Per the current rollout plan, Slice 1 onward are not individually deployed; the
+  accumulated Phase 4 changes will be deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

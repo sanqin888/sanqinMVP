@@ -1700,7 +1700,7 @@ if (customerLifecycleNotificationBoundary) {
     boundary.publicSurface,
     boundary.authService,
     boundary.authModule,
-    boundary.membershipService,
+    boundary.customerService,
     boundary.membershipModule,
   ];
 
@@ -1850,9 +1850,9 @@ if (customerLifecycleNotificationBoundary) {
     }
   }
 
-  const membershipServicePath = join(REPOSITORY_ROOT, boundary.membershipService);
-  if (existsSync(membershipServicePath)) {
-    const source = readFileSync(membershipServicePath, 'utf8');
+  const customerServicePath = join(REPOSITORY_ROOT, boundary.customerService);
+  if (existsSync(customerServicePath)) {
+    const source = readFileSync(customerServicePath, 'utf8');
     if (
       !source.includes("from '../notifications/public-api'") ||
       !source.includes('CUSTOMER_LIFECYCLE_NOTIFICATION') ||
@@ -1864,7 +1864,7 @@ if (customerLifecycleNotificationBoundary) {
       source.includes('NotificationService')
     ) {
       failures.push(
-        `Membership subscription welcome must keep consent Identity-owned and use only the Notifications public capability: ${boundary.membershipService}`,
+        `Customer subscription welcome must keep consent Identity-owned and use only the Notifications public capability: ${boundary.customerService}`,
       );
     }
   }
@@ -4487,6 +4487,141 @@ if (orderPaidSettlementBoundary) {
         `Durable Orders lifecycle ownership must remain intact after bus contraction; missing ${requiredToken}: ${boundary.durableOutbox}`,
       );
     }
+  }
+}
+
+const customerProfileAddressConsentBoundary =
+  config.customerProfileAddressConsentBoundary ?? null;
+if (customerProfileAddressConsentBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(customerProfileAddressConsentBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.customerService,
+    boundary.membershipService,
+    boundary.membershipController,
+    boundary.membershipModule,
+  ];
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Customer profile/address/consent boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  if (
+    boundary.retiredOnboardingService &&
+    existsSync(join(REPOSITORY_ROOT, boundary.retiredOnboardingService))
+  ) {
+    failures.push(
+      `retired MembershipOnboardingService path must stay deleted: ${boundary.retiredOnboardingService}`,
+    );
+  }
+
+  const readCustomerBoundarySource = (sourcePath) => {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) return '';
+    return readFileSync(join(REPOSITORY_ROOT, sourcePath), 'utf8');
+  };
+
+  const customerServiceSource = readCustomerBoundarySource(boundary.customerService);
+  for (const requiredToken of [
+    'export class CustomerService',
+    'getOnboardingStatus',
+    'finalizeOnboarding',
+    'updateProfile',
+    'updateMarketingConsent',
+    'listAddresses',
+    'createAddress',
+    'updateAddress',
+    'deleteAddress',
+    'setDefaultAddress',
+    'requireEligibleBirthday',
+    'requireUserDbId',
+    'addressStableId',
+    'userStableId',
+    'CUSTOMER_LIFECYCLE_NOTIFICATION',
+    'COUPON_PROGRAM_TRIGGER',
+  ]) {
+    if (customerServiceSource && !customerServiceSource.includes(requiredToken)) {
+      failures.push(
+        `CustomerService must own customer profile/address/consent behavior; missing ${requiredToken}: ${boundary.customerService}`,
+      );
+    }
+  }
+
+  const membershipServiceSource = readCustomerBoundarySource(
+    boundary.membershipService,
+  );
+  for (const forbiddenToken of [
+    'updateProfile(',
+    'updateMarketingConsent(',
+    'listAddresses(',
+    'createAddress(',
+    'updateAddress(',
+    'deleteAddress(',
+    'setDefaultAddress(',
+    'AuthChallenge',
+    'PHONE_VERIFY',
+    'authChallenge',
+    'this.prisma.user.create(',
+  ]) {
+    if (membershipServiceSource.includes(forbiddenToken)) {
+      failures.push(
+        `MembershipService must not regain Customer-owned mutation ${forbiddenToken}: ${boundary.membershipService}`,
+      );
+    }
+  }
+  const existingStableUserLookupPattern = /where\s*:\s*\{\s*userStableId\s*\}/;
+  if (
+    membershipServiceSource &&
+    (!membershipServiceSource.includes('requireExistingUser') ||
+      !existingStableUserLookupPattern.test(membershipServiceSource))
+  ) {
+    failures.push(
+      `MembershipService reads must require an existing stable-ID customer instead of implicit account mutation: ${boundary.membershipService}`,
+    );
+  }
+
+  const membershipControllerSource = readCustomerBoundarySource(
+    boundary.membershipController,
+  );
+  for (const requiredToken of [
+    "from './customer.service'",
+    'private readonly customer: CustomerService',
+    'customer.getOnboardingStatus',
+    'customer.finalizeOnboarding',
+    'customer.updateProfile',
+    'customer.updateMarketingConsent',
+    'customer.listAddresses',
+    'customer.createAddress',
+    'customer.updateAddress',
+    'customer.deleteAddress',
+    'customer.setDefaultAddress',
+  ]) {
+    if (
+      membershipControllerSource &&
+      !membershipControllerSource.includes(requiredToken)
+    ) {
+      failures.push(
+        `Membership transport must route Customer-owned use cases through CustomerService; missing ${requiredToken}: ${boundary.membershipController}`,
+      );
+    }
+  }
+
+  const membershipModuleSource = readCustomerBoundarySource(boundary.membershipModule);
+  if (
+    membershipModuleSource &&
+    (!membershipModuleSource.includes("from './customer.service'") ||
+      !membershipModuleSource.includes('CustomerService') ||
+      membershipModuleSource.includes('MembershipOnboardingService'))
+  ) {
+    failures.push(
+      `MembershipModule must wire CustomerService and keep the retired onboarding service absent: ${boundary.membershipModule}`,
+    );
   }
 }
 
