@@ -83,10 +83,12 @@ describe('MemberRechargeVerificationService', () => {
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
-    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue({
-      ok: true,
-      sendId: 'send-1',
-    });
+    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
+      {
+        ok: true,
+        sendId: 'send-1',
+      },
+    );
 
     await expect(
       service.sendCode({
@@ -142,10 +144,12 @@ describe('MemberRechargeVerificationService', () => {
     prisma.user.findUnique.mockResolvedValue(emailMember);
     jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('123456');
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-failed' });
-    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue({
-      ok: false,
-      sendId: 'send-failed',
-    });
+    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
+      {
+        ok: false,
+        sendId: 'send-failed',
+      },
+    );
 
     await expect(
       service.sendCode({
@@ -166,10 +170,12 @@ describe('MemberRechargeVerificationService', () => {
       createService();
     prisma.user.findUnique.mockResolvedValue(emailMember);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-email' });
-    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue({
-      ok: true,
-      sendId: 'send-email',
-    });
+    memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
+      {
+        ok: true,
+        sendId: 'send-email',
+      },
+    );
 
     await service.sendCode({
       userStableId: 'member-stable-id',
