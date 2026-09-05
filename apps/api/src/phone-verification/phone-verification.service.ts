@@ -20,7 +20,7 @@ import {
 import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
-} from '../auth/public-api';
+} from '../auth/challenge-engine.port';
 
 type SendCodeResult = {
   ok: boolean;

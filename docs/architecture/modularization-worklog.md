@@ -908,8 +908,8 @@ applied to any database.
 
 ### 2026-09-05 — Phase 4 Slice 4C: Orders member read boundary contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice4c-orders-member-reads`  
-**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING — Order schema + migration explicitly authorized  
+**PR/SHA:** PR #2182 / final head `7cb071ad` / squash merge `3119ce76`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT — GitHub Actions CI #5158 passed  
 **Result:** Orders now owns the Admin member order-history and top-purchased-item read models while
 preserving the existing `/admin/members/:userStableId/orders` and `/top-items` routes, guards, roles,
 response shapes, ordering, limit parsing, qualifying statuses, aggregation and display-name fallback.
@@ -928,13 +928,44 @@ public edge is introduced and the SCC baseline remains empty. The central scanne
 migration/read-model/transport ownership and dual-write paths. The remaining
 Admin loyalty-ledger `Order.id -> orderStableId` enrichment is explicitly deferred to **Slice 5A — Loyalty
 ledger order identity contraction**, where Benefits/Loyalty should own a stable order identity snapshot
-instead of extending Slice 4C. No local migration application, lint/build/test/scanner run is claimed under
-repository workflow.  
+instead of extending Slice 4C. No local migration application was performed; GitHub Actions CI #5158 is
+the authoritative validation for the merged source.  
 **Details:** `apps/api/prisma/schema.prisma`,
 `apps/api/prisma/migrations/20260905145500_add_order_user_stable_id/migration.sql`,
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4D-A: Recharge challenge ownership contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice4d-a-recharge-challenge-owner`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**Result:** Identity/Auth now exposes the framework/persistence-free
+`MEMBER_RECHARGE_VERIFICATION` capability and owns the existing `pos-recharge` member/contact
+resolution, email `AuthChallenge` create/verify/consume lifecycle, MessagingSend linkage, SMS
+`PhoneVerificationService` delegation, verification-token creation and atomic one-time token claim.
+`AdminMembersService` no longer imports or mutates AuthChallenge state, the challenge engine, recharge
+Email delivery or Phone Verification internals; it keeps the historical amount/token presence checks,
+idempotency-key generation and post-claim `LoyaltyService.applyTopup()` orchestration. Email-first
+contact selection, `NON_ZERO_SIX_DIGIT`, 10-minute expiry, current `OTP`/Phone Verification secret
+semantics, attempts/revoke behavior, token expiry inheritance, `email_send_failed`/SMS result behavior
+and token-claim-before-top-up ordering are preserved. Phone Verification's same-context challenge
+imports use `challenge-engine.port/module` directly to avoid an Auth public barrel cycle. Production
+read-only readiness evidence found only **2** historical `pos-recharge` challenges, both expired
+`EMAIL_VERIFY/EMAIL/PENDING` rows with `userId` and no pending tokenHash row, so no schema/backfill is
+required. The central scanner reverses the old Admin delivery guard and reserves the new owner while
+forbidding Loyalty top-up ownership from moving into Auth. Numeric graph baselines remain unchanged:
+Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
+**0**, Commerce -> Identity **4**, public SCC empty. Email/SMS send-limit unification,
+recharge-specific OTP secret/randomness and POS `{ ok:false }` send UX are explicitly deferred to
+**4D-H**. No local lint/build/test/scanner run is claimed under repository workflow.  
+**Details:** `apps/api/src/auth/member-recharge-verification.contract.ts`,
+`apps/api/src/auth/member-recharge-verification.service.ts`,
+`apps/api/src/auth/member-recharge-verification.module.ts`,
+`apps/api/src/admin/members/admin-members.service.ts`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/scan-architecture.mjs`, `tools/architecture/README.md`.
 
 ## Current position
 
@@ -950,7 +981,7 @@ repository workflow.
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 + 4A + 4B MERGED/CI; SLICE 4C LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C MERGED/CI; SLICE 4D-A LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -974,11 +1005,13 @@ repository workflow.
   Identity outgoing `37 -> 35`. Slice 4B Stage 1 merged via PR #2180 as `252cd26f` after final head
   `a2f52ddf` passed CI #5150; Stage 2 merged via PR #2181 as `060e9417` after final head `f2cbf835`
   passed CI #5153. TrustedDevice now owns its stable business identity and member/Admin device
-  management is fully behind the Auth owner without exposing the Prisma UUID. Slice 4C is locally
-  source-complete, moving member order-history/top-item reads into Orders and contracting Commerce ->
-  Identity direct debt `5 -> 4` without adding an Identity -> Orders public edge. Per the current rollout plan, Slice 1 onward are not
-  individually deployed; the accumulated Phase 4 changes will be deployed and actively verified
-  together after source closeout.
+  management is fully behind the Auth owner without exposing the Prisma UUID. Slice 4C merged via PR
+  #2182 as `3119ce76` after final head `7cb071ad` passed CI #5158, moving member order-history/top-item
+  reads into Orders and contracting Commerce -> Identity direct debt `5 -> 4` without adding an
+  Identity -> Orders public edge. Slice 4D-A is locally source-complete, moving the `pos-recharge`
+  challenge/token lifecycle behind the Auth owner while keeping Loyalty top-up orchestration in Admin.
+  Per the current rollout plan, Slice 1 onward are not individually deployed; the accumulated Phase 4
+  changes will be deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
