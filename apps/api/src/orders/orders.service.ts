@@ -407,7 +407,6 @@ export type ConfirmedPaymentOrderResult = {
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
-  private readonly printTopicArn = process.env.PRINT_SNS_TOPIC_ARN;
 
   constructor(
     private readonly prisma: PrismaService,

@@ -711,8 +711,8 @@ the consolidated Phase 4 rollout.
 
 ### 2026-09-04 — Phase 4 Slice 2D: Customer lifecycle notification boundary contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice2d-customer-lifecycle-notifications`  
-**State:** LOCAL  
+**PR/SHA:** PR #2175 / final head `a0fa3f85` / squash merge `0cb3ce11`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT  
 **Result:** introduced the narrow Notifications-owned `CUSTOMER_LIFECYCLE_NOTIFICATION`
 public capability for registration welcome and subscription welcome delivery. Auth keeps the
 new-user decision, registration/session/account mutation and maps only stable customer facts;
@@ -729,8 +729,35 @@ a central scanner guard reserve the stable-ID-only contract, fallback behavior a
 Membership-owned consent gate. No dependency, Prisma schema/migration, HTTP route,
 registration/session flow, marketing-consent API, coupon issuance behavior, provider wire or
 notification-template meaning is changed. No local lint/build/test/scanner run is claimed
-under repository workflow; this slice will not be deployed separately before the consolidated
-Phase 4 rollout.  
+under repository workflow. Final GitHub Actions CI #5130 passed Architecture, API/Web
+lint/build/strict checks and tests on final head `a0fa3f85` before squash merge `0cb3ce11`.
+This slice will not be deployed separately before the consolidated Phase 4 rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2E-A: Retire historical AWS SNS / SQS infrastructure
+
+**PR/SHA:** local branch `refactor/phase4-slice2ea-retire-aws-sns-sqs`  
+**State:** LOCAL  
+**Result:** user-confirmed retired AWS SNS/SQS infrastructure is removed from runtime source.
+The historical `/api/v1/webhooks/aws-sns` controller/service and raw-body route are deleted;
+the remaining SES SQS bounce/complaint consumer is deleted from `EmailModule`; MessagingModule
+no longer imports Prisma solely for the SNS webhook; compose removes `SNS_TOPIC_ARN`,
+`SES_EVENTS_SQS_QUEUE_URL` and the historical `sanq-events` configuration-set binding; and the
+unused `PRINT_SNS_TOPIC_ARN` Orders field is removed. `SesEmailProvider` and `AwsSmsProvider`
+remain available, while SES configuration-set publishing becomes explicit opt-in. Current
+SendGrid/Twilio webhook and suppression/audit persistence remain unchanged. Production read-only
+evidence found no current SNS/`ORDER_PAID` MessagingWebhookEvent rows and no SNS API request hit
+in the inspected logs beyond Nest route registration. The monotonic baseline contracts
+Messaging -> Architecture **4 -> 3**, Messaging -> Runtime **9 -> 6**, and total Messaging
+outgoing direct debt **14 -> 10**. A central retirement guard prevents the deleted SNS/SQS
+runtime paths from returning. `@aws-sdk/client-sns`, `@aws-sdk/client-sqs` and `sqs-consumer`
+remain temporarily as manifest-only dead dependencies because package/lockfile cleanup requires
+a separate authorized pnpm update. EventBridge or another SES feedback channel is explicitly
+deferred until AWS SES/SMS provider activation. No local lint/build/test/scanner run is claimed
+under repository workflow, and this slice will not be deployed separately before the Phase 4
+consolidated rollout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
@@ -749,7 +776,7 @@ Phase 4 rollout.
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  MERGED/CI; SLICE 2D LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D MERGED/CI; SLICE 2E-A LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -758,11 +785,12 @@ Phase 4 rollout.
   head `29bf23b7` passed CI #5120, contracting Identity -> Messaging `22 -> 15`. Slice 2B
   merged via PR #2173 as `41428324` after final head `d63bc307` passed CI #5123, contracting
   the baseline `15 -> 10`. Slice 2C merged via PR #2174 as `e27489cf` after final head
-  `2c18e3c5` passed CI #5126, contracting `10 -> 6`. Slice 2D locally contracts Auth and
-  Membership lifecycle notification delivery behind `CUSTOMER_LIFECYCLE_NOTIFICATION`,
-  contracting the local baseline `6 -> 2`. Per the current rollout plan, Slice 1 onward are
-  not individually deployed; the accumulated Phase 4 changes will be deployed and actively
-  verified together after source closeout.
+  `2c18e3c5` passed CI #5126, contracting `10 -> 6`. Slice 2D merged via PR #2175 as
+  `0cb3ce11` after final head `a0fa3f85` passed CI #5130, contracting `6 -> 2`. Slice 2E-A
+  locally retires the confirmed-unused AWS SNS/SQS runtime paths and contracts Messaging total
+  outgoing debt `14 -> 10`; the OrderEventsBus ownership tail remains for 2E-B. Per the current
+  rollout plan, Slice 1 onward are not individually deployed; the accumulated Phase 4 changes
+  will be deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

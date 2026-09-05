@@ -388,6 +388,17 @@
     "membershipService": "apps/api/src/membership/membership.service.ts",
     "membershipModule": "apps/api/src/membership/membership.module.ts"
   },
+  "awsMessageInfrastructureRetirementBoundary": {
+    "main": "apps/api/src/main.ts",
+    "messagingModule": "apps/api/src/messaging/messaging.module.ts",
+    "emailModule": "apps/api/src/email/email.module.ts",
+    "sesProvider": "apps/api/src/email/providers/ses-email.provider.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "dockerCompose": "docker-compose.yml",
+    "retiredSnsController": "apps/api/src/messaging/webhooks/aws-sns.webhook.controller.ts",
+    "retiredSnsService": "apps/api/src/messaging/webhooks/aws-sns.webhook.service.ts",
+    "retiredSqsProcessor": "apps/api/src/email/ses-event.processor.ts"
+  },
   "dependencyBoundaries": [
     {
       "sourcePath": "libs/order",
@@ -462,8 +473,8 @@
     "identity-customer-benefits -> messaging-notifications": 2,
     "identity-customer-benefits -> runtime-data-ci-ops": 15,
     "identity-customer-benefits -> store-operations-pos-print": 4,
-    "messaging-notifications -> architecture-foundation": 4,
-    "messaging-notifications -> runtime-data-ci-ops": 9,
+    "messaging-notifications -> architecture-foundation": 3,
+    "messaging-notifications -> runtime-data-ci-ops": 6,
     "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
     "payments-clover -> commerce-orders-fulfillment": 10,

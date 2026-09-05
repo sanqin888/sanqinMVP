@@ -4204,6 +4204,78 @@ for (const annotation of compatAnnotations) {
   }
 }
 
+const awsMessageInfrastructureRetirementBoundary =
+  config.awsMessageInfrastructureRetirementBoundary ?? null;
+if (awsMessageInfrastructureRetirementBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(awsMessageInfrastructureRetirementBoundary).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const retiredPath of [
+    boundary.retiredSnsController,
+    boundary.retiredSnsService,
+    boundary.retiredSqsProcessor,
+  ]) {
+    if (retiredPath && existsSync(join(REPOSITORY_ROOT, retiredPath))) {
+      failures.push(
+        `Retired AWS SNS/SQS infrastructure must stay deleted: ${retiredPath}`,
+      );
+    }
+  }
+
+  const forbiddenByPath = new Map([
+    [boundary.main, ['webhooks/aws-sns']],
+    [
+      boundary.messagingModule,
+      ['AwsSnsWebhookController', 'AwsSnsWebhookService'],
+    ],
+    [boundary.emailModule, ['SesEventProcessor']],
+    [boundary.ordersService, ['PRINT_SNS_TOPIC_ARN']],
+    [
+      boundary.dockerCompose,
+      ['SNS_TOPIC_ARN', 'SES_EVENTS_SQS_QUEUE_URL'],
+    ],
+  ]);
+
+  for (const [sourcePath, forbiddenTokens] of forbiddenByPath.entries()) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `AWS SNS/SQS retirement guard source is missing: ${sourcePath || '<missing-path>'}`,
+      );
+      continue;
+    }
+    const source = readFileSync(join(REPOSITORY_ROOT, sourcePath), 'utf8');
+    for (const forbiddenToken of forbiddenTokens) {
+      if (source.includes(forbiddenToken)) {
+        failures.push(
+          `Retired AWS SNS/SQS token ${forbiddenToken} must not return in ${sourcePath}`,
+        );
+      }
+    }
+  }
+
+  if (boundary.sesProvider) {
+    const sourcePath = join(REPOSITORY_ROOT, boundary.sesProvider);
+    if (!existsSync(sourcePath)) {
+      failures.push(
+        `SES provider required by AWS SNS/SQS retirement guard is missing: ${boundary.sesProvider}`,
+      );
+    } else {
+      const source = readFileSync(sourcePath, 'utf8');
+      if (
+        !source.includes('process.env.AWS_SES_CONFIGURATION_SET?.trim()') ||
+        source.includes("AWS_SES_CONFIGURATION_SET ?? 'sanq-events'")
+      ) {
+        failures.push(
+          `SES provider must keep configuration-set publishing opt-in after SNS/SQS retirement: ${boundary.sesProvider}`,
+        );
+      }
+    }
+  }
+}
+
 const report = {
   baseline: config.baseline,
   contexts: config.contexts.map(({ id }) => id),

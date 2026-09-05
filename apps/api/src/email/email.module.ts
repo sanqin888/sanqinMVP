@@ -8,7 +8,6 @@ import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
 import { SesEmailProvider } from './providers/ses-email.provider';
 import { LogEmailProvider } from './providers/log-email.provider';
 import { SendGridEmailProvider } from './providers/sendgrid-email.provider';
-import { SesEventProcessor } from './ses-event.processor';
 import type { EmailProvider } from './email.provider';
 import { SendGridEmailWebhookController } from './webhooks/sendgrid-email.webhook.controller';
 import { SendGridEmailWebhookService } from './webhooks/sendgrid-email.webhook.service';
@@ -22,7 +21,6 @@ import { SendGridEmailWebhookVerifier } from './webhooks/sendgrid-email.webhook.
     SesEmailProvider,
     SendGridEmailProvider,
     LogEmailProvider,
-    SesEventProcessor,
     SendGridEmailWebhookService,
     SendGridEmailWebhookVerifier,
     {

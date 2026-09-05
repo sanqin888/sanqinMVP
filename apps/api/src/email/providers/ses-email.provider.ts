@@ -31,13 +31,13 @@ export class SesEmailProvider implements EmailProvider {
       : fromAddress;
 
     const endpoint = `https://email.${region}.amazonaws.com/v2/email/outbound-emails`;
-    const configSet = process.env.AWS_SES_CONFIGURATION_SET ?? 'sanq-events';
+    const configSet = process.env.AWS_SES_CONFIGURATION_SET?.trim();
     const payload = {
       FromEmailAddress: fromEmail,
       Destination: {
         ToAddresses: [params.to],
       },
-      ConfigurationSetName: configSet,
+      ...(configSet ? { ConfigurationSetName: configSet } : {}),
       Content: {
         Simple: {
           Subject: { Data: params.subject, Charset: 'UTF-8' },

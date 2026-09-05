@@ -38,7 +38,6 @@ async function bootstrap(): Promise<void> {
   // 先注册所有需要 raw body 的 webhook 路由
   app.use(`/${prefix}/webhooks/sendgrid-email`, express.raw({ type: '*/*' }));
   app.use(`/${prefix}/webhooks/twilio`, express.raw({ type: '*/*' }));
-  app.use(`/${prefix}/webhooks/aws-sns`, express.raw({ type: '*/*' }));
 
   // Uber Eats webhook 必须保留原始 body，供 HMAC 验签
   app.use(
