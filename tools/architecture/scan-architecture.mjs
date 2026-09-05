@@ -2286,8 +2286,11 @@ if (adminMemberOrdersReadBoundary) {
     boundary.customerExistenceService,
     boundary.customerPublicSurface,
     boundary.membershipModule,
+    boundary.membershipPrismaBoundary,
     boundary.authPublicSurface,
     boundary.ordersModule,
+    boundary.ordersPrismaBoundary,
+    boundary.runtimePrismaModule,
     boundary.adminMemberOrdersController,
     boundary.adminMemberOrdersReadService,
     boundary.adminMembersController,
@@ -2396,6 +2399,7 @@ if (adminMemberOrdersReadBoundary) {
     const source = readFileSync(customerExistenceServicePath, 'utf8');
     for (const requiredSymbol of [
       'implements CustomerExistenceReaderPort',
+      "from './membership-prisma'",
       'where: { userStableId }',
       'select: { userStableId: true }',
     ]) {
@@ -2405,9 +2409,12 @@ if (adminMemberOrdersReadBoundary) {
         );
       }
     }
-    if (source.includes('select: { id: true }')) {
+    if (
+      source.includes('select: { id: true }') ||
+      source.includes("from '../prisma/")
+    ) {
       failures.push(
-        `Customer existence owner must not expose the User DB UUID through its read capability: ${boundary.customerExistenceService}`,
+        `Customer existence owner must not expose the User DB UUID or add a direct Runtime Prisma edge: ${boundary.customerExistenceService}`,
       );
     }
   }
@@ -2436,10 +2443,28 @@ if (adminMemberOrdersReadBoundary) {
     if (
       !source.includes('CustomerExistenceService') ||
       !source.includes('CUSTOMER_EXISTENCE_READER') ||
-      !source.includes('useExisting: CustomerExistenceService')
+      !source.includes('useExisting: CustomerExistenceService') ||
+      !source.includes("from './membership-prisma'") ||
+      source.includes("from '../prisma/")
     ) {
       failures.push(
         `MembershipModule must wire the narrow Customer existence capability: ${boundary.membershipModule}`,
+      );
+    }
+  }
+
+  const membershipPrismaBoundaryPath = join(
+    REPOSITORY_ROOT,
+    boundary.membershipPrismaBoundary,
+  );
+  if (existsSync(membershipPrismaBoundaryPath)) {
+    const source = readFileSync(membershipPrismaBoundaryPath, 'utf8');
+    if (
+      !source.includes("from '../prisma/prisma.module'") ||
+      source.includes("from '../prisma/prisma.service'")
+    ) {
+      failures.push(
+        `Membership Prisma composition must consolidate Runtime access through prisma.module: ${boundary.membershipPrismaBoundary}`,
       );
     }
   }
@@ -2459,6 +2484,7 @@ if (adminMemberOrdersReadBoundary) {
     const source = readFileSync(ordersModulePath, 'utf8');
     for (const requiredSymbol of [
       "from '../membership/public-api'",
+      "from './orders-prisma'",
       'AdminMemberOrdersController',
       'AdminMemberOrdersReadService',
     ]) {
@@ -2468,9 +2494,41 @@ if (adminMemberOrdersReadBoundary) {
         );
       }
     }
-    if (source.includes("from '../membership/membership.module'")) {
+    if (
+      source.includes("from '../membership/membership.module'") ||
+      source.includes("from '../prisma/")
+    ) {
       failures.push(
-        `OrdersModule must not deep-import MembershipModule after Slice 4C: ${boundary.ordersModule}`,
+        `OrdersModule must not deep-import MembershipModule or add a direct Runtime Prisma edge after Slice 4C: ${boundary.ordersModule}`,
+      );
+    }
+  }
+
+  const ordersPrismaBoundaryPath = join(
+    REPOSITORY_ROOT,
+    boundary.ordersPrismaBoundary,
+  );
+  if (existsSync(ordersPrismaBoundaryPath)) {
+    const source = readFileSync(ordersPrismaBoundaryPath, 'utf8');
+    if (
+      !source.includes("from '../prisma/prisma.module'") ||
+      source.includes("from '../prisma/prisma.service'")
+    ) {
+      failures.push(
+        `Orders Prisma composition must consolidate Runtime access through prisma.module: ${boundary.ordersPrismaBoundary}`,
+      );
+    }
+  }
+
+  const runtimePrismaModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.runtimePrismaModule,
+  );
+  if (existsSync(runtimePrismaModulePath)) {
+    const source = readFileSync(runtimePrismaModulePath, 'utf8');
+    if (!source.includes("export { PrismaService } from './prisma.service'")) {
+      failures.push(
+        `Runtime PrismaModule must expose PrismaService for context-local composition boundaries: ${boundary.runtimePrismaModule}`,
       );
     }
   }
@@ -2524,6 +2582,7 @@ if (adminMemberOrdersReadBoundary) {
   if (existsSync(adminMemberOrdersReadServicePath)) {
     const source = readFileSync(adminMemberOrdersReadServicePath, 'utf8');
     for (const requiredSymbol of [
+      "from './orders-prisma'",
       'where: { userStableId }',
       "status: { in: ['paid', 'making', 'ready', 'completed'] }",
       "orderBy: { createdAt: 'desc' }",
@@ -2536,7 +2595,11 @@ if (adminMemberOrdersReadBoundary) {
         );
       }
     }
-    for (const forbiddenSymbol of ['this.prisma.user', 'userId:']) {
+    for (const forbiddenSymbol of [
+      'this.prisma.user',
+      'userId:',
+      "from '../prisma/",
+    ]) {
       if (source.includes(forbiddenSymbol)) {
         failures.push(
           `Orders member read model must query by Order.userStableId without User persistence/DB UUID (${forbiddenSymbol}): ${boundary.adminMemberOrdersReadService}`,
@@ -3736,7 +3799,7 @@ if (brandStoreCanonicalConfigOwnership) {
         source.includes('PosDeviceModule') ||
         source.includes("from '../pos/") ||
         !source.includes('POS_ORDER_OPERATIONS') ||
-        !source.includes('controllers: [OrdersController]')
+        !/controllers:\s*\[[^\]]*\bOrdersController\b/s.test(source)
       ) {
         failures.push(
           `Orders module must own OrdersController and expose POS operations through its public boundary without importing POS transport: ${ordersTransportModule}`,

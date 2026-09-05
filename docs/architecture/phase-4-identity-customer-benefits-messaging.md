@@ -820,7 +820,11 @@ Orders-owned read models out of Identity/Admin:
    unchanged. No Web route change is required;
 6. `OrdersModule` now consumes `MembershipModule` through `membership/public-api`, contracting the
    direct Commerce -> Identity import allowance **5 -> 4** and Commerce outgoing direct debt
-   **31 -> 30**. No Identity -> Orders public edge is added, so the public SCC baseline remains empty;
+   **31 -> 30**. The new Orders/Customer read services share context-local `orders-prisma` /
+   `membership-prisma` composition boundaries backed by the existing Runtime `PrismaModule`, so
+   Commerce -> Runtime remains **10** and Identity -> Runtime remains **12** instead of raising either
+   monotonic debt baseline. No Identity -> Orders public edge is added, so the public SCC baseline
+   remains empty;
 7. the central scanner permanently requires the schema/migration, stable-ID read model, Customer
    existence contract, Orders-owned transport, dual-write paths and Admin cleanup, while rejecting
    User persistence access or DB-ID-based member reads from the Orders read model.

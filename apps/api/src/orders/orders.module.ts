@@ -1,6 +1,6 @@
 // apps/api/src/orders/orders.module.ts
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaModule } from './orders-prisma';
 import { OrdersController } from './orders.controller';
 import { OrderEventsBus } from './order-events.bus';
 import { OrdersService } from './orders.service';

@@ -922,8 +922,10 @@ dual-write the stable member identity. A narrow DB-ID-free `CUSTOMER_EXISTENCE_R
 historical `404 member not found` distinction without Orders reading User persistence or receiving a
 User DB UUID. `OrdersModule` also switches the historical Membership module import to
 `membership/public-api`, contracting Commerce -> Identity direct debt **5 -> 4** and Commerce outgoing
-**31 -> 30**; no Identity -> Orders public edge is introduced and the SCC baseline remains empty. The
-central scanner reserves the migration/read-model/transport ownership and dual-write paths. The remaining
+**31 -> 30**; context-local `orders-prisma` / `membership-prisma` composition prevents the two new read
+services from raising Commerce -> Runtime **10** or Identity -> Runtime **12**. No Identity -> Orders
+public edge is introduced and the SCC baseline remains empty. The central scanner reserves the
+migration/read-model/transport ownership and dual-write paths. The remaining
 Admin loyalty-ledger `Order.id -> orderStableId` enrichment is explicitly deferred to **Slice 5A — Loyalty
 ledger order identity contraction**, where Benefits/Loyalty should own a stable order identity snapshot
 instead of extending Slice 4C. No local migration application, lint/build/test/scanner run is claimed under

@@ -1,6 +1,6 @@
 // apps/api/src/membership/membership.module.ts
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaModule } from './membership-prisma';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { AuthModule } from '../auth/auth.module';
 import {
