@@ -6,6 +6,7 @@ import {
   Delete,
   Get,
   Inject,
+  NotFoundException,
   Post,
   Put,
   Param,
@@ -23,6 +24,9 @@ import { AuthService } from '../auth/auth.service';
 import { TRUSTED_DEVICE_COOKIE } from '../auth/trusted-device.constants';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import {
+  ACCOUNT_SECURITY_ADMINISTRATION,
+  AccountSecurityAdministrationError,
+  type AccountSecurityAdministrationPort,
   IDENTITY_EMAIL_VERIFICATION,
   type IdentityEmailVerificationPort,
 } from '../auth/public-api';
@@ -51,7 +55,21 @@ export class MembershipController {
     private readonly auth: AuthService,
     @Inject(IDENTITY_EMAIL_VERIFICATION)
     private readonly emailVerification: IdentityEmailVerificationPort,
+    @Inject(ACCOUNT_SECURITY_ADMINISTRATION)
+    private readonly accountSecurity: AccountSecurityAdministrationPort,
   ) {}
+
+  private rethrowAccountSecurityError(error: unknown): never {
+    if (error instanceof AccountSecurityAdministrationError) {
+      if (error.code === 'SESSION_NOT_FOUND') {
+        throw new NotFoundException('session not found');
+      }
+      if (error.code === 'USER_NOT_FOUND') {
+        throw new NotFoundException('user not found');
+      }
+    }
+    throw error;
+  }
 
   @Get('summary')
   async summary(@Req() req: AuthedRequest) {
@@ -109,15 +127,19 @@ export class MembershipController {
 
   @Get('devices')
   async listDevices(@Req() req: AuthedRequest) {
-    const userId = req.user?.id;
-    if (!userId) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
       throw new BadRequestException('userId is required');
     }
 
-    return this.membership.getDeviceManagement({
-      userId,
-      currentSessionId: req.session?.sessionId,
-    });
+    try {
+      return await this.accountSecurity.getDeviceManagement(
+        userStableId,
+        req.session?.sessionId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
   }
 
   @Delete('devices/sessions/:sessionId')
@@ -125,32 +147,43 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Param('sessionId') sessionId?: string,
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
       throw new BadRequestException('userId is required');
     }
     if (!sessionId) {
       throw new BadRequestException('sessionId is required');
     }
 
-    await this.membership.revokeSession({ userId, sessionId });
+    try {
+      await this.accountSecurity.revokeSession(userStableId, sessionId);
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
     return { success: true };
   }
 
   @Delete('devices/trusted/:deviceId')
   async revokeTrustedDevice(
     @Req() req: AuthedRequest,
-    @Param('deviceId') deviceId?: string,
+    @Param('deviceId') trustedDeviceStableId?: string,
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
       throw new BadRequestException('userId is required');
     }
-    if (!deviceId) {
+    if (!trustedDeviceStableId) {
       throw new BadRequestException('deviceId is required');
     }
 
-    await this.membership.revokeTrustedDevice({ userId, deviceId });
+    try {
+      await this.accountSecurity.revokeTrustedDevice(
+        userStableId,
+        trustedDeviceStableId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
     return { success: true };
   }
 
@@ -165,8 +198,9 @@ export class MembershipController {
     },
   ) {
     const userId = req.user?.id;
+    const userStableId = req.user?.userStableId;
     const currentSessionId = req.session?.sessionId;
-    if (!userId) {
+    if (!userId || !userStableId) {
       throw new BadRequestException('userId is required');
     }
     if (!body?.sessionId) {
@@ -176,10 +210,15 @@ export class MembershipController {
       throw new BadRequestException('sessionId must be current');
     }
 
-    const sessionLabel = await this.membership.getSessionDeviceLabel({
-      userId,
-      sessionId: body.sessionId,
-    });
+    let sessionLabel: { label?: string };
+    try {
+      sessionLabel = await this.accountSecurity.getSessionDeviceLabel(
+        userStableId,
+        body.sessionId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
     const label = body.label?.trim() || sessionLabel.label;
     const trustedDevice = await this.auth.createTrustedDeviceForUser({
       userId,

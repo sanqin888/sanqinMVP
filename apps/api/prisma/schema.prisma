@@ -364,13 +364,14 @@ model UserSession {
 }
 
 model TrustedDevice {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @db.Uuid
-  tokenHash  String    @unique
-  label      String?
-  createdAt  DateTime  @default(now())
-  lastSeenAt DateTime?
-  expiresAt  DateTime
+  id                    String    @id @default(uuid()) @db.Uuid
+  trustedDeviceStableId String    @unique @default(cuid())
+  userId                String    @db.Uuid
+  tokenHash             String    @unique
+  label                 String?
+  createdAt             DateTime  @default(now())
+  lastSeenAt            DateTime?
+  expiresAt             DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

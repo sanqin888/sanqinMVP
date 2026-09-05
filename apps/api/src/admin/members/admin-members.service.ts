@@ -20,7 +20,6 @@ import {
   LOYALTY_POLICY_READER,
   type LoyaltyPolicyReaderPort,
 } from '../../loyalty/public-api';
-import { MembershipService } from '../../membership/membership.service';
 import {
   CUSTOMER_ADMINISTRATION,
   type CustomerAdministrationPort,
@@ -113,7 +112,6 @@ export class AdminMembersService {
     private readonly loyalty: LoyaltyService,
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
-    private readonly membership: MembershipService,
     private readonly phoneVerification: PhoneVerificationService,
     @Inject(MEMBER_RECHARGE_EMAIL_DELIVERY)
     private readonly memberRechargeEmailDelivery: MemberRechargeEmailDeliveryPort,
@@ -722,17 +720,13 @@ export class AdminMembersService {
   }
 
   async getDeviceManagement(userStableId: string) {
-    const user = await this.getUserByStableId(userStableId);
-    // TrustedDevice still exposes its Prisma UUID through the historical device contract.
-    // Keep only that portion on the legacy path until Slice 4B Stage 2 adds a stable ID.
-    const [securitySessions, legacyDeviceManagement] = await Promise.all([
-      this.accountSecurityAdministration.listSessions(user.userStableId),
-      this.membership.getDeviceManagement({ userId: user.id }),
-    ]);
-    return {
-      sessions: securitySessions.sessions,
-      trustedDevices: legacyDeviceManagement.trustedDevices,
-    };
+    try {
+      return await this.accountSecurityAdministration.getDeviceManagement(
+        this.requireUserStableId(userStableId),
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
   }
 
   async revokeSession(userStableId: string, sessionId: string) {
@@ -746,9 +740,18 @@ export class AdminMembersService {
     }
   }
 
-  async revokeTrustedDevice(userStableId: string, deviceId: string) {
-    const user = await this.getUserByStableId(userStableId);
-    await this.membership.revokeTrustedDevice({ userId: user.id, deviceId });
+  async revokeTrustedDevice(
+    userStableId: string,
+    trustedDeviceStableId: string,
+  ) {
+    try {
+      await this.accountSecurityAdministration.revokeTrustedDevice(
+        this.requireUserStableId(userStableId),
+        trustedDeviceStableId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
   }
 
   async updateMember(

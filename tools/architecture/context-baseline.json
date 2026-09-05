@@ -392,9 +392,13 @@
     "accountSecurityService": "apps/api/src/auth/account-security-administration.service.ts",
     "accountSecurityModule": "apps/api/src/auth/account-security-administration.module.ts",
     "authPublicSurface": "apps/api/src/auth/public-api.ts",
+    "trustedDeviceSchema": "apps/api/prisma/schema.prisma",
+    "trustedDeviceMigration": "apps/api/prisma/migrations/20260905134000_add_trusted_device_stable_id/migration.sql",
+    "membershipController": "apps/api/src/membership/membership.controller.ts",
+    "membershipService": "apps/api/src/membership/membership.service.ts",
+    "membershipWeb": "apps/web/src/app/[locale]/(site)/membership/page.tsx",
     "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
-    "adminMembersModule": "apps/api/src/admin/members/admin-members.module.ts",
-    "deferredTrustedDeviceModel": "TrustedDevice"
+    "adminMembersModule": "apps/api/src/admin/members/admin-members.module.ts"
   },
   "customerLifecycleNotificationBoundary": {
     "contract": "apps/api/src/notifications/contracts/customer-lifecycle-notification.contract.ts",

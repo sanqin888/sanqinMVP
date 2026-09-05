@@ -112,9 +112,12 @@ export class AdminMembersController {
   @Delete(':userStableId/devices/trusted/:deviceId')
   async revokeTrustedDevice(
     @Param('userStableId') userStableId: string,
-    @Param('deviceId') deviceId: string,
+    @Param('deviceId') trustedDeviceStableId: string,
   ) {
-    await this.service.revokeTrustedDevice(userStableId, deviceId);
+    await this.service.revokeTrustedDevice(
+      userStableId,
+      trustedDeviceStableId,
+    );
     return { success: true };
   }
 

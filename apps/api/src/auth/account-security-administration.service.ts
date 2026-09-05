@@ -1,6 +1,7 @@
 import { PrismaService } from './identity-prisma';
 import {
   AccountSecurityAdministrationError,
+  type AccountDeviceManagementDto,
   type AccountSecurityAdministrationPort,
   type AccountSessionDto,
   type ManagedAccountStatus,
@@ -23,23 +24,37 @@ export class AccountSecurityAdministrationService implements AccountSecurityAdmi
     return user.id;
   }
 
-  async listSessions(
+  async getDeviceManagement(
     userStableId: string,
-  ): Promise<{ sessions: AccountSessionDto[] }> {
+    currentSessionId?: string,
+  ): Promise<AccountDeviceManagementDto> {
     const userDbId = await this.requireUserDbId(userStableId);
-    const sessions = await this.prisma.userSession.findMany({
-      where: { userId: userDbId },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: {
-        sessionId: true,
-        createdAt: true,
-        expiresAt: true,
-        mfaVerifiedAt: true,
-        deviceInfo: true,
-        loginLocation: true,
-      },
-    });
+    const [sessions, trustedDevices] = await Promise.all([
+      this.prisma.userSession.findMany({
+        where: { userId: userDbId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          sessionId: true,
+          createdAt: true,
+          expiresAt: true,
+          mfaVerifiedAt: true,
+          deviceInfo: true,
+          loginLocation: true,
+        },
+      }),
+      this.prisma.trustedDevice.findMany({
+        where: { userId: userDbId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          trustedDeviceStableId: true,
+          label: true,
+          createdAt: true,
+          lastSeenAt: true,
+          expiresAt: true,
+        },
+      }),
+    ]);
 
     const sessionItems: AccountSessionDto[] = sessions.map((session) => ({
       sessionId: session.sessionId,
@@ -48,22 +63,37 @@ export class AccountSecurityAdministrationService implements AccountSecurityAdmi
       mfaVerifiedAt: session.mfaVerifiedAt?.toISOString() ?? null,
       deviceInfo: session.deviceInfo ?? null,
       loginLocation: session.loginLocation ?? null,
-      isCurrent: false,
+      isCurrent: session.sessionId === currentSessionId,
     }));
 
-    const seen = new Map<string, AccountSessionDto>();
-    const order: string[] = [];
+    const dedupedSessions: AccountSessionDto[] = [];
+    const sessionIndexByDevice = new Map<string, number>();
     for (const session of sessionItems) {
       const key = session.deviceInfo
         ? `device:${session.deviceInfo}|${session.loginLocation ?? ''}`
         : `session:${session.sessionId}`;
-      if (!seen.has(key)) {
-        seen.set(key, session);
-        order.push(key);
+      const existingIndex = sessionIndexByDevice.get(key);
+      if (existingIndex === undefined) {
+        sessionIndexByDevice.set(key, dedupedSessions.length);
+        dedupedSessions.push(session);
+        continue;
+      }
+      if (session.isCurrent && !dedupedSessions[existingIndex]?.isCurrent) {
+        dedupedSessions[existingIndex] = session;
       }
     }
 
-    return { sessions: order.map((key) => seen.get(key)!) };
+    return {
+      sessions: dedupedSessions,
+      trustedDevices: trustedDevices.map((device) => ({
+        id: device.trustedDeviceStableId,
+        trustedDeviceStableId: device.trustedDeviceStableId,
+        label: device.label ?? null,
+        createdAt: device.createdAt.toISOString(),
+        lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+        expiresAt: device.expiresAt.toISOString(),
+      })),
+    };
   }
 
   async revokeSession(userStableId: string, sessionId: string): Promise<void> {
@@ -71,6 +101,36 @@ export class AccountSecurityAdministrationService implements AccountSecurityAdmi
     await this.prisma.userSession.deleteMany({
       where: { userId: userDbId, sessionId },
     });
+  }
+
+  async revokeTrustedDevice(
+    userStableId: string,
+    trustedDeviceStableId: string,
+  ): Promise<void> {
+    const userDbId = await this.requireUserDbId(userStableId);
+    await this.prisma.trustedDevice.deleteMany({
+      where: { userId: userDbId, trustedDeviceStableId },
+    });
+  }
+
+  async getSessionDeviceLabel(userStableId: string, sessionId: string) {
+    const userDbId = await this.requireUserDbId(userStableId);
+    const session = await this.prisma.userSession.findFirst({
+      where: { userId: userDbId, sessionId },
+      select: { deviceInfo: true, loginLocation: true },
+    });
+    if (!session) {
+      throw new AccountSecurityAdministrationError(
+        'SESSION_NOT_FOUND',
+        'session not found',
+      );
+    }
+
+    const parts = [session.deviceInfo, session.loginLocation].filter(
+      (segment): segment is string => !!segment,
+    );
+    const label = parts.join(' · ').trim();
+    return { label: label || undefined };
   }
 
   async setAccountStatus(userStableId: string, disabled: boolean) {
