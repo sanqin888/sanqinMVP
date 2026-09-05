@@ -63,7 +63,8 @@ export class PhoneVerificationService {
     const resolvedPurpose = purpose?.trim() || 'generic';
 
     const now = new Date();
-    const profile = resolvedPurpose === 'checkout' ? 'CHECKOUT' : 'GENERIC_PHONE';
+    const profile =
+      resolvedPurpose === 'checkout' ? 'CHECKOUT' : 'GENERIC_PHONE';
     const limitResult = await this.otpPolicy.checkSend({
       profile,
       purpose: resolvedPurpose,

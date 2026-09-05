@@ -26,7 +26,9 @@ describe('OtpChallengePolicyService', () => {
   it('shares LOGIN_2FA cooldown and hourly budget by user across channels', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-05T18:00:00.000Z'));
     const { service, prisma } = createService();
-    prisma.authChallenge.count.mockResolvedValueOnce(0).mockResolvedValueOnce(5);
+    prisma.authChallenge.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(5);
 
     await expect(
       service.checkSend({
@@ -115,7 +117,9 @@ describe('OtpChallengePolicyService', () => {
   it('keeps CHECKOUT at one minute plus five sends per day per address', async () => {
     const { service, prisma } = createService();
     const now = new Date('2026-09-05T18:00:00.000Z');
-    prisma.authChallenge.count.mockResolvedValueOnce(0).mockResolvedValueOnce(5);
+    prisma.authChallenge.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(5);
 
     await expect(
       service.checkSend({
@@ -132,7 +136,9 @@ describe('OtpChallengePolicyService', () => {
     const { service, prisma } = createService();
     const now = new Date('2026-09-05T18:00:00.000Z');
 
-    prisma.authChallenge.count.mockResolvedValueOnce(0).mockResolvedValueOnce(5);
+    prisma.authChallenge.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(5);
     await expect(
       service.checkSend({
         profile: 'EMAIL_VERIFY',
@@ -144,7 +150,9 @@ describe('OtpChallengePolicyService', () => {
     ).resolves.toEqual({ ok: false, violation: 'DAILY_LIMIT' });
 
     prisma.authChallenge.count.mockReset();
-    prisma.authChallenge.count.mockResolvedValueOnce(0).mockResolvedValueOnce(5);
+    prisma.authChallenge.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(5);
     await expect(
       service.checkSend({
         profile: 'POS_RECHARGE',

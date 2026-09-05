@@ -98,7 +98,11 @@ describe('AuthChallengeDeliveryService characterization', () => {
         locale: 'zh-CN',
         userStableId: 'c1234567890abcdefghijklmn',
       }),
-    ).resolves.toEqual({ ok: true, sendId: 'send-email-2fa', error: undefined });
+    ).resolves.toEqual({
+      ok: true,
+      sendId: 'send-email-2fa',
+      error: undefined,
+    });
 
     expect(templateRenderer.renderEmail).toHaveBeenCalledWith({
       template: 'otp',

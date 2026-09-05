@@ -53,7 +53,10 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const PUBLIC_IP_HOURLY_LIMIT = 30;
 
-const PROFILE_RULES: Record<OtpChallengePolicyProfile, readonly OtpPolicyRule[]> = {
+const PROFILE_RULES: Record<
+  OtpChallengePolicyProfile,
+  readonly OtpPolicyRule[]
+> = {
   LOGIN_2FA: [
     { scope: 'USER', windowMs: MINUTE_MS, limit: 1, violation: 'COOLDOWN' },
     {
