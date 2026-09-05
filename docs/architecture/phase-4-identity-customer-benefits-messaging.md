@@ -979,7 +979,7 @@ to empty Admin persistence.
 
 ### Slice 5 — Benefits implementation ownership consolidation
 
-Status: **IN PROGRESS / TRANSACTION-SENSITIVE**. Slice 5A is merged/CI-green; the 2026-09-05 Slice 6 readiness audit found one additional safe read-ownership tail that should land as Slice 5B before Phase 4 source closeout. Transaction-bound COMMIT work remains explicitly deferred.
+Status: **SOURCE CLOSED / AWAITING CONSOLIDATED DEPLOYMENT + ACTIVE VERIFICATION**. Slice 5A and Slice 5B are merged/CI-green. The transaction-bound COMMIT work remains explicitly deferred because its atomicity constraints are unchanged and it is not a Phase 4 source-closeout blocker.
 
 Continue the Offers/Benefits ownership normalization started in Phase 3 by moving safe
 eligibility/claim/issue/trigger/entitlement implementation behind Benefits-owned
@@ -1039,7 +1039,7 @@ all passed on final head `3b904dd1` before squash merge `c28df1b5`.
 
 #### Slice 5B — Loyalty order-usage read ownership contraction
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `audit/phase4-slice6-closeout`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2187. Final head `42891cf4` passed GitHub Actions CI #5174 and squash-merged to `dev` as `0f58cf83`; the merge SHA then passed dev push CI #5175.
 
 The Slice 6 readiness audit on `origin/dev@c28df1b5` found exactly two direct production reads of
 `LoyaltyLedger` outside the Benefits/Loyalty owner: `OrdersService.getLoyaltyUsageByOrderStableId()` and
@@ -1072,10 +1072,11 @@ Implemented source shape:
    permanently forbidding direct `LoyaltyLedger` Prisma reads from Orders/Print. Focused owner, Orders and print/
    refund compatibility tests are updated around the stable-ID reader boundary.
 
-The change adds no new context direction and is expected to leave numeric direct-import debt unchanged because
-Commerce already consumes the Loyalty public surface. No local scanner/lint/build/test/Prisma generation result
-is claimed under repository workflow; GitHub Actions remains the authoritative validation after user review and
-remote delivery.
+The change adds no new context direction and leaves numeric direct-import debt unchanged because Commerce already
+consumes the Loyalty public surface. GitHub Actions CI #5174 on final head `42891cf4` and dev push CI #5175 on
+merge `0f58cf83` both passed Prisma generation, the monotonic Architecture baseline/SCC gate, API/Web lint/build/
+strict checks and tests. The exact merged source therefore keeps the existing numeric baseline and empty public
+SCC without any additional allowance.
 
 The Phase 3 Slice 2C transaction-bound COMMIT remains deferred. Current source still has
 `commitPaymentTenderForOrder()`, `commitPaymentCouponsForOrder()` and `Order.create()` inside the same
@@ -1090,46 +1091,50 @@ Order creation without:
 
 ### Slice 6 — Phase 4 dependency/SCC closeout
 
-Status: **READINESS AUDIT COMPLETE / FINAL SOURCE CLOSEOUT PENDING 5B REVIEW + CI**.
+Status: **SOURCE CLOSED / AWAITING CONSOLIDATED DEPLOYMENT + ACTIVE VERIFICATION**.
 
-Audit base: `origin/dev@c28df1b5` after Slice 5A merge. GitHub Actions CI #5171 passed the monotonic
-Architecture baseline/SCC gate on final 5A head `3b904dd1`; therefore the current numeric allowances are exact
-for that source and `legacyPublicCycleComponents` is correctly empty rather than a stale local estimate.
+Final audit base: `origin/dev@0f58cf83` after Slice 5B merged through PR #2187. Final PR head `42891cf4` passed
+GitHub Actions CI #5174, and the squash merge `0f58cf83` independently passed dev push CI #5175. Both runs passed
+the monotonic Architecture baseline/SCC gate, so the closeout state is validated against the exact merged source.
 
-Readiness findings:
+Closeout findings:
 
-1. current direct-debt totals remain Payments/Clover **59**, External **42**, Identity/Customer/Benefits **33**,
+1. final direct-debt totals are Payments/Clover **59**, External **42**, Identity/Customer/Benefits **33**,
    Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**,
-   Messaging **10**, Brand/Store **8**. No reduced numeric allowance is waiting to be contracted after 5A;
-2. the public-contract SCC baseline is empty and CI #5171 proves no new/expanded public SCC exists on the merged
-   5A source;
-3. Slice 5A cleanup is complete: Admin Members and Membership ledger views delegate to
-   `LOYALTY_LEDGER_READER`; repository search finds no remaining `orderStableById` enrichment map and neither
-   ledger path queries Orders persistence to translate `orderId -> orderStableId`;
-4. the two direct Commerce-side `LoyaltyLedger.orderId` reads plus the indirect old-Web balance-read helper are
-   genuine Benefits read-ownership debt. Slice 5B is now source-complete locally and contracts all three through
-   `LOYALTY_ORDER_USAGE_READER`; final closeout waits for review and remote CI rather than another design slice;
-5. `MembershipService.getMemberSummary()` still directly reads Order/OrderItem persistence and deep-imports the
-   Orders-internal `OrderItemOptionsSnapshot`; that deep import is the current
-   `identity-customer-benefits -> commerce-orders-fulfillment = 1` numeric debt. Mechanically replacing this
-   with an Orders public reader would create a reverse Identity -> Commerce public edge while Commerce already
-   consumes Identity/Benefits, recreating an Identity <-> Commerce SCC. It is therefore recorded as an explicit
-   post-Phase-4 read-model/orchestration debt rather than hidden behind a new public cycle. The direct import is
-   intentionally kept visible until that larger ownership design exists;
-6. Loyalty's own `Order` lookups for paid settlement/refund continue to bridge the retained internal
-   `LoyaltyLedger.orderId` idempotency/refund model. They are inside the Benefits implementation and remain tied
-   to the explicitly retained DB-ID path from Slice 5A; do not conflate them with the safe Commerce read tail;
-7. the read-only production audit confirmed none of the first three accumulated Phase 4 migrations
-   (`20260905134000_add_trusted_device_stable_id`, `20260905145500_add_order_user_stable_id`,
-   `20260905193000_add_loyalty_ledger_order_stable_id`) is applied. Slice 5B adds the fourth pending migration,
-   `20260905204500_add_loyalty_ledger_order_stable_id_index`; it is newly created source and likewise has not
-   been applied. Consolidated rollout must deploy migration history before activating source that queries the new
-   columns/index-dependent read path. `MEMBER_RECHARGE_OTP_SECRET` remains a mandatory rollout prerequisite;
-   secret presence was not inspected by this source/data audit.
+   Messaging **10**, Brand/Store **8**. Slice 5B required no numeric contraction because it reused the existing
+   Commerce -> Identity/Benefits dependency direction;
+2. `legacyPublicCycleComponents` remains **empty**. The final merged source introduces no new or expanded public
+   SCC and no reduced numeric allowance remains stale;
+3. the Loyalty order-identity/read tail is fully contracted: Admin/Membership ledger views use
+   `LOYALTY_LEDGER_READER`; Orders detail/public-summary, legacy Web external-payment reconstruction and
+   POS/receipt/email print use `LOYALTY_ORDER_USAGE_READER`; production-source search finds
+   `this.prisma.loyaltyLedger` only inside `apps/api/src/loyalty/**`, with no remaining `orderStableById` map or
+   `getSettledBalancePaymentCentsForOrder` DB-ID read helper;
+4. `MembershipService.getMemberSummary()` remains the explicit post-Phase-4 composite read-model debt. It directly
+   reads Order/OrderItem persistence and deep-imports `OrderItemOptionsSnapshot`, accounting for the visible
+   `identity-customer-benefits -> commerce-orders-fulfillment = 1` allowance. Replacing it mechanically with an
+   Orders public reader would create a reverse Identity -> Commerce public edge while Commerce already consumes
+   Identity/Benefits, recreating a public SCC; it therefore remains intentionally deferred for a later
+   orchestration/read-model ownership package;
+5. Loyalty's own Order lookup in paid settlement and the UUID-based refund rollback path remain part of the
+   retained internal `LoyaltyLedger.orderId` idempotency/refund implementation. They are not the cross-owner
+   read tail removed by 5B and are intentionally left for a future staged contraction, if one is justified;
+6. Phase 3 Slice 2C remains **DEFERRED**. `commitPaymentTenderForOrder()`,
+   `commitPaymentCouponsForOrder()` and `tx.order.create()` still execute inside one Prisma transaction, and both
+   Benefits COMMIT implementations consume that transaction client. Removing the concrete boundary now would
+   either split atomic Points/Balance + Coupon + Order creation, expose `Prisma.TransactionClient` as a public
+   cross-context contract, or move Benefits persistence into Orders; none is acceptable for closeout;
+7. production `_prisma_migrations` still contains no applied row for the four accumulated Phase 4 migrations:
+   `20260905134000_add_trusted_device_stable_id`, `20260905145500_add_order_user_stable_id`,
+   `20260905193000_add_loyalty_ledger_order_stable_id`, and
+   `20260905204500_add_loyalty_ledger_order_stable_id_index`. The consolidated rollout must apply migration
+   history before activating API source that queries those fields. `MEMBER_RECHARGE_OTP_SECRET` also remains a
+   mandatory rollout prerequisite; secret presence was not inspected by this source/data closeout audit.
 
-With finding 4 implemented in local source, no additional safe Phase 4 contraction is identified by this audit.
-Final source closeout should follow 5B review and CI. Findings 5 and the transaction-sensitive Slice 2C boundary
-remain explicit deferrals and are not reasons to reintroduce a cycle or weaken transaction atomicity.
+No additional safe Phase 4 source contraction is identified. The remaining items above are explicit deferred debt,
+not hidden source work. Slice 6 therefore closes the Phase 4 source graph without changing business code, schema,
+migration history, scanner logic or numeric allowances. The next Phase 4 step is consolidated deployment readiness,
+migration/secret preflight and active verification—not another source refactor slice.
 
 ## Phase 4 target outcomes
 
