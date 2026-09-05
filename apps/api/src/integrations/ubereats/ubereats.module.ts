@@ -1,7 +1,5 @@
 import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
-import { MessagingModule } from '../../messaging/messaging.module';
-import { OrderEventsBus } from '../../messaging/order-events.bus';
 import {
   ORDER_INGESTION_PROVIDER,
   OrdersModule,
@@ -110,10 +108,10 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
 /**
  * Private worker runtime view of the same Uber Eats composition root.
  *
- * The dedicated process intentionally gets no HTTP controllers, AuthModule,
- * OrdersModule or MessagingModule. Cross-context implementation bridges are
- * assembled here so the process bootstrap never reaches through module
- * boundaries to Prisma or order internals.
+ * The dedicated process intentionally gets no HTTP controllers, AuthModule or
+ * OrdersModule. Cross-context implementation bridges are assembled here so the
+ * process bootstrap never reaches through module boundaries to Prisma or order
+ * internals.
  */
 @Module({})
 class UberEatsWorkerRuntimeCompositionModule {}
@@ -125,7 +123,6 @@ export function createUberEatsWorkerRuntimeModule(
     module: UberEatsWorkerRuntimeCompositionModule,
     imports: [PrismaModule, BrandStoreConfigModule],
     providers: [
-      OrderEventsBus,
       ORDER_INGESTION_PROVIDER,
       ...UBER_EATS_COMPOSITION_PROVIDERS,
       ...workerProviders,
@@ -142,7 +139,6 @@ export function createUberEatsWorkerRuntimeModule(
     PrismaModule,
     BrandStoreConfigModule,
     AuthModule,
-    MessagingModule,
     OrdersModule,
   ],
   controllers: [

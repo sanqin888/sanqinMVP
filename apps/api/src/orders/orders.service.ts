@@ -27,7 +27,9 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import {
+  LOYALTY_ORDER_PAID_SETTLEMENT,
   LOYALTY_POLICY_READER,
+  type LoyaltyOrderPaidSettlementPort,
   type LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
@@ -69,6 +71,7 @@ import {
   DAILY_SPECIAL_OFFERS,
   PROMOTION_CONTEXT_READER,
   evaluateOrderPromotions,
+  resolvePromotionLoyaltyMultiplier,
   type CouponPromotionLike,
   type DailySpecialOffersPort,
   type PromotionContextReaderPort,
@@ -80,7 +83,7 @@ import {
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
-import { OrderEventsBus } from '../messaging/order-events.bus';
+import { OrderEventsBus } from './order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import {
@@ -413,6 +416,8 @@ export class OrdersService {
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
     private readonly loyalty: LoyaltyService,
+    @Inject(LOYALTY_ORDER_PAID_SETTLEMENT)
+    private readonly loyaltyOrderPaidSettlement: LoyaltyOrderPaidSettlementPort,
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
@@ -1437,6 +1442,13 @@ export class OrdersService {
     const pickupTime = this.computePickupTimeFromCheckoutMetadata({
       acceptedAt: order.paidAt,
       metadata: checkoutIntent?.metadataJson,
+    });
+
+    void this.loyaltyOrderPaidSettlement.settleOrderPaid({
+      orderStableId: order.orderStableId,
+      subtotalCents: netSubtotalForRewards,
+      redeemValueCents: order.loyaltyRedeemCents ?? 0,
+      earnMultiplier: resolvePromotionLoyaltyMultiplier(order.promotionSnapshot),
     });
 
     this.orderEventsBus.emitOrderPaidVerified({

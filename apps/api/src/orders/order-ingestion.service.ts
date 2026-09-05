@@ -5,7 +5,6 @@ import {
   OrderStatus,
   Prisma,
 } from '@prisma/client';
-import { OrderEventsBus } from '../messaging/order-events.bus';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   IngestionResult,
@@ -23,10 +22,7 @@ import {
 export class OrderIngestionService implements OrderIngestionPort {
   private readonly logger = new Logger(OrderIngestionService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly orderEventsBus: OrderEventsBus,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async ingest(
     input: NormalizedOrderInput,
@@ -174,18 +170,6 @@ export class OrderIngestionService implements OrderIngestionPort {
       await withinTransaction?.(tx, output);
       return output;
     });
-
-    if (
-      policies.emitPaidLifecycleEvent &&
-      result.action === 'created' &&
-      result.status === OrderStatus.paid
-    ) {
-      this.orderEventsBus.emitOrderPaidVerified({
-        orderId: result.orderId,
-        amountCents: input.amounts.subtotalAfterDiscountCents,
-        redeemValueCents: 0,
-      });
-    }
 
     if (
       fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED &&

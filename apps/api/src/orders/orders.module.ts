@@ -2,6 +2,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersController } from './orders.controller';
+import { OrderEventsBus } from './order-events.bus';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
@@ -11,7 +12,6 @@ import { PromotionsModule } from '../promotions/public-api';
 import { LocationModule } from '../location/location.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { EmailModule } from '../email/email.module';
-import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
@@ -38,10 +38,10 @@ import { PosOrderOperationsService } from './pos-order-operations.service';
     LocationModule,
     NotificationModule,
     EmailModule,
-    MessagingModule,
   ],
   controllers: [OrdersController],
   providers: [
+    OrderEventsBus,
     OrdersService,
     PosOrderReadService,
     {

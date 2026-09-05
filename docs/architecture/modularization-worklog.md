@@ -738,8 +738,8 @@ This slice will not be deployed separately before the consolidated Phase 4 rollo
 
 ### 2026-09-04 — Phase 4 Slice 2E-A: Retire historical AWS SNS / SQS infrastructure
 
-**PR/SHA:** local branch `refactor/phase4-slice2ea-retire-aws-sns-sqs`  
-**State:** LOCAL  
+**PR/SHA:** PR #2176 / final head `11f73e88` / squash merge `7746402b`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT  
 **Result:** user-confirmed retired AWS SNS/SQS infrastructure is removed from runtime source.
 The historical `/api/v1/webhooks/aws-sns` controller/service and raw-body route are deleted;
 the remaining SES SQS bounce/complaint consumer is deleted from `EmailModule`; MessagingModule
@@ -756,11 +756,39 @@ runtime paths from returning. `@aws-sdk/client-sns`, `@aws-sdk/client-sqs` and `
 remain temporarily as manifest-only dead dependencies because package/lockfile cleanup requires
 a separate authorized pnpm update. EventBridge or another SES feedback channel is explicitly
 deferred until AWS SES/SMS provider activation. No local lint/build/test/scanner run is claimed
-under repository workflow, and this slice will not be deployed separately before the Phase 4
-consolidated rollout.  
+under repository workflow. Final GitHub Actions CI #5132 passed Architecture, API/Web
+lint/build/strict checks and tests on final head `11f73e88` before squash merge `7746402b`.
+This slice will not be deployed separately before the Phase 4 consolidated rollout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2E-B: Orders event ownership + Loyalty paid-settlement inversion
+
+**PR/SHA:** local branch `refactor/phase4-slice2eb-order-events-loyalty-settlement`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**Result:** the final Identity -> Messaging event tail is contracted without creating a reverse
+Orders public dependency. `LOYALTY_ORDER_PAID_SETTLEMENT` exposes only `orderStableId`, reward
+subtotal/redeem cents and promotion earn multiplier; `LoyaltyService` translates that stable ID to
+existing internal Order/User persistence IDs and delegates to the established idempotent
+`settleOnPaid` ledger transaction with historical failure isolation. `OrderEventsBus` moves from
+Messaging to a private Orders implementation and remains the same-process Fulfillment/Uber Direct
+fast path; it is not exported publicly. The old `LoyaltyEventProcessor` is deleted, Loyalty and
+Orders drop `MessagingModule`, and Uber API/worker composition no longer carries a Messaging bus
+bridge. The dead `emitPaidLifecycleEvent` ingestion policy is removed because the only production
+consumer, Uber order import, always set it to false. Durable `OrderLifecycleOutboxProcessor`
+ownership/replay is unchanged and protected by the new scanner guard. Direct debt contracts
+Identity -> Messaging **2 -> 0**, Identity -> Runtime **15 -> 14**, Commerce -> Messaging
+**8 -> 4**, External -> Messaging **2 -> 0**; totals become Identity **37**, Commerce **31**,
+External **42**, Messaging **10**, with the public SCC baseline still empty. The existing
+`LoyaltyLedger.orderId` UUID remains internal/deferred persistence debt; no schema/migration is
+introduced. Focused characterization covers stable-ID translation, failure isolation, Orders paid
+settlement payload/event preservation and Uber composition. No local lint/build/test/scanner run
+is claimed under repository workflow, and this slice will not be deployed separately before the
+Phase 4 consolidated rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `apps/api/src/integrations/ubereats/ARCHITECTURE.md`,
+`tools/architecture/context-baseline.json`, `tools/architecture/README.md`.
 
 ## Current position
 
@@ -776,7 +804,7 @@ consolidated rollout.
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D MERGED/CI; SLICE 2E-A LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A MERGED/CI; SLICE 2E-B LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -787,10 +815,12 @@ consolidated rollout.
   the baseline `15 -> 10`. Slice 2C merged via PR #2174 as `e27489cf` after final head
   `2c18e3c5` passed CI #5126, contracting `10 -> 6`. Slice 2D merged via PR #2175 as
   `0cb3ce11` after final head `a0fa3f85` passed CI #5130, contracting `6 -> 2`. Slice 2E-A
-  locally retires the confirmed-unused AWS SNS/SQS runtime paths and contracts Messaging total
-  outgoing debt `14 -> 10`; the OrderEventsBus ownership tail remains for 2E-B. Per the current
-  rollout plan, Slice 1 onward are not individually deployed; the accumulated Phase 4 changes
-  will be deployed and actively verified together after source closeout.
+  merged via PR #2176 as `7746402b` after final head `11f73e88` passed CI #5132, contracting
+  Messaging total outgoing debt `14 -> 10`. Slice 2E-B locally contracts the final direct
+  Identity -> Messaging `2 -> 0`, returns OrderEventsBus to private Orders ownership and removes
+  Uber's obsolete Messaging bridge while preserving the durable outbox. Per the current rollout
+  plan, Slice 1 onward are not individually deployed; the accumulated Phase 4 changes will be
+  deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

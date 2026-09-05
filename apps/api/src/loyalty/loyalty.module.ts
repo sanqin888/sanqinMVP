@@ -2,11 +2,10 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PosDeviceModule } from '../pos/pos-device.module';
-import { MessagingModule } from '../messaging/messaging.module';
 import { CouponsModule } from '../coupons/public-api';
 import { LoyaltyService } from './loyalty.service';
 import { LoyaltyController } from './loyalty.controller';
-import { LoyaltyEventProcessor } from './loyalty-event.processor';
+import { LOYALTY_ORDER_PAID_SETTLEMENT } from './loyalty-order-paid-settlement.contract';
 import {
   LOYALTY_POLICY_READER,
   LOYALTY_POLICY_SETTINGS_READER,
@@ -15,10 +14,14 @@ import {
 import { PrismaLoyaltyPolicyWriter } from './loyalty-policy-prisma.writer';
 
 @Module({
-  imports: [PrismaModule, PosDeviceModule, MessagingModule, CouponsModule],
+  imports: [PrismaModule, PosDeviceModule, CouponsModule],
   providers: [
     LoyaltyService,
     PrismaLoyaltyPolicyWriter,
+    {
+      provide: LOYALTY_ORDER_PAID_SETTLEMENT,
+      useExisting: LoyaltyService,
+    },
     {
       provide: LOYALTY_POLICY_READER,
       useExisting: LoyaltyService,
@@ -31,11 +34,11 @@ import { PrismaLoyaltyPolicyWriter } from './loyalty-policy-prisma.writer';
       provide: LOYALTY_POLICY_WRITER,
       useExisting: PrismaLoyaltyPolicyWriter,
     },
-    LoyaltyEventProcessor,
   ],
   controllers: [LoyaltyController],
   exports: [
     LoyaltyService,
+    LOYALTY_ORDER_PAID_SETTLEMENT,
     LOYALTY_POLICY_READER,
     LOYALTY_POLICY_SETTINGS_READER,
     LOYALTY_POLICY_WRITER,

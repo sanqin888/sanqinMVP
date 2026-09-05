@@ -29,6 +29,7 @@ type OrderPrepStartedListener = (
   payload: OrderPrepStartedPayload,
 ) => Promise<void> | void;
 
+/** Private same-process Orders/Fulfillment fast path. Durable lifecycle replay is separate. */
 @Injectable()
 export class OrderEventsBus {
   private readonly emitter = new EventEmitter();

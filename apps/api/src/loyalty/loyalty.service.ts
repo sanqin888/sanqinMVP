@@ -1,5 +1,5 @@
 // apps/api/src/loyalty/loyalty.service.ts
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -18,6 +18,10 @@ import type {
 } from '../benefits/contracts/payment-benefit-reservation.contract';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePromotionLoyaltyMultiplier } from '../promotions/public-api';
+import type {
+  LoyaltyOrderPaidSettlementInput,
+  LoyaltyOrderPaidSettlementPort,
+} from './loyalty-order-paid-settlement.contract';
 import type {
   LoyaltyPolicyReaderPort,
   LoyaltyPolicySnapshot,
@@ -155,8 +159,13 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 
 @Injectable()
 export class LoyaltyService
-  implements LoyaltyPolicyReaderPort, PaymentTenderReservationPort
+  implements
+    LoyaltyPolicyReaderPort,
+    PaymentTenderReservationPort,
+    LoyaltyOrderPaidSettlementPort
 {
+  private readonly logger = new Logger(LoyaltyService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(COUPON_PROGRAM_TRIGGER)
@@ -629,6 +638,47 @@ export class LoyaltyService
         ? Number(earnedLedger.deltaMicro) / Number(MICRO_PER_POINT)
         : 0,
     };
+  }
+
+  async settleOrderPaid(
+    input: LoyaltyOrderPaidSettlementInput,
+  ): Promise<void> {
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { orderStableId: input.orderStableId },
+        select: { id: true, userId: true },
+      });
+
+      if (!order) {
+        this.logger.warn(
+          `[Loyalty] Order not found for settlement: ${input.orderStableId}`,
+        );
+        return;
+      }
+
+      if (!order.userId) {
+        this.logger.debug(
+          `[Loyalty] Skip settle for order=${input.orderStableId}: no userId linked`,
+        );
+        return;
+      }
+
+      await this.settleOnPaid({
+        orderId: order.id,
+        userId: order.userId,
+        subtotalCents: input.subtotalCents,
+        redeemValueCents: input.redeemValueCents,
+        earnMultiplier: input.earnMultiplier,
+      });
+      this.logger.log(
+        `[Loyalty] Settled points for order=${input.orderStableId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[Loyalty] Failed to settle points for order=${input.orderStableId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 
   /** 只读：返回当前余额 micro */
