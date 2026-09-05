@@ -880,8 +880,8 @@ claimed under repository workflow; GitHub Actions remains deferred until user re
 
 ### 2026-09-05 — Phase 4 Slice 4B Stage 2: TrustedDevice stable-ID contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice4b-trusted-device-stable-id`  
-**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING — Prisma schema + migration explicitly authorized  
+**PR/SHA:** PR #2181; final head `f2cbf835`; squash merge `060e9417`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT — CI #5153  
 **Result:** `TrustedDevice` now owns required unique `trustedDeviceStableId @default(cuid())`. The new
 additive migration deterministically/idempotently backfills legacy rows as
 `c + substring(md5(id), 1, 23)`, checks NULL/duplicate discrepancies before tightening NOT NULL, and
@@ -906,6 +906,36 @@ applied to any database.
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
 
+### 2026-09-05 — Phase 4 Slice 4C: Orders member read boundary contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice4c-orders-member-reads`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING — Order schema + migration explicitly authorized  
+**Result:** Orders now owns the Admin member order-history and top-purchased-item read models while
+preserving the existing `/admin/members/:userStableId/orders` and `/top-items` routes, guards, roles,
+response shapes, ordering, limit parsing, qualifying statuses, aggregation and display-name fallback.
+`AdminMembersController`/`AdminMembersService` no longer own those handlers or query Order/OrderItem
+persistence. The authorized additive migration adds nullable `Order.userStableId`, deterministically
+backfills the **45** existing member-linked orders from `Order.userId -> User.userStableId`, verifies
+member/populated counts, mismatches and orphan DB IDs, and adds the `(userStableId, createdAt)` index.
+Normal Web/POS order creation, prepared-payment confirmation and Loyalty top-up synthetic orders now
+dual-write the stable member identity. A narrow DB-ID-free `CUSTOMER_EXISTENCE_READER` preserves the
+historical `404 member not found` distinction without Orders reading User persistence or receiving a
+User DB UUID. `OrdersModule` also switches the historical Membership module import to
+`membership/public-api`, contracting Commerce -> Identity direct debt **5 -> 4** and Commerce outgoing
+**31 -> 30**; context-local `orders-prisma` / `membership-prisma` composition prevents the two new read
+services from raising Commerce -> Runtime **10** or Identity -> Runtime **12**. No Identity -> Orders
+public edge is introduced and the SCC baseline remains empty. The central scanner reserves the
+migration/read-model/transport ownership and dual-write paths. The remaining
+Admin loyalty-ledger `Order.id -> orderStableId` enrichment is explicitly deferred to **Slice 5A — Loyalty
+ledger order identity contraction**, where Benefits/Loyalty should own a stable order identity snapshot
+instead of extending Slice 4C. No local migration application, lint/build/test/scanner run is claimed under
+repository workflow.  
+**Details:** `apps/api/prisma/schema.prisma`,
+`apps/api/prisma/migrations/20260905145500_add_order_user_stable_id/migration.sql`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -920,7 +950,7 @@ applied to any database.
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 + 4A + 4B STAGE 1 MERGED/CI; SLICE 4B STAGE 2 LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 + 4A + 4B MERGED/CI; SLICE 4C LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -942,9 +972,11 @@ applied to any database.
   final head `f235893e` passed CI #5144; Staff persistence, invite orchestration and staff-account
   invariants now belong to Auth/Identity, contracting Identity -> Runtime `14 -> 12` and total
   Identity outgoing `37 -> 35`. Slice 4B Stage 1 merged via PR #2180 as `252cd26f` after final head
-  `a2f52ddf` passed CI #5150. Stage 2 is locally source-complete: TrustedDevice gains its stable
-  business identity and member/Admin device management moves fully behind the Auth owner without
-  exposing the Prisma UUID. Per the current rollout plan, Slice 1 onward are not
+  `a2f52ddf` passed CI #5150; Stage 2 merged via PR #2181 as `060e9417` after final head `f2cbf835`
+  passed CI #5153. TrustedDevice now owns its stable business identity and member/Admin device
+  management is fully behind the Auth owner without exposing the Prisma UUID. Slice 4C is locally
+  source-complete, moving member order-history/top-item reads into Orders and contracting Commerce ->
+  Identity direct debt `5 -> 4` without adding an Identity -> Orders public edge. Per the current rollout plan, Slice 1 onward are not
   individually deployed; the accumulated Phase 4 changes will be deployed and actively verified
   together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for

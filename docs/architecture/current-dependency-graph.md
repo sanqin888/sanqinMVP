@@ -97,7 +97,7 @@ pair fails CI.
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
 | identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 12; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
+| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 4; messaging-notifications 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; runtime-data-ci-ops 24 |
@@ -120,7 +120,7 @@ owner:
 - payments-clover: **59**
 - external-channels: **42**
 - identity-customer-benefits: **35**
-- commerce-orders-fulfillment: **31**
+- commerce-orders-fulfillment: **30**
 - store-operations-pos-print: **31**
 - accounting-reporting-analytics: **25**
 - catalog-pricing-offers: **15**
@@ -158,17 +158,26 @@ intentionally preserved. Slice 4A merged through PR #2179 after final head `f235
 and squash-merged as `f91a849e`.
 
 Slice 4B contracts Admin/member Customer/Security ownership without changing the numeric context graph.
-Stage 1 merged via PR #2180 as `252cd26f` after final head `a2f52ddf` passed CI #5150:
+Stage 1 merged via PR #2180 as `252cd26f` after final head `a2f52ddf` passed CI #5150.
+Stage 2 merged via PR #2181 as `060e9417` after final head `f2cbf835` passed CI #5153:
 `CUSTOMER_ADMINISTRATION` makes CustomerService the owner of Admin profile mutation/address reads, while
-`ACCOUNT_SECURITY_ADMINISTRATION` owns stable-ID-scoped session management and ACTIVE/DISABLED account
-status. Stage 2 adds `TrustedDevice.trustedDeviceStableId` through the authorized additive migration,
-moves trusted-device list/revoke and session-derived labels fully behind the Auth capability, removes
-`UserSession`/`TrustedDevice` management from `MembershipService`, and makes both explicit
-`trustedDeviceStableId` plus the legacy browser `id` alias carry the stable identity rather than the
-Prisma UUID. New Web code consumes the explicit stable field while existing route shapes remain intact.
-Therefore Identity -> Architecture remains **13**, Identity -> Runtime **12**, Identity total **35**,
-Identity -> Messaging **0**, and the public SCC baseline remains empty. No baseline count is raised for
-Stage 2. Payment ownership is not reopened merely to chase the largest numeric total mid-phase.
+`ACCOUNT_SECURITY_ADMINISTRATION` owns stable-ID-scoped session/trusted-device management and
+ACTIVE/DISABLED account status. `TrustedDevice.trustedDeviceStableId` is added through the authorized
+additive migration; the browser-facing legacy `id` alias now carries the same stable identity rather
+than the Prisma UUID. Identity -> Architecture remains **13**, Identity -> Runtime **12**, Identity total
+**35**, Identity -> Messaging **0**, and the public SCC baseline remains empty. The TrustedDevice
+migration remains unapplied in production until the consolidated Phase 4 rollout.
+
+Slice 4C is **LOCAL SOURCE COMPLETE / REVIEW PENDING**. The approved additive migration adds nullable
+`Order.userStableId`, deterministically backfills it from the existing `Order.userId -> User.id`
+association with count/mismatch/orphan checks, and adds the `(userStableId, createdAt)` index. The two
+existing `/admin/members/:userStableId/orders` and `/top-items` transports move physically into Orders
+with the same guards/roles/response semantics; Admin no longer queries Order/OrderItem persistence.
+Orders queries its own `userStableId` snapshot and uses only the narrow Customer existence public
+capability to preserve `404 member not found`, so no User DB UUID crosses the boundary and no
+Identity -> Orders public edge is introduced. `OrdersModule` also switches its historical Membership
+module import to `membership/public-api`, contracting Commerce -> Identity direct debt **5 -> 4** and
+Commerce outgoing total **31 -> 30** while the public SCC baseline remains empty.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

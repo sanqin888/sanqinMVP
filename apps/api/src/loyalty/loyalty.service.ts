@@ -1464,6 +1464,7 @@ export class LoyaltyService
       bonusPoints,
     } = params;
 
+    const normalizedUserStableId = userStableId.trim();
     const cents = Number.isFinite(amountCents) ? Math.round(amountCents) : NaN;
     if (!Number.isFinite(cents) || cents <= 0) {
       throw new BadRequestException('amountCents must be a positive number');
@@ -1481,7 +1482,10 @@ export class LoyaltyService
 
     const topupResult = await this.prisma.$transaction(async (tx) => {
       // 0) 解析 userId
-      const userId = await this.resolveUserIdByStableIdWithTx(tx, userStableId);
+      const userId = await this.resolveUserIdByStableIdWithTx(
+        tx,
+        normalizedUserStableId,
+      );
       const loyaltyConfig = await this.getLoyaltyPolicySnapshotWithTx(tx);
 
       // 1) 确保账户存在
@@ -1538,6 +1542,7 @@ export class LoyaltyService
           channel: Channel.in_store,
           fulfillmentType: FulfillmentType.pickup,
           userId,
+          userStableId: normalizedUserStableId,
           subtotalCents: cents,
           taxCents: 0,
           totalCents: cents,
