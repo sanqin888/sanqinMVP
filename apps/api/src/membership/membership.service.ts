@@ -1,5 +1,9 @@
 // apps/api/src/membership/membership.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, UserLanguage } from '@prisma/client';
 import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
@@ -999,5 +1003,4 @@ export class MembershipService implements PaymentCouponReservationPort {
       },
     });
   }
-
 }

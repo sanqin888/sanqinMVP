@@ -31,10 +31,30 @@ describe('CustomerService addresses', () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 0 });
     const create = jest
       .fn()
-      .mockImplementation((input: { data: Record<string, unknown> }) => ({
-        ...baseAddress,
-        ...input.data,
-      }));
+      .mockImplementation((input: { data: Record<string, unknown> }) => {
+        expect(input.data).toMatchObject({
+          userId: 'user-db-id',
+          label: 'Home',
+          receiver: 'San Qin',
+          addressLine1: '4750 Yonge St',
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M2N 5M6',
+          isDefault: true,
+          latitude: null,
+          longitude: null,
+        });
+        const addressStableId = input.data.addressStableId;
+        expect(typeof addressStableId).toBe('string');
+        if (typeof addressStableId !== 'string') {
+          throw new Error('addressStableId must be a string');
+        }
+        expect(addressStableId).toMatch(/^a/);
+        return {
+          ...baseAddress,
+          ...input.data,
+        };
+      });
     const tx = { userAddress: { updateMany, create } };
     const prisma = {
       user: {
@@ -66,21 +86,7 @@ describe('CustomerService addresses', () => {
       where: { userId: 'user-db-id' },
       data: { isDefault: false },
     });
-    expect(create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: 'user-db-id',
-        addressStableId: expect.stringMatching(/^a/),
-        label: 'Home',
-        receiver: 'San Qin',
-        addressLine1: '4750 Yonge St',
-        city: 'Toronto',
-        province: 'ON',
-        postalCode: 'M2N 5M6',
-        isDefault: true,
-        latitude: null,
-        longitude: null,
-      }),
-    });
+    expect(create).toHaveBeenCalledTimes(1);
     expect(result.isDefault).toBe(true);
   });
 
