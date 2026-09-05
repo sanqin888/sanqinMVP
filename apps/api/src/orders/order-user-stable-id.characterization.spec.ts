@@ -6,6 +6,13 @@ describe('Order member stable identity persistence', () => {
     join(__dirname, '../../prisma/schema.prisma'),
     'utf8',
   );
+  const userIdTypeMigration = readFileSync(
+    join(
+      __dirname,
+      '../../prisma/migrations/20260905144000_normalize_order_user_id_uuid/migration.sql',
+    ),
+    'utf8',
+  );
   const migration = readFileSync(
     join(
       __dirname,
@@ -14,11 +21,22 @@ describe('Order member stable identity persistence', () => {
     'utf8',
   );
 
-  it('keeps userId while adding nullable userStableId plus the member-read index', () => {
+  it('keeps nullable internal userId as UUID while adding userStableId plus the member-read index', () => {
     expect(schema).toMatch(
-      /model Order \{[\s\S]*?userId\s+String\?[\s\S]*?userStableId\s+String\?/,
+      /model Order \{[\s\S]*?userId\s+String\?\s+@db\.Uuid[\s\S]*?userStableId\s+String\?/,
     );
     expect(schema).toContain('@@index([userStableId, createdAt])');
+  });
+
+  it('normalizes the historical Order.userId text column before the stable-id backfill', () => {
+    expect(userIdTypeMigration).toContain('invalid_uuid_count');
+    expect(userIdTypeMigration).toContain('ALTER COLUMN "userId" TYPE UUID');
+    expect(userIdTypeMigration).toContain('USING "userId"::uuid');
+    expect(userIdTypeMigration).not.toContain('FOREIGN KEY');
+    expect(userIdTypeMigration).not.toContain('REFERENCES "User"');
+    expect(userIdTypeMigration).not.toContain(
+      'ALTER COLUMN "userId" SET NOT NULL',
+    );
   });
 
   it('backfills deterministically from User.userStableId and rejects discrepancies', () => {

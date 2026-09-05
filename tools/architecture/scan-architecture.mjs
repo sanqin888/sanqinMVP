@@ -2788,6 +2788,7 @@ if (adminMemberOrdersReadBoundary) {
   );
   const requiredPaths = [
     boundary.orderSchema,
+    boundary.orderUserIdTypeMigration,
     boundary.orderMigration,
     boundary.customerExistenceContract,
     boundary.customerExistenceService,
@@ -2818,7 +2819,7 @@ if (adminMemberOrdersReadBoundary) {
   if (existsSync(orderSchemaPath)) {
     const source = readFileSync(orderSchemaPath, 'utf8');
     if (
-      !/model Order \{[\s\S]*?userId\s+String\?[\s\S]*?userStableId\s+String\?/.test(
+      !/model Order \{[\s\S]*?userId\s+String\?\s+@db\.Uuid[\s\S]*?userStableId\s+String\?/.test(
         source,
       ) ||
       !source.includes('@@index([userStableId, createdAt])')
@@ -2826,6 +2827,36 @@ if (adminMemberOrdersReadBoundary) {
       failures.push(
         `Order must retain legacy userId while owning nullable userStableId plus the member-read index: ${boundary.orderSchema}`,
       );
+    }
+  }
+
+  const orderUserIdTypeMigrationPath = join(
+    REPOSITORY_ROOT,
+    boundary.orderUserIdTypeMigration,
+  );
+  if (existsSync(orderUserIdTypeMigrationPath)) {
+    const source = readFileSync(orderUserIdTypeMigrationPath, 'utf8');
+    for (const requiredSymbol of [
+      'invalid_uuid_count',
+      'ALTER COLUMN "userId" TYPE UUID',
+      'USING "userId"::uuid',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Order.userId UUID normalization migration is missing ${requiredSymbol}: ${boundary.orderUserIdTypeMigration}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'FOREIGN KEY',
+      'REFERENCES "User"',
+      'ALTER COLUMN "userId" SET NOT NULL',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Order.userId UUID normalization must not add referential/delete semantics in the Phase 4 recovery slice (${forbiddenSymbol}): ${boundary.orderUserIdTypeMigration}`,
+        );
+      }
     }
   }
 
