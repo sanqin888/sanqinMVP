@@ -96,7 +96,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 14; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 11; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
@@ -112,13 +112,14 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 3 Customer owner contraction records these
-direct-debt totals. Slice 3 changes ownership inside Identity/Customer without adding/removing a
-cross-context direct import, so the numeric baseline remains the merged Slice 2E-B baseline:
+The current local monotonic baseline after the Slice 4A Staff Administration owner contraction
+records these direct-debt totals. Slice 4A removes three historical Runtime imports from the Admin
+adapter/composition root while keeping Staff persistence and invariants inside the existing Identity
+owner:
 
 - payments-clover: **59**
 - external-channels: **42**
-- identity-customer-benefits: **37**
+- identity-customer-benefits: **34**
 - commerce-orders-fulfillment: **31**
 - store-operations-pos-print: **31**
 - accounting-reporting-analytics: **25**
@@ -140,8 +141,21 @@ Slice 3 then contracts the internal Customer ownership surface without changing 
 `CustomerService` owns onboarding/profile/address/marketing-consent behavior, the retired
 `MembershipOnboardingService` is deleted, and broad Membership reads no longer perform implicit
 User creation/profile/PHONE_VERIFY mutations. Existing member HTTP routes stay unchanged,
-Identity -> Messaging direct debt remains **0**, and the public SCC baseline remains empty. Payment
-ownership is not reopened merely to chase the largest numeric total mid-phase.
+Identity -> Messaging direct debt remains **0**, and the public SCC baseline remains empty. Slice 3
+merged through PR #2178 after final head `73f7d2e1` passed CI #5140 and squash-merged as
+`e813d918`.
+
+Slice 4A then moves Staff list/update/invite administration and the self/last-active-admin invariants
+from the Admin transport adapter behind the Identity-owned `STAFF_ADMINISTRATION` public port, with
+`StaffAdministrationService` as its internal implementation. `AdminStaffController` no longer imports
+Prisma or Prisma-generated role/status types and no longer owns invite delivery; the Identity owner
+coordinates the existing `STAFF_INVITE_DELIVERY` public capability while reusing AuthService's
+existing invite lifecycle. `AdminModule` also drops its
+historical direct Prisma provider and Staff invite delivery wiring. This contracts
+Identity -> Runtime **14 -> 11** and Identity total **37 -> 34** without adding a new direct
+Identity -> Messaging debt or reopening the public SCC. The existing non-atomic active-admin
+count/update semantics and current ADMIN/STAFF transport behavior are intentionally preserved.
+Payment ownership is not reopened merely to chase the largest numeric total mid-phase.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

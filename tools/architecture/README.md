@@ -100,11 +100,15 @@ node tools/architecture/scan-architecture.mjs --report
   The template purpose remains the historical fixed `verify`, while the caller purpose is
   preserved only as Messaging metadata and Identity challenge purpose;
 - Admin staff invite and POS member-recharge email delivery use separate narrow Email public
-  capabilities: `STAFF_INVITE_DELIVERY` and `MEMBER_RECHARGE_EMAIL_DELIVERY`. Admin keeps
-  invite/recharge business state and challenge lifecycle; concrete `EmailService`,
-  `EmailModule`, message composition and `MessagingTemplateType` must not return to Admin.
-  Recharge delivery crosses the boundary with `userStableId`, while the Identity-owned
-  challenge may continue to reference the internal User DB ID inside its own persistence;
+  capabilities: `STAFF_INVITE_DELIVERY` and `MEMBER_RECHARGE_EMAIL_DELIVERY`. After Phase 4
+  Slice 4A, Admin reaches Staff account/invite use cases only through the Identity-owned
+  `STAFF_ADMINISTRATION` public port; internal `StaffAdministrationService` owns Staff state and
+  delivery orchestration. `AdminStaffController` is a transport/authorization adapter and cannot
+  regain Prisma or the Staff delivery port. POS member-recharge challenge lifecycle remains in the broad Admin Members
+  surface until its separately planned contraction. Concrete `EmailService`, `EmailModule`, message
+  composition and `MessagingTemplateType` must not return to either caller. Recharge delivery crosses
+  the boundary with `userStableId`, while Identity-owned challenge persistence may continue to
+  reference an internal User DB ID inside its owner boundary;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

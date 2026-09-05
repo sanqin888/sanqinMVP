@@ -18,6 +18,13 @@ import { NotificationModule } from '../notifications/public-api';
 import { IdentityChallengeModule } from './challenge-engine.module';
 import { PosDeviceModule } from '../pos/public-api';
 import { CouponsModule } from '../coupons/public-api';
+import {
+  STAFF_INVITE_DELIVERY,
+  StaffInviteDeliveryModule,
+  type StaffInviteDeliveryPort,
+} from '../email/public-api';
+import { STAFF_ADMINISTRATION } from './staff-administration.contract';
+import { StaffAdministrationService } from './staff-administration.service';
 
 @Global()
 @Module({
@@ -29,9 +36,28 @@ import { CouponsModule } from '../coupons/public-api';
     IdentityChallengeModule,
     PosDeviceModule,
     CouponsModule,
+    StaffInviteDeliveryModule,
   ],
   providers: [
     AuthService,
+    {
+      provide: StaffAdministrationService,
+      useFactory: (
+        prisma: PrismaService,
+        authService: AuthService,
+        staffInviteDelivery: StaffInviteDeliveryPort,
+      ) =>
+        new StaffAdministrationService(
+          prisma,
+          authService,
+          staffInviteDelivery,
+        ),
+      inject: [PrismaService, AuthService, STAFF_INVITE_DELIVERY],
+    },
+    {
+      provide: STAFF_ADMINISTRATION,
+      useExisting: StaffAdministrationService,
+    },
     PrismaService,
     SessionAuthGuard,
     OptionalSessionAuthGuard,
@@ -45,6 +71,7 @@ import { CouponsModule } from '../coupons/public-api';
   controllers: [AuthController],
   exports: [
     AuthService,
+    STAFF_ADMINISTRATION,
     SessionAuthGuard,
     OptionalSessionAuthGuard,
     AdminMfaGuard,

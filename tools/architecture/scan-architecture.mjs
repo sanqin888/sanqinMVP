@@ -1468,6 +1468,10 @@ if (adminMessagingDeliveryBoundary) {
     boundary.rechargeModule,
     boundary.emailService,
     boundary.publicSurface,
+    boundary.staffAdministrationContract,
+    boundary.staffAdministrationService,
+    boundary.authModule,
+    boundary.authPublicSurface,
     boundary.adminStaffController,
     boundary.adminModule,
     boundary.adminMembersService,
@@ -1607,23 +1611,182 @@ if (adminMessagingDeliveryBoundary) {
     }
   }
 
+  const staffAdministrationContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.staffAdministrationContract,
+  );
+  if (existsSync(staffAdministrationContractPath)) {
+    const source = readFileSync(staffAdministrationContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'STAFF_ADMINISTRATION',
+      'StaffAdministrationPort',
+      'StaffAdministrationError',
+      'actorUserStableId',
+      'targetUserStableId',
+      'inviterUserStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Identity Staff Administration public contract is missing ${requiredSymbol}: ${boundary.staffAdministrationContract}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      'PrismaService',
+      'AuthService',
+      'StaffInviteDeliveryPort',
+      /\buserId\b/,
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Identity Staff Administration public contract must remain framework/persistence/DB-ID free (${forbiddenSymbol}): ${boundary.staffAdministrationContract}`,
+        );
+      }
+    }
+  }
+
+  const staffAdministrationServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.staffAdministrationService,
+  );
+  if (existsSync(staffAdministrationServicePath)) {
+    const source = readFileSync(staffAdministrationServicePath, 'utf8');
+    for (const requiredSymbol of [
+      "from '../email/public-api'",
+      "from './identity-prisma'",
+      "from './staff-administration.contract'",
+      'StaffInviteDeliveryPort',
+      'StaffAdministrationPort',
+      'implements StaffAdministrationPort',
+      'StaffAdministrationError',
+      'listStaff',
+      'updateStaff',
+      'Cannot modify current user',
+      'Cannot modify last active admin',
+      'listInvites',
+      'createInvite',
+      'resendInvite',
+      'revokeInvite',
+      'staffInviteDelivery.sendStaffInvite',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Identity staff administration owner is missing ${requiredSymbol}: ${boundary.staffAdministrationService}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      "from '../prisma/prisma.service'",
+      "from '../email/email.service'",
+      'MessagingTemplateType',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Identity staff administration owner must remain Prisma-generated/provider-internal free (${forbiddenSymbol}): ${boundary.staffAdministrationService}`,
+        );
+      }
+    }
+  }
+
+  const authModulePath = join(REPOSITORY_ROOT, boundary.authModule);
+  if (existsSync(authModulePath)) {
+    const source = readFileSync(authModulePath, 'utf8');
+    if (
+      !source.includes("from '../email/public-api'") ||
+      !source.includes('STAFF_INVITE_DELIVERY') ||
+      !source.includes('StaffInviteDeliveryModule') ||
+      !source.includes('StaffInviteDeliveryPort') ||
+      !source.includes('StaffAdministrationService') ||
+      !source.includes('STAFF_ADMINISTRATION') ||
+      !source.includes('useFactory') ||
+      !source.includes('useExisting: StaffAdministrationService') ||
+      !/inject\s*:\s*\[\s*PrismaService\s*,\s*AuthService\s*,\s*STAFF_INVITE_DELIVERY\s*,?\s*\]/s.test(
+        source,
+      ) ||
+      source.includes("from '../email/email.module'") ||
+      source.includes('EmailModule')
+    ) {
+      failures.push(
+        `Identity AuthModule staff administration wiring must use only the Email public module: ${boundary.authModule}`,
+      );
+    }
+  }
+
+  const authPublicSurfacePath = join(REPOSITORY_ROOT, boundary.authPublicSurface);
+  if (existsSync(authPublicSurfacePath)) {
+    const source = readFileSync(authPublicSurfacePath, 'utf8');
+    if (
+      !source.includes("from './staff-administration.contract'") ||
+      source.includes("from './staff-administration.service'")
+    ) {
+      failures.push(
+        `Identity public surface must expose Staff Administration through its contract, not the concrete service: ${boundary.authPublicSurface}`,
+      );
+    }
+    for (const requiredSymbol of [
+      'STAFF_ADMINISTRATION',
+      'StaffAdministrationPort',
+      'StaffAdministrationError',
+      'ManagedStaffRole',
+      'ManagedStaffStatus',
+      'StaffAccountRole',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Identity public surface is missing Staff Administration symbol ${requiredSymbol}: ${boundary.authPublicSurface}`,
+        );
+      }
+    }
+  }
+
   const adminStaffControllerPath = join(
     REPOSITORY_ROOT,
     boundary.adminStaffController,
   );
   if (existsSync(adminStaffControllerPath)) {
     const source = readFileSync(adminStaffControllerPath, 'utf8');
-    if (
-      !source.includes("from '../../email/public-api'") ||
-      !source.includes('STAFF_INVITE_DELIVERY') ||
-      !source.includes('StaffInviteDeliveryPort') ||
-      !source.includes('sendStaffInvite') ||
-      source.includes("from '../../email/email.service'") ||
-      source.includes('EmailService')
-    ) {
-      failures.push(
-        `AdminStaffController staff invite email must use only the narrow Email public capability: ${boundary.adminStaffController}`,
-      );
+    for (const requiredSymbol of [
+      "from '../../auth/public-api'",
+      'STAFF_ADMINISTRATION',
+      'StaffAdministrationPort',
+      'staffAdministration.listStaff',
+      'staffAdministration.updateStaff',
+      'staffAdministration.listInvites',
+      'staffAdministration.createInvite',
+      'staffAdministration.resendInvite',
+      'staffAdministration.revokeInvite',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `AdminStaffController must delegate ${requiredSymbol} to the Identity owner: ${boundary.adminStaffController}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'PrismaService',
+      '@prisma/client',
+      'STAFF_INVITE_DELIVERY',
+      'StaffInviteDeliveryPort',
+      'staffInviteDelivery',
+      'StaffAdministrationService',
+      'AuthService',
+      'Cannot modify last active admin',
+      'activeAdminCount',
+      'userInvite.',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminStaffController must remain a transport/authorization adapter without ${forbiddenSymbol}: ${boundary.adminStaffController}`,
+        );
+      }
     }
   }
 
@@ -1631,13 +1794,11 @@ if (adminMessagingDeliveryBoundary) {
   if (existsSync(adminModulePath)) {
     const source = readFileSync(adminModulePath, 'utf8');
     if (
-      !source.includes("from '../email/public-api'") ||
-      !source.includes('StaffInviteDeliveryModule') ||
-      source.includes("from '../email/email.module'") ||
-      source.includes('EmailModule')
+      source.includes('StaffInviteDeliveryModule') ||
+      source.includes('PrismaService')
     ) {
       failures.push(
-        `AdminModule staff invite wiring must use only the Email public module: ${boundary.adminModule}`,
+        `AdminModule must not own Staff persistence or invite delivery wiring after Slice 4A: ${boundary.adminModule}`,
       );
     }
   }

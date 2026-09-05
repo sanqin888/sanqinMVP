@@ -12,6 +12,20 @@ export {
   type VerifyCheckoutEmailCodeInput,
   type VerifyUserEmailCodeInput,
 } from './email-verification.port';
+export {
+  STAFF_ADMINISTRATION,
+  type CreateStaffInviteInput,
+  type ManagedStaffRole,
+  type ManagedStaffStatus,
+  StaffAdministrationError,
+  type StaffAdministrationErrorCode,
+  type StaffAdministrationPort,
+  type StaffAccountRole,
+  type StaffInviteDto,
+  type StaffInviteStatus,
+  type StaffUserDto,
+  type UpdateStaffInput,
+} from './staff-administration.contract';
 export { Roles } from './roles.decorator';
 export { RolesGuard } from './roles.guard';
 export { SessionAuthGuard } from './session-auth.guard';
