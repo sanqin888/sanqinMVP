@@ -683,10 +683,11 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **4A + 4B + 4C MERGED / CI GREEN; 4D-A LOCAL SOURCE COMPLETE / REVIEW PENDING; 4D-H PLANNED**.
+Status: **4A + 4B + 4C + 4D-A MERGED / CI GREEN; 4D-H LOCAL SOURCE COMPLETE / REVIEW PENDING**.
 The TrustedDevice Stage 2 and Slice 4C Order member stable-ID migrations are merged but remain unapplied
-until the consolidated Phase 4 rollout. Slice 4D-A is a schema-free ownership contraction; its security/UX
-hardening follow-up remains separate so behavior changes are not mixed into the ownership PR.
+until the consolidated Phase 4 rollout. Slice 4D-A merged as the schema-free ownership contraction; 4D-H
+is the separately reviewed security/UX behavior hardening and introduces one required production secret
+configuration key without a Prisma migration.
 
 #### Slice 4A — Staff Administration ownership contraction
 
@@ -839,8 +840,8 @@ plus POS member order history.
 
 #### Slice 4D-A — Recharge challenge ownership contraction
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice4d-a-recharge-challenge-owner`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2183. Final head
+`cec141ba` passed GitHub Actions CI #5162 and squash-merged to `dev` as `07dc1206`.
 
 The approved source contraction moves the existing POS member recharge verification lifecycle behind an
 Identity/Auth public capability without changing the HTTP routes, OTP policy, provider delivery behavior
@@ -886,19 +887,50 @@ production data cleanup is required for 4D-A. Numeric context debt is intentiona
 Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
 **0**, Commerce -> Identity **4**, with the public SCC baseline still empty.
 
-No local lint/build/test/scanner run is claimed under repository workflow; remote validation remains
-pending user review. No dependency/lockfile, Prisma schema/migration, route, Web/PWA, Clover, Uber,
-Loyalty amount/bonus/idempotency or transaction-boundary change is included.
+No local lint/build/test/scanner run was used for 4D-A; GitHub Actions CI #5162 is the authoritative
+validation for the merged source. No dependency/lockfile, Prisma schema/migration, route, Web/PWA,
+Clover, Uber, Loyalty amount/bonus/idempotency or transaction-boundary change was included.
 
 #### Slice 4D-H — Recharge verification security / UX hardening
 
-Status: **PLANNED / SEPARATE BEHAVIOR CHANGE**.
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`hardening/phase4-slice4d-h-recharge-verification`.
 
-After 4D-A is merged, separately evaluate/implement the user-approved hardening topics without mixing
-them into the ownership contraction: unified Email/SMS recharge send limits, a recharge-specific OTP
-secret/policy and cryptographically strong non-zero six-digit generation, plus POS handling of backend
-`{ ok:false }` send responses so the UI does not enter `code-sent` after provider failure. Any new
-production secret/config must follow the repository configuration/deployment gate before implementation.
+The authorized hardening keeps the 4D-A public capability/routes and Loyalty top-up flow intact while
+making recharge verification one owner-controlled policy across Email and SMS:
+
+1. `MemberRechargeVerificationService` now owns both Email and SMS `pos-recharge` challenge creation,
+   verification and verification-token creation. SMS no longer delegates challenge policy/lifecycle to
+   `PhoneVerificationService`; it calls the existing Messaging-owned `PHONE_VERIFICATION_DELIVERY`
+   capability only for provider/template delivery. Email continues using the separate
+   `MEMBER_RECHARGE_EMAIL_DELIVERY` capability;
+2. recharge sends use one DB-backed per-member budget across both channels: at most one code per
+   60 seconds and at most five code challenges in the preceding 24 hours. Only `purpose='pos-recharge'`
+   rows with a non-null `codeHash` count, so verification-token rows do not consume send budget. The
+   limiter is stored in `AuthChallenge` facts rather than the optional process-local Phone Verification
+   IP map;
+3. new Email and SMS recharge codes are both hashed with the new `MEMBER_RECHARGE` challenge secret kind,
+   resolved exclusively from the required production key `MEMBER_RECHARGE_OTP_SECRET`. `main.ts` fails
+   production startup if the key is absent and the API service in `docker-compose.yml` requires it. No
+   secret value is committed;
+4. `NON_ZERO_SIX_DIGIT` generation now uses Node `crypto.randomInt(100000, 1_000_000)` rather than
+   `Math.random()`. The visible format remains 100000-999999. Because this format is also used by the
+   generic Phone Verification owner, that existing flow receives the same randomness hardening without a
+   contract or format change;
+5. the POS member-recharge UI now inspects the `{ ok, error }` response from `send-code`. It enters
+   `code-sent` only on `ok=true`; provider failures stay on the current step, and the unified 60-second /
+   daily-limit results receive explicit bilingual staff messages;
+6. no legacy-secret verification fallback is introduced. The user explicitly chose a controlled atomic
+   cutover: during Phase-end deployment the store must temporarily stop POS member recharge, configure
+   `MEMBER_RECHARGE_OTP_SECRET`, activate the new API/Web version, and only then resume recharge. Any
+   verification code issued by the old version is intentionally not supported across this cutover;
+7. no Prisma schema/migration, dependency/lockfile, HTTP route, Loyalty amount/bonus/idempotency,
+   verification-token atomic claim, Clover or Uber behavior changes are included. Focused API/Web tests
+   and the architecture scanner reserve the recharge-specific secret, owner-side Email/SMS challenge
+   lifecycle, DB-backed send limits, cryptographic generation and `{ ok:false }` POS handling.
+
+Remote CI is not claimed at this local review stage. Production `.env` is not modified by this slice;
+setting the new secret and executing the controlled rollout require separate deployment authorization.
 
 Benefits/template coupon issuance remains Slice 5 scope rather than being moved into Customer merely
 to empty Admin persistence.

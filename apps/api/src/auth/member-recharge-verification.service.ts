@@ -10,7 +10,10 @@ import {
   MEMBER_RECHARGE_EMAIL_DELIVERY,
   type MemberRechargeEmailDeliveryPort,
 } from '../email/public-api';
-import { PhoneVerificationService } from '../phone-verification/phone-verification.service';
+import {
+  PHONE_VERIFICATION_DELIVERY,
+  type PhoneVerificationDeliveryPort,
+} from '../messaging/public-api';
 import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
@@ -27,6 +30,13 @@ import {
 } from './member-recharge-verification.contract';
 
 const POS_RECHARGE_PURPOSE = 'pos-recharge';
+const RECHARGE_CODE_TTL_MS = 10 * 60 * 1000;
+const RECHARGE_SEND_COOLDOWN_MS = 60 * 1000;
+const RECHARGE_DAILY_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RECHARGE_DAILY_LIMIT = 5;
+
+const RECHARGE_COOLDOWN_ERROR = 'too many requests, please try later';
+const RECHARGE_DAILY_LIMIT_ERROR = 'too many requests in a day';
 
 type RechargeMember = {
   id: string;
@@ -51,7 +61,8 @@ type RechargeContact =
 export class MemberRechargeVerificationService implements MemberRechargeVerificationPort {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly phoneVerification: PhoneVerificationService,
+    @Inject(PHONE_VERIFICATION_DELIVERY)
+    private readonly phoneVerificationDelivery: PhoneVerificationDeliveryPort,
     @Inject(MEMBER_RECHARGE_EMAIL_DELIVERY)
     private readonly memberRechargeEmailDelivery: MemberRechargeEmailDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
@@ -149,6 +160,58 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
     );
   }
 
+  private challengeType(contact: RechargeContact): AuthChallengeType {
+    return contact.kind === 'EMAIL'
+      ? AuthChallengeType.EMAIL_VERIFY
+      : AuthChallengeType.PHONE_VERIFY;
+  }
+
+  private challengeChannel(contact: RechargeContact): MessagingChannel {
+    return contact.kind === 'EMAIL'
+      ? MessagingChannel.EMAIL
+      : MessagingChannel.SMS;
+  }
+
+  private async checkSendLimit(
+    userId: string,
+    now: Date,
+  ): Promise<MemberRechargeVerificationResult | null> {
+    const recentCount = await this.prisma.authChallenge.count({
+      where: {
+        userId,
+        purpose: POS_RECHARGE_PURPOSE,
+        codeHash: { not: null },
+        createdAt: {
+          gt: this.challengeEngine.windowStart(now, RECHARGE_SEND_COOLDOWN_MS),
+        },
+      },
+    });
+
+    if (this.challengeEngine.limitReached(recentCount, 1)) {
+      return { ok: false, error: RECHARGE_COOLDOWN_ERROR };
+    }
+
+    const dailyCount = await this.prisma.authChallenge.count({
+      where: {
+        userId,
+        purpose: POS_RECHARGE_PURPOSE,
+        codeHash: { not: null },
+        createdAt: {
+          gt: this.challengeEngine.windowStart(
+            now,
+            RECHARGE_DAILY_LIMIT_WINDOW_MS,
+          ),
+        },
+      },
+    });
+
+    if (this.challengeEngine.limitReached(dailyCount, RECHARGE_DAILY_LIMIT)) {
+      return { ok: false, error: RECHARGE_DAILY_LIMIT_ERROR };
+    }
+
+    return null;
+  }
+
   async sendCode(
     input: MemberRechargeSendCodeInput,
   ): Promise<MemberRechargeVerificationResult> {
@@ -159,25 +222,27 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
       inputEmail: input.email,
       inputPhone: input.phone,
     });
+    const now = new Date();
+    const limitResult = await this.checkSendLimit(user.id, now);
+    if (limitResult) return limitResult;
+
+    const code = this.challengeEngine.generateCode('NON_ZERO_SIX_DIGIT');
+    const expiresAt = this.challengeEngine.expiresAt(now, RECHARGE_CODE_TTL_MS);
+    const challenge = await this.prisma.authChallenge.create({
+      data: {
+        userId: user.id,
+        type: this.challengeType(contact),
+        status: AuthChallengeStatus.PENDING,
+        channel: this.challengeChannel(contact),
+        addressNorm: contact.addressNorm,
+        addressRaw: contact.addressRaw,
+        codeHash: this.challengeEngine.hashCode(code, 'MEMBER_RECHARGE'),
+        purpose: POS_RECHARGE_PURPOSE,
+        expiresAt,
+      },
+    });
 
     if (contact.kind === 'EMAIL') {
-      const code = this.challengeEngine.generateCode('NON_ZERO_SIX_DIGIT');
-      const now = new Date();
-      const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000);
-      const challenge = await this.prisma.authChallenge.create({
-        data: {
-          userId: user.id,
-          type: AuthChallengeType.EMAIL_VERIFY,
-          status: AuthChallengeStatus.PENDING,
-          channel: MessagingChannel.EMAIL,
-          addressNorm: contact.addressNorm,
-          addressRaw: contact.addressRaw,
-          codeHash: this.challengeEngine.hashCode(code, 'OTP'),
-          purpose: POS_RECHARGE_PURPOSE,
-          expiresAt,
-        },
-      });
-
       const sendResult =
         await this.memberRechargeEmailDelivery.sendRechargeVerificationEmail({
           to: contact.addressNorm,
@@ -199,11 +264,25 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
       return { ok: true };
     }
 
-    return this.phoneVerification.sendCode({
-      phone: contact.addressRaw,
-      locale: input.locale,
-      purpose: POS_RECHARGE_PURPOSE,
+    const sendResult =
+      await this.phoneVerificationDelivery.sendVerificationSms({
+        phone: contact.addressRaw,
+        code,
+        expiresInMin: 10,
+        locale: input.locale,
+        purpose: POS_RECHARGE_PURPOSE,
+      });
+
+    await this.prisma.authChallenge.update({
+      where: { id: challenge.id },
+      data: { messagingSendId: sendResult.sendId },
     });
+
+    if (!sendResult.ok) {
+      return { ok: false, error: 'sms_send_failed' };
+    }
+
+    return { ok: true };
   }
 
   async verifyCode(
@@ -224,83 +303,79 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
       inputEmail: input.email,
       inputPhone: input.phone,
     });
+    const now = new Date();
+    const latest = await this.prisma.authChallenge.findFirst({
+      where: {
+        userId: user.id,
+        type: this.challengeType(contact),
+        channel: this.challengeChannel(contact),
+        addressNorm: contact.addressNorm,
+        purpose: POS_RECHARGE_PURPOSE,
+        status: AuthChallengeStatus.PENDING,
+        codeHash: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
-    if (contact.kind === 'EMAIL') {
-      const now = new Date();
-      const latest = await this.prisma.authChallenge.findFirst({
-        where: {
-          type: AuthChallengeType.EMAIL_VERIFY,
-          channel: MessagingChannel.EMAIL,
-          addressNorm: contact.addressNorm,
-          purpose: POS_RECHARGE_PURPOSE,
-          status: AuthChallengeStatus.PENDING,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (!latest) {
-        return { ok: false, error: 'code_not_found' };
-      }
-
-      if (latest.expiresAt.getTime() < now.getTime()) {
-        await this.prisma.authChallenge.update({
-          where: { id: latest.id },
-          data: this.challengeEngine.expiredState(now),
-        });
-        return { ok: false, error: 'code_expired' };
-      }
-
-      if (
-        !this.challengeEngine.verifyCodeHash(code, latest.codeHash ?? '', 'OTP')
-      ) {
-        const failedState = this.challengeEngine.failedAttemptState({
-          attempts: latest.attempts,
-          maxAttempts: latest.maxAttempts,
-          now,
-        });
-        await this.prisma.authChallenge.update({
-          where: { id: latest.id },
-          data: failedState,
-        });
-        return { ok: false, error: 'code_invalid' };
-      }
-
-      const verificationToken =
-        this.challengeEngine.generateVerificationToken();
-      const tokenHash =
-        this.challengeEngine.hashVerificationToken(verificationToken);
-
-      await this.prisma.$transaction([
-        this.prisma.authChallenge.update({
-          where: { id: latest.id },
-          data: this.challengeEngine.consumedState(now),
-        }),
-        this.prisma.authChallenge.create({
-          data: {
-            userId: user.id,
-            type: AuthChallengeType.EMAIL_VERIFY,
-            status: AuthChallengeStatus.PENDING,
-            channel: MessagingChannel.EMAIL,
-            addressNorm: contact.addressNorm,
-            addressRaw: contact.addressRaw,
-            tokenHash,
-            purpose: POS_RECHARGE_PURPOSE,
-            expiresAt: latest.expiresAt,
-          },
-        }),
-      ]);
-
-      return {
-        ok: true,
-        verificationToken,
-      };
+    if (!latest) {
+      return { ok: false, error: 'code_not_found' };
     }
 
-    return this.phoneVerification.verifyCode({
-      phone: contact.addressRaw,
-      code,
-      purpose: POS_RECHARGE_PURPOSE,
-    });
+    if (latest.expiresAt.getTime() < now.getTime()) {
+      await this.prisma.authChallenge.update({
+        where: { id: latest.id },
+        data: this.challengeEngine.expiredState(now),
+      });
+      return { ok: false, error: 'code_expired' };
+    }
+
+    if (
+      !this.challengeEngine.verifyCodeHash(
+        code,
+        latest.codeHash ?? '',
+        'MEMBER_RECHARGE',
+      )
+    ) {
+      const failedState = this.challengeEngine.failedAttemptState({
+        attempts: latest.attempts,
+        maxAttempts: latest.maxAttempts,
+        now,
+      });
+      await this.prisma.authChallenge.update({
+        where: { id: latest.id },
+        data: failedState,
+      });
+      return { ok: false, error: 'code_invalid' };
+    }
+
+    const verificationToken = this.challengeEngine.generateVerificationToken();
+    const tokenHash =
+      this.challengeEngine.hashVerificationToken(verificationToken);
+
+    await this.prisma.$transaction([
+      this.prisma.authChallenge.update({
+        where: { id: latest.id },
+        data: this.challengeEngine.consumedState(now),
+      }),
+      this.prisma.authChallenge.create({
+        data: {
+          userId: user.id,
+          type: this.challengeType(contact),
+          status: AuthChallengeStatus.PENDING,
+          channel: this.challengeChannel(contact),
+          addressNorm: contact.addressNorm,
+          addressRaw: contact.addressRaw,
+          tokenHash,
+          purpose: POS_RECHARGE_PURPOSE,
+          expiresAt: latest.expiresAt,
+        },
+      }),
+    ]);
+
+    return {
+      ok: true,
+      verificationToken,
+    };
   }
 
   async consumeVerificationToken(
@@ -325,26 +400,17 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
 
     const record = await this.prisma.authChallenge.findFirst({
       where: {
+        userId: user.id,
         tokenHash,
-        type:
-          contact.kind === 'EMAIL'
-            ? AuthChallengeType.EMAIL_VERIFY
-            : AuthChallengeType.PHONE_VERIFY,
-        channel:
-          contact.kind === 'EMAIL'
-            ? MessagingChannel.EMAIL
-            : MessagingChannel.SMS,
+        type: this.challengeType(contact),
+        channel: this.challengeChannel(contact),
         purpose: POS_RECHARGE_PURPOSE,
         status: AuthChallengeStatus.PENDING,
         addressNorm: contact.addressNorm,
       },
     });
 
-    if (
-      !record ||
-      record.purpose !== POS_RECHARGE_PURPOSE ||
-      record.addressNorm !== contact.addressNorm
-    ) {
+    if (!record) {
       throw new MemberRechargeVerificationError(
         'VERIFICATION_TOKEN_INVALID',
         'verificationToken is invalid',

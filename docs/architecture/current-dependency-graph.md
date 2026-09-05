@@ -182,19 +182,23 @@ contracting Commerce -> Identity direct debt **5 -> 4** and Commerce outgoing to
 the public SCC baseline remains empty. The Order stable-ID migration is merged but remains unapplied
 until the consolidated Phase 4 rollout.
 
-Slice 4D-A is **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice4d-a-recharge-challenge-owner`. The new Identity-owned
+Slice 4D-A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2183. Final head
+`cec141ba` passed GitHub Actions CI #5162 and squash-merged to `dev` as `07dc1206`. The Identity-owned
 `MEMBER_RECHARGE_VERIFICATION` public capability owns the existing `pos-recharge` member/contact
-resolution, email challenge persistence/delivery linkage, SMS delegation, code verification,
-verification-token creation and atomic one-time token claim. `AdminMembersService` no longer owns
-`AuthChallenge`, Phone Verification internals, recharge email delivery or the generic challenge engine;
-it keeps the unchanged amount/token input validation, post-claim idempotency-key handling and
-`LoyaltyService.applyTopup()` orchestration. Phone Verification's same-context challenge dependency now
-uses the internal challenge module/port directly to avoid an Auth public-barrel cycle. This ownership
-move does not change the numeric graph: Identity -> Architecture remains **13**, Identity -> Runtime
-**12**, Identity total **35**, Identity -> Messaging **0**, Commerce -> Identity **4**, and the public
-SCC baseline remains empty. Email/SMS rate-limit unification, recharge-specific OTP secret/randomness
-and POS handling of `{ ok:false }` send responses are explicitly deferred to the 4D-H hardening follow-up.
+resolution, challenge/token lifecycle and Admin delegation boundary while `AdminMembersService` retains
+the unchanged amount/token input validation and `LoyaltyService.applyTopup()` orchestration.
+
+Slice 4D-H is **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`hardening/phase4-slice4d-h-recharge-verification`. Recharge Email/SMS now share one Identity-owned
+challenge policy and DB-backed per-member send budget (one per 60 seconds, five per rolling 24 hours).
+SMS uses Messaging `PHONE_VERIFICATION_DELIVERY` only for delivery rather than delegating its challenge
+lifecycle to `PhoneVerificationService`. New recharge codes use required `MEMBER_RECHARGE_OTP_SECRET`,
+and non-zero six-digit generation uses `crypto.randomInt`. POS now rejects backend `{ ok:false }` sends
+without entering `code-sent` and shows explicit bilingual cooldown/daily-limit messages. The approved
+rollout is an atomic cutover with POS recharge temporarily paused; there is no legacy-secret fallback.
+No Prisma/dependency change is introduced. Expected numeric graph baselines remain Identity ->
+Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging direct debt
+**0**, Commerce -> Identity **4**, with the public SCC baseline empty; remote CI is not yet claimed.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

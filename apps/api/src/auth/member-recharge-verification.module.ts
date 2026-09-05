@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { MemberRechargeEmailDeliveryModule } from '../email/public-api';
-import { PhoneVerificationModule } from '../phone-verification/phone-verification.module';
+import { PhoneVerificationDeliveryModule } from '../messaging/public-api';
 import { IdentityChallengeModule } from './challenge-engine.module';
 import { PrismaModule } from './identity-prisma';
 import { MEMBER_RECHARGE_VERIFICATION } from './member-recharge-verification.contract';
@@ -11,7 +11,7 @@ import { MemberRechargeVerificationService } from './member-recharge-verificatio
   imports: [
     PrismaModule,
     IdentityChallengeModule,
-    PhoneVerificationModule,
+    PhoneVerificationDeliveryModule,
     MemberRechargeEmailDeliveryModule,
   ],
   providers: [
