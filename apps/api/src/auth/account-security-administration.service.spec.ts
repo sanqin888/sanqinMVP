@@ -136,7 +136,8 @@ describe('AccountSecurityAdministrationService', () => {
   });
 
   it('revokes trusted devices by stable identity rather than the Prisma UUID', async () => {
-    const { service, userFindUnique, trustedDeviceDeleteMany } = createService();
+    const { service, userFindUnique, trustedDeviceDeleteMany } =
+      createService();
     userFindUnique.mockResolvedValue({ id: 'user-db-id' });
     trustedDeviceDeleteMany.mockResolvedValue({ count: 1 });
 

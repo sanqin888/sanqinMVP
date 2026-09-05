@@ -114,10 +114,7 @@ export class AdminMembersController {
     @Param('userStableId') userStableId: string,
     @Param('deviceId') trustedDeviceStableId: string,
   ) {
-    await this.service.revokeTrustedDevice(
-      userStableId,
-      trustedDeviceStableId,
-    );
+    await this.service.revokeTrustedDevice(userStableId, trustedDeviceStableId);
     return { success: true };
   }
 
