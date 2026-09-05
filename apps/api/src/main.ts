@@ -54,6 +54,7 @@ async function bootstrap(): Promise<void> {
   const cookieSecret = process.env.COOKIE_SIGNING_SECRET;
   const otpSecret = process.env.OTP_SECRET;
   const phoneVerificationSecret = process.env.PHONE_VERIFICATION_SECRET;
+  const memberRechargeOtpSecret = process.env.MEMBER_RECHARGE_OTP_SECRET;
 
   if (!cookieSecret && process.env.NODE_ENV === 'production') {
     console.error(
@@ -69,6 +70,7 @@ async function bootstrap(): Promise<void> {
     const missingOtpSecrets = [
       !otpSecret ? 'OTP_SECRET' : null,
       !phoneVerificationSecret ? 'PHONE_VERIFICATION_SECRET' : null,
+      !memberRechargeOtpSecret ? 'MEMBER_RECHARGE_OTP_SECRET' : null,
     ].filter((name): name is string => Boolean(name));
 
     if (missingOtpSecrets.length > 0) {

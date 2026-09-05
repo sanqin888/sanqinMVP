@@ -938,8 +938,8 @@ the authoritative validation for the merged source.
 
 ### 2026-09-05 — Phase 4 Slice 4D-A: Recharge challenge ownership contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice4d-a-recharge-challenge-owner`  
-**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**PR/SHA:** PR #2183; final head `cec141ba`; squash merge `07dc1206`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT (GitHub Actions CI #5162)  
 **Result:** Identity/Auth now exposes the framework/persistence-free
 `MEMBER_RECHARGE_VERIFICATION` capability and owns the existing `pos-recharge` member/contact
 resolution, email `AuthChallenge` create/verify/consume lifecycle, MessagingSend linkage, SMS
@@ -967,6 +967,36 @@ recharge-specific OTP secret/randomness and POS `{ ok:false }` send UX are expli
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/scan-architecture.mjs`, `tools/architecture/README.md`.
 
+### 2026-09-05 — Phase 4 Slice 4D-H: Recharge verification security / UX hardening
+
+**PR/SHA:** local branch `hardening/phase4-slice4d-h-recharge-verification`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**Result:** The 4D-A Identity owner now fully owns both Email and SMS `pos-recharge` challenge creation,
+verification and verification-token creation. SMS uses Messaging `PHONE_VERIFICATION_DELIVERY` only for
+provider/template delivery instead of delegating challenge policy to `PhoneVerificationService`.
+Recharge sends share one DB-backed per-member budget across both channels: one code per 60 seconds and
+five code challenges per rolling 24 hours; token rows do not count because the limiter requires non-null
+`codeHash`. New recharge codes use the new `MEMBER_RECHARGE` secret kind backed only by required
+production config `MEMBER_RECHARGE_OTP_SECRET`; `main.ts` and the API compose environment fail closed
+when that key is absent, while no secret value is committed. `NON_ZERO_SIX_DIGIT` now uses
+`crypto.randomInt(100000, 1_000_000)`, preserving the visible 100000-999999 format and also hardening the
+generic Phone Verification consumer of that format. POS now inspects the `send-code` `{ ok, error }`
+result and enters `code-sent` only on success; provider failure stays on the current step and cooldown /
+daily-limit responses receive bilingual staff-facing messages. Per explicit user direction, there is no
+legacy-secret fallback: Phase-end rollout must temporarily pause POS member recharge, configure the new
+secret, activate the new API/Web version, and only then resume recharge. No Prisma schema/migration,
+dependency/lockfile, HTTP route, Loyalty amount/bonus/idempotency, token-claim, Clover or Uber change is
+included. Numeric graph values are expected to remain unchanged; remote CI is not claimed at this local
+review stage.  
+**Details:** `apps/api/src/auth/challenge-engine.port.ts`,
+`apps/api/src/auth/challenge-engine.service.ts`, `apps/api/src/auth/member-recharge-verification.service.ts`,
+`apps/api/src/auth/member-recharge-verification.module.ts`, `apps/api/src/main.ts`, `docker-compose.yml`,
+`apps/web/src/app/[locale]/(device)/store/pos/membership/page.tsx`,
+`apps/web/src/app/[locale]/(device)/store/pos/membership/recharge-verification-hardening.test.ts`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`,
+`tools/architecture/README.md`, `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -981,7 +1011,7 @@ recharge-specific OTP secret/randomness and POS `{ ok:false }` send UX are expli
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C MERGED/CI; SLICE 4D-A LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C + 4D-A MERGED/CI; SLICE 4D-H LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -1008,8 +1038,10 @@ recharge-specific OTP secret/randomness and POS `{ ok:false }` send UX are expli
   management is fully behind the Auth owner without exposing the Prisma UUID. Slice 4C merged via PR
   #2182 as `3119ce76` after final head `7cb071ad` passed CI #5158, moving member order-history/top-item
   reads into Orders and contracting Commerce -> Identity direct debt `5 -> 4` without adding an
-  Identity -> Orders public edge. Slice 4D-A is locally source-complete, moving the `pos-recharge`
-  challenge/token lifecycle behind the Auth owner while keeping Loyalty top-up orchestration in Admin.
+  Identity -> Orders public edge. Slice 4D-A merged via PR #2183 as `07dc1206` after final head
+  `cec141ba` passed CI #5162, moving the `pos-recharge` challenge/token lifecycle behind the Auth owner
+  while keeping Loyalty top-up orchestration in Admin. Slice 4D-H is locally source-complete with the
+  unified Email/SMS recharge limiter, dedicated secret, cryptographic OTP generation and POS failure UX.
   Per the current rollout plan, Slice 1 onward are not individually deployed; the accumulated Phase 4
   changes will be deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for

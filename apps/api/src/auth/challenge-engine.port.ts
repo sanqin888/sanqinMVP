@@ -1,7 +1,10 @@
 export const IDENTITY_CHALLENGE_ENGINE = Symbol('IDENTITY_CHALLENGE_ENGINE');
 
 export type ChallengeCodeFormat = 'ZERO_PADDED' | 'NON_ZERO_SIX_DIGIT';
-export type ChallengeSecretKind = 'OTP' | 'PHONE_VERIFICATION';
+export type ChallengeSecretKind =
+  | 'OTP'
+  | 'PHONE_VERIFICATION'
+  | 'MEMBER_RECHARGE';
 
 export type ChallengeLifecycleState = {
   status: 'PENDING' | 'REVOKED' | 'EXPIRED' | 'CONSUMED';

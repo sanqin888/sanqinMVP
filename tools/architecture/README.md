@@ -103,16 +103,19 @@ node tools/architecture/scan-architecture.mjs --report
   capabilities: `STAFF_INVITE_DELIVERY` and `MEMBER_RECHARGE_EMAIL_DELIVERY`. After Phase 4
   Slice 4A, Admin reaches Staff account/invite use cases only through the Identity-owned
   `STAFF_ADMINISTRATION` public port; internal `StaffAdministrationService` owns Staff state and
-  delivery orchestration. Slice 4D-A similarly puts the `pos-recharge` OTP/challenge/token lifecycle
-  behind the Identity-owned `MEMBER_RECHARGE_VERIFICATION` capability. Admin Members keeps only
-  transport/error mapping plus the existing post-claim `LoyaltyService.applyTopup()` orchestration;
-  it cannot regain `AuthChallenge`, Phone Verification internals, the challenge engine, or recharge
-  delivery wiring. Messaging still owns provider/template delivery through
-  `MEMBER_RECHARGE_EMAIL_DELIVERY`, and SMS still delegates to the existing Phone Verification owner.
-  Recharge delivery crosses the boundary with `userStableId`, while Identity-owned challenge
-  persistence may continue to reference an internal User DB ID inside its owner boundary. Rate-limit,
-  recharge-specific secret/randomness and POS `{ ok:false }` UX hardening are intentionally deferred
-  to the separately planned 4D-H follow-up;
+  delivery orchestration. Slice 4D-A puts the `pos-recharge` OTP/challenge/token lifecycle behind the
+  Identity-owned `MEMBER_RECHARGE_VERIFICATION` capability, and 4D-H completes the policy hardening:
+  Email and SMS recharge challenge creation/verification/token creation must both remain inside that
+  owner. SMS may use Messaging `PHONE_VERIFICATION_DELIVERY` only for provider/template dispatch and
+  must not delegate recharge challenge lifecycle back to `PhoneVerificationService`. Admin Members
+  keeps only transport/error mapping plus the existing post-claim `LoyaltyService.applyTopup()`
+  orchestration. Recharge sends are DB-limited per member across both channels to one code per 60
+  seconds and five code challenges per rolling 24 hours; verification-token rows do not consume this
+  budget. New recharge codes use only the `MEMBER_RECHARGE` secret kind backed by required production
+  `MEMBER_RECHARGE_OTP_SECRET`, while non-zero six-digit generation must use `crypto.randomInt` rather
+  than `Math.random`. POS must inspect the backend `{ ok, error }` result and cannot enter `code-sent`
+  after `{ ok:false }`; cooldown/daily-limit responses remain explicit staff-facing states. The rollout
+  intentionally has no legacy-secret fallback: POS recharge is paused during secret/API/Web cutover;
 - Phase 4 Slice 4B reserves Admin/member Customer/Security ownership behind two Identity-context
   capabilities. `CUSTOMER_ADMINISTRATION` is implemented by `CustomerService` and owns Admin profile
   mutation plus address reads while preserving the intentionally broader Admin birthday override.

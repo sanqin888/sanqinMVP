@@ -40,6 +40,7 @@ services:
       PUBLIC_BASE_URL: "https://sanq.ca"
       OTP_SECRET: "${OTP_SECRET:?OTP_SECRET is required}"
       PHONE_VERIFICATION_SECRET: "${PHONE_VERIFICATION_SECRET:?PHONE_VERIFICATION_SECRET is required}"
+      MEMBER_RECHARGE_OTP_SECRET: "${MEMBER_RECHARGE_OTP_SECRET:?MEMBER_RECHARGE_OTP_SECRET is required}"
       SALES_TAX_RATE: "0.13"
       CORS_ORIGIN: "https://sanq.ca,https://www.sanq.ca"
       GOOGLE_CLIENT_ID: "99749299344-bohhqb4i1322lbgjq894ak0n49t8clpb.apps.googleusercontent.com"

@@ -1862,8 +1862,15 @@ if (memberRechargeVerificationBoundary) {
     boundary.module,
     boundary.authPublicSurface,
     boundary.identityPrisma,
-    boundary.phoneVerificationService,
-    boundary.phoneVerificationModule,
+    boundary.challengeEnginePort,
+    boundary.challengeEngineService,
+    boundary.phoneVerificationDeliveryContract,
+    boundary.phoneVerificationDeliveryModule,
+    boundary.messagingPublicSurface,
+    boundary.main,
+    boundary.compose,
+    boundary.webPage,
+    boundary.webSpec,
     boundary.adminMembersService,
     boundary.adminMembersModule,
     boundary.ownerSpec,
@@ -1925,14 +1932,17 @@ if (memberRechargeVerificationBoundary) {
       'implements MemberRechargeVerificationPort',
       "from './identity-prisma'",
       'MEMBER_RECHARGE_EMAIL_DELIVERY',
-      'PhoneVerificationService',
+      'PHONE_VERIFICATION_DELIVERY',
       'IDENTITY_CHALLENGE_ENGINE',
       "const POS_RECHARGE_PURPOSE = 'pos-recharge'",
+      'RECHARGE_SEND_COOLDOWN_MS',
+      'RECHARGE_DAILY_LIMIT',
       "generateCode('NON_ZERO_SIX_DIGIT')",
-      "hashCode(code, 'OTP')",
+      "hashCode(code, 'MEMBER_RECHARGE')",
+      'codeHash: { not: null }',
+      'this.prisma.authChallenge.count',
       'messagingSendId: sendResult.sendId',
-      'phoneVerification.sendCode',
-      'phoneVerification.verifyCode',
+      'phoneVerificationDelivery.sendVerificationSms',
       'this.prisma.authChallenge.findFirst',
       'this.prisma.authChallenge.updateMany',
       'consumeVerificationToken',
@@ -1945,6 +1955,8 @@ if (memberRechargeVerificationBoundary) {
     }
     for (const forbiddenSymbol of [
       "from '../prisma/prisma.service'",
+      'PhoneVerificationService',
+      "from '../phone-verification/",
       'LoyaltyService',
       '.applyTopup(',
       'generateStableId',
@@ -1962,7 +1974,7 @@ if (memberRechargeVerificationBoundary) {
     const source = readFileSync(modulePath, 'utf8');
     for (const requiredSymbol of [
       'MemberRechargeEmailDeliveryModule',
-      'PhoneVerificationModule',
+      'PhoneVerificationDeliveryModule',
       'IdentityChallengeModule',
       'MEMBER_RECHARGE_VERIFICATION',
       'MemberRechargeVerificationService',
@@ -1971,6 +1983,16 @@ if (memberRechargeVerificationBoundary) {
       if (!source.includes(requiredSymbol)) {
         failures.push(
           `Member recharge verification module wiring is missing ${requiredSymbol}: ${boundary.module}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'PhoneVerificationModule',
+      "from '../phone-verification/",
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Member recharge verification module must not delegate recharge lifecycle to PhoneVerification (${forbiddenSymbol}): ${boundary.module}`,
         );
       }
     }
@@ -1996,35 +2018,80 @@ if (memberRechargeVerificationBoundary) {
     }
   }
 
-  const phoneVerificationServicePath = join(
+  const challengeEnginePortPath = join(
     REPOSITORY_ROOT,
-    boundary.phoneVerificationService,
+    boundary.challengeEnginePort,
   );
-  if (existsSync(phoneVerificationServicePath)) {
-    const source = readFileSync(phoneVerificationServicePath, 'utf8');
-    if (
-      !source.includes("from '../auth/challenge-engine.port'") ||
-      source.includes("from '../auth/public-api'")
-    ) {
+  if (existsSync(challengeEnginePortPath)) {
+    const source = readFileSync(challengeEnginePortPath, 'utf8');
+    if (!source.includes("'MEMBER_RECHARGE'")) {
       failures.push(
-        `PhoneVerificationService must use the context-internal challenge port directly so the recharge owner public module cannot form a barrel cycle: ${boundary.phoneVerificationService}`,
+        `Challenge engine must expose the recharge-specific secret kind: ${boundary.challengeEnginePort}`,
       );
     }
   }
 
-  const phoneVerificationModulePath = join(
+  const challengeEngineServicePath = join(
     REPOSITORY_ROOT,
-    boundary.phoneVerificationModule,
+    boundary.challengeEngineService,
   );
-  if (existsSync(phoneVerificationModulePath)) {
-    const source = readFileSync(phoneVerificationModulePath, 'utf8');
+  if (existsSync(challengeEngineServicePath)) {
+    const source = readFileSync(challengeEngineServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'randomInt(100000, 1_000_000)',
+      "'MEMBER_RECHARGE_OTP_SECRET'",
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Challenge engine recharge hardening is missing ${requiredSymbol}: ${boundary.challengeEngineService}`,
+        );
+      }
+    }
+    if (source.includes('Math.random()')) {
+      failures.push(
+        `Challenge engine must not use Math.random for six-digit OTP generation: ${boundary.challengeEngineService}`,
+      );
+    }
+  }
+
+  const mainPath = join(REPOSITORY_ROOT, boundary.main);
+  if (existsSync(mainPath)) {
+    const source = readFileSync(mainPath, 'utf8');
+    if (!source.includes('MEMBER_RECHARGE_OTP_SECRET')) {
+      failures.push(
+        `Production startup guard must require MEMBER_RECHARGE_OTP_SECRET: ${boundary.main}`,
+      );
+    }
+  }
+
+  const composePath = join(REPOSITORY_ROOT, boundary.compose);
+  if (existsSync(composePath)) {
+    const source = readFileSync(composePath, 'utf8');
     if (
-      !source.includes("from '../auth/challenge-engine.module'") ||
-      source.includes("from '../auth/public-api'")
+      !source.includes(
+        'MEMBER_RECHARGE_OTP_SECRET: "${MEMBER_RECHARGE_OTP_SECRET:?MEMBER_RECHARGE_OTP_SECRET is required}"',
+      )
     ) {
       failures.push(
-        `PhoneVerificationModule must use the context-internal challenge module directly so the recharge owner public module cannot form a barrel cycle: ${boundary.phoneVerificationModule}`,
+        `API compose config must require MEMBER_RECHARGE_OTP_SECRET without committing its value: ${boundary.compose}`,
       );
+    }
+  }
+
+  const webPagePath = join(REPOSITORY_ROOT, boundary.webPage);
+  if (existsSync(webPagePath)) {
+    const source = readFileSync(webPagePath, 'utf8');
+    for (const requiredSymbol of [
+      'if (!res.ok)',
+      'copy.errors.codeCooldown',
+      'copy.errors.codeDailyLimit',
+      'setRechargeStep("code-sent")',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `POS recharge send UX hardening is missing ${requiredSymbol}: ${boundary.webPage}`,
+        );
+      }
     }
   }
 
@@ -2102,7 +2169,11 @@ if (memberRechargeVerificationBoundary) {
     const source = readFileSync(ownerSpecPath, 'utf8');
     for (const requiredSymbol of [
       'NON_ZERO_SIX_DIGIT',
+      'MEMBER_RECHARGE',
+      'too many requests, please try later',
+      'too many requests in a day',
       'email_send_failed',
+      'sms_send_failed',
       "purpose: 'pos-recharge'",
       'verificationToken already used',
       'messagingSendId',
@@ -2110,6 +2181,23 @@ if (memberRechargeVerificationBoundary) {
       if (!source.includes(requiredSymbol)) {
         failures.push(
           `Member recharge owner characterization is missing ${requiredSymbol}: ${boundary.ownerSpec}`,
+        );
+      }
+    }
+  }
+
+  const webSpecPath = join(REPOSITORY_ROOT, boundary.webSpec);
+  if (existsSync(webSpecPath)) {
+    const source = readFileSync(webSpecPath, 'utf8');
+    for (const requiredSymbol of [
+      'if (!res.ok)',
+      'codeCooldown',
+      'codeDailyLimit',
+      'setRechargeStep("code-sent")',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `POS recharge hardening characterization is missing ${requiredSymbol}: ${boundary.webSpec}`,
         );
       }
     }
