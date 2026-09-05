@@ -4,7 +4,7 @@ import { CustomerService } from './customer.service';
 
 function createService() {
   const findUnique = jest.fn();
-  const update = jest.fn();
+  const update = jest.fn<Promise<unknown>, [unknown]>();
   const service = new CustomerService(
     {
       user: { findUnique, update },
