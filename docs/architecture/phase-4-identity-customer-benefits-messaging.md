@@ -568,8 +568,8 @@ transaction behavior, Uber wire protocol or active customer API is changed. Like
 
 #### Slice 2E-B — Orders event ownership + Loyalty paid-settlement inversion
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice2eb-order-events-loyalty-settlement`.
+Status: **MERGED / AWAITING PHASE-END DEPLOYMENT** via PR #2177. Final head
+`dc07e820` passed GitHub Actions CI #5137 and squash-merged to `dev` as `718b2133`.
 
 The readiness audit confirmed that moving `OrderEventsBus` to an Orders public API and keeping
 Loyalty as a subscriber would recreate the Orders <-> Identity public SCC eliminated in Slice 1.
@@ -636,12 +636,50 @@ verification remains part of the consolidated Phase 4 rollout.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 
-Status: **PLANNED**.
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice3-customer-boundary`.
 
-Split customer-owned profile, address and consent use cases out of the legacy broad
-Membership service surface while preserving current member APIs and authentication
-semantics. Avoid mechanical file splitting; extract only coherent owner capabilities
-with real callers and tests.
+The readiness audit rejected a mechanical three-service split because duplicating Nest/Prisma
+entry points would increase Identity direct-import debt. The approved atomic owner contraction
+instead replaces the old standalone `MembershipOnboardingService` with one coherent
+`CustomerService` that owns onboarding, profile, address and marketing-consent behavior while the
+legacy `MembershipService` retains member summary/read-model, device/session, loyalty/coupon and
+payment-benefit reservation responsibilities.
+
+Implemented source shape:
+
+1. `CustomerService` owns onboarding status/finalization, profile updates, marketing consent and
+   address CRUD/default selection under one existing Identity/Customer persistence entry point;
+2. onboarding and profile now share one birthday eligibility invariant while preserving existing
+   route semantics: integer year/month, year >= 1900, month 1-12, conservative minimum-age 13
+   check, one-time completion for legacy partial birthdays and immutable already-complete
+   birthdays;
+3. customer consent remains Identity-owned. The false -> true marketing transition still invokes
+   the Messaging-owned `CUSTOMER_LIFECYCLE_NOTIFICATION` delivery capability and the Benefits-owned
+   `COUPON_PROGRAM_TRIGGER`; Messaging does not regain consent or customer persistence ownership;
+4. address operations continue exposing/accepting `addressStableId` and scope every persistence
+   lookup by the authenticated customer's stable identity -> internal user ID translation. First
+   address/default switching/delete-default promotion and coordinate normalization are preserved;
+5. the broad Membership read surface no longer creates/updates a User or consumes PHONE_VERIFY
+   challenges as an incidental side effect. Summary/coupon/ledger reads now require an existing
+   `userStableId`. Production readiness data showed 40/40 Users with non-null stable IDs and 2/2
+   UserAddress rows with non-null address stable IDs, so no schema/backfill is required;
+6. existing HTTP routes and request/response shapes remain unchanged. `MembershipController`
+   delegates only the Customer-owned routes to `CustomerService`; Web membership and checkout
+   consumers require no change;
+7. the retired `membership-onboarding.service.ts` path is deleted and a central architecture guard
+   prevents it, Customer-owned methods, AuthChallenge/PHONE_VERIFY mutation or implicit
+   `user.create` behavior from returning to `MembershipService`;
+8. focused characterization now covers onboarding/referral atomicity, profile/birthday behavior,
+   consent transition/delivery/benefit triggering, address ownership/default behavior and the
+   existing-user-only Membership summary boundary.
+
+This slice intentionally leaves the numeric direct-import baseline unchanged: Identity remains at
+**37** outgoing direct imports, Identity -> Messaging direct debt remains **0**, and the public SCC
+baseline remains empty. No dependency/lockfile, Prisma schema/migration, HTTP route, Web contract,
+payment, Orders, Uber or durable-outbox change is included. Per the Phase 4 rollout policy, Slice 3
+will not be deployed separately; production verification remains part of the consolidated phase
+rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 

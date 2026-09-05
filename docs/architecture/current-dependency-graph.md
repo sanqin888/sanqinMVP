@@ -112,8 +112,9 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 2E-B source contraction records these
-direct-debt totals:
+The current local monotonic baseline after the Slice 3 Customer owner contraction records these
+direct-debt totals. Slice 3 changes ownership inside Identity/Customer without adding/removing a
+cross-context direct import, so the numeric baseline remains the merged Slice 2E-B baseline:
 
 - payments-clover: **59**
 - external-channels: **42**
@@ -132,8 +133,15 @@ at **37**, but that does not change the active Phase 4 owner scope. Slice 2E-A r
 from **14 -> 10** by retiring SNS/SQS infrastructure; Slice 2E-B then removes the final direct
 Identity -> Messaging pair, returns OrderEventsBus ownership to Orders and eliminates Uber's
 Messaging bridge without recreating a public SCC. Identity, Commerce and External outgoing debt
-now contract to **37 / 31 / 42** respectively. Payment ownership is not reopened merely to chase
-the largest numeric total mid-phase.
+now contract to **37 / 31 / 42** respectively. Slice 2E-B is merged via PR #2177 after final head
+`dc07e820` passed CI #5137 and squash-merged as `718b2133`.
+
+Slice 3 then contracts the internal Customer ownership surface without changing those counts:
+`CustomerService` owns onboarding/profile/address/marketing-consent behavior, the retired
+`MembershipOnboardingService` is deleted, and broad Membership reads no longer perform implicit
+User creation/profile/PHONE_VERIFY mutations. Existing member HTTP routes stay unchanged,
+Identity -> Messaging direct debt remains **0**, and the public SCC baseline remains empty. Payment
+ownership is not reopened merely to chase the largest numeric total mid-phase.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

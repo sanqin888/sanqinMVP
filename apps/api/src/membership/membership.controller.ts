@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { MembershipService } from './membership.service';
-import { MembershipOnboardingService } from './membership-onboarding.service';
+import { CustomerService } from './customer.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { MfaGuard } from '../auth/mfa.guard';
 import { AuthService } from '../auth/auth.service';
@@ -47,7 +47,7 @@ function maskEmail(value?: string | null): string | null {
 export class MembershipController {
   constructor(
     private readonly membership: MembershipService,
-    private readonly onboarding: MembershipOnboardingService,
+    private readonly customer: CustomerService,
     private readonly auth: AuthService,
     @Inject(IDENTITY_EMAIL_VERIFICATION)
     private readonly emailVerification: IdentityEmailVerificationPort,
@@ -73,7 +73,7 @@ export class MembershipController {
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
     }
-    return this.onboarding.getStatus(userStableId);
+    return this.customer.getOnboardingStatus(userStableId);
   }
 
   @Post('onboarding')
@@ -99,7 +99,7 @@ export class MembershipController {
       );
     }
 
-    return this.onboarding.finalize({
+    return this.customer.finalizeOnboarding({
       userStableId,
       birthdayYear: body.birthdayYear,
       birthdayMonth: body.birthdayMonth,
@@ -238,7 +238,7 @@ export class MembershipController {
       throw new BadRequestException('marketingEmailOptIn must be boolean');
     }
 
-    const user = await this.membership.updateMarketingConsent({
+    const user = await this.customer.updateMarketingConsent({
       userStableId,
       marketingEmailOptIn,
     });
@@ -324,7 +324,7 @@ export class MembershipController {
       throw new BadRequestException('language must be zh or en');
     }
 
-    const user = await this.membership.updateProfile({
+    const user = await this.customer.updateProfile({
       userStableId,
       firstName: body.firstName ?? null,
       lastName: body.lastName ?? null,
@@ -367,7 +367,7 @@ export class MembershipController {
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
     }
-    return this.membership.listAddresses({ userStableId });
+    return this.customer.listAddresses({ userStableId });
   }
 
   @Post('addresses')
@@ -405,7 +405,7 @@ export class MembershipController {
       throw new BadRequestException('address fields are required');
     }
 
-    const created = await this.membership.createAddress({
+    const created = await this.customer.createAddress({
       userStableId,
       label: body.label ?? 'Address',
       receiver: body.receiver,
@@ -464,7 +464,7 @@ export class MembershipController {
       throw new BadRequestException('address fields are required');
     }
 
-    const updated = await this.membership.updateAddress({
+    const updated = await this.customer.updateAddress({
       userStableId,
       addressStableId: body.addressStableId,
       label: body.label ?? 'Address',
@@ -501,7 +501,7 @@ export class MembershipController {
     if (!body.addressStableId) {
       throw new BadRequestException('addressStableId is required');
     }
-    return this.membership.setDefaultAddress({
+    return this.customer.setDefaultAddress({
       userStableId,
       addressStableId: body.addressStableId,
     });
@@ -519,7 +519,7 @@ export class MembershipController {
     if (!addressStableId) {
       throw new BadRequestException('addressStableId is required');
     }
-    return this.membership.deleteAddress({ userStableId, addressStableId });
+    return this.customer.deleteAddress({ userStableId, addressStableId });
   }
 }
 

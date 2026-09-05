@@ -3,22 +3,23 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { MembershipOnboardingService } from './membership-onboarding.service';
+import { CustomerService } from './customer.service';
 
 const NEW_USER_CREATED_AT = new Date('2026-08-22T17:00:00.000Z');
 const LEGACY_USER_CREATED_AT = new Date('2026-08-22T16:00:00.000Z');
 
 function createService(prisma: unknown, issueProgramsForUser = jest.fn()) {
   return {
-    service: new MembershipOnboardingService(
+    service: new CustomerService(
       prisma as never,
       { issueProgramsForUser } as never,
+      { notifySubscriptionWelcome: jest.fn() } as never,
     ),
     issueProgramsForUser,
   };
 }
 
-describe('MembershipOnboardingService', () => {
+describe('CustomerService onboarding', () => {
   it('finalizes a new member with an email-only referrer relationship', async () => {
     const findUnique = jest
       .fn()
@@ -31,15 +32,11 @@ describe('MembershipOnboardingService', () => {
       })
       .mockResolvedValueOnce({ id: 'referrer-id' });
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
-    const { service } = createService({
-      user: { findUnique, updateMany },
-    });
-
-    const now = new Date();
-    const birthdayYear = now.getUTCFullYear() - 20;
+    const { service } = createService({ user: { findUnique, updateMany } });
+    const birthdayYear = new Date().getUTCFullYear() - 20;
 
     await expect(
-      service.finalize({
+      service.finalizeOnboarding({
         userStableId: 'new-user-stable',
         birthdayYear,
         birthdayMonth: 1,
@@ -73,10 +70,7 @@ describe('MembershipOnboardingService', () => {
   });
 
   it('issues referral-qualified programs after a verified user binds a referrer', async () => {
-    const referrer = {
-      id: 'referrer-id',
-      userStableId: 'referrer-stable',
-    };
+    const referrer = { id: 'referrer-id', userStableId: 'referrer-stable' };
     const findUnique = jest
       .fn()
       .mockResolvedValueOnce({
@@ -101,7 +95,7 @@ describe('MembershipOnboardingService', () => {
       issueProgramsForUser,
     );
 
-    await service.finalize({
+    await service.finalizeOnboarding({
       userStableId: 'new-user-stable',
       birthdayYear: new Date().getUTCFullYear() - 20,
       birthdayMonth: 1,
@@ -132,7 +126,7 @@ describe('MembershipOnboardingService', () => {
     const birthdayYear = new Date().getUTCFullYear() - 25;
 
     await expect(
-      service.finalize({
+      service.finalizeOnboarding({
         userStableId: 'new-user-stable',
         birthdayYear,
         birthdayMonth: 6,
@@ -172,7 +166,7 @@ describe('MembershipOnboardingService', () => {
     });
 
     await expect(
-      service.finalize({
+      service.finalizeOnboarding({
         userStableId: 'new-user-stable',
         birthdayYear: new Date().getUTCFullYear() - 30,
         birthdayMonth: 1,
@@ -187,7 +181,7 @@ describe('MembershipOnboardingService', () => {
     const { service } = createService({ user: { findUnique } });
 
     await expect(
-      service.finalize({
+      service.finalizeOnboarding({
         userStableId: 'invalid-birthday',
         birthdayYear: new Date().getUTCFullYear() - 20 + 0.5,
         birthdayMonth: 1,
@@ -202,7 +196,7 @@ describe('MembershipOnboardingService', () => {
     const now = new Date();
 
     await expect(
-      service.finalize({
+      service.finalizeOnboarding({
         userStableId: 'minor-user',
         birthdayYear: now.getUTCFullYear() - 12,
         birthdayMonth: 1,
@@ -224,7 +218,7 @@ describe('MembershipOnboardingService', () => {
       },
     });
 
-    await expect(service.getStatus('legacy-user')).resolves.toEqual({
+    await expect(service.getOnboardingStatus('legacy-user')).resolves.toEqual({
       finalized: true,
       birthdayYear: null,
       birthdayMonth: null,
@@ -247,7 +241,7 @@ describe('MembershipOnboardingService', () => {
     });
 
     await expect(
-      service.finalize({
+      service.finalizeOnboarding({
         userStableId: 'new-user-stable',
         birthdayYear: new Date().getUTCFullYear() - 30,
         birthdayMonth: 1,
@@ -274,7 +268,7 @@ describe('MembershipOnboardingService', () => {
     });
 
     await expect(
-      service.finalize({
+      service.finalizeOnboarding({
         userStableId: 'new-user-stable',
         birthdayYear: new Date().getUTCFullYear() - 30,
         birthdayMonth: 1,
