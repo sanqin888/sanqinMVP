@@ -27,7 +27,9 @@ describe('Order member stable identity persistence', () => {
     expect(migration).toContain('populated_stable_id_count');
     expect(migration).toContain('mismatched_stable_id_count');
     expect(migration).toContain('orphan_user_id_count');
-    expect(migration).not.toMatch(/random\(|clock_timestamp\(|gen_random_uuid\(/i);
+    expect(migration).not.toMatch(
+      /random\(|clock_timestamp\(|gen_random_uuid\(/i,
+    );
   });
 
   it('dual-writes the stable member identity on every member Order creation path', () => {

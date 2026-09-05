@@ -7,7 +7,9 @@ const source = (relativePath: string) =>
 describe('Phase 4 Slice 4C member Orders ownership boundary', () => {
   it('owns the admin member Orders transport inside Orders without an Admin -> Orders public edge', () => {
     const controller = source('./admin-member-orders.controller.ts');
-    const adminController = source('../admin/members/admin-members.controller.ts');
+    const adminController = source(
+      '../admin/members/admin-members.controller.ts',
+    );
     const adminService = source('../admin/members/admin-members.service.ts');
 
     expect(controller).toContain("@Controller('admin/members')");
