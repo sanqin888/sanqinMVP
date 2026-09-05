@@ -273,9 +273,13 @@ export class AuthController {
   }
 
   @Post('login/phone/request')
-  async requestPhoneLogin(@Body() body: { phone?: string }) {
+  async requestPhoneLogin(
+    @Body() body: { phone?: string },
+    @Req() req: Request,
+  ) {
     return await this.authService.requestLoginOtp({
       phone: body?.phone ?? '',
+      ip: req.ip,
     });
   }
 

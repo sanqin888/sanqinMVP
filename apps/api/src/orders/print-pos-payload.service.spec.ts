@@ -13,6 +13,12 @@ jest.mock('@prisma/client', () => ({
 import { Channel, PaymentMethod } from '@prisma/client';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 
+const createOrderUsageReader = (balancePaidCents = 0, pointsEarned = 0) => ({
+  getOrderUsage: jest
+    .fn()
+    .mockResolvedValue({ balancePaidCents, pointsEarned }),
+});
+
 describe('PrintPosPayloadService', () => {
   it('Uber 收银小票和厨房单共用的打印载荷包含规范取餐码', async () => {
     const prisma = {
@@ -37,13 +43,15 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
-      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
     };
 
-    const service = new PrintPosPayloadService(prisma as never);
+    const service = new PrintPosPayloadService(
+      prisma as never,
+      createOrderUsageReader() as never,
+    );
     const payload = await service.getByStableId('ord_1');
 
     expect(payload.paymentMethod).toBe('ubereats');
@@ -74,13 +82,15 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 24,
         }),
       },
-      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
     };
 
-    const service = new PrintPosPayloadService(prisma as never);
+    const service = new PrintPosPayloadService(
+      prisma as never,
+      createOrderUsageReader() as never,
+    );
     const payload = await service.getByStableId('ord_2');
 
     expect(payload.snapshot.creditCardSurchargeCents).toBe(24);
@@ -140,14 +150,13 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
-      loyaltyLedger: {
-        findMany: jest.fn().mockResolvedValue([{ deltaMicro: -3_000_000n }]),
-      },
       checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
     };
 
+    const orderUsageReader = createOrderUsageReader(300);
     const payload = await new PrintPosPayloadService(
       prisma as never,
+      orderUsageReader as never,
     ).getByStableId('ord_pricing');
 
     expect(payload.snapshot.displaySubtotalCents).toBe(1000);
@@ -167,6 +176,9 @@ describe('PrintPosPayloadService', () => {
     );
     expect(payload.snapshot.loyaltyRedeemCents).toBe(25);
     expect(payload.snapshot.balancePaidCents).toBe(300);
+    expect(orderUsageReader.getOrderUsage).toHaveBeenCalledWith({
+      orderStableId: 'ord_pricing',
+    });
     expect(payload.snapshot.externalPaidCents).toBe(463);
     expect(payload.snapshot.orderTotalCents).toBe(763);
   });
@@ -193,7 +205,6 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
-      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue({
           metadataJson: {
@@ -203,7 +214,10 @@ describe('PrintPosPayloadService', () => {
       },
     };
 
-    const service = new PrintPosPayloadService(prisma as never);
+    const service = new PrintPosPayloadService(
+      prisma as never,
+      createOrderUsageReader() as never,
+    );
     const payload = await service.getByStableId('ord_3');
 
     expect(payload.snapshot.creditCardSurchargeCents).toBe(24);
@@ -232,7 +246,6 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
-      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: {
         findFirst: jest.fn().mockResolvedValue({
           metadataJson: {
@@ -249,7 +262,10 @@ describe('PrintPosPayloadService', () => {
       },
     };
 
-    const service = new PrintPosPayloadService(prisma as never);
+    const service = new PrintPosPayloadService(
+      prisma as never,
+      createOrderUsageReader() as never,
+    );
     const payload = await service.getByStableId('ord_4');
 
     expect(payload.orderNotes).toBe('少辣，不要香菜');
@@ -330,12 +346,12 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
-      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
     };
 
     const payload = await new PrintPosPayloadService(
       prisma as never,
+      createOrderUsageReader() as never,
     ).getByStableId('ord_combo');
 
     expect(payload.snapshot.items[0]).toMatchObject({
@@ -421,12 +437,12 @@ describe('PrintPosPayloadService', () => {
           creditCardSurchargeCents: 0,
         }),
       },
-      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
     };
 
     const payload = await new PrintPosPayloadService(
       prisma as never,
+      createOrderUsageReader() as never,
     ).getByStableId('ord_selectable_combo');
 
     expect(payload.snapshot.items[0].options).toEqual([]);
@@ -469,12 +485,12 @@ describe('PrintPosPayloadService', () => {
           taxCents: 0,
         }),
       },
-      loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
       checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
     };
 
     const payload = await new PrintPosPayloadService(
       prisma as never,
+      createOrderUsageReader() as never,
     ).getByStableId('ord_uber_notes');
 
     expect(payload.orderNotes).toBe(
@@ -517,12 +533,12 @@ describe('PrintPosPayloadService', () => {
             taxCents: 0,
           }),
         },
-        loyaltyLedger: { findMany: jest.fn().mockResolvedValue([]) },
         checkoutIntent: { findFirst: jest.fn().mockResolvedValue(null) },
       };
 
       const payload = await new PrintPosPayloadService(
         prisma as never,
+        createOrderUsageReader() as never,
       ).getByStableId('ord_locale', locale);
 
       expect(payload.locale).toBe(expected);

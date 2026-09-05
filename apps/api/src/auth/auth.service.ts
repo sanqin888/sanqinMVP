@@ -7,26 +7,28 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from './identity-prisma';
 import { randomBytes, createHash } from 'crypto';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
   MessagingChannel,
-  MessagingTemplateType,
   UserLanguage,
   type User,
   type TwoFactorMethod,
   type UserRole,
 } from '@prisma/client';
 import argon2, { argon2id } from 'argon2';
-import { normalizeEmail } from '../common/utils/email';
+import { normalizeEmail } from './email-normalization';
 import { normalizePhone } from '../common/utils/phone';
-import { EmailService } from '../email/email.service';
-import { SmsService } from '../sms/sms.service';
-import { BusinessConfigService } from '../messaging/business-config.service';
-import { TemplateRenderer } from '../messaging/template-renderer';
-import { NotificationService } from '../notifications/notification.service';
+import {
+  AUTH_CHALLENGE_DELIVERY,
+  type AuthChallengeDeliveryPort,
+} from '../messaging/public-api';
+import {
+  CUSTOMER_LIFECYCLE_NOTIFICATION,
+  type CustomerLifecycleNotificationPort,
+} from '../notifications/public-api';
 import {
   COUPON_PROGRAM_TRIGGER,
   type CouponProgramTriggerPort,
@@ -39,6 +41,7 @@ import {
   POS_DEVICE_CREDENTIAL_VERIFIER,
   type PosDeviceCredentialVerifierPort,
 } from '../pos/public-api';
+import { OtpChallengePolicyService } from './otp-challenge-policy.service';
 
 @Injectable()
 export class AuthService {
@@ -46,18 +49,29 @@ export class AuthService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly emailService: EmailService,
-    private readonly smsService: SmsService,
-    private readonly templateRenderer: TemplateRenderer,
-    private readonly businessConfigService: BusinessConfigService,
-    private readonly notificationService: NotificationService,
+    @Inject(AUTH_CHALLENGE_DELIVERY)
+    private readonly authChallengeDelivery: AuthChallengeDeliveryPort,
+    @Inject(CUSTOMER_LIFECYCLE_NOTIFICATION)
+    private readonly customerLifecycleNotification: CustomerLifecycleNotificationPort,
     @Inject(COUPON_PROGRAM_TRIGGER)
     private readonly couponTriggerService: CouponProgramTriggerPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
     @Inject(POS_DEVICE_CREDENTIAL_VERIFIER)
     private readonly posDeviceCredentialVerifier: PosDeviceCredentialVerifierPort,
+    private readonly otpPolicy: OtpChallengePolicyService,
   ) {}
+
+  private notifyRegistrationWelcome(user: User): void {
+    void this.customerLifecycleNotification.notifyRegistrationWelcome({
+      userStableId: user.userStableId,
+      email: user.email,
+      phone: user.phone,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      language: user.language === UserLanguage.ZH ? 'ZH' : 'EN',
+    });
+  }
 
   private async triggerSignupCompletedPrograms(user: User) {
     try {
@@ -432,7 +446,7 @@ export class AuthService {
 
     //新增：如果是新用户，发送欢迎通知
     if (isNewUser) {
-      void this.notificationService.notifyRegisterWelcome({ user });
+      this.notifyRegistrationWelcome(user);
       void this.triggerSignupCompletedPrograms(user);
     }
 
@@ -566,40 +580,25 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
-    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
-
     const addressNorm = this.normalizePhoneAddress(user.phone);
     if (!addressNorm) {
       throw new BadRequestException('invalid phone');
     }
 
-    const recent = await this.prisma.authChallenge.findFirst({
-      where: {
-        userId: user.id,
-        type: AuthChallengeType.TWO_FACTOR,
-        channel: { in: [MessagingChannel.SMS, MessagingChannel.EMAIL] },
-        purpose: 'LOGIN_2FA',
-        createdAt: { gt: oneMinuteAgo },
-        status: AuthChallengeStatus.PENDING,
-      },
-      orderBy: { createdAt: 'desc' },
+    const limitResult = await this.otpPolicy.checkSend({
+      profile: 'LOGIN_2FA',
+      purpose: 'LOGIN_2FA',
+      now,
+      userId: user.id,
+      addressNorm,
+      ip: params.ip,
     });
-    if (recent) {
-      throw new BadRequestException('too many requests, please try later');
-    }
-
-    const lastHourCount = await this.prisma.authChallenge.count({
-      where: {
-        userId: user.id,
-        type: AuthChallengeType.TWO_FACTOR,
-        channel: MessagingChannel.SMS,
-        purpose: 'LOGIN_2FA',
-        createdAt: { gt: oneHourAgo },
-      },
-    });
-    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
-      throw new BadRequestException('too many requests in an hour');
+    if (!limitResult.ok) {
+      throw new BadRequestException(
+        limitResult.violation === 'COOLDOWN'
+          ? 'too many requests, please try later'
+          : 'too many requests in an hour',
+      );
     }
 
     const code = this.challengeEngine.generateCode('ZERO_PADDED');
@@ -624,31 +623,33 @@ export class AuthService {
     });
 
     const locale = this.resolveUserLocale(user.language);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-    const message = await this.templateRenderer.renderSms({
-      template: 'otp',
-      locale,
-      vars: {
-        ...baseVars,
-        code,
-        expiresInMin: 5,
-        purpose: 'login_2fa',
-      },
-    });
-
-    const sendResult = await this.smsService.sendSms({
+    const sendResult = await this.authChallengeDelivery.sendLoginTwoFactorSms({
       phone: user.phone,
-      body: message,
-      templateType: MessagingTemplateType.OTP,
+      code,
+      expiresInMin: 5,
       locale,
-      userId: user.id,
-      metadata: { purpose: 'login_2fa' },
+      userStableId: user.userStableId,
     });
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
-      data: { messagingSendId: sendResult.sendId },
+      data: sendResult.ok
+        ? { messagingSendId: sendResult.sendId }
+        : {
+            messagingSendId: sendResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
     });
+    if (sendResult.ok) {
+      await this.otpPolicy.revokeSupersededCodes({
+        profile: 'LOGIN_2FA',
+        purpose: 'LOGIN_2FA',
+        now,
+        userId: user.id,
+        addressNorm,
+        ip: params.ip,
+        currentChallengeId: challenge.id,
+      });
+    }
     return { success: true, expiresAt };
   }
 
@@ -682,40 +683,25 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
-    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
-
     const addressNorm = normalizeEmail(user.email);
     if (!addressNorm) {
       throw new BadRequestException('invalid email');
     }
 
-    const recent = await this.prisma.authChallenge.findFirst({
-      where: {
-        userId: user.id,
-        type: AuthChallengeType.TWO_FACTOR,
-        channel: MessagingChannel.EMAIL,
-        purpose: 'LOGIN_2FA',
-        createdAt: { gt: oneMinuteAgo },
-        status: AuthChallengeStatus.PENDING,
-      },
-      orderBy: { createdAt: 'desc' },
+    const limitResult = await this.otpPolicy.checkSend({
+      profile: 'LOGIN_2FA',
+      purpose: 'LOGIN_2FA',
+      now,
+      userId: user.id,
+      addressNorm,
+      ip: params.ip,
     });
-    if (recent) {
-      throw new BadRequestException('too many requests, please try later');
-    }
-
-    const lastHourCount = await this.prisma.authChallenge.count({
-      where: {
-        userId: user.id,
-        type: AuthChallengeType.TWO_FACTOR,
-        channel: MessagingChannel.EMAIL,
-        purpose: 'LOGIN_2FA',
-        createdAt: { gt: oneHourAgo },
-      },
-    });
-    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
-      throw new BadRequestException('too many requests in an hour');
+    if (!limitResult.ok) {
+      throw new BadRequestException(
+        limitResult.violation === 'COOLDOWN'
+          ? 'too many requests, please try later'
+          : 'too many requests in an hour',
+      );
     }
 
     const code = this.challengeEngine.generateCode('ZERO_PADDED');
@@ -740,34 +726,35 @@ export class AuthService {
     });
 
     const locale = this.resolveUserLocale(user.language);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-    const { subject, html, text } = await this.templateRenderer.renderEmail({
-      template: 'otp',
-      locale,
-      vars: {
-        ...baseVars,
+    const sendResult = await this.authChallengeDelivery.sendLoginTwoFactorEmail(
+      {
+        email: user.email,
         code,
         expiresInMin: 5,
-        purpose: 'admin_login',
+        locale,
+        userStableId: user.userStableId,
       },
-    });
-
-    const sendResult = await this.emailService.sendEmail({
-      to: user.email,
-      subject,
-      text,
-      html,
-      tags: { type: 'admin_login_2fa' },
-      locale,
-      templateType: MessagingTemplateType.OTP,
-      userId: user.id,
-      metadata: { purpose: 'admin_login' },
-    });
+    );
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
-      data: { messagingSendId: sendResult.sendId },
+      data: sendResult.ok
+        ? { messagingSendId: sendResult.sendId }
+        : {
+            messagingSendId: sendResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
     });
+    if (sendResult.ok) {
+      await this.otpPolicy.revokeSupersededCodes({
+        profile: 'LOGIN_2FA',
+        purpose: 'LOGIN_2FA',
+        now,
+        userId: user.id,
+        addressNorm,
+        ip: params.ip,
+        currentChallengeId: challenge.id,
+      });
+    }
     return { success: true, expiresAt };
   }
 
@@ -967,102 +954,65 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
-    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
-
-    const recent = await this.prisma.authChallenge.findFirst({
-      where: {
-        type: AuthChallengeType.PHONE_VERIFY,
-        channel: MessagingChannel.SMS,
-        addressNorm,
-        purpose: 'PHONE_ENROLL',
-        createdAt: { gt: oneMinuteAgo },
-        status: AuthChallengeStatus.PENDING,
-      },
-      orderBy: { createdAt: 'desc' },
+    const limitResult = await this.otpPolicy.checkSend({
+      profile: 'PHONE_ENROLL',
+      purpose: 'PHONE_ENROLL',
+      now,
+      userId: session.userId,
+      addressNorm,
     });
-
-    if (recent) {
-      throw new BadRequestException('too many requests, please try later');
-    }
-
-    const lastHourCount = await this.prisma.authChallenge.count({
-      where: {
-        type: AuthChallengeType.PHONE_VERIFY,
-        channel: MessagingChannel.SMS,
-        addressNorm,
-        purpose: 'PHONE_ENROLL',
-        createdAt: { gt: oneHourAgo },
-      },
-    });
-
-    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
-      throw new BadRequestException('too many requests in an hour');
+    if (!limitResult.ok) {
+      throw new BadRequestException(
+        limitResult.violation === 'COOLDOWN'
+          ? 'too many requests, please try later'
+          : 'too many requests in an hour',
+      );
     }
 
     const code = this.challengeEngine.generateCode('ZERO_PADDED');
     const codeHash: string = this.challengeEngine.hashCode(code, 'OTP');
     const expiresAt = this.challengeEngine.expiresAt(now, 5 * 60 * 1000);
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.authChallenge.updateMany({
-        where: {
-          type: AuthChallengeType.PHONE_VERIFY,
-          channel: MessagingChannel.SMS,
-          addressNorm,
-          purpose: 'PHONE_ENROLL',
-          status: AuthChallengeStatus.PENDING,
-        },
-        data: this.challengeEngine.revokedState(now),
-      });
-
-      await tx.authChallenge.create({
-        data: {
-          type: AuthChallengeType.PHONE_VERIFY,
-          channel: MessagingChannel.SMS,
-          addressNorm,
-          addressRaw: params.phone,
-          codeHash,
-          purpose: 'PHONE_ENROLL',
-          expiresAt,
-        },
-      });
-    });
-
-    // ================== 添加以下发送短信的代码 ==================
-    const locale = this.resolveUserLocale(session.user.language);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-
-    const message = await this.templateRenderer.renderSms({
-      template: 'otp',
-      locale,
-      vars: {
-        ...baseVars,
-        code,
-        expiresInMin: 5,
-        purpose: 'verify',
-      },
-    });
-
-    const sendResult = await this.smsService.sendSms({
-      phone: normalized,
-      body: message,
-      templateType: MessagingTemplateType.OTP,
-      locale,
-      userId: session.userId,
-      metadata: { purpose: 'verify' },
-    });
-    await this.prisma.authChallenge.updateMany({
-      where: {
+    const challenge = await this.prisma.authChallenge.create({
+      data: {
+        userId: session.userId,
         type: AuthChallengeType.PHONE_VERIFY,
         channel: MessagingChannel.SMS,
         addressNorm,
+        addressRaw: params.phone,
+        codeHash,
         purpose: 'PHONE_ENROLL',
-        status: AuthChallengeStatus.PENDING,
+        expiresAt,
       },
-      data: { messagingSendId: sendResult.sendId },
     });
+
+    const locale = this.resolveUserLocale(session.user.language);
+    const sendResult = await this.authChallengeDelivery.sendPhoneEnrollmentSms({
+      phone: normalized,
+      code,
+      expiresInMin: 5,
+      locale,
+      userStableId: session.user.userStableId,
+    });
+    await this.prisma.authChallenge.update({
+      where: { id: challenge.id },
+      data: sendResult.ok
+        ? { messagingSendId: sendResult.sendId }
+        : {
+            messagingSendId: sendResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
+    });
+    if (sendResult.ok) {
+      await this.otpPolicy.revokeSupersededCodes({
+        profile: 'PHONE_ENROLL',
+        purpose: 'PHONE_ENROLL',
+        now,
+        userId: session.userId,
+        addressNorm,
+        currentChallengeId: challenge.id,
+      });
+    }
 
     return { success: true };
   }
@@ -1084,7 +1034,6 @@ export class AuthService {
     }
 
     const now = new Date();
-    const codeHash = this.challengeEngine.hashCode(params.code, 'OTP');
 
     const conflict = await this.prisma.user.findFirst({
       where: {
@@ -1097,16 +1046,55 @@ export class AuthService {
       throw new BadRequestException('phone already in use');
     }
 
+    const challenge = await this.prisma.authChallenge.findFirst({
+      where: {
+        userId: session.userId,
+        type: AuthChallengeType.PHONE_VERIFY,
+        channel: MessagingChannel.SMS,
+        addressNorm,
+        purpose: 'PHONE_ENROLL',
+        status: AuthChallengeStatus.PENDING,
+        codeHash: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!challenge) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    if (challenge.expiresAt.getTime() < now.getTime()) {
+      await this.prisma.authChallenge.update({
+        where: { id: challenge.id },
+        data: this.challengeEngine.expiredState(now),
+      });
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    if (
+      !this.challengeEngine.verifyCodeHash(
+        params.code.trim(),
+        challenge.codeHash ?? '',
+        'OTP',
+      )
+    ) {
+      await this.prisma.authChallenge.update({
+        where: { id: challenge.id },
+        data: this.challengeEngine.failedAttemptState({
+          attempts: challenge.attempts,
+          maxAttempts: challenge.maxAttempts,
+          now,
+        }),
+      });
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
     const verification = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.authChallenge.updateMany({
         where: {
-          type: AuthChallengeType.PHONE_VERIFY,
-          channel: MessagingChannel.SMS,
-          addressNorm,
-          purpose: 'PHONE_ENROLL',
+          id: challenge.id,
           status: AuthChallengeStatus.PENDING,
           expiresAt: { gt: now },
-          codeHash,
         },
         data: this.challengeEngine.consumedState(now),
       });
@@ -1224,7 +1212,7 @@ export class AuthService {
     return { success: true };
   }
 
-  async requestLoginOtp(params: { phone: string }) {
+  async requestLoginOtp(params: { phone: string; ip?: string }) {
     const normalized = normalizePhone(params.phone);
     const addressNorm = this.normalizePhoneAddress(params.phone);
     if (!normalized || !addressNorm || normalized.length < 6) {
@@ -1232,105 +1220,68 @@ export class AuthService {
     }
 
     const now = new Date();
-    const oneMinuteAgo = this.challengeEngine.windowStart(now, 60 * 1000);
-    const oneHourAgo = this.challengeEngine.windowStart(now, 60 * 60 * 1000);
-
-    const recent = await this.prisma.authChallenge.findFirst({
-      where: {
-        type: AuthChallengeType.PHONE_VERIFY,
-        channel: MessagingChannel.SMS,
-        addressNorm,
-        purpose: 'membership-login',
-        createdAt: { gt: oneMinuteAgo },
-        status: AuthChallengeStatus.PENDING,
-      },
-      orderBy: { createdAt: 'desc' },
+    const limitResult = await this.otpPolicy.checkSend({
+      profile: 'MEMBERSHIP_LOGIN',
+      purpose: 'membership-login',
+      now,
+      addressNorm,
+      ip: params.ip,
     });
-
-    if (recent) {
-      throw new BadRequestException('too many requests, please try later');
-    }
-
-    const lastHourCount = await this.prisma.authChallenge.count({
-      where: {
-        type: AuthChallengeType.PHONE_VERIFY,
-        channel: MessagingChannel.SMS,
-        addressNorm,
-        purpose: 'membership-login',
-        createdAt: { gt: oneHourAgo },
-      },
-    });
-
-    if (this.challengeEngine.limitReached(lastHourCount, 5)) {
-      throw new BadRequestException('too many requests in an hour');
+    if (!limitResult.ok) {
+      throw new BadRequestException(
+        limitResult.violation === 'COOLDOWN'
+          ? 'too many requests, please try later'
+          : 'too many requests in an hour',
+      );
     }
 
     const code = this.challengeEngine.generateCode('ZERO_PADDED');
     const codeHash = this.challengeEngine.hashCode(code, 'OTP');
     const expiresAt = this.challengeEngine.expiresAt(now, 5 * 60 * 1000);
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.authChallenge.updateMany({
-        where: {
-          type: AuthChallengeType.PHONE_VERIFY,
-          channel: MessagingChannel.SMS,
-          addressNorm,
-          purpose: 'membership-login',
-          status: AuthChallengeStatus.PENDING,
-        },
-        data: this.challengeEngine.revokedState(now),
-      });
-
-      await tx.authChallenge.create({
-        data: {
-          type: AuthChallengeType.PHONE_VERIFY,
-          channel: MessagingChannel.SMS,
-          addressNorm,
-          addressRaw: params.phone,
-          codeHash,
-          purpose: 'membership-login',
-          expiresAt,
-        },
-      });
+    const challenge = await this.prisma.authChallenge.create({
+      data: {
+        type: AuthChallengeType.PHONE_VERIFY,
+        channel: MessagingChannel.SMS,
+        addressNorm,
+        addressRaw: params.phone,
+        codeHash,
+        purpose: 'membership-login',
+        expiresAt,
+        ip: params.ip,
+      },
     });
 
-    // 3.真正调用短信服务发送
-    // 构建短信内容（根据需要支持多语言）
     const existingUser = await this.prisma.user.findFirst({
       where: { phone: normalized },
       select: { language: true },
     });
     const locale = this.resolveUserLocale(existingUser?.language ?? null);
-    const { baseVars } =
-      await this.businessConfigService.getMessagingSnapshot(locale);
-    const message = await this.templateRenderer.renderSms({
-      template: 'otp',
+    const sendResult = await this.authChallengeDelivery.sendMembershipLoginSms({
+      phone: normalized,
+      code,
+      expiresInMin: 5,
       locale,
-      vars: {
-        ...baseVars,
-        code,
-        expiresInMin: 5,
-        purpose: 'login',
-      },
     });
-
-    const sendResult = await this.smsService.sendSms({
-      phone: normalized, // 注意：这里的 normalized 是不带 + 号的纯数字
-      body: message,
-      templateType: MessagingTemplateType.OTP,
-      locale,
-      metadata: { purpose: 'login' },
+    await this.prisma.authChallenge.update({
+      where: { id: challenge.id },
+      data: sendResult.ok
+        ? { messagingSendId: sendResult.sendId }
+        : {
+            messagingSendId: sendResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
     });
-    await this.prisma.authChallenge.updateMany({
-      where: {
-        type: AuthChallengeType.PHONE_VERIFY,
-        channel: MessagingChannel.SMS,
-        addressNorm,
+    if (sendResult.ok) {
+      await this.otpPolicy.revokeSupersededCodes({
+        profile: 'MEMBERSHIP_LOGIN',
         purpose: 'membership-login',
-        status: AuthChallengeStatus.PENDING,
-      },
-      data: { messagingSendId: sendResult.sendId },
-    });
+        now,
+        addressNorm,
+        ip: params.ip,
+        currentChallengeId: challenge.id,
+      });
+    }
 
     return { success: true };
   }
@@ -1356,26 +1307,52 @@ export class AuthService {
         addressNorm,
         purpose: 'membership-login',
         status: AuthChallengeStatus.PENDING,
-        expiresAt: { gt: now },
+        codeHash: { not: null },
       },
       orderBy: { createdAt: 'desc' },
     });
 
+    if (!record) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
+    if (record.expiresAt.getTime() < now.getTime()) {
+      await this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: this.challengeEngine.expiredState(now),
+      });
+      throw new BadRequestException('verification code is invalid or expired');
+    }
+
     if (
-      !record ||
       !this.challengeEngine.verifyCodeHash(
-        params.code,
+        params.code.trim(),
         record.codeHash ?? '',
         'OTP',
       )
     ) {
+      await this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: this.challengeEngine.failedAttemptState({
+          attempts: record.attempts,
+          maxAttempts: record.maxAttempts,
+          now,
+        }),
+      });
       throw new BadRequestException('verification code is invalid or expired');
     }
 
-    await this.prisma.authChallenge.update({
-      where: { id: record.id },
+    const consumed = await this.prisma.authChallenge.updateMany({
+      where: {
+        id: record.id,
+        status: AuthChallengeStatus.PENDING,
+        expiresAt: { gt: now },
+      },
       data: this.challengeEngine.consumedState(now),
     });
+    if (consumed.count === 0) {
+      throw new BadRequestException('verification code is invalid or expired');
+    }
 
     let isNewUser = false;
     let user = await this.prisma.user.findFirst({
@@ -1424,7 +1401,7 @@ export class AuthService {
 
     //如果是新用户，发送欢迎通知
     if (isNewUser) {
-      void this.notificationService.notifyRegisterWelcome({ user });
+      this.notifyRegistrationWelcome(user);
       void this.triggerSignupCompletedPrograms(user);
     }
 

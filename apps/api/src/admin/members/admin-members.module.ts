@@ -2,21 +2,21 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LoyaltyModule } from '../../loyalty/public-api';
-import { MembershipModule } from '../../membership/membership.module';
-import { PhoneVerificationModule } from '../../phone-verification/phone-verification.module';
-import { EmailModule } from '../../email/email.module';
+import { MembershipModule } from '../../membership/public-api';
 import { AdminMembersController } from './admin-members.controller';
 import { AdminMembersService } from './admin-members.service';
-import { IdentityChallengeModule } from '../../auth/public-api';
+import {
+  AccountSecurityAdministrationModule,
+  MemberRechargeVerificationModule,
+} from '../../auth/public-api';
 
 @Module({
   imports: [
     PrismaModule,
     LoyaltyModule,
     MembershipModule,
-    PhoneVerificationModule,
-    EmailModule,
-    IdentityChallengeModule,
+    MemberRechargeVerificationModule,
+    AccountSecurityAdministrationModule,
   ],
   controllers: [AdminMembersController],
   providers: [AdminMembersService],

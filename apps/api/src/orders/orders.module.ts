@@ -1,17 +1,17 @@
 // apps/api/src/orders/orders.module.ts
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaModule } from './orders-prisma';
 import { OrdersController } from './orders.controller';
+import { OrderEventsBus } from './order-events.bus';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
-import { MembershipModule } from '../membership/membership.module';
+import { MembershipModule } from '../membership/public-api';
 import { PromotionsModule } from '../promotions/public-api';
 import { LocationModule } from '../location/location.module';
 import { NotificationModule } from '../notifications/notification.module';
 import { EmailModule } from '../email/email.module';
-import { MessagingModule } from '../messaging/messaging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
@@ -26,6 +26,8 @@ import { POS_ORDER_READ } from './pos-order-read.contract';
 import { PosOrderReadService } from './pos-order-read.service';
 import { POS_ORDER_OPERATIONS } from './pos-order-operations.contract';
 import { PosOrderOperationsService } from './pos-order-operations.service';
+import { AdminMemberOrdersController } from './admin-member-orders.controller';
+import { AdminMemberOrdersReadService } from './admin-member-orders-read.service';
 
 @Module({
   imports: [
@@ -38,11 +40,12 @@ import { PosOrderOperationsService } from './pos-order-operations.service';
     LocationModule,
     NotificationModule,
     EmailModule,
-    MessagingModule,
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, AdminMemberOrdersController],
   providers: [
+    OrderEventsBus,
     OrdersService,
+    AdminMemberOrdersReadService,
     PosOrderReadService,
     {
       provide: POS_ORDER_READ,

@@ -32,8 +32,8 @@ describe('AdminMembersService loyalty policy characterization', () => {
     const service = new AdminMembersService(
       prisma as never,
       {} as never,
-      loyaltyPolicyReader as never,
       {} as never,
+      loyaltyPolicyReader as never,
       {} as never,
       {} as never,
       {} as never,

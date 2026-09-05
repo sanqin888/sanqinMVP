@@ -1,6 +1,10 @@
 import { Channel, PaymentMethod, Prisma } from '@prisma/client';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  LOYALTY_ORDER_USAGE_READER,
+  type LoyaltyOrderUsageReaderPort,
+} from '../loyalty/public-api';
 import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
 import {
   buildOrderItemComponentDisplaySnapshots,
@@ -14,7 +18,11 @@ type CheckoutMetadataRecord = Record<string, unknown>;
 
 @Injectable()
 export class PrintPosPayloadService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(LOYALTY_ORDER_USAGE_READER)
+    private readonly loyaltyOrderUsageReader: LoyaltyOrderUsageReaderPort,
+  ) {}
 
   async getByStableId(
     orderStableId: string,
@@ -78,7 +86,10 @@ export class PrintPosPayloadService {
       subtotalAfterDiscountCents:
         order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0,
     });
-    const balancePaidCents = await this.getBalancePaidCents(order.id);
+    const { balancePaidCents } =
+      await this.loyaltyOrderUsageReader.getOrderUsage({
+        orderStableId: order.orderStableId,
+      });
     const orderTotalCents = order.totalCents ?? 0;
     const externalPaidCents = Math.max(0, orderTotalCents - balancePaidCents);
     const intentMetadata = await this.getCheckoutIntentMetadata(orderNumber);
@@ -136,23 +147,6 @@ export class PrintPosPayloadService {
         deliverySubsidyCents,
       },
     };
-  }
-
-  private async getBalancePaidCents(orderDbId: string): Promise<number> {
-    const ledgers = await this.prisma.loyaltyLedger.findMany({
-      where: {
-        orderId: orderDbId,
-        target: 'BALANCE',
-        type: 'REDEEM_ON_ORDER',
-        deltaMicro: { lt: 0n },
-      },
-      select: { deltaMicro: true },
-    });
-    const balanceMicroUsed = ledgers.reduce(
-      (sum, entry) => sum + -entry.deltaMicro,
-      0n,
-    );
-    return Number(balanceMicroUsed) / 10_000;
   }
 
   private async getCheckoutIntentMetadata(

@@ -52,7 +52,6 @@ describe('OrderIngestionService', () => {
     applyMembershipPoints: false,
     applyCoupons: false,
     persistExternalSnapshot: true,
-    emitPaidLifecycleEvent: false,
   };
 
   afterEach(() => {
@@ -90,7 +89,7 @@ describe('OrderIngestionService', () => {
     const prisma = {
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
     };
-    const service = new OrderIngestionService(prisma as never, {} as never);
+    const service = new OrderIngestionService(prisma as never);
     await service.ingest(input, policies);
     await service.ingest(input, policies);
     expect(tx.order.create).toHaveBeenCalledTimes(1);
@@ -116,12 +115,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-      {} as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(
       {
@@ -173,12 +169,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-      {} as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(
       {
@@ -224,12 +217,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-      {} as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(
       {
@@ -264,12 +254,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-      {} as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(input, policies);
 
@@ -279,7 +266,7 @@ describe('OrderIngestionService', () => {
   });
 
   it('rejects a scheduled order without a stable scheduledReadyAt', async () => {
-    const service = new OrderIngestionService({} as never, {} as never);
+    const service = new OrderIngestionService({} as never);
     await expect(
       service.ingest(
         {
@@ -324,7 +311,7 @@ describe('OrderIngestionService', () => {
     const prisma = {
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
     };
-    const service = new OrderIngestionService(prisma as never, {} as never);
+    const service = new OrderIngestionService(prisma as never);
     const snapshot = { source: 'uber', nested: { value: 1 } };
     const modifierInput = {
       ...input,
@@ -363,7 +350,7 @@ describe('OrderIngestionService', () => {
   });
 
   it('不会把 Web 支付校验套用到 Uber 订单', async () => {
-    const service = new OrderIngestionService({} as never, {} as never);
+    const service = new OrderIngestionService({} as never);
     await expect(
       service.ingest(input, { ...policies, verifyWebPayment: true }),
     ).rejects.toThrow('only be enabled for web orders');

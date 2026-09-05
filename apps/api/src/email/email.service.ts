@@ -932,6 +932,30 @@ ${totalLines.join('\n')}`;
     });
   }
 
+  async sendMemberRechargeVerificationEmail(params: {
+    to: string;
+    code: string;
+    expiresInMin: number;
+    locale?: string;
+    userStableId: string;
+  }) {
+    const isZh = params.locale?.toLowerCase().startsWith('zh');
+    return this.sendEmail({
+      to: params.to,
+      subject: isZh ? 'POS会员充值验证码' : 'POS recharge verification code',
+      text: isZh
+        ? `您的会员充值验证码：${params.code}。${params.expiresInMin}分钟内有效。`
+        : `Your member recharge verification code is ${params.code}. It expires in ${params.expiresInMin} minutes.`,
+      html: isZh
+        ? `<p>您的会员充值验证码：<strong>${params.code}</strong></p><p>${params.expiresInMin}分钟内有效。</p>`
+        : `<p>Your member recharge verification code is <strong>${params.code}</strong></p><p>It expires in ${params.expiresInMin} minutes.</p>`,
+      locale: params.locale,
+      templateType: MessagingTemplateType.OTP,
+      tags: { type: 'pos_recharge_otp' },
+      userStableId: params.userStableId,
+    });
+  }
+
   async sendStaffInviteEmail(params: {
     to: string;
     token: string;

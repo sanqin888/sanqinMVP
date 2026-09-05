@@ -27,7 +27,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import {
+  LOYALTY_ORDER_PAID_SETTLEMENT,
+  LOYALTY_ORDER_USAGE_READER,
   LOYALTY_POLICY_READER,
+  type LoyaltyOrderPaidSettlementPort,
+  type LoyaltyOrderUsageReaderPort,
   type LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
@@ -41,7 +45,7 @@ import {
   ORDER_STATUS_TRANSITIONS,
   OrderStatus,
 } from './order-status';
-import { normalizeStableId } from '../common/utils/stable-id';
+import { generateStableId, normalizeStableId } from '../common/utils/stable-id';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
   UberDirectDropoffDetails,
@@ -69,6 +73,7 @@ import {
   DAILY_SPECIAL_OFFERS,
   PROMOTION_CONTEXT_READER,
   evaluateOrderPromotions,
+  resolvePromotionLoyaltyMultiplier,
   type CouponPromotionLike,
   type DailySpecialOffersPort,
   type PromotionContextReaderPort,
@@ -80,7 +85,7 @@ import {
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
-import { OrderEventsBus } from '../messaging/order-events.bus';
+import { OrderEventsBus } from './order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 import {
@@ -407,13 +412,16 @@ export type ConfirmedPaymentOrderResult = {
 export class OrdersService {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
-  private readonly printTopicArn = process.env.PRINT_SNS_TOPIC_ARN;
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
     private readonly loyalty: LoyaltyService,
+    @Inject(LOYALTY_ORDER_PAID_SETTLEMENT)
+    private readonly loyaltyOrderPaidSettlement: LoyaltyOrderPaidSettlementPort,
+    @Inject(LOYALTY_ORDER_USAGE_READER)
+    private readonly loyaltyOrderUsageReader: LoyaltyOrderUsageReaderPort,
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
@@ -735,7 +743,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { orderStableId },
       select: {
-        id: true,
+        orderStableId: true,
         channel: true,
         totalCents: true,
         paymentBreakdownJson: true,
@@ -746,7 +754,7 @@ export class OrdersService {
   }
 
   private async resolveExternalPaymentCents(order: {
-    id: string;
+    orderStableId: string;
     channel: Channel;
     totalCents: number;
     paymentBreakdownJson?: Prisma.JsonValue | null;
@@ -774,8 +782,10 @@ export class OrdersService {
     // Reconstruct the tender split from financial facts: points are already
     // reflected in totalCents, while committed Store Balance is a payment
     // tender. Anything left after that balance tender is external payment.
-    const settledBalanceCents =
-      await this.loyalty.getSettledBalancePaymentCentsForOrder(order.id);
+    const { balancePaidCents: settledBalanceCents } =
+      await this.loyaltyOrderUsageReader.getOrderUsage({
+        orderStableId: order.orderStableId,
+      });
     return Math.max(
       0,
       order.totalCents - Math.min(order.totalCents, settledBalanceCents),
@@ -927,47 +937,11 @@ export class OrdersService {
     };
   }
 
-  private async getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
+  private getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
     balancePaidCents: number;
     pointsEarned: number;
   }> {
-    const order = await this.prisma.order.findUnique({
-      where: { orderStableId },
-      select: { id: true },
-    });
-
-    if (!order) {
-      return {
-        balancePaidCents: 0,
-        pointsEarned: 0,
-      };
-    }
-
-    const ledgers = await this.prisma.loyaltyLedger.findMany({
-      where: {
-        orderId: order.id,
-        OR: [
-          { target: 'BALANCE', type: 'REDEEM_ON_ORDER' },
-          {
-            target: 'POINTS',
-            type: { in: ['EARN_ON_PURCHASE', 'AMEND_EARN_ADJUST'] },
-          },
-        ],
-      },
-      select: { target: true, deltaMicro: true },
-    });
-
-    const balanceMicroUsed = ledgers
-      .filter((entry) => entry.target === 'BALANCE' && entry.deltaMicro < 0n)
-      .reduce((sum, entry) => sum + -entry.deltaMicro, 0n);
-    const pointsEarnedMicro = ledgers
-      .filter((entry) => entry.target === 'POINTS')
-      .reduce((sum, entry) => sum + entry.deltaMicro, 0n);
-
-    return {
-      balancePaidCents: Number(balanceMicroUsed) / 10_000,
-      pointsEarned: Number(pointsEarnedMicro) / 1_000_000,
-    };
+    return this.loyaltyOrderUsageReader.getOrderUsage({ orderStableId });
   }
   private isClientRequestId(value: unknown): value is string {
     return typeof value === 'string' && this.CLIENT_REQUEST_ID_RE.test(value);
@@ -1438,6 +1412,15 @@ export class OrdersService {
     const pickupTime = this.computePickupTimeFromCheckoutMetadata({
       acceptedAt: order.paidAt,
       metadata: checkoutIntent?.metadataJson,
+    });
+
+    void this.loyaltyOrderPaidSettlement.settleOrderPaid({
+      orderStableId: order.orderStableId,
+      subtotalCents: netSubtotalForRewards,
+      redeemValueCents: order.loyaltyRedeemCents ?? 0,
+      earnMultiplier: resolvePromotionLoyaltyMultiplier(
+        order.promotionSnapshot,
+      ),
     });
 
     this.orderEventsBus.emitOrderPaidVerified({
@@ -2641,6 +2624,7 @@ export class OrdersService {
           tx,
           attemptId: input.attemptId,
           orderId: input.internalOrderId,
+          orderStableId: input.orderStableId,
         });
         if (
           committedTender.pointsValueCents !== snapshot.tender.pointsCents ||
@@ -2683,6 +2667,7 @@ export class OrdersService {
             paidAt,
             paymentMethod,
             userId: snapshot.userId,
+            userStableId: snapshot.order.userStableId ?? null,
             orderStableId: input.orderStableId,
             clientRequestId,
             channel: snapshot.order.channel,
@@ -3049,6 +3034,7 @@ export class OrdersService {
       normalizedHeaderKey ??
       normalizedBodyStableId ??
       normalizedLegacyRequestId;
+    const orderStableId = stableKey ?? generateStableId();
     const legacyKey =
       providedClientRequestId && providedClientRequestId.length > 0
         ? providedClientRequestId
@@ -3311,6 +3297,7 @@ export class OrdersService {
               tx,
               userId,
               orderId,
+              orderStableId,
               sourceKey: 'ORDER',
               requestedPoints,
               subtotalAfterCoupon,
@@ -3333,6 +3320,7 @@ export class OrdersService {
                 tx,
                 userId,
                 orderId,
+                orderStableId,
                 amountCents: balanceUsedCents,
               });
             }
@@ -3407,7 +3395,8 @@ export class OrdersService {
                 paidAt,
                 paymentMethod,
                 userId: userId ?? null,
-                ...(stableKey ? { orderStableId: stableKey } : {}),
+                userStableId: normalizedUserStableId ?? null,
+                orderStableId,
                 clientRequestId,
                 channel: dto.channel,
                 ...(storeId ? { storeId } : {}),
@@ -4003,6 +3992,7 @@ export class OrdersService {
       where: { orderStableId: params.orderStableId },
       select: {
         id: true,
+        orderStableId: true,
         channel: true,
         paymentMethod: true,
         paymentBreakdownJson: true,
@@ -4434,6 +4424,7 @@ export class OrdersService {
         const r = await this.loyalty.applyAmendmentAdjustments({
           tx,
           orderId: internalOrderId,
+          orderStableId: order.orderStableId,
           userId: orderUserId!,
           amendmentStableId: amendment.amendmentStableId,
           baseNetSubtotalCents,

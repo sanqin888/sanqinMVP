@@ -1,7 +1,7 @@
 // apps/api/src/auth/auth.module.ts
 import { Global, Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaModule } from './identity-prisma';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { SessionAuthGuard } from './session-auth.guard';
@@ -9,33 +9,57 @@ import { OptionalSessionAuthGuard } from './optional-session-auth.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import { GoogleStrategy } from './oauth/google.strategy';
 import { GoogleStartGuard } from './oauth/google.guard';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from './identity-prisma';
 import { RolesGuard } from './roles.guard';
 import { MfaGuard } from './mfa.guard';
-import { EmailModule } from '../email/email.module';
 import { AdminMfaGuard } from './admin-mfa.guard';
-import { SmsModule } from '../sms/sms.module';
-import { MessagingModule } from '../messaging/messaging.module';
-import { NotificationModule } from '../notifications/notification.module';
+import { AuthChallengeDeliveryModule } from '../messaging/public-api';
+import { NotificationModule } from '../notifications/public-api';
 import { IdentityChallengeModule } from './challenge-engine.module';
+import { OtpChallengePolicyModule } from './otp-challenge-policy.module';
 import { PosDeviceModule } from '../pos/public-api';
 import { CouponsModule } from '../coupons/public-api';
+import {
+  STAFF_INVITE_DELIVERY,
+  StaffInviteDeliveryModule,
+  type StaffInviteDeliveryPort,
+} from '../email/public-api';
+import { STAFF_ADMINISTRATION } from './staff-administration.contract';
+import { StaffAdministrationService } from './staff-administration.service';
 
 @Global()
 @Module({
   imports: [
     PrismaModule,
     PassportModule,
-    EmailModule,
-    SmsModule,
-    MessagingModule,
+    AuthChallengeDeliveryModule,
     NotificationModule,
     IdentityChallengeModule,
+    OtpChallengePolicyModule,
     PosDeviceModule,
     CouponsModule,
+    StaffInviteDeliveryModule,
   ],
   providers: [
     AuthService,
+    {
+      provide: StaffAdministrationService,
+      useFactory: (
+        prisma: PrismaService,
+        authService: AuthService,
+        staffInviteDelivery: StaffInviteDeliveryPort,
+      ) =>
+        new StaffAdministrationService(
+          prisma,
+          authService,
+          staffInviteDelivery,
+        ),
+      inject: [PrismaService, AuthService, STAFF_INVITE_DELIVERY],
+    },
+    {
+      provide: STAFF_ADMINISTRATION,
+      useExisting: StaffAdministrationService,
+    },
     PrismaService,
     SessionAuthGuard,
     OptionalSessionAuthGuard,
@@ -49,6 +73,7 @@ import { CouponsModule } from '../coupons/public-api';
   controllers: [AuthController],
   exports: [
     AuthService,
+    STAFF_ADMINISTRATION,
     SessionAuthGuard,
     OptionalSessionAuthGuard,
     AdminMfaGuard,

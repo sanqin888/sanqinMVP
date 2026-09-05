@@ -1,5 +1,10 @@
 // apps/api/src/loyalty/loyalty.service.ts
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -16,8 +21,12 @@ import type {
   HoldPaymentTenderReservationInput,
   PaymentTenderReservationPort,
 } from '../benefits/contracts/payment-benefit-reservation.contract';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from './loyalty-prisma';
 import { resolvePromotionLoyaltyMultiplier } from '../promotions/public-api';
+import type {
+  LoyaltyOrderPaidSettlementInput,
+  LoyaltyOrderPaidSettlementPort,
+} from './loyalty-order-paid-settlement.contract';
 import type {
   LoyaltyPolicyReaderPort,
   LoyaltyPolicySnapshot,
@@ -54,6 +63,7 @@ type LoyaltyConfig = LoyaltyPolicySnapshot;
 type OrderForLoyaltySettlement = Pick<
   Prisma.OrderGetPayload<Record<string, never>>,
   | 'id'
+  | 'orderStableId'
   | 'userId'
   | 'subtotalCents'
   | 'subtotalAfterDiscountCents'
@@ -155,8 +165,13 @@ function buildIdempotencyChildKey(base: string, suffix: string): string {
 
 @Injectable()
 export class LoyaltyService
-  implements LoyaltyPolicyReaderPort, PaymentTenderReservationPort
+  implements
+    LoyaltyPolicyReaderPort,
+    PaymentTenderReservationPort,
+    LoyaltyOrderPaidSettlementPort
 {
+  private readonly logger = new Logger(LoyaltyService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(COUPON_PROGRAM_TRIGGER)
@@ -446,8 +461,9 @@ export class LoyaltyService
     tx: Prisma.TransactionClient;
     attemptId: string;
     orderId: string;
+    orderStableId: string;
   }): Promise<{ pointsValueCents: number; balanceCents: number }> {
-    const { tx, orderId } = params;
+    const { tx, orderId, orderStableId } = params;
     const attemptId = params.attemptId.trim();
     if (!attemptId) {
       throw new BadRequestException('payment attemptId is required');
@@ -518,6 +534,7 @@ export class LoyaltyService
         data: {
           accountId: reservation.accountId,
           orderId,
+          orderStableId,
           type: LoyaltyEntryType.REDEEM_ON_ORDER,
           target: 'POINTS',
           sourceKey: LEDGER_SOURCE_ORDER,
@@ -534,6 +551,7 @@ export class LoyaltyService
         data: {
           accountId: reservation.accountId,
           orderId,
+          orderStableId,
           type: LoyaltyEntryType.REDEEM_ON_ORDER,
           target: 'BALANCE',
           sourceKey: LEDGER_SOURCE_PAYMENT_BALANCE,
@@ -605,6 +623,7 @@ export class LoyaltyService
 
     await this.settleOnPaid({
       orderId: order.id,
+      orderStableId: order.orderStableId,
       userId: order.userId ?? undefined,
       subtotalCents: subtotalForRewards,
       redeemValueCents,
@@ -631,6 +650,46 @@ export class LoyaltyService
     };
   }
 
+  async settleOrderPaid(input: LoyaltyOrderPaidSettlementInput): Promise<void> {
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { orderStableId: input.orderStableId },
+        select: { id: true, userId: true },
+      });
+
+      if (!order) {
+        this.logger.warn(
+          `[Loyalty] Order not found for settlement: ${input.orderStableId}`,
+        );
+        return;
+      }
+
+      if (!order.userId) {
+        this.logger.debug(
+          `[Loyalty] Skip settle for order=${input.orderStableId}: no userId linked`,
+        );
+        return;
+      }
+
+      await this.settleOnPaid({
+        orderId: order.id,
+        orderStableId: input.orderStableId,
+        userId: order.userId,
+        subtotalCents: input.subtotalCents,
+        redeemValueCents: input.redeemValueCents,
+        earnMultiplier: input.earnMultiplier,
+      });
+      this.logger.log(
+        `[Loyalty] Settled points for order=${input.orderStableId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[Loyalty] Failed to settle points for order=${input.orderStableId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
   /** 只读：返回当前余额 micro */
   async peekBalanceMicro(userId: string): Promise<bigint> {
     const acc = await this.prisma.loyaltyAccount.findUnique({
@@ -648,6 +707,7 @@ export class LoyaltyService
    */
   async settleOnPaid(params: {
     orderId: string;
+    orderStableId: string;
     userId?: string;
     subtotalCents: number; // 折后商品小计（税前、未扣积分）
     redeemValueCents: number; // 本单抵扣掉的“现金价值”（分）
@@ -656,6 +716,7 @@ export class LoyaltyService
   }) {
     const {
       orderId,
+      orderStableId,
       userId,
       subtotalCents,
       redeemValueCents,
@@ -707,6 +768,7 @@ export class LoyaltyService
             data: {
               accountId: accRaw.id,
               orderId,
+              orderStableId,
               type: LoyaltyEntryType.REDEEM_ON_ORDER,
               sourceKey: LEDGER_SOURCE_ORDER,
               deltaMicro: -willDeduct,
@@ -780,6 +842,7 @@ export class LoyaltyService
             data: {
               accountId: accRaw.id,
               orderId,
+              orderStableId,
               type: LoyaltyEntryType.EARN_ON_PURCHASE,
               sourceKey: LEDGER_SOURCE_ORDER,
               deltaMicro: earnedMicro,
@@ -857,6 +920,7 @@ export class LoyaltyService
                 data: {
                   accountId: refAcc.id,
                   orderId,
+                  orderStableId,
                   type: LoyaltyEntryType.REFERRAL_BONUS,
                   sourceKey: LEDGER_SOURCE_ORDER,
                   deltaMicro: referralMicro,
@@ -895,30 +959,15 @@ export class LoyaltyService
     }
   }
 
-  async getSettledBalancePaymentCentsForOrder(
-    orderId: string,
-  ): Promise<number> {
-    const settled = await this.prisma.loyaltyLedger.aggregate({
-      where: {
-        orderId,
-        type: LoyaltyEntryType.REDEEM_ON_ORDER,
-        target: 'BALANCE',
-        deltaMicro: { lt: 0n },
-      },
-      _sum: { deltaMicro: true },
-    });
-    const settledMicro = -(settled._sum.deltaMicro ?? 0n);
-    return Number(settledMicro / 10_000n);
-  }
-
   // ✅ 新增方法：扣除储值余额
   async deductBalanceForOrder(params: {
     tx: Prisma.TransactionClient;
     userId: string;
     orderId: string;
+    orderStableId: string;
     amountCents: number;
   }): Promise<void> {
-    const { tx, userId, orderId, amountCents } = params;
+    const { tx, userId, orderId, orderStableId, amountCents } = params;
     if (amountCents <= 0) return;
 
     const account = await this.ensureAccountWithTx(tx, userId);
@@ -962,6 +1011,7 @@ export class LoyaltyService
         data: {
           accountId: account.id,
           orderId,
+          orderStableId,
           type: LoyaltyEntryType.REDEEM_ON_ORDER,
           target: 'BALANCE', // ✅ 明确标记扣除的是余额
           sourceKey: sk,
@@ -986,6 +1036,7 @@ export class LoyaltyService
       where: { id: orderId },
       select: {
         userId: true,
+        orderStableId: true,
         subtotalCents: true,
         subtotalAfterDiscountCents: true,
         couponDiscountCents: true,
@@ -1050,6 +1101,7 @@ export class LoyaltyService
             data: {
               accountId: acc.id,
               orderId,
+              orderStableId: order.orderStableId,
               type: LoyaltyEntryType.REFUND_REVERSE_EARN,
               sourceKey: LEDGER_SOURCE_FULL_REFUND,
               deltaMicro: -earn.deltaMicro,
@@ -1088,6 +1140,7 @@ export class LoyaltyService
             data: {
               accountId: acc.id,
               orderId,
+              orderStableId: order.orderStableId,
               type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
               target: 'POINTS',
               sourceKey: LEDGER_SOURCE_FULL_REFUND,
@@ -1130,6 +1183,7 @@ export class LoyaltyService
             data: {
               accountId: acc.id,
               orderId,
+              orderStableId: order.orderStableId,
               type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
               target: 'BALANCE',
               sourceKey: LEDGER_SOURCE_FULL_REFUND_BALANCE,
@@ -1205,6 +1259,7 @@ export class LoyaltyService
               data: {
                 accountId: refAcc.id,
                 orderId,
+                orderStableId: order.orderStableId,
                 type: LoyaltyEntryType.REFUND_REVERSE_REFERRAL,
                 sourceKey: LEDGER_SOURCE_FULL_REFUND,
                 deltaMicro: -referralLedger.deltaMicro,
@@ -1282,6 +1337,7 @@ export class LoyaltyService
     tx: Prisma.TransactionClient;
     userId?: string;
     orderId: string;
+    orderStableId: string;
     sourceKey?: string;
     requestedPoints?: number;
     subtotalAfterCoupon: number;
@@ -1290,6 +1346,7 @@ export class LoyaltyService
       tx,
       userId,
       orderId,
+      orderStableId,
       sourceKey,
       requestedPoints,
       subtotalAfterCoupon,
@@ -1361,6 +1418,7 @@ export class LoyaltyService
       data: {
         accountId: account.id,
         orderId,
+        orderStableId,
         type: LoyaltyEntryType.REDEEM_ON_ORDER,
         sourceKey: sk,
         deltaMicro: -redeemMicro,
@@ -1411,6 +1469,7 @@ export class LoyaltyService
       bonusPoints,
     } = params;
 
+    const normalizedUserStableId = userStableId.trim();
     const cents = Number.isFinite(amountCents) ? Math.round(amountCents) : NaN;
     if (!Number.isFinite(cents) || cents <= 0) {
       throw new BadRequestException('amountCents must be a positive number');
@@ -1428,7 +1487,10 @@ export class LoyaltyService
 
     const topupResult = await this.prisma.$transaction(async (tx) => {
       // 0) 解析 userId
-      const userId = await this.resolveUserIdByStableIdWithTx(tx, userStableId);
+      const userId = await this.resolveUserIdByStableIdWithTx(
+        tx,
+        normalizedUserStableId,
+      );
       const loyaltyConfig = await this.getLoyaltyPolicySnapshotWithTx(tx);
 
       // 1) 确保账户存在
@@ -1485,6 +1547,7 @@ export class LoyaltyService
           channel: Channel.in_store,
           fulfillmentType: FulfillmentType.pickup,
           userId,
+          userStableId: normalizedUserStableId,
           subtotalCents: cents,
           taxCents: 0,
           totalCents: cents,
@@ -1492,7 +1555,7 @@ export class LoyaltyService
           loyaltyRedeemCents: 0,
           couponDiscountCents: 0,
         },
-        select: { id: true },
+        select: { id: true, orderStableId: true },
       });
 
       // 计算本金部分 (pointsToCredit 通常等于 amountCents/100)
@@ -1515,6 +1578,7 @@ export class LoyaltyService
         data: {
           accountId: acc.id,
           orderId: topupOrder.id,
+          orderStableId: topupOrder.orderStableId,
           sourceKey: LEDGER_SOURCE_TOPUP,
           type: LoyaltyEntryType.TOPUP_PURCHASED,
           target: 'BALANCE', // 标记为余额
@@ -1539,6 +1603,7 @@ export class LoyaltyService
           data: {
             accountId: acc.id,
             orderId: topupOrder.id,
+            orderStableId: topupOrder.orderStableId,
             sourceKey: LEDGER_SOURCE_TOPUP,
             type: LoyaltyEntryType.ADJUSTMENT_MANUAL, // 或定义 TOPUP_BONUS
             target: 'POINTS', // 标记为积分
@@ -1595,6 +1660,7 @@ export class LoyaltyService
               data: {
                 accountId: refAcc.id,
                 orderId: topupOrder.id,
+                orderStableId: topupOrder.orderStableId,
                 sourceKey: LEDGER_SOURCE_TOPUP,
                 type: LoyaltyEntryType.REFERRAL_BONUS,
                 target: 'POINTS',
@@ -1665,6 +1731,7 @@ export class LoyaltyService
   async applyAmendmentAdjustments(params: {
     tx: Prisma.TransactionClient;
     orderId: string;
+    orderStableId: string;
     userId: string;
     amendmentStableId: string;
 
@@ -1680,6 +1747,7 @@ export class LoyaltyService
     const {
       tx,
       orderId,
+      orderStableId,
       userId,
       amendmentStableId,
       baseNetSubtotalCents,
@@ -1782,6 +1850,7 @@ export class LoyaltyService
         data: {
           accountId: acc.id,
           orderId,
+          orderStableId,
           type: LoyaltyEntryType.AMEND_RETURN_REDEEM,
           sourceKey,
           deltaMicro: redeemReturnMicro,
@@ -1822,6 +1891,7 @@ export class LoyaltyService
           data: {
             accountId: acc.id,
             orderId,
+            orderStableId,
             type: LoyaltyEntryType.AMEND_EARN_ADJUST,
             sourceKey,
             deltaMicro: earnAdjustMicro,
@@ -1837,6 +1907,7 @@ export class LoyaltyService
           data: {
             accountId: acc.id,
             orderId,
+            orderStableId,
             type: LoyaltyEntryType.AMEND_EARN_ADJUST,
             sourceKey,
             deltaMicro: 0n,
@@ -1851,6 +1922,7 @@ export class LoyaltyService
         data: {
           accountId: acc.id,
           orderId,
+          orderStableId,
           type: LoyaltyEntryType.AMEND_EARN_ADJUST,
           sourceKey,
           deltaMicro: 0n,
@@ -1923,6 +1995,7 @@ export class LoyaltyService
             data: {
               accountId: refAcc.id,
               orderId,
+              orderStableId,
               type: LoyaltyEntryType.AMEND_REFERRAL_ADJUST,
               sourceKey,
               deltaMicro: referralAdjustMicro,

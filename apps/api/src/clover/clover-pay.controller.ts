@@ -6,6 +6,7 @@ import {
   Controller,
   Get,
   Headers,
+  Inject,
   Ip,
   NotFoundException,
   OnModuleDestroy,
@@ -37,7 +38,10 @@ import { CreateOnlinePricingQuoteDto } from './dto/create-online-pricing-quote.d
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
 import { PricingTokenService } from './pricing-token.service';
 import { EmailService } from '../email/email.service';
-import { EmailVerificationService } from '../email/email-verification.service';
+import {
+  IDENTITY_EMAIL_VERIFICATION,
+  type IdentityEmailVerificationPort,
+} from '../auth/public-api';
 import { PhoneVerificationService } from '../phone-verification/phone-verification.service';
 import { MessagingTemplateType, PaymentMethod } from '@prisma/client';
 import {
@@ -96,7 +100,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     private readonly orders: OrdersService,
     private readonly pricingTokens: PricingTokenService,
     private readonly emailService: EmailService,
-    private readonly emailVerification: EmailVerificationService,
+    @Inject(IDENTITY_EMAIL_VERIFICATION)
+    private readonly emailVerification: IdentityEmailVerificationPort,
     private readonly phoneVerification: PhoneVerificationService,
   ) {}
 

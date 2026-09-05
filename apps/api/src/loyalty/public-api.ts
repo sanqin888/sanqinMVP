@@ -1,4 +1,21 @@
 export {
+  LOYALTY_LEDGER_READER,
+  type LoyaltyLedgerReaderPort,
+  type LoyaltyLedgerReadEntry,
+  type LoyaltyLedgerReadResult,
+  type LoyaltyLedgerReadTarget,
+} from './loyalty-ledger-read.contract';
+export {
+  LOYALTY_ORDER_PAID_SETTLEMENT,
+  type LoyaltyOrderPaidSettlementInput,
+  type LoyaltyOrderPaidSettlementPort,
+} from './loyalty-order-paid-settlement.contract';
+export {
+  LOYALTY_ORDER_USAGE_READER,
+  type LoyaltyOrderUsageReaderPort,
+  type LoyaltyOrderUsageReadResult,
+} from './loyalty-order-usage-read.contract';
+export {
   LOYALTY_POLICY_READER,
   LOYALTY_POLICY_SETTINGS_READER,
   LOYALTY_POLICY_WRITER,

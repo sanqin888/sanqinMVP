@@ -45,7 +45,6 @@ export type OrderIngestionPolicies = {
   applyMembershipPoints: boolean;
   applyCoupons: boolean;
   persistExternalSnapshot: boolean;
-  emitPaidLifecycleEvent: boolean;
 };
 
 export type NormalizedOrderInput = {

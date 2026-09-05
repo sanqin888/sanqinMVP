@@ -5,6 +5,8 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
+  NotFoundException,
   Post,
   Put,
   Param,
@@ -15,12 +17,19 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { MembershipService } from './membership.service';
-import { MembershipOnboardingService } from './membership-onboarding.service';
+import { CustomerService } from './customer.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { MfaGuard } from '../auth/mfa.guard';
 import { AuthService } from '../auth/auth.service';
 import { TRUSTED_DEVICE_COOKIE } from '../auth/trusted-device.constants';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import {
+  ACCOUNT_SECURITY_ADMINISTRATION,
+  AccountSecurityAdministrationError,
+  type AccountSecurityAdministrationPort,
+  IDENTITY_EMAIL_VERIFICATION,
+  type IdentityEmailVerificationPort,
+} from '../auth/public-api';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string };
@@ -42,9 +51,25 @@ function maskEmail(value?: string | null): string | null {
 export class MembershipController {
   constructor(
     private readonly membership: MembershipService,
-    private readonly onboarding: MembershipOnboardingService,
+    private readonly customer: CustomerService,
     private readonly auth: AuthService,
+    @Inject(IDENTITY_EMAIL_VERIFICATION)
+    private readonly emailVerification: IdentityEmailVerificationPort,
+    @Inject(ACCOUNT_SECURITY_ADMINISTRATION)
+    private readonly accountSecurity: AccountSecurityAdministrationPort,
   ) {}
+
+  private rethrowAccountSecurityError(error: unknown): never {
+    if (error instanceof AccountSecurityAdministrationError) {
+      if (error.code === 'SESSION_NOT_FOUND') {
+        throw new NotFoundException('session not found');
+      }
+      if (error.code === 'USER_NOT_FOUND') {
+        throw new NotFoundException('user not found');
+      }
+    }
+    throw error;
+  }
 
   @Get('summary')
   async summary(@Req() req: AuthedRequest) {
@@ -66,7 +91,7 @@ export class MembershipController {
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
     }
-    return this.onboarding.getStatus(userStableId);
+    return this.customer.getOnboardingStatus(userStableId);
   }
 
   @Post('onboarding')
@@ -92,7 +117,7 @@ export class MembershipController {
       );
     }
 
-    return this.onboarding.finalize({
+    return this.customer.finalizeOnboarding({
       userStableId,
       birthdayYear: body.birthdayYear,
       birthdayMonth: body.birthdayMonth,
@@ -102,15 +127,19 @@ export class MembershipController {
 
   @Get('devices')
   async listDevices(@Req() req: AuthedRequest) {
-    const userId = req.user?.id;
-    if (!userId) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
       throw new BadRequestException('userId is required');
     }
 
-    return this.membership.getDeviceManagement({
-      userId,
-      currentSessionId: req.session?.sessionId,
-    });
+    try {
+      return await this.accountSecurity.getDeviceManagement(
+        userStableId,
+        req.session?.sessionId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
   }
 
   @Delete('devices/sessions/:sessionId')
@@ -118,32 +147,43 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Param('sessionId') sessionId?: string,
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
       throw new BadRequestException('userId is required');
     }
     if (!sessionId) {
       throw new BadRequestException('sessionId is required');
     }
 
-    await this.membership.revokeSession({ userId, sessionId });
+    try {
+      await this.accountSecurity.revokeSession(userStableId, sessionId);
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
     return { success: true };
   }
 
   @Delete('devices/trusted/:deviceId')
   async revokeTrustedDevice(
     @Req() req: AuthedRequest,
-    @Param('deviceId') deviceId?: string,
+    @Param('deviceId') trustedDeviceStableId?: string,
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
       throw new BadRequestException('userId is required');
     }
-    if (!deviceId) {
+    if (!trustedDeviceStableId) {
       throw new BadRequestException('deviceId is required');
     }
 
-    await this.membership.revokeTrustedDevice({ userId, deviceId });
+    try {
+      await this.accountSecurity.revokeTrustedDevice(
+        userStableId,
+        trustedDeviceStableId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
     return { success: true };
   }
 
@@ -158,8 +198,9 @@ export class MembershipController {
     },
   ) {
     const userId = req.user?.id;
+    const userStableId = req.user?.userStableId;
     const currentSessionId = req.session?.sessionId;
-    if (!userId) {
+    if (!userId || !userStableId) {
       throw new BadRequestException('userId is required');
     }
     if (!body?.sessionId) {
@@ -169,10 +210,15 @@ export class MembershipController {
       throw new BadRequestException('sessionId must be current');
     }
 
-    const sessionLabel = await this.membership.getSessionDeviceLabel({
-      userId,
-      sessionId: body.sessionId,
-    });
+    let sessionLabel: { label?: string };
+    try {
+      sessionLabel = await this.accountSecurity.getSessionDeviceLabel(
+        userStableId,
+        body.sessionId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
     const label = body.label?.trim() || sessionLabel.label;
     const trustedDevice = await this.auth.createTrustedDeviceForUser({
       userId,
@@ -231,7 +277,7 @@ export class MembershipController {
       throw new BadRequestException('marketingEmailOptIn must be boolean');
     }
 
-    const user = await this.membership.updateMarketingConsent({
+    const user = await this.customer.updateMarketingConsent({
       userStableId,
       marketingEmailOptIn,
     });
@@ -247,15 +293,19 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body() body: { email?: string },
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new BadRequestException('userId is required');
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
     }
 
-    const result = await this.membership.requestEmailVerification({
-      userId,
-      email: body.email,
+    const result = await this.emailVerification.requestUserVerification({
+      userStableId,
+      email: body.email ?? '',
     });
+
+    if (!result.ok) {
+      throw new BadRequestException(result.error ?? 'email_send_failed');
+    }
 
     return { success: true, ...result };
   }
@@ -265,15 +315,19 @@ export class MembershipController {
     @Req() req: AuthedRequest,
     @Body() body: { code?: string },
   ) {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new BadRequestException('userId is required');
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
     }
 
-    const result = await this.membership.verifyEmailCode({
-      userId,
-      code: body.code,
+    const result = await this.emailVerification.verifyUserEmailCode({
+      userStableId,
+      code: body.code ?? '',
     });
+
+    if (!result.ok) {
+      throw new BadRequestException(result.error ?? 'token_invalid');
+    }
 
     return { success: true, ...result };
   }
@@ -309,7 +363,7 @@ export class MembershipController {
       throw new BadRequestException('language must be zh or en');
     }
 
-    const user = await this.membership.updateProfile({
+    const user = await this.customer.updateProfile({
       userStableId,
       firstName: body.firstName ?? null,
       lastName: body.lastName ?? null,
@@ -352,7 +406,7 @@ export class MembershipController {
     if (!userStableId) {
       throw new BadRequestException('userStableId is required');
     }
-    return this.membership.listAddresses({ userStableId });
+    return this.customer.listAddresses({ userStableId });
   }
 
   @Post('addresses')
@@ -390,7 +444,7 @@ export class MembershipController {
       throw new BadRequestException('address fields are required');
     }
 
-    const created = await this.membership.createAddress({
+    const created = await this.customer.createAddress({
       userStableId,
       label: body.label ?? 'Address',
       receiver: body.receiver,
@@ -449,7 +503,7 @@ export class MembershipController {
       throw new BadRequestException('address fields are required');
     }
 
-    const updated = await this.membership.updateAddress({
+    const updated = await this.customer.updateAddress({
       userStableId,
       addressStableId: body.addressStableId,
       label: body.label ?? 'Address',
@@ -486,7 +540,7 @@ export class MembershipController {
     if (!body.addressStableId) {
       throw new BadRequestException('addressStableId is required');
     }
-    return this.membership.setDefaultAddress({
+    return this.customer.setDefaultAddress({
       userStableId,
       addressStableId: body.addressStableId,
     });
@@ -504,7 +558,7 @@ export class MembershipController {
     if (!addressStableId) {
       throw new BadRequestException('addressStableId is required');
     }
-    return this.membership.deleteAddress({ userStableId, addressStableId });
+    return this.customer.deleteAddress({ userStableId, addressStableId });
   }
 }
 

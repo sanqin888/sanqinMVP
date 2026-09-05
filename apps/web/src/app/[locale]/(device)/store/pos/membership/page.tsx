@@ -99,6 +99,8 @@ const COPY = {
       adjustFailed: "积分调整失败。",
       rechargeFailed: "充值失败。",
       codeFailed: "验证码发送失败。",
+      codeCooldown: "请稍候一分钟后再发送验证码。",
+      codeDailyLimit: "今日验证码发送次数已达上限。",
       verifyFailed: "验证码验证失败。",
     },
     selectMemberHint: "请先选择会员。",
@@ -191,6 +193,8 @@ const COPY = {
       adjustFailed: "Failed to adjust points.",
       rechargeFailed: "Recharge failed.",
       codeFailed: "Failed to send code.",
+      codeCooldown: "Please wait a minute before sending another code.",
+      codeDailyLimit: "Daily verification code limit reached.",
       verifyFailed: "Failed to verify code.",
     },
     selectMemberHint: "Select a member first.",
@@ -532,13 +536,26 @@ export default function PosMembershipPage() {
     setRechargeSubmitting(true);
     setRechargeError(null);
     try {
-      await apiFetch(`/admin/members/${selectedMemberId}/recharge/send-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          locale,
-        }),
-      });
+      const res = await apiFetch<{ ok: boolean; error?: string }>(
+        `/admin/members/${selectedMemberId}/recharge/send-code`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            locale,
+          }),
+        },
+      );
+      if (!res.ok) {
+        if (res.error === "too many requests, please try later") {
+          setRechargeError(copy.errors.codeCooldown);
+        } else if (res.error === "too many requests in a day") {
+          setRechargeError(copy.errors.codeDailyLimit);
+        } else {
+          setRechargeError(copy.errors.codeFailed);
+        }
+        return;
+      }
       setRechargeStep("code-sent");
       setRechargeVerificationToken("");
     } catch (error) {

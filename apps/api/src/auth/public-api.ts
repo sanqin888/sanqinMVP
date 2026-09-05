@@ -1,6 +1,54 @@
 export { IdentityChallengeModule } from './challenge-engine.module';
 export { IDENTITY_CHALLENGE_ENGINE } from './challenge-engine.port';
 export type { IdentityChallengeEnginePort } from './challenge-engine.port';
+export { IdentityEmailVerificationModule } from './email-verification.module';
+export {
+  IDENTITY_EMAIL_VERIFICATION,
+  type EmailVerificationResult,
+  type IdentityEmailVerificationPort,
+  type RequestCheckoutEmailVerificationInput,
+  type RequestUserEmailVerificationInput,
+  type ValidateCheckoutEmailVerificationInput,
+  type VerifyCheckoutEmailCodeInput,
+  type VerifyUserEmailCodeInput,
+} from './email-verification.port';
+export {
+  STAFF_ADMINISTRATION,
+  type CreateStaffInviteInput,
+  type ManagedStaffRole,
+  type ManagedStaffStatus,
+  StaffAdministrationError,
+  type StaffAdministrationErrorCode,
+  type StaffAdministrationPort,
+  type StaffAccountRole,
+  type StaffInviteDto,
+  type StaffInviteStatus,
+  type StaffUserDto,
+  type UpdateStaffInput,
+} from './staff-administration.contract';
+export { AccountSecurityAdministrationModule } from './account-security-administration.module';
+export {
+  ACCOUNT_SECURITY_ADMINISTRATION,
+  type AccountSecurityAdministrationErrorCode,
+  AccountSecurityAdministrationError,
+  type AccountDeviceManagementDto,
+  type AccountSecurityAdministrationPort,
+  type AccountSessionDto,
+  type AccountTrustedDeviceDto,
+  type ManagedAccountStatus,
+} from './account-security-administration.contract';
+export { MemberRechargeVerificationModule } from './member-recharge-verification.module';
+export {
+  MEMBER_RECHARGE_VERIFICATION,
+  type MemberRechargeConsumeTokenInput,
+  type MemberRechargeSendCodeInput,
+  type MemberRechargeVerificationErrorCode,
+  MemberRechargeVerificationError,
+  type MemberRechargeVerificationPort,
+  type MemberRechargeVerificationResult,
+  type MemberRechargeVerifyCodeInput,
+} from './member-recharge-verification.contract';
+export { AdminMfaGuard } from './admin-mfa.guard';
 export { Roles } from './roles.decorator';
 export { RolesGuard } from './roles.guard';
 export { SessionAuthGuard } from './session-auth.guard';

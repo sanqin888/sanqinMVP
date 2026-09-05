@@ -30,6 +30,7 @@ export class SmsService {
     templateVersion?: string;
     locale?: string;
     userId?: string;
+    userStableId?: string;
     metadata?: Record<string, unknown> | null;
   }): Promise<SmsSendResult & { sendId: string }> {
     const formatted = this.formatPhoneNumber(params.phone);
@@ -43,6 +44,7 @@ export class SmsService {
         templateVersion: params.templateVersion,
         locale: params.locale,
         userId: params.userId,
+        userStableId: params.userStableId,
         metadata: params.metadata,
       });
       return { ok: false, error: 'invalid phone number', sendId };
@@ -57,7 +59,9 @@ export class SmsService {
         templateType: params.templateType,
         templateVersion: params.templateVersion ?? null,
         locale: params.locale ? this.resolveLanguageEnum(params.locale) : null,
-        userId: params.userId ?? null,
+        ...(params.userStableId
+          ? { user: { connect: { userStableId: params.userStableId } } }
+          : { userId: params.userId ?? null }),
         statusLatest: MessagingSendStatus.QUEUED,
         metadata: this.buildSendMetadata({
           base: params.metadata,
@@ -173,6 +177,7 @@ export class SmsService {
     templateVersion?: string;
     locale?: string;
     userId?: string;
+    userStableId?: string;
     metadata?: Record<string, unknown> | null;
   }): Promise<string> {
     const toAddressNorm = params.phone.trim() || 'unknown';
@@ -185,7 +190,9 @@ export class SmsService {
         templateType: params.templateType,
         templateVersion: params.templateVersion ?? null,
         locale: params.locale ? this.resolveLanguageEnum(params.locale) : null,
-        userId: params.userId ?? null,
+        ...(params.userStableId
+          ? { user: { connect: { userStableId: params.userStableId } } }
+          : { userId: params.userId ?? null }),
         statusLatest: MessagingSendStatus.FAILED,
         errorCodeLatest: params.errorCode,
         errorMessageLatest: params.errorMessage,

@@ -69,29 +69,6 @@ describe('Loyalty policy characterization', () => {
     expect('brandConfig' in prisma).toBe(false);
   });
 
-  it('reads committed Store Balance tender from the Loyalty ledger', async () => {
-    const aggregate = jest.fn().mockResolvedValue({
-      _sum: { deltaMicro: -15_990_000n },
-    });
-    const service = new LoyaltyService(
-      { loyaltyLedger: { aggregate } } as never,
-      {} as never,
-    );
-
-    await expect(
-      service.getSettledBalancePaymentCentsForOrder('order-db-id'),
-    ).resolves.toBe(1599);
-    expect(aggregate).toHaveBeenCalledWith({
-      where: {
-        orderId: 'order-db-id',
-        type: 'REDEEM_ON_ORDER',
-        target: 'BALANCE',
-        deltaMicro: { lt: 0n },
-      },
-      _sum: { deltaMicro: true },
-    });
-  });
-
   it('reads transaction policy only from dedicated persistence through the same tx', async () => {
     const persistedPolicy = {
       earnPtPerDollar: 0.02,
@@ -270,10 +247,12 @@ describe('Loyalty policy characterization', () => {
 
   it('keeps points and store balance redemption keys distinct for the same order', async () => {
     const seenKeys = new Set<string>();
+    const seenOrderStableIds = new Set<string>();
     const ledgerCreate = jest.fn().mockImplementation(
       (args: {
         data: {
           orderId: string;
+          orderStableId: string;
           type: string;
           sourceKey: string;
         };
@@ -283,6 +262,7 @@ describe('Loyalty policy characterization', () => {
           throw new Error(`duplicate loyalty ledger key: ${key}`);
         }
         seenKeys.add(key);
+        seenOrderStableIds.add(args.data.orderStableId);
         return Promise.resolve({ id: `ledger-${seenKeys.size}` });
       },
     );
@@ -327,12 +307,14 @@ describe('Loyalty policy characterization', () => {
     };
     const service = new LoyaltyService({} as never, {} as never);
     const orderId = '22222222-2222-4222-8222-222222222222';
+    const orderStableId = 'corderstable000000000000001';
 
     await expect(
       service.reserveRedeemForOrder({
         tx: tx as never,
         userId: account.userId,
         orderId,
+        orderStableId,
         sourceKey: 'ORDER',
         requestedPoints: 1,
         subtotalAfterCoupon: 1000,
@@ -344,6 +326,7 @@ describe('Loyalty policy characterization', () => {
         tx: tx as never,
         userId: account.userId,
         orderId,
+        orderStableId,
         amountCents: 300,
       }),
     ).resolves.toBeUndefined();
@@ -354,6 +337,7 @@ describe('Loyalty policy characterization', () => {
         `${orderId}:REDEEM_ON_ORDER:PAYMENT_BALANCE`,
       ]),
     );
+    expect(seenOrderStableIds).toEqual(new Set([orderStableId]));
   });
 
   it('rolls back mixed points and store balance with distinct refund ledger identities', async () => {
@@ -362,6 +346,7 @@ describe('Loyalty policy characterization', () => {
       id: string;
       accountId: string;
       orderId: string;
+      orderStableId: string;
       type: string;
       target: LedgerTarget;
       sourceKey: string;
@@ -385,6 +370,7 @@ describe('Loyalty policy characterization', () => {
     };
 
     const orderId = '22222222-2222-4222-8222-222222222222';
+    const orderStableId = 'corderstable000000000000002';
     const account: AccountState = {
       id: '11111111-1111-4111-8111-111111111111',
       userId: 'member-db-id',
@@ -398,6 +384,7 @@ describe('Loyalty policy characterization', () => {
         id: 'redeem-points',
         accountId: account.id,
         orderId,
+        orderStableId,
         type: 'REDEEM_ON_ORDER',
         target: 'POINTS',
         sourceKey: 'ORDER',
@@ -408,6 +395,7 @@ describe('Loyalty policy characterization', () => {
         id: 'redeem-balance',
         accountId: account.id,
         orderId,
+        orderStableId,
         type: 'REDEEM_ON_ORDER',
         target: 'BALANCE',
         sourceKey: 'PAYMENT_BALANCE',
@@ -418,6 +406,7 @@ describe('Loyalty policy characterization', () => {
         id: 'earn',
         accountId: account.id,
         orderId,
+        orderStableId,
         type: 'EARN_ON_PURCHASE',
         target: 'POINTS',
         sourceKey: 'ORDER',
@@ -524,6 +513,7 @@ describe('Loyalty policy characterization', () => {
       order: {
         findUnique: jest.fn().mockResolvedValue({
           userId: account.userId,
+          orderStableId,
           subtotalCents: 3000,
           subtotalAfterDiscountCents: 2000,
           couponDiscountCents: 0,
@@ -563,6 +553,11 @@ describe('Loyalty policy characterization', () => {
       'REFUND_RETURN_REDEEM:POINTS:FULL_REFUND',
       'REFUND_RETURN_REDEEM:BALANCE:FULL_REFUND_BALANCE',
     ]);
+    expect(
+      ledgerRows
+        .filter((row) => row.type.startsWith('REFUND_'))
+        .every((row) => row.orderStableId === orderStableId),
+    ).toBe(true);
     expect(account).toMatchObject({
       pointsMicro: 50_000_000n,
       balanceMicro: 100_000_000n,

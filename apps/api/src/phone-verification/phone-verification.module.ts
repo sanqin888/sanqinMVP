@@ -1,27 +1,18 @@
 // apps/api/src/phone-verification/phone-verification.module.ts
 import { Module } from '@nestjs/common';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '../prisma/prisma.module';
-import { SmsModule } from '../sms/sms.module';
-import { PhoneVerificationService } from './phone-verification.service';
+import { PhoneVerificationDeliveryModule } from '../messaging/public-api';
+import { IdentityChallengeModule } from '../auth/challenge-engine.module';
+import { OtpChallengePolicyModule } from '../auth/otp-challenge-policy.module';
 import { PhoneVerificationController } from './phone-verification.controller';
-import { MessagingModule } from '../messaging/messaging.module';
-import { IdentityChallengeModule } from '../auth/public-api';
+import { PhoneVerificationService } from './phone-verification.service';
 
 @Module({
   imports: [
     PrismaModule,
-    SmsModule,
-    MessagingModule,
+    PhoneVerificationDeliveryModule,
     IdentityChallengeModule,
-    ThrottlerModule.forRoot({
-      throttlers: [
-        {
-          ttl: 60,
-          limit: 1,
-        },
-      ],
-    }),
+    OtpChallengePolicyModule,
   ],
   providers: [PhoneVerificationService],
   controllers: [PhoneVerificationController],

@@ -20,27 +20,28 @@ describe('PhoneVerificationService OTP characterization', () => {
       },
       $transaction: jest.fn().mockResolvedValue([]),
     };
-    const smsService = {
-      sendSms: jest.fn(),
-    };
-    const templateRenderer = {
-      renderSms: jest.fn().mockResolvedValue('verification message'),
-    };
-    const businessConfigService = {
-      getMessagingSnapshot: jest
-        .fn()
-        .mockResolvedValue({ baseVars: { storeName: 'SanQin' } }),
+    const phoneVerificationDelivery = {
+      sendVerificationSms: jest.fn(),
     };
     const challengeEngine = new ChallengeEngine();
+    const otpPolicy = {
+      checkSend: jest.fn().mockResolvedValue({ ok: true }),
+      revokeSupersededCodes: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new PhoneVerificationService(
       prisma as never,
-      smsService as never,
-      templateRenderer as never,
-      businessConfigService as never,
+      phoneVerificationDelivery as never,
       challengeEngine,
+      otpPolicy as never,
     );
 
-    return { service, prisma, smsService, challengeEngine };
+    return {
+      service,
+      prisma,
+      phoneVerificationDelivery,
+      challengeEngine,
+      otpPolicy,
+    };
   };
 
   afterEach(() => {
@@ -55,7 +56,8 @@ describe('PhoneVerificationService OTP characterization', () => {
 
   it('selects the non-zero phone-secret profile when creating a challenge', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, smsService, challengeEngine } = createService();
+    const { service, prisma, phoneVerificationDelivery, challengeEngine } =
+      createService();
     prisma.authChallenge.count.mockResolvedValue(0);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-1' });
     prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-1' });
@@ -65,7 +67,10 @@ describe('PhoneVerificationService OTP characterization', () => {
     const hashCodeSpy = jest
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
-    smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'send-1' });
+    phoneVerificationDelivery.sendVerificationSms.mockResolvedValue({
+      ok: true,
+      sendId: 'send-1',
+    });
 
     await expect(
       service.sendCode({
@@ -86,16 +91,69 @@ describe('PhoneVerificationService OTP characterization', () => {
         codeHash: 'code-hash',
         expiresAt: new Date('2026-08-30T12:10:00.000Z'),
         purpose: 'checkout',
+        ip: undefined,
+      },
+    });
+    expect(phoneVerificationDelivery.sendVerificationSms).toHaveBeenCalledWith({
+      phone: '14165550100',
+      code: '100000',
+      expiresInMin: 10,
+      locale: undefined,
+      purpose: 'checkout',
+    });
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-1' },
+      data: { messagingSendId: 'send-1' },
+    });
+  });
+
+  it('records the delivery send id and preserves sms_send_failed on provider failure', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
+    const { service, prisma, phoneVerificationDelivery, challengeEngine } =
+      createService();
+    prisma.authChallenge.count.mockResolvedValue(0);
+    prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-failed' });
+    prisma.authChallenge.update.mockResolvedValue({ id: 'challenge-failed' });
+    jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('123456');
+    phoneVerificationDelivery.sendVerificationSms.mockResolvedValue({
+      ok: false,
+      sendId: 'send-failed',
+      error: 'suppressed',
+    });
+
+    await expect(
+      service.sendCode({
+        phone: '+14165550100',
+        locale: 'en',
+        purpose: 'membership-bind',
+      }),
+    ).resolves.toEqual({ ok: false, error: 'sms_send_failed' });
+
+    expect(phoneVerificationDelivery.sendVerificationSms).toHaveBeenCalledWith({
+      phone: '14165550100',
+      code: '123456',
+      expiresInMin: 10,
+      locale: 'en',
+      purpose: 'membership-bind',
+    });
+    expect(prisma.authChallenge.update).toHaveBeenCalledWith({
+      where: { id: 'challenge-failed' },
+      data: {
+        messagingSendId: 'send-failed',
+        status: AuthChallengeStatus.REVOKED,
+        consumedAt: new Date('2026-08-30T12:00:00.000Z'),
       },
     });
   });
 
-  it('counts the IP attempt before the daily limit check', async () => {
+  it('delegates checkout address and IP limiting to the shared OTP policy', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, smsService } = createService();
-    prisma.authChallenge.count
-      .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(0);
+    const { service, prisma, phoneVerificationDelivery, otpPolicy } =
+      createService();
+    otpPolicy.checkSend.mockResolvedValue({
+      ok: false,
+      violation: 'DAILY_LIMIT',
+    });
 
     await expect(
       service.sendCode({
@@ -108,28 +166,17 @@ describe('PhoneVerificationService OTP characterization', () => {
       error: 'too many requests in a day',
     });
 
-    await expect(
-      service.sendCode({
-        phone: '+1 416 555 0100',
-        purpose: 'different-purpose',
-        ip: '203.0.113.10',
-      }),
-    ).resolves.toEqual({
-      ok: false,
-      error: 'too many requests, please try later',
-    });
-
-    expect(prisma.authChallenge.count).toHaveBeenCalledTimes(1);
-    expect(prisma.authChallenge.count).toHaveBeenCalledWith({
-      where: {
-        type: AuthChallengeType.PHONE_VERIFY,
-        channel: MessagingChannel.SMS,
-        addressNorm: '+14165550100',
-        createdAt: { gt: new Date('2026-08-29T12:00:00.000Z') },
-      },
+    expect(otpPolicy.checkSend).toHaveBeenCalledWith({
+      profile: 'CHECKOUT',
+      purpose: 'checkout',
+      now: new Date('2026-08-30T12:00:00.000Z'),
+      addressNorm: '+14165550100',
+      ip: '203.0.113.10',
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
-    expect(smsService.sendSms).not.toHaveBeenCalled();
+    expect(
+      phoneVerificationDelivery.sendVerificationSms,
+    ).not.toHaveBeenCalled();
   });
 
   it('increments attempts and revokes a challenge on the final mismatch', async () => {

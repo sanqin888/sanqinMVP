@@ -364,13 +364,14 @@ model UserSession {
 }
 
 model TrustedDevice {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @db.Uuid
-  tokenHash  String    @unique
-  label      String?
-  createdAt  DateTime  @default(now())
-  lastSeenAt DateTime?
-  expiresAt  DateTime
+  id                    String    @id @default(uuid()) @db.Uuid
+  trustedDeviceStableId String    @unique @default(cuid())
+  userId                String    @db.Uuid
+  tokenHash             String    @unique
+  label                 String?
+  createdAt             DateTime  @default(now())
+  lastSeenAt            DateTime?
+  expiresAt             DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -555,6 +556,7 @@ model Order {
   fulfillmentType            FulfillmentType         @default(pickup)
   fulfillmentTiming          OrderFulfillmentTiming  @default(IMMEDIATE)
   userId                     String?
+  userStableId               String?
   clientRequestId            String?                 @unique
   status                     OrderStatus             @default(pending)
   createdAt                  DateTime                @default(now())
@@ -613,6 +615,7 @@ model Order {
   @@index([contactPhone, createdAt])
   @@index([rebillGroupId])
   @@index([userId, createdAt])
+  @@index([userStableId, createdAt])
   @@index([storeId])
   @@index([fulfillmentTiming, scheduleActivatedAt, prepStartAt, status])
 }
@@ -992,6 +995,7 @@ model LoyaltyLedger {
   ledgerStableId    String           @unique @default(cuid())
   accountId         String           @db.Uuid
   orderId           String?          @db.Uuid
+  orderStableId     String?
   sourceKey         String           @default("ORDER")
   idempotencyKey    String?          @unique
   account           LoyaltyAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -999,6 +1003,7 @@ model LoyaltyLedger {
   @@unique([orderId, type, sourceKey])
   @@index([accountId, createdAt])
   @@index([orderId])
+  @@index([orderStableId])
 }
 
 model CheckoutIntent {

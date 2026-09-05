@@ -38,7 +38,6 @@ async function bootstrap(): Promise<void> {
   // 先注册所有需要 raw body 的 webhook 路由
   app.use(`/${prefix}/webhooks/sendgrid-email`, express.raw({ type: '*/*' }));
   app.use(`/${prefix}/webhooks/twilio`, express.raw({ type: '*/*' }));
-  app.use(`/${prefix}/webhooks/aws-sns`, express.raw({ type: '*/*' }));
 
   // Uber Eats webhook 必须保留原始 body，供 HMAC 验签
   app.use(
@@ -55,6 +54,7 @@ async function bootstrap(): Promise<void> {
   const cookieSecret = process.env.COOKIE_SIGNING_SECRET;
   const otpSecret = process.env.OTP_SECRET;
   const phoneVerificationSecret = process.env.PHONE_VERIFICATION_SECRET;
+  const memberRechargeOtpSecret = process.env.MEMBER_RECHARGE_OTP_SECRET;
 
   if (!cookieSecret && process.env.NODE_ENV === 'production') {
     console.error(
@@ -70,6 +70,7 @@ async function bootstrap(): Promise<void> {
     const missingOtpSecrets = [
       !otpSecret ? 'OTP_SECRET' : null,
       !phoneVerificationSecret ? 'PHONE_VERIFICATION_SECRET' : null,
+      !memberRechargeOtpSecret ? 'MEMBER_RECHARGE_OTP_SECRET' : null,
     ].filter((name): name is string => Boolean(name));
 
     if (missingOtpSecrets.length > 0) {

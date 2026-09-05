@@ -1,6 +1,5 @@
 // apps/api/src/admin/admin.module.ts
 import { Module } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { StaffBrandStoreController } from './business/staff-brand-store.controller';
 import { AdminBusinessService } from './business/admin-business.service';
 import { AdminMenuModule } from './menu/admin-menu.module';
@@ -15,7 +14,6 @@ import { AdminCouponsModule } from './coupons/admin-coupons.module';
 import { AdminPromotionsModule } from './promotions/admin-promotions.module';
 import { AdminMembersModule } from './members/admin-members.module';
 import { AdminPosDevicesModule } from './pos-devices/admin-pos-devices.module';
-import { EmailModule } from '../email/email.module';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { HomepageContentModule } from '../homepage/homepage-content.module';
 import { AdminHomepageController } from './homepage/admin-homepage.controller';
@@ -32,7 +30,6 @@ import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.co
     AdminPromotionsModule,
     AdminMembersModule,
     AdminPosDevicesModule,
-    EmailModule,
     UberEatsModule,
     HomepageContentModule,
     LoyaltyModule,
@@ -46,7 +43,6 @@ import { AdminLoyaltyPolicyController } from './benefits/admin-loyalty-policy.co
     AdminLoyaltyPolicyController,
   ],
   providers: [
-    PrismaService,
     AdminBusinessService,
     AdminImageUploadService,
     SessionAuthGuard,

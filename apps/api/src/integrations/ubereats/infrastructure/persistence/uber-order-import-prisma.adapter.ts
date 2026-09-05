@@ -267,7 +267,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         applyMembershipPoints: false,
         applyCoupons: false,
         persistExternalSnapshot: true,
-        emitPaidLifecycleEvent: false,
       },
       async (tx, order) => {
         if (input.actionIntent) {

@@ -540,7 +540,7 @@ ownership slice is production VERIFIED.
 ### 2026-09-04 — Phase 4 Slice 0A verification hotfix: POS server-authoritative promotion pricing
 
 **PR/SHA:** PR #2166; final head `567a1aba`; squash merge `bb833550`  
-**State:** CI / MERGED  
+**State:** VERIFIED  
 **Result:** active POS verification exposed a pre-existing pricing-preview gap: the Orders /
 Offers engine already evaluated the active `in_store` same-item BOGO rule, but the POS
 payment page displayed and collected against its own client-side subtotal/manual-discount/
@@ -561,15 +561,17 @@ no new context edge or measured direct-import/SCC debt; Offers remains promotion
 owner and Orders remains order-pricing owner. No Prisma/dependency, Web Clover Ecommerce,
 or Uber runtime/wire behavior change is included. Final GitHub Actions CI #5102 passed the
 architecture gate, API lint/build/strict/test, shared strict checks, and Web
-lint/build/strict/test before squash merge. Post-deployment active POS pricing/payment
-verification is still required before this hotfix is marked production VERIFIED.  
+lint/build/strict/test before squash merge. On 2026-09-04 active production verification
+confirmed the configured same-item BOGO appears in the POS server quote, the retained staff
+manual discount stacks separately, and the completed order/payment amount matches the
+checkout total. The hotfix is production VERIFIED.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`.
 
 ### 2026-09-04 — Phase 4 Slice 0B: PromotionRule channel ownership + Catalog -> Orders cycle contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice0b-promotion-channel`; not pushed  
-**State:** LOCAL  
+**PR/SHA:** PR #2168; final head `739938c5`; squash merge `b2d42c32`  
+**State:** VERIFIED  
 **Result:** readiness audit confirmed the complete production Catalog/Offers -> Orders
 public dependency was the two `@shared/order` `Channel` type imports used by PromotionRule
 context selection. Promotion applicability is now owned by Offers as
@@ -587,10 +589,553 @@ public traffic, so numeric direct-import debt remains unchanged; the public edge
 `catalog-pricing-offers -> commerce-orders-fulfillment` disappears and the exact legacy
 SCC contracts from Catalog/Orders/Identity/Messaging with five internal edges to
 Catalog/Identity/Messaging with three. Orders -> Catalog remains as the intended one-way
-pricing consumer dependency. No local lint/build/test/scanner run is claimed under the
-repository workflow, and no CI/deployment/production verification is claimed yet.  
+pricing consumer dependency. Final GitHub Actions CI #5107 passed Architecture, API/Web
+lint/build/strict/tests on final head `739938c5` before squash merge. On 2026-09-04 active
+production verification confirmed: Admin exposes only Web/POS PromotionRule channels; POS
+same-item BOGO and the retained manual discount both apply; Web PromotionRule pricing still
+applies; and POS/Admin no longer expose UberEats PromotionRule selection. Slice 0B is
+production VERIFIED. No local lint/build/test/scanner run is claimed under the repository
+workflow.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`.
+
+### 2026-09-04 — Phase 4 Slice 1: Email Verification ownership normalization
+
+**PR/SHA:** PR #2171; final head `94955b27`; squash merge `afa1bff6`  
+**State:** CI  
+**Result:** moved email-verification challenge lifecycle, checkout proof-token handling and
+verified `User.email` / `emailVerifiedAt` mutation from the Messaging `email/` area into an
+Identity-owned `IDENTITY_EMAIL_VERIFICATION` capability. Messaging now exposes only the
+narrow `EMAIL_VERIFICATION_DELIVERY` public capability backed by the existing EmailService
+render/provider/MessagingSend path. The existing `/email/checkout/send-code` and
+`/email/checkout/verify-code` routes are preserved under the Identity-owned controller.
+Membership request/confirm now uses authenticated `userStableId` and no longer keeps email
+verification inside the broad MembershipService; production Web Clover keeps the same
+contact-proof decision but validates it through the Identity public contract rather than a
+Messaging implementation. Payment amount/provider/order/reconciliation behavior is not
+changed. The old Messaging verification service/controller are deleted, characterization
+coverage moves with the owner and adds stable-ID member verification/account-mutation cases,
+and the scanner prevents Messaging -> Identity imports or AuthChallenge/emailVerifiedAt
+ownership from returning. Local monotonic baselines contract Identity -> Messaging `24 ->
+22`, Identity -> Runtime `16 -> 15`, Payments -> Messaging `3 -> 2`, Messaging ->
+Foundation `5 -> 4`, and Messaging -> Runtime `10 -> 9`; the final
+Catalog/Identity/Messaging legacy public SCC is broken and
+`legacyPublicCycleComponents` becomes empty. Final GitHub Actions CI #5116 passed the
+architecture gate, API/Web lint/build/strict checks and tests before squash merge
+`afa1bff6`. Per the Phase 4 rollout plan, deployment and active verification are deferred
+to the consolidated Phase-end batch rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2A: Auth Challenge Messaging boundary contraction
+
+**PR/SHA:** PR #2172; final head `29bf23b7`; squash merge `c8e91303`  
+**State:** CI  
+**Result:** introduced the Messaging-owned `AUTH_CHALLENGE_DELIVERY` public capability with
+four explicit delivery operations for login 2FA SMS/email, phone-enrollment SMS and
+membership-login SMS. Auth keeps OTP generation/hash, `AuthChallenge` persistence,
+rate-limit/expiry/attempt state and session/MFA mutation; Messaging now owns messaging
+configuration, OTP template rendering, `MessagingTemplateType.OTP`, provider dispatch and
+the historical `login_2fa` / `admin_login` / `verify` / `login` purpose metadata. Known
+User sends cross the boundary with `userStableId`; `SmsService` now supports stable-ID
+relation linkage instead of requiring the User DB UUID. `AuthService` drops concrete
+Email/SMS/BusinessConfig/TemplateRenderer imports and `AuthModule` replaces Email/SMS /
+Messaging module wiring with the public delivery module; the two Notification imports
+remain for registration welcome notifications outside 2A. The central scanner reserves
+this shape and the local direct-debt baseline contracts Identity -> Messaging **22 -> 15**,
+reducing total Identity outgoing direct debt **60 -> 53**. No dependency, Prisma schema /
+migration, route, OTP-policy, session/MFA, provider-wire or payment behavior is changed.
+No local lint/build/test/scanner run is claimed under repository workflow. Final GitHub
+Actions CI #5120 passed Architecture, API/Web lint/build/strict checks and tests on final
+head `29bf23b7` before squash merge `c8e91303`. This slice is not deployed separately;
+production verification is deferred to the Phase 4 batch rollout after source closeout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2B: Phone Verification Messaging boundary contraction
+
+**PR/SHA:** PR #2173; final head `d63bc307`; squash merge `41428324`  
+**State:** CI  
+**Result:** introduced the Messaging-owned `PHONE_VERIFICATION_DELIVERY` public capability
+for generic/customer phone-verification SMS delivery. `PhoneVerificationService` remains the
+Identity owner of phone normalization, IP/daily rate limits, `NON_ZERO_SIX_DIGIT` OTP,
+`PHONE_VERIFICATION` hashing, `AuthChallenge` persistence, 10-minute expiry,
+attempt/revoke/consume state, verification-token validation, `messagingSendId` linkage and
+`sms_send_failed` behavior. Messaging now owns only Brand/Store messaging snapshot reads,
+OTP template rendering, `MessagingTemplateType.OTP`, provider dispatch and MessagingSend
+recording. Historical purpose semantics are preserved exactly: the template variable remains
+fixed to `verify`, while caller purpose remains the Identity challenge purpose and Messaging
+metadata. Phone Verification drops three concrete service imports and two concrete module
+imports in favor of the Messaging public capability, contracting Identity -> Messaging
+**15 -> 10** and total Identity outgoing debt **53 -> 48**. HTTP routes, Clover phone-proof
+validation and AdminMembers' current PhoneVerificationService dependency are unchanged.
+Focused characterization plus the central scanner reserve this split. No local
+lint/build/test/scanner run is claimed under repository workflow. Final GitHub Actions CI
+#5123 passed Architecture, API/Web lint/build/strict checks and tests on final head
+`d63bc307` before squash merge `41428324`. This slice will not be deployed separately before
+the consolidated Phase 4 rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2C: Admin Messaging boundary contraction
+
+**PR/SHA:** PR #2174; final head `2c18e3c5`; squash merge `e27489cf`  
+**State:** CI  
+**Result:** removed Admin's four concrete Email dependencies by introducing two independent
+Email/Messaging public capabilities rather than a generic Admin mail facade.
+`STAFF_INVITE_DELIVERY` keeps staff invite creation/resend/revoke state in Identity/Admin and
+delegates the existing `EmailService.sendStaffInviteEmail()` behavior, preserving
+`ADMIN` / `STAFF` / `ACCOUNTANT` role inputs and current email-role wording.
+`MEMBER_RECHARGE_EMAIL_DELIVERY` keeps member-contact matching, OTP generation/hash,
+`AuthChallenge`, recharge-token verification and `messagingSendId` linkage in Admin Members,
+while Messaging owns the existing bilingual subject/text/html,
+`MessagingTemplateType.OTP`, `pos_recharge_otp` tag and provider/MessagingSend call. Recharge
+email user linkage now crosses the context boundary with `userStableId` rather than internal
+User DB UUID; the Identity-owned challenge relation remains internal. `AdminStaffController`,
+`AdminModule`, `AdminMembersService` and `AdminMembersModule` no longer import concrete
+`EmailService` / `EmailModule`, contracting Identity -> Messaging **10 -> 6** and total
+Identity outgoing direct debt **48 -> 44**. Focused characterization and a central scanner
+guard reserve the two capabilities, stable-ID linkage, invite forwarding, bilingual recharge
+content and `email_send_failed` fallback. No dependency, Prisma schema/migration, HTTP route,
+staff-invite state machine, recharge amount/authorization or provider protocol is changed.
+No local lint/build/test/scanner run is claimed under repository workflow. Final GitHub
+Actions CI #5126 passed Architecture, API/Web lint/build/strict checks and tests on final head
+`2c18e3c5` before squash merge `e27489cf`. This slice will not be deployed separately before
+the consolidated Phase 4 rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2D: Customer lifecycle notification boundary contraction
+
+**PR/SHA:** PR #2175 / final head `a0fa3f85` / squash merge `0cb3ce11`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT  
+**Result:** introduced the narrow Notifications-owned `CUSTOMER_LIFECYCLE_NOTIFICATION`
+public capability for registration welcome and subscription welcome delivery. Auth keeps the
+new-user decision, registration/session/account mutation and maps only stable customer facts;
+Messaging no longer receives a Prisma `User` or User DB UUID for that path. Membership keeps
+`marketingEmailOptIn` consent ownership and calls subscription delivery only after persisted
+email + opt-in are both present; the existing `MARKETING_OPT_IN` coupon-program trigger still
+runs afterward when welcome delivery is skipped. Messaging preserves registration `welcome`
+template rendering, email-first/SMS fallback, `register_welcome` / `trigger=register` audit
+metadata and the subscription `Subscription` / `SUBSCRIPTION_CONFIRM` mapping. Registration
+email/SMS and subscription email now link MessagingSend by `userStableId`. Auth and Membership
+services/modules use `notifications/public-api.ts`, contracting Identity -> Messaging
+**6 -> 2** and total Identity outgoing direct debt **44 -> 40**. Focused characterization and
+a central scanner guard reserve the stable-ID-only contract, fallback behavior and
+Membership-owned consent gate. No dependency, Prisma schema/migration, HTTP route,
+registration/session flow, marketing-consent API, coupon issuance behavior, provider wire or
+notification-template meaning is changed. No local lint/build/test/scanner run is claimed
+under repository workflow. Final GitHub Actions CI #5130 passed Architecture, API/Web
+lint/build/strict checks and tests on final head `a0fa3f85` before squash merge `0cb3ce11`.
+This slice will not be deployed separately before the consolidated Phase 4 rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2E-A: Retire historical AWS SNS / SQS infrastructure
+
+**PR/SHA:** PR #2176 / final head `11f73e88` / squash merge `7746402b`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT  
+**Result:** user-confirmed retired AWS SNS/SQS infrastructure is removed from runtime source.
+The historical `/api/v1/webhooks/aws-sns` controller/service and raw-body route are deleted;
+the remaining SES SQS bounce/complaint consumer is deleted from `EmailModule`; MessagingModule
+no longer imports Prisma solely for the SNS webhook; compose removes `SNS_TOPIC_ARN`,
+`SES_EVENTS_SQS_QUEUE_URL` and the historical `sanq-events` configuration-set binding; and the
+unused `PRINT_SNS_TOPIC_ARN` Orders field is removed. `SesEmailProvider` and `AwsSmsProvider`
+remain available, while SES configuration-set publishing becomes explicit opt-in. Current
+SendGrid/Twilio webhook and suppression/audit persistence remain unchanged. Production read-only
+evidence found no current SNS/`ORDER_PAID` MessagingWebhookEvent rows and no SNS API request hit
+in the inspected logs beyond Nest route registration. The monotonic baseline contracts
+Messaging -> Architecture **4 -> 3**, Messaging -> Runtime **9 -> 6**, and total Messaging
+outgoing direct debt **14 -> 10**. A central retirement guard prevents the deleted SNS/SQS
+runtime paths from returning. `@aws-sdk/client-sns`, `@aws-sdk/client-sqs` and `sqs-consumer`
+remain temporarily as manifest-only dead dependencies because package/lockfile cleanup requires
+a separate authorized pnpm update. EventBridge or another SES feedback channel is explicitly
+deferred until AWS SES/SMS provider activation. No local lint/build/test/scanner run is claimed
+under repository workflow. Final GitHub Actions CI #5132 passed Architecture, API/Web
+lint/build/strict checks and tests on final head `11f73e88` before squash merge `7746402b`.
+This slice will not be deployed separately before the Phase 4 consolidated rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 2E-B: Orders event ownership + Loyalty paid-settlement inversion
+
+**PR/SHA:** PR #2177; final head `dc07e820`; squash merge `718b2133`  
+**State:** MERGED / CI #5137 GREEN / AWAITING PHASE-END DEPLOYMENT  
+**Result:** the final Identity -> Messaging event tail is contracted without creating a reverse
+Orders public dependency. `LOYALTY_ORDER_PAID_SETTLEMENT` exposes only `orderStableId`, reward
+subtotal/redeem cents and promotion earn multiplier; `LoyaltyService` translates that stable ID to
+existing internal Order/User persistence IDs and delegates to the established idempotent
+`settleOnPaid` ledger transaction with historical failure isolation. `OrderEventsBus` moves from
+Messaging to a private Orders implementation and remains the same-process Fulfillment/Uber Direct
+fast path; it is not exported publicly. The old `LoyaltyEventProcessor` is deleted, Loyalty and
+Orders drop `MessagingModule`, and Uber API/worker composition no longer carries a Messaging bus
+bridge. The dead `emitPaidLifecycleEvent` ingestion policy is removed because the only production
+consumer, Uber order import, always set it to false. Durable `OrderLifecycleOutboxProcessor`
+ownership/replay is unchanged and protected by the new scanner guard. Direct debt contracts
+Identity -> Messaging **2 -> 0**, Identity -> Runtime **15 -> 14**, Commerce -> Messaging
+**8 -> 4**, External -> Messaging **2 -> 0**; totals become Identity **37**, Commerce **31**,
+External **42**, Messaging **10**, with the public SCC baseline still empty. The existing
+`LoyaltyLedger.orderId` UUID remains internal/deferred persistence debt; no schema/migration is
+introduced. Focused characterization covers stable-ID translation, failure isolation, Orders paid
+settlement payload/event preservation and Uber composition. No local lint/build/test/scanner run
+was claimed under repository workflow. Final GitHub Actions CI #5137 passed Architecture,
+API/Web lint/build/strict checks and tests on final head `dc07e820` before squash merge `718b2133`.
+This slice will not be deployed separately before the Phase 4 consolidated rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `apps/api/src/integrations/ubereats/ARCHITECTURE.md`,
+`tools/architecture/context-baseline.json`, `tools/architecture/README.md`.
+
+### 2026-09-04 — Phase 4 Slice 3: Customer Profile / Address / Consent ownership contraction
+
+**PR/SHA:** PR #2178 / final head `73f7d2e1` / squash merge `e813d918`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT  
+**Result:** the broad Membership surface no longer owns customer profile, address or marketing
+consent mutations. The old standalone `MembershipOnboardingService` is retired and replaced by one
+coherent `CustomerService` that owns onboarding, profile, shared birthday eligibility, address
+CRUD/default selection and consent transitions without multiplying Nest/Prisma owner entry points.
+Existing `/membership/onboarding`, `/membership/profile`, `/membership/marketing-consent` and
+`/membership/addresses*` transport contracts remain unchanged; the controller delegates those
+use cases to CustomerService. Consent continues to call the Messaging public lifecycle-delivery
+capability and Benefits program trigger only after Customer-owned state decisions. Address access
+uses `userStableId` -> internal user ID translation and preserves `addressStableId` externally.
+Membership summary/coupon/ledger reads now require an existing stable-ID customer and no longer
+create/update Users, consume PHONE_VERIFY challenges or bind phones as incidental read side effects.
+Readiness data found stable IDs populated for 40/40 Users and 2/2 UserAddress rows, so no schema,
+migration or backfill is needed. A central scanner boundary keeps the retired onboarding path and
+Customer mutations out of MembershipService. Focused characterization covers onboarding/referral,
+profile/birthday, consent, address ownership/default behavior and the existing-user-only summary
+boundary. Numeric direct-import debt intentionally remains unchanged at Identity **37** with
+Identity -> Messaging direct debt **0** and an empty public SCC baseline. No local lint/build/test
+or scanner run is claimed under repository workflow; remote CI is deferred until user review. This
+slice will not be deployed separately before the Phase 4 consolidated rollout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4A: Staff Administration ownership contraction
+
+**PR/SHA:** PR #2179; final head `f235893e`; squash merge `f91a849e`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT  
+**Result:** Staff account and invite business decisions move from `AdminStaffController` behind the
+Identity-owned `STAFF_ADMINISTRATION` public port. Its framework-free contract carries only stable-ID
+Staff DTOs/use cases; internal `StaffAdministrationService` owns ADMIN/STAFF list mapping, role/status
+mutation, self-modification rejection, the existing last-active-admin invariant,
+invite list/status and create/resend/revoke delivery orchestration while reusing AuthService's
+existing invite lifecycle. The Admin controller retains guards, transport parsing,
+delegation and dev-only invite URL formatting only; it no longer imports Prisma, Prisma-generated
+role/status types or `STAFF_INVITE_DELIVERY`. The adapter/use-case call now carries the actor and
+target as stable business IDs; inviter DB UUID resolution stays internal to Identity where the legacy
+`UserInvite.invitedByUserId` relation still requires it. `AdminModule` drops its obsolete direct
+Prisma provider and Staff invite delivery wiring; `AuthModule` composes the existing public delivery
+module instead. Existing route/response behavior, AuthService invite role support (including the
+currently UI-hidden ACCOUNTANT capability) and the non-atomic active-admin count/update behavior are
+preserved. Characterization locks staff list mapping, self/last-admin guards, allowed demotion, invite
+delivery, invite status and the existing 400/404 transport error mapping. The central scanner moves
+the Phase 2C Staff delivery consumer from Admin to Identity and forbids Staff Prisma/delivery
+ownership from returning to the Admin adapter. Static
+production-import accounting contracts Identity -> Runtime **14 -> 12** and total Identity outgoing
+**37 -> 35** while Identity -> Messaging direct debt stays **0** and the public SCC baseline stays
+empty. No local lint/build/test/scanner execution was claimed under repository workflow. Final
+GitHub Actions CI #5144 passed Architecture, API/Web lint/build/strict checks and tests on final head
+`f235893e` before squash merge `f91a849e`. This slice will not be deployed separately before Phase 4
+closeout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4B Stage 1: Customer + Security admin boundary contraction
+
+**PR/SHA:** PR #2180 / merge `252cd26f` / final head `a2f52ddf`  
+**State:** MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING — GitHub Actions CI #5150 passed  
+**Result:** Customer/Admin profile mutation and address reads move behind the Customer-owned
+`CUSTOMER_ADMINISTRATION` public contract implemented by the existing `CustomerService`; the broad
+`AdminMembersService` no longer owns `UserAddress` reads or profile `User.update` persistence. The
+historical Admin birthday override remains intentionally broader than customer self-service: Admin may
+overwrite an existing birthday or clear year/month together without the customer minimum-age/
+one-time-completion restriction, while existing year/month validation, contact uniqueness and phone-
+verification reset behavior are preserved. Auth separately owns `ACCOUNT_SECURITY_ADMINISTRATION`, a
+framework/Prisma-generated-free stable-ID capability whose internal service resolves the User DB UUID
+inside Identity and performs Admin session list/revoke plus ACTIVE/DISABLED status mutation. The
+combined Admin device response now takes sessions from that Auth owner while temporarily retaining the
+legacy Membership trusted-device portion. `TrustedDevice.id` remains a browser-facing Prisma UUID and
+is **not** added to the new Auth contract; its stable-ID expand-contract is deferred to 4B Stage 2 and
+requires explicit schema/migration authorization. Orders/top-items remain 4C, recharge challenge/token
+lifecycle remains 4D and Benefits/coupon/loyalty implementation remains Slice 5. Focused tests cover
+Admin birthday override/clear, phone normalization/verification reset and stable-ID-scoped session/
+status behavior. The central scanner reserves both owner contracts, prevents Customer profile/address
+or Auth session/status persistence from returning to Admin, and prevents TrustedDevice from entering
+the new account-security public boundary during Stage 1. Numeric direct-import debt is unchanged:
+Identity -> Architecture **13**, Identity -> Runtime **12**, total Identity outgoing **35**, Identity ->
+Messaging **0**, with an empty public SCC baseline. No local lint/build/test/scanner execution is
+claimed under repository workflow; GitHub Actions remains deferred until user review.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4B Stage 2: TrustedDevice stable-ID contraction
+
+**PR/SHA:** PR #2181; final head `f2cbf835`; squash merge `060e9417`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT — CI #5153  
+**Result:** `TrustedDevice` now owns required unique `trustedDeviceStableId @default(cuid())`. The new
+additive migration deterministically/idempotently backfills legacy rows as
+`c + substring(md5(id), 1, 23)`, checks NULL/duplicate discrepancies before tightening NOT NULL, and
+adds the unique index. A read-only production precheck found **2** TrustedDevice rows and **2** distinct
+predicted stable IDs. `ACCOUNT_SECURITY_ADMINISTRATION` now owns the complete member/Admin device
+management read model, session revoke, stable-ID-scoped trusted-device revoke and session-derived label
+lookup; `MembershipService` no longer accesses `UserSession`/`TrustedDevice`, and `AdminMembersService`
+no longer performs the temporary Auth + Membership dual query. Browser/PWA responses expose explicit
+`trustedDeviceStableId`; the historical `id` field remains as a compatibility alias carrying the same
+stable ID, never the Prisma UUID, so cached bundles that read `id` remain compatible after refresh while
+new Web code uses the explicit stable field. Existing HTTP route shapes are unchanged and Auth token
+issuance/validation is not altered. The central architecture gate requires the stable field/migration,
+owner delegation and Web stable-ID use, forbids device persistence from returning to Membership/Admin,
+and rejects nondeterministic TrustedDevice backfill SQL. Numeric context debt remains unchanged at
+Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
+**0**, with an empty public SCC baseline. No local migration application, Prisma validation, lint,
+build, test or scanner execution is claimed under repository workflow; the migration SQL has not been
+applied to any database.  
+**Details:** `apps/api/prisma/schema.prisma`,
+`apps/api/prisma/migrations/20260905134000_add_trusted_device_stable_id/migration.sql`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4C: Orders member read boundary contraction
+
+**PR/SHA:** PR #2182 / final head `7cb071ad` / squash merge `3119ce76`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT — GitHub Actions CI #5158 passed  
+**Result:** Orders now owns the Admin member order-history and top-purchased-item read models while
+preserving the existing `/admin/members/:userStableId/orders` and `/top-items` routes, guards, roles,
+response shapes, ordering, limit parsing, qualifying statuses, aggregation and display-name fallback.
+`AdminMembersController`/`AdminMembersService` no longer own those handlers or query Order/OrderItem
+persistence. The authorized additive migration adds nullable `Order.userStableId`, deterministically
+backfills the **45** existing member-linked orders from `Order.userId -> User.userStableId`, verifies
+member/populated counts, mismatches and orphan DB IDs, and adds the `(userStableId, createdAt)` index.
+Normal Web/POS order creation, prepared-payment confirmation and Loyalty top-up synthetic orders now
+dual-write the stable member identity. A narrow DB-ID-free `CUSTOMER_EXISTENCE_READER` preserves the
+historical `404 member not found` distinction without Orders reading User persistence or receiving a
+User DB UUID. `OrdersModule` also switches the historical Membership module import to
+`membership/public-api`, contracting Commerce -> Identity direct debt **5 -> 4** and Commerce outgoing
+**31 -> 30**; context-local `orders-prisma` / `membership-prisma` composition prevents the two new read
+services from raising Commerce -> Runtime **10** or Identity -> Runtime **12**. No Identity -> Orders
+public edge is introduced and the SCC baseline remains empty. The central scanner reserves the
+migration/read-model/transport ownership and dual-write paths. The remaining
+Admin loyalty-ledger `Order.id -> orderStableId` enrichment is explicitly deferred to **Slice 5A — Loyalty
+ledger order identity contraction**, where Benefits/Loyalty should own a stable order identity snapshot
+instead of extending Slice 4C. No local migration application was performed; GitHub Actions CI #5158 is
+the authoritative validation for the merged source.  
+**Details:** `apps/api/prisma/schema.prisma`,
+`apps/api/prisma/migrations/20260905145500_add_order_user_stable_id/migration.sql`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4D-A: Recharge challenge ownership contraction
+
+**PR/SHA:** PR #2183; final head `cec141ba`; squash merge `07dc1206`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT (GitHub Actions CI #5162)  
+**Result:** Identity/Auth now exposes the framework/persistence-free
+`MEMBER_RECHARGE_VERIFICATION` capability and owns the existing `pos-recharge` member/contact
+resolution, email `AuthChallenge` create/verify/consume lifecycle, MessagingSend linkage, SMS
+`PhoneVerificationService` delegation, verification-token creation and atomic one-time token claim.
+`AdminMembersService` no longer imports or mutates AuthChallenge state, the challenge engine, recharge
+Email delivery or Phone Verification internals; it keeps the historical amount/token presence checks,
+idempotency-key generation and post-claim `LoyaltyService.applyTopup()` orchestration. Email-first
+contact selection, `NON_ZERO_SIX_DIGIT`, 10-minute expiry, current `OTP`/Phone Verification secret
+semantics, attempts/revoke behavior, token expiry inheritance, `email_send_failed`/SMS result behavior
+and token-claim-before-top-up ordering are preserved. Phone Verification's same-context challenge
+imports use `challenge-engine.port/module` directly to avoid an Auth public barrel cycle. Production
+read-only readiness evidence found only **2** historical `pos-recharge` challenges, both expired
+`EMAIL_VERIFY/EMAIL/PENDING` rows with `userId` and no pending tokenHash row, so no schema/backfill is
+required. The central scanner reverses the old Admin delivery guard and reserves the new owner while
+forbidding Loyalty top-up ownership from moving into Auth. Numeric graph baselines remain unchanged:
+Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
+**0**, Commerce -> Identity **4**, public SCC empty. Email/SMS send-limit unification,
+recharge-specific OTP secret/randomness and POS `{ ok:false }` send UX are explicitly deferred to
+**4D-H**. No local lint/build/test/scanner run is claimed under repository workflow.  
+**Details:** `apps/api/src/auth/member-recharge-verification.contract.ts`,
+`apps/api/src/auth/member-recharge-verification.service.ts`,
+`apps/api/src/auth/member-recharge-verification.module.ts`,
+`apps/api/src/admin/members/admin-members.service.ts`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/scan-architecture.mjs`, `tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4D-H: Recharge verification security / UX hardening
+
+**PR/SHA:** PR #2184; final head `4d850ba1`; squash merge `7853e4f9`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT; GitHub Actions CI #5165  
+**Result:** The 4D-A Identity owner now fully owns both Email and SMS `pos-recharge` challenge creation,
+verification and verification-token creation. SMS uses Messaging `PHONE_VERIFICATION_DELIVERY` only for
+provider/template delivery instead of delegating challenge policy to `PhoneVerificationService`.
+Recharge sends share one DB-backed per-member budget across both channels: one code per 60 seconds and
+five code challenges per rolling 24 hours; token rows do not count because the limiter requires non-null
+`codeHash`. New recharge codes use the new `MEMBER_RECHARGE` secret kind backed only by required
+production config `MEMBER_RECHARGE_OTP_SECRET`; `main.ts` and the API compose environment fail closed
+when that key is absent, while no secret value is committed. `NON_ZERO_SIX_DIGIT` now uses
+`crypto.randomInt(100000, 1_000_000)`, preserving the visible 100000-999999 format and also hardening the
+generic Phone Verification consumer of that format. POS now inspects the `send-code` `{ ok, error }`
+result and enters `code-sent` only on success; provider failure stays on the current step and cooldown /
+daily-limit responses receive bilingual staff-facing messages. Per explicit user direction, there is no
+legacy-secret fallback: Phase-end rollout must temporarily pause POS member recharge, configure the new
+secret, activate the new API/Web version, and only then resume recharge. No Prisma schema/migration,
+dependency/lockfile, HTTP route, Loyalty amount/bonus/idempotency, token-claim, Clover or Uber change is
+included. Numeric graph values remain unchanged; CI #5165 is the authoritative merged-source validation.  
+**Details:** `apps/api/src/auth/challenge-engine.port.ts`,
+`apps/api/src/auth/challenge-engine.service.ts`, `apps/api/src/auth/member-recharge-verification.service.ts`,
+`apps/api/src/auth/member-recharge-verification.module.ts`, `apps/api/src/main.ts`, `docker-compose.yml`,
+`apps/web/src/app/[locale]/(device)/store/pos/membership/page.tsx`,
+`apps/web/src/app/[locale]/(device)/store/pos/membership/recharge-verification-hardening.test.ts`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`,
+`tools/architecture/README.md`, `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-05 — Phase 4 Slice 4D-I: Shared OTP challenge policy hardening
+
+**PR/SHA:** PR #2185; final head `d4b85e3a`; squash merge `b27ad8ce`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT — GitHub Actions CI #5168  
+**Result:** Identity now owns a shared DB-backed `OtpChallengePolicyService` for Login 2FA, Phone
+Enrollment, Membership Login, Checkout, Email Verify, POS Recharge and generic Phone Verification.
+`email_verify` TTL contracts from 24 hours to 10 minutes. Existing purpose contracts remain intact, while
+repeated send policy is normalized: 60-second cooldowns where applicable, per-user/per-address hourly or
+daily budgets, and a 30/hour IP spray budget for public membership-login/checkout flows. Successful
+provider delivery makes the new code canonical and revokes superseded pending code rows; failed delivery
+revokes only the new challenge so an older delivered code stays valid. Code-based verification uses the
+ChallengeEngine five-attempt revoke behavior consistently. Generic Phone Verification drops its
+process-local `Map`/timer limiter and unused Throttler module wiring. Messaging remains delivery-only; the
+Auth challenge delivery result adds `ok/error` so Identity can distinguish provider failure before
+supersession. The generic Phone Verification purpose surface is deliberately not narrowed in this slice.
+No Prisma schema/migration, dependency/lockfile, Loyalty/Clover/Uber/Benefits ownership or context-import
+baseline change is included. Central scanner/baseline now reserves the shared DB-backed policy and rejects
+restoring process-local Phone Verification throttling. Per repository workflow no local lint/build/test /
+scanner run was claimed before delivery; GitHub Actions CI #5168 is the authoritative merged-source validation.  
+**Details:** `apps/api/src/auth/otp-challenge-policy.service.ts`,
+`apps/api/src/auth/otp-challenge-policy.module.ts`, `apps/api/src/auth/auth.service.ts`,
+`apps/api/src/auth/email-verification.service.ts`, `apps/api/src/phone-verification/phone-verification.service.ts`,
+`apps/api/src/auth/member-recharge-verification.service.ts`,
+`apps/api/src/messaging/auth-challenge-delivery.service.ts`,
+`apps/api/src/messaging/contracts/auth-challenge-delivery.contract.ts`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`,
+`tools/architecture/README.md`, `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-05 — Phase 4 Slice 5A: Loyalty ledger order identity contraction
+
+**PR/SHA:** PR #2186 / final head `3b904dd1` / squash merge `c28df1b5`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT — GitHub Actions CI #5171  
+**Result:** The authorized expand step adds nullable `LoyaltyLedger.orderStableId` beside the existing
+internal UUID `orderId`. Production read-only readiness data contained **91** ledger rows: **89** order-linked
+rows covering **44** Orders, with **0** orphan Order IDs and **0** stable-ID mapping mismatches; the remaining
+**2** rows were legitimate manual no-order adjustments. Twenty-one Orders already had multiple ledger rows
+(maximum six), so the stable identity is intentionally not unique. The migration deterministically backfills
+`orderId -> Order.id -> Order.orderStableId` and fails on incomplete population, mismatches, orphan Order IDs
+or stable-without-DB-ID anomalies; it adds no FK/index/NOT NULL/unique constraint and preserves the existing
+`(orderId, type, sourceKey)` internal idempotency key. All order-linked ledger creates dual-write both
+identities inside their existing transactions; the ordinary Web/POS create path preallocates the stable ID
+before its Loyalty writes, while payment COMMIT, settlement, refund, amendment and top-up paths reuse their
+already-known stable identity. `LOYALTY_LEDGER_READER` is now the Benefits/Loyalty-owned read surface and
+returns persisted `orderStableId` directly. Admin Members and Membership delegate their existing ledger views
+to that owner and no longer perform `Order.id -> orderStableId` enrichment. Loyalty Prisma composition is
+collapsed through `loyalty-prisma.ts`, contracting Identity -> Runtime **12 -> 10** and total Identity direct
+debt **35 -> 33** without introducing a new public edge; the public SCC baseline stays empty. The adjacent
+Orders/print ledger-by-DB-ID reads are deliberately left for a later Benefits read-ownership contraction.
+No dependency/lockfile, public route shape, payment amount/state, coupon COMMIT ownership, Clover/Uber wire,
+order lifecycle or outbox behavior is changed. The migration remains unapplied in production. CI #5171 passed
+Prisma generation, Architecture baseline/SCC gate, API/Web lint/build/strict checks and tests before merge.  
+**Details:** `apps/api/prisma/schema.prisma`,
+`apps/api/prisma/migrations/20260905193000_add_loyalty_ledger_order_stable_id/migration.sql`,
+`apps/api/src/loyalty/loyalty-ledger-read.contract.ts`,
+`apps/api/src/loyalty/loyalty-ledger-read.service.ts`, `apps/api/src/loyalty/loyalty-prisma.ts`,
+`apps/api/src/loyalty/loyalty.service.ts`, `apps/api/src/orders/orders.service.ts`,
+`apps/api/src/admin/members/admin-members.service.ts`, `apps/api/src/membership/membership.service.ts`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`,
+`tools/architecture/README.md`, `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-05 — Phase 4 Slice 6 readiness audit + Slice 5B identification
+
+**PR/SHA:** local branch `audit/phase4-slice6-closeout` based on `origin/dev@c28df1b5`  
+**State:** LOCAL / READINESS AUDIT COMPLETE / SOURCE CLOSEOUT NOT YET READY  
+**Result:** Re-audited the final post-5A Phase 4 dependency and ownership state without changing application
+source. Slice 5A's final head `3b904dd1` already passed CI #5171 including the monotonic Architecture gate, so
+the current numeric baselines are exact and `legacyPublicCycleComponents` remains correctly empty. The former
+Admin/Membership `LoyaltyLedger.orderId -> Order.id -> orderStableId` enrichment is fully gone. The audit found
+exactly two remaining production `LoyaltyLedger` reads outside the Benefits owner: Orders order-detail/public-
+summary loyalty usage and POS/receipt print balance-paid projection. Both are read-only post-order projections
+and can safely move behind a stable-ID-only Benefits `LOYALTY_ORDER_USAGE_READER`; this is recorded as required
+Slice 5B before source closeout. Because 5B introduces the first normal lookup by
+`LoyaltyLedger.orderStableId`, a non-unique query-support index is now justified and must be added in a **new**
+additive migration after fresh schema/migration authorization rather than rewriting the merged 5A migration.
+The audit also records `MembershipService.getMemberSummary()` as explicit post-Phase-4 composite read-model debt:
+it still reads Order/OrderItem persistence and deep-imports an Orders-internal type, but replacing that with a
+new Identity -> Orders public reader while Commerce already consumes Identity would recreate a public SCC.
+Phase 3 Slice 2C remains DEFERRED because Points/Balance COMMIT, Coupon COMMIT and Order creation still share one
+Prisma transaction and the current Loyalty/Coupon commit implementations consume that transaction client.
+Read-only production migration history confirms none of the three accumulated Phase 4 migrations (TrustedDevice,
+Order.userStableId, LoyaltyLedger.orderStableId) has been applied yet. `MEMBER_RECHARGE_OTP_SECRET` remains a
+rollout prerequisite; its secret value/presence was not inspected. This batch updates documentation only; no
+schema, migration, scanner baseline, dependency, business source or runtime behavior is changed.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `docs/architecture/modularization-worklog.md`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`.
+
+### 2026-09-05 — Phase 4 Slice 5B: Loyalty order-usage read ownership contraction
+
+**PR/SHA:** PR #2187 / final head `42891cf4` / squash merge `0f58cf83`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT — PR CI #5174 + dev push CI #5175  
+**Result:** Implemented the safe Benefits read tail identified by the Slice 6 readiness audit. Benefits/Loyalty
+now exposes `LOYALTY_ORDER_USAGE_READER`, a framework/Prisma-free stable-ID contract that accepts only
+`orderStableId` and returns `balancePaidCents` plus `pointsEarned`. Its owner implementation reads
+`LoyaltyLedger.orderStableId` directly and preserves the existing balance/points projection semantics. Orders
+order-detail/public-summary and POS/receipt/email print payloads no longer read `LoyaltyLedger` persistence or
+translate the stable Order identity back to a DB UUID. Implementation review also found and contracted the
+legacy Web external-payment reconstruction helper that passed `Order.id` to
+`LoyaltyService.getSettledBalancePaymentCentsForOrder()`; that obsolete DB-ID read helper is deleted, while
+refund rollback/idempotency mutation deliberately keeps its existing internal UUID path. The authorized Prisma
+change adds non-unique `@@index([orderStableId])` through a new additive
+`20260905204500_add_loyalty_ledger_order_stable_id_index` migration; 5A migration history is untouched and no
+FK/NOT NULL/unique constraint is added. The scanner now requires the owner reader/index and forbids direct
+LoyaltyLedger Prisma reads from Orders/Print. Production-source search finds LoyaltyLedger persistence access
+only inside the Loyalty owner. Numeric context-import counts remain unchanged because Commerce already consumed
+Loyalty's public direction. Final head CI #5174 and merged-dev CI #5175 both passed Prisma generation, the
+Architecture baseline/SCC gate, API/Web lint/build/strict checks and tests; the public SCC baseline remains empty.
+The migration remains unapplied in production.  
+**Details:** `apps/api/src/loyalty/loyalty-order-usage-read.contract.ts`,
+`apps/api/src/loyalty/loyalty-order-usage-read.service.ts`,
+`apps/api/prisma/migrations/20260905204500_add_loyalty_ledger_order_stable_id_index/migration.sql`,
+`apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/print-pos-payload.service.ts`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`,
+`tools/architecture/README.md`, `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-05 — Phase 4 Slice 6: final dependency/SCC source closeout
+
+**PR/SHA:** local branch `audit/phase4-slice6-final-closeout` based on `origin/dev@0f58cf83`  
+**State:** SOURCE / LOCAL REVIEW PENDING — PHASE 4 SOURCE GRAPH CLOSED; DEPLOYMENT NOT STARTED  
+**Result:** Re-audited the exact post-5B source after PR #2187. Final head `42891cf4` passed PR CI #5174 and
+squash merge `0f58cf83` passed dev push CI #5175; both runs passed the monotonic Architecture baseline/SCC gate.
+Final direct-debt totals remain Payments **59**, External **42**, Identity **33**, POS/Print **31**, Commerce
+**30**, Accounting **25**, Catalog **15**, Messaging **10**, Brand/Store **8**, with
+`legacyPublicCycleComponents: []`. Source search confirms all direct `LoyaltyLedger` Prisma reads are now inside
+Loyalty and the retired `orderStableById` / `getSettledBalancePaymentCentsForOrder` DB-ID read paths are absent.
+No additional safe Phase 4 contraction was identified. `MembershipService.getMemberSummary()` remains the visible
+Identity -> Commerce = 1 composite read-model deferral because a new reverse Orders public edge would recreate an
+SCC; Phase 3 Slice 2C remains transaction-deferred because Points/Balance COMMIT, Coupon COMMIT and Order creation
+share one Prisma transaction; Loyalty paid-settlement/refund Order lookups remain part of the intentionally retained
+internal DB-ID idempotency model. Production migration history still shows none of the four accumulated Phase 4
+migrations applied, and `MEMBER_RECHARGE_OTP_SECRET` remains a rollout prerequisite whose presence was not
+inspected. Slice 6 changes documentation only: no business code, schema, migration, scanner logic, dependency or
+numeric allowance is changed. The next step after review/merge of this closeout record is consolidated Phase 4
+deployment readiness, migration/secret preflight, deployment and active verification.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `docs/architecture/modularization-worklog.md`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`.
 
 ## Current position
 
@@ -605,18 +1150,54 @@ repository workflow, and no CI/deployment/production verification is claimed yet
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A PRODUCTION VERIFIED** via PR #2163 / `aa302629`; final CI #5092
-  passed and the user completed active Admin PromotionRule create/edit/refresh/delete
-  verification. The separate **Slice 0A POS pricing verification hotfix is CI / MERGED**
-  via PR #2166 / `bb833550`; final head `567a1aba` passed CI #5102. Automatic promotions
-  and the retained staff manual discount are now server-authoritative before payment, and
-  the POS checkout adapter is fixed to local `channel=in_store` with the manual UberEats
-  channel/payment legacy branches removed. Post-deployment active POS verification remains
-  pending. **Slice 0B is LOCAL / REVIEW PENDING** on
-  `refactor/phase4-slice0b-promotion-channel`: Offers no longer imports Orders `Channel`,
-  PromotionRule applicability is Web/POS only, and the legacy public SCC is contracted at
-  source; it must not be marked CI/deployed/verified until remote validation and the
-  required active pricing verification are complete.
+- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
+  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C + 4D-A + 4D-H + 4D-I + 5A + 5B MERGED/CI;
+  SLICE 6 SOURCE CLOSEOUT COMPLETE / LOCAL REVIEW PENDING; PHASE 4 SOURCE GRAPH CLOSED / AWAITING CONSOLIDATED DEPLOYMENT** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
+  merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
+  verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
+  Slice 1 merged via PR #2171 as `afa1bff6` after final head `94955b27` passed CI #5116 and
+  removes the final legacy public SCC. Slice 2A merged via PR #2172 as `c8e91303` after final
+  head `29bf23b7` passed CI #5120, contracting Identity -> Messaging `22 -> 15`. Slice 2B
+  merged via PR #2173 as `41428324` after final head `d63bc307` passed CI #5123, contracting
+  the baseline `15 -> 10`. Slice 2C merged via PR #2174 as `e27489cf` after final head
+  `2c18e3c5` passed CI #5126, contracting `10 -> 6`. Slice 2D merged via PR #2175 as
+  `0cb3ce11` after final head `a0fa3f85` passed CI #5130, contracting `6 -> 2`. Slice 2E-A
+  merged via PR #2176 as `7746402b` after final head `11f73e88` passed CI #5132, contracting
+  Messaging total outgoing debt `14 -> 10`. Slice 2E-B merged via PR #2177 as `718b2133` after
+  final head `dc07e820` passed CI #5137, contracting the final direct Identity -> Messaging
+  `2 -> 0`, returning OrderEventsBus to private Orders ownership and removing Uber's obsolete
+  Messaging bridge while preserving the durable outbox. Slice 3 merged via PR #2178 as `e813d918`
+  after final head `73f7d2e1` passed CI #5140; CustomerService now owns
+  onboarding/profile/address/marketing-consent while the broad Membership read surface no longer
+  performs implicit User/PHONE_VERIFY mutation. Slice 4A merged via PR #2179 as `f91a849e` after
+  final head `f235893e` passed CI #5144; Staff persistence, invite orchestration and staff-account
+  invariants now belong to Auth/Identity, contracting Identity -> Runtime `14 -> 12` and total
+  Identity outgoing `37 -> 35`. Slice 4B Stage 1 merged via PR #2180 as `252cd26f` after final head
+  `a2f52ddf` passed CI #5150; Stage 2 merged via PR #2181 as `060e9417` after final head `f2cbf835`
+  passed CI #5153. TrustedDevice now owns its stable business identity and member/Admin device
+  management is fully behind the Auth owner without exposing the Prisma UUID. Slice 4C merged via PR
+  #2182 as `3119ce76` after final head `7cb071ad` passed CI #5158, moving member order-history/top-item
+  reads into Orders and contracting Commerce -> Identity direct debt `5 -> 4` without adding an
+  Identity -> Orders public edge. Slice 4D-A merged via PR #2183 as `07dc1206` after final head
+  `cec141ba` passed CI #5162, moving the `pos-recharge` challenge/token lifecycle behind the Auth owner
+  while keeping Loyalty top-up orchestration in Admin. Slice 4D-H merged via PR #2184 as `7853e4f9` after
+  final head `4d850ba1` passed CI #5165, adding the unified recharge limiter, dedicated secret,
+  cryptographic OTP generation and POS failure UX. Slice 4D-I merged via PR #2185 as `b27ad8ce` after
+  final head `d4b85e3a` passed CI #5168, adding shared DB-backed OTP policy, 10-minute `email_verify`,
+  public IP spray budgets, single-active-code supersession and consistent failed-attempt revoke semantics.
+  Slice 5A merged via PR #2186 as `c28df1b5` after final head `3b904dd1` passed CI #5171; LoyaltyLedger
+  owns nullable `orderStableId`, Admin/Membership consume the Loyalty-owned ledger reader, Identity -> Runtime
+  is now `10`, total Identity outgoing is `33`, and the empty SCC baseline is CI-confirmed. Slice 5B merged via
+  PR #2187 as `0f58cf83` after final head `42891cf4` passed PR CI #5174; the merged dev source then passed CI
+  #5175. Orders detail/public summary, old-Web external-payment reconstruction and POS/receipt print now use the
+  stable-ID-only Benefits reader, with the non-unique `LoyaltyLedger(orderStableId)` query index in its separate
+  additive migration. Slice 6 final audit finds no further safe Phase 4 contraction and closes the source graph
+  with the existing numeric baseline and empty public SCC. `MembershipService.getMemberSummary()` remains an
+  explicit post-Phase-4 composite read-model/SCC deferral, and Phase 3 Slice 2C remains the transaction-sensitive
+  COMMIT deferral. Per the current rollout plan, Slice 1 onward are not individually deployed; after this Slice 6
+  closeout record is reviewed/merged, the accumulated Phase 4 changes proceed to consolidated migration/secret
+  preflight, deployment and active verification.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

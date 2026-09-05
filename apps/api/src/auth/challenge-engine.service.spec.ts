@@ -4,6 +4,7 @@ import { ChallengeEngine } from './challenge-engine.service';
 describe('ChallengeEngine', () => {
   const originalOtpSecret = process.env.OTP_SECRET;
   const originalPhoneSecret = process.env.PHONE_VERIFICATION_SECRET;
+  const originalRechargeSecret = process.env.MEMBER_RECHARGE_OTP_SECRET;
   const originalNodeEnv = process.env.NODE_ENV;
 
   afterEach(() => {
@@ -21,6 +22,12 @@ describe('ChallengeEngine', () => {
       process.env.PHONE_VERIFICATION_SECRET = originalPhoneSecret;
     }
 
+    if (originalRechargeSecret === undefined) {
+      delete process.env.MEMBER_RECHARGE_OTP_SECRET;
+    } else {
+      process.env.MEMBER_RECHARGE_OTP_SECRET = originalRechargeSecret;
+    }
+
     if (originalNodeEnv === undefined) {
       delete process.env.NODE_ENV;
     } else {
@@ -33,12 +40,16 @@ describe('ChallengeEngine', () => {
     process.env.NODE_ENV = 'test';
     process.env.OTP_SECRET = 'otp-secret';
     process.env.PHONE_VERIFICATION_SECRET = 'phone-secret';
+    process.env.MEMBER_RECHARGE_OTP_SECRET = 'recharge-secret';
 
     expect(engine.hashCode('123456', 'OTP')).toBe(
       createHmac('sha256', 'otp-secret').update('123456').digest('hex'),
     );
     expect(engine.hashCode('123456', 'PHONE_VERIFICATION')).toBe(
       createHmac('sha256', 'phone-secret').update('123456').digest('hex'),
+    );
+    expect(engine.hashCode('123456', 'MEMBER_RECHARGE')).toBe(
+      createHmac('sha256', 'recharge-secret').update('123456').digest('hex'),
     );
 
     delete process.env.OTP_SECRET;
@@ -47,18 +58,21 @@ describe('ChallengeEngine', () => {
     );
   });
 
-  it('preserves both historical six-digit code formats', () => {
+  it('preserves both six-digit formats with cryptographic randomness', () => {
     const crypto = jest.requireActual<typeof import('crypto')>('crypto');
     const engine = new ChallengeEngine();
-    jest.spyOn(crypto, 'randomInt').mockReturnValue(42);
-    jest
-      .spyOn(Math, 'random')
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0.999999);
+    const randomIntSpy = jest
+      .spyOn(crypto, 'randomInt')
+      .mockReturnValueOnce(42)
+      .mockReturnValueOnce(100000)
+      .mockReturnValueOnce(999999);
 
     expect(engine.generateCode('ZERO_PADDED')).toBe('000042');
     expect(engine.generateCode('NON_ZERO_SIX_DIGIT')).toBe('100000');
     expect(engine.generateCode('NON_ZERO_SIX_DIGIT')).toBe('999999');
+    expect(randomIntSpy).toHaveBeenNthCalledWith(1, 0, 1_000_000);
+    expect(randomIntSpy).toHaveBeenNthCalledWith(2, 100000, 1_000_000);
+    expect(randomIntSpy).toHaveBeenNthCalledWith(3, 100000, 1_000_000);
   });
 
   it('refuses a missing OTP secret in production', () => {
@@ -78,6 +92,16 @@ describe('ChallengeEngine', () => {
 
     expect(() => engine.hashCode('123456', 'PHONE_VERIFICATION')).toThrow(
       'PHONE_VERIFICATION_SECRET is required in production',
+    );
+  });
+
+  it('refuses a missing member recharge secret in production', () => {
+    const engine = new ChallengeEngine();
+    process.env.NODE_ENV = 'production';
+    delete process.env.MEMBER_RECHARGE_OTP_SECRET;
+
+    expect(() => engine.hashCode('123456', 'MEMBER_RECHARGE')).toThrow(
+      'MEMBER_RECHARGE_OTP_SECRET is required in production',
     );
   });
 

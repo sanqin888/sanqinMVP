@@ -21,8 +21,7 @@ export class ChallengeEngine implements IdentityChallengeEnginePort {
       return randomInt(0, 1_000_000).toString().padStart(6, '0');
     }
 
-    const value = Math.floor(100000 + Math.random() * 900000);
-    return String(value);
+    return randomInt(100000, 1_000_000).toString();
   }
 
   hashCode(code: string, secretKind: ChallengeSecretKind): string {
@@ -96,7 +95,11 @@ export class ChallengeEngine implements IdentityChallengeEnginePort {
 
   private resolveSecret(secretKind: ChallengeSecretKind): string {
     const envName =
-      secretKind === 'OTP' ? 'OTP_SECRET' : 'PHONE_VERIFICATION_SECRET';
+      secretKind === 'OTP'
+        ? 'OTP_SECRET'
+        : secretKind === 'PHONE_VERIFICATION'
+          ? 'PHONE_VERIFICATION_SECRET'
+          : 'MEMBER_RECHARGE_OTP_SECRET';
     const secret = process.env[envName];
 
     if (!secret && process.env.NODE_ENV === 'production') {

@@ -57,22 +57,6 @@ export class AdminMembersController {
     return this.service.getLoyaltyLedger(userStableId, limitRaw, targetRaw);
   }
 
-  @Get(':userStableId/orders')
-  async listOrders(
-    @Param('userStableId') userStableId: string,
-    @Query('limit') limitRaw?: string,
-  ) {
-    return this.service.listOrders(userStableId, limitRaw);
-  }
-
-  @Get(':userStableId/top-items')
-  async listTopPurchasedItems(
-    @Param('userStableId') userStableId: string,
-    @Query('limit') limitRaw?: string,
-  ) {
-    return this.service.listTopPurchasedItems(userStableId, limitRaw);
-  }
-
   @Get(':userStableId/coupons')
   async listCoupons(@Param('userStableId') userStableId: string) {
     return this.service.listCoupons(userStableId);
@@ -112,9 +96,9 @@ export class AdminMembersController {
   @Delete(':userStableId/devices/trusted/:deviceId')
   async revokeTrustedDevice(
     @Param('userStableId') userStableId: string,
-    @Param('deviceId') deviceId: string,
+    @Param('deviceId') trustedDeviceStableId: string,
   ) {
-    await this.service.revokeTrustedDevice(userStableId, deviceId);
+    await this.service.revokeTrustedDevice(userStableId, trustedDeviceStableId);
     return { success: true };
   }
 
