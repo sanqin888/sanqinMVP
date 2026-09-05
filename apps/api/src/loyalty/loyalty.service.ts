@@ -1,5 +1,10 @@
 // apps/api/src/loyalty/loyalty.service.ts
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -640,9 +645,7 @@ export class LoyaltyService
     };
   }
 
-  async settleOrderPaid(
-    input: LoyaltyOrderPaidSettlementInput,
-  ): Promise<void> {
+  async settleOrderPaid(input: LoyaltyOrderPaidSettlementInput): Promise<void> {
     try {
       const order = await this.prisma.order.findUnique({
         where: { orderStableId: input.orderStableId },

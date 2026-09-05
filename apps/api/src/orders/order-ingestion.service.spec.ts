@@ -115,11 +115,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(
       {
@@ -171,11 +169,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(
       {
@@ -221,11 +217,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(
       {
@@ -260,11 +254,9 @@ describe('OrderIngestionService', () => {
       },
       uberOrderItemModifier: { createMany: jest.fn() },
     };
-    const service = new OrderIngestionService(
-      {
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never,
-    );
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
 
     await service.ingest(input, policies);
 

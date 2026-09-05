@@ -135,12 +135,7 @@ export function createUberEatsWorkerRuntimeModule(
  * explicit; worker dependencies remain exported only for the dedicated runtime.
  */
 @Module({
-  imports: [
-    PrismaModule,
-    BrandStoreConfigModule,
-    AuthModule,
-    OrdersModule,
-  ],
+  imports: [PrismaModule, BrandStoreConfigModule, AuthModule, OrdersModule],
   controllers: [
     UberEatsOAuthController,
     UberEatsWebhookController,

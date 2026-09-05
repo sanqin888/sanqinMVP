@@ -55,7 +55,9 @@ describe('Loyalty order-paid settlement boundary', () => {
       } as unknown as PrismaService,
       {} as never,
     );
-    jest.spyOn(service, 'settleOnPaid').mockRejectedValue(new Error('ledger failed'));
+    jest
+      .spyOn(service, 'settleOnPaid')
+      .mockRejectedValue(new Error('ledger failed'));
 
     await expect(
       service.settleOrderPaid({

@@ -1448,7 +1448,9 @@ export class OrdersService {
       orderStableId: order.orderStableId,
       subtotalCents: netSubtotalForRewards,
       redeemValueCents: order.loyaltyRedeemCents ?? 0,
-      earnMultiplier: resolvePromotionLoyaltyMultiplier(order.promotionSnapshot),
+      earnMultiplier: resolvePromotionLoyaltyMultiplier(
+        order.promotionSnapshot,
+      ),
     });
 
     this.orderEventsBus.emitOrderPaidVerified({
