@@ -683,9 +683,10 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **4A + 4B + 4C + 4D-A + 4D-H + 4D-I MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**.
-The TrustedDevice Stage 2 and Slice 4C Order member stable-ID migrations are merged but remain unapplied
-until the consolidated Phase 4 rollout. Slice 4D-A owns recharge verification, 4D-H hardened the
+Status: **4A + 4B + 4C + 4D-A + 4D-H + 4D-I MERGED / CI GREEN; CONSOLIDATED ROLLOUT STARTED / PAUSED FOR UUID RECOVERY**.
+The TrustedDevice Stage 2 migration is now applied in production. Slice 4C's Order member stable-ID migration
+was attempted next, failed and rolled back on the historical `Order.userId TEXT` / `User.id UUID` mismatch;
+recovery source normalizes the retained internal Order user identity before retry. Slice 4D-A owns recharge verification, 4D-H hardened the
 recharge-specific security/UX cutover, and 4D-I generalizes OTP throttling/attempt/single-active-code
 behavior behind one Identity-owned DB-backed policy without a Prisma migration.
 
@@ -737,10 +738,10 @@ Per the Phase 4 rollout policy, Slice 4A will not be deployed separately.
 
 #### Slice 4B — Customer + Security admin boundary
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**.
+Status: **MERGED / CI GREEN; MIGRATION APPLIED / API ACTIVATION PENDING**.
 Stage 1 merged via PR #2180 as `252cd26f` after final head `a2f52ddf` passed GitHub Actions CI #5150.
 Stage 2 merged via PR #2181 as `060e9417` after final head `f2cbf835` passed GitHub Actions CI #5153;
-the authorized TrustedDevice migration remains unapplied in production until the consolidated Phase 4 rollout.
+the authorized TrustedDevice migration was successfully applied to production when the consolidated Phase 4 rollout began.
 
 Stage 1 established the Customer/Auth owner boundaries. Stage 2 closes the deferred TrustedDevice
 identity tail without changing the existing browser route shapes:
@@ -793,16 +794,19 @@ production verified.
 
 #### Slice 4C — Orders member read routes
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2182. Final head
+Status: **MERGED / CI GREEN; MIGRATION ATTEMPT FAILED / UUID RECOVERY PENDING** via PR #2182. Final head
 `7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`. The authorized
-Order stable-ID migration remains unapplied until the consolidated Phase 4 rollout.
+Order stable-ID migration failed and rolled back during the consolidated Phase 4 rollout; the recovery described
+below must land before retry.
 
 The approved implementation keeps the existing Admin/POS HTTP contract while moving the two
 Orders-owned read models out of Identity/Admin:
 
-1. `Order.userStableId String?` is added as an additive Orders-owned member business identity while
-   the historical `Order.userId` field remains untouched. The authorized migration deterministically
-   backfills `Order.userStableId` from the existing `Order.userId -> User.id` mapping, verifies member
+1. `Order.userStableId String?` is added as an additive Orders-owned member business identity. The initial
+   Slice 4C source kept the historical `Order.userId` storage untouched; the consolidated-rollout recovery
+   hotfix now normalizes that retained internal identity from PostgreSQL `TEXT` to nullable `UUID` before the
+   stable-ID migration runs. The authorized migration deterministically backfills `Order.userStableId` from the
+   existing `Order.userId -> User.id` mapping, verifies member
    order count = populated stable IDs, rejects mismatched values and orphan User DB IDs, then adds
    `@@index([userStableId, createdAt])`. A 2026-09-05 production read-only precheck found **2459** total
    orders, **45** member-linked orders across **11** members, with **45/45** User mappings valid and
@@ -837,6 +841,17 @@ for the merged Slice 4C source. At Phase-end rollout the Order stable-ID migrati
 new API starts querying the column. Post-migration verification must confirm every non-null
 `Order.userId` row has the matching `Order.userStableId`, then exercise Admin member orders / top-items
 plus POS member order history.
+
+2026-09-05 consolidated-rollout recovery note: production successfully applied
+`20260905134000_add_trusted_device_stable_id`, then `20260905145500_add_order_user_stable_id` failed with
+PostgreSQL `42883` because the historical `Order.userId` column is `TEXT` while `User.id` is `UUID`; the failed
+migration transaction rolled back, so `Order.userStableId` was not partially left behind. Read-only production
+verification found **45/45** non-null `Order.userId` values are canonical UUID text mapping to `User.id`, with
+**0** non-UUID values and **0** unmatched values. The recovery adds the ordered prerequisite migration
+`20260905144000_normalize_order_user_id_uuid`, changes the Prisma field to `String? @db.Uuid`, and converts the
+column with `USING "userId"::uuid` before retrying the untouched Slice 4C migration. This recovery deliberately
+adds **no foreign key, NOT NULL constraint, public identity change, or delete semantics**; referential-integrity
+hardening remains a separate future decision.
 
 #### Slice 4D-A — Recharge challenge ownership contraction
 
@@ -979,7 +994,7 @@ to empty Admin persistence.
 
 ### Slice 5 — Benefits implementation ownership consolidation
 
-Status: **SOURCE CLOSED / AWAITING CONSOLIDATED DEPLOYMENT + ACTIVE VERIFICATION**. Slice 5A and Slice 5B are merged/CI-green. The transaction-bound COMMIT work remains explicitly deferred because its atomicity constraints are unchanged and it is not a Phase 4 source-closeout blocker.
+Status: **SOURCE CLOSED / CONSOLIDATED DEPLOYMENT STARTED + PAUSED FOR ORDER.USERID UUID RECOVERY**. Slice 5A and Slice 5B are merged/CI-green. Their Loyalty migrations remain pending behind the Order migration recovery. The transaction-bound COMMIT work remains explicitly deferred because its atomicity constraints are unchanged and it is not a Phase 4 source-closeout blocker.
 
 Continue the Offers/Benefits ownership normalization started in Phase 3 by moving safe
 eligibility/claim/issue/trigger/entitlement implementation behind Benefits-owned
@@ -1091,7 +1106,7 @@ Order creation without:
 
 ### Slice 6 — Phase 4 dependency/SCC closeout
 
-Status: **SOURCE CLOSED / AWAITING CONSOLIDATED DEPLOYMENT + ACTIVE VERIFICATION**.
+Status: **SOURCE CLOSED / CONSOLIDATED DEPLOYMENT STARTED + PAUSED FOR ORDER.USERID UUID RECOVERY**.
 
 Final audit base: `origin/dev@0f58cf83` after Slice 5B merged through PR #2187. Final PR head `42891cf4` passed
 GitHub Actions CI #5174, and the squash merge `0f58cf83` independently passed dev push CI #5175. Both runs passed
@@ -1124,12 +1139,15 @@ Closeout findings:
    Benefits COMMIT implementations consume that transaction client. Removing the concrete boundary now would
    either split atomic Points/Balance + Coupon + Order creation, expose `Prisma.TransactionClient` as a public
    cross-context contract, or move Benefits persistence into Orders; none is acceptable for closeout;
-7. production `_prisma_migrations` still contains no applied row for the four accumulated Phase 4 migrations:
-   `20260905134000_add_trusted_device_stable_id`, `20260905145500_add_order_user_stable_id`,
-   `20260905193000_add_loyalty_ledger_order_stable_id`, and
-   `20260905204500_add_loyalty_ledger_order_stable_id_index`. The consolidated rollout must apply migration
-   history before activating API source that queries those fields. `MEMBER_RECHARGE_OTP_SECRET` also remains a
-   mandatory rollout prerequisite; secret presence was not inspected by this source/data closeout audit.
+7. consolidated rollout has now started. Production successfully applied
+   `20260905134000_add_trusted_device_stable_id`; `20260905145500_add_order_user_stable_id` then failed and rolled
+   back on the historical `TEXT`/`UUID` comparison described in Slice 4C. The recovery source adds the ordered
+   prerequisite `20260905144000_normalize_order_user_id_uuid`; after the failed migration is marked rolled back,
+   rollout must apply 14:40, retry 14:55, then apply the still-pending
+   `20260905193000_add_loyalty_ledger_order_stable_id` and
+   `20260905204500_add_loyalty_ledger_order_stable_id_index` before activating the new API. The recovery changes
+   no dependency direction or public SCC state. `MEMBER_RECHARGE_OTP_SECRET` remains a mandatory rollout
+   prerequisite.
 
 No additional safe Phase 4 source contraction is identified. The remaining items above are explicit deferred debt,
 not hidden source work. Slice 6 therefore closes the Phase 4 source graph without changing business code, schema,

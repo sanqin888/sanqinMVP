@@ -881,7 +881,7 @@ claimed under repository workflow; GitHub Actions remains deferred until user re
 ### 2026-09-05 — Phase 4 Slice 4B Stage 2: TrustedDevice stable-ID contraction
 
 **PR/SHA:** PR #2181; final head `f2cbf835`; squash merge `060e9417`  
-**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT — CI #5153  
+**State:** CI GREEN / MERGED; MIGRATION APPLIED / API ACTIVATION PENDING — CI #5153  
 **Result:** `TrustedDevice` now owns required unique `trustedDeviceStableId @default(cuid())`. The new
 additive migration deterministically/idempotently backfills legacy rows as
 `c + substring(md5(id), 1, 23)`, checks NULL/duplicate discrepancies before tightening NOT NULL, and
@@ -898,8 +898,10 @@ owner delegation and Web stable-ID use, forbids device persistence from returnin
 and rejects nondeterministic TrustedDevice backfill SQL. Numeric context debt remains unchanged at
 Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
 **0**, with an empty public SCC baseline. No local migration application, Prisma validation, lint,
-build, test or scanner execution is claimed under repository workflow; the migration SQL has not been
-applied to any database.  
+build, test or scanner execution was claimed during source delivery. During the consolidated Phase 4 rollout on
+2026-09-05 this migration was successfully applied to production; read-only verification found **2/2** populated
+and distinct stable IDs. The new API has not yet been activated because rollout paused on the following Order
+migration.  
 **Details:** `apps/api/prisma/schema.prisma`,
 `apps/api/prisma/migrations/20260905134000_add_trusted_device_stable_id/migration.sql`,
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
@@ -909,7 +911,7 @@ applied to any database.
 ### 2026-09-05 — Phase 4 Slice 4C: Orders member read boundary contraction
 
 **PR/SHA:** PR #2182 / final head `7cb071ad` / squash merge `3119ce76`  
-**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT — GitHub Actions CI #5158 passed  
+**State:** MERGED / CI GREEN; MIGRATION ATTEMPT FAILED / UUID RECOVERY PENDING — GitHub Actions CI #5158 passed  
 **Result:** Orders now owns the Admin member order-history and top-purchased-item read models while
 preserving the existing `/admin/members/:userStableId/orders` and `/top-items` routes, guards, roles,
 response shapes, ordering, limit parsing, qualifying statuses, aggregation and display-name fallback.
@@ -928,8 +930,10 @@ public edge is introduced and the SCC baseline remains empty. The central scanne
 migration/read-model/transport ownership and dual-write paths. The remaining
 Admin loyalty-ledger `Order.id -> orderStableId` enrichment is explicitly deferred to **Slice 5A — Loyalty
 ledger order identity contraction**, where Benefits/Loyalty should own a stable order identity snapshot
-instead of extending Slice 4C. No local migration application was performed; GitHub Actions CI #5158 is
-the authoritative validation for the merged source.  
+instead of extending Slice 4C. No local migration application was performed during source delivery; GitHub
+Actions CI #5158 is the authoritative validation for the merged source. During the 2026-09-05 consolidated rollout,
+the migration attempt failed and rolled back on the historical `Order.userId TEXT` / `User.id UUID` comparison;
+the separate UUID-normalization recovery entry below records the approved remediation.  
 **Details:** `apps/api/prisma/schema.prisma`,
 `apps/api/prisma/migrations/20260905145500_add_order_user_stable_id/migration.sql`,
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
@@ -1116,8 +1120,8 @@ The migration remains unapplied in production.
 
 ### 2026-09-05 — Phase 4 Slice 6: final dependency/SCC source closeout
 
-**PR/SHA:** local branch `audit/phase4-slice6-final-closeout` based on `origin/dev@0f58cf83`  
-**State:** SOURCE / LOCAL REVIEW PENDING — PHASE 4 SOURCE GRAPH CLOSED; DEPLOYMENT NOT STARTED  
+**PR/SHA:** PR #2188 / final head `3d9e6821` / squash merge `74188a5c`  
+**State:** MERGED / CI GREEN — PHASE 4 SOURCE GRAPH CLOSED; CONSOLIDATED DEPLOYMENT STARTED — CI #5176  
 **Result:** Re-audited the exact post-5B source after PR #2187. Final head `42891cf4` passed PR CI #5174 and
 squash merge `0f58cf83` passed dev push CI #5175; both runs passed the monotonic Architecture baseline/SCC gate.
 Final direct-debt totals remain Payments **59**, External **42**, Identity **33**, POS/Print **31**, Commerce
@@ -1137,6 +1141,30 @@ deployment readiness, migration/secret preflight, deployment and active verifica
 `docs/architecture/current-dependency-graph.md`, `docs/architecture/modularization-worklog.md`,
 `tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`.
 
+### 2026-09-05 — Phase 4 rollout recovery: Order.userId UUID normalization
+
+**PR/SHA:** local branch `fix/phase4-order-user-id-uuid` from latest `origin/dev`  
+**State:** SOURCE / LOCAL REVIEW PENDING — PRODUCTION MIGRATION RECOVERY NOT YET RETRIED  
+**Result:** Consolidated Phase 4 migration deploy successfully applied
+`20260905134000_add_trusted_device_stable_id`, then failed on
+`20260905145500_add_order_user_stable_id` with PostgreSQL `42883` because production stores the retained internal
+`Order.userId` as `TEXT` while `User.id` is `UUID`. The failed migration transaction rolled back. Read-only
+production checks found **45/45** non-null Order user IDs are canonical UUID text, all **45/45** map to `User.id`,
+with **0** non-UUID and **0** unmatched values; TrustedDevice stable IDs are populated/unique **2/2**. Rather than
+rewriting the failed migration history, this recovery adds ordered prerequisite
+`20260905144000_normalize_order_user_id_uuid`, changes Prisma `Order.userId` to `String? @db.Uuid`, validates
+existing text before converting with `USING "userId"::uuid`, and leaves the original 14:55 stable-ID migration
+untouched. No FK, NOT NULL, delete behavior, public contract, order-write behavior, dependency direction or SCC
+baseline changes are introduced. Characterization and architecture gates now reserve the UUID storage contract
+and the separate normalization migration. After review/CI/merge, production recovery must mark the failed 14:55
+migration rolled back, rebuild the shared API image, then deploy migrations so 14:40 runs before the retried 14:55
+and the pending Loyalty migrations. No production mutation is performed by this source batch.  
+**Details:** `apps/api/prisma/schema.prisma`,
+`apps/api/prisma/migrations/20260905144000_normalize_order_user_id_uuid/migration.sql`,
+`apps/api/src/orders/order-user-stable-id.characterization.spec.ts`, `tools/architecture/context-baseline.json`,
+`tools/architecture/scan-architecture.mjs`, `docs/architecture/id-inventory.md`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`, `docs/architecture/current-dependency-graph.md`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -1151,8 +1179,8 @@ deployment readiness, migration/secret preflight, deployment and active verifica
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C + 4D-A + 4D-H + 4D-I + 5A + 5B MERGED/CI;
-  SLICE 6 SOURCE CLOSEOUT COMPLETE / LOCAL REVIEW PENDING; PHASE 4 SOURCE GRAPH CLOSED / AWAITING CONSOLIDATED DEPLOYMENT** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C + 4D-A + 4D-H + 4D-I + 5A + 5B + 6 MERGED/CI;
+  SOURCE GRAPH CLOSED; CONSOLIDATED DEPLOYMENT STARTED / PAUSED FOR ORDER.USERID UUID RECOVERY** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -1195,9 +1223,10 @@ deployment readiness, migration/secret preflight, deployment and active verifica
   additive migration. Slice 6 final audit finds no further safe Phase 4 contraction and closes the source graph
   with the existing numeric baseline and empty public SCC. `MembershipService.getMemberSummary()` remains an
   explicit post-Phase-4 composite read-model/SCC deferral, and Phase 3 Slice 2C remains the transaction-sensitive
-  COMMIT deferral. Per the current rollout plan, Slice 1 onward are not individually deployed; after this Slice 6
-  closeout record is reviewed/merged, the accumulated Phase 4 changes proceed to consolidated migration/secret
-  preflight, deployment and active verification.
+  COMMIT deferral. Consolidated rollout has now started: the TrustedDevice migration is applied, but migration
+  execution is paused after the Order stable-ID migration failed on the historical TEXT/UUID mismatch. Resume only
+  after the UUID-normalization recovery hotfix is reviewed, CI-green and merged, then complete the remaining
+  migration sequence before activating the new API and beginning active verification.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

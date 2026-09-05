@@ -555,7 +555,7 @@ model Order {
   channel                    Channel                 @default(web)
   fulfillmentType            FulfillmentType         @default(pickup)
   fulfillmentTiming          OrderFulfillmentTiming  @default(IMMEDIATE)
-  userId                     String?
+  userId                     String?                 @db.Uuid
   userStableId               String?
   clientRequestId            String?                 @unique
   status                     OrderStatus             @default(pending)
