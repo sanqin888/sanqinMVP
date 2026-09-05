@@ -4403,12 +4403,11 @@ if (orderPaidSettlementBoundary) {
       );
     }
   }
-  const compactOrdersServiceSource = ordersServiceSource.replace(/\s+/g, '');
+  const promotionMultiplierCallPattern =
+    /resolvePromotionLoyaltyMultiplier\(\s*order\.promotionSnapshot,?\s*\)/;
   if (
     ordersServiceSource &&
-    !compactOrdersServiceSource.includes(
-      'resolvePromotionLoyaltyMultiplier(order.promotionSnapshot)',
-    )
+    !promotionMultiplierCallPattern.test(ordersServiceSource)
   ) {
     failures.push(
       `OrdersService must derive Loyalty settlement multiplier from the persisted promotion snapshot: ${boundary.ordersService}`,
