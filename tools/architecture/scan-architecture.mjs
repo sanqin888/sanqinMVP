@@ -4395,7 +4395,6 @@ if (orderPaidSettlementBoundary) {
     'LOYALTY_ORDER_PAID_SETTLEMENT',
     'loyaltyOrderPaidSettlement.settleOrderPaid',
     'orderStableId: order.orderStableId',
-    'resolvePromotionLoyaltyMultiplier(order.promotionSnapshot)',
     "from './order-events.bus'",
   ]) {
     if (ordersServiceSource && !ordersServiceSource.includes(requiredToken)) {
@@ -4403,6 +4402,17 @@ if (orderPaidSettlementBoundary) {
         `OrdersService must keep the stable Loyalty settlement/local event-bus shape ${requiredToken}: ${boundary.ordersService}`,
       );
     }
+  }
+  const compactOrdersServiceSource = ordersServiceSource.replace(/\s+/g, '');
+  if (
+    ordersServiceSource &&
+    !compactOrdersServiceSource.includes(
+      'resolvePromotionLoyaltyMultiplier(order.promotionSnapshot)',
+    )
+  ) {
+    failures.push(
+      `OrdersService must derive Loyalty settlement multiplier from the persisted promotion snapshot: ${boundary.ordersService}`,
+    );
   }
   if (ordersServiceSource.includes("from '../messaging/order-events.bus'")) {
     failures.push(
