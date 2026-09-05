@@ -264,14 +264,15 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
       return { ok: true };
     }
 
-    const sendResult =
-      await this.phoneVerificationDelivery.sendVerificationSms({
+    const sendResult = await this.phoneVerificationDelivery.sendVerificationSms(
+      {
         phone: contact.addressRaw,
         code,
         expiresInMin: 10,
         locale: input.locale,
         purpose: POS_RECHARGE_PURPOSE,
-      });
+      },
+    );
 
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },

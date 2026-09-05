@@ -156,6 +156,7 @@ describe('MemberRechargeVerificationService', () => {
   });
 
   it('creates SMS recharge challenges inside the recharge owner', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
     const { service, prisma, phoneVerificationDelivery, challengeEngine } =
       createService();
     prisma.user.findUnique.mockResolvedValue(phoneMember);
@@ -180,15 +181,17 @@ describe('MemberRechargeVerificationService', () => {
 
     expect(hashCodeSpy).toHaveBeenCalledWith('234567', 'MEMBER_RECHARGE');
     expect(prisma.authChallenge.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
         userId: 'user-db-id',
         type: AuthChallengeType.PHONE_VERIFY,
         status: AuthChallengeStatus.PENDING,
         channel: MessagingChannel.SMS,
         addressNorm: '+14165550100',
-        purpose: 'pos-recharge',
+        addressRaw: '+1 416 555 0100',
         codeHash: 'sms-code-hash',
-      }),
+        purpose: 'pos-recharge',
+        expiresAt: new Date('2026-08-30T12:10:00.000Z'),
+      },
     });
     expect(phoneVerificationDelivery.sendVerificationSms).toHaveBeenCalledWith({
       phone: '+1 416 555 0100',
@@ -254,7 +257,9 @@ describe('MemberRechargeVerificationService', () => {
       },
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
-    expect(phoneVerificationDelivery.sendVerificationSms).not.toHaveBeenCalled();
+    expect(
+      phoneVerificationDelivery.sendVerificationSms,
+    ).not.toHaveBeenCalled();
   });
 
   it('links provider failures without reporting a successful send', async () => {
@@ -302,7 +307,9 @@ describe('MemberRechargeVerificationService', () => {
     expect(
       memberRechargeEmailDelivery.sendRechargeVerificationEmail,
     ).toHaveBeenCalledTimes(1);
-    expect(phoneVerificationDelivery.sendVerificationSms).not.toHaveBeenCalled();
+    expect(
+      phoneVerificationDelivery.sendVerificationSms,
+    ).not.toHaveBeenCalled();
   });
 
   it('revokes a recharge code on the final mismatch with the recharge secret', async () => {
@@ -329,11 +336,15 @@ describe('MemberRechargeVerificationService', () => {
     ).resolves.toEqual({ ok: false, error: 'code_invalid' });
 
     expect(prisma.authChallenge.findFirst).toHaveBeenCalledWith({
-      where: expect.objectContaining({
+      where: {
         userId: 'user-db-id',
+        type: AuthChallengeType.EMAIL_VERIFY,
+        channel: MessagingChannel.EMAIL,
+        addressNorm: 'member@example.com',
         purpose: 'pos-recharge',
+        status: AuthChallengeStatus.PENDING,
         codeHash: { not: null },
-      }),
+      },
       orderBy: { createdAt: 'desc' },
     });
     expect(prisma.authChallenge.update).toHaveBeenCalledWith({
