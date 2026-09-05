@@ -111,6 +111,11 @@ node tools/architecture/scan-architecture.mjs --report
   `NotificationService`/`notification.module`, pass Prisma `User`/DB `userId`, or move consent
   into Messaging. Registration email/SMS fallback and subscription email delivery link audit
   records through `userStableId`;
+- Historical AWS SNS/SQS infrastructure is retired. The architecture scanner reserves deletion
+  of `/webhooks/aws-sns`, its controller/service and the SES SQS event processor, and prevents
+  `SNS_TOPIC_ARN`, `SES_EVENTS_SQS_QUEUE_URL` or `PRINT_SNS_TOPIC_ARN` runtime wiring from
+  returning. AWS SES/SMS send providers remain available; SES configuration-set publishing is
+  explicit opt-in so provider activation does not silently recreate the retired event path;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

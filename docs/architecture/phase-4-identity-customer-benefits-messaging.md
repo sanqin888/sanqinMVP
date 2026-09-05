@@ -476,8 +476,8 @@ rollout.
 
 #### Slice 2D — Customer lifecycle notification boundary contraction
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice2d-customer-lifecycle-notifications`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**. PR #2175 passed final
+GitHub Actions CI #5130 on head `a0fa3f85` and squash-merged to `dev` as `0cb3ce11`.
 
 Readiness audit of merged Slice 2C confirmed the remaining **6** direct Identity ->
 Messaging imports as Auth registration-welcome notifications 2, Membership subscription-
@@ -509,7 +509,7 @@ Implemented source shape:
    scanner guard. Focused characterization locks stable-ID mapping, fallback behavior and the
    Membership-owned consent gate.
 
-The local monotonic baseline contracts
+The merged monotonic baseline contracts
 `identity-customer-benefits -> messaging-notifications 6 -> 2`; all other direct pairs remain
 unchanged. Identity total outgoing direct debt therefore contracts **44 -> 40**. The final two
 Messaging direct imports are Loyalty's `OrderEventsBus` and `MessagingModule`. No dependency /
@@ -520,6 +520,51 @@ consolidated Phase 4 batch rollout.
 
 Remaining Slice 2 work after 2D is expected to contract the final Loyalty messaging/event tail
 without recreating a reverse Messaging -> Identity edge.
+
+#### Slice 2E-A — Retire historical AWS SNS / SQS infrastructure
+
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice2ea-retire-aws-sns-sqs`.
+
+The user confirmed on 2026-09-04 that AWS SNS and SQS are retired historical infrastructure.
+SQS had previously been used around the Clover Hosted Checkout era for traffic smoothing, but
+that payment queue path is no longer present in current source. The only remaining SQS runtime
+consumer was `SesEventProcessor`, which consumed SES bounce/complaint events; the only remaining
+SNS HTTP surface was `/api/v1/webhooks/aws-sns`. Production read-only evidence showed no current
+SNS/`ORDER_PAID` MessagingWebhookEvent rows and no API request hits for the SNS route in the
+inspected logs beyond Nest route registration. Current production delivery is SendGrid email and
+Twilio SMS.
+
+The authorized contraction:
+
+1. deletes `AwsSnsWebhookController` and `AwsSnsWebhookService`, removes the raw-body middleware
+   for `/api/v1/webhooks/aws-sns`, and removes the SNS route from `MessagingModule`;
+2. deletes `SesEventProcessor` and its SQS consumer wiring from `EmailModule`;
+3. removes `SNS_TOPIC_ARN`, `SES_EVENTS_SQS_QUEUE_URL` and the historical
+   `AWS_SES_CONFIGURATION_SET=\"sanq-events\"` compose wiring, plus the unused
+   `PRINT_SNS_TOPIC_ARN` Orders field;
+4. preserves `SesEmailProvider` and `AwsSmsProvider`. SES sending now includes a configuration set
+   only when `AWS_SES_CONFIGURATION_SET` is explicitly configured, so AWS email remains usable
+   without an implicit dependency on retired event infrastructure;
+5. preserves SendGrid/Twilio webhook handling and shared Messaging audit/suppression tables. No
+   Messaging persistence model is deleted because those models remain active for current
+   providers;
+6. does not add EventBridge or another SES feedback path. If AWS SES/SMS are activated later,
+   feedback/event ingestion will be designed as a separate provider activation task;
+7. leaves `@aws-sdk/client-sns`, `@aws-sdk/client-sqs` and `sqs-consumer` temporarily as
+   manifest-only dead dependencies. Package/lockfile cleanup is intentionally deferred because
+   dependency changes require their own authorized pnpm update and review.
+
+The local monotonic baseline contracts
+`messaging-notifications -> architecture-foundation 4 -> 3` and
+`messaging-notifications -> runtime-data-ci-ops 9 -> 6`; Messaging total outgoing direct debt
+therefore contracts **14 -> 10**. The existing OrderEventsBus remains in Messaging temporarily;
+its ownership move and the final Identity -> Messaging `2 -> 0` contraction belong to Slice 2E-B
+so this retirement PR does not mix event-bus redesign with external infrastructure deletion.
+
+No Prisma schema/migration, SendGrid/Twilio provider behavior, current email/SMS routing, payment
+transaction behavior, Uber wire protocol or active customer API is changed. Like Slice 1 onward,
+2E-A will not be deployed separately; it remains part of the Phase 4 consolidated rollout.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 

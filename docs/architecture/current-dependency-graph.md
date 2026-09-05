@@ -101,7 +101,7 @@ pair fails CI.
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
-| messaging-notifications | architecture-foundation 4; runtime-data-ci-ops 9; store-operations-pos-print 1 |
+| messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
@@ -112,7 +112,7 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 2D source contraction records these
+The current local monotonic baseline after the Slice 2E-A source contraction records these
 direct-debt totals:
 
 - identity-customer-benefits: **40**
@@ -122,16 +122,19 @@ direct-debt totals:
 - store-operations-pos-print: **31**
 - accounting-reporting-analytics: **25**
 - catalog-pricing-offers: **15**
-- messaging-notifications: **14**
+- messaging-notifications: **10**
 - brand-store: **8**
 
 The reduction in Orders/POS counts is baseline normalization of source debt that had
 already contracted; it does not reopen those contexts as the next primary owner phase.
-After Slice 2D, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
+After Slice 2E-A, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
 at **40**, but that does not change the active Phase 4 owner scope: Identity still has
 substantial remaining Customer/Benefits/Messaging boundary debt and is a high-coupling
-target for Payments, POS, Accounting, Orders, External Channels and Catalog. Payment
-ownership is not reopened merely to chase the largest numeric total mid-phase.
+target for Payments, POS, Accounting, Orders, External Channels and Catalog. Messaging drops
+from **14 -> 10** because the retired SNS/SQS integrations no longer import Messaging-side
+Prisma/common infrastructure; the remaining OrderEventsBus ownership tail is intentionally
+left for Slice 2E-B. Payment ownership is not reopened merely to chase the largest numeric
+total mid-phase.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:
@@ -232,7 +235,7 @@ contracts **10 -> 6** and total Identity outgoing debt contracts **48 -> 44**. P
 as `e27489cf` after final head `2c18e3c5` passed CI #5126; deployment remains deferred to the
 Phase 4 batch rollout.
 
-Slice 2D locally contracts Auth and Membership lifecycle notifications behind the narrow
+Slice 2D contracts Auth and Membership lifecycle notifications behind the narrow
 `CUSTOMER_LIFECYCLE_NOTIFICATION` public capability. Auth retains the new-user decision and
 maps only stable customer/contact/name/language facts for registration welcome delivery.
 Membership retains the persisted marketing-consent decision and invokes subscription welcome
@@ -241,8 +244,16 @@ still runs afterward. Messaging retains template rendering, registration email-t
 provider routing and audit metadata, but registration/subscription sends now link by
 `userStableId` rather than the User DB UUID. `identity-customer-benefits ->
 messaging-notifications` contracts **6 -> 2** and total Identity outgoing debt contracts
-**44 -> 40**. The only remaining direct Messaging imports are Loyalty's `OrderEventsBus` and
-`MessagingModule`; the source is awaiting review/remote CI and will not be deployed separately.
+**44 -> 40**. PR #2175 merged as `0cb3ce11` after final head `a0fa3f85` passed CI #5130;
+deployment remains deferred to the Phase 4 batch rollout.
+
+Slice 2E-A locally retires the user-confirmed unused AWS SNS/SQS infrastructure. The SNS HTTP
+webhook and SES SQS processor are deleted, MessagingModule no longer needs Prisma for SNS
+persistence, and runtime SNS/SQS environment wiring is removed while AWS SES/SMS send providers
+remain available. This contracts `messaging-notifications -> architecture-foundation` **4 -> 3**,
+`messaging-notifications -> runtime-data-ci-ops` **9 -> 6**, and Messaging total outgoing direct
+debt **14 -> 10**. The remaining OrderEventsBus placement is intentionally unchanged in 2E-A and
+is reserved for 2E-B so no event-bus ownership redesign is mixed with infrastructure retirement.
 
 ## Phase 1 boundary changes reflected here
 
