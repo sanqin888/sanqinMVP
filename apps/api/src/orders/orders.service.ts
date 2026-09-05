@@ -28,8 +28,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import {
   LOYALTY_ORDER_PAID_SETTLEMENT,
+  LOYALTY_ORDER_USAGE_READER,
   LOYALTY_POLICY_READER,
   type LoyaltyOrderPaidSettlementPort,
+  type LoyaltyOrderUsageReaderPort,
   type LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
@@ -418,6 +420,8 @@ export class OrdersService {
     private readonly loyalty: LoyaltyService,
     @Inject(LOYALTY_ORDER_PAID_SETTLEMENT)
     private readonly loyaltyOrderPaidSettlement: LoyaltyOrderPaidSettlementPort,
+    @Inject(LOYALTY_ORDER_USAGE_READER)
+    private readonly loyaltyOrderUsageReader: LoyaltyOrderUsageReaderPort,
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
@@ -739,7 +743,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { orderStableId },
       select: {
-        id: true,
+        orderStableId: true,
         channel: true,
         totalCents: true,
         paymentBreakdownJson: true,
@@ -750,7 +754,7 @@ export class OrdersService {
   }
 
   private async resolveExternalPaymentCents(order: {
-    id: string;
+    orderStableId: string;
     channel: Channel;
     totalCents: number;
     paymentBreakdownJson?: Prisma.JsonValue | null;
@@ -778,8 +782,10 @@ export class OrdersService {
     // Reconstruct the tender split from financial facts: points are already
     // reflected in totalCents, while committed Store Balance is a payment
     // tender. Anything left after that balance tender is external payment.
-    const settledBalanceCents =
-      await this.loyalty.getSettledBalancePaymentCentsForOrder(order.id);
+    const { balancePaidCents: settledBalanceCents } =
+      await this.loyaltyOrderUsageReader.getOrderUsage({
+        orderStableId: order.orderStableId,
+      });
     return Math.max(
       0,
       order.totalCents - Math.min(order.totalCents, settledBalanceCents),
@@ -931,47 +937,11 @@ export class OrdersService {
     };
   }
 
-  private async getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
+  private getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
     balancePaidCents: number;
     pointsEarned: number;
   }> {
-    const order = await this.prisma.order.findUnique({
-      where: { orderStableId },
-      select: { id: true },
-    });
-
-    if (!order) {
-      return {
-        balancePaidCents: 0,
-        pointsEarned: 0,
-      };
-    }
-
-    const ledgers = await this.prisma.loyaltyLedger.findMany({
-      where: {
-        orderId: order.id,
-        OR: [
-          { target: 'BALANCE', type: 'REDEEM_ON_ORDER' },
-          {
-            target: 'POINTS',
-            type: { in: ['EARN_ON_PURCHASE', 'AMEND_EARN_ADJUST'] },
-          },
-        ],
-      },
-      select: { target: true, deltaMicro: true },
-    });
-
-    const balanceMicroUsed = ledgers
-      .filter((entry) => entry.target === 'BALANCE' && entry.deltaMicro < 0n)
-      .reduce((sum, entry) => sum + -entry.deltaMicro, 0n);
-    const pointsEarnedMicro = ledgers
-      .filter((entry) => entry.target === 'POINTS')
-      .reduce((sum, entry) => sum + entry.deltaMicro, 0n);
-
-    return {
-      balancePaidCents: Number(balanceMicroUsed) / 10_000,
-      pointsEarned: Number(pointsEarnedMicro) / 1_000_000,
-    };
+    return this.loyaltyOrderUsageReader.getOrderUsage({ orderStableId });
   }
   private isClientRequestId(value: unknown): value is string {
     return typeof value === 'string' && this.CLIENT_REQUEST_ID_RE.test(value);
@@ -4022,6 +3992,7 @@ export class OrdersService {
       where: { orderStableId: params.orderStableId },
       select: {
         id: true,
+        orderStableId: true,
         channel: true,
         paymentMethod: true,
         paymentBreakdownJson: true,

@@ -9,6 +9,7 @@ import {
 } from '../loyalty/loyalty.service';
 import type {
   LoyaltyOrderPaidSettlementPort,
+  LoyaltyOrderUsageReaderPort,
   LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
 import { UberDirectService } from '../deliveries/uber-direct.service';
@@ -104,6 +105,7 @@ describe('OrdersService', () => {
     rollbackOnRefund: jest.Mock;
   };
   let loyaltyOrderPaidSettlement: { settleOrderPaid: jest.Mock };
+  let loyaltyOrderUsageReader: { getOrderUsage: jest.Mock };
   let loyaltyPolicyReader: {
     getLoyaltyPolicySnapshot: jest.Mock;
   };
@@ -217,6 +219,11 @@ describe('OrdersService', () => {
     loyaltyOrderPaidSettlement = {
       settleOrderPaid: jest.fn().mockResolvedValue(undefined),
     };
+    loyaltyOrderUsageReader = {
+      getOrderUsage: jest
+        .fn()
+        .mockResolvedValue({ balancePaidCents: 0, pointsEarned: 0 }),
+    };
     loyaltyPolicyReader = {
       getLoyaltyPolicySnapshot: jest.fn().mockResolvedValue({
         earnPtPerDollar: 0.01,
@@ -293,6 +300,7 @@ describe('OrdersService', () => {
       brandStoreConfigReader as unknown as BrandStoreConfigReaderPort,
       loyalty as unknown as LoyaltyService,
       loyaltyOrderPaidSettlement as unknown as LoyaltyOrderPaidSettlementPort,
+      loyaltyOrderUsageReader as unknown as LoyaltyOrderUsageReaderPort,
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
       promotions as unknown as PromotionContextReaderPort,
@@ -365,6 +373,27 @@ describe('OrdersService', () => {
       { itemStableId: demoProductId, basePriceCents: 1000 },
     ]);
     expect('menuDailySpecial' in prisma).toBe(false);
+  });
+
+  it('delegates loyalty order-usage projection by stable Order identity', async () => {
+    loyaltyOrderUsageReader.getOrderUsage.mockResolvedValue({
+      balancePaidCents: 125,
+      pointsEarned: 2,
+    });
+    const internalService = service as unknown as {
+      getLoyaltyUsageByOrderStableId: (orderStableId: string) => Promise<{
+        balancePaidCents: number;
+        pointsEarned: number;
+      }>;
+    };
+
+    await expect(
+      internalService.getLoyaltyUsageByOrderStableId('order-stable-usage'),
+    ).resolves.toEqual({ balancePaidCents: 125, pointsEarned: 2 });
+    expect(loyaltyOrderUsageReader.getOrderUsage).toHaveBeenCalledWith({
+      orderStableId: 'order-stable-usage',
+    });
+    expect('loyaltyLedger' in prisma).toBe(false);
   });
 
   it('keeps the same option stable id when selected in different component group paths', () => {

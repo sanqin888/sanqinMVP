@@ -209,18 +209,60 @@ No Prisma/dependency/context-import change is introduced. Expected numeric graph
 Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
 **0**, Commerce -> Identity **4**, with the public SCC baseline empty.
 
-Slice 5A is **SOURCE COMPLETE / LOCAL REVIEW PENDING** on
-`refactor/phase4-slice5a-loyalty-ledger-order-identity`. The authorized additive migration adds nullable
-`LoyaltyLedger.orderStableId`, deterministically backfills the existing Order mapping with
-count/mismatch/orphan checks, and deliberately leaves the existing `(orderId, type, sourceKey)` internal
-idempotency key plus nullable `orderId` in place. All order-linked Loyalty ledger writes dual-write the
-stable identity inside their existing transaction; manual no-order adjustments remain identity-null.
-`LOYALTY_LEDGER_READER` now returns the persisted stable identity directly, so both Admin Members and
-Membership stop performing `Order.id -> orderStableId` enrichment. The normal order-create path allocates
-its stable ID before Loyalty writes, while payment/refund/amendment/top-up paths reuse their already-known
-stable identity. Consolidating Loyalty Runtime imports through `loyalty-prisma.ts` contracts Identity ->
-Runtime **12 -> 10** and Identity total **35 -> 33**. No new public dependency edge is introduced, so the
-public SCC baseline remains empty. The migration is not applied and remote CI has not yet run for 5A.
+Slice 5A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2186. Final head
+`3b904dd1` passed GitHub Actions CI #5171 and squash-merged to `dev` as `c28df1b5`. The authorized additive
+migration adds nullable `LoyaltyLedger.orderStableId`, deterministically backfills the existing Order mapping
+with count/mismatch/orphan checks, and deliberately leaves the existing `(orderId, type, sourceKey)` internal
+idempotency key plus nullable `orderId` in place. All order-linked Loyalty ledger writes dual-write the stable
+identity inside their existing transaction; manual no-order adjustments remain identity-null.
+`LOYALTY_LEDGER_READER` now returns the persisted stable identity directly, so both Admin Members and Membership
+stop performing `Order.id -> orderStableId` enrichment. The normal order-create path allocates its stable ID
+before Loyalty writes, while payment/refund/amendment/top-up paths reuse their already-known stable identity.
+Consolidating Loyalty Runtime imports through `loyalty-prisma.ts` contracts Identity -> Runtime **12 -> 10** and
+Identity total **35 -> 33**. No new public dependency edge is introduced, so the public SCC baseline remains
+empty. The migration remains unapplied in production.
+
+### Phase 4 Slice 6 readiness audit — 2026-09-05
+
+Audit base is `origin/dev@c28df1b5`. The exact 5A source already passed the monotonic Architecture gate in
+CI #5171, so the numeric debt table above is current and `legacyPublicCycleComponents: []` is not stale.
+Repository search also confirms the former Admin/Membership loyalty-ledger `Order.id -> orderStableId`
+enrichment is gone: both views now delegate to `LOYALTY_LEDGER_READER`, and no `orderStableById` map remains.
+
+The audit found one safe unresolved owner tail and Slice 5B is now **SOURCE COMPLETE / LOCAL REVIEW PENDING**.
+The two direct Commerce reads (`OrdersService.getLoyaltyUsageByOrderStableId()` and the former
+`PrintPosPayloadService.getBalancePaidCents()`) plus the implementation-review-discovered old-Web compatibility
+call to `LoyaltyService.getSettledBalancePaymentCentsForOrder(orderId)` are now one Benefits-owned
+`LOYALTY_ORDER_USAGE_READER`. The contract accepts only `orderStableId` and returns `balancePaidCents` plus
+`pointsEarned`; Orders detail/public-summary, legacy Web external-payment reconstruction and POS/receipt/email
+print payloads all delegate through it. Repository production-source search now finds `LoyaltyLedger` Prisma
+access only inside the Loyalty owner. The obsolete DB-ID balance-read helper is deleted, while refund mutation
+continues to use the retained internal UUID path deliberately.
+
+Slice 5B also adds `@@index([orderStableId])` and the separate additive
+`20260905204500_add_loyalty_ledger_order_stable_id_index` migration. The index is non-unique because multiple
+ledger rows per Order are valid; 5A migration history is untouched and no FK/NOT NULL/unique tightening is added.
+The scanner permanently forbids Orders/Print from reclaiming direct LoyaltyLedger persistence. Numeric direct-
+import counts are expected to remain unchanged because the replacement uses the already-existing Commerce ->
+Benefits public direction; final exactness and SCC state remain subject to remote Architecture CI after review.
+
+Two other debts remain explicit deferrals rather than closeout blockers. First,
+`MembershipService.getMemberSummary()` still reads Order/OrderItem persistence and deep-imports the Orders-
+internal `OrderItemOptionsSnapshot`; that import is the current **Identity -> Commerce = 1** direct allowance.
+Replacing it mechanically with an Orders public reader would introduce a reverse Identity -> Commerce public
+edge while Commerce already consumes Identity/Benefits, recreating a public SCC, so this composite read-model
+needs a later orchestration/ownership redesign. Second, Phase 3 Slice 2C remains transaction-sensitive:
+Points/Balance COMMIT, Coupon COMMIT and Order creation still share the same Prisma transaction, with Loyalty
+locking reservation/account state through the supplied transaction client. No public facade may split that
+atomicity or expose `Prisma.TransactionClient` merely to remove the remaining concrete service imports.
+
+Production `_prisma_migrations` has no applied row for the first three accumulated Phase 4 migrations:
+`20260905134000_add_trusted_device_stable_id`, `20260905145500_add_order_user_stable_id`, and
+`20260905193000_add_loyalty_ledger_order_stable_id`. Slice 5B adds the fourth pending migration,
+`20260905204500_add_loyalty_ledger_order_stable_id_index`; it is newly created local source and has not been
+applied. All four remain consolidated-rollout prerequisites, and the new API must not start querying those
+columns/read paths before migration deploy completes. `MEMBER_RECHARGE_OTP_SECRET` is also a required rollout
+prerequisite; secret presence was not inspected by this read-only audit.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

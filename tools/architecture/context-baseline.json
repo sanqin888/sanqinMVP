@@ -447,14 +447,18 @@
   "loyaltyLedgerOrderIdentityBoundary": {
     "schema": "apps/api/prisma/schema.prisma",
     "migration": "apps/api/prisma/migrations/20260905193000_add_loyalty_ledger_order_stable_id/migration.sql",
+    "orderUsageMigration": "apps/api/prisma/migrations/20260905204500_add_loyalty_ledger_order_stable_id_index/migration.sql",
     "contract": "apps/api/src/loyalty/loyalty-ledger-read.contract.ts",
     "reader": "apps/api/src/loyalty/loyalty-ledger-read.service.ts",
+    "orderUsageContract": "apps/api/src/loyalty/loyalty-order-usage-read.contract.ts",
+    "orderUsageReader": "apps/api/src/loyalty/loyalty-order-usage-read.service.ts",
     "module": "apps/api/src/loyalty/loyalty.module.ts",
     "publicSurface": "apps/api/src/loyalty/public-api.ts",
     "loyaltyPrismaBoundary": "apps/api/src/loyalty/loyalty-prisma.ts",
     "loyaltyPolicyWriter": "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts",
     "loyaltyService": "apps/api/src/loyalty/loyalty.service.ts",
     "ordersService": "apps/api/src/orders/orders.service.ts",
+    "printPosPayloadService": "apps/api/src/orders/print-pos-payload.service.ts",
     "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
     "membershipService": "apps/api/src/membership/membership.service.ts"
   },
