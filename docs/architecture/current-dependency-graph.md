@@ -166,7 +166,7 @@ ACTIVE/DISABLED account status. `TrustedDevice.trustedDeviceStableId` is added t
 additive migration; the browser-facing legacy `id` alias now carries the same stable identity rather
 than the Prisma UUID. Identity -> Architecture remains **13**, Identity -> Runtime **12**, Identity total
 **35**, Identity -> Messaging **0**, and the public SCC baseline remains empty. The TrustedDevice
-migration remains unapplied in production until the consolidated Phase 4 rollout.
+migration was successfully applied to production when the consolidated Phase 4 rollout began on 2026-09-05.
 
 Slice 4C is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2182. Final head
 `7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`. The approved
@@ -179,8 +179,13 @@ and uses only the narrow Customer existence public capability to preserve `404 m
 no User DB UUID crosses the boundary and no Identity -> Orders public edge is introduced.
 `OrdersModule` also switches its historical Membership module import to `membership/public-api`,
 contracting Commerce -> Identity direct debt **5 -> 4** and Commerce outgoing total **31 -> 30** while
-the public SCC baseline remains empty. The Order stable-ID migration is merged but remains unapplied
-until the consolidated Phase 4 rollout.
+the public SCC baseline remains empty. The consolidated rollout exposed a historical persistence mismatch before this migration could complete:
+production `Order.userId` is `TEXT` while `User.id` is `UUID`. The first Phase 4 migration applied successfully,
+then `20260905145500_add_order_user_stable_id` failed with PostgreSQL `42883` and rolled back. Read-only production
+verification found all **45/45** non-null `Order.userId` values are valid UUID text and map to `User.id`. The recovery
+therefore adds ordered prerequisite `20260905144000_normalize_order_user_id_uuid`, models `Order.userId` as
+`String? @db.Uuid`, converts it with `USING "userId"::uuid`, and deliberately adds no FK/NOT NULL/delete semantics
+before retrying the untouched stable-ID migration.
 
 Slice 4D-A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2183. Final head
 `cec141ba` passed GitHub Actions CI #5162 and squash-merged to `dev` as `07dc1206`. The Identity-owned
@@ -253,12 +258,15 @@ Loyalty's paid-settlement Order lookup and UUID-based refund rollback also remai
 retained internal `LoyaltyLedger.orderId` idempotency/refund implementation from Slice 5A; they are not a
 Commerce-side read-owner leak and are not silently reclassified as closed debt.
 
-Production `_prisma_migrations` still has no applied row for any of the four accumulated Phase 4 migrations:
-`20260905134000_add_trusted_device_stable_id`, `20260905145500_add_order_user_stable_id`,
-`20260905193000_add_loyalty_ledger_order_stable_id`, and
-`20260905204500_add_loyalty_ledger_order_stable_id_index`. All four are consolidated-rollout prerequisites and
-must be applied before the new API source is activated. `MEMBER_RECHARGE_OTP_SECRET` remains a required rollout
-prerequisite; secret presence was not inspected by this closeout audit.
+Production rollout has now partially advanced: `20260905134000_add_trusted_device_stable_id` is applied;
+`20260905145500_add_order_user_stable_id` has a failed/rolled-back attempt caused by the historical
+`Order.userId TEXT` / `User.id UUID` mismatch. Recovery source adds
+`20260905144000_normalize_order_user_id_uuid` ahead of the untouched 14:55 migration. After the failed migration
+is marked rolled back, deploy order must be 14:40 UUID normalization -> retry 14:55 stable-ID backfill ->
+`20260905193000_add_loyalty_ledger_order_stable_id` ->
+`20260905204500_add_loyalty_ledger_order_stable_id_index`, all before the new API source is activated.
+`MEMBER_RECHARGE_OTP_SECRET` remains a required rollout prerequisite. This recovery does not change dependency
+counts or the empty public SCC baseline.
 
 No further safe Phase 4 dependency contraction is identified. The Phase 4 **source graph is closed**; the next
 step is consolidated deployment readiness, migration/secret preflight, deployment, and focused active

@@ -427,6 +427,7 @@
   },
   "adminMemberOrdersReadBoundary": {
     "orderSchema": "apps/api/prisma/schema.prisma",
+    "orderUserIdTypeMigration": "apps/api/prisma/migrations/20260905144000_normalize_order_user_id_uuid/migration.sql",
     "orderMigration": "apps/api/prisma/migrations/20260905145500_add_order_user_stable_id/migration.sql",
     "customerExistenceContract": "apps/api/src/membership/customer-existence.contract.ts",
     "customerExistenceService": "apps/api/src/membership/customer-existence.service.ts",
