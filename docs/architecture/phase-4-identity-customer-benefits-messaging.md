@@ -723,7 +723,7 @@ contracts:
    ownership from returning to the Admin controller/module.
 
 Static production-import accounting keeps Identity -> Architecture at **13**, contracts Identity ->
-Runtime **14 -> 11**, and therefore contracts total Identity outgoing debt **37 -> 34**. Identity ->
+Runtime **14 -> 12**, and therefore contracts total Identity outgoing debt **37 -> 35**. Identity ->
 Messaging direct debt remains **0** because Staff delivery is a registered public capability, and the
 public SCC baseline remains empty. No dependency/lockfile,
 Prisma schema/migration, HTTP route, Web, payment, Orders, Uber or durable-outbox change is included.

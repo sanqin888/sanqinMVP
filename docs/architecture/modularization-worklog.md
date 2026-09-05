@@ -839,8 +839,8 @@ preserved. Characterization locks staff list mapping, self/last-admin guards, al
 delivery, invite status and the existing 400/404 transport error mapping. The central scanner moves
 the Phase 2C Staff delivery consumer from Admin to Identity and forbids Staff Prisma/delivery
 ownership from returning to the Admin adapter. Static
-production-import accounting contracts Identity -> Runtime **14 -> 11** and total Identity outgoing
-**37 -> 34** while Identity -> Messaging direct debt stays **0** and the public SCC baseline stays
+production-import accounting contracts Identity -> Runtime **14 -> 12** and total Identity outgoing
+**37 -> 35** while Identity -> Messaging direct debt stays **0** and the public SCC baseline stays
 empty. No local lint/build/test/scanner execution is claimed; GitHub Actions remains deferred until
 user review. This slice will not be deployed separately before Phase 4 closeout.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
@@ -881,7 +881,7 @@ user review. This slice will not be deployed separately before Phase 4 closeout.
   onboarding/profile/address/marketing-consent while the broad Membership read surface no longer
   performs implicit User/PHONE_VERIFY mutation. Slice 4A is locally complete: Staff persistence,
   invite orchestration and staff-account invariants now belong to Auth/Identity, contracting
-  Identity -> Runtime `14 -> 11` and total Identity outgoing `37 -> 34`. Per the current rollout
+  Identity -> Runtime `14 -> 12` and total Identity outgoing `37 -> 35`. Per the current rollout
   plan, Slice 1 onward are not individually deployed; the accumulated Phase 4 changes will be
   deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
