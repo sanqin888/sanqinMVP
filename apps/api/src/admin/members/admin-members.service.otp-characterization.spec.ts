@@ -47,6 +47,8 @@ describe('AdminMembersService recharge OTP characterization', () => {
       phoneVerification as never,
       memberRechargeEmailDelivery as never,
       challengeEngine,
+      {} as never,
+      {} as never,
     );
 
     return {

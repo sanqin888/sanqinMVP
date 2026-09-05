@@ -820,8 +820,8 @@ slice will not be deployed separately before the Phase 4 consolidated rollout.
 
 ### 2026-09-05 — Phase 4 Slice 4A: Staff Administration ownership contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice4a-staff-ownership`  
-**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**PR/SHA:** PR #2179; final head `f235893e`; squash merge `f91a849e`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT  
 **Result:** Staff account and invite business decisions move from `AdminStaffController` behind the
 Identity-owned `STAFF_ADMINISTRATION` public port. Its framework-free contract carries only stable-ID
 Staff DTOs/use cases; internal `StaffAdministrationService` owns ADMIN/STAFF list mapping, role/status
@@ -841,8 +841,39 @@ the Phase 2C Staff delivery consumer from Admin to Identity and forbids Staff Pr
 ownership from returning to the Admin adapter. Static
 production-import accounting contracts Identity -> Runtime **14 -> 12** and total Identity outgoing
 **37 -> 35** while Identity -> Messaging direct debt stays **0** and the public SCC baseline stays
-empty. No local lint/build/test/scanner execution is claimed; GitHub Actions remains deferred until
-user review. This slice will not be deployed separately before Phase 4 closeout.  
+empty. No local lint/build/test/scanner execution was claimed under repository workflow. Final
+GitHub Actions CI #5144 passed Architecture, API/Web lint/build/strict checks and tests on final head
+`f235893e` before squash merge `f91a849e`. This slice will not be deployed separately before Phase 4
+closeout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
+### 2026-09-05 — Phase 4 Slice 4B Stage 1: Customer + Security admin boundary contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice4b-customer-security-admin-boundary`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**Result:** Customer/Admin profile mutation and address reads move behind the Customer-owned
+`CUSTOMER_ADMINISTRATION` public contract implemented by the existing `CustomerService`; the broad
+`AdminMembersService` no longer owns `UserAddress` reads or profile `User.update` persistence. The
+historical Admin birthday override remains intentionally broader than customer self-service: Admin may
+overwrite an existing birthday or clear year/month together without the customer minimum-age/
+one-time-completion restriction, while existing year/month validation, contact uniqueness and phone-
+verification reset behavior are preserved. Auth separately owns `ACCOUNT_SECURITY_ADMINISTRATION`, a
+framework/Prisma-generated-free stable-ID capability whose internal service resolves the User DB UUID
+inside Identity and performs Admin session list/revoke plus ACTIVE/DISABLED status mutation. The
+combined Admin device response now takes sessions from that Auth owner while temporarily retaining the
+legacy Membership trusted-device portion. `TrustedDevice.id` remains a browser-facing Prisma UUID and
+is **not** added to the new Auth contract; its stable-ID expand-contract is deferred to 4B Stage 2 and
+requires explicit schema/migration authorization. Orders/top-items remain 4C, recharge challenge/token
+lifecycle remains 4D and Benefits/coupon/loyalty implementation remains Slice 5. Focused tests cover
+Admin birthday override/clear, phone normalization/verification reset and stable-ID-scoped session/
+status behavior. The central scanner reserves both owner contracts, prevents Customer profile/address
+or Auth session/status persistence from returning to Admin, and prevents TrustedDevice from entering
+the new account-security public boundary during Stage 1. Numeric direct-import debt is unchanged:
+Identity -> Architecture **13**, Identity -> Runtime **12**, total Identity outgoing **35**, Identity ->
+Messaging **0**, with an empty public SCC baseline. No local lint/build/test/scanner execution is
+claimed under repository workflow; GitHub Actions remains deferred until user review.  
 **Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
@@ -861,7 +892,7 @@ user review. This slice will not be deployed separately before Phase 4 closeout.
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 MERGED/CI; SLICE 4A LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 + 4A MERGED/CI; SLICE 4B STAGE 1 LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -879,11 +910,14 @@ user review. This slice will not be deployed separately before Phase 4 closeout.
   Messaging bridge while preserving the durable outbox. Slice 3 merged via PR #2178 as `e813d918`
   after final head `73f7d2e1` passed CI #5140; CustomerService now owns
   onboarding/profile/address/marketing-consent while the broad Membership read surface no longer
-  performs implicit User/PHONE_VERIFY mutation. Slice 4A is locally complete: Staff persistence,
-  invite orchestration and staff-account invariants now belong to Auth/Identity, contracting
-  Identity -> Runtime `14 -> 12` and total Identity outgoing `37 -> 35`. Per the current rollout
-  plan, Slice 1 onward are not individually deployed; the accumulated Phase 4 changes will be
-  deployed and actively verified together after source closeout.
+  performs implicit User/PHONE_VERIFY mutation. Slice 4A merged via PR #2179 as `f91a849e` after
+  final head `f235893e` passed CI #5144; Staff persistence, invite orchestration and staff-account
+  invariants now belong to Auth/Identity, contracting Identity -> Runtime `14 -> 12` and total
+  Identity outgoing `37 -> 35`. Slice 4B Stage 1 is locally source-complete: Customer owns Admin
+  profile/address operations and Auth owns Admin session/status operations while TrustedDevice remains
+  a separately gated stable-ID migration tail. Per the current rollout plan, Slice 1 onward are not
+  individually deployed; the accumulated Phase 4 changes will be deployed and actively verified
+  together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

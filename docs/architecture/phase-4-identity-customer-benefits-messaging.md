@@ -683,10 +683,14 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **4A LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice4a-staff-ownership`; 4B/4C/4D remain planned.
+Status: **4A MERGED / CI GREEN; 4B STAGE 1 LOCAL SOURCE COMPLETE / REVIEW PENDING**.
+4C/4D remain planned; the TrustedDevice stable-ID contraction remains an explicitly gated
+4B Stage 2 because it requires Prisma schema/migration work.
 
 #### Slice 4A — Staff Administration ownership contraction
+
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2179. Final head
+`f235893e` passed GitHub Actions CI #5144 and squash-merged to `dev` as `f91a849e`.
 
 The approved first sub-slice moves Staff administration persistence and business decisions from the
 Admin transport adapter into the existing Auth/Identity owner without changing HTTP routes or Web
@@ -729,11 +733,52 @@ public SCC baseline remains empty. No dependency/lockfile,
 Prisma schema/migration, HTTP route, Web, payment, Orders, Uber or durable-outbox change is included.
 Per the Phase 4 rollout policy, Slice 4A will not be deployed separately.
 
+#### Slice 4B — Customer + Security admin boundary
+
+Status: **STAGE 1 LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice4b-customer-security-admin-boundary`.
+
+The Stage 1 implementation is an atomic source-only owner contraction and intentionally stops before
+TrustedDevice identity migration:
+
+1. Customer now exposes the framework/persistence-free `CUSTOMER_ADMINISTRATION` contract.
+   `CustomerService` implements the capability and owns Admin profile mutation plus address reads;
+   `AdminMembersService` delegates both instead of writing `User` / `UserAddress` itself;
+2. the existing Admin birthday override remains deliberately distinct from customer self-service:
+   Admin may overwrite an existing birthday, clear year/month together, and is not subject to the
+   customer-facing minimum-age or one-time-completion restrictions. Existing year/month validation,
+   email/phone uniqueness checks and phone-change verification reset semantics are preserved;
+3. Auth exposes the separate framework/Prisma-generated-free `ACCOUNT_SECURITY_ADMINISTRATION`
+   capability. Its internal service resolves `userStableId` to the User DB UUID inside Identity and
+   owns Admin session listing/revocation plus ACTIVE/DISABLED account-status mutation;
+4. Admin session responses preserve the existing dedupe/order/projection semantics. The combined
+   `/admin/members/:userStableId/devices` response temporarily obtains sessions from the Auth owner
+   while retaining the historical Membership trusted-device portion, so this Stage 1 does not create
+   a new canonical contract carrying `TrustedDevice.id`;
+5. `TrustedDevice.id` remains a Prisma UUID currently exposed by the historical membership/device
+   transport. Moving trusted-device list/revoke into the new Auth public contract is explicitly
+   deferred to **4B Stage 2**, which requires an authorized `trustedDeviceStableId` expand-contract
+   schema/migration and PWA contract cutover rather than cementing the DB UUID into a new boundary;
+6. Orders/top-items remain 4C, recharge challenge/token lifecycle remains 4D, and Benefits/coupon/
+   loyalty implementation remains Slice 5. No payment, Uber, provider, public route, dependency or
+   Prisma schema/migration change is included in Stage 1;
+7. focused characterization covers Admin birthday override/clear, phone normalization and
+   verification reset, stable-ID-scoped session listing/revocation and account status behavior. The
+   central scanner requires the Customer/Auth public capabilities, prevents profile/address/session/
+   status Prisma ownership from returning to Admin, and explicitly prevents TrustedDevice from being
+   added to the new account-security public contract/service during Stage 1.
+
+Static production-import debt remains **unchanged** at Identity -> Architecture **13**,
+Identity -> Runtime **12**, total Identity outgoing **35**, Identity -> Messaging **0**, with the
+public SCC baseline still empty. This is an ownership contraction inside the existing Identity /
+Customer / Benefits context, not a cross-context graph change. No local lint/build/test/scanner run is
+claimed under repository workflow; remote CI remains deferred until user review.
+
 #### Remaining Slice 4 plan
 
-- **4B — Customer + Security admin boundary:** move member profile/status/address and session/device
-  admin operations behind Customer/Auth owner use cases while preserving the distinct admin birthday
-  override semantics discovered by readiness audit.
+- **4B Stage 2 — TrustedDevice stable-ID contraction:** add a stable business identity through an
+  authorized expand-contract schema/migration, migrate member/Admin device transports and only then
+  move trusted-device list/revoke behind the Auth security public capability.
 - **4C — Orders member read routes:** re-home `/admin/members/:userStableId/orders` and `/top-items`
   implementation inside Orders while preserving the existing route shape; do not add an
   Identity -> Orders public edge that would recreate the Identity/Commerce SCC.

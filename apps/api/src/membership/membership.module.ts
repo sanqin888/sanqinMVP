@@ -12,6 +12,7 @@ import {
 } from './membership.controller';
 import { NotificationModule } from '../notifications/public-api';
 import { CouponsModule } from '../coupons/public-api';
+import { CUSTOMER_ADMINISTRATION } from './customer-administration.contract';
 
 @Module({
   imports: [
@@ -22,8 +23,15 @@ import { CouponsModule } from '../coupons/public-api';
     NotificationModule,
     CouponsModule,
   ],
-  providers: [MembershipService, CustomerService],
+  providers: [
+    MembershipService,
+    CustomerService,
+    {
+      provide: CUSTOMER_ADMINISTRATION,
+      useExisting: CustomerService,
+    },
+  ],
   controllers: [MembershipController, MembershipPublicController],
-  exports: [MembershipService],
+  exports: [MembershipService, CUSTOMER_ADMINISTRATION],
 })
 export class MembershipModule {}
