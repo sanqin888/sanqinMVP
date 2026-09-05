@@ -116,6 +116,12 @@ node tools/architecture/scan-architecture.mjs --report
   `SNS_TOPIC_ARN`, `SES_EVENTS_SQS_QUEUE_URL` or `PRINT_SNS_TOPIC_ARN` runtime wiring from
   returning. AWS SES/SMS send providers remain available; SES configuration-set publishing is
   explicit opt-in so provider activation does not silently recreate the retired event path;
+- Order paid Loyalty settlement uses the Identity-owned `LOYALTY_ORDER_PAID_SETTLEMENT` public
+  capability and crosses contexts only with `orderStableId` plus reward subtotal/redeem cents and
+  earn multiplier. `OrderEventsBus` is private Orders/Fulfillment same-process fast-path
+  infrastructure: Messaging, Loyalty and Uber cannot own/import it and Orders must not export it
+  publicly. The durable `OrderLifecycleOutboxProcessor` remains the retry/replay owner and cannot
+  be replaced by the in-memory bus;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

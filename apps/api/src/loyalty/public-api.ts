@@ -1,4 +1,9 @@
 export {
+  LOYALTY_ORDER_PAID_SETTLEMENT,
+  type LoyaltyOrderPaidSettlementInput,
+  type LoyaltyOrderPaidSettlementPort,
+} from './loyalty-order-paid-settlement.contract';
+export {
   LOYALTY_POLICY_READER,
   LOYALTY_POLICY_SETTINGS_READER,
   LOYALTY_POLICY_WRITER,

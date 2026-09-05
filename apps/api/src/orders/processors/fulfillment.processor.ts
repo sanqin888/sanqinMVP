@@ -13,7 +13,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { OrderEventsBus } from '../../messaging/order-events.bus';
+import { OrderEventsBus } from '../order-events.bus';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   type UberDirectDropoffDetails,

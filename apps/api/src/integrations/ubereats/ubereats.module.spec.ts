@@ -47,6 +47,12 @@ describe('UberEats compositions', () => {
     ]);
   });
 
+  it('keeps the API composition free of the retired Messaging bridge', () => {
+    const imports = metadata(UberEatsModule, MODULE_METADATA.IMPORTS);
+    expect(imports).toContain(OrdersModule);
+    expect(imports).not.toContain(MessagingModule);
+  });
+
   it('does not start polling workers in the API composition', () => {
     const apiProviders = metadata(UberEatsModule, MODULE_METADATA.PROVIDERS);
     expect(apiProviders).not.toContain(UberWebhookInboxWorkerAdapter);

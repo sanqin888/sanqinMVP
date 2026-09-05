@@ -24,6 +24,12 @@
   但任何内层不得反向依赖它。
 - `contracts` 只能依赖 `contracts` 与无框架的 `domain` 值类型。
 - `ubereats.module.ts` 是上述规则的唯一例外点：只有它可以同时看到并装配所有边界。
+- Uber order ingestion 通过 Orders 的 `ORDER_INGESTION_PROVIDER` 进入 canonical persistence；
+  ingestion service 不依赖 Messaging 或 `OrderEventsBus`。API composition 只导入
+  `OrdersModule`，dedicated worker composition 直接装配该 provider 与 Prisma，不得为了构造
+  Orders ingestion 重新引入 Messaging bridge 或 Orders 私有 event bus。Uber imported orders
+  继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、webhook idempotency 与
+  provider-supplied amount truth 不因此改变。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

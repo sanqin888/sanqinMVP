@@ -523,8 +523,8 @@ without recreating a reverse Messaging -> Identity edge.
 
 #### Slice 2E-A — Retire historical AWS SNS / SQS infrastructure
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice2ea-retire-aws-sns-sqs`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**. PR #2176 passed final
+GitHub Actions CI #5132 on head `11f73e88` and squash-merged to `dev` as `7746402b`.
 
 The user confirmed on 2026-09-04 that AWS SNS and SQS are retired historical infrastructure.
 SQS had previously been used around the Clover Hosted Checkout era for traffic smoothing, but
@@ -555,7 +555,7 @@ The authorized contraction:
    manifest-only dead dependencies. Package/lockfile cleanup is intentionally deferred because
    dependency changes require their own authorized pnpm update and review.
 
-The local monotonic baseline contracts
+The merged monotonic baseline contracts
 `messaging-notifications -> architecture-foundation 4 -> 3` and
 `messaging-notifications -> runtime-data-ci-ops 9 -> 6`; Messaging total outgoing direct debt
 therefore contracts **14 -> 10**. The existing OrderEventsBus remains in Messaging temporarily;
@@ -565,6 +565,74 @@ so this retirement PR does not mix event-bus redesign with external infrastructu
 No Prisma schema/migration, SendGrid/Twilio provider behavior, current email/SMS routing, payment
 transaction behavior, Uber wire protocol or active customer API is changed. Like Slice 1 onward,
 2E-A will not be deployed separately; it remains part of the Phase 4 consolidated rollout.
+
+#### Slice 2E-B — Orders event ownership + Loyalty paid-settlement inversion
+
+Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice2eb-order-events-loyalty-settlement`.
+
+The readiness audit confirmed that moving `OrderEventsBus` to an Orders public API and keeping
+Loyalty as a subscriber would recreate the Orders <-> Identity public SCC eliminated in Slice 1.
+The approved design therefore keeps the in-memory bus private to Orders/Fulfillment and inverts
+Loyalty settlement through the existing Orders -> Identity direction.
+
+Implemented source shape:
+
+1. Identity/Benefits owns the new narrow `LOYALTY_ORDER_PAID_SETTLEMENT` public capability. Its
+   input is stable/business-only: `orderStableId`, reward subtotal cents, redeemed-value cents and
+   promotion earn multiplier. It exposes no Order/User database UUID, Prisma shape or event bus;
+2. `LoyaltyService` translates `orderStableId` to the existing internal Order/User database IDs
+   inside the Loyalty persistence implementation and delegates to the established
+   `settleOnPaid()` ledger transaction. Missing/anonymous orders and settlement failures preserve
+   the historical best-effort/non-blocking side-effect semantics;
+3. Orders computes the same reward subtotal it previously placed on `order.paid.verified`, derives
+   the loyalty multiplier from the Orders-owned immutable promotion snapshot through the Offers
+   public resolver, invokes the Loyalty capability with `void`, then still emits the local paid
+   event for Fulfillment/Uber Direct dispatch;
+4. `OrderEventsBus` moves from Messaging into a private Orders implementation. `OrdersModule`
+   provides it locally; `OrdersService` and `FulfillmentProcessor` are its only production
+   consumers. The bus is not exported from `orders/public-api.ts`, and Messaging no longer owns,
+   provides or exports Order lifecycle semantics;
+5. the old `LoyaltyEventProcessor` and its `MessagingModule` dependency are deleted. This removes
+   the final two direct Identity -> Messaging imports without creating a reverse public edge;
+6. `OrderIngestionService` drops the dead `emitPaidLifecycleEvent` policy and bus constructor
+   dependency. The only production consumer, Uber order import, had always set that policy to
+   `false`; Uber API composition therefore drops `MessagingModule`, and the dedicated worker no
+   longer fabricates an `OrderEventsBus` provider merely to construct Orders ingestion;
+7. the durable `OrderLifecycleOutboxProcessor`, its OpsEvent facts, database-lock replay and
+   `FulfillmentProcessor.handleAcceptedLifecycle()` recovery path are intentionally unchanged.
+   A central scanner guard now reserves both the private fast-path ownership and the durable
+   replay path;
+8. focused characterization covers stable-ID-to-internal-ID translation, settlement failure
+   isolation, Orders stable settlement payload, retained paid-event emission and Uber composition
+   without the retired Messaging bridge.
+
+The local direct-import baseline contracts:
+
+- `identity-customer-benefits -> messaging-notifications 2 -> 0`;
+- `identity-customer-benefits -> runtime-data-ci-ops 15 -> 14`, taking total Identity outgoing
+  direct debt **40 -> 37**;
+- `commerce-orders-fulfillment -> messaging-notifications 8 -> 4`, taking total Commerce outgoing
+  direct debt **35 -> 31**;
+- `external-channels -> messaging-notifications 2 -> 0`, taking total External outgoing direct
+  debt **44 -> 42**;
+- Messaging remains at **10** outgoing direct imports, and Commerce -> Identity remains at **5**
+  because the new symbols share Orders' existing Loyalty public-api import statement.
+
+Deleting `LoyaltyEventProcessor` also removes one Loyalty import of the Offers public surface, but
+that is a public-contract occurrence rather than a direct-debt baseline count. The central public
+SCC baseline remains empty and no new public dependency direction is introduced.
+
+The existing `LoyaltyLedger.orderId` UUID persistence/idempotency key is **not** migrated in 2E-B.
+The new cross-context capability uses `orderStableId`; Loyalty resolves the internal UUID only
+inside its current persistence implementation. Converting that ledger identity would require a
+separate schema/migration and broader refund/amendment/idempotency compatibility analysis, so it
+remains explicit Benefits persistence debt for later consolidation.
+
+No dependency/lockfile, Prisma schema/migration, payment state, Uber wire contract, provider
+idempotency, external route, order-status transition, durable outbox ownership or print protocol
+is changed. Per the Phase 4 rollout policy, 2E-B will not be deployed separately; production
+verification remains part of the consolidated Phase 4 rollout.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 

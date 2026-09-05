@@ -96,11 +96,11 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; messaging-notifications 2; runtime-data-ci-ops 15; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 8; runtime-data-ci-ops 10; store-operations-pos-print 2 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 14; store-operations-pos-print 4 |
+| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 5; messaging-notifications 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
-| external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; messaging-notifications 2; runtime-data-ci-ops 24 |
+| external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6; store-operations-pos-print 1 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
@@ -112,13 +112,13 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 2E-A source contraction records these
+The current local monotonic baseline after the Slice 2E-B source contraction records these
 direct-debt totals:
 
-- identity-customer-benefits: **40**
 - payments-clover: **59**
-- external-channels: **44**
-- commerce-orders-fulfillment: **35**
+- external-channels: **42**
+- identity-customer-benefits: **37**
+- commerce-orders-fulfillment: **31**
 - store-operations-pos-print: **31**
 - accounting-reporting-analytics: **25**
 - catalog-pricing-offers: **15**
@@ -127,14 +127,13 @@ direct-debt totals:
 
 The reduction in Orders/POS counts is baseline normalization of source debt that had
 already contracted; it does not reopen those contexts as the next primary owner phase.
-After Slice 2E-A, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
-at **40**, but that does not change the active Phase 4 owner scope: Identity still has
-substantial remaining Customer/Benefits/Messaging boundary debt and is a high-coupling
-target for Payments, POS, Accounting, Orders, External Channels and Catalog. Messaging drops
-from **14 -> 10** because the retired SNS/SQS integrations no longer import Messaging-side
-Prisma/common infrastructure; the remaining OrderEventsBus ownership tail is intentionally
-left for Slice 2E-B. Payment ownership is not reopened merely to chase the largest numeric
-total mid-phase.
+After Slice 2E-B, Payments/Clover at **59** is numerically above Identity/Customer/Benefits
+at **37**, but that does not change the active Phase 4 owner scope. Slice 2E-A reduced Messaging
+from **14 -> 10** by retiring SNS/SQS infrastructure; Slice 2E-B then removes the final direct
+Identity -> Messaging pair, returns OrderEventsBus ownership to Orders and eliminates Uber's
+Messaging bridge without recreating a public SCC. Identity, Commerce and External outgoing debt
+now contract to **37 / 31 / 42** respectively. Payment ownership is not reopened merely to chase
+the largest numeric total mid-phase.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:
@@ -247,13 +246,25 @@ messaging-notifications` contracts **6 -> 2** and total Identity outgoing debt c
 **44 -> 40**. PR #2175 merged as `0cb3ce11` after final head `a0fa3f85` passed CI #5130;
 deployment remains deferred to the Phase 4 batch rollout.
 
-Slice 2E-A locally retires the user-confirmed unused AWS SNS/SQS infrastructure. The SNS HTTP
-webhook and SES SQS processor are deleted, MessagingModule no longer needs Prisma for SNS
-persistence, and runtime SNS/SQS environment wiring is removed while AWS SES/SMS send providers
-remain available. This contracts `messaging-notifications -> architecture-foundation` **4 -> 3**,
+Slice 2E-A retires the user-confirmed unused AWS SNS/SQS infrastructure. The SNS HTTP webhook
+and SES SQS processor are deleted, MessagingModule no longer needs Prisma for SNS persistence,
+and runtime SNS/SQS environment wiring is removed while AWS SES/SMS send providers remain
+available. This contracts `messaging-notifications -> architecture-foundation` **4 -> 3**,
 `messaging-notifications -> runtime-data-ci-ops` **9 -> 6**, and Messaging total outgoing direct
-debt **14 -> 10**. The remaining OrderEventsBus placement is intentionally unchanged in 2E-A and
-is reserved for 2E-B so no event-bus ownership redesign is mixed with infrastructure retirement.
+debt **14 -> 10**. PR #2176 merged as `7746402b` after final head `11f73e88` passed CI #5132;
+deployment remains deferred to the Phase 4 batch rollout.
+
+Slice 2E-B locally moves `OrderEventsBus` out of Messaging and makes it private Orders/Fulfillment
+fast-path infrastructure while preserving the separate durable lifecycle outbox. Loyalty no longer
+subscribes to that bus; Orders invokes the stable-ID-only `LOYALTY_ORDER_PAID_SETTLEMENT` public
+capability in the existing Orders -> Identity direction, so the empty public SCC baseline remains
+empty. The final direct Identity -> Messaging imports contract **2 -> 0**, Identity -> Runtime
+contracts **15 -> 14**, Commerce -> Messaging contracts **8 -> 4**, and External -> Messaging
+contracts **2 -> 0**. Totals become Identity **37**, Commerce **31**, External **42**, Messaging
+**10**. Uber order ingestion drops its dead paid-lifecycle flag and no longer needs a Messaging
+bridge in API or worker composition; Uber wire behavior remains unchanged. The existing internal
+`LoyaltyLedger.orderId` UUID remains deferred persistence debt; the new public boundary carries
+only `orderStableId`.
 
 ## Phase 1 boundary changes reflected here
 

@@ -7,7 +7,10 @@ import {
   computeTierEligibleSpendFromNetCents,
   LoyaltyService,
 } from '../loyalty/loyalty.service';
-import type { LoyaltyPolicyReaderPort } from '../loyalty/public-api';
+import type {
+  LoyaltyOrderPaidSettlementPort,
+  LoyaltyPolicyReaderPort,
+} from '../loyalty/public-api';
 import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
 import type {
@@ -17,7 +20,7 @@ import type {
 import { LocationService } from '../location/location.service';
 import { NotificationService } from '../notifications/notification.service';
 import { EmailService } from '../email/email.service';
-import { OrderEventsBus } from '../messaging/order-events.bus';
+import { OrderEventsBus } from './order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 import type { PrintPosPayloadService } from './print-pos-payload.service';
@@ -98,9 +101,9 @@ describe('OrdersService', () => {
     maxRedeemableCentsFromBalance: jest.Mock;
     reserveRedeemForOrder: jest.Mock;
     resolveUserIdByStableId: jest.Mock;
-    settleOnPaid: jest.Mock;
     rollbackOnRefund: jest.Mock;
   };
+  let loyaltyOrderPaidSettlement: { settleOrderPaid: jest.Mock };
   let loyaltyPolicyReader: {
     getLoyaltyPolicySnapshot: jest.Mock;
   };
@@ -209,8 +212,10 @@ describe('OrdersService', () => {
       maxRedeemableCentsFromBalance: jest.fn().mockResolvedValue(0),
       reserveRedeemForOrder: jest.fn().mockResolvedValue(0),
       resolveUserIdByStableId: jest.fn(),
-      settleOnPaid: jest.fn(),
       rollbackOnRefund: jest.fn(),
+    };
+    loyaltyOrderPaidSettlement = {
+      settleOrderPaid: jest.fn().mockResolvedValue(undefined),
     };
     loyaltyPolicyReader = {
       getLoyaltyPolicySnapshot: jest.fn().mockResolvedValue({
@@ -287,6 +292,7 @@ describe('OrdersService', () => {
       prisma as unknown as PrismaService,
       brandStoreConfigReader as unknown as BrandStoreConfigReaderPort,
       loyalty as unknown as LoyaltyService,
+      loyaltyOrderPaidSettlement as unknown as LoyaltyOrderPaidSettlementPort,
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
       promotions as unknown as PromotionContextReaderPort,
@@ -1330,6 +1336,12 @@ describe('OrdersService', () => {
           redeemValueCents: 0,
         }),
       );
+      expect(loyaltyOrderPaidSettlement.settleOrderPaid).toHaveBeenCalledWith({
+        orderStableId: 'cord-1',
+        subtotalCents: 1000,
+        redeemValueCents: 0,
+        earnMultiplier: 1,
+      });
       expect(uberDirect.createDelivery).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(

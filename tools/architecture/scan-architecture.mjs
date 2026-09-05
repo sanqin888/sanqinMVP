@@ -4276,6 +4276,220 @@ if (awsMessageInfrastructureRetirementBoundary) {
   }
 }
 
+const orderPaidSettlementBoundary = config.orderPaidSettlementBoundary ?? null;
+if (orderPaidSettlementBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(orderPaidSettlementBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.loyaltyService,
+    boundary.loyaltyModule,
+    boundary.loyaltyPublicSurface,
+    boundary.ordersService,
+    boundary.ordersModule,
+    boundary.ordersEventBus,
+    boundary.ordersPublicSurface,
+    boundary.messagingModule,
+    boundary.orderIngestionContract,
+    boundary.orderIngestionService,
+    boundary.durableOutbox,
+    boundary.uberModule,
+    boundary.uberOrderImport,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Order-paid settlement boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  for (const retiredPath of [
+    boundary.retiredLoyaltyProcessor,
+    boundary.retiredMessagingEventBus,
+  ]) {
+    if (retiredPath && existsSync(join(REPOSITORY_ROOT, retiredPath))) {
+      failures.push(
+        `Retired cross-context order-event path must stay deleted: ${retiredPath}`,
+      );
+    }
+  }
+
+  const readBoundarySource = (sourcePath) => {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) return '';
+    return readFileSync(join(REPOSITORY_ROOT, sourcePath), 'utf8');
+  };
+
+  const contractSource = readBoundarySource(boundary.contract);
+  for (const requiredToken of [
+    'LOYALTY_ORDER_PAID_SETTLEMENT',
+    'LoyaltyOrderPaidSettlementPort',
+    'settleOrderPaid',
+    'orderStableId',
+    'subtotalCents',
+    'redeemValueCents',
+    'earnMultiplier',
+  ]) {
+    if (contractSource && !contractSource.includes(requiredToken)) {
+      failures.push(
+        `Loyalty order-paid settlement contract is missing ${requiredToken}: ${boundary.contract}`,
+      );
+    }
+  }
+  for (const forbiddenToken of ['orderId:', 'userId:', 'Prisma', 'OrderEventsBus']) {
+    if (contractSource.includes(forbiddenToken)) {
+      failures.push(
+        `Loyalty order-paid settlement contract must stay stable-ID-only; found ${forbiddenToken}: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const loyaltyServiceSource = readBoundarySource(boundary.loyaltyService);
+  for (const requiredToken of [
+    'LoyaltyOrderPaidSettlementPort',
+    'settleOrderPaid',
+    'where: { orderStableId: input.orderStableId }',
+    'orderId: order.id',
+    'userId: order.userId',
+  ]) {
+    if (loyaltyServiceSource && !loyaltyServiceSource.includes(requiredToken)) {
+      failures.push(
+        `LoyaltyService must keep stable-ID settlement translation ${requiredToken}: ${boundary.loyaltyService}`,
+      );
+    }
+  }
+
+  const loyaltyModuleSource = readBoundarySource(boundary.loyaltyModule);
+  if (
+    loyaltyModuleSource &&
+    (!loyaltyModuleSource.includes('LOYALTY_ORDER_PAID_SETTLEMENT') ||
+      !loyaltyModuleSource.includes('useExisting: LoyaltyService') ||
+      loyaltyModuleSource.includes('MessagingModule') ||
+      loyaltyModuleSource.includes('LoyaltyEventProcessor'))
+  ) {
+    failures.push(
+      `LoyaltyModule must expose settlement without Messaging/event-processor wiring: ${boundary.loyaltyModule}`,
+    );
+  }
+
+  const loyaltyPublicSource = readBoundarySource(boundary.loyaltyPublicSurface);
+  if (
+    loyaltyPublicSource &&
+    (!loyaltyPublicSource.includes('LOYALTY_ORDER_PAID_SETTLEMENT') ||
+      !loyaltyPublicSource.includes(
+        "from './loyalty-order-paid-settlement.contract'",
+      ))
+  ) {
+    failures.push(
+      `Loyalty public surface must expose the narrow order-paid settlement capability: ${boundary.loyaltyPublicSurface}`,
+    );
+  }
+
+  const ordersServiceSource = readBoundarySource(boundary.ordersService);
+  for (const requiredToken of [
+    'LOYALTY_ORDER_PAID_SETTLEMENT',
+    'loyaltyOrderPaidSettlement.settleOrderPaid',
+    'orderStableId: order.orderStableId',
+    "from './order-events.bus'",
+  ]) {
+    if (ordersServiceSource && !ordersServiceSource.includes(requiredToken)) {
+      failures.push(
+        `OrdersService must keep the stable Loyalty settlement/local event-bus shape ${requiredToken}: ${boundary.ordersService}`,
+      );
+    }
+  }
+  const promotionMultiplierCallPattern =
+    /resolvePromotionLoyaltyMultiplier\(\s*order\.promotionSnapshot,?\s*\)/;
+  if (
+    ordersServiceSource &&
+    !promotionMultiplierCallPattern.test(ordersServiceSource)
+  ) {
+    failures.push(
+      `OrdersService must derive Loyalty settlement multiplier from the persisted promotion snapshot: ${boundary.ordersService}`,
+    );
+  }
+  if (ordersServiceSource.includes("from '../messaging/order-events.bus'")) {
+    failures.push(
+      `OrdersService must not depend on Messaging for OrderEventsBus: ${boundary.ordersService}`,
+    );
+  }
+
+  const ordersModuleSource = readBoundarySource(boundary.ordersModule);
+  if (
+    ordersModuleSource &&
+    (!ordersModuleSource.includes("from './order-events.bus'") ||
+      !ordersModuleSource.includes('OrderEventsBus,') ||
+      ordersModuleSource.includes('MessagingModule'))
+  ) {
+    failures.push(
+      `OrdersModule must privately own OrderEventsBus without MessagingModule: ${boundary.ordersModule}`,
+    );
+  }
+
+  const ordersPublicSource = readBoundarySource(boundary.ordersPublicSurface);
+  if (
+    ordersPublicSource.includes('OrderEventsBus') ||
+    ordersPublicSource.includes('order-events.bus')
+  ) {
+    failures.push(
+      `OrderEventsBus must remain private and absent from Orders public API: ${boundary.ordersPublicSurface}`,
+    );
+  }
+
+  const messagingModuleSource = readBoundarySource(boundary.messagingModule);
+  if (messagingModuleSource.includes('OrderEventsBus')) {
+    failures.push(
+      `MessagingModule must not own or export OrderEventsBus: ${boundary.messagingModule}`,
+    );
+  }
+
+  for (const sourcePath of [
+    boundary.orderIngestionContract,
+    boundary.orderIngestionService,
+    boundary.uberOrderImport,
+  ]) {
+    const source = readBoundarySource(sourcePath);
+    if (source.includes('emitPaidLifecycleEvent')) {
+      failures.push(
+        `Dead Uber ingestion paid-lifecycle switch must stay removed: ${sourcePath}`,
+      );
+    }
+  }
+  const ingestionServiceSource = readBoundarySource(boundary.orderIngestionService);
+  if (ingestionServiceSource.includes('OrderEventsBus')) {
+    failures.push(
+      `Order ingestion must not require the local Orders event bus: ${boundary.orderIngestionService}`,
+    );
+  }
+
+  const uberModuleSource = readBoundarySource(boundary.uberModule);
+  for (const forbiddenToken of ['MessagingModule', 'OrderEventsBus']) {
+    if (uberModuleSource.includes(forbiddenToken)) {
+      failures.push(
+        `Uber composition must not depend on retired Messaging order-event bridge ${forbiddenToken}: ${boundary.uberModule}`,
+      );
+    }
+  }
+
+  const durableOutboxSource = readBoundarySource(boundary.durableOutbox);
+  for (const requiredToken of [
+    'OrderLifecycleOutboxProcessor',
+    'ORDER_LIFECYCLE_OUTBOX_SOURCE',
+    'handleAcceptedLifecycle',
+  ]) {
+    if (durableOutboxSource && !durableOutboxSource.includes(requiredToken)) {
+      failures.push(
+        `Durable Orders lifecycle ownership must remain intact after bus contraction; missing ${requiredToken}: ${boundary.durableOutbox}`,
+      );
+    }
+  }
+}
+
 const report = {
   baseline: config.baseline,
   contexts: config.contexts.map(({ id }) => id),
