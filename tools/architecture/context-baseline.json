@@ -400,7 +400,12 @@
     "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
     "adminMembersModule": "apps/api/src/admin/members/admin-members.module.ts",
     "ownerSpec": "apps/api/src/auth/member-recharge-verification.service.spec.ts",
-    "adminAdapterSpec": "apps/api/src/admin/members/admin-members.service.otp-characterization.spec.ts"
+    "adminAdapterSpec": "apps/api/src/admin/members/admin-members.service.otp-characterization.spec.ts",
+    "otpPolicyService": "apps/api/src/auth/otp-challenge-policy.service.ts",
+    "otpPolicyModule": "apps/api/src/auth/otp-challenge-policy.module.ts",
+    "authService": "apps/api/src/auth/auth.service.ts",
+    "emailVerificationService": "apps/api/src/auth/email-verification.service.ts",
+    "phoneVerificationService": "apps/api/src/phone-verification/phone-verification.service.ts"
   },
   "adminCustomerSecurityBoundary": {
     "customerContract": "apps/api/src/membership/customer-administration.contract.ts",

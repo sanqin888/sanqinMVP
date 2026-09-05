@@ -40,7 +40,7 @@ export class AuthChallengeDeliveryService implements AuthChallengeDeliveryPort {
       userStableId: input.userStableId,
       metadata: { purpose: 'login_2fa' },
     });
-    return { sendId: result.sendId };
+    return { ok: result.ok, sendId: result.sendId, error: result.error };
   }
 
   async sendLoginTwoFactorEmail(
@@ -63,7 +63,7 @@ export class AuthChallengeDeliveryService implements AuthChallengeDeliveryPort {
       userStableId: input.userStableId,
       metadata: { purpose: 'admin_login' },
     });
-    return { sendId: result.sendId };
+    return { ok: result.ok, sendId: result.sendId, error: result.error };
   }
 
   async sendPhoneEnrollmentSms(
@@ -83,7 +83,7 @@ export class AuthChallengeDeliveryService implements AuthChallengeDeliveryPort {
       userStableId: input.userStableId,
       metadata: { purpose: 'verify' },
     });
-    return { sendId: result.sendId };
+    return { ok: result.ok, sendId: result.sendId, error: result.error };
   }
 
   async sendMembershipLoginSms(
@@ -102,7 +102,7 @@ export class AuthChallengeDeliveryService implements AuthChallengeDeliveryPort {
       locale: input.locale,
       metadata: { purpose: 'login' },
     });
-    return { sendId: result.sendId };
+    return { ok: result.ok, sendId: result.sendId, error: result.error };
   }
 
   private async renderOtpSms(input: {

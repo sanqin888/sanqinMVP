@@ -1,7 +1,9 @@
 export const AUTH_CHALLENGE_DELIVERY = Symbol('AUTH_CHALLENGE_DELIVERY');
 
 export type AuthChallengeDeliveryResult = {
+  ok: boolean;
   sendId: string;
+  error?: string;
 };
 
 type AuthChallengeOtpInput = {

@@ -4,7 +4,9 @@ import {
   Controller,
   Inject,
   Post,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   IsEmail,
   IsIn,
@@ -52,11 +54,12 @@ export class EmailCheckoutVerificationController {
   ) {}
 
   @Post('send-code')
-  async sendCode(@Body() body: SendCheckoutEmailCodeDto) {
+  async sendCode(@Body() body: SendCheckoutEmailCodeDto, @Req() req: Request) {
     const result = await this.service.requestCheckoutVerification({
       email: body.email,
       locale: body.locale,
       purpose: body.purpose ?? 'checkout',
+      ip: req.ip,
     });
 
     if (!result.ok) {

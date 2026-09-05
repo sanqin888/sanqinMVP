@@ -188,17 +188,25 @@ Slice 4D-A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2183
 resolution, challenge/token lifecycle and Admin delegation boundary while `AdminMembersService` retains
 the unchanged amount/token input validation and `LoyaltyService.applyTopup()` orchestration.
 
-Slice 4D-H is **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`hardening/phase4-slice4d-h-recharge-verification`. Recharge Email/SMS now share one Identity-owned
+Slice 4D-H is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2184. Final head
+`4d850ba1` passed CI #5165 and squash-merged as `7853e4f9`. Recharge Email/SMS share one Identity-owned
 challenge policy and DB-backed per-member send budget (one per 60 seconds, five per rolling 24 hours).
 SMS uses Messaging `PHONE_VERIFICATION_DELIVERY` only for delivery rather than delegating its challenge
 lifecycle to `PhoneVerificationService`. New recharge codes use required `MEMBER_RECHARGE_OTP_SECRET`,
-and non-zero six-digit generation uses `crypto.randomInt`. POS now rejects backend `{ ok:false }` sends
-without entering `code-sent` and shows explicit bilingual cooldown/daily-limit messages. The approved
-rollout is an atomic cutover with POS recharge temporarily paused; there is no legacy-secret fallback.
-No Prisma/dependency change is introduced. Expected numeric graph baselines remain Identity ->
-Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging direct debt
-**0**, Commerce -> Identity **4**, with the public SCC baseline empty; remote CI is not yet claimed.
+and non-zero six-digit generation uses `crypto.randomInt`. POS rejects backend `{ ok:false }` sends
+without entering `code-sent`; the approved rollout remains an atomic cutover with no legacy-secret fallback.
+
+Slice 4D-I is **SOURCE COMPLETE / PR PENDING** on `hardening/phase4-slice4d-i-otp-policy`. The new
+Identity-internal `OtpChallengePolicyService` centralizes DB-backed cooldown/quota/supersession behavior
+for Login 2FA, Phone Enrollment, Membership Login, Checkout, Email Verify, POS Recharge and generic Phone
+Verification. `email_verify` contracts from 24 hours to 10 minutes; public membership-login/checkout flows
+add a 30/hour IP spray budget; successful sends revoke older pending codes only after provider success;
+failed provider sends revoke only the new challenge; and code-based verification consistently applies the
+five-attempt revoke behavior. Generic Phone Verification no longer keeps process-local Map/timer rate-limit
+state. Messaging remains delivery-only, with additive `ok/error` status on Auth challenge delivery.
+No Prisma/dependency/context-import change is introduced. Expected numeric graph baselines remain
+Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
+**0**, Commerce -> Identity **4**, with the public SCC baseline empty.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

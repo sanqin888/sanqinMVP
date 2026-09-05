@@ -44,11 +44,16 @@ describe('MemberRechargeVerificationService', () => {
       sendRechargeVerificationEmail: jest.fn(),
     };
     const challengeEngine = new ChallengeEngine();
+    const otpPolicy = {
+      checkSend: jest.fn().mockResolvedValue({ ok: true }),
+      revokeSupersededCodes: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new MemberRechargeVerificationService(
       prisma as never,
       phoneVerificationDelivery as never,
       memberRechargeEmailDelivery as never,
       challengeEngine,
+      otpPolicy as never,
     );
 
     return {
@@ -57,13 +62,8 @@ describe('MemberRechargeVerificationService', () => {
       phoneVerificationDelivery,
       memberRechargeEmailDelivery,
       challengeEngine,
+      otpPolicy,
     };
-  };
-
-  const allowSend = (prisma: ReturnType<typeof createService>['prisma']) => {
-    prisma.authChallenge.count
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0);
   };
 
   afterEach(() => {
@@ -81,7 +81,6 @@ describe('MemberRechargeVerificationService', () => {
     const { service, prisma, memberRechargeEmailDelivery, challengeEngine } =
       createService();
     prisma.user.findUnique.mockResolvedValue(emailMember);
-    allowSend(prisma);
     const generateCodeSpy = jest
       .spyOn(challengeEngine, 'generateCode')
       .mockReturnValue('100000');
@@ -135,9 +134,9 @@ describe('MemberRechargeVerificationService', () => {
   });
 
   it('preserves email_send_failed after linking the provider send id', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
     const { service, prisma, memberRechargeEmailDelivery } = createService();
     prisma.user.findUnique.mockResolvedValue(emailMember);
-    allowSend(prisma);
     prisma.authChallenge.create.mockResolvedValue({ id: 'email-failed' });
     memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
       {
@@ -151,7 +150,11 @@ describe('MemberRechargeVerificationService', () => {
     ).resolves.toEqual({ ok: false, error: 'email_send_failed' });
     expect(prisma.authChallenge.update).toHaveBeenCalledWith({
       where: { id: 'email-failed' },
-      data: { messagingSendId: 'send-failed' },
+      data: {
+        messagingSendId: 'send-failed',
+        status: AuthChallengeStatus.REVOKED,
+        consumedAt: new Date('2026-08-30T12:00:00.000Z'),
+      },
     });
   });
 
@@ -160,7 +163,6 @@ describe('MemberRechargeVerificationService', () => {
     const { service, prisma, phoneVerificationDelivery, challengeEngine } =
       createService();
     prisma.user.findUnique.mockResolvedValue(phoneMember);
-    allowSend(prisma);
     jest.spyOn(challengeEngine, 'generateCode').mockReturnValue('234567');
     const hashCodeSpy = jest
       .spyOn(challengeEngine, 'hashCode')
@@ -208,9 +210,13 @@ describe('MemberRechargeVerificationService', () => {
 
   it('uses one DB-backed 60-second cooldown across recharge channels', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, memberRechargeEmailDelivery } = createService();
+    const { service, prisma, memberRechargeEmailDelivery, otpPolicy } =
+      createService();
     prisma.user.findUnique.mockResolvedValue(emailMember);
-    prisma.authChallenge.count.mockResolvedValueOnce(1);
+    otpPolicy.checkSend.mockResolvedValue({
+      ok: false,
+      violation: 'COOLDOWN',
+    });
 
     await expect(
       service.sendCode({ userStableId: 'member-stable-id' }),
@@ -219,13 +225,12 @@ describe('MemberRechargeVerificationService', () => {
       error: 'too many requests, please try later',
     });
 
-    expect(prisma.authChallenge.count).toHaveBeenCalledWith({
-      where: {
-        userId: 'user-db-id',
-        purpose: 'pos-recharge',
-        codeHash: { not: null },
-        createdAt: { gt: new Date('2026-08-30T11:59:00.000Z') },
-      },
+    expect(otpPolicy.checkSend).toHaveBeenCalledWith({
+      profile: 'POS_RECHARGE',
+      purpose: 'pos-recharge',
+      now: new Date('2026-08-30T12:00:00.000Z'),
+      userId: 'user-db-id',
+      addressNorm: 'member@example.com',
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
     expect(
@@ -235,11 +240,13 @@ describe('MemberRechargeVerificationService', () => {
 
   it('enforces one five-send daily recharge budget per member', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, phoneVerificationDelivery } = createService();
+    const { service, prisma, phoneVerificationDelivery, otpPolicy } =
+      createService();
     prisma.user.findUnique.mockResolvedValue(phoneMember);
-    prisma.authChallenge.count
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(5);
+    otpPolicy.checkSend.mockResolvedValue({
+      ok: false,
+      violation: 'DAILY_LIMIT',
+    });
 
     await expect(
       service.sendCode({ userStableId: 'member-stable-id' }),
@@ -248,13 +255,12 @@ describe('MemberRechargeVerificationService', () => {
       error: 'too many requests in a day',
     });
 
-    expect(prisma.authChallenge.count).toHaveBeenNthCalledWith(2, {
-      where: {
-        userId: 'user-db-id',
-        purpose: 'pos-recharge',
-        codeHash: { not: null },
-        createdAt: { gt: new Date('2026-08-29T12:00:00.000Z') },
-      },
+    expect(otpPolicy.checkSend).toHaveBeenCalledWith({
+      profile: 'POS_RECHARGE',
+      purpose: 'pos-recharge',
+      now: new Date('2026-08-30T12:00:00.000Z'),
+      userId: 'user-db-id',
+      addressNorm: '+14165550100',
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
     expect(
@@ -263,9 +269,9 @@ describe('MemberRechargeVerificationService', () => {
   });
 
   it('links provider failures without reporting a successful send', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
     const { service, prisma, phoneVerificationDelivery } = createService();
     prisma.user.findUnique.mockResolvedValue(phoneMember);
-    allowSend(prisma);
     prisma.authChallenge.create.mockResolvedValue({ id: 'sms-failed' });
     phoneVerificationDelivery.sendVerificationSms.mockResolvedValue({
       ok: false,
@@ -278,7 +284,11 @@ describe('MemberRechargeVerificationService', () => {
     ).resolves.toEqual({ ok: false, error: 'sms_send_failed' });
     expect(prisma.authChallenge.update).toHaveBeenCalledWith({
       where: { id: 'sms-failed' },
-      data: { messagingSendId: 'send-failed' },
+      data: {
+        messagingSendId: 'send-failed',
+        status: AuthChallengeStatus.REVOKED,
+        consumedAt: new Date('2026-08-30T12:00:00.000Z'),
+      },
     });
   });
 
@@ -290,7 +300,6 @@ describe('MemberRechargeVerificationService', () => {
       memberRechargeEmailDelivery,
     } = createService();
     prisma.user.findUnique.mockResolvedValue(emailMember);
-    allowSend(prisma);
     prisma.authChallenge.create.mockResolvedValue({ id: 'challenge-email' });
     memberRechargeEmailDelivery.sendRechargeVerificationEmail.mockResolvedValue(
       {

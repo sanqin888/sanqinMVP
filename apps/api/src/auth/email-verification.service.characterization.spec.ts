@@ -1,4 +1,4 @@
-import { createHash, createHmac } from 'crypto';
+import { createHash } from 'crypto';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
@@ -29,13 +29,18 @@ describe('EmailVerificationService ownership characterization', () => {
       sendVerificationEmail: jest.fn(),
     };
     const challengeEngine = new ChallengeEngine();
+    const otpPolicy = {
+      checkSend: jest.fn().mockResolvedValue({ ok: true }),
+      revokeSupersededCodes: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new EmailVerificationService(
       prisma as never,
       delivery as never,
       challengeEngine,
+      otpPolicy as never,
     );
 
-    return { service, prisma, delivery, challengeEngine };
+    return { service, prisma, delivery, challengeEngine, otpPolicy };
   };
 
   afterEach(() => {
@@ -97,7 +102,7 @@ describe('EmailVerificationService ownership characterization', () => {
         addressRaw: 'new@example.com',
         codeHash: 'code-hash',
         purpose: 'email_verify',
-        expiresAt: new Date('2026-09-05T18:30:00.000Z'),
+        expiresAt: new Date('2026-09-04T18:40:00.000Z'),
       },
     });
     expect(delivery.sendVerificationEmail).toHaveBeenCalledWith({
@@ -118,12 +123,15 @@ describe('EmailVerificationService ownership characterization', () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'user-db-id' });
     prisma.authChallenge.findFirst.mockResolvedValue({
       id: 'challenge-1',
+      codeHash: 'code-hash',
+      attempts: 0,
+      maxAttempts: 5,
       addressNorm: 'verified@example.com',
       expiresAt: new Date('2026-09-04T18:40:00.000Z'),
     });
     prisma.authChallenge.update.mockReturnValue({ operation: 'consume-code' });
     prisma.user.update.mockReturnValue({ operation: 'verify-user' });
-    jest.spyOn(challengeEngine, 'hashCode').mockReturnValue('code-hash');
+    jest.spyOn(challengeEngine, 'verifyCodeHash').mockReturnValue(true);
 
     await expect(
       service.verifyUserEmailCode({
@@ -138,7 +146,8 @@ describe('EmailVerificationService ownership characterization', () => {
         channel: MessagingChannel.EMAIL,
         status: AuthChallengeStatus.PENDING,
         userId: 'user-db-id',
-        codeHash: 'code-hash',
+        purpose: 'email_verify',
+        codeHash: { not: null },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -190,14 +199,18 @@ describe('EmailVerificationService ownership characterization', () => {
         codeHash: 'code-hash',
         purpose: 'checkout',
         expiresAt: new Date('2026-08-30T12:10:00.000Z'),
+        ip: undefined,
       },
     });
   });
 
   it('limits checkout requests to five per email and purpose in 24 hours', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma, delivery } = createService();
-    prisma.authChallenge.count.mockResolvedValue(5);
+    const { service, prisma, delivery, otpPolicy } = createService();
+    otpPolicy.checkSend.mockResolvedValue({
+      ok: false,
+      violation: 'DAILY_LIMIT',
+    });
 
     await expect(
       service.requestCheckoutVerification({
@@ -209,20 +222,18 @@ describe('EmailVerificationService ownership characterization', () => {
       error: 'too many requests in a day',
     });
 
-    expect(prisma.authChallenge.count).toHaveBeenCalledWith({
-      where: {
-        type: AuthChallengeType.EMAIL_VERIFY,
-        channel: MessagingChannel.EMAIL,
-        addressNorm: 'customer@example.com',
-        purpose: 'checkout',
-        createdAt: { gt: new Date('2026-08-29T12:00:00.000Z') },
-      },
+    expect(otpPolicy.checkSend).toHaveBeenCalledWith({
+      profile: 'CHECKOUT',
+      purpose: 'checkout',
+      now: new Date('2026-08-30T12:00:00.000Z'),
+      addressNorm: 'customer@example.com',
+      ip: undefined,
     });
     expect(prisma.authChallenge.create).not.toHaveBeenCalled();
     expect(delivery.sendVerificationEmail).not.toHaveBeenCalled();
   });
 
-  it('looks up checkout codes by exact hash without incrementing failed attempts', async () => {
+  it('looks up only the latest active checkout code', async () => {
     const { service, prisma } = createService();
     process.env.OTP_SECRET = 'checkout-secret';
     prisma.authChallenge.findFirst.mockResolvedValue(null);
@@ -241,9 +252,7 @@ describe('EmailVerificationService ownership characterization', () => {
         status: AuthChallengeStatus.PENDING,
         addressNorm: 'customer@example.com',
         purpose: 'checkout',
-        codeHash: createHmac('sha256', 'checkout-secret')
-          .update('123456')
-          .digest('hex'),
+        codeHash: { not: null },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -276,7 +285,8 @@ describe('EmailVerificationService ownership characterization', () => {
 
   it('consumes a valid code and creates a pending token with the original expiry', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma } = createService();
+    const { service, prisma, challengeEngine } = createService();
+    jest.spyOn(challengeEngine, 'verifyCodeHash').mockReturnValue(true);
     const expiresAt = new Date('2026-08-30T12:10:00.000Z');
     prisma.authChallenge.findFirst.mockResolvedValue({
       id: 'challenge-1',

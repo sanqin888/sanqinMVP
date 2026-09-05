@@ -16,6 +16,7 @@ export type RequestCheckoutEmailVerificationInput = {
   email: string;
   locale?: string;
   purpose?: 'checkout';
+  ip?: string;
 };
 
 export type VerifyCheckoutEmailCodeInput = {
