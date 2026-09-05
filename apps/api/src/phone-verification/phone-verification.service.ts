@@ -1,11 +1,5 @@
 // apps/api/src/phone-verification/phone-verification.service.ts
-import {
-  Inject,
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
@@ -21,6 +15,7 @@ import {
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
 } from '../auth/challenge-engine.port';
+import { OtpChallengePolicyService } from '../auth/otp-challenge-policy.service';
 
 type SendCodeResult = {
   ok: boolean;
@@ -34,13 +29,8 @@ export type VerifyCodeResult = {
 };
 
 @Injectable()
-export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
+export class PhoneVerificationService {
   private readonly logger = new Logger(PhoneVerificationService.name);
-  private readonly ipWindowMs = 60 * 1000;
-  private readonly ipLimit = 1;
-  private readonly ipCleanupIntervalMs = 60 * 60 * 1000;
-  private readonly ipRequests = new Map<string, number[]>();
-  private ipCleanupTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,29 +38,8 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     private readonly phoneVerificationDelivery: PhoneVerificationDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
+    private readonly otpPolicy: OtpChallengePolicyService,
   ) {}
-
-  onModuleInit(): void {
-    this.ipCleanupTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [ip, timestamps] of this.ipRequests.entries()) {
-        const valid = timestamps.filter((ts) => now - ts < this.ipWindowMs);
-        if (valid.length === 0) {
-          this.ipRequests.delete(ip);
-        } else {
-          this.ipRequests.set(ip, valid);
-        }
-      }
-    }, this.ipCleanupIntervalMs);
-    this.ipCleanupTimer.unref();
-  }
-
-  onModuleDestroy(): void {
-    if (this.ipCleanupTimer) {
-      clearInterval(this.ipCleanupTimer);
-      this.ipCleanupTimer = undefined;
-    }
-  }
 
   private normalizePhoneAddress(raw?: string | null): string | null {
     const normalized = normalizePhone(raw);
@@ -94,36 +63,28 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
     const resolvedPurpose = purpose?.trim() || 'generic';
 
     const now = new Date();
-    if (ip) {
-      const timestamps = this.ipRequests.get(ip) ?? [];
-      const cutoff = this.challengeEngine
-        .windowStart(now, this.ipWindowMs)
-        .getTime();
-      const recent = timestamps.filter((ts) => ts > cutoff);
-      if (this.challengeEngine.limitReached(recent.length, this.ipLimit)) {
-        return { ok: false, error: 'too many requests, please try later' };
-      }
-      recent.push(now.getTime());
-      this.ipRequests.set(ip, recent);
-    }
-    const oneDayAgo = this.challengeEngine.windowStart(
+    const profile =
+      resolvedPurpose === 'checkout' ? 'CHECKOUT' : 'GENERIC_PHONE';
+    const limitResult = await this.otpPolicy.checkSend({
+      profile,
+      purpose: resolvedPurpose,
       now,
-      24 * 60 * 60 * 1000,
-    );
-    const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000); // 10 分钟有效
-
-    const dailyCount = await this.prisma.authChallenge.count({
-      where: {
-        type: AuthChallengeType.PHONE_VERIFY,
-        channel: MessagingChannel.SMS,
-        addressNorm,
-        createdAt: { gt: oneDayAgo },
-      },
+      addressNorm,
+      ip,
     });
-
-    if (this.challengeEngine.limitReached(dailyCount, 5)) {
-      return { ok: false, error: 'too many requests in a day' };
+    if (!limitResult.ok) {
+      return {
+        ok: false,
+        error:
+          limitResult.violation === 'COOLDOWN'
+            ? 'too many requests, please try later'
+            : limitResult.violation === 'DAILY_LIMIT'
+              ? 'too many requests in a day'
+              : 'too many requests in an hour',
+      };
     }
+
+    const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000); // 10 分钟有效
 
     const code = this.challengeEngine.generateCode('NON_ZERO_SIX_DIGIT');
     const codeHash = this.challengeEngine.hashCode(code, 'PHONE_VERIFICATION');
@@ -138,6 +99,7 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
         codeHash,
         expiresAt,
         purpose: resolvedPurpose,
+        ip,
       },
     });
 
@@ -151,7 +113,12 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
 
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
-      data: { messagingSendId: smsResult.sendId },
+      data: smsResult.ok
+        ? { messagingSendId: smsResult.sendId }
+        : {
+            messagingSendId: smsResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
     });
 
     if (!smsResult.ok) {
@@ -160,6 +127,15 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
       );
       return { ok: false, error: 'sms_send_failed' };
     }
+
+    await this.otpPolicy.revokeSupersededCodes({
+      profile,
+      purpose: resolvedPurpose,
+      now,
+      addressNorm,
+      ip,
+      currentChallengeId: challenge.id,
+    });
 
     return { ok: true };
   }
@@ -190,6 +166,7 @@ export class PhoneVerificationService implements OnModuleInit, OnModuleDestroy {
         addressNorm,
         purpose: resolvedPurpose,
         status: AuthChallengeStatus.PENDING,
+        codeHash: { not: null },
       },
       orderBy: { createdAt: 'desc' },
     });

@@ -94,10 +94,11 @@ node tools/architecture/scan-architecture.mjs --report
   distinct login-2FA/email-2FA/phone-enrollment/member-login delivery mappings, and SMS
   audit linkage must resolve users through `userStableId` rather than a cross-context DB UUID;
 - Generic/customer phone verification delivery uses the separate Messaging-owned
-  `PHONE_VERIFICATION_DELIVERY` capability. Phone Verification keeps IP/daily rate limits,
-  `AuthChallenge`, non-zero OTP generation/hash, expiry/attempt/consume/token semantics and
-  `sms_send_failed` handling; Messaging owns only OTP template/config/provider dispatch.
-  The template purpose remains the historical fixed `verify`, while the caller purpose is
+  `PHONE_VERIFICATION_DELIVERY` capability. Phone Verification keeps `AuthChallenge`, non-zero OTP
+  generation/hash, expiry/attempt/consume/token semantics and `sms_send_failed` handling, while shared
+  cooldown/daily/IP policy is delegated to the Identity-owned DB-backed `OtpChallengePolicyService`.
+  Process-local `Map`/timer throttling must not return. Messaging owns only OTP template/config/provider
+  dispatch. The template purpose remains the historical fixed `verify`, while the caller purpose is
   preserved only as Messaging metadata and Identity challenge purpose;
 - Admin staff invite and POS member-recharge email delivery use separate narrow Email public
   capabilities: `STAFF_INVITE_DELIVERY` and `MEMBER_RECHARGE_EMAIL_DELIVERY`. After Phase 4
@@ -115,7 +116,13 @@ node tools/architecture/scan-architecture.mjs --report
   `MEMBER_RECHARGE_OTP_SECRET`, while non-zero six-digit generation must use `crypto.randomInt` rather
   than `Math.random`. POS must inspect the backend `{ ok, error }` result and cannot enter `code-sent`
   after `{ ok:false }`; cooldown/daily-limit responses remain explicit staff-facing states. The rollout
-  intentionally has no legacy-secret fallback: POS recharge is paused during secret/API/Web cutover;
+  intentionally has no legacy-secret fallback: POS recharge is paused during secret/API/Web cutover.
+  Slice 4D-I generalizes OTP policy inside Identity: `email_verify` expires after 10 minutes, repeated
+  Login 2FA / Phone Enrollment / Membership Login / Checkout / Email Verify / POS Recharge sends use the
+  shared DB-backed policy, public membership-login/checkout flows have a 30/hour IP spray budget, and
+  successful sends revoke superseded pending code rows only after provider success. Five failed code
+  attempts revoke the active challenge where verification is code-based; failed provider delivery revokes
+  only the new challenge. Generic Phone Verification must not restore process-local throttling;
 - Phase 4 Slice 4B reserves Admin/member Customer/Security ownership behind two Identity-context
   capabilities. `CUSTOMER_ADMINISTRATION` is implemented by `CustomerService` and owns Admin profile
   mutation plus address reads while preserving the intentionally broader Admin birthday override.

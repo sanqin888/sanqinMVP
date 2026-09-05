@@ -20,6 +20,7 @@ import {
 } from './challenge-engine.port';
 import { normalizeEmail } from './email-normalization';
 import { PrismaService } from './identity-prisma';
+import { OtpChallengePolicyService } from './otp-challenge-policy.service';
 import {
   MemberRechargeVerificationError,
   type MemberRechargeConsumeTokenInput,
@@ -31,9 +32,6 @@ import {
 
 const POS_RECHARGE_PURPOSE = 'pos-recharge';
 const RECHARGE_CODE_TTL_MS = 10 * 60 * 1000;
-const RECHARGE_SEND_COOLDOWN_MS = 60 * 1000;
-const RECHARGE_DAILY_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
-const RECHARGE_DAILY_LIMIT = 5;
 
 const RECHARGE_COOLDOWN_ERROR = 'too many requests, please try later';
 const RECHARGE_DAILY_LIMIT_ERROR = 'too many requests in a day';
@@ -67,6 +65,7 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
     private readonly memberRechargeEmailDelivery: MemberRechargeEmailDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
+    private readonly otpPolicy: OtpChallengePolicyService,
   ) {}
 
   private async requireMember(userStableId: string): Promise<RechargeMember> {
@@ -172,46 +171,6 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
       : MessagingChannel.SMS;
   }
 
-  private async checkSendLimit(
-    userId: string,
-    now: Date,
-  ): Promise<MemberRechargeVerificationResult | null> {
-    const recentCount = await this.prisma.authChallenge.count({
-      where: {
-        userId,
-        purpose: POS_RECHARGE_PURPOSE,
-        codeHash: { not: null },
-        createdAt: {
-          gt: this.challengeEngine.windowStart(now, RECHARGE_SEND_COOLDOWN_MS),
-        },
-      },
-    });
-
-    if (this.challengeEngine.limitReached(recentCount, 1)) {
-      return { ok: false, error: RECHARGE_COOLDOWN_ERROR };
-    }
-
-    const dailyCount = await this.prisma.authChallenge.count({
-      where: {
-        userId,
-        purpose: POS_RECHARGE_PURPOSE,
-        codeHash: { not: null },
-        createdAt: {
-          gt: this.challengeEngine.windowStart(
-            now,
-            RECHARGE_DAILY_LIMIT_WINDOW_MS,
-          ),
-        },
-      },
-    });
-
-    if (this.challengeEngine.limitReached(dailyCount, RECHARGE_DAILY_LIMIT)) {
-      return { ok: false, error: RECHARGE_DAILY_LIMIT_ERROR };
-    }
-
-    return null;
-  }
-
   async sendCode(
     input: MemberRechargeSendCodeInput,
   ): Promise<MemberRechargeVerificationResult> {
@@ -223,8 +182,22 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
       inputPhone: input.phone,
     });
     const now = new Date();
-    const limitResult = await this.checkSendLimit(user.id, now);
-    if (limitResult) return limitResult;
+    const limitResult = await this.otpPolicy.checkSend({
+      profile: 'POS_RECHARGE',
+      purpose: POS_RECHARGE_PURPOSE,
+      now,
+      userId: user.id,
+      addressNorm: contact.addressNorm,
+    });
+    if (!limitResult.ok) {
+      return {
+        ok: false,
+        error:
+          limitResult.violation === 'COOLDOWN'
+            ? RECHARGE_COOLDOWN_ERROR
+            : RECHARGE_DAILY_LIMIT_ERROR,
+      };
+    }
 
     const code = this.challengeEngine.generateCode('NON_ZERO_SIX_DIGIT');
     const expiresAt = this.challengeEngine.expiresAt(now, RECHARGE_CODE_TTL_MS);
@@ -254,12 +227,26 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
 
       await this.prisma.authChallenge.update({
         where: { id: challenge.id },
-        data: { messagingSendId: sendResult.sendId },
+        data: sendResult.ok
+          ? { messagingSendId: sendResult.sendId }
+          : {
+              messagingSendId: sendResult.sendId,
+              ...this.challengeEngine.revokedState(now),
+            },
       });
 
       if (!sendResult.ok) {
         return { ok: false, error: sendResult.error ?? 'email_send_failed' };
       }
+
+      await this.otpPolicy.revokeSupersededCodes({
+        profile: 'POS_RECHARGE',
+        purpose: POS_RECHARGE_PURPOSE,
+        now,
+        userId: user.id,
+        addressNorm: contact.addressNorm,
+        currentChallengeId: challenge.id,
+      });
 
       return { ok: true };
     }
@@ -276,12 +263,26 @@ export class MemberRechargeVerificationService implements MemberRechargeVerifica
 
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
-      data: { messagingSendId: sendResult.sendId },
+      data: sendResult.ok
+        ? { messagingSendId: sendResult.sendId }
+        : {
+            messagingSendId: sendResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
     });
 
     if (!sendResult.ok) {
       return { ok: false, error: 'sms_send_failed' };
     }
+
+    await this.otpPolicy.revokeSupersededCodes({
+      profile: 'POS_RECHARGE',
+      purpose: POS_RECHARGE_PURPOSE,
+      now,
+      userId: user.id,
+      addressNorm: contact.addressNorm,
+      currentChallengeId: challenge.id,
+    });
 
     return { ok: true };
   }

@@ -1,10 +1,6 @@
 import { createHmac } from 'crypto';
 import { BadRequestException } from '@nestjs/common';
-import {
-  AuthChallengeStatus,
-  AuthChallengeType,
-  MessagingChannel,
-} from '@prisma/client';
+import { AuthChallengeStatus } from '@prisma/client';
 import type { PosDeviceCredentialVerifierPort } from '../pos/public-api';
 import { AuthService } from './auth.service';
 import { ChallengeEngine } from './challenge-engine.service';
@@ -47,6 +43,10 @@ describe('AuthService OTP characterization', () => {
     const customerLifecycleNotification = {
       notifyRegistrationWelcome: jest.fn().mockResolvedValue(undefined),
     };
+    const otpPolicy = {
+      checkSend: jest.fn().mockResolvedValue({ ok: true }),
+      revokeSupersededCodes: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new AuthService(
       prisma as never,
       authChallengeDelivery as never,
@@ -54,6 +54,7 @@ describe('AuthService OTP characterization', () => {
       {} as never,
       challengeEngine,
       { verifyCredentials: jest.fn() } as never,
+      otpPolicy as never,
     );
 
     return {
@@ -62,6 +63,7 @@ describe('AuthService OTP characterization', () => {
       challengeEngine,
       authChallengeDelivery,
       customerLifecycleNotification,
+      otpPolicy,
     };
   };
 
@@ -136,6 +138,7 @@ describe('AuthService OTP characterization', () => {
       .spyOn(challengeEngine, 'hashCode')
       .mockReturnValue('code-hash');
     authChallengeDelivery.sendLoginTwoFactorSms.mockResolvedValue({
+      ok: true,
       sendId: 'send-1',
     });
 
@@ -161,11 +164,14 @@ describe('AuthService OTP characterization', () => {
     });
   });
 
-  it('blocks an SMS request when either SMS or email has a recent pending challenge', async () => {
+  it('blocks an SMS request when the shared 2FA policy reports cooldown', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma } = createService();
+    const { service, otpPolicy } = createService();
     jest.spyOn(service, 'getSession').mockResolvedValue(session as never);
-    prisma.authChallenge.findFirst.mockResolvedValue({ id: 'recent-email' });
+    otpPolicy.checkSend.mockResolvedValue({
+      ok: false,
+      violation: 'COOLDOWN',
+    });
 
     await expect(
       service.requestTwoFactorSms({ sessionId: 'session-id' }),
@@ -173,42 +179,36 @@ describe('AuthService OTP characterization', () => {
       new BadRequestException('too many requests, please try later'),
     );
 
-    expect(prisma.authChallenge.findFirst).toHaveBeenCalledWith({
-      where: {
-        userId: 'user-db-id',
-        type: AuthChallengeType.TWO_FACTOR,
-        channel: {
-          in: [MessagingChannel.SMS, MessagingChannel.EMAIL],
-        },
-        purpose: 'LOGIN_2FA',
-        createdAt: { gt: new Date('2026-08-30T11:59:00.000Z') },
-        status: AuthChallengeStatus.PENDING,
-      },
-      orderBy: { createdAt: 'desc' },
+    expect(otpPolicy.checkSend).toHaveBeenCalledWith({
+      profile: 'LOGIN_2FA',
+      purpose: 'LOGIN_2FA',
+      now: new Date('2026-08-30T12:00:00.000Z'),
+      userId: 'user-db-id',
+      addressNorm: '+14165550100',
+      ip: undefined,
     });
-    expect(prisma.authChallenge.count).not.toHaveBeenCalled();
   });
 
-  it('uses an email-only recent-request check for email challenges', async () => {
+  it('uses the same cross-channel 2FA policy for email challenges', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
-    const { service, prisma } = createService();
+    const { service, otpPolicy } = createService();
     jest.spyOn(service, 'getSession').mockResolvedValue(session as never);
-    prisma.authChallenge.findFirst.mockResolvedValue({ id: 'recent-email' });
+    otpPolicy.checkSend.mockResolvedValue({
+      ok: false,
+      violation: 'COOLDOWN',
+    });
 
     await expect(
       service.requestTwoFactorEmail({ sessionId: 'session-id' }),
     ).rejects.toThrow('too many requests, please try later');
 
-    expect(prisma.authChallenge.findFirst).toHaveBeenCalledWith({
-      where: {
-        userId: 'user-db-id',
-        type: AuthChallengeType.TWO_FACTOR,
-        channel: MessagingChannel.EMAIL,
-        purpose: 'LOGIN_2FA',
-        createdAt: { gt: new Date('2026-08-30T11:59:00.000Z') },
-        status: AuthChallengeStatus.PENDING,
-      },
-      orderBy: { createdAt: 'desc' },
+    expect(otpPolicy.checkSend).toHaveBeenCalledWith({
+      profile: 'LOGIN_2FA',
+      purpose: 'LOGIN_2FA',
+      now: new Date('2026-08-30T12:00:00.000Z'),
+      userId: 'user-db-id',
+      addressNorm: 'admin@example.com',
+      ip: undefined,
     });
   });
 
@@ -298,6 +298,7 @@ describe('AuthService POS device authentication boundary', () => {
       {} as never,
       {} as never,
       { verifyCredentials } as never,
+      {} as never,
     );
     return { service, verifyCredentials };
   }

@@ -20,6 +20,7 @@ import {
   type IdentityChallengeEnginePort,
 } from './challenge-engine.port';
 import { normalizeEmail } from './email-normalization';
+import { OtpChallengePolicyService } from './otp-challenge-policy.service';
 import type {
   EmailVerificationResult,
   IdentityEmailVerificationPort,
@@ -38,6 +39,7 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
     private readonly delivery: EmailVerificationDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
+    private readonly otpPolicy: OtpChallengePolicyService,
   ) {}
 
   async requestUserVerification(
@@ -77,10 +79,25 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
       return { ok: true, alreadyVerified: true };
     }
 
-    const expiresAt = this.challengeEngine.expiresAt(
-      new Date(),
-      24 * 60 * 60 * 1000,
-    );
+    const now = new Date();
+    const limitResult = await this.otpPolicy.checkSend({
+      profile: 'EMAIL_VERIFY',
+      purpose: 'email_verify',
+      now,
+      userId: user.id,
+      addressNorm: email,
+    });
+    if (!limitResult.ok) {
+      return {
+        ok: false,
+        error:
+          limitResult.violation === 'COOLDOWN'
+            ? 'too many requests, please try later'
+            : 'too many requests in a day',
+      };
+    }
+
+    const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000);
     const token = this.challengeEngine.generateCode('ZERO_PADDED');
     const codeHash = this.challengeEngine.hashCode(token, 'OTP');
 
@@ -106,8 +123,24 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
 
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
-      data: { messagingSendId: sendResult.sendId },
+      data: sendResult.ok
+        ? { messagingSendId: sendResult.sendId }
+        : {
+            messagingSendId: sendResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
     });
+
+    if (sendResult.ok) {
+      await this.otpPolicy.revokeSupersededCodes({
+        profile: 'EMAIL_VERIFY',
+        purpose: 'email_verify',
+        now,
+        userId: user.id,
+        addressNorm: email,
+        currentChallengeId: challenge.id,
+      });
+    }
 
     return { ok: true };
   }
@@ -121,22 +154,24 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
     }
 
     const now = new Date();
-    const oneDayAgo = this.challengeEngine.windowStart(
+    const purpose = params.purpose ?? 'checkout';
+    const limitResult = await this.otpPolicy.checkSend({
+      profile: 'CHECKOUT',
+      purpose,
       now,
-      24 * 60 * 60 * 1000,
-    );
-    const dailyCount = await this.prisma.authChallenge.count({
-      where: {
-        type: AuthChallengeType.EMAIL_VERIFY,
-        channel: MessagingChannel.EMAIL,
-        addressNorm: normalized,
-        purpose: params.purpose ?? 'checkout',
-        createdAt: { gt: oneDayAgo },
-      },
+      addressNorm: normalized,
+      ip: params.ip,
     });
-
-    if (this.challengeEngine.limitReached(dailyCount, 5)) {
-      return { ok: false, error: 'too many requests in a day' };
+    if (!limitResult.ok) {
+      return {
+        ok: false,
+        error:
+          limitResult.violation === 'COOLDOWN'
+            ? 'too many requests, please try later'
+            : limitResult.violation === 'DAILY_LIMIT'
+              ? 'too many requests in a day'
+              : 'too many requests in an hour',
+      };
     }
 
     const expiresAt = this.challengeEngine.expiresAt(now, 10 * 60 * 1000);
@@ -150,8 +185,9 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
         addressNorm: normalized,
         addressRaw: params.email,
         codeHash,
-        purpose: params.purpose ?? 'checkout',
+        purpose,
         expiresAt,
+        ip: params.ip,
       },
     });
 
@@ -164,8 +200,24 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
 
     await this.prisma.authChallenge.update({
       where: { id: challenge.id },
-      data: { messagingSendId: sendResult.sendId },
+      data: sendResult.ok
+        ? { messagingSendId: sendResult.sendId }
+        : {
+            messagingSendId: sendResult.sendId,
+            ...this.challengeEngine.revokedState(now),
+          },
     });
+
+    if (sendResult.ok) {
+      await this.otpPolicy.revokeSupersededCodes({
+        profile: 'CHECKOUT',
+        purpose,
+        now,
+        addressNorm: normalized,
+        ip: params.ip,
+        currentChallengeId: challenge.id,
+      });
+    }
 
     return { ok: true };
   }
@@ -174,10 +226,11 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
     params: VerifyCheckoutEmailCodeInput,
   ): Promise<EmailVerificationResult> {
     const normalized = normalizeEmail(params.email);
-    const codeHash = this.challengeEngine.hashCode(params.token.trim(), 'OTP');
+    const code = params.token.trim();
     const now = new Date();
+    const purpose = params.purpose ?? 'checkout';
 
-    if (!normalized || !params.token.trim()) {
+    if (!normalized || !code) {
       return { ok: false, error: 'email_or_token_empty' };
     }
 
@@ -187,8 +240,8 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
         channel: MessagingChannel.EMAIL,
         status: AuthChallengeStatus.PENDING,
         addressNorm: normalized,
-        purpose: params.purpose ?? 'checkout',
-        codeHash,
+        purpose,
+        codeHash: { not: null },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -203,6 +256,20 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
         data: this.challengeEngine.expiredState(now),
       });
       return { ok: false, error: 'token_expired' };
+    }
+
+    if (
+      !this.challengeEngine.verifyCodeHash(code, record.codeHash ?? '', 'OTP')
+    ) {
+      await this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: this.challengeEngine.failedAttemptState({
+          attempts: record.attempts,
+          maxAttempts: record.maxAttempts,
+          now,
+        }),
+      });
+      return { ok: false, error: 'token_not_found' };
     }
 
     const verificationToken = this.challengeEngine.generateVerificationToken();
@@ -220,7 +287,7 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
           addressRaw: record.addressRaw,
           tokenHash:
             this.challengeEngine.hashVerificationToken(verificationToken),
-          purpose: params.purpose ?? 'checkout',
+          purpose,
           expiresAt: record.expiresAt,
         },
       }),
@@ -316,7 +383,6 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
       throw new NotFoundException('user not found');
     }
 
-    const codeHash = this.challengeEngine.hashCode(code, 'OTP');
     const now = new Date();
 
     const record = await this.prisma.authChallenge.findFirst({
@@ -325,7 +391,8 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
         channel: MessagingChannel.EMAIL,
         status: AuthChallengeStatus.PENDING,
         userId: user.id,
-        codeHash,
+        purpose: 'email_verify',
+        codeHash: { not: null },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -340,6 +407,20 @@ export class EmailVerificationService implements IdentityEmailVerificationPort {
         data: this.challengeEngine.expiredState(now),
       });
       return { ok: false, error: 'token_expired' };
+    }
+
+    if (
+      !this.challengeEngine.verifyCodeHash(code, record.codeHash ?? '', 'OTP')
+    ) {
+      await this.prisma.authChallenge.update({
+        where: { id: record.id },
+        data: this.challengeEngine.failedAttemptState({
+          attempts: record.attempts,
+          maxAttempts: record.maxAttempts,
+          now,
+        }),
+      });
+      return { ok: false, error: 'token_not_found' };
     }
 
     await this.prisma.$transaction([

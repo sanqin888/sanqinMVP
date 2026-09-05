@@ -16,6 +16,7 @@ import { AdminMfaGuard } from './admin-mfa.guard';
 import { AuthChallengeDeliveryModule } from '../messaging/public-api';
 import { NotificationModule } from '../notifications/public-api';
 import { IdentityChallengeModule } from './challenge-engine.module';
+import { OtpChallengePolicyModule } from './otp-challenge-policy.module';
 import { PosDeviceModule } from '../pos/public-api';
 import { CouponsModule } from '../coupons/public-api';
 import {
@@ -34,6 +35,7 @@ import { StaffAdministrationService } from './staff-administration.service';
     AuthChallengeDeliveryModule,
     NotificationModule,
     IdentityChallengeModule,
+    OtpChallengePolicyModule,
     PosDeviceModule,
     CouponsModule,
     StaffInviteDeliveryModule,

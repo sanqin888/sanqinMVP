@@ -683,11 +683,11 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **4A + 4B + 4C + 4D-A MERGED / CI GREEN; 4D-H LOCAL SOURCE COMPLETE / REVIEW PENDING**.
+Status: **4A + 4B + 4C + 4D-A + 4D-H MERGED / CI GREEN; 4D-I SOURCE COMPLETE / PR PENDING**.
 The TrustedDevice Stage 2 and Slice 4C Order member stable-ID migrations are merged but remain unapplied
-until the consolidated Phase 4 rollout. Slice 4D-A merged as the schema-free ownership contraction; 4D-H
-is the separately reviewed security/UX behavior hardening and introduces one required production secret
-configuration key without a Prisma migration.
+until the consolidated Phase 4 rollout. Slice 4D-A owns recharge verification, 4D-H hardened the
+recharge-specific security/UX cutover, and 4D-I generalizes OTP throttling/attempt/single-active-code
+behavior behind one Identity-owned DB-backed policy without a Prisma migration.
 
 #### Slice 4A — Staff Administration ownership contraction
 
@@ -893,8 +893,8 @@ Clover, Uber, Loyalty amount/bonus/idempotency or transaction-boundary change wa
 
 #### Slice 4D-H — Recharge verification security / UX hardening
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`hardening/phase4-slice4d-h-recharge-verification`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2184. Final head
+`4d850ba1` passed GitHub Actions CI #5165 and squash-merged to `dev` as `7853e4f9`.
 
 The authorized hardening keeps the 4D-A public capability/routes and Loyalty top-up flow intact while
 making recharge verification one owner-controlled policy across Email and SMS:
@@ -929,8 +929,49 @@ making recharge verification one owner-controlled policy across Email and SMS:
    and the architecture scanner reserve the recharge-specific secret, owner-side Email/SMS challenge
    lifecycle, DB-backed send limits, cryptographic generation and `{ ok:false }` POS handling.
 
-Remote CI is not claimed at this local review stage. Production `.env` is not modified by this slice;
-setting the new secret and executing the controlled rollout require separate deployment authorization.
+GitHub Actions CI #5165 is the authoritative validation for the merged 4D-H source. Production `.env`
+is not modified by the repository slice; setting the new secret and executing the controlled rollout
+still require separate deployment authorization.
+
+#### Slice 4D-I — Shared OTP challenge policy hardening
+
+Status: **SOURCE COMPLETE / PR PENDING** on `hardening/phase4-slice4d-i-otp-policy`.
+
+The approved follow-up keeps existing public routes and purpose contracts while consolidating repeated
+Identity OTP protections behind the internal `OtpChallengePolicyService`:
+
+1. `email_verify` code TTL contracts from **24 hours to 10 minutes**. Checkout email and generic phone
+   verification remain 10 minutes; login 2FA and phone enrollment remain 5 minutes; POS recharge remains
+   10 minutes;
+2. rate limits are DB-backed from `AuthChallenge` send facts instead of process-local memory. Login 2FA
+   keeps a cross-channel 60-second cooldown and five sends/hour per user. Phone enrollment keeps
+   per-address 60-second/five-per-hour controls and adds five sends/hour per user. Membership login keeps
+   the address controls and adds a 30 sends/hour public IP spray budget. Checkout Email/Phone share a
+   60-second/five-per-day address policy plus a 30 sends/hour IP budget. `email_verify` uses a 60-second
+   per-user cooldown plus five/day per user and per target email. POS recharge preserves the 4D-H
+   60-second/five-per-day per-member budget;
+3. successful sends become the single active OTP for their logical scope: older PENDING code rows are
+   revoked only **after** the new provider delivery succeeds. A failed provider delivery revokes only the
+   newly created challenge, so a previously delivered still-valid code is not accidentally invalidated;
+4. checkout email, member login and phone-enrollment verification now use latest-active-code lookup plus
+   `failedAttemptState`; five mismatches revoke the challenge, matching the existing ChallengeEngine
+   attempt semantics. Verification-token rows stay distinct because policy counts and supersession require
+   non-null `codeHash`;
+5. the historical in-process Phone Verification `Map<ip,timestamps>`/cleanup timer is removed. The module's
+   unused `ThrottlerModule.forRoot()` wiring is also removed because no `ThrottlerGuard` enforced it;
+6. Messaging remains delivery-only. `AUTH_CHALLENGE_DELIVERY` adds additive `ok/error` delivery status so
+   Identity can distinguish a provider failure before selecting the canonical active code; no challenge
+   lifecycle or business-purpose policy moves into Messaging;
+7. generic `/auth/phone/*` purpose acceptance is deliberately **not** narrowed in this slice because an
+   unknown external consumer could exist. The shared security policy applies without introducing a public
+   contract break;
+8. the central architecture scanner/baseline now reserves the shared policy module, requires DB-backed
+   profiles/callers and permanently rejects restoring process-local Phone Verification throttling.
+
+No Prisma schema/migration, dependency/lockfile, Loyalty amount/bonus/idempotency, Clover, Uber or
+Benefits ownership change is included. Numeric context-import baselines and the empty public SCC are
+expected to remain unchanged. Per repository workflow no local lint/build/test/scanner result is claimed;
+remote GitHub Actions is authoritative after push.
 
 Benefits/template coupon issuance remains Slice 5 scope rather than being moved into Customer merely
 to empty Admin persistence.

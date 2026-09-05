@@ -50,7 +50,7 @@ describe('AuthChallengeDeliveryService characterization', () => {
         locale: 'en',
         userStableId: 'c1234567890abcdefghijklmn',
       }),
-    ).resolves.toEqual({ sendId: 'send-sms-2fa' });
+    ).resolves.toEqual({ ok: true, sendId: 'send-sms-2fa', error: undefined });
 
     expect(businessConfigService.getMessagingSnapshot).toHaveBeenCalledWith(
       'en',
@@ -98,7 +98,11 @@ describe('AuthChallengeDeliveryService characterization', () => {
         locale: 'zh-CN',
         userStableId: 'c1234567890abcdefghijklmn',
       }),
-    ).resolves.toEqual({ sendId: 'send-email-2fa' });
+    ).resolves.toEqual({
+      ok: true,
+      sendId: 'send-email-2fa',
+      error: undefined,
+    });
 
     expect(templateRenderer.renderEmail).toHaveBeenCalledWith({
       template: 'otp',
@@ -143,7 +147,7 @@ describe('AuthChallengeDeliveryService characterization', () => {
         locale: 'en',
         userStableId: 'c1234567890abcdefghijklmn',
       }),
-    ).resolves.toEqual({ sendId: 'send-verify' });
+    ).resolves.toEqual({ ok: true, sendId: 'send-verify', error: undefined });
     await expect(
       service.sendMembershipLoginSms({
         phone: '4165550100',
@@ -151,7 +155,7 @@ describe('AuthChallengeDeliveryService characterization', () => {
         expiresInMin: 5,
         locale: 'en',
       }),
-    ).resolves.toEqual({ sendId: 'send-login' });
+    ).resolves.toEqual({ ok: true, sendId: 'send-login', error: undefined });
 
     expect(smsService.sendSms).toHaveBeenNthCalledWith(1, {
       phone: '4165550100',

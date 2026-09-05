@@ -1875,6 +1875,11 @@ if (memberRechargeVerificationBoundary) {
     boundary.adminMembersModule,
     boundary.ownerSpec,
     boundary.adminAdapterSpec,
+    boundary.otpPolicyService,
+    boundary.otpPolicyModule,
+    boundary.authService,
+    boundary.emailVerificationService,
+    boundary.phoneVerificationService,
   ];
 
   for (const sourcePath of requiredPaths) {
@@ -1935,12 +1940,12 @@ if (memberRechargeVerificationBoundary) {
       'PHONE_VERIFICATION_DELIVERY',
       'IDENTITY_CHALLENGE_ENGINE',
       "const POS_RECHARGE_PURPOSE = 'pos-recharge'",
-      'RECHARGE_SEND_COOLDOWN_MS',
-      'RECHARGE_DAILY_LIMIT',
+      'OtpChallengePolicyService',
+      "profile: 'POS_RECHARGE'",
       "generateCode('NON_ZERO_SIX_DIGIT')",
       "hashCode(code, 'MEMBER_RECHARGE')",
       'codeHash: { not: null }',
-      'this.prisma.authChallenge.count',
+      'revokeSupersededCodes',
       'messagingSendId: sendResult.sendId',
       'phoneVerificationDelivery.sendVerificationSms',
       'this.prisma.authChallenge.findFirst',
@@ -1976,6 +1981,7 @@ if (memberRechargeVerificationBoundary) {
       'MemberRechargeEmailDeliveryModule',
       'PhoneVerificationDeliveryModule',
       'IdentityChallengeModule',
+      'OtpChallengePolicyModule',
       'MEMBER_RECHARGE_VERIFICATION',
       'MemberRechargeVerificationService',
       'exports: [MEMBER_RECHARGE_VERIFICATION]',
@@ -1993,6 +1999,132 @@ if (memberRechargeVerificationBoundary) {
       if (source.includes(forbiddenSymbol)) {
         failures.push(
           `Member recharge verification module must not delegate recharge lifecycle to PhoneVerification (${forbiddenSymbol}): ${boundary.module}`,
+        );
+      }
+    }
+  }
+
+  const otpPolicyServicePath = join(REPOSITORY_ROOT, boundary.otpPolicyService);
+  if (existsSync(otpPolicyServicePath)) {
+    const source = readFileSync(otpPolicyServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OtpChallengePolicyProfile',
+      "'LOGIN_2FA'",
+      "'PHONE_ENROLL'",
+      "'MEMBERSHIP_LOGIN'",
+      "'CHECKOUT'",
+      "'EMAIL_VERIFY'",
+      "'POS_RECHARGE'",
+      "'GENERIC_PHONE'",
+      'const PUBLIC_IP_HOURLY_LIMIT = 30',
+      'this.prisma.authChallenge.count',
+      'codeHash: { not: null }',
+      'revokeSupersededCodes',
+      'AuthChallengeStatus.PENDING',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Shared OTP challenge policy is missing ${requiredSymbol}: ${boundary.otpPolicyService}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of ['new Map', 'setInterval(', 'OnModuleInit']) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Shared OTP challenge policy must remain DB-backed and process-independent (${forbiddenSymbol}): ${boundary.otpPolicyService}`,
+        );
+      }
+    }
+  }
+
+  const otpPolicyModulePath = join(REPOSITORY_ROOT, boundary.otpPolicyModule);
+  if (existsSync(otpPolicyModulePath)) {
+    const source = readFileSync(otpPolicyModulePath, 'utf8');
+    for (const requiredSymbol of [
+      'PrismaModule',
+      'IdentityChallengeModule',
+      'OtpChallengePolicyService',
+      'exports: [OtpChallengePolicyService]',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Shared OTP policy module wiring is missing ${requiredSymbol}: ${boundary.otpPolicyModule}`,
+        );
+      }
+    }
+  }
+
+  const authServicePath = join(REPOSITORY_ROOT, boundary.authService);
+  if (existsSync(authServicePath)) {
+    const source = readFileSync(authServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OtpChallengePolicyService',
+      "profile: 'LOGIN_2FA'",
+      "profile: 'PHONE_ENROLL'",
+      "profile: 'MEMBERSHIP_LOGIN'",
+      'revokeSupersededCodes',
+      'failedAttemptState',
+      'ip: params.ip',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Auth OTP flow is missing shared policy behavior ${requiredSymbol}: ${boundary.authService}`,
+        );
+      }
+    }
+  }
+
+  const emailVerificationServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.emailVerificationService,
+  );
+  if (existsSync(emailVerificationServicePath)) {
+    const source = readFileSync(emailVerificationServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OtpChallengePolicyService',
+      "profile: 'EMAIL_VERIFY'",
+      "profile: 'CHECKOUT'",
+      'expiresAt(now, 10 * 60 * 1000)',
+      'failedAttemptState',
+      'revokeSupersededCodes',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Email OTP flow is missing shared policy behavior ${requiredSymbol}: ${boundary.emailVerificationService}`,
+        );
+      }
+    }
+  }
+
+  const phoneVerificationServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.phoneVerificationService,
+  );
+  if (existsSync(phoneVerificationServicePath)) {
+    const source = readFileSync(phoneVerificationServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OtpChallengePolicyService',
+      "'CHECKOUT'",
+      "'GENERIC_PHONE'",
+      'revokeSupersededCodes',
+      'failedAttemptState',
+      'ip,',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Phone OTP flow is missing shared policy behavior ${requiredSymbol}: ${boundary.phoneVerificationService}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'new Map',
+      'setInterval(',
+      'OnModuleInit',
+      'OnModuleDestroy',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Phone OTP flow must not restore process-local throttling (${forbiddenSymbol}): ${boundary.phoneVerificationService}`,
         );
       }
     }
