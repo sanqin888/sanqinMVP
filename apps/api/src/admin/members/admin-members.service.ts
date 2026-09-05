@@ -11,7 +11,9 @@ import { normalizePhone } from '../../common/utils/phone';
 import { generateStableId } from '../../common/utils/stable-id';
 import { LoyaltyService } from '../../loyalty/loyalty.service';
 import {
+  LOYALTY_LEDGER_READER,
   LOYALTY_POLICY_READER,
+  type LoyaltyLedgerReaderPort,
   type LoyaltyPolicyReaderPort,
 } from '../../loyalty/public-api';
 import {
@@ -93,6 +95,8 @@ export class AdminMembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
+    @Inject(LOYALTY_LEDGER_READER)
+    private readonly loyaltyLedgerReader: LoyaltyLedgerReaderPort,
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     @Inject(CUSTOMER_ADMINISTRATION)
@@ -472,64 +476,15 @@ export class AdminMembersService {
     limitRaw?: string,
     targetRaw?: string,
   ) {
-    const user = await this.getUserByStableId(userStableId);
+    await this.getUserByStableId(userStableId);
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) || 50 : 50;
     const target = this.parseLedgerTarget(targetRaw);
 
-    const account = await this.loyalty.ensureAccount(user.id);
-    const entries = await this.prisma.loyaltyLedger.findMany({
-      where: { accountId: account.id, ...(target ? { target } : {}) },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: {
-        ledgerStableId: true,
-        createdAt: true,
-        type: true,
-        target: true,
-        orderId: true,
-        deltaMicro: true,
-        balanceAfterMicro: true,
-        note: true,
-      },
+    return this.loyaltyLedgerReader.getLoyaltyLedger({
+      userStableId,
+      limit,
+      ...(target ? { target } : {}),
     });
-
-    const orderIds = Array.from(
-      new Set(
-        entries
-          .map((entry) => entry.orderId)
-          .filter((value): value is string => typeof value === 'string'),
-      ),
-    );
-
-    const orderStableById = new Map<string, string>();
-    if (orderIds.length > 0) {
-      const rows = await this.prisma.order.findMany({
-        where: { id: { in: orderIds } },
-        select: { id: true, orderStableId: true },
-      });
-      for (const row of rows) {
-        orderStableById.set(row.id, row.orderStableId);
-      }
-    }
-
-    return {
-      entries: entries.map((entry) => {
-        const orderStableId =
-          entry.orderId != null
-            ? orderStableById.get(entry.orderId)
-            : undefined;
-        return {
-          ledgerStableId: entry.ledgerStableId,
-          createdAt: entry.createdAt.toISOString(),
-          type: entry.type,
-          target: entry.target,
-          deltaPoints: Number(entry.deltaMicro) / MICRO_PER_POINT,
-          balanceAfterPoints: Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
-          note: entry.note ?? undefined,
-          ...(orderStableId ? { orderStableId } : {}),
-        };
-      }),
-    };
   }
 
   async listCoupons(userStableId: string) {

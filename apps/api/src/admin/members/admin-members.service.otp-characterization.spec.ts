@@ -22,6 +22,7 @@ describe('AdminMembersService recharge verification adapter', () => {
     const service = new AdminMembersService(
       prisma as never,
       loyalty as never,
+      {} as never,
       loyaltyPolicyReader as never,
       customerAdministration as never,
       accountSecurityAdministration as never,

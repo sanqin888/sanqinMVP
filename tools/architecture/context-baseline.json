@@ -444,6 +444,20 @@
     "ordersService": "apps/api/src/orders/orders.service.ts",
     "loyaltyService": "apps/api/src/loyalty/loyalty.service.ts"
   },
+  "loyaltyLedgerOrderIdentityBoundary": {
+    "schema": "apps/api/prisma/schema.prisma",
+    "migration": "apps/api/prisma/migrations/20260905193000_add_loyalty_ledger_order_stable_id/migration.sql",
+    "contract": "apps/api/src/loyalty/loyalty-ledger-read.contract.ts",
+    "reader": "apps/api/src/loyalty/loyalty-ledger-read.service.ts",
+    "module": "apps/api/src/loyalty/loyalty.module.ts",
+    "publicSurface": "apps/api/src/loyalty/public-api.ts",
+    "loyaltyPrismaBoundary": "apps/api/src/loyalty/loyalty-prisma.ts",
+    "loyaltyPolicyWriter": "apps/api/src/loyalty/loyalty-policy-prisma.writer.ts",
+    "loyaltyService": "apps/api/src/loyalty/loyalty.service.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
+    "membershipService": "apps/api/src/membership/membership.service.ts"
+  },
   "customerLifecycleNotificationBoundary": {
     "contract": "apps/api/src/notifications/contracts/customer-lifecycle-notification.contract.ts",
     "service": "apps/api/src/notifications/notification.service.ts",
@@ -560,7 +574,7 @@
     "identity-customer-benefits -> brand-store": 4,
     "identity-customer-benefits -> commerce-orders-fulfillment": 1,
     "identity-customer-benefits -> external-channels": 1,
-    "identity-customer-benefits -> runtime-data-ci-ops": 12,
+    "identity-customer-benefits -> runtime-data-ci-ops": 10,
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 3,
     "messaging-notifications -> runtime-data-ci-ops": 6,

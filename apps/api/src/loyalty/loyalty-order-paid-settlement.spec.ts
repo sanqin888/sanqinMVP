@@ -35,6 +35,7 @@ describe('Loyalty order-paid settlement boundary', () => {
     });
     expect(settleOnPaid).toHaveBeenCalledWith({
       orderId: '8a3d4c0e-4750-4f6a-9138-000000000101',
+      orderStableId: 'CORD-PAID-BOUNDARY-001',
       userId: '8a3d4c0e-4750-4f6a-9138-000000000202',
       subtotalCents: 2_500,
       redeemValueCents: 500,

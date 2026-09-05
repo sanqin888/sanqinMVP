@@ -1,6 +1,7 @@
 // apps/api/src/membership/membership.service.ts
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +10,10 @@ import { normalizeEmail } from '../common/utils/email';
 import { normalizePhone } from '../common/utils/phone';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import {
+  LOYALTY_LEDGER_READER,
+  type LoyaltyLedgerReaderPort,
+} from '../loyalty/public-api';
 import type {
   HoldPaymentCouponReservationInput,
   PaymentCouponReservationPort,
@@ -22,6 +27,8 @@ export class MembershipService implements PaymentCouponReservationPort {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loyalty: LoyaltyService,
+    @Inject(LOYALTY_LEDGER_READER)
+    private readonly loyaltyLedgerReader: LoyaltyLedgerReaderPort,
   ) {}
 
   private couponStatus(coupon: {
@@ -429,69 +436,11 @@ export class MembershipService implements PaymentCouponReservationPort {
   async getLoyaltyLedger(params: { userStableId: string; limit?: number }) {
     const { userStableId, limit = 50 } = params;
 
-    const user = await this.requireExistingUser(userStableId);
-
-    const account = await this.loyalty.ensureAccount(user.id);
-
-    const entries = await this.prisma.loyaltyLedger.findMany({
-      where: { accountId: account.id },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: {
-        ledgerStableId: true,
-        createdAt: true,
-        type: true,
-        target: true,
-        orderId: true,
-        deltaMicro: true,
-        balanceAfterMicro: true,
-        note: true,
-      },
+    await this.requireExistingUser(userStableId);
+    return this.loyaltyLedgerReader.getLoyaltyLedger({
+      userStableId,
+      limit,
     });
-
-    // ✅ orderStableId：优先使用订单稳定号
-    const orderIds = Array.from(
-      new Set(
-        entries
-          .map((e) => e.orderId)
-          .filter((v): v is string => typeof v === 'string' && v.length > 0),
-      ),
-    );
-
-    const orderStableById = new Map<string, string>();
-    if (orderIds.length > 0) {
-      const rows = await this.prisma.order.findMany({
-        where: { id: { in: orderIds } },
-        select: { id: true, orderStableId: true },
-      });
-      for (const r of rows) {
-        orderStableById.set(r.id, r.orderStableId);
-      }
-    }
-
-    return {
-      entries: entries.map((entry) => {
-        const orderStableId =
-          entry.orderId != null
-            ? orderStableById.get(entry.orderId)
-            : undefined;
-
-        return {
-          // ✅ 对外统一：不用裸 id
-          ledgerStableId: entry.ledgerStableId,
-
-          createdAt: entry.createdAt.toISOString(),
-          type: entry.type,
-          target: entry.target,
-          deltaPoints: Number(entry.deltaMicro) / MICRO_PER_POINT,
-          balanceAfterPoints: Number(entry.balanceAfterMicro) / MICRO_PER_POINT,
-          note: entry.note ?? undefined,
-
-          // ✅ 统一稳定标识
-          ...(orderStableId ? { orderStableId } : {}),
-        };
-      }),
-    };
   }
 
   async validateCouponForOrder(

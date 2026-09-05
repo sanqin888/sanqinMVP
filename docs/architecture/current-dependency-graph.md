@@ -96,7 +96,7 @@ pair fails CI.
 | architecture-foundation | none |
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
-| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 12; store-operations-pos-print 4 |
+| identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 10; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 4; messaging-notifications 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
@@ -112,14 +112,14 @@ The next formal modularization phase is **Phase 4 — Identity / Customer / Bene
 Messaging Boundary Contraction**, tracked in
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
 
-The current local monotonic baseline after the Slice 4A Staff Administration owner contraction
-records these direct-debt totals. Slice 4A removes two historical Runtime imports from the Admin
-adapter/composition root while keeping Staff persistence and invariants inside the existing Identity
-owner:
+The current local monotonic baseline after the Slice 5A Loyalty ledger identity source contraction
+records these direct-debt totals. Slice 5A consolidates Loyalty Runtime composition through one
+context-local Prisma boundary while preserving the established Staff/Customer/Security ownership
+contractions:
 
 - payments-clover: **59**
 - external-channels: **42**
-- identity-customer-benefits: **35**
+- identity-customer-benefits: **33**
 - commerce-orders-fulfillment: **30**
 - store-operations-pos-print: **31**
 - accounting-reporting-analytics: **25**
@@ -196,7 +196,8 @@ lifecycle to `PhoneVerificationService`. New recharge codes use required `MEMBER
 and non-zero six-digit generation uses `crypto.randomInt`. POS rejects backend `{ ok:false }` sends
 without entering `code-sent`; the approved rollout remains an atomic cutover with no legacy-secret fallback.
 
-Slice 4D-I is **SOURCE COMPLETE / PR PENDING** on `hardening/phase4-slice4d-i-otp-policy`. The new
+Slice 4D-I is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2185. Final head
+`d4b85e3a` passed GitHub Actions CI #5168 and squash-merged to `dev` as `b27ad8ce`. The new
 Identity-internal `OtpChallengePolicyService` centralizes DB-backed cooldown/quota/supersession behavior
 for Login 2FA, Phone Enrollment, Membership Login, Checkout, Email Verify, POS Recharge and generic Phone
 Verification. `email_verify` contracts from 24 hours to 10 minutes; public membership-login/checkout flows
@@ -207,6 +208,19 @@ state. Messaging remains delivery-only, with additive `ok/error` status on Auth 
 No Prisma/dependency/context-import change is introduced. Expected numeric graph baselines remain
 Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
 **0**, Commerce -> Identity **4**, with the public SCC baseline empty.
+
+Slice 5A is **SOURCE COMPLETE / LOCAL REVIEW PENDING** on
+`refactor/phase4-slice5a-loyalty-ledger-order-identity`. The authorized additive migration adds nullable
+`LoyaltyLedger.orderStableId`, deterministically backfills the existing Order mapping with
+count/mismatch/orphan checks, and deliberately leaves the existing `(orderId, type, sourceKey)` internal
+idempotency key plus nullable `orderId` in place. All order-linked Loyalty ledger writes dual-write the
+stable identity inside their existing transaction; manual no-order adjustments remain identity-null.
+`LOYALTY_LEDGER_READER` now returns the persisted stable identity directly, so both Admin Members and
+Membership stop performing `Order.id -> orderStableId` enrichment. The normal order-create path allocates
+its stable ID before Loyalty writes, while payment/refund/amendment/top-up paths reuse their already-known
+stable identity. Consolidating Loyalty Runtime imports through `loyalty-prisma.ts` contracts Identity ->
+Runtime **12 -> 10** and Identity total **35 -> 33**. No new public dependency edge is introduced, so the
+public SCC baseline remains empty. The migration is not applied and remote CI has not yet run for 5A.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

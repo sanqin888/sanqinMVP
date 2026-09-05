@@ -140,6 +140,16 @@ node tools/architecture/scan-architecture.mjs --report
   Loyalty top-up synthetic orders dual-write both identities. The DB-ID-free
   `CUSTOMER_EXISTENCE_READER` preserves missing-member semantics without Orders reading User
   persistence, Admin cannot regain Order/OrderItem persistence, and the SCC guard must remain empty;
+- Phase 4 Slice 5A persists nullable `LoyaltyLedger.orderStableId` beside the existing internal
+  `orderId`. The additive migration must deterministically backfill through the existing
+  `LoyaltyLedger.orderId -> Order.id -> Order.orderStableId` mapping and fail on incomplete,
+  mismatched, orphan or impossible stable-without-DB-ID rows; it must not tighten the field to
+  NOT NULL, make it unique/indexed, or add an Order FK. Every order-linked ledger write dual-writes
+  both identities while manual no-order adjustments keep both absent. Admin and Membership ledger
+  views delegate to `LOYALTY_LEDGER_READER`, whose public contract contains stable/business identity
+  only and whose implementation reads `orderStableId` directly from Loyalty persistence without an
+  Order enrichment query. Loyalty Runtime access is consolidated through `loyalty-prisma.ts`, and
+  the existing `(orderId, type, sourceKey)` internal idempotency constraint remains unchanged;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import
