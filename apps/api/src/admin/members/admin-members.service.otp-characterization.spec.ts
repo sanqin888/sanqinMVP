@@ -110,7 +110,9 @@ describe('AdminMembersService recharge verification adapter', () => {
 
   it('claims the verification token before applying the Loyalty top-up', async () => {
     const { service, loyalty, memberRechargeVerification } = createService();
-    memberRechargeVerification.consumeVerificationToken.mockResolvedValue(undefined);
+    memberRechargeVerification.consumeVerificationToken.mockResolvedValue(
+      undefined,
+    );
     loyalty.applyTopup.mockResolvedValue({ balanceCents: 5000 });
 
     await expect(

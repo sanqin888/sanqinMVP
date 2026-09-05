@@ -71,7 +71,7 @@ describe('MemberRechargeVerificationService', () => {
     }
   });
 
-  it('preserves email recharge code creation, delivery audit linkage, and no owner-side daily limit', async () => {
+  it('preserves email recharge code creation and delivery audit linkage', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
     const { service, prisma, memberRechargeEmailDelivery, challengeEngine } =
       createService();
@@ -161,7 +161,7 @@ describe('MemberRechargeVerificationService', () => {
     });
   });
 
-  it('keeps profile email as the preferred recharge channel even when a phone is supplied', async () => {
+  it('keeps profile email preferred when a phone is supplied', async () => {
     const { service, prisma, phoneVerification, memberRechargeEmailDelivery } =
       createService();
     prisma.user.findUnique.mockResolvedValue(emailMember);
@@ -182,7 +182,7 @@ describe('MemberRechargeVerificationService', () => {
     expect(phoneVerification.sendCode).not.toHaveBeenCalled();
   });
 
-  it('increments attempts and revokes an email recharge code on the final mismatch', async () => {
+  it('revokes an email recharge code on the final mismatch', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-30T12:00:00.000Z'));
     const { service, prisma } = createService();
     process.env.OTP_SECRET = 'admin-secret';
@@ -366,7 +366,9 @@ describe('MemberRechargeVerificationService', () => {
 
   it('preserves member/contact validation errors behind the owner boundary', async () => {
     const { service, prisma } = createService();
-    prisma.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(emailMember);
+    prisma.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(emailMember);
 
     await expect(
       service.sendCode({ userStableId: 'missing-member' }),
