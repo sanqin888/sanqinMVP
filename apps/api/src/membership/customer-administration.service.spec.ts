@@ -50,7 +50,7 @@ describe('CustomerService admin profile administration', () => {
       birthdayMonth: 12,
     });
 
-    const updateCall = update.mock.calls[0]?.[0] as unknown;
+    const updateCall = update.mock.calls[0]?.[0];
     expect(updateCall).toMatchObject({
       where: { userStableId: existingUser.userStableId },
       data: {
@@ -80,7 +80,7 @@ describe('CustomerService admin profile administration', () => {
       birthdayMonth: null,
     });
 
-    const updateCall = update.mock.calls[0]?.[0] as unknown;
+    const updateCall = update.mock.calls[0]?.[0];
     expect(updateCall).toMatchObject({
       data: {
         birthdayYear: null,
@@ -112,7 +112,7 @@ describe('CustomerService admin profile administration', () => {
       where: { phone: '14165550199' },
       select: { id: true },
     });
-    const updateCall = update.mock.calls[0]?.[0] as unknown;
+    const updateCall = update.mock.calls[0]?.[0];
     expect(updateCall).toMatchObject({
       data: {
         phone: '14165550199',
