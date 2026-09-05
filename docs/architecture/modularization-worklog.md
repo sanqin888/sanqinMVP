@@ -793,8 +793,8 @@ This slice will not be deployed separately before the Phase 4 consolidated rollo
 
 ### 2026-09-04 — Phase 4 Slice 3: Customer Profile / Address / Consent ownership contraction
 
-**PR/SHA:** local branch `refactor/phase4-slice3-customer-boundary`  
-**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**PR/SHA:** PR #2178 / final head `73f7d2e1` / squash merge `e813d918`  
+**State:** CI GREEN / MERGED / AWAITING PHASE-END DEPLOYMENT  
 **Result:** the broad Membership surface no longer owns customer profile, address or marketing
 consent mutations. The old standalone `MembershipOnboardingService` is retired and replaced by one
 coherent `CustomerService` that owns onboarding, profile, shared birthday eligibility, address
@@ -818,6 +818,35 @@ slice will not be deployed separately before the Phase 4 consolidated rollout.
 `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
 `tools/architecture/README.md`.
 
+### 2026-09-05 — Phase 4 Slice 4A: Staff Administration ownership contraction
+
+**PR/SHA:** local branch `refactor/phase4-slice4a-staff-ownership`  
+**State:** LOCAL SOURCE COMPLETE / REVIEW PENDING  
+**Result:** Staff account and invite business decisions move from `AdminStaffController` behind the
+Identity-owned `STAFF_ADMINISTRATION` public port. Its framework-free contract carries only stable-ID
+Staff DTOs/use cases; internal `StaffAdministrationService` owns ADMIN/STAFF list mapping, role/status
+mutation, self-modification rejection, the existing last-active-admin invariant,
+invite list/status and create/resend/revoke delivery orchestration while reusing AuthService's
+existing invite lifecycle. The Admin controller retains guards, transport parsing,
+delegation and dev-only invite URL formatting only; it no longer imports Prisma, Prisma-generated
+role/status types or `STAFF_INVITE_DELIVERY`. The adapter/use-case call now carries the actor and
+target as stable business IDs; inviter DB UUID resolution stays internal to Identity where the legacy
+`UserInvite.invitedByUserId` relation still requires it. `AdminModule` drops its obsolete direct
+Prisma provider and Staff invite delivery wiring; `AuthModule` composes the existing public delivery
+module instead. Existing route/response behavior, AuthService invite role support (including the
+currently UI-hidden ACCOUNTANT capability) and the non-atomic active-admin count/update behavior are
+preserved. Characterization locks staff list mapping, self/last-admin guards, allowed demotion, invite
+delivery, invite status and the existing 400/404 transport error mapping. The central scanner moves
+the Phase 2C Staff delivery consumer from Admin to Identity and forbids Staff Prisma/delivery
+ownership from returning to the Admin adapter. Static
+production-import accounting contracts Identity -> Runtime **14 -> 12** and total Identity outgoing
+**37 -> 35** while Identity -> Messaging direct debt stays **0** and the public SCC baseline stays
+empty. No local lint/build/test/scanner execution is claimed; GitHub Actions remains deferred until
+user review. This slice will not be deployed separately before Phase 4 closeout.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`,
+`tools/architecture/README.md`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -832,7 +861,7 @@ slice will not be deployed separately before the Phase 4 consolidated rollout.
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B MERGED/CI; SLICE 3 LOCAL** on 2026-09-04. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 MERGED/CI; SLICE 4A LOCAL** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -847,11 +876,14 @@ slice will not be deployed separately before the Phase 4 consolidated rollout.
   Messaging total outgoing debt `14 -> 10`. Slice 2E-B merged via PR #2177 as `718b2133` after
   final head `dc07e820` passed CI #5137, contracting the final direct Identity -> Messaging
   `2 -> 0`, returning OrderEventsBus to private Orders ownership and removing Uber's obsolete
-  Messaging bridge while preserving the durable outbox. Slice 3 is locally complete: CustomerService
-  now owns onboarding/profile/address/marketing-consent while the broad Membership read surface no
-  longer performs implicit User/PHONE_VERIFY mutation; numeric dependency baselines remain
-  unchanged. Per the current rollout plan, Slice 1 onward are not individually deployed; the
-  accumulated Phase 4 changes will be deployed and actively verified together after source closeout.
+  Messaging bridge while preserving the durable outbox. Slice 3 merged via PR #2178 as `e813d918`
+  after final head `73f7d2e1` passed CI #5140; CustomerService now owns
+  onboarding/profile/address/marketing-consent while the broad Membership read surface no longer
+  performs implicit User/PHONE_VERIFY mutation. Slice 4A is locally complete: Staff persistence,
+  invite orchestration and staff-account invariants now belong to Auth/Identity, contracting
+  Identity -> Runtime `14 -> 12` and total Identity outgoing `37 -> 35`. Per the current rollout
+  plan, Slice 1 onward are not individually deployed; the accumulated Phase 4 changes will be
+  deployed and actively verified together after source closeout.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

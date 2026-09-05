@@ -636,8 +636,8 @@ verification remains part of the consolidated Phase 4 rollout.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 
-Status: **LOCAL SOURCE COMPLETE / REVIEW PENDING** on
-`refactor/phase4-slice3-customer-boundary`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2178. Final head
+`73f7d2e1` passed CI #5140 and squash-merged to `dev` as `e813d918`.
 
 The readiness audit rejected a mechanical three-service split because duplicating Nest/Prisma
 entry points would increase Identity direct-import debt. The approved atomic owner contraction
@@ -683,13 +683,66 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **PLANNED**.
+Status: **4A LOCAL SOURCE COMPLETE / REVIEW PENDING** on
+`refactor/phase4-slice4a-staff-ownership`; 4B/4C/4D remain planned.
 
-Move member/staff business rules and persistence decisions behind Identity/Customer /
-Benefits owner use cases. Admin controllers/services should remain authorization and
-transport adapters. Staff invitation, account state and invariants such as protection
-of the last active admin must remain owner-side business rules rather than controller
-logic.
+#### Slice 4A — Staff Administration ownership contraction
+
+The approved first sub-slice moves Staff administration persistence and business decisions from the
+Admin transport adapter into the existing Auth/Identity owner without changing HTTP routes or Web
+contracts:
+
+1. framework/persistence-free `STAFF_ADMINISTRATION` public contract exposes only stable-ID Staff
+   administration DTOs/use cases. Nest-import-free `StaffAdministrationService` inside Auth/Identity
+   implements that port and owns the ADMIN/STAFF list read model, role/status mutation,
+   self-modification protection and the existing last-active-admin invariant; Nest wiring and HTTP
+   exception mapping remain outside the application owner;
+2. Staff invite list/status, create/resend/revoke orchestration and the decision to call the narrow
+   `STAFF_INVITE_DELIVERY` capability are Identity-owned. Messaging still owns only template/provider
+   delivery; the Admin controller no longer injects the delivery port;
+3. the Admin adapter passes `actorUserStableId` / target `userStableId` into the owner rather than
+   passing an internal User DB UUID across the adapter/use-case boundary. Identity resolves the
+   inviter DB ID internally only where the existing `UserInvite.invitedByUserId` persistence relation
+   requires it;
+4. `AdminStaffController` is reduced to guards, request parsing, delegation and the existing dev-only
+   invite URL formatting. It no longer imports `PrismaService`, Prisma-generated role/status types or
+   Messaging delivery capabilities;
+5. `AdminModule` drops the historical direct `PrismaService` provider and
+   `StaffInviteDeliveryModule` wiring; `AuthModule` composes the Staff invite delivery public module
+   with the Identity owner instead;
+6. the existing non-atomic `active ADMIN count -> update target` behavior is deliberately preserved.
+   Serializing/locking that invariant is a separate transaction-semantics hardening task, not part of
+   this ownership move;
+7. the existing backend invite capability continues to accept the previously supported AuthService
+   roles, including `ACCOUNTANT`. The current Staff Web UI still exposes only ADMIN/STAFF; 4A does not
+   mix the separately planned Admin/Accounting/POS role/PWA work into modularization;
+8. focused characterization covers staff-list mapping, self-modification rejection,
+   last-active-admin protection, permitted demotion when another admin remains, invite delivery,
+   invite status mapping and the existing 400/404 transport error mapping. The central scanner moves
+   the Phase 2C Staff delivery consumer from Admin to Identity and prevents Prisma/invite-delivery
+   ownership from returning to the Admin controller/module.
+
+Static production-import accounting keeps Identity -> Architecture at **13**, contracts Identity ->
+Runtime **14 -> 12**, and therefore contracts total Identity outgoing debt **37 -> 35**. Identity ->
+Messaging direct debt remains **0** because Staff delivery is a registered public capability, and the
+public SCC baseline remains empty. No dependency/lockfile,
+Prisma schema/migration, HTTP route, Web, payment, Orders, Uber or durable-outbox change is included.
+Per the Phase 4 rollout policy, Slice 4A will not be deployed separately.
+
+#### Remaining Slice 4 plan
+
+- **4B — Customer + Security admin boundary:** move member profile/status/address and session/device
+  admin operations behind Customer/Auth owner use cases while preserving the distinct admin birthday
+  override semantics discovered by readiness audit.
+- **4C — Orders member read routes:** re-home `/admin/members/:userStableId/orders` and `/top-items`
+  implementation inside Orders while preserving the existing route shape; do not add an
+  Identity -> Orders public edge that would recreate the Identity/Commerce SCC.
+- **4D — Recharge challenge ownership contraction:** separately assess/move POS member-recharge
+  challenge lifecycle from broad `AdminMembersService` after 4B/4C, preserving verification-token
+  and top-up semantics.
+
+Benefits/template coupon issuance remains Slice 5 scope rather than being moved into Customer merely
+to empty Admin persistence.
 
 ### Slice 5 — Benefits implementation ownership consolidation
 
