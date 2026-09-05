@@ -683,7 +683,7 @@ rollout.
 
 ### Slice 4 — Admin Members / Staff adapter contraction
 
-Status: **4A + 4B + 4C + 4D-A + 4D-H MERGED / CI GREEN; 4D-I SOURCE COMPLETE / PR PENDING**.
+Status: **4A + 4B + 4C + 4D-A + 4D-H + 4D-I MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**.
 The TrustedDevice Stage 2 and Slice 4C Order member stable-ID migrations are merged but remain unapplied
 until the consolidated Phase 4 rollout. Slice 4D-A owns recharge verification, 4D-H hardened the
 recharge-specific security/UX cutover, and 4D-I generalizes OTP throttling/attempt/single-active-code
@@ -935,7 +935,8 @@ still require separate deployment authorization.
 
 #### Slice 4D-I — Shared OTP challenge policy hardening
 
-Status: **SOURCE COMPLETE / PR PENDING** on `hardening/phase4-slice4d-i-otp-policy`.
+Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2185. Final head
+`d4b85e3a` passed GitHub Actions CI #5168 and squash-merged to `dev` as `b27ad8ce`.
 
 The approved follow-up keeps existing public routes and purpose contracts while consolidating repeated
 Identity OTP protections behind the internal `OtpChallengePolicyService`:
@@ -988,18 +989,52 @@ customer entitlement/reservation behavior remains Benefits-owned.
 
 #### Slice 5A — Loyalty ledger order identity contraction
 
-Treat the remaining Admin loyalty-ledger Order enrichment as Benefits/Loyalty debt, not
-as a Slice 4C Orders read-model tail. `LoyaltyLedger` currently persists internal
-`orderId` and Admin later performs an extra `Order.id -> Order.orderStableId` lookup
-solely to present the browser-safe business identity. Slice 5A should evaluate an
-additive nullable `LoyaltyLedger.orderStableId` expand-contract migration, deterministic
-backfill from the existing `orderId -> Order.orderStableId` mapping, and transactional
-dual-write of both identities on new order-related ledger entries. The intended exit
-state is that the Benefits/Loyalty read model returns `orderStableId` directly, while
-retaining `orderId` only where an internal same-owner relation/transaction still
-requires it; Admin must no longer query Order persistence to enrich loyalty-ledger
-responses. Do not solve this by moving the loyalty-ledger route into Orders or by
-introducing a new Identity/Benefits -> Orders runtime dependency.
+Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on
+`refactor/phase4-slice5a-loyalty-ledger-order-identity`.
+
+The read-only readiness audit ran against `origin/dev` at `b27ad8ce` and production data before
+implementation. Production contained **91** `LoyaltyLedger` rows: **89** had `orderId`, those rows mapped
+to **44** distinct Orders / **44** distinct `orderStableId` values, and there were **0** orphan Order DB
+IDs or mapping mismatches. The remaining **2** rows were legitimate manual adjustments without an Order.
+Twenty-one Orders already had multiple ledger rows and the maximum was six rows for one Order, proving
+that `orderStableId` must not be unique on the ledger.
+
+Implemented source shape:
+
+1. `LoyaltyLedger` adds nullable `orderStableId String?` beside the existing nullable UUID `orderId`.
+   The authorized additive migration deterministically backfills through
+   `LoyaltyLedger.orderId -> Order.id -> Order.orderStableId` and fails on incomplete population,
+   mismatches, orphan Order IDs or impossible stable-without-DB-ID rows. It deliberately adds no FK,
+   unique constraint, index or `NOT NULL` tightening;
+2. the existing `@@unique([orderId, type, sourceKey])` internal idempotency key remains unchanged.
+   `orderId` continues to serve Loyalty-owned refund/amendment/idempotency queries; Slice 5A contracts
+   the cross-boundary read identity rather than replacing all internal DB-ID use;
+3. every order-linked `LoyaltyLedger.create()` now dual-writes both identities inside its existing
+   transaction. Unified-payment tender COMMIT receives the already-known stable ID; paid settlement
+   keeps the stable-only public capability; refund reads the stable ID with the existing Order lookup;
+   amendment receives it from the Orders aggregate; and top-up synthetic Orders select their generated
+   stable ID before ledger writes. Manual no-order adjustments continue to write no Order identity;
+4. the normal Web/POS order path now allocates `orderStableId = stableKey ?? generateStableId()` once
+   before its retry/transaction loop. This is required because points/balance ledger writes occur before
+   `tx.order.create()`, so relying on the Prisma default would make the stable identity unavailable at
+   the ledger transaction point;
+5. Benefits/Loyalty now owns `LOYALTY_LEDGER_READER`. Its public contract accepts `userStableId` and
+   returns `ledgerStableId` / amounts / optional `orderStableId` only; the implementation reads the
+   persisted stable identity directly from `LoyaltyLedger` and performs no Order enrichment query.
+   Both Admin Members and Membership delegate their existing ledger views to this capability while
+   preserving their existing not-found checks, limits/target filtering and response shape;
+6. Loyalty Runtime composition is consolidated through context-local `loyalty-prisma.ts`, matching the
+   existing Orders/Membership pattern. The numeric direct-debt baseline contracts
+   `identity-customer-benefits -> runtime-data-ci-ops` **12 -> 10**, taking Identity total direct debt
+   **35 -> 33**. No new cross-context public edge is introduced and the public SCC baseline remains empty;
+7. the adjacent Orders/POS-print reads that still query LoyaltyLedger by internal `orderId` are not
+   widened into this slice. They remain a later Benefits read-ownership contraction rather than changing
+   Orders/print behavior while landing the identity migration.
+
+No dependency/lockfile, payment amount/state, coupon COMMIT ownership, Clover/Uber wire contract,
+order-status transition, durable outbox or public HTTP route shape is changed. The migration has not been
+applied to any database and, per repository workflow, no local lint/build/test/scanner result is claimed;
+local delivery stops after source diff/status review and GitHub Actions is authoritative after push.
 
 The Phase 3 Slice 2C transaction-bound COMMIT remains deferred unless a design can
 preserve atomic Points/Balance COMMIT + Coupon COMMIT + Order creation without:

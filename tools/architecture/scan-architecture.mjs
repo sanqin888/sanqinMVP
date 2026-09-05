@@ -3183,6 +3183,328 @@ if (adminMemberOrdersReadBoundary) {
   }
 }
 
+const loyaltyLedgerOrderIdentityBoundary =
+  config.loyaltyLedgerOrderIdentityBoundary ?? null;
+if (loyaltyLedgerOrderIdentityBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(loyaltyLedgerOrderIdentityBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.schema,
+    boundary.migration,
+    boundary.contract,
+    boundary.reader,
+    boundary.module,
+    boundary.publicSurface,
+    boundary.loyaltyPrismaBoundary,
+    boundary.loyaltyPolicyWriter,
+    boundary.loyaltyService,
+    boundary.ordersService,
+    boundary.adminMembersService,
+    boundary.membershipService,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Loyalty ledger order identity boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const schemaPath = join(REPOSITORY_ROOT, boundary.schema);
+  if (existsSync(schemaPath)) {
+    const source = readFileSync(schemaPath, 'utf8');
+    const ledgerModel = source.match(/model LoyaltyLedger \{[\s\S]*?\n\}/)?.[0] ?? '';
+    if (
+      !/orderId\s+String\?\s+@db\.Uuid/.test(ledgerModel) ||
+      !/orderStableId\s+String\?/.test(ledgerModel) ||
+      !ledgerModel.includes('@@unique([orderId, type, sourceKey])')
+    ) {
+      failures.push(
+        `LoyaltyLedger must retain nullable internal orderId plus nullable orderStableId while keeping the existing internal idempotency key: ${boundary.schema}`,
+      );
+    }
+    for (const forbiddenSymbol of [
+      '@@unique([orderStableId',
+      '@@index([orderStableId',
+      'orderStableId     String          @unique',
+    ]) {
+      if (ledgerModel.includes(forbiddenSymbol)) {
+        failures.push(
+          `Slice 5A must not make LoyaltyLedger.orderStableId unique/indexed (${forbiddenSymbol}): ${boundary.schema}`,
+        );
+      }
+    }
+  }
+
+  const migrationPath = join(REPOSITORY_ROOT, boundary.migration);
+  if (existsSync(migrationPath)) {
+    const source = readFileSync(migrationPath, 'utf8');
+    for (const requiredSymbol of [
+      'ADD COLUMN "orderStableId" TEXT',
+      'SET "orderStableId" = o."orderStableId"',
+      'l."orderId" = o."id"',
+      'order_linked_ledger_count',
+      'populated_stable_id_count',
+      'mismatched_stable_id_count',
+      'orphan_order_id_count',
+      'stable_without_order_id_count',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `LoyaltyLedger orderStableId migration is missing ${requiredSymbol}: ${boundary.migration}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'ALTER COLUMN "orderStableId" SET NOT NULL',
+      'CREATE UNIQUE INDEX',
+      'FOREIGN KEY',
+      'random()',
+      'clock_timestamp()',
+      'gen_random_uuid()',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `LoyaltyLedger orderStableId migration must stay deterministic/additive/nullable (${forbiddenSymbol}): ${boundary.migration}`,
+        );
+      }
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'LOYALTY_LEDGER_READER',
+      'LoyaltyLedgerReaderPort',
+      'userStableId',
+      'ledgerStableId',
+      'orderStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Loyalty ledger read contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      'PrismaService',
+      /\borderId\b/,
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Loyalty ledger public read contract must remain framework/persistence/DB-ID free (${forbiddenSymbol}): ${boundary.contract}`,
+        );
+      }
+    }
+  }
+
+  const readerPath = join(REPOSITORY_ROOT, boundary.reader);
+  if (existsSync(readerPath)) {
+    const source = readFileSync(readerPath, 'utf8');
+    for (const requiredSymbol of [
+      'implements LoyaltyLedgerReaderPort',
+      "from './loyalty-prisma'",
+      'loyalty.resolveUserIdByStableId',
+      'loyaltyLedger.findMany',
+      'orderStableId: true',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Loyalty ledger reader is missing ${requiredSymbol}: ${boundary.reader}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'prisma.order.',
+      'order.findMany',
+      'order.findUnique',
+      "from '../prisma/",
+      /\borderId\s*:\s*true\b/,
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Loyalty ledger reader must return its stored stable identity without Orders persistence enrichment (${forbiddenSymbol}): ${boundary.reader}`,
+        );
+      }
+    }
+  }
+
+  const loyaltyPrismaBoundaryPath = join(
+    REPOSITORY_ROOT,
+    boundary.loyaltyPrismaBoundary,
+  );
+  if (existsSync(loyaltyPrismaBoundaryPath)) {
+    const source = readFileSync(loyaltyPrismaBoundaryPath, 'utf8').trim();
+    if (source !== "export { PrismaModule, PrismaService } from '../prisma/prisma.module';") {
+      failures.push(
+        `Loyalty Prisma boundary must stay a composition-only re-export: ${boundary.loyaltyPrismaBoundary}`,
+      );
+    }
+  }
+
+  const loyaltyModulePath = join(REPOSITORY_ROOT, boundary.module);
+  if (existsSync(loyaltyModulePath)) {
+    const source = readFileSync(loyaltyModulePath, 'utf8');
+    for (const requiredSymbol of [
+      "from './loyalty-prisma'",
+      'LOYALTY_LEDGER_READER',
+      'LoyaltyLedgerReadService',
+      'useExisting: LoyaltyLedgerReadService',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Loyalty module must expose the owner read capability (${requiredSymbol}): ${boundary.module}`,
+        );
+      }
+    }
+    if (source.includes("from '../prisma/")) {
+      failures.push(
+        `Loyalty module must use its context-local Prisma composition boundary: ${boundary.module}`,
+      );
+    }
+  }
+
+  const loyaltyPolicyWriterPath = join(
+    REPOSITORY_ROOT,
+    boundary.loyaltyPolicyWriter,
+  );
+  if (existsSync(loyaltyPolicyWriterPath)) {
+    const source = readFileSync(loyaltyPolicyWriterPath, 'utf8');
+    if (
+      !source.includes("from './loyalty-prisma'") ||
+      source.includes("from '../prisma/")
+    ) {
+      failures.push(
+        `Loyalty policy persistence must use the context-local Prisma composition boundary: ${boundary.loyaltyPolicyWriter}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    if (
+      !source.includes('LOYALTY_LEDGER_READER') ||
+      !source.includes('LoyaltyLedgerReaderPort')
+    ) {
+      failures.push(
+        `Loyalty public surface must expose the ledger reader contract: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const loyaltyServicePath = join(REPOSITORY_ROOT, boundary.loyaltyService);
+  if (existsSync(loyaltyServicePath)) {
+    const source = readFileSync(loyaltyServicePath, 'utf8');
+    if (source.includes("from '../prisma/")) {
+      failures.push(
+        `LoyaltyService must use the context-local Prisma composition boundary: ${boundary.loyaltyService}`,
+      );
+    }
+    for (const requiredSymbol of [
+      'orderStableId: string;',
+      'orderStableId: topupOrder.orderStableId',
+      'orderStableId: order.orderStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Loyalty order-linked ledger dual-write is missing ${requiredSymbol}: ${boundary.loyaltyService}`,
+        );
+      }
+    }
+
+    let cursor = 0;
+    while (true) {
+      const start = source.indexOf('.loyaltyLedger.create({', cursor);
+      if (start < 0) break;
+      const end = source.indexOf('});', start);
+      if (end < 0) {
+        failures.push(
+          `Unable to inspect LoyaltyLedger create block for stable-order dual-write: ${boundary.loyaltyService}`,
+        );
+        break;
+      }
+      const block = source.slice(start, end + 3);
+      const hasOrderId = /\borderId\b/.test(block);
+      const manualWithoutOrder = /\borderId\s*:\s*null\b/.test(block);
+      if (hasOrderId && !manualWithoutOrder && !/\borderStableId\b/.test(block)) {
+        failures.push(
+          `Every order-linked LoyaltyLedger create must dual-write orderStableId: ${boundary.loyaltyService}`,
+        );
+        break;
+      }
+      if (manualWithoutOrder && /\borderStableId\b/.test(block)) {
+        failures.push(
+          `Manual LoyaltyLedger entries without an order must not fabricate orderStableId: ${boundary.loyaltyService}`,
+        );
+        break;
+      }
+      cursor = end + 3;
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'const orderStableId = stableKey ?? generateStableId();',
+      'orderStableId: input.orderStableId',
+      'orderStableId: order.orderStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders must provide stable identity to Loyalty before ledger writes (${requiredSymbol}): ${boundary.ordersService}`,
+        );
+      }
+    }
+  }
+
+  for (const adapterPath of [
+    boundary.adminMembersService,
+    boundary.membershipService,
+  ]) {
+    const sourcePath = join(REPOSITORY_ROOT, adapterPath);
+    if (!existsSync(sourcePath)) continue;
+    const source = readFileSync(sourcePath, 'utf8');
+    for (const requiredSymbol of [
+      'LOYALTY_LEDGER_READER',
+      'loyaltyLedgerReader.getLoyaltyLedger',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Loyalty ledger adapter must delegate to the Benefits/Loyalty owner (${requiredSymbol}): ${adapterPath}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'orderStableById',
+      'this.prisma.loyaltyLedger.findMany',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Loyalty ledger adapter must not reclaim persistence/enrichment ownership (${forbiddenSymbol}): ${adapterPath}`,
+        );
+      }
+    }
+  }
+}
+
 const customerLifecycleNotificationBoundary =
   config.customerLifecycleNotificationBoundary ?? null;
 if (customerLifecycleNotificationBoundary) {

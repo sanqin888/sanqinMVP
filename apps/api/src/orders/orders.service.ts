@@ -43,7 +43,7 @@ import {
   ORDER_STATUS_TRANSITIONS,
   OrderStatus,
 } from './order-status';
-import { normalizeStableId } from '../common/utils/stable-id';
+import { generateStableId, normalizeStableId } from '../common/utils/stable-id';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
   UberDirectDropoffDetails,
@@ -2654,6 +2654,7 @@ export class OrdersService {
           tx,
           attemptId: input.attemptId,
           orderId: input.internalOrderId,
+          orderStableId: input.orderStableId,
         });
         if (
           committedTender.pointsValueCents !== snapshot.tender.pointsCents ||
@@ -3063,6 +3064,7 @@ export class OrdersService {
       normalizedHeaderKey ??
       normalizedBodyStableId ??
       normalizedLegacyRequestId;
+    const orderStableId = stableKey ?? generateStableId();
     const legacyKey =
       providedClientRequestId && providedClientRequestId.length > 0
         ? providedClientRequestId
@@ -3325,6 +3327,7 @@ export class OrdersService {
               tx,
               userId,
               orderId,
+              orderStableId,
               sourceKey: 'ORDER',
               requestedPoints,
               subtotalAfterCoupon,
@@ -3347,6 +3350,7 @@ export class OrdersService {
                 tx,
                 userId,
                 orderId,
+                orderStableId,
                 amountCents: balanceUsedCents,
               });
             }
@@ -3422,7 +3426,7 @@ export class OrdersService {
                 paymentMethod,
                 userId: userId ?? null,
                 userStableId: normalizedUserStableId ?? null,
-                ...(stableKey ? { orderStableId: stableKey } : {}),
+                orderStableId,
                 clientRequestId,
                 channel: dto.channel,
                 ...(storeId ? { storeId } : {}),
@@ -4449,6 +4453,7 @@ export class OrdersService {
         const r = await this.loyalty.applyAmendmentAdjustments({
           tx,
           orderId: internalOrderId,
+          orderStableId: order.orderStableId,
           userId: orderUserId!,
           amendmentStableId: amendment.amendmentStableId,
           baseNetSubtotalCents,

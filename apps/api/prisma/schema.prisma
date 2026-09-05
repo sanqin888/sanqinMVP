@@ -995,6 +995,7 @@ model LoyaltyLedger {
   ledgerStableId    String           @unique @default(cuid())
   accountId         String           @db.Uuid
   orderId           String?          @db.Uuid
+  orderStableId     String?
   sourceKey         String           @default("ORDER")
   idempotencyKey    String?          @unique
   account           LoyaltyAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)

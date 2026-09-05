@@ -1,4 +1,11 @@
 export {
+  LOYALTY_LEDGER_READER,
+  type LoyaltyLedgerReaderPort,
+  type LoyaltyLedgerReadEntry,
+  type LoyaltyLedgerReadResult,
+  type LoyaltyLedgerReadTarget,
+} from './loyalty-ledger-read.contract';
+export {
   LOYALTY_ORDER_PAID_SETTLEMENT,
   type LoyaltyOrderPaidSettlementInput,
   type LoyaltyOrderPaidSettlementPort,
