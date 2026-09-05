@@ -86,9 +86,10 @@ export class PrintPosPayloadService {
       subtotalAfterDiscountCents:
         order.subtotalAfterDiscountCents ?? order.subtotalCents ?? 0,
     });
-    const { balancePaidCents } = await this.loyaltyOrderUsageReader.getOrderUsage({
-      orderStableId: order.orderStableId,
-    });
+    const { balancePaidCents } =
+      await this.loyaltyOrderUsageReader.getOrderUsage({
+        orderStableId: order.orderStableId,
+      });
     const orderTotalCents = order.totalCents ?? 0;
     const externalPaidCents = Math.max(0, orderTotalCents - balancePaidCents);
     const intentMetadata = await this.getCheckoutIntentMetadata(orderNumber);

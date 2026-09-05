@@ -260,7 +260,10 @@ describe('OrdersService.createFullRefund', () => {
       paymentMethod: PaymentMethod.STORE_BALANCE,
       paymentBreakdownJson: null,
     });
-    getOrderUsage.mockResolvedValue({ balancePaidCents: 2599, pointsEarned: 0 });
+    getOrderUsage.mockResolvedValue({
+      balancePaidCents: 2599,
+      pointsEarned: 0,
+    });
 
     await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(0);
     expect(getOrderUsage).toHaveBeenCalledWith({
@@ -275,7 +278,10 @@ describe('OrdersService.createFullRefund', () => {
       paymentMethod: PaymentMethod.CARD,
       paymentBreakdownJson: null,
     });
-    getOrderUsage.mockResolvedValue({ balancePaidCents: 1599, pointsEarned: 0 });
+    getOrderUsage.mockResolvedValue({
+      balancePaidCents: 1599,
+      pointsEarned: 0,
+    });
 
     await expect(service.getExternalPaymentCents('order_1')).resolves.toBe(
       1000,

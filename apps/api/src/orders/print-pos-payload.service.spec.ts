@@ -14,7 +14,9 @@ import { Channel, PaymentMethod } from '@prisma/client';
 import { PrintPosPayloadService } from './print-pos-payload.service';
 
 const createOrderUsageReader = (balancePaidCents = 0, pointsEarned = 0) => ({
-  getOrderUsage: jest.fn().mockResolvedValue({ balancePaidCents, pointsEarned }),
+  getOrderUsage: jest
+    .fn()
+    .mockResolvedValue({ balancePaidCents, pointsEarned }),
 });
 
 describe('PrintPosPayloadService', () => {
