@@ -180,9 +180,7 @@ describe('StaffAdministrationService', () => {
   });
 
   it('creates and delivers an invite from a stable inviter identity', async () => {
-    jest
-      .useFakeTimers()
-      .setSystemTime(new Date('2026-09-05T00:00:00.000Z'));
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-05T00:00:00.000Z'));
     const { service, prisma, authService, staffInviteDelivery } =
       createService();
     prisma.user.findUnique.mockResolvedValue({
