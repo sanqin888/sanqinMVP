@@ -27,7 +27,9 @@ export class AccountSecurityAdministrationError extends Error {
 }
 
 export interface AccountSecurityAdministrationPort {
-  listSessions(userStableId: string): Promise<{ sessions: AccountSessionDto[] }>;
+  listSessions(
+    userStableId: string,
+  ): Promise<{ sessions: AccountSessionDto[] }>;
   revokeSession(userStableId: string, sessionId: string): Promise<void>;
   setAccountStatus(
     userStableId: string,

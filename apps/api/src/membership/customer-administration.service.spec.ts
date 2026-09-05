@@ -50,15 +50,14 @@ describe('CustomerService admin profile administration', () => {
       birthdayMonth: 12,
     });
 
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { userStableId: existingUser.userStableId },
-        data: expect.objectContaining({
-          birthdayYear: currentYear,
-          birthdayMonth: 12,
-        }),
-      }),
-    );
+    const updateCall = update.mock.calls[0]?.[0] as unknown;
+    expect(updateCall).toMatchObject({
+      where: { userStableId: existingUser.userStableId },
+      data: {
+        birthdayYear: currentYear,
+        birthdayMonth: 12,
+      },
+    });
   });
 
   it('allows an admin to clear an existing birthday', async () => {
@@ -81,21 +80,18 @@ describe('CustomerService admin profile administration', () => {
       birthdayMonth: null,
     });
 
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          birthdayYear: null,
-          birthdayMonth: null,
-        }),
-      }),
-    );
+    const updateCall = update.mock.calls[0]?.[0] as unknown;
+    expect(updateCall).toMatchObject({
+      data: {
+        birthdayYear: null,
+        birthdayMonth: null,
+      },
+    });
   });
 
   it('normalizes a changed phone and clears phone verification', async () => {
     const { service, findUnique, update } = createService();
-    findUnique
-      .mockResolvedValueOnce(existingUser)
-      .mockResolvedValueOnce(null);
+    findUnique.mockResolvedValueOnce(existingUser).mockResolvedValueOnce(null);
     update.mockResolvedValue({
       userStableId: existingUser.userStableId,
       firstName: existingUser.firstName,
@@ -116,14 +112,13 @@ describe('CustomerService admin profile administration', () => {
       where: { phone: '14165550199' },
       select: { id: true },
     });
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          phone: '14165550199',
-          phoneVerifiedAt: null,
-        }),
-      }),
-    );
+    const updateCall = update.mock.calls[0]?.[0] as unknown;
+    expect(updateCall).toMatchObject({
+      data: {
+        phone: '14165550199',
+        phoneVerifiedAt: null,
+      },
+    });
     expect(result.phoneVerifiedAt).toBeNull();
   });
 

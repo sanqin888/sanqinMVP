@@ -1,6 +1,4 @@
-import {
-  AccountSecurityAdministrationError,
-} from './account-security-administration.contract';
+import { AccountSecurityAdministrationError } from './account-security-administration.contract';
 import { AccountSecurityAdministrationService } from './account-security-administration.service';
 
 function createService() {

@@ -5,9 +5,7 @@ import {
   type AccountSessionDto,
 } from './account-security-administration.contract';
 
-export class AccountSecurityAdministrationService
-  implements AccountSecurityAdministrationPort
-{
+export class AccountSecurityAdministrationService implements AccountSecurityAdministrationPort {
   constructor(private readonly prisma: PrismaService) {}
 
   private async requireUserDbId(userStableId: string): Promise<string> {
