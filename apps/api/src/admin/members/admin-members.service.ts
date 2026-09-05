@@ -21,6 +21,10 @@ import {
   type LoyaltyPolicyReaderPort,
 } from '../../loyalty/public-api';
 import { MembershipService } from '../../membership/membership.service';
+import {
+  CUSTOMER_ADMINISTRATION,
+  type CustomerAdministrationPort,
+} from '../../membership/public-api';
 import { PhoneVerificationService } from '../../phone-verification/phone-verification.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -28,6 +32,9 @@ import {
   type MemberRechargeEmailDeliveryPort,
 } from '../../email/public-api';
 import {
+  ACCOUNT_SECURITY_ADMINISTRATION,
+  AccountSecurityAdministrationError,
+  type AccountSecurityAdministrationPort,
   IDENTITY_CHALLENGE_ENGINE,
   type IdentityChallengeEnginePort,
 } from '../../auth/public-api';
@@ -112,6 +119,10 @@ export class AdminMembersService {
     private readonly memberRechargeEmailDelivery: MemberRechargeEmailDeliveryPort,
     @Inject(IDENTITY_CHALLENGE_ENGINE)
     private readonly challengeEngine: IdentityChallengeEnginePort,
+    @Inject(CUSTOMER_ADMINISTRATION)
+    private readonly customerAdministration: CustomerAdministrationPort,
+    @Inject(ACCOUNT_SECURITY_ADMINISTRATION)
+    private readonly accountSecurityAdministration: AccountSecurityAdministrationPort,
   ) {}
 
   private maskPhone(phone: string): string {
@@ -257,11 +268,16 @@ export class AdminMembersService {
     throw new BadRequestException('Invalid ledger target');
   }
 
-  private async getUserByStableId(userStableId: string) {
+  private requireUserStableId(userStableId: string): string {
     const stable = userStableId.trim();
     if (!stable) {
       throw new BadRequestException('userStableId is required');
     }
+    return stable;
+  }
+
+  private async getUserByStableId(userStableId: string) {
+    const stable = this.requireUserStableId(userStableId);
     const user = await this.prisma.user.findUnique({
       where: { userStableId: stable },
     });
@@ -269,6 +285,16 @@ export class AdminMembersService {
       throw new NotFoundException('member not found');
     }
     return user;
+  }
+
+  private rethrowAccountSecurityError(error: unknown): never {
+    if (
+      error instanceof AccountSecurityAdministrationError &&
+      error.code === 'USER_NOT_FOUND'
+    ) {
+      throw new NotFoundException('member not found');
+    }
+    throw error;
   }
 
   private async getTierThresholds() {
@@ -690,38 +716,34 @@ export class AdminMembersService {
   }
 
   async listAddresses(userStableId: string) {
-    const user = await this.getUserByStableId(userStableId);
-    const addresses = await this.prisma.userAddress.findMany({
-      where: { userId: user.id },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    return this.customerAdministration.listAddressesAsAdmin({
+      userStableId: this.requireUserStableId(userStableId),
     });
-
-    return addresses.map((addr) => ({
-      addressStableId: addr.addressStableId,
-      label: addr.label,
-      receiver: addr.receiver,
-      phone: addr.phone ?? '',
-      addressLine1: addr.addressLine1,
-      addressLine2: addr.addressLine2 ?? '',
-      remark: addr.remark ?? '',
-      city: addr.city,
-      province: addr.province,
-      postalCode: addr.postalCode,
-      placeId: addr.placeId ?? undefined,
-      latitude: addr.latitude ?? undefined,
-      longitude: addr.longitude ?? undefined,
-      isDefault: addr.isDefault,
-    }));
   }
 
   async getDeviceManagement(userStableId: string) {
     const user = await this.getUserByStableId(userStableId);
-    return this.membership.getDeviceManagement({ userId: user.id });
+    // TrustedDevice still exposes its Prisma UUID through the historical device contract.
+    // Keep only that portion on the legacy path until Slice 4B Stage 2 adds a stable ID.
+    const [securitySessions, legacyDeviceManagement] = await Promise.all([
+      this.accountSecurityAdministration.listSessions(user.userStableId),
+      this.membership.getDeviceManagement({ userId: user.id }),
+    ]);
+    return {
+      sessions: securitySessions.sessions,
+      trustedDevices: legacyDeviceManagement.trustedDevices,
+    };
   }
 
   async revokeSession(userStableId: string, sessionId: string) {
-    const user = await this.getUserByStableId(userStableId);
-    await this.membership.revokeSession({ userId: user.id, sessionId });
+    try {
+      await this.accountSecurityAdministration.revokeSession(
+        this.requireUserStableId(userStableId),
+        sessionId,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
+    }
   }
 
   async revokeTrustedDevice(userStableId: string, deviceId: string) {
@@ -740,109 +762,10 @@ export class AdminMembersService {
       birthdayMonth?: number | null;
     },
   ) {
-    const user = await this.getUserByStableId(userStableId);
-
-    const updateData: Prisma.UserUpdateInput = {};
-
-    if (body.firstName !== undefined) {
-      const trimmed = body.firstName?.trim();
-      updateData.firstName = trimmed && trimmed.length > 0 ? trimmed : null;
-    }
-
-    if (body.lastName !== undefined) {
-      const trimmed = body.lastName?.trim();
-      updateData.lastName = trimmed && trimmed.length > 0 ? trimmed : null;
-    }
-
-    if (body.email !== undefined) {
-      const normalizedEmail = normalizeEmail(body.email);
-      if (normalizedEmail) {
-        const existing = await this.prisma.user.findUnique({
-          where: { email: normalizedEmail },
-          select: { id: true },
-        });
-        if (existing && existing.id !== user.id) {
-          throw new BadRequestException('email already in use');
-        }
-      }
-      updateData.email = normalizedEmail;
-    }
-
-    if (body.phone !== undefined) {
-      const normalizedPhone = normalizePhone(body.phone);
-      if (normalizedPhone) {
-        const existing = await this.prisma.user.findUnique({
-          where: { phone: normalizedPhone },
-          select: { id: true },
-        });
-        if (existing && existing.id !== user.id) {
-          throw new BadRequestException('phone already in use');
-        }
-      }
-      if (normalizedPhone !== user.phone) {
-        updateData.phone = normalizedPhone;
-        updateData.phoneVerifiedAt = null;
-      }
-    }
-
-    const wantsBirthdayUpdate =
-      body.birthdayYear !== undefined || body.birthdayMonth !== undefined;
-    if (wantsBirthdayUpdate) {
-      if (body.birthdayYear == null && body.birthdayMonth == null) {
-        updateData.birthdayYear = null;
-        updateData.birthdayMonth = null;
-      } else {
-        const year = body.birthdayYear;
-        const month = body.birthdayMonth;
-        const currentYear = new Date().getUTCFullYear();
-        const validBirthday =
-          typeof year === 'number' &&
-          typeof month === 'number' &&
-          Number.isInteger(year) &&
-          Number.isInteger(month) &&
-          year >= 1900 &&
-          year <= currentYear &&
-          month >= 1 &&
-          month <= 12;
-        if (!validBirthday) {
-          throw new BadRequestException('invalid birthday');
-        }
-        updateData.birthdayYear = year;
-        updateData.birthdayMonth = month;
-      }
-    }
-
-    if (Object.keys(updateData).length === 0) {
-      return {
-        userStableId: user.userStableId,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        birthdayYear: user.birthdayYear,
-        birthdayMonth: user.birthdayMonth,
-      };
-    }
-
-    const updated = await this.prisma.user.update({
-      where: { userStableId },
-      data: updateData,
-      select: {
-        userStableId: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        birthdayYear: true,
-        birthdayMonth: true,
-        phoneVerifiedAt: true,
-      },
+    return this.customerAdministration.updateProfileAsAdmin({
+      userStableId: this.requireUserStableId(userStableId),
+      ...body,
     });
-
-    return {
-      ...updated,
-      phoneVerifiedAt: updated.phoneVerifiedAt?.toISOString() ?? null,
-    };
   }
 
   async adjustPoints(
@@ -867,19 +790,14 @@ export class AdminMembersService {
   }
 
   async setMemberStatus(userStableId: string, disabled: boolean) {
-    const user = await this.getUserByStableId(userStableId);
-    const status = disabled ? 'DISABLED' : 'ACTIVE';
-    if (user.status === status) {
-      return { userStableId: user.userStableId, status: user.status };
+    try {
+      return await this.accountSecurityAdministration.setAccountStatus(
+        this.requireUserStableId(userStableId),
+        disabled,
+      );
+    } catch (error) {
+      this.rethrowAccountSecurityError(error);
     }
-
-    const updated = await this.prisma.user.update({
-      where: { userStableId },
-      data: { status },
-      select: { userStableId: true, status: true },
-    });
-
-    return updated;
   }
 
   async sendRechargeCode(

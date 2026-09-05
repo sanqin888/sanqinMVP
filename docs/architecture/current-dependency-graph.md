@@ -150,11 +150,23 @@ from the Admin transport adapter behind the Identity-owned `STAFF_ADMINISTRATION
 `StaffAdministrationService` as its internal implementation. `AdminStaffController` no longer imports
 Prisma or Prisma-generated role/status types and no longer owns invite delivery; the Identity owner
 coordinates the existing `STAFF_INVITE_DELIVERY` public capability while reusing AuthService's
-existing invite lifecycle. `AdminModule` also drops its
-historical direct Prisma provider and Staff invite delivery wiring. This contracts
-Identity -> Runtime **14 -> 12** and Identity total **37 -> 35** without adding a new direct
-Identity -> Messaging debt or reopening the public SCC. The existing non-atomic active-admin
-count/update semantics and current ADMIN/STAFF transport behavior are intentionally preserved.
+existing invite lifecycle. `AdminModule` also drops its historical direct Prisma provider and Staff
+invite delivery wiring. This contracts Identity -> Runtime **14 -> 12** and Identity total
+**37 -> 35** without adding a new direct Identity -> Messaging debt or reopening the public SCC. The
+existing non-atomic active-admin count/update semantics and current ADMIN/STAFF transport behavior are
+intentionally preserved. Slice 4A merged through PR #2179 after final head `f235893e` passed CI #5144
+and squash-merged as `f91a849e`.
+
+Slice 4B Stage 1 then contracts Admin member Customer/Security ownership without changing the numeric
+context graph. `CUSTOMER_ADMINISTRATION` makes CustomerService the owner of Admin profile mutation and
+address reads while preserving the broader Admin birthday override semantics. The separate
+`ACCOUNT_SECURITY_ADMINISTRATION` Auth capability owns stable-ID-scoped session listing/revocation and
+ACTIVE/DISABLED account status. `AdminMembersService` delegates those operations and may not regain the
+retired `UserAddress`, profile `User.update`, or session/status persistence paths. Trusted-device
+list/revoke remains the explicitly deferred 4B Stage 2 tail because the current browser-facing
+`TrustedDevice.id` is a Prisma UUID and must not be copied into the new Auth public contract. Therefore
+Identity -> Architecture remains **13**, Identity -> Runtime **12**, Identity total **35**, Identity ->
+Messaging **0**, and the public SCC baseline remains empty. No baseline count is raised for Stage 1.
 Payment ownership is not reopened merely to chase the largest numeric total mid-phase.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction

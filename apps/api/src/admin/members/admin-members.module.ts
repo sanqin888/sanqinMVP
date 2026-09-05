@@ -2,12 +2,15 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LoyaltyModule } from '../../loyalty/public-api';
-import { MembershipModule } from '../../membership/membership.module';
+import { MembershipModule } from '../../membership/public-api';
 import { PhoneVerificationModule } from '../../phone-verification/phone-verification.module';
 import { MemberRechargeEmailDeliveryModule } from '../../email/public-api';
 import { AdminMembersController } from './admin-members.controller';
 import { AdminMembersService } from './admin-members.service';
-import { IdentityChallengeModule } from '../../auth/public-api';
+import {
+  AccountSecurityAdministrationModule,
+  IdentityChallengeModule,
+} from '../../auth/public-api';
 
 @Module({
   imports: [
@@ -17,6 +20,7 @@ import { IdentityChallengeModule } from '../../auth/public-api';
     PhoneVerificationModule,
     MemberRechargeEmailDeliveryModule,
     IdentityChallengeModule,
+    AccountSecurityAdministrationModule,
   ],
   controllers: [AdminMembersController],
   providers: [AdminMembersService],

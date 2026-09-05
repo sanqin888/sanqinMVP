@@ -26,6 +26,15 @@ export {
   type StaffUserDto,
   type UpdateStaffInput,
 } from './staff-administration.contract';
+export { AccountSecurityAdministrationModule } from './account-security-administration.module';
+export {
+  ACCOUNT_SECURITY_ADMINISTRATION,
+  type AccountSecurityAdministrationErrorCode,
+  AccountSecurityAdministrationError,
+  type AccountSecurityAdministrationPort,
+  type AccountSessionDto,
+  type ManagedAccountStatus,
+} from './account-security-administration.contract';
 export { Roles } from './roles.decorator';
 export { RolesGuard } from './roles.guard';
 export { SessionAuthGuard } from './session-auth.guard';

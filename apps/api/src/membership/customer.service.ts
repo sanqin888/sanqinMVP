@@ -18,6 +18,14 @@ import {
   CUSTOMER_LIFECYCLE_NOTIFICATION,
   type CustomerLifecycleNotificationPort,
 } from '../notifications/public-api';
+import type {
+  CustomerAdministrationPort,
+  CustomerAdminProfileUpdateInput,
+} from './customer-administration.contract';
+import {
+  normalizeAdminCustomerPhone,
+  resolveAdminBirthdayUpdate,
+} from './customer-administration.policy';
 
 const MINIMUM_MEMBERSHIP_AGE = 13;
 const LEGACY_REFERRAL_CUTOFF = new Date('2026-08-22T16:45:00.000Z');
@@ -38,7 +46,7 @@ const createStableId = (prefix: string): string => {
 };
 
 @Injectable()
-export class CustomerService {
+export class CustomerService implements CustomerAdministrationPort {
   private readonly logger = new Logger(CustomerService.name);
 
   constructor(
@@ -228,6 +236,111 @@ export class CustomerService {
     return this.serializeProfile(updated);
   }
 
+  async updateProfileAsAdmin(input: CustomerAdminProfileUpdateInput) {
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId: input.userStableId },
+    });
+    if (!user) throw new NotFoundException('member not found');
+
+    const updateData: {
+      firstName?: string | null;
+      lastName?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      phoneVerifiedAt?: null;
+      birthdayYear?: number | null;
+      birthdayMonth?: number | null;
+    } = {};
+
+    if (input.firstName !== undefined) {
+      const trimmed = input.firstName?.trim();
+      updateData.firstName = trimmed && trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (input.lastName !== undefined) {
+      const trimmed = input.lastName?.trim();
+      updateData.lastName = trimmed && trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (input.email !== undefined) {
+      const normalizedEmail = normalizeEmail(input.email);
+      if (normalizedEmail) {
+        const existing = await this.prisma.user.findUnique({
+          where: { email: normalizedEmail },
+          select: { id: true },
+        });
+        if (existing && existing.id !== user.id) {
+          throw new BadRequestException('email already in use');
+        }
+      }
+      updateData.email = normalizedEmail;
+    }
+
+    if (input.phone !== undefined) {
+      const normalizedPhone = normalizeAdminCustomerPhone(input.phone);
+      if (normalizedPhone) {
+        const existing = await this.prisma.user.findUnique({
+          where: { phone: normalizedPhone },
+          select: { id: true },
+        });
+        if (existing && existing.id !== user.id) {
+          throw new BadRequestException('phone already in use');
+        }
+      }
+      if (normalizedPhone !== user.phone) {
+        updateData.phone = normalizedPhone;
+        updateData.phoneVerifiedAt = null;
+      }
+    }
+
+    const birthdayUpdate = resolveAdminBirthdayUpdate({
+      birthdayYear: input.birthdayYear,
+      birthdayMonth: input.birthdayMonth,
+      currentYear: new Date().getUTCFullYear(),
+    });
+    if (birthdayUpdate.kind === 'clear') {
+      updateData.birthdayYear = null;
+      updateData.birthdayMonth = null;
+    } else if (birthdayUpdate.kind === 'invalid') {
+      throw new BadRequestException('invalid birthday');
+    } else if (birthdayUpdate.kind === 'set') {
+      updateData.birthdayYear = birthdayUpdate.birthdayYear;
+      updateData.birthdayMonth = birthdayUpdate.birthdayMonth;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return {
+        userStableId: user.userStableId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        birthdayYear: user.birthdayYear,
+        birthdayMonth: user.birthdayMonth,
+      };
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { userStableId: input.userStableId },
+      data: updateData,
+      select: {
+        userStableId: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        birthdayYear: true,
+        birthdayMonth: true,
+        phoneVerifiedAt: true,
+      },
+    });
+
+    return {
+      ...updated,
+      phoneVerifiedAt: updated.phoneVerifiedAt?.toISOString() ?? null,
+    };
+  }
+
   async updateMarketingConsent(params: {
     userStableId: string;
     marketingEmailOptIn: boolean;
@@ -289,6 +402,17 @@ export class CustomerService {
       throw new InternalServerErrorException(
         'Failed to update marketing consent',
       );
+    }
+  }
+
+  async listAddressesAsAdmin(params: { userStableId: string }) {
+    try {
+      return await this.listAddresses(params);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new NotFoundException('member not found');
+      }
+      throw error;
     }
   }
 

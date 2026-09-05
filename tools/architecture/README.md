@@ -109,6 +109,15 @@ node tools/architecture/scan-architecture.mjs --report
   composition and `MessagingTemplateType` must not return to either caller. Recharge delivery crosses
   the boundary with `userStableId`, while Identity-owned challenge persistence may continue to
   reference an internal User DB ID inside its owner boundary;
+- Phase 4 Slice 4B Stage 1 reserves Admin member Customer/Security ownership behind two Identity-
+  context capabilities. `CUSTOMER_ADMINISTRATION` is implemented by `CustomerService` and owns Admin
+  profile mutation plus address reads while preserving the intentionally broader Admin birthday
+  override. `ACCOUNT_SECURITY_ADMINISTRATION` owns stable-ID-scoped Admin session list/revoke and
+  ACTIVE/DISABLED status mutation through an Auth-internal Prisma boundary. `AdminMembersService`
+  cannot regain direct `UserAddress`, profile `User.update`, or session/status persistence. The new
+  account-security contract/service must not absorb `TrustedDevice`: its current browser-facing `id`
+  is a Prisma UUID and remains an explicitly deferred stable-ID expand-contract migration rather than
+  becoming a new canonical DB-ID contract;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

@@ -1845,6 +1845,312 @@ if (adminMessagingDeliveryBoundary) {
   }
 }
 
+const adminCustomerSecurityBoundary = config.adminCustomerSecurityBoundary ?? null;
+if (adminCustomerSecurityBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(adminCustomerSecurityBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.customerContract,
+    boundary.customerPolicy,
+    boundary.customerService,
+    boundary.customerPublicSurface,
+    boundary.membershipModule,
+    boundary.accountSecurityContract,
+    boundary.accountSecurityService,
+    boundary.accountSecurityModule,
+    boundary.authPublicSurface,
+    boundary.adminMembersService,
+    boundary.adminMembersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Admin Customer/Security boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const customerContractPath = join(REPOSITORY_ROOT, boundary.customerContract);
+  if (existsSync(customerContractPath)) {
+    const source = readFileSync(customerContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_ADMINISTRATION',
+      'CustomerAdministrationPort',
+      'updateProfileAsAdmin',
+      'listAddressesAsAdmin',
+      'userStableId',
+      'addressStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer Administration public contract is missing ${requiredSymbol}: ${boundary.customerContract}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      'PrismaService',
+      /\buserId\b/,
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Customer Administration public contract must remain framework/persistence/DB-ID free (${forbiddenSymbol}): ${boundary.customerContract}`,
+        );
+      }
+    }
+  }
+
+  const customerPolicyPath = join(REPOSITORY_ROOT, boundary.customerPolicy);
+  if (existsSync(customerPolicyPath)) {
+    const source = readFileSync(customerPolicyPath, 'utf8');
+    for (const requiredSymbol of [
+      'normalizeAdminCustomerPhone',
+      'resolveAdminBirthdayUpdate',
+      "kind: 'clear'",
+      "kind: 'invalid'",
+      "kind: 'set'",
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer Administration policy is missing ${requiredSymbol}: ${boundary.customerPolicy}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of ['@nestjs/common', '@prisma/client', 'PrismaService']) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Customer Administration policy must remain framework/persistence free (${forbiddenSymbol}): ${boundary.customerPolicy}`,
+        );
+      }
+    }
+  }
+
+  const customerServicePath = join(REPOSITORY_ROOT, boundary.customerService);
+  if (existsSync(customerServicePath)) {
+    const source = readFileSync(customerServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'implements CustomerAdministrationPort',
+      'updateProfileAsAdmin',
+      'listAddressesAsAdmin',
+      "throw new NotFoundException('member not found')",
+      "throw new BadRequestException('email already in use')",
+      "throw new BadRequestException('phone already in use')",
+      "throw new BadRequestException('invalid birthday')",
+      'phoneVerifiedAt = null',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer owner must preserve Admin profile semantics (${requiredSymbol}): ${boundary.customerService}`,
+        );
+      }
+    }
+  }
+
+  const customerPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.customerPublicSurface,
+  );
+  if (existsSync(customerPublicSurfacePath)) {
+    const source = readFileSync(customerPublicSurfacePath, 'utf8');
+    if (
+      !source.includes("from './customer-administration.contract'") ||
+      !source.includes('CUSTOMER_ADMINISTRATION') ||
+      !source.includes('CustomerAdministrationPort') ||
+      source.includes("from './customer.service'")
+    ) {
+      failures.push(
+        `Customer public surface must expose the administration contract without exporting the concrete service: ${boundary.customerPublicSurface}`,
+      );
+    }
+  }
+
+  const membershipModulePath = join(REPOSITORY_ROOT, boundary.membershipModule);
+  if (existsSync(membershipModulePath)) {
+    const source = readFileSync(membershipModulePath, 'utf8');
+    if (
+      !source.includes('CUSTOMER_ADMINISTRATION') ||
+      !source.includes('useExisting: CustomerService') ||
+      !source.includes('exports: [MembershipService, CUSTOMER_ADMINISTRATION]')
+    ) {
+      failures.push(
+        `MembershipModule must wire Customer Administration to the existing Customer owner: ${boundary.membershipModule}`,
+      );
+    }
+  }
+
+  const accountSecurityContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.accountSecurityContract,
+  );
+  if (existsSync(accountSecurityContractPath)) {
+    const source = readFileSync(accountSecurityContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ACCOUNT_SECURITY_ADMINISTRATION',
+      'AccountSecurityAdministrationPort',
+      'listSessions',
+      'revokeSession',
+      'setAccountStatus',
+      'userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Account Security Administration public contract is missing ${requiredSymbol}: ${boundary.accountSecurityContract}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      'PrismaService',
+      /\buserId\b/,
+      'TrustedDevice',
+      'trustedDevice',
+    ]) {
+      const matched =
+        forbiddenSymbol instanceof RegExp
+          ? forbiddenSymbol.test(source)
+          : source.includes(forbiddenSymbol);
+      if (matched) {
+        failures.push(
+          `Account Security Administration public contract must remain framework/persistence/DB-ID free and must not canonicalize the deferred TrustedDevice UUID (${forbiddenSymbol}): ${boundary.accountSecurityContract}`,
+        );
+      }
+    }
+  }
+
+  const accountSecurityServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.accountSecurityService,
+  );
+  if (existsSync(accountSecurityServicePath)) {
+    const source = readFileSync(accountSecurityServicePath, 'utf8');
+    for (const requiredSymbol of [
+      "from './identity-prisma'",
+      'implements AccountSecurityAdministrationPort',
+      'listSessions',
+      'revokeSession',
+      'setAccountStatus',
+      'where: { userStableId }',
+      'where: { userId: userDbId, sessionId }',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Auth account-security owner is missing ${requiredSymbol}: ${boundary.accountSecurityService}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      '@nestjs/common',
+      '@prisma/client',
+      "from '../prisma/prisma.service'",
+      'trustedDevice.',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `Auth account-security owner must stay framework/Prisma-generated free and must not absorb the deferred TrustedDevice contract (${forbiddenSymbol}): ${boundary.accountSecurityService}`,
+        );
+      }
+    }
+  }
+
+  const accountSecurityModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.accountSecurityModule,
+  );
+  if (existsSync(accountSecurityModulePath)) {
+    const source = readFileSync(accountSecurityModulePath, 'utf8');
+    if (
+      !source.includes("from './identity-prisma'") ||
+      !source.includes('ACCOUNT_SECURITY_ADMINISTRATION') ||
+      !source.includes('useExisting: AccountSecurityAdministrationService')
+    ) {
+      failures.push(
+        `Account Security Administration module must wire through the Identity-local Prisma boundary: ${boundary.accountSecurityModule}`,
+      );
+    }
+  }
+
+  const authPublicSurfacePath = join(REPOSITORY_ROOT, boundary.authPublicSurface);
+  if (existsSync(authPublicSurfacePath)) {
+    const source = readFileSync(authPublicSurfacePath, 'utf8');
+    if (
+      !source.includes('AccountSecurityAdministrationModule') ||
+      !source.includes('ACCOUNT_SECURITY_ADMINISTRATION') ||
+      !source.includes('AccountSecurityAdministrationPort') ||
+      source.includes("from './account-security-administration.service'")
+    ) {
+      failures.push(
+        `Identity public surface must expose Account Security Administration through its contract/module, not the concrete service: ${boundary.authPublicSurface}`,
+      );
+    }
+  }
+
+  const adminMembersServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersService,
+  );
+  if (existsSync(adminMembersServicePath)) {
+    const source = readFileSync(adminMembersServicePath, 'utf8');
+    for (const requiredSymbol of [
+      "from '../../membership/public-api'",
+      'CUSTOMER_ADMINISTRATION',
+      'CustomerAdministrationPort',
+      'customerAdministration.listAddressesAsAdmin',
+      'customerAdministration.updateProfileAsAdmin',
+      'ACCOUNT_SECURITY_ADMINISTRATION',
+      'AccountSecurityAdministrationPort',
+      'accountSecurityAdministration.listSessions',
+      'accountSecurityAdministration.revokeSession',
+      'accountSecurityAdministration.setAccountStatus',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `AdminMembersService must delegate Customer/Security administration through owner capabilities (${requiredSymbol}): ${boundary.adminMembersService}`,
+        );
+      }
+    }
+    for (const forbiddenSymbol of [
+      'this.prisma.userAddress',
+      'Prisma.UserUpdateInput',
+      'this.membership.revokeSession',
+      'this.prisma.user.update(',
+    ]) {
+      if (source.includes(forbiddenSymbol)) {
+        failures.push(
+          `AdminMembersService must not reclaim Customer profile/address or Auth session/status persistence after Slice 4B (${forbiddenSymbol}): ${boundary.adminMembersService}`,
+        );
+      }
+    }
+  }
+
+  const adminMembersModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.adminMembersModule,
+  );
+  if (existsSync(adminMembersModulePath)) {
+    const source = readFileSync(adminMembersModulePath, 'utf8');
+    if (
+      !source.includes("from '../../membership/public-api'") ||
+      !source.includes('AccountSecurityAdministrationModule') ||
+      source.includes("from '../../membership/membership.module'")
+    ) {
+      failures.push(
+        `AdminMembersModule must compose Customer/Auth owner public modules after Slice 4B: ${boundary.adminMembersModule}`,
+      );
+    }
+  }
+}
+
 const customerLifecycleNotificationBoundary =
   config.customerLifecycleNotificationBoundary ?? null;
 if (customerLifecycleNotificationBoundary) {

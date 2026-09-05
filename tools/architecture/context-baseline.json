@@ -382,6 +382,20 @@
     "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
     "adminMembersModule": "apps/api/src/admin/members/admin-members.module.ts"
   },
+  "adminCustomerSecurityBoundary": {
+    "customerContract": "apps/api/src/membership/customer-administration.contract.ts",
+    "customerPolicy": "apps/api/src/membership/customer-administration.policy.ts",
+    "customerService": "apps/api/src/membership/customer.service.ts",
+    "customerPublicSurface": "apps/api/src/membership/public-api.ts",
+    "membershipModule": "apps/api/src/membership/membership.module.ts",
+    "accountSecurityContract": "apps/api/src/auth/account-security-administration.contract.ts",
+    "accountSecurityService": "apps/api/src/auth/account-security-administration.service.ts",
+    "accountSecurityModule": "apps/api/src/auth/account-security-administration.module.ts",
+    "authPublicSurface": "apps/api/src/auth/public-api.ts",
+    "adminMembersService": "apps/api/src/admin/members/admin-members.service.ts",
+    "adminMembersModule": "apps/api/src/admin/members/admin-members.module.ts",
+    "deferredTrustedDeviceModel": "TrustedDevice"
+  },
   "customerLifecycleNotificationBoundary": {
     "contract": "apps/api/src/notifications/contracts/customer-lifecycle-notification.contract.ts",
     "service": "apps/api/src/notifications/notification.service.ts",
