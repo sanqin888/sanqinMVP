@@ -1087,8 +1087,8 @@ schema, migration, scanner baseline, dependency, business source or runtime beha
 
 ### 2026-09-05 — Phase 4 Slice 5B: Loyalty order-usage read ownership contraction
 
-**PR/SHA:** local branch `audit/phase4-slice6-closeout` based on `origin/dev@c28df1b5`  
-**State:** SOURCE / LOCAL REVIEW PENDING  
+**PR/SHA:** PR #2187 / final head `42891cf4` / squash merge `0f58cf83`  
+**State:** MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT — PR CI #5174 + dev push CI #5175  
 **Result:** Implemented the safe Benefits read tail identified by the Slice 6 readiness audit. Benefits/Loyalty
 now exposes `LOYALTY_ORDER_USAGE_READER`, a framework/Prisma-free stable-ID contract that accepts only
 `orderStableId` and returns `balancePaidCents` plus `pointsEarned`. Its owner implementation reads
@@ -1102,9 +1102,10 @@ change adds non-unique `@@index([orderStableId])` through a new additive
 `20260905204500_add_loyalty_ledger_order_stable_id_index` migration; 5A migration history is untouched and no
 FK/NOT NULL/unique constraint is added. The scanner now requires the owner reader/index and forbids direct
 LoyaltyLedger Prisma reads from Orders/Print. Production-source search finds LoyaltyLedger persistence access
-only inside the Loyalty owner. Numeric context-import counts are expected to remain unchanged because Commerce
-already consumed Loyalty's public direction; exact baseline/SCC validation is deferred to GitHub Actions after
-user review. No local migration application, Prisma generation, scanner, lint, build or test run is claimed.  
+only inside the Loyalty owner. Numeric context-import counts remain unchanged because Commerce already consumed
+Loyalty's public direction. Final head CI #5174 and merged-dev CI #5175 both passed Prisma generation, the
+Architecture baseline/SCC gate, API/Web lint/build/strict checks and tests; the public SCC baseline remains empty.
+The migration remains unapplied in production.  
 **Details:** `apps/api/src/loyalty/loyalty-order-usage-read.contract.ts`,
 `apps/api/src/loyalty/loyalty-order-usage-read.service.ts`,
 `apps/api/prisma/migrations/20260905204500_add_loyalty_ledger_order_stable_id_index/migration.sql`,
@@ -1112,6 +1113,29 @@ user review. No local migration application, Prisma generation, scanner, lint, b
 `tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`,
 `tools/architecture/README.md`, `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
 `docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-05 — Phase 4 Slice 6: final dependency/SCC source closeout
+
+**PR/SHA:** local branch `audit/phase4-slice6-final-closeout` based on `origin/dev@0f58cf83`  
+**State:** SOURCE / LOCAL REVIEW PENDING — PHASE 4 SOURCE GRAPH CLOSED; DEPLOYMENT NOT STARTED  
+**Result:** Re-audited the exact post-5B source after PR #2187. Final head `42891cf4` passed PR CI #5174 and
+squash merge `0f58cf83` passed dev push CI #5175; both runs passed the monotonic Architecture baseline/SCC gate.
+Final direct-debt totals remain Payments **59**, External **42**, Identity **33**, POS/Print **31**, Commerce
+**30**, Accounting **25**, Catalog **15**, Messaging **10**, Brand/Store **8**, with
+`legacyPublicCycleComponents: []`. Source search confirms all direct `LoyaltyLedger` Prisma reads are now inside
+Loyalty and the retired `orderStableById` / `getSettledBalancePaymentCentsForOrder` DB-ID read paths are absent.
+No additional safe Phase 4 contraction was identified. `MembershipService.getMemberSummary()` remains the visible
+Identity -> Commerce = 1 composite read-model deferral because a new reverse Orders public edge would recreate an
+SCC; Phase 3 Slice 2C remains transaction-deferred because Points/Balance COMMIT, Coupon COMMIT and Order creation
+share one Prisma transaction; Loyalty paid-settlement/refund Order lookups remain part of the intentionally retained
+internal DB-ID idempotency model. Production migration history still shows none of the four accumulated Phase 4
+migrations applied, and `MEMBER_RECHARGE_OTP_SECRET` remains a rollout prerequisite whose presence was not
+inspected. Slice 6 changes documentation only: no business code, schema, migration, scanner logic, dependency or
+numeric allowance is changed. The next step after review/merge of this closeout record is consolidated Phase 4
+deployment readiness, migration/secret preflight, deployment and active verification.  
+**Details:** `docs/architecture/phase-4-identity-customer-benefits-messaging.md`,
+`docs/architecture/current-dependency-graph.md`, `docs/architecture/modularization-worklog.md`,
+`tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`.
 
 ## Current position
 
@@ -1127,8 +1151,8 @@ user review. No local migration application, Prisma generation, scanner, lint, b
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
 - Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C + 4D-A + 4D-H + 4D-I + 5A MERGED/CI;
-  SLICE 5B SOURCE COMPLETE / LOCAL REVIEW PENDING; FINAL SOURCE CLOSEOUT PENDING 5B REVIEW + CI** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C + 4D-A + 4D-H + 4D-I + 5A + 5B MERGED/CI;
+  SLICE 6 SOURCE CLOSEOUT COMPLETE / LOCAL REVIEW PENDING; PHASE 4 SOURCE GRAPH CLOSED / AWAITING CONSOLIDATED DEPLOYMENT** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -1164,14 +1188,16 @@ user review. No local migration application, Prisma generation, scanner, lint, b
   public IP spray budgets, single-active-code supersession and consistent failed-attempt revoke semantics.
   Slice 5A merged via PR #2186 as `c28df1b5` after final head `3b904dd1` passed CI #5171; LoyaltyLedger
   owns nullable `orderStableId`, Admin/Membership consume the Loyalty-owned ledger reader, Identity -> Runtime
-  is now `10`, total Identity outgoing is `33`, and the empty SCC baseline is CI-confirmed. Slice 6 readiness
-  then identified the safe Commerce-side Loyalty usage read tail. Slice 5B is now source-complete locally:
-  Orders detail/public summary, old-Web external-payment reconstruction and POS/receipt print use the
-  stable-ID-only Benefits reader, and the authorized non-unique `LoyaltyLedger(orderStableId)` index is present
-  as a new additive migration. `MembershipService.getMemberSummary()` remains an explicit post-Phase-4 composite
-  read-model/SCC deferral, and Phase 3 Slice 2C remains the transaction-sensitive COMMIT deferral. Per the current
-  rollout plan, Slice 1 onward are not individually deployed; final Phase 4 source closeout follows 5B review/CI,
-  then the accumulated changes are deployed and actively verified together.
+  is now `10`, total Identity outgoing is `33`, and the empty SCC baseline is CI-confirmed. Slice 5B merged via
+  PR #2187 as `0f58cf83` after final head `42891cf4` passed PR CI #5174; the merged dev source then passed CI
+  #5175. Orders detail/public summary, old-Web external-payment reconstruction and POS/receipt print now use the
+  stable-ID-only Benefits reader, with the non-unique `LoyaltyLedger(orderStableId)` query index in its separate
+  additive migration. Slice 6 final audit finds no further safe Phase 4 contraction and closes the source graph
+  with the existing numeric baseline and empty public SCC. `MembershipService.getMemberSummary()` remains an
+  explicit post-Phase-4 composite read-model/SCC deferral, and Phase 3 Slice 2C remains the transaction-sensitive
+  COMMIT deferral. Per the current rollout plan, Slice 1 onward are not individually deployed; after this Slice 6
+  closeout record is reviewed/merged, the accumulated Phase 4 changes proceed to consolidated migration/secret
+  preflight, deployment and active verification.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
