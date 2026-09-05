@@ -3,6 +3,7 @@ import {
   AccountSecurityAdministrationError,
   type AccountSecurityAdministrationPort,
   type AccountSessionDto,
+  type ManagedAccountStatus,
 } from './account-security-administration.contract';
 
 export class AccountSecurityAdministrationService implements AccountSecurityAdministrationPort {
@@ -84,7 +85,7 @@ export class AccountSecurityAdministrationService implements AccountSecurityAdmi
       );
     }
 
-    const status = disabled ? 'DISABLED' : 'ACTIVE';
+    const status: ManagedAccountStatus = disabled ? 'DISABLED' : 'ACTIVE';
     if (user.status === status) {
       return { userStableId: user.userStableId, status };
     }
