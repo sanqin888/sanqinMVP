@@ -270,6 +270,7 @@ describe('Loyalty policy characterization', () => {
 
   it('keeps points and store balance redemption keys distinct for the same order', async () => {
     const seenKeys = new Set<string>();
+    const seenOrderStableIds = new Set<string>();
     const ledgerCreate = jest.fn().mockImplementation(
       (args: {
         data: {
@@ -284,6 +285,7 @@ describe('Loyalty policy characterization', () => {
           throw new Error(`duplicate loyalty ledger key: ${key}`);
         }
         seenKeys.add(key);
+        seenOrderStableIds.add(args.data.orderStableId);
         return Promise.resolve({ id: `ledger-${seenKeys.size}` });
       },
     );
@@ -358,11 +360,7 @@ describe('Loyalty policy characterization', () => {
         `${orderId}:REDEEM_ON_ORDER:PAYMENT_BALANCE`,
       ]),
     );
-    expect(
-      ledgerCreate.mock.calls.every(
-        ([args]) => args.data.orderStableId === orderStableId,
-      ),
-    ).toBe(true);
+    expect(seenOrderStableIds).toEqual(new Set([orderStableId]));
   });
 
   it('rolls back mixed points and store balance with distinct refund ledger identities', async () => {

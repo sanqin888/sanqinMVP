@@ -43,10 +43,7 @@ import {
   ORDER_STATUS_TRANSITIONS,
   OrderStatus,
 } from './order-status';
-import {
-  generateStableId,
-  normalizeStableId,
-} from '../common/utils/stable-id';
+import { generateStableId, normalizeStableId } from '../common/utils/stable-id';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
   UberDirectDropoffDetails,

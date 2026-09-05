@@ -20,7 +20,9 @@ export class LoyaltyLedgerReadService implements LoyaltyLedgerReaderPort {
     limit: number;
     target?: 'POINTS' | 'BALANCE';
   }): Promise<LoyaltyLedgerReadResult> {
-    const userId = await this.loyalty.resolveUserIdByStableId(input.userStableId);
+    const userId = await this.loyalty.resolveUserIdByStableId(
+      input.userStableId,
+    );
     const account = await this.loyalty.ensureAccount(userId);
 
     const entries = await this.prisma.loyaltyLedger.findMany({
