@@ -1,6 +1,7 @@
 import type { CreateOrderInput } from '@shared/order';
 import { OrdersController } from './orders.controller';
 import type { OrderInvoiceUseCase } from './order-invoice.use-case';
+import type { OrderPrepTimeQueryUseCase } from './order-prep-time-query.use-case';
 import type { OrdersService } from './orders.service';
 
 describe('OrdersController member identity boundary', () => {
@@ -20,6 +21,7 @@ describe('OrdersController member identity boundary', () => {
     const controller = new OrdersController(
       ordersService as unknown as OrdersService,
       {} as OrderInvoiceUseCase,
+      {} as OrderPrepTimeQueryUseCase,
     );
     const req = {} as Parameters<OrdersController['create']>[0];
 
@@ -38,6 +40,7 @@ describe('OrdersController member identity boundary', () => {
     const controller = new OrdersController(
       ordersService as unknown as OrdersService,
       {} as OrderInvoiceUseCase,
+      {} as OrderPrepTimeQueryUseCase,
     );
     const req = {
       user: { userStableId: 'session-member' },

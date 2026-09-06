@@ -508,7 +508,7 @@ The central scanner prevents `ORDER_READY_NOTIFICATION`, notification result pol
 
 ### Slice 5C — paid-order delivery dispatch use-case decomposition
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-c`, based on `origin/dev@b7ecc00f`.
+Status: **MERGED / CI GREEN** — PR #2211, final head `00fe37c7`, squash merge `8e90a89f`; final PR CI #5261 passed API and Web.
 
 Migration classification: **Class A same-context Fulfillment application decomposition**. The fresh readiness audit chose delivery dispatch before pricing/quote extraction because the `order.paid.verified` Uber Direct branch is a self-contained leaf with already-public Delivery/Auth/Notifications capabilities, while quote extraction still shares line-item snapshot/pricing preparation with the transaction-sensitive POS payment preparation seam. No Prisma schema/migration, dependency/lockfile, public route, provider wire shape, retry policy, payment/refund behavior, Order lifecycle, PrintJob behavior or cross-context direct-import allowance changes.
 
@@ -520,4 +520,16 @@ The central scanner locks the new ownership: provider/auth/notification ports an
 
 Phase-level closeout verification retains Uber Direct successful dispatch, provider-create failure alert delivery, provider-success/local-persistence-failure non-retry classification, and non-delivery/already-dispatched no-op behavior. No standalone Slice 5C production checklist is required.
 
-Planned follow-on after Slice 5C is: **fresh readiness audit for pricing/quote extraction versus remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 5D — preparation-time query use-case decomposition
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-d`, based on `origin/dev@8e90a89f`.
+
+Migration classification: **Class A same-context read-side application decomposition**. The fresh readiness audit rechecked pricing/quote extraction and still found it coupled to shared line-item calculation, delivery destination/geocoding, promotion context and the transaction-sensitive Benefits reservation/COMMIT seams inside `createInternal()`. Rather than split those atomicity-sensitive paths, 5D selects the self-contained read-only preparation-time query as the next safe service-decomposition slice.
+
+`OrderPrepTimeQueryUseCase` now owns the existing one-hour `ready`/`completed` Order query and average preparation-time calculation through the Orders-local Prisma facade. The historical behavior is unchanged: no qualifying recent orders returns `15` minutes, and calculated averages are clamped to a minimum of `5` minutes. `OrdersController` delegates `/orders/prep-time` directly to the use case, while `OrdersService` no longer exposes or owns `getAveragePrepTimeMinutes()`.
+
+The use case remains an internal `OrdersModule` provider and is not exported cross-context. The central scanner reserves this ownership and prevents prep-time query policy from returning to `OrdersService`. Focused characterization covers the historical fallback and lower-bound behavior. No Prisma schema/migration, dependency/lockfile, public route shape, payment/refund behavior, pricing/promotion semantics, Order lifecycle write, PrintJob behavior or cross-context direct-import allowance changes are introduced; numeric baselines remain Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, and public SCC remains empty.
+
+No standalone Slice 5D production verification is required; the Phase-level closeout pass should confirm `/orders/prep-time` still returns a valid minutes value under normal production traffic.
+
+Planned follow-on after Slice 5D is: **fresh readiness audit for the remaining OrdersService write-side/payment/pricing seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

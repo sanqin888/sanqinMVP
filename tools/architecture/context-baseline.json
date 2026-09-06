@@ -554,6 +554,12 @@
     "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
+  "ordersPrepTimeQueryUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-prep-time-query.use-case.ts",
+    "ordersController": "apps/api/src/orders/orders.controller.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",

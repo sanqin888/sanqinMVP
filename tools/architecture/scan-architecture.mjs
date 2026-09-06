@@ -5371,6 +5371,90 @@ if (ordersDeliveryDispatchUseCaseDecomposition) {
   }
 }
 
+const ordersPrepTimeQueryUseCaseDecomposition =
+  config.ordersPrepTimeQueryUseCaseDecomposition ?? null;
+if (ordersPrepTimeQueryUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersPrepTimeQueryUseCaseDecomposition).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.ordersController,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders prep-time query use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    if (
+      !source.includes('OrderPrepTimeQueryUseCase') ||
+      !source.includes("from './orders-prisma'") ||
+      !source.includes('this.prisma.order.findMany') ||
+      !source.includes("status: { in: ['ready', 'completed'] }") ||
+      !source.includes('return 15') ||
+      !source.includes('Math.max(avg, 5)') ||
+      source.includes("from './orders.service'")
+    ) {
+      failures.push(
+        `OrderPrepTimeQueryUseCase must own the historical read-only prep-time calculation on Orders-local persistence: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, boundary.ordersController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from './order-prep-time-query.use-case'") ||
+      !source.includes(
+        'private readonly orderPrepTimeQueryUseCase: OrderPrepTimeQueryUseCase',
+      ) ||
+      !source.includes(
+        'this.orderPrepTimeQueryUseCase.getAveragePrepTimeMinutes()',
+      )
+    ) {
+      failures.push(
+        `OrdersController prep-time route must delegate to OrderPrepTimeQueryUseCase: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (/\bgetAveragePrepTimeMinutes\s*\(/.test(source)) {
+      failures.push(
+        `OrdersService must not regain prep-time query policy after Slice 5D: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-prep-time-query.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderPrepTimeQueryUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderPrepTimeQueryUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderPrepTimeQueryUseCase must stay an internal Orders query provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

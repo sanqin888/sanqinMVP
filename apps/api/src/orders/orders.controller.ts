@@ -28,6 +28,7 @@ import {
 } from 'class-validator';
 import { FulfillmentType, DeliveryType } from '@prisma/client';
 import { OrderInvoiceUseCase } from './order-invoice.use-case';
+import { OrderPrepTimeQueryUseCase } from './order-prep-time-query.use-case';
 import { OrdersService } from './orders.service';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
@@ -127,6 +128,7 @@ export class OrdersController {
   constructor(
     private readonly ordersService: OrdersService,
     private readonly orderInvoiceUseCase: OrderInvoiceUseCase,
+    private readonly orderPrepTimeQueryUseCase: OrderPrepTimeQueryUseCase,
   ) {}
 
   /**
@@ -177,7 +179,8 @@ export class OrdersController {
    */
   @Get('prep-time')
   async getAveragePrepTime(): Promise<{ minutes: number }> {
-    const minutes = await this.ordersService.getAveragePrepTimeMinutes();
+    const minutes =
+      await this.orderPrepTimeQueryUseCase.getAveragePrepTimeMinutes();
     return { minutes };
   }
 
