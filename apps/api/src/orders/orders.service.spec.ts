@@ -1311,17 +1311,23 @@ describe('OrdersService', () => {
   it('POS 门店建单持久化 authenticated storeStableId 而不是 deployment default', async () => {
     const originalStoreId = process.env.STORE_ID;
     process.env.STORE_ID = 'deployment-default-store';
-    prisma.order.create.mockResolvedValue({
-      id: 'pos-store-order',
-      orderStableId: 'pos-store-order-stable',
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      status: 'paid',
-      paidAt: new Date(),
-      createdAt: new Date(),
-      paymentMethod: 'CASH',
-      items: [],
-    });
+    let createdOrderStableId = '';
+    prisma.order.create.mockImplementation(
+      (args: { data: { orderStableId: string } }) => {
+        createdOrderStableId = args.data.orderStableId;
+        return Promise.resolve({
+          id: 'pos-store-order',
+          orderStableId: createdOrderStableId,
+          channel: 'in_store',
+          fulfillmentType: 'pickup',
+          status: 'paid',
+          paidAt: new Date(),
+          createdAt: new Date(),
+          paymentMethod: 'CASH',
+          items: [],
+        });
+      },
+    );
 
     try {
       await service.createForStore(
@@ -1342,11 +1348,6 @@ describe('OrdersService', () => {
           }) as unknown,
         }),
       );
-      const createdOrderStableId = (
-        prisma.order.create.mock.calls[0]?.[0] as {
-          data?: { orderStableId?: string };
-        }
-      )?.data?.orderStableId;
       expect(createdOrderStableId).toBeTruthy();
       expect(prisma.opsEvent.createMany).toHaveBeenCalledWith({
         data: {
