@@ -4105,6 +4105,171 @@ if (ordersMessagingBoundary) {
   }
 }
 
+const ordersLowRiskBoundaryContraction =
+  config.ordersLowRiskBoundaryContraction ?? null;
+if (ordersLowRiskBoundaryContraction) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersLowRiskBoundaryContraction).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.locationContract,
+    boundary.locationModule,
+    boundary.locationPublicSurface,
+    boundary.authPublicSurface,
+    boundary.ordersController,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders low-risk boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const locationContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.locationContract,
+  );
+  if (existsSync(locationContractPath)) {
+    const source = readFileSync(locationContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'LOCATION_GEOCODER',
+      'Coordinates',
+      'LocationGeocoderPort',
+      'geocode',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Location geocoding contract is missing ${requiredSymbol}: ${boundary.locationContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('LocationService') ||
+      source.includes('HttpService')
+    ) {
+      failures.push(
+        `Location geocoding contract must remain implementation/persistence free: ${boundary.locationContract}`,
+      );
+    }
+  }
+
+  const locationModulePath = join(REPOSITORY_ROOT, boundary.locationModule);
+  if (existsSync(locationModulePath)) {
+    const source = readFileSync(locationModulePath, 'utf8');
+    if (
+      !source.includes('LOCATION_GEOCODER') ||
+      !source.includes('useExisting: LocationService') ||
+      !source.includes('exports: [LOCATION_GEOCODER]')
+    ) {
+      failures.push(
+        `LocationModule must export only the geocoding capability token to consumers: ${boundary.locationModule}`,
+      );
+    }
+  }
+
+  const locationPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.locationPublicSurface,
+  );
+  if (existsSync(locationPublicSurfacePath)) {
+    const source = readFileSync(locationPublicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'LocationModule',
+      'LOCATION_GEOCODER',
+      'Coordinates',
+      'LocationGeocoderPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Location public surface is missing ${requiredSymbol}: ${boundary.locationPublicSurface}`,
+        );
+      }
+    }
+    if (source.includes('LocationService')) {
+      failures.push(
+        `Location public surface must not expose the concrete LocationService: ${boundary.locationPublicSurface}`,
+      );
+    }
+  }
+
+  const authPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.authPublicSurface,
+  );
+  if (existsSync(authPublicSurfacePath)) {
+    const source = readFileSync(authPublicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'OptionalSessionAuthGuard',
+      'SessionAuthGuard',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Auth public surface is missing ${requiredSymbol}: ${boundary.authPublicSurface}`,
+        );
+      }
+    }
+  }
+
+  const ordersControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.ordersController,
+  );
+  if (existsSync(ordersControllerPath)) {
+    const source = readFileSync(ordersControllerPath, 'utf8');
+    if (
+      !source.includes("from '../auth/public-api'") ||
+      source.includes("from '../auth/session-auth.guard'") ||
+      source.includes("from '../auth/optional-session-auth.guard'")
+    ) {
+      failures.push(
+        `OrdersController auth guards must use only the Auth public surface: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      !source.includes("from '../location/public-api'") ||
+      !source.includes('LOCATION_GEOCODER') ||
+      !source.includes('LocationGeocoderPort') ||
+      source.includes("from '../location/location.service'") ||
+      source.includes('UberDirectService') ||
+      source.includes('ensureLoyaltyAccountWithTx') ||
+      source.includes('normalizeDropoff') ||
+      source.includes('buildUberPickupOverride') ||
+      source.includes('dispatchPriorityDelivery')
+    ) {
+      failures.push(
+        `OrdersService must use the Location public capability and must not regain retired direct-delivery/loyalty tails: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../location/public-api'") ||
+      source.includes("from '../location/location.module'")
+    ) {
+      failures.push(
+        `OrdersModule Location composition must use only the Location public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

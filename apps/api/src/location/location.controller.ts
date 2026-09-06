@@ -1,5 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { LocationService, Coordinates } from './location.service';
+import { LocationService } from './location.service';
+import type { Coordinates } from './location-geocoding.contract';
 
 interface GeocodeRequestBody {
   address?: string;

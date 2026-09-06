@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@f9e0014b` (pre-Slice 3 Uber Direct alert hardening merge / PR #2200)  
-Current status: **SLICE 3 ORDERS -> MESSAGING PUBLIC BOUNDARY CONTRACTION LOCAL / REVIEW PENDING — PRE-SLICE 3 HARDENING IS MERGED / PR CI GREEN; ORDER READY + INVOICE DELIVERY NOW USE MESSAGING PUBLIC CAPABILITIES LOCALLY, TARGETING COMMERCE -> MESSAGING DIRECT DEBT 3 -> 0 AND MESSAGING -> POS 1 -> 0; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@62790355` (Slice 3 Orders -> Messaging merge / PR #2201)  
+Current status: **SLICE 4A LOW-RISK DIRECT-EDGE + DEAD-CODE CONTRACTION LOCAL / REVIEW PENDING — SLICE 3 IS MERGED / PR CI GREEN; AUTH GUARD AND LOCATION ACCESS NOW USE OWNER PUBLIC SURFACES LOCALLY, THE OBSOLETE ORDERSERVICE UBER DIRECT / LOYALTY TAIL IS REMOVED, TARGETING COMMERCE -> BRAND/STORE 2 -> 0 AND COMMERCE -> IDENTITY 4 -> 2; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -372,7 +372,7 @@ The implementation adds no Prisma migration, dependency, external route or Uber 
 
 ### Slice 3 — Orders -> Messaging public boundary contraction
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice3-orders-messaging-boundary`, based on `origin/dev@f9e0014b`.
+Status: **MERGED / PR CI GREEN** — PR #2201, final head `90cddfd0`, merge `62790355`; PR CI #5225 passed.
 
 Slice 3 removes the remaining concrete Messaging implementations from Orders. `ORDER_READY_NOTIFICATION` preserves the existing business split: Commerce still decides whether a ready notification applies, selects trusted checkout/member/external contact according to the existing policy, resolves locale/order number and logs the outcome; Messaging still owns template rendering, email-first delivery and SMS fallback. The cross-context recipient identity changes from the internal User DB UUID to `userStableId`; an existing member lookup also supplies the stable ID as a historical-order fallback without adding another query.
 
@@ -382,6 +382,20 @@ Invoice delivery is contracted through `ORDER_INVOICE_DELIVERY`. Orders continue
 
 The monotonic direct-import baseline contracts `commerce-orders-fulfillment -> messaging-notifications` **3 -> 0**, reducing Commerce outgoing direct debt **29 -> 26**. The same neutral invoice-contract cleanup contracts `messaging-notifications -> store-operations-pos-print` **1 -> 0**, reducing Messaging outgoing direct debt **10 -> 9**. Both zero edges are removed from `legacyDirectImportLimits`; no public return edge is introduced and the public SCC baseline remains empty.
 
-Behavior intentionally unchanged: order-ready eligibility/trusted-contact precedence/locale selection, email-first + SMS fallback, invoice HTTP routes and email normalization, receipt contents/rendering/template type/provider dispatch, payment/pricing/refund/lifecycle behavior and Uber provider wire contracts. No Prisma schema/migration, dependency/lockfile, external route, compatibility or provider cutover is part of Slice 3. Focused source tests cover stable-ID order-ready delivery, historical member stable-ID fallback, invoice boundary mapping and Messaging invoice delegation. Per repository workflow no local lint/build/test is claimed before user review; Phase-level runtime verification remains deferred to the consolidated Phase 5 closeout gate.
+Behavior intentionally unchanged: order-ready eligibility/trusted-contact precedence/locale selection, email-first + SMS fallback, invoice HTTP routes and email normalization, receipt contents/rendering/template type/provider dispatch, payment/pricing/refund/lifecycle behavior and Uber provider wire contracts. No Prisma schema/migration, dependency/lockfile, external route, compatibility or provider cutover is part of Slice 3. Focused source tests cover stable-ID order-ready delivery, historical member stable-ID fallback, invoice boundary mapping and Messaging invoice delegation. PR #2201 final head `90cddfd0` passed CI #5225 before merge `62790355`; Phase-level runtime verification remains deferred to the consolidated Phase 5 closeout gate.
 
-Planned follow-on after Slice 3 is: **remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 4A — low-risk direct-edge + dead-code contraction
+
+Status: **REMOTE / CI RERUN PENDING** on PR #2202 from `refactor/phase5-slice4a-direct-edge-dead-code`, based on `origin/dev@62790355`; initial CI #5227 passed the Architecture gate and failed API lint only on two Prettier formatting errors, now corrected in the current PR head with rerun pending.
+
+Migration classification: **Class A atomic internal contraction**. No Prisma schema/migration, dependency/lockfile, public HTTP route, Web Clover behavior, Uber provider protocol, payment/refund semantics, order lifecycle, pricing/promotion policy or Benefits COMMIT transaction changes are part of 4A.
+
+Orders transport authentication now consumes both `SessionAuthGuard` and `OptionalSessionAuthGuard` through `auth/public-api.ts`; the Auth owner publicly exports the optional guard rather than allowing Orders to deep-import either guard implementation. Orders geocoding now uses the Brand/Store-owned `LOCATION_GEOCODER` capability from `location/public-api.ts`. `LocationModule` exposes only the token-backed `LocationGeocoderPort` across the context boundary while `LocationService` remains the internal HTTP implementation. The existing geocoding behavior, Google Maps provider call, empty/zero-result handling and error semantics are unchanged.
+
+The same slice removes verified uncalled `OrdersService` tails instead of adapting them into new boundaries: `ensureLoyaltyAccountWithTx()`, `normalizeDropoff()`, `buildUberPickupOverride()` and `dispatchPriorityDelivery()` are deleted, and `OrdersService` no longer injects `UberDirectService`. The active Uber Direct dispatch path remains `FulfillmentProcessor -> UberDirectService`; provider request/response handling, dispatch-failure alerting and the separately deferred provider-success/local-persistence durability gap are intentionally unchanged.
+
+The monotonic direct-import baseline therefore targets `commerce-orders-fulfillment -> brand-store` **2 -> 0** and `commerce-orders-fulfillment -> identity-customer-benefits` **4 -> 2**, reducing Commerce outgoing direct debt **26 -> 22**. The remaining direct Identity debt is the transaction-/runtime-sensitive Loyalty/Membership implementation coupling scheduled for later Slice 4 stages. The public dependency directions already exist and the public SCC baseline remains empty. Architecture guards lock Orders transport to the Auth public surface, Orders geocoding to the Location public capability, and prevent the retired OrdersService direct-delivery/loyalty tails from returning.
+
+Focused source coverage is updated to inject the Location port rather than its concrete service and to remove assertions/mocks for the retired uncalled Uber Direct branch. Per repository workflow no local lint/build/test is claimed before user review; Phase-level runtime verification remains deferred to the consolidated Phase 5 closeout gate.
+
+Planned follow-on after Slice 4A is: **Slice 4B Catalog persistence contraction -> Slice 4C Customer runtime read contraction -> Slice 4D Benefits read contraction while preserving the existing transaction seam -> remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

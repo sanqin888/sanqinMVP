@@ -9,7 +9,7 @@ import { BrandStoreConfigModule } from '../store/public-api';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/public-api';
 import { PromotionsModule } from '../promotions/public-api';
-import { LocationModule } from '../location/location.module';
+import { LocationModule } from '../location/public-api';
 import { OperationsAlertRecipientModule } from '../auth/public-api';
 import { NotificationModule } from '../notifications/public-api';
 import { NotificationProcessor } from './processors/notification.processor';

@@ -50,12 +50,6 @@ import {
 import { generateStableId, normalizeStableId } from '../common/utils/stable-id';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
-  UberDirectDropoffDetails,
-  UberDirectDeliveryResult,
-  UberDirectPickupDetails,
-  UberDirectService,
-} from '../deliveries/uber-direct.service';
-import {
   buildClientRequestId,
   CLIENT_REQUEST_ID_RE,
 } from '../common/utils/client-request-id';
@@ -77,7 +71,10 @@ import {
   type PromotionOrderLine,
   type PromotionSource,
 } from '../promotions/public-api';
-import { LocationService } from '../location/location.service';
+import {
+  LOCATION_GEOCODER,
+  type LocationGeocoderPort,
+} from '../location/public-api';
 import {
   ORDER_INVOICE_DELIVERY,
   ORDER_READY_NOTIFICATION,
@@ -94,7 +91,6 @@ import {
   BRAND_STORE_CONFIG_READER,
   resolveConfiguredStoreStableId,
   type BrandStoreConfigReaderPort,
-  type StoreConfigSnapshot,
 } from '../store/public-api';
 import { buildOrderPricingDisplay } from './order-pricing-display';
 import {
@@ -398,8 +394,8 @@ export class OrdersService {
     private readonly promotions: PromotionContextReaderPort,
     @Inject(DAILY_SPECIAL_OFFERS)
     private readonly dailySpecialOffers: DailySpecialOffersPort,
-    private readonly uberDirect: UberDirectService,
-    private readonly locationService: LocationService,
+    @Inject(LOCATION_GEOCODER)
+    private readonly locationGeocoder: LocationGeocoderPort,
     @Inject(ORDER_READY_NOTIFICATION)
     private readonly orderReadyNotification: OrderReadyNotificationPort,
     @Inject(ORDER_INVOICE_DELIVERY)
@@ -520,7 +516,7 @@ export class OrdersService {
           ]
             .filter(Boolean)
             .join(', ');
-          const coords = await this.locationService.geocode(fullAddr);
+          const coords = await this.locationGeocoder.geocode(fullAddr);
           if (coords) {
             dest.latitude = coords.latitude;
             dest.longitude = coords.longitude;
@@ -1781,29 +1777,6 @@ export class OrdersService {
     return undefined;
   }
 
-  private async ensureLoyaltyAccountWithTx(
-    tx: Prisma.TransactionClient,
-    userId: string,
-  ) {
-    return tx.loyaltyAccount.upsert({
-      where: { userId },
-      create: {
-        userId,
-        pointsMicro: 0n,
-        tier: 'BRONZE',
-        lifetimeSpendCents: 0,
-      },
-      update: {},
-      select: {
-        id: true,
-        userId: true,
-        pointsMicro: true,
-        tier: true,
-        lifetimeSpendCents: true,
-      },
-    });
-  }
-
   /**
    * 🛡️ 安全核心：服务端重算商品价格
    */
@@ -2657,7 +2630,7 @@ export class OrdersService {
             .filter(Boolean)
             .join(', ');
 
-          const coords = await this.locationService.geocode(fullAddr);
+          const coords = await this.locationGeocoder.geocode(fullAddr);
           if (coords) {
             // 补全到 dest 对象上，后续逻辑就能用了
             dest.latitude = coords.latitude;
@@ -4338,80 +4311,6 @@ export class OrdersService {
     return this.toOrderDto(updated);
   }
 
-  private normalizeDropoff(
-    destination: DeliveryDestinationInput,
-  ): UberDirectDropoffDetails {
-    const sanitize = (value?: string | null): string | undefined => {
-      if (typeof value !== 'string') return undefined;
-      const trimmed = value.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    };
-    const phone = sanitize(destination.phone);
-    if (!phone) {
-      throw new BadRequestException({
-        code: 'DELIVERY_PHONE_REQUIRED',
-        message: 'A mobile phone number is required for delivery',
-      });
-    }
-    return {
-      name: sanitize(destination.name) ?? destination.name,
-      phone,
-      company: sanitize(destination.company),
-      addressLine1:
-        sanitize(destination.addressLine1) ?? destination.addressLine1,
-      addressLine2: sanitize(destination.addressLine2),
-      city: sanitize(destination.city) ?? destination.city,
-      province: sanitize(destination.province) ?? destination.province,
-      postalCode: sanitize(destination.postalCode) ?? destination.postalCode,
-      country: sanitize(destination.country) ?? 'Canada',
-      instructions: sanitize(destination.instructions),
-      notes: sanitize(destination.notes),
-      latitude:
-        typeof destination.latitude === 'number'
-          ? destination.latitude
-          : undefined,
-      longitude:
-        typeof destination.longitude === 'number'
-          ? destination.longitude
-          : undefined,
-      tipCents:
-        typeof destination.tipCents === 'number'
-          ? Math.max(0, Math.round(destination.tipCents))
-          : undefined,
-    };
-  }
-
-  private buildUberPickupOverride(
-    config: StoreConfigSnapshot,
-  ): UberDirectPickupDetails | undefined {
-    const sanitize = (value?: string | null): string | undefined => {
-      if (typeof value !== 'string') return undefined;
-      const trimmed = value.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    };
-
-    const pickup: UberDirectPickupDetails = {
-      businessName: sanitize(config.storeName),
-      contactName: sanitize(config.contactName) ?? sanitize(config.storeName),
-      phone: sanitize(config.phone),
-      addressLine1: sanitize(config.addressLine1),
-      addressLine2: sanitize(config.addressLine2),
-      city: sanitize(config.city),
-      province: sanitize(config.province),
-      postalCode: sanitize(config.postalCode),
-      latitude:
-        typeof config.latitude === 'number' ? config.latitude : undefined,
-      longitude:
-        typeof config.longitude === 'number' ? config.longitude : undefined,
-    };
-
-    const hasOverrides = Object.values(pickup).some(
-      (value) => value !== undefined && value !== null,
-    );
-
-    return hasOverrides ? pickup : undefined;
-  }
-
   private formatOrderLogContext(params?: {
     orderId?: string | null;
     orderStableId?: string | null;
@@ -4421,87 +4320,5 @@ export class OrdersService {
     if (params?.orderStableId)
       parts.push(`orderStableId=${params.orderStableId}`);
     return parts.length ? `[${parts.join(' ')}] ` : '';
-  }
-
-  private async dispatchPriorityDelivery(
-    order: OrderWithItems,
-    destination: UberDirectDropoffDetails,
-    pickup?: UberDirectPickupDetails,
-  ): Promise<OrderWithItems> {
-    const thirdPartyOrderRef = order.clientRequestId;
-    if (!thirdPartyOrderRef) {
-      throw new BadRequestException('clientRequestId required for delivery');
-    }
-    const humanRef = order.clientRequestId ?? order.orderStableId ?? '';
-
-    // 1. 如果手机号包含星号 '*' 且订单属于某个会员，尝试去数据库查真实号码
-    if (destination.phone && destination.phone.includes('*') && order.userId) {
-      this.logger.log(
-        `⚠️ [Uber Fix] Detected masked phone "${destination.phone}". Fetching real phone for user ${order.userId}...`,
-      );
-
-      const user = await this.prisma.user.findUnique({
-        where: { id: order.userId },
-        select: { phone: true, phoneVerifiedAt: true },
-      });
-
-      const verifiedPhone =
-        user?.phone && user.phoneVerifiedAt
-          ? this.normalizeCanadianDeliveryPhone(user.phone)
-          : null;
-      if (verifiedPhone) {
-        destination.phone = verifiedPhone;
-        this.logger.log(`✅ [Uber Fix] Restored real phone from database.`);
-      } else {
-        throw new BadRequestException({
-          code: 'DELIVERY_PHONE_REQUIRED',
-          message: 'A verified mobile phone number is required for delivery',
-        });
-      }
-    }
-
-    // 2. 格式标准化：确保发送给 Uber Direct 的一定是有效 E.164 号码
-    const normalizedPhone = this.normalizeCanadianDeliveryPhone(
-      destination.phone,
-    );
-    if (!normalizedPhone) {
-      throw new BadRequestException({
-        code: 'DELIVERY_PHONE_INVALID',
-        message: 'Delivery phone must be a valid Canadian phone number',
-      });
-    }
-    destination.phone = normalizedPhone;
-
-    const response: UberDirectDeliveryResult =
-      await this.uberDirect.createDelivery({
-        orderRef: thirdPartyOrderRef, // ✅ 外发：优先 clientRequestId
-        pickupCode: order.pickupCode ?? undefined,
-        reference: humanRef,
-        totalCents: order.totalCents ?? 0,
-        items: order.items.map((item) => ({
-          name: item.displayName || item.productStableId,
-          quantity: item.qty,
-          priceCents: item.unitPriceCents ?? undefined,
-        })),
-        destination,
-        pickup,
-      });
-
-    const updateData: Prisma.OrderUpdateInput = {
-      externalDeliveryId: response.deliveryId,
-    };
-
-    if (typeof response.deliveryCostCents === 'number') {
-      const cost = Math.max(0, Math.round(response.deliveryCostCents));
-      updateData.deliveryCostCents = cost;
-
-      const fee = Math.max(0, order.deliveryFeeCents ?? 0);
-      updateData.deliverySubsidyCents = Math.max(0, cost - fee);
-    }
-    return this.prisma.order.update({
-      where: { id: order.id }, // ✅ 内部写库仍用 UUID
-      data: updateData,
-      include: { items: true },
-    }) as Promise<OrderWithItems>;
   }
 }
