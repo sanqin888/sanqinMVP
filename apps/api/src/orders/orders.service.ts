@@ -78,8 +78,14 @@ import {
   type PromotionSource,
 } from '../promotions/public-api';
 import { LocationService } from '../location/location.service';
-import { NotificationService } from '../notifications/notification.service';
-import { EmailService } from '../email/email.service';
+import {
+  ORDER_INVOICE_DELIVERY,
+  ORDER_READY_NOTIFICATION,
+  type OrderInvoiceDeliveryPort,
+  type OrderInvoicePayload,
+  type OrderReadyNotificationPort,
+  type OrderReadyNotificationResult,
+} from '../notifications/public-api';
 import { OrderEventsBus } from './order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
@@ -302,16 +308,6 @@ function resolvePromotionRuleChannel(
   return PROMOTION_RULE_CHANNEL_BY_ORDER_CHANNEL[channel];
 }
 
-type OrderReadyNotificationResult = {
-  ok: boolean;
-  finalChannel: 'email' | 'sms' | null;
-  attemptedChannels: readonly ('email' | 'sms')[];
-  reason?: string;
-  error?: string;
-  fallbackReason?: string;
-  sendId?: string;
-};
-
 export type AppliedPricingDiscount = OrderDiscountDisplayEntry;
 
 export type OrderPricingQuote = {
@@ -404,8 +400,10 @@ export class OrdersService {
     private readonly dailySpecialOffers: DailySpecialOffersPort,
     private readonly uberDirect: UberDirectService,
     private readonly locationService: LocationService,
-    private readonly notificationService: NotificationService,
-    private readonly emailService: EmailService,
+    @Inject(ORDER_READY_NOTIFICATION)
+    private readonly orderReadyNotification: OrderReadyNotificationPort,
+    @Inject(ORDER_INVOICE_DELIVERY)
+    private readonly orderInvoiceDelivery: OrderInvoiceDeliveryPort,
     private readonly orderEventsBus: OrderEventsBus,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly orderItemSnapshotBuilder: OrderItemSnapshotBuilder,
@@ -1276,6 +1274,7 @@ export class OrdersService {
       ? await this.prisma.user.findUnique({
           where: { id: order.userId },
           select: {
+            userStableId: true,
             email: true,
             emailVerifiedAt: true,
             phone: true,
@@ -1309,13 +1308,13 @@ export class OrdersService {
       };
     }
 
-    return this.notificationService.notifyOrderReady({
+    return this.orderReadyNotification.notifyOrderReady({
       email,
       phone,
       orderNumber,
       name: order.contactName ?? null,
       locale,
-      userId: order.userId ?? null,
+      userStableId: order.userStableId ?? member?.userStableId ?? null,
     });
   }
 
@@ -3488,6 +3487,21 @@ export class OrdersService {
     return { cents: finalCents, rate };
   }
 
+  private toOrderInvoiceFulfillment(
+    fulfillment: FulfillmentType,
+  ): OrderInvoicePayload['fulfillment'] {
+    switch (fulfillment) {
+      case FulfillmentType.pickup:
+        return 'pickup';
+      case FulfillmentType.dine_in:
+        return 'dine_in';
+      case FulfillmentType.delivery:
+        return 'delivery';
+      default:
+        throw new BadRequestException('unsupported_fulfillment_type');
+    }
+  }
+
   async sendInvoiceEmail(params: {
     orderStableId: string;
     email?: string | null;
@@ -3510,9 +3524,13 @@ export class OrdersService {
       params.orderStableId,
       params.locale,
     );
-    await this.emailService.sendOrderInvoice({
+    const invoicePayload: OrderInvoicePayload = {
+      ...payload,
+      fulfillment: this.toOrderInvoiceFulfillment(payload.fulfillment),
+    };
+    await this.orderInvoiceDelivery.sendOrderInvoice({
       to: normalizedEmail,
-      payload,
+      payload: invoicePayload,
       locale: params.locale,
     });
 

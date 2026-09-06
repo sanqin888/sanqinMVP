@@ -99,11 +99,11 @@ pair fails CI.
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
 | identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 10; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 4; messaging-notifications 3; runtime-data-ci-ops 10; store-operations-pos-print 2 |
+| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 8; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; runtime-data-ci-ops 24 |
-| messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6; store-operations-pos-print 1 |
+| messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
@@ -372,7 +372,13 @@ No new cross-context import or public SCC member is introduced, and no architect
 
 The previously dormant delivery-dispatch-failure notification is now wired to the active `FulfillmentProcessor -> UberDirectService.createDelivery()` failure path. Commerce owns the decision that an Uber Direct delivery creation failed, Identity exposes only active Admin alert recipients through a stable-ID public query, and Messaging owns bilingual template rendering plus channel routing. Alert delivery is email-first per Admin and falls back to SMS only when email is unavailable or fails; provider/recipient internals do not leak back into Commerce.
 
-`OrdersModule` also switches its Notification module composition import to `../notifications/public-api`, so `commerce-orders-fulfillment -> messaging-notifications` direct debt contracts **4 -> 3** and Commerce total outgoing direct debt contracts **30 -> 29**. The new Fulfillment imports use registered Identity/Messaging public surfaces, so no new direct-debt allowance is created and the public SCC baseline remains empty. No Prisma schema/migration, package/lockfile, Uber Direct provider request/response contract, order lifecycle, payment behavior or external route changes. This local source batch is not yet CI/deployment verified.
+`OrdersModule` also switches its Notification module composition import to `../notifications/public-api`, so `commerce-orders-fulfillment -> messaging-notifications` direct debt contracts **4 -> 3** and Commerce total outgoing direct debt contracts **30 -> 29**. The new Fulfillment imports use registered Identity/Messaging public surfaces, so no new direct-debt allowance is created and the public SCC baseline remains empty. No Prisma schema/migration, package/lockfile, Uber Direct provider request/response contract, order lifecycle, payment behavior or external route changes. PR #2200 merged as `f9e0014b` after final head `0feb44fa` passed PR CI #5220; Phase-level runtime verification remains deferred to Phase 5 closeout.
+
+### Phase 5 Slice 3 — Orders -> Messaging public boundary contraction — 2026-09-06
+
+The remaining Order-ready and invoice delivery calls are now expressed as Messaging-owned public capabilities. `ORDER_READY_NOTIFICATION` receives only the already-resolved trusted contacts, Order presentation facts and stable customer identity; Orders retains eligibility/contact/locale policy while Messaging retains rendering and email-first/SMS-fallback delivery. `ORDER_INVOICE_DELIVERY` accepts a neutral Messaging-owned receipt snapshot, so Orders still builds the receipt while Email owns invoice rendering/provider delivery without importing the POS `PrintPosPayloadDto`.
+
+The source graph therefore contracts `commerce-orders-fulfillment -> messaging-notifications` **3 -> 0** and Commerce outgoing direct debt **29 -> 26**. Removing the invoice renderer's POS DTO import also contracts `messaging-notifications -> store-operations-pos-print` **1 -> 0** and Messaging outgoing direct debt **10 -> 9**. Both zero edges are removed from the monotonic legacy baseline, and an explicit scanner guard prevents concrete Messaging imports or POS/Prisma/Commerce leakage from returning through the two public contracts. The public SCC baseline remains empty. No schema/migration, dependency, route, payment, pricing, refund, lifecycle, compatibility or provider-wire change is part of this local Slice; CI/deployment verification has not yet occurred.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

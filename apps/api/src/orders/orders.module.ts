@@ -12,7 +12,6 @@ import { PromotionsModule } from '../promotions/public-api';
 import { LocationModule } from '../location/location.module';
 import { OperationsAlertRecipientModule } from '../auth/public-api';
 import { NotificationModule } from '../notifications/public-api';
-import { EmailModule } from '../email/email.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
@@ -42,7 +41,6 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     LocationModule,
     OperationsAlertRecipientModule,
     NotificationModule,
-    EmailModule,
   ],
   controllers: [OrdersController, AdminMemberOrdersController],
   providers: [

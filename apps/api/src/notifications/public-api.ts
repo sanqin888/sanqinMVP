@@ -19,4 +19,17 @@ export {
   type DeliveryDispatchFailureNotificationRecipient,
   type DeliveryDispatchFailureNotificationResult,
 } from './contracts/delivery-dispatch-failure-notification.contract';
+export {
+  ORDER_INVOICE_DELIVERY,
+  type OrderInvoiceDeliveryInput,
+  type OrderInvoiceDeliveryPort,
+  type OrderInvoiceDeliveryResult,
+  type OrderInvoicePayload,
+} from './contracts/order-invoice-delivery.contract';
+export {
+  ORDER_READY_NOTIFICATION,
+  type OrderReadyNotificationInput,
+  type OrderReadyNotificationPort,
+  type OrderReadyNotificationResult,
+} from './contracts/order-ready-notification.contract';
 export { NotificationModule } from './notification.module';

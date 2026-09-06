@@ -24,6 +24,7 @@ describe('NotificationService.notifyCouponIssued', () => {
   };
   const emailService = {
     sendEmail: jest.fn(),
+    sendOrderInvoice: jest.fn(),
   };
   const smsService = {
     sendSms: jest.fn(),
@@ -50,6 +51,10 @@ describe('NotificationService.notifyCouponIssued', () => {
     });
     templateRenderer.renderSms.mockResolvedValue('rendered sms');
     emailService.sendEmail.mockResolvedValue({ ok: true, sendId: 'eid' });
+    emailService.sendOrderInvoice.mockResolvedValue({
+      ok: true,
+      sendId: 'invoice-id',
+    });
     smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'sid' });
   });
 
@@ -104,9 +109,13 @@ describe('NotificationService.notifyCouponIssued', () => {
       email: 'order@example.com',
       phone: '+14165550000',
       orderNumber: 'SQ001',
+      userStableId: 'customer-stable-ready-1',
     });
 
     expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ userStableId: 'customer-stable-ready-1' }),
+    );
     expect(smsService.sendSms).not.toHaveBeenCalled();
     expect(templateRenderer.renderSms).not.toHaveBeenCalled();
   });
@@ -120,6 +129,46 @@ describe('NotificationService.notifyCouponIssued', () => {
 
     expect(smsService.sendSms).toHaveBeenCalledTimes(1);
     expect(emailService.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('forwards order invoice delivery through the Messaging-owned invoice capability', async () => {
+    const input = {
+      to: 'invoice@example.com',
+      locale: 'en',
+      payload: {
+        locale: 'en' as const,
+        orderNumber: 'WEB-INV-1',
+        customerName: 'Invoice Customer',
+        pickupCode: 'A101',
+        fulfillment: 'pickup' as const,
+        paymentMethod: 'card' as const,
+        orderNotes: null,
+        utensils: null,
+        snapshot: {
+          items: [],
+          subtotalCents: 1000,
+          displaySubtotalCents: 1000,
+          appliedDiscounts: [],
+          loyaltyRedeemCents: 0,
+          taxCents: 130,
+          orderTotalCents: 1130,
+          balancePaidCents: 0,
+          externalPaidCents: 1130,
+          totalCents: 1130,
+          creditCardSurchargeCents: 0,
+          discountCents: 0,
+          deliveryFeeCents: 0,
+          deliveryCostCents: 0,
+          deliverySubsidyCents: 0,
+        },
+      },
+    };
+
+    await expect(service.sendOrderInvoice(input)).resolves.toEqual({
+      ok: true,
+      sendId: 'invoice-id',
+    });
+    expect(emailService.sendOrderInvoice).toHaveBeenCalledWith(input);
   });
 
   it('delivery dispatch failure 默认优先邮件，邮件成功时不发送短信', async () => {
