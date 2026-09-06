@@ -164,7 +164,10 @@ export class PosOrdersService {
     }
 
     if (order.channel === 'in_store' && order.status === 'paid') {
-      await this.orders.activateImmediatePreparation(orderStableId, storeStableId);
+      await this.orders.activateImmediatePreparation(
+        orderStableId,
+        storeStableId,
+      );
       return this.advanceResult(
         await this.orders.getByStableIdForStore(orderStableId, storeStableId),
       );

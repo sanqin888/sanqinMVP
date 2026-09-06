@@ -128,7 +128,9 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
       .fn<ReturnType<RawTag>, Parameters<RawTag>>()
       .mockResolvedValue([]);
     const { processor } = processorWith({ queryRaw });
-    const processOnce = jest.spyOn(processor, 'processOnce').mockResolvedValue(0);
+    const processOnce = jest
+      .spyOn(processor, 'processOnce')
+      .mockResolvedValue(0);
 
     processor.requestDrain();
     await Promise.resolve();

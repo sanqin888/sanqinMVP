@@ -44,9 +44,9 @@ describe('PosOrderOperationsService durable POS creation', () => {
       '4750_Yonge_Street',
     );
     expect(lifecycleOutbox.requestDrain).toHaveBeenCalledTimes(1);
-    expect(
-      orders.createForStore.mock.invocationCallOrder[0],
-    ).toBeLessThan(lifecycleOutbox.requestDrain.mock.invocationCallOrder[0]);
+    expect(orders.createForStore.mock.invocationCallOrder[0]).toBeLessThan(
+      lifecycleOutbox.requestDrain.mock.invocationCallOrder[0],
+    );
   });
 
   it('routes a paid in-store manual advance through the same durable preparation path', async () => {
@@ -59,10 +59,7 @@ describe('PosOrderOperationsService durable POS creation', () => {
 
     expect(
       preparation.activateAcceptedImmediateOrderByStableId,
-    ).toHaveBeenCalledWith(
-      'cposdurableorder00000000001',
-      '4750_Yonge_Street',
-    );
+    ).toHaveBeenCalledWith('cposdurableorder00000000001', '4750_Yonge_Street');
     expect(lifecycleOutbox.requestDrain).toHaveBeenCalledTimes(1);
   });
 

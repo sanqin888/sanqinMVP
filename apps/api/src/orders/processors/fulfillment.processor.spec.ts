@@ -201,10 +201,7 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
   });
 
   it('durable POS prep_started 为 in_store 订单创建唯一 AUTO 首次打印', async () => {
-    const { processor, sendPrintJob } = setupAccepted(
-      'store-4750',
-      'in_store',
-    );
+    const { processor, sendPrintJob } = setupAccepted('store-4750', 'in_store');
 
     await processor.handleAcceptedLifecycle({
       orderId: 'web-order-1',
