@@ -362,7 +362,9 @@ describe('FulfillmentProcessor Uber Direct failure alert', () => {
             contactPhone: '+14165550124',
             items: [],
           }),
-          update: jest.fn().mockRejectedValue(new Error('database unavailable')),
+          update: jest
+            .fn()
+            .mockRejectedValue(new Error('database unavailable')),
         },
         checkoutIntent: {
           findFirst: jest.fn().mockResolvedValue({

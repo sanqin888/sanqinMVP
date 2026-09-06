@@ -98,7 +98,9 @@ class NotificationRateLimiter {
 
 @Injectable()
 export class NotificationService
-  implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort,
+  implements
+    CouponIssuedNotificationPort,
+    CustomerLifecycleNotificationPort,
     DeliveryDispatchFailureNotificationPort
 {
   private readonly logger = new Logger(NotificationService.name);

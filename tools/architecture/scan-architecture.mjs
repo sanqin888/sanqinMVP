@@ -3747,8 +3747,16 @@ if (customerLifecycleNotificationBoundary) {
   const servicePath = join(REPOSITORY_ROOT, boundary.service);
   if (existsSync(servicePath)) {
     const source = readFileSync(servicePath, 'utf8');
+    if (
+      !/implements\s+CouponIssuedNotificationPort\s*,\s*CustomerLifecycleNotificationPort\b/.test(
+        source,
+      )
+    ) {
+      failures.push(
+        `Messaging customer lifecycle notification owner is missing implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort: ${boundary.service}`,
+      );
+    }
     for (const requiredSymbol of [
-      'implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort',
       'notifyRegistrationWelcome',
       'notifySubscriptionWelcome',
       'context: `register_welcome:${input.userStableId}`',

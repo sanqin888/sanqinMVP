@@ -123,7 +123,10 @@ describe('NotificationService.notifyCouponIssued', () => {
   });
 
   it('delivery dispatch failure 默认优先邮件，邮件成功时不发送短信', async () => {
-    emailService.sendEmail.mockResolvedValue({ ok: true, sendId: 'alert-email' });
+    emailService.sendEmail.mockResolvedValue({
+      ok: true,
+      sendId: 'alert-email',
+    });
 
     const result = await service.notifyDeliveryDispatchFailed({
       recipients: [

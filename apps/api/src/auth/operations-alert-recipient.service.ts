@@ -4,9 +4,7 @@ import type {
 } from './operations-alert-recipient.contract';
 import type { PrismaService } from './identity-prisma';
 
-export class OperationsAlertRecipientService
-  implements OperationsAlertRecipientPort
-{
+export class OperationsAlertRecipientService implements OperationsAlertRecipientPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async listActiveAdminRecipients(): Promise<OperationsAlertRecipient[]> {

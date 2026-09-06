@@ -156,18 +156,22 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         process.env.PUBLIC_BASE_URL ?? 'https://sanq.ca'
       ).replace(/\/$/, '');
       const result =
-        await this.deliveryDispatchFailureNotification.notifyDeliveryDispatchFailed({
-          recipients: recipients.map((recipient) => ({
-            userStableId: recipient.userStableId,
-            email: recipient.email,
-            phone: recipient.phone,
-            locale: recipient.language === 'ZH' ? 'zh' : 'en',
-          })),
-          orderNumber: params.orderNumber,
-          deliveryProvider: params.deliveryProvider,
-          errorMessage: params.errorMessage.replace(/\s+/g, ' ').slice(0, 240),
-          orderDetailUrl: `${publicBaseUrl}/zh/order/${params.orderStableId}`,
-        });
+        await this.deliveryDispatchFailureNotification.notifyDeliveryDispatchFailed(
+          {
+            recipients: recipients.map((recipient) => ({
+              userStableId: recipient.userStableId,
+              email: recipient.email,
+              phone: recipient.phone,
+              locale: recipient.language === 'ZH' ? 'zh' : 'en',
+            })),
+            orderNumber: params.orderNumber,
+            deliveryProvider: params.deliveryProvider,
+            errorMessage: params.errorMessage
+              .replace(/\s+/g, ' ')
+              .slice(0, 240),
+            orderDetailUrl: `${publicBaseUrl}/zh/order/${params.orderStableId}`,
+          },
+        );
 
       if (!result.ok) {
         this.logger.warn({
@@ -182,7 +186,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.error({
         event: 'delivery_dispatch_failure_alert_exception',
         orderStableId: params.orderStableId,
-        errorType: alertError instanceof Error ? alertError.name : 'UnknownError',
+        errorType:
+          alertError instanceof Error ? alertError.name : 'UnknownError',
       });
     }
   }
