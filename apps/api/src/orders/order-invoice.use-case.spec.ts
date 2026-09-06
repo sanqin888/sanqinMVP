@@ -58,18 +58,20 @@ describe('OrderInvoiceUseCase', () => {
       'cordinvoice001',
       'en',
     );
-    expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'invoice@example.com',
+    expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledTimes(1);
+    const [invoiceInput] = orderInvoiceDelivery.sendOrderInvoice.mock.calls[0] as [
+      Parameters<OrderInvoiceDeliveryPort['sendOrderInvoice']>[0],
+    ];
+    expect(invoiceInput).toMatchObject({
+      to: 'invoice@example.com',
+      locale: 'en',
+      payload: {
         locale: 'en',
-        payload: expect.objectContaining({
-          locale: 'en',
-          orderNumber: 'WEB-INV-1',
-          fulfillment: 'pickup',
-          paymentMethod: 'card',
-        }),
-      }),
-    );
+        orderNumber: 'WEB-INV-1',
+        fulfillment: 'pickup',
+        paymentMethod: 'card',
+      },
+    });
   });
 
   it('rejects an invalid email before reading the print payload', async () => {
