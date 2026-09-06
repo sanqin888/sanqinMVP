@@ -5027,6 +5027,107 @@ if (ordersPrintPayloadBoundary) {
   }
 }
 
+const ordersInvoiceUseCaseDecomposition =
+  config.ordersInvoiceUseCaseDecomposition ?? null;
+if (ordersInvoiceUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersInvoiceUseCaseDecomposition).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.ordersService,
+    boundary.ordersController,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders invoice use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderInvoiceUseCase',
+      'ORDER_PRINT_PAYLOAD_READER',
+      'OrderPrintPayloadReaderPort',
+      'ORDER_INVOICE_DELIVERY',
+      'OrderInvoiceDeliveryPort',
+      'sendInvoiceEmail',
+      'invalid_email',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders invoice use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes('PrismaService') ||
+      source.includes('@prisma/client') ||
+      source.includes('OrdersService') ||
+      source.includes('PrintPosPayloadService')
+    ) {
+      failures.push(
+        `Orders invoice use case must depend on narrow capability ports rather than Prisma/OrdersService/concrete Print implementation: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      source.includes('ORDER_INVOICE_DELIVERY') ||
+      source.includes('OrderInvoiceDeliveryPort') ||
+      source.includes('OrderInvoicePayload') ||
+      source.includes('PrintPosPayloadService') ||
+      /\bsendInvoiceEmail\s*\(/.test(source) ||
+      /\bsendInvoice\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must not regain the extracted invoice delivery use case or its exclusive dependencies: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, boundary.ordersController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from './order-invoice.use-case'") ||
+      !source.includes('private readonly orderInvoiceUseCase: OrderInvoiceUseCase') ||
+      (source.match(/this\.orderInvoiceUseCase\.sendInvoiceEmail\(/g) ?? [])
+        .length !== 2 ||
+      source.includes('this.ordersService.sendInvoiceEmail(')
+    ) {
+      failures.push(
+        `Orders invoice HTTP routes must call the dedicated OrderInvoiceUseCase directly: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-invoice.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderInvoiceUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderInvoiceUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderInvoiceUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

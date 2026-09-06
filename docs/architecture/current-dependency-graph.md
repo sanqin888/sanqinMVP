@@ -418,11 +418,19 @@ This is a same-context provider-implementation contraction, so the numeric direc
 
 ### Phase 5 Slice 4F — Fulfillment / Print payload boundary contraction — 2026-09-06
 
-Slice 4F makes the receipt/kitchen payload an Orders-owned public output contract. `PrintPosPayloadService` implements `OrderPrintPayloadReaderPort`, `OrdersModule` exports only `ORDER_PRINT_PAYLOAD_READER`, and the payload contract preserves the existing print shape without Prisma or POS implementation types. `FulfillmentProcessor` consumes the local Orders contract instead of a POS DTO.
+Slice 4F merged through PR #2208 after final head `f6ca667c46d3a0e4783c6354ac9bdaea9f68569c` passed PR CI #5247; squash merge `3cc775f141ab08180e8d8751a519dc89ea173a93`. It makes the receipt/kitchen payload an Orders-owned public output contract. `PrintPosPayloadService` implements `OrderPrintPayloadReaderPort`, `OrdersModule` exports only `ORDER_PRINT_PAYLOAD_READER`, and the payload contract preserves the existing print shape without Prisma or POS implementation types. `FulfillmentProcessor` consumes the local Orders contract instead of a POS DTO.
 
 The POS print-payload route keeps its existing route, store-scope check and response shape but now injects the reader token from `orders/public-api.ts`; it no longer deep-imports `PrintPosPayloadService`. The former POS-owned `print-pos-payload.dto.ts` is removed, eliminating its reverse deep import of Orders item-option snapshots. Print job identity, target routing, socket dispatch, agent wire payload and ACK/retry semantics remain unchanged.
 
 The legacy direct graph therefore contracts in both directions: Commerce -> Store Operations **2 -> 0** and Store Operations -> Commerce **2 -> 0**. Commerce outgoing direct debt becomes **20**, Store Operations becomes **29**, both zero edges are removed from the monotonic baseline, and the public SCC remains empty. Scanner and focused architecture coverage prevent the DTO/concrete-service deep imports from returning.
+
+### Phase 5 Slice 5A — Order invoice use-case decomposition — 2026-09-06
+
+`OrderInvoiceUseCase` extracts the invoice leaf from the broad `OrdersService`. Both existing invoice HTTP routes call the dedicated use case directly. It normalizes/validates the requested email, reads the Orders-owned print projection through `ORDER_PRINT_PAYLOAD_READER`, preserves the existing fulfillment mapping and delegates the unchanged invoice payload through Notifications-owned `ORDER_INVOICE_DELIVERY`.
+
+`OrdersService` no longer owns invoice methods or injects either invoice delivery or the concrete `PrintPosPayloadService`; those dependencies were exclusive to this leaf. The use case remains internal to Orders composition and is not exported as a cross-context service. Focused characterization preserves recipient normalization, print-payload lookup, invoice delivery input and `invalid_email` fail-fast behavior. Scanner guards prevent the invoice leaf from being folded back into `OrdersService`.
+
+This same-context decomposition changes no direct-import baseline: Commerce remains **20**, Store Operations remains **29**, and public SCC remains empty. Create/finalize/refund/amendment transaction behavior and the deliberately preserved Benefits transaction seam are untouched.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:
