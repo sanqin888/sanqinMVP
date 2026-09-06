@@ -131,7 +131,6 @@ export class OrderLifecycleOutboxProcessor
 
       await this.fulfillment.handleAcceptedLifecycle({
         orderId: item.orderId,
-        origin: 'durable',
       });
       return true;
     });

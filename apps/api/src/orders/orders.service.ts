@@ -1199,12 +1199,6 @@ export class OrdersService {
             reason: this.sanitizeNotificationFailure(error),
           });
         });
-    } else if (next === 'making' && updated.orderStableId) {
-      this.logger.log(`Event Emitted: order.accepted -> ${updated.id}`);
-      this.orderEventsBus.emitOrderAccepted({
-        orderId: updated.id,
-        stableId: updated.orderStableId,
-      });
     }
     return updated;
   }

@@ -51,7 +51,6 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
     await expect(
       processor.handleAcceptedLifecycle({
         orderId: 'order-1',
-        origin: 'durable',
       }),
     ).rejects.toThrow('print persistence unavailable');
 

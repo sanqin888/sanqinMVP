@@ -56,8 +56,10 @@ describe('Orders ↔ POS transport boundary', () => {
     expect(publicApi).toContain('PosOrderOperationsPort');
     expect(operationsContract).toContain('acceptWebOrder');
     expect(operationsContract).toContain('activateImmediatePreparation');
+    expect(operationsContract).toContain('activateScheduledPreparation');
     expect(service).toContain('this.orders.acceptWebOrder');
     expect(service).toContain('this.orders.activateImmediatePreparation');
+    expect(service).toContain('this.orders.activateScheduledPreparation');
   });
 
   it('keeps the canonical POS order routes on the POS transport', () => {

@@ -1,5 +1,4 @@
 import {
-  Channel,
   DeliveryProvider,
   FulfillmentType,
   OrderAmendmentItemAction,
@@ -107,21 +106,6 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }
   };
 
-  private readonly onAccepted = async (payload: { orderId: string }) => {
-    try {
-      await this.handleAcceptedLifecycle({ ...payload, origin: 'memory' });
-    } catch (error) {
-      // The in-memory bus remains a best-effort fast path for same-process
-      // orders. Durable lifecycle consumers call handleAcceptedLifecycle()
-      // directly and own retry/lease semantics themselves.
-      this.logger.error({
-        event: 'accepted_order_processing_failed',
-        orderId: payload.orderId,
-        errorType: error instanceof Error ? error.name : 'UnknownError',
-      });
-    }
-  };
-
   constructor(
     private readonly events: OrderEventsBus,
     private readonly prisma: PrismaService,
@@ -133,23 +117,14 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.events.onOrderPaidVerified(this.onPaid);
-    this.events.onOrderAccepted(this.onAccepted);
   }
 
   onModuleDestroy(): void {
     this.events.offOrderPaidVerified(this.onPaid);
-    this.events.offOrderAccepted(this.onAccepted);
   }
 
-  /**
-   * Shared prep-started print materializer. Web and in-store initial printing are
-   * valid only from the durable lifecycle; a same-process status event must not
-   * create a second initial-print path for either local channel.
-   */
-  async handleAcceptedLifecycle(payload: {
-    orderId: string;
-    origin: 'memory' | 'durable';
-  }): Promise<void> {
+  /** Durable prep_started materializer for the unique AUTO first-print path. */
+  async handleAcceptedLifecycle(payload: { orderId: string }): Promise<void> {
     this.logger.log({
       event: 'accepted_order_processing_started',
       orderId: payload.orderId,
@@ -160,23 +135,12 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       select: {
         id: true,
         orderStableId: true,
-        channel: true,
         storeId: true,
       },
     });
 
     if (!order) {
       this.logger.warn(`[Fulfillment] Order not found: ${payload.orderId}`);
-      return;
-    }
-
-    if (
-      (order.channel === Channel.in_store || order.channel === Channel.web) &&
-      payload.origin !== 'durable'
-    ) {
-      this.logger.log(
-        `[Fulfillment] Skip non-durable auto print for ${order.channel} order: ${payload.orderId}`,
-      );
       return;
     }
 

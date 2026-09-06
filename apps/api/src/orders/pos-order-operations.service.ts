@@ -72,6 +72,21 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
         await this.activateImmediatePreparation(orderStableId, storeStableId);
         return this.orders.getByStableIdForStore(orderStableId, storeStableId);
       }
+      if (current.status === 'paid' && current.channel === 'ubereats') {
+        const timing = await this.scheduling.findByStableIdForStore(
+          orderStableId,
+          storeStableId,
+        );
+        if (!timing) {
+          throw new BadRequestException('order fulfillment timing unavailable');
+        }
+        if (timing.fulfillmentTiming === 'SCHEDULED') {
+          await this.activateScheduledPreparation(orderStableId, storeStableId);
+        } else {
+          await this.activateImmediatePreparation(orderStableId, storeStableId);
+        }
+        return this.orders.getByStableIdForStore(orderStableId, storeStableId);
+      }
     }
 
     return this.orders.updateStatusForStore(
