@@ -1820,7 +1820,8 @@ export class OrdersService {
     const allowCustomUnitPrice = options?.allowCustomUnitPrice === true;
     const itemSnapshots = await this.orderItemSnapshotBuilder.buildMany(
       itemsDto.map((item) => ({
-        productStableId: item.productId ?? item.productStableId ?? '',
+        productStableId:
+          normalizeStableId(item.productId ?? item.productStableId) ?? '',
         qty: item.qty,
         displayName: item.displayName ?? null,
         options: item.options,
@@ -3882,7 +3883,7 @@ export class OrdersService {
       addItems.length > 0
         ? await this.orderItemSnapshotBuilder.buildMany(
             addItems.map((item) => ({
-              productStableId: item.productStableId,
+              productStableId: normalizeStableId(item.productStableId) ?? '',
               qty: Math.round(item.qty),
               displayName: item.displayName ?? null,
               optionsSnapshot: item.optionsJson,

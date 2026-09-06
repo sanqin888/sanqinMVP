@@ -7,8 +7,7 @@ import {
 } from '@prisma/client';
 import { isAvailableNow } from '@shared/menu';
 
-import { normalizeStableId } from '../common/utils/stable-id';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from './orders-prisma';
 import type {
   OrderItemComponentSnapshot,
   OrderItemComponentsSnapshot,
@@ -100,7 +99,7 @@ export class OrderItemSnapshotBuilder {
     inputs: OrderItemSnapshotBuildInput[],
   ): Promise<CanonicalOrderItemConfigurationSnapshot[]> {
     const normalizedItems = inputs.map((item) => {
-      const normalizedProductId = normalizeStableId(item.productStableId);
+      const normalizedProductId = item.productStableId.trim();
       if (!normalizedProductId) {
         throw new BadRequestException('Product id is required');
       }
