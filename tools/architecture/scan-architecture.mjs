@@ -4426,6 +4426,141 @@ if (ordersCatalogPersistenceBoundary) {
   }
 }
 
+const ordersCustomerRuntimeReadBoundary =
+  config.ordersCustomerRuntimeReadBoundary ?? null;
+if (ordersCustomerRuntimeReadBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersCustomerRuntimeReadBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.membershipModule,
+    boundary.publicSurface,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Customer runtime-read boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_ORDER_CONTEXT_READER',
+      'CustomerOrderContextReaderPort',
+      'getOrderCustomerContext',
+      'getSavedDeliveryAddress',
+      'userStableId',
+      'addressStableId',
+      'verifiedEmail',
+      'verifiedPhone',
+      'language',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer Orders public contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('CustomerService') ||
+      /(^|\s)id\s*:/m.test(source)
+    ) {
+      failures.push(
+        `Customer Orders public contract must remain framework/persistence/concrete-service/DB-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'CustomerOrderContextReaderPort',
+      'getOrderCustomerContext',
+      'getSavedDeliveryAddress',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer owner is missing Orders runtime-read capability ${requiredSymbol}: ${boundary.ownerService}`,
+        );
+      }
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, boundary.membershipModule);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    if (
+      !source.includes('CUSTOMER_ORDER_CONTEXT_READER') ||
+      !source.includes('useExisting: CustomerService') ||
+      !/exports:\s*\[[\s\S]*CUSTOMER_ORDER_CONTEXT_READER/.test(source)
+    ) {
+      failures.push(
+        `MembershipModule must expose the Customer Orders reader through the existing Customer owner implementation: ${boundary.membershipModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_ORDER_CONTEXT_READER',
+      'CustomerOrderContextReaderPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Membership public surface is missing Customer Orders capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      !source.includes("from '../membership/public-api'") ||
+      !source.includes('CUSTOMER_ORDER_CONTEXT_READER') ||
+      !source.includes('private readonly customerOrderContext') ||
+      /\.(?:user|userAddress)\./.test(source) ||
+      source.includes("from '../membership/customer.service'") ||
+      !source.includes('const ownerUserStableId = order.userStableId ?? null;')
+    ) {
+      failures.push(
+        `Orders Customer reads must use only the stable-ID Customer public capability and must not read User/UserAddress persistence directly: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../membership/public-api'") ||
+      !source.includes('MembershipModule')
+    ) {
+      failures.push(
+        `OrdersModule must compose Customer runtime reads through the Membership public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

@@ -502,6 +502,14 @@
     "labelPlanService": "apps/api/src/orders/order-label-plan.service.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
+  "ordersCustomerRuntimeReadBoundary": {
+    "contract": "apps/api/src/membership/customer-order-context.contract.ts",
+    "ownerService": "apps/api/src/membership/customer.service.ts",
+    "membershipModule": "apps/api/src/membership/membership.module.ts",
+    "publicSurface": "apps/api/src/membership/public-api.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",

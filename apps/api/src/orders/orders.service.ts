@@ -33,6 +33,10 @@ import {
 } from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
 import {
+  CUSTOMER_ORDER_CONTEXT_READER,
+  type CustomerOrderContextReaderPort,
+} from '../membership/public-api';
+import {
   CreateOrderInput,
   DeliveryDestinationInput,
   type OrderDiscountDisplayEntry,
@@ -153,7 +157,7 @@ const orderDetailSelect = {
   promotionSnapshot: true,
   createdAt: true,
   paidAt: true,
-  userId: true,
+  userStableId: true,
   items: {
     select: {
       productStableId: true,
@@ -394,6 +398,8 @@ export class OrdersService {
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
+    @Inject(CUSTOMER_ORDER_CONTEXT_READER)
+    private readonly customerOrderContext: CustomerOrderContextReaderPort,
     @Inject(PROMOTION_CONTEXT_READER)
     private readonly promotions: PromotionContextReaderPort,
     @Inject(DAILY_SPECIAL_OFFERS)
@@ -505,7 +511,10 @@ export class OrdersService {
 
     if (isDelivery) {
       const targetType = dto.deliveryType ?? DeliveryType.PRIORITY;
-      const dest = await this.resolveTrustedDeliveryDestination(dto, userId);
+      const dest = await this.resolveTrustedDeliveryDestination(
+        dto,
+        normalizedUserStableId ?? undefined,
+      );
 
       if (dest) {
         dto.deliveryDestination = dest;
@@ -1250,7 +1259,15 @@ export class OrdersService {
       };
     }
 
-    const locale = await this.resolveOrderReadyLocale(order);
+    const member = order.userStableId
+      ? await this.customerOrderContext.getOrderCustomerContext(
+          order.userStableId,
+        )
+      : null;
+    const locale = await this.resolveOrderReadyLocale(
+      order,
+      member?.language ?? null,
+    );
     const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
       where: { orderId: order.id },
       orderBy: { createdAt: 'desc' },
@@ -1268,24 +1285,8 @@ export class OrdersService {
         ? verifiedContacts.phone.trim() || null
         : null;
 
-    const member = order.userId
-      ? await this.prisma.user.findUnique({
-          where: { id: order.userId },
-          select: {
-            userStableId: true,
-            email: true,
-            emailVerifiedAt: true,
-            phone: true,
-            phoneVerifiedAt: true,
-          },
-        })
-      : null;
-    const memberEmail = member?.emailVerifiedAt
-      ? normalizeEmail(member.email)
-      : null;
-    const memberPhone = member?.phoneVerifiedAt
-      ? member.phone?.trim() || null
-      : null;
+    const memberEmail = member?.verifiedEmail ?? null;
+    const memberPhone = member?.verifiedPhone ?? null;
 
     const allowExternalContacts = order.channel === Channel.ubereats;
     const email =
@@ -1312,26 +1313,20 @@ export class OrdersService {
       orderNumber,
       name: order.contactName ?? null,
       locale,
-      userStableId: order.userStableId ?? member?.userStableId ?? null,
+      userStableId: order.userStableId ?? null,
     });
   }
 
   private async resolveOrderReadyLocale(
-    order: Pick<OrderWithItems, 'id' | 'userId'>,
+    order: Pick<OrderWithItems, 'id'>,
+    memberLanguage: 'ZH' | 'EN' | null,
   ): Promise<'zh' | 'en'> {
-    if (order.userId) {
-      const user = await this.prisma.user.findUnique({
-        where: { id: order.userId },
-        select: { language: true },
-      });
+    if (memberLanguage === 'ZH') {
+      return 'zh';
+    }
 
-      if (user?.language === 'ZH') {
-        return 'zh';
-      }
-
-      if (user?.language === 'EN') {
-        return 'en';
-      }
+    if (memberLanguage === 'EN') {
+      return 'en';
     }
 
     const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
@@ -1589,14 +1584,14 @@ export class OrdersService {
 
   private async resolveTrustedDeliveryDestination(
     dto: CreateOrderInput,
-    userId?: string,
+    userStableId?: string,
   ): Promise<DeliveryDestinationInput | undefined> {
     const dest = dto.deliveryDestination;
     if (!dest) return undefined;
 
     const phone = await this.resolveDeliveryPhone({
       submittedPhone: dest.phone,
-      userId,
+      userStableId,
       requirePhone: dto.channel !== Channel.ubereats,
     });
 
@@ -1605,22 +1600,10 @@ export class OrdersService {
         ? normalizeStableId(dest.addressStableId)
         : null;
 
-    if (addressStableId && userId) {
-      const saved = await this.prisma.userAddress.findFirst({
-        where: {
-          userId,
-          addressStableId,
-        },
-        select: {
-          addressLine1: true,
-          addressLine2: true,
-          city: true,
-          province: true,
-          postalCode: true,
-          placeId: true,
-          latitude: true,
-          longitude: true,
-        },
+    if (addressStableId && userStableId) {
+      const saved = await this.customerOrderContext.getSavedDeliveryAddress({
+        userStableId,
+        addressStableId,
       });
 
       if (!saved) {
@@ -1666,7 +1649,7 @@ export class OrdersService {
 
   private async resolveDeliveryPhone(params: {
     submittedPhone?: string | null;
-    userId?: string;
+    userStableId?: string;
     requirePhone: boolean;
   }): Promise<string | undefined> {
     const submitted = params.submittedPhone?.trim();
@@ -1681,13 +1664,14 @@ export class OrdersService {
       return normalized;
     }
 
-    if (params.userId) {
-      const member = await this.prisma.user.findUnique({
-        where: { id: params.userId },
-        select: { phone: true, phoneVerifiedAt: true },
-      });
-      if (member?.phone && member.phoneVerifiedAt) {
-        const normalized = this.normalizeCanadianDeliveryPhone(member.phone);
+    if (params.userStableId) {
+      const member = await this.customerOrderContext.getOrderCustomerContext(
+        params.userStableId,
+      );
+      if (member?.verifiedPhone) {
+        const normalized = this.normalizeCanadianDeliveryPhone(
+          member.verifiedPhone,
+        );
         if (normalized) return normalized;
       }
     }
@@ -2614,7 +2598,7 @@ export class OrdersService {
 
     const trustedDestination = await this.resolveTrustedDeliveryDestination(
       dto,
-      userId,
+      normalizedUserStableId ?? undefined,
     );
     if (trustedDestination) {
       dto.deliveryDestination = trustedDestination;
@@ -3253,14 +3237,7 @@ export class OrdersService {
     })) as OrderDetail | null;
 
     if (!order) throw new NotFoundException('order not found');
-    const ownerUserStableId = order.userId
-      ? ((
-          await this.prisma.user.findUnique({
-            where: { id: order.userId },
-            select: { userStableId: true },
-          })
-        )?.userStableId ?? null)
-      : null;
+    const ownerUserStableId = order.userStableId ?? null;
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
