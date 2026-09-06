@@ -4270,6 +4270,163 @@ if (ordersLowRiskBoundaryContraction) {
   }
 }
 
+const ordersCatalogPersistenceBoundary =
+  config.ordersCatalogPersistenceBoundary ?? null;
+if (ordersCatalogPersistenceBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersCatalogPersistenceBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.module,
+    boundary.ownerService,
+    boundary.publicSurface,
+    boundary.ordersService,
+    boundary.snapshotBuilder,
+    boundary.labelPlanService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Catalog boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'CATALOG_ORDER_FACTS_READER',
+      'CatalogOrderFactsReaderPort',
+      'findHiddenMenuItemStableIds',
+      'getOrderItemMaterializationFacts',
+      'getActiveOrderItemMaterializationFact',
+      'getOrderLabelConfigs',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Catalog Orders public contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('CatalogAdminService') ||
+      /(^|\s)id\s*:/m.test(source)
+    ) {
+      failures.push(
+        `Catalog Orders public contract must remain Prisma/concrete-service/DB-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, boundary.module);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    if (
+      !source.includes('CATALOG_ORDER_FACTS_READER') ||
+      !source.includes('useExisting: CatalogAdminService') ||
+      !source.includes('exports: [CATALOG_ORDER_FACTS_READER]')
+    ) {
+      failures.push(
+        `CatalogOrderFactsModule must expose the owner capability token through the existing Catalog implementation: ${boundary.module}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'CatalogOrderFactsReaderPort',
+      'findHiddenMenuItemStableIds',
+      'getOrderItemMaterializationFacts',
+      'getActiveOrderItemMaterializationFact',
+      'getOrderLabelConfigs',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Catalog owner is missing Orders fact capability ${requiredSymbol}: ${boundary.ownerService}`,
+        );
+      }
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'CatalogOrderFactsModule',
+      'CATALOG_ORDER_FACTS_READER',
+      'CatalogOrderFactsReaderPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Catalog public surface is missing Orders fact capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  for (const sourcePath of [
+    boundary.ordersService,
+    boundary.snapshotBuilder,
+    boundary.labelPlanService,
+  ]) {
+    if (!existsSync(join(REPOSITORY_ROOT, sourcePath))) continue;
+    const source = readFileSync(join(REPOSITORY_ROOT, sourcePath), 'utf8');
+    if (
+      !source.includes("from '../menu/public-api'") ||
+      source.includes("from '../menu/catalog-admin.service'") ||
+      source.includes('prisma.menuItem') ||
+      source.includes('this.prisma.menuItem')
+    ) {
+      failures.push(
+        `Orders Catalog consumers must use only the Catalog public capability and must not read MenuItem persistence directly: ${sourcePath}`,
+      );
+    }
+  }
+
+  const snapshotBuilderPath = join(
+    REPOSITORY_ROOT,
+    boundary.snapshotBuilder,
+  );
+  if (existsSync(snapshotBuilderPath)) {
+    const source = readFileSync(snapshotBuilderPath, 'utf8');
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('MenuItemGetPayload') ||
+      source.includes('choice.id') ||
+      source.includes('product.id')
+    ) {
+      failures.push(
+        `OrderItemSnapshotBuilder must remain Catalog-Prisma/DB-ID free: ${boundary.snapshotBuilder}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../menu/public-api'") ||
+      !source.includes('CatalogOrderFactsModule')
+    ) {
+      failures.push(
+        `OrdersModule must compose Catalog order facts through the Catalog public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

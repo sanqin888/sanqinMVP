@@ -1,11 +1,16 @@
+import type {
+  CatalogOrderFactsReaderPort,
+  CatalogOrderItemMaterializationFact,
+} from '../menu/public-api';
 import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 
 const parentStableId = 'c1234567890abcdefghijklmn';
 const childStableId = 'c2234567890abcdefghijklmn';
 
-function menuItem(overrides: Record<string, unknown> = {}) {
+function menuItem(
+  overrides: Partial<CatalogOrderItemMaterializationFact> = {},
+): CatalogOrderItemMaterializationFact {
   return {
-    id: '11111111-1111-4111-8111-111111111111',
     stableId: parentStableId,
     nameEn: 'Combo',
     nameZh: '套餐',
@@ -15,6 +20,22 @@ function menuItem(overrides: Record<string, unknown> = {}) {
     fixedComponents: [],
     optionGroups: [],
     ...overrides,
+  };
+}
+
+function reader(params: {
+  initial: CatalogOrderItemMaterializationFact[];
+  linked?: CatalogOrderItemMaterializationFact | null;
+}): CatalogOrderFactsReaderPort {
+  return {
+    findHiddenMenuItemStableIds: jest.fn().mockResolvedValue([]),
+    getOrderItemMaterializationFacts: jest
+      .fn()
+      .mockResolvedValue(params.initial),
+    getActiveOrderItemMaterializationFact: jest
+      .fn()
+      .mockResolvedValue(params.linked ?? null),
+    getOrderLabelConfigs: jest.fn().mockResolvedValue([]),
   };
 }
 
@@ -56,19 +77,13 @@ describe('OrderItemSnapshotBuilder', () => {
       ],
     });
     const child = menuItem({
-      id: '22222222-2222-4222-8222-222222222222',
       stableId: childStableId,
       nameEn: 'Soup',
       nameZh: '汤',
       basePriceCents: 300,
     });
-    const prisma = {
-      menuItem: {
-        findMany: jest.fn().mockResolvedValue([parent]),
-        findFirst: jest.fn().mockResolvedValue(child),
-      },
-    };
-    const builder = new OrderItemSnapshotBuilder(prisma as never);
+    const catalogOrderFacts = reader({ initial: [parent], linked: child });
+    const builder = new OrderItemSnapshotBuilder(catalogOrderFacts);
 
     await expect(
       builder.buildMany([{ productStableId: parentStableId, qty: 1 }]),
@@ -85,13 +100,15 @@ describe('OrderItemSnapshotBuilder', () => {
         ],
       }),
     ]);
+    expect(
+      catalogOrderFacts.getOrderItemMaterializationFacts,
+    ).toHaveBeenCalledWith([parentStableId]);
   });
 
   it('re-materializes amendment option snapshots through current canonical menu structure', async () => {
     const parent = menuItem({
       optionGroups: [
         {
-          isEnabled: true,
           minSelect: 0,
           maxSelect: 1,
           sortOrder: 0,
@@ -102,10 +119,8 @@ describe('OrderItemSnapshotBuilder', () => {
             defaultMinSelect: 0,
             defaultMaxSelect: 1,
             sortOrder: 0,
-            deletedAt: null,
             options: [
               {
-                id: '33333333-3333-4333-8333-333333333333',
                 stableId: 'choice_soup',
                 nameEn: 'Soup',
                 nameZh: '汤',
@@ -114,7 +129,6 @@ describe('OrderItemSnapshotBuilder', () => {
                 isAvailable: true,
                 tempUnavailableUntil: null,
                 targetItemStableId: childStableId,
-                deletedAt: null,
               },
             ],
           },
@@ -122,19 +136,14 @@ describe('OrderItemSnapshotBuilder', () => {
       ],
     });
     const child = menuItem({
-      id: '22222222-2222-4222-8222-222222222222',
       stableId: childStableId,
       nameEn: 'Soup',
       nameZh: '汤',
       basePriceCents: 300,
     });
-    const prisma = {
-      menuItem: {
-        findMany: jest.fn().mockResolvedValue([parent]),
-        findFirst: jest.fn().mockResolvedValue(child),
-      },
-    };
-    const builder = new OrderItemSnapshotBuilder(prisma as never);
+    const builder = new OrderItemSnapshotBuilder(
+      reader({ initial: [parent], linked: child }),
+    );
 
     const [snapshot] = await builder.buildMany([
       {

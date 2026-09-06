@@ -1,13 +1,14 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import {
-  MenuItemOptionGroup,
-  MenuOptionGroupTemplate,
-  MenuOptionTemplateChoice,
-  Prisma,
-} from '@prisma/client';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { isAvailableNow } from '@shared/menu';
 
-import { PrismaService } from './orders-prisma';
+import {
+  CATALOG_ORDER_FACTS_READER,
+  type CatalogOrderFactsReaderPort,
+  type CatalogOrderItemMaterializationFact,
+  type CatalogOrderOptionChoiceFact,
+  type CatalogOrderOptionGroupBindingFact,
+  type CatalogOrderOptionGroupFact,
+} from '../menu/public-api';
 import type {
   OrderItemComponentSnapshot,
   OrderItemComponentsSnapshot,
@@ -18,25 +19,12 @@ import type {
   OrderItemOptionsSnapshot,
 } from './order-item-options';
 
-type MenuItemWithOptions = Prisma.MenuItemGetPayload<{
-  include: {
-    fixedComponents: true;
-    optionGroups: {
-      include: {
-        templateGroup: {
-          include: {
-            options: true;
-          };
-        };
-      };
-    };
-  };
-}>;
+type MenuItemWithOptions = CatalogOrderItemMaterializationFact;
 
 type OptionChoiceContext = {
-  choice: MenuOptionTemplateChoice;
-  group: MenuOptionGroupTemplate;
-  link: MenuItemOptionGroup;
+  choice: CatalogOrderOptionChoiceFact;
+  group: CatalogOrderOptionGroupFact;
+  link: CatalogOrderOptionGroupBindingFact;
 };
 
 export type OrderItemSnapshotBuildInput = {
@@ -68,16 +56,11 @@ type SelectedOptionRef = {
   sequence: number;
 };
 
-function availabilityFromDb(
+function availabilityFromCatalog(
   isAvailable: boolean,
-  tempUnavailableUntil: Date | null,
+  tempUnavailableUntil: string | null,
 ) {
-  return {
-    isAvailable,
-    tempUnavailableUntil: tempUnavailableUntil
-      ? tempUnavailableUntil.toISOString()
-      : null,
-  };
+  return { isAvailable, tempUnavailableUntil };
 }
 
 /**
@@ -93,7 +76,10 @@ function availabilityFromDb(
  */
 @Injectable()
 export class OrderItemSnapshotBuilder {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(CATALOG_ORDER_FACTS_READER)
+    private readonly catalogOrderFacts: CatalogOrderFactsReaderPort,
+  ) {}
 
   async buildMany(
     inputs: OrderItemSnapshotBuildInput[],
@@ -118,26 +104,16 @@ export class OrderItemSnapshotBuilder {
 
     if (normalizedItems.length === 0) return [];
 
-    const productIds = normalizedItems.map((item) => item.normalizedProductId);
-    const dbProducts = await this.prisma.menuItem.findMany({
-      where: {
-        OR: [{ id: { in: productIds } }, { stableId: { in: productIds } }],
-      },
-      include: {
-        fixedComponents: { orderBy: { sortOrder: 'asc' } },
-        optionGroups: {
-          where: { isEnabled: true },
-          include: {
-            templateGroup: {
-              include: { options: { where: { deletedAt: null } } },
-            },
-          },
-        },
-      },
-    });
+    const productStableIds = normalizedItems.map(
+      (item) => item.normalizedProductId,
+    );
+    const catalogProducts =
+      await this.catalogOrderFacts.getOrderItemMaterializationFacts(
+        productStableIds,
+      );
 
     const productMap = new Map<string, MenuItemWithOptions>();
-    const choiceLookupByProductId = new Map<
+    const choiceLookupByProductStableId = new Map<
       string,
       Map<string, OptionChoiceContext>
     >();
@@ -146,11 +122,13 @@ export class OrderItemSnapshotBuilder {
     const setItemAvailability = (
       stableId: string,
       isAvailable: boolean,
-      tempUnavailableUntil: Date | null,
+      tempUnavailableUntil: string | null,
     ) => {
       itemAvailabilityByStableId.set(
         stableId,
-        isAvailableNow(availabilityFromDb(isAvailable, tempUnavailableUntil)),
+        isAvailableNow(
+          availabilityFromCatalog(isAvailable, tempUnavailableUntil),
+        ),
       );
     };
 
@@ -159,16 +137,11 @@ export class OrderItemSnapshotBuilder {
       product: MenuItemWithOptions,
     ) => {
       for (const link of product.optionGroups ?? []) {
-        if (!link.isEnabled || !link.templateGroup) continue;
         const templateGroup = link.templateGroup;
-        if ((templateGroup as { deletedAt?: Date | null }).deletedAt) continue;
-
         const choices = (templateGroup.options ?? []).filter((choice) => {
-          const deleted = (choice as { deletedAt?: Date | null }).deletedAt;
-          if (deleted) return false;
           if (
             !isAvailableNow(
-              availabilityFromDb(
+              availabilityFromCatalog(
                 choice.isAvailable,
                 choice.tempUnavailableUntil,
               ),
@@ -183,14 +156,12 @@ export class OrderItemSnapshotBuilder {
 
         for (const choice of choices) {
           const context = { choice, group: templateGroup, link };
-          optionLookup.set(choice.id, context);
           optionLookup.set(choice.stableId, context);
         }
       }
     };
 
-    for (const product of dbProducts) {
-      productMap.set(product.id, product);
+    for (const product of catalogProducts) {
       productMap.set(product.stableId, product);
       setItemAvailability(
         product.stableId,
@@ -199,8 +170,7 @@ export class OrderItemSnapshotBuilder {
       );
       const optionLookup = new Map<string, OptionChoiceContext>();
       addProductOptionChoices(optionLookup, product);
-      choiceLookupByProductId.set(product.id, optionLookup);
-      choiceLookupByProductId.set(product.stableId, optionLookup);
+      choiceLookupByProductStableId.set(product.stableId, optionLookup);
     }
 
     const linkedProductByStableId = new Map<
@@ -213,20 +183,10 @@ export class OrderItemSnapshotBuilder {
       if (linkedProductByStableId.has(stableId)) {
         return linkedProductByStableId.get(stableId) ?? null;
       }
-      const linkedProduct = await this.prisma.menuItem.findFirst({
-        where: { stableId, deletedAt: null },
-        include: {
-          fixedComponents: { orderBy: { sortOrder: 'asc' } },
-          optionGroups: {
-            where: { isEnabled: true },
-            include: {
-              templateGroup: {
-                include: { options: { where: { deletedAt: null } } },
-              },
-            },
-          },
-        },
-      });
+      const linkedProduct =
+        await this.catalogOrderFacts.getActiveOrderItemMaterializationFact(
+          stableId,
+        );
       linkedProductByStableId.set(stableId, linkedProduct);
       if (linkedProduct) {
         setItemAvailability(
@@ -262,7 +222,7 @@ export class OrderItemSnapshotBuilder {
         }
         if (
           !isAvailableNow(
-            availabilityFromDb(
+            availabilityFromCatalog(
               linkedProduct.isAvailable,
               linkedProduct.tempUnavailableUntil,
             ),
@@ -291,7 +251,10 @@ export class OrderItemSnapshotBuilder {
       }
       if (
         !isAvailableNow(
-          availabilityFromDb(product.isAvailable, product.tempUnavailableUntil),
+          availabilityFromCatalog(
+            product.isAvailable,
+            product.tempUnavailableUntil,
+          ),
         )
       ) {
         throw new BadRequestException(
@@ -304,7 +267,7 @@ export class OrderItemSnapshotBuilder {
       );
       const selectedOptionIds = selectedOptionRefs.map((ref) => ref.optionId);
       const baseOptionLookup =
-        choiceLookupByProductId.get(item.normalizedProductId) ??
+        choiceLookupByProductStableId.get(item.normalizedProductId) ??
         new Map<string, OptionChoiceContext>();
       const optionLookup = new Map(baseOptionLookup);
       await prepareFixedComponentTree(product, optionLookup);
@@ -365,7 +328,7 @@ export class OrderItemSnapshotBuilder {
             const isTargetAvailable =
               !!linkedTarget &&
               isAvailableNow(
-                availabilityFromDb(
+                availabilityFromCatalog(
                   linkedTarget.isAvailable,
                   linkedTarget.tempUnavailableUntil,
                 ),

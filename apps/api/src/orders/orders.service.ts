@@ -101,6 +101,10 @@ import type {
   PosOrderManagementPage,
   PosOrderManagementQuery,
 } from './pos-order-operations.contract';
+import {
+  CATALOG_ORDER_FACTS_READER,
+  type CatalogOrderFactsReaderPort,
+} from '../menu/public-api';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -394,6 +398,8 @@ export class OrdersService {
     private readonly promotions: PromotionContextReaderPort,
     @Inject(DAILY_SPECIAL_OFFERS)
     private readonly dailySpecialOffers: DailySpecialOffersPort,
+    @Inject(CATALOG_ORDER_FACTS_READER)
+    private readonly catalogOrderFacts: CatalogOrderFactsReaderPort,
     @Inject(LOCATION_GEOCODER)
     private readonly locationGeocoder: LocationGeocoderPort,
     @Inject(ORDER_READY_NOTIFICATION)
@@ -550,15 +556,9 @@ export class OrdersService {
       }
     }
 
-    const hiddenItems = await this.prisma.menuItem.findMany({
-      where: {
-        stableId: { in: productStableIds },
-        deletedAt: null,
-        visibility: 'HIDDEN',
-      },
-      select: { stableId: true },
-    });
-    if (dto.channel === Channel.web && hiddenItems.length > 0) {
+    const hiddenItemStableIds =
+      await this.catalogOrderFacts.findHiddenMenuItemStableIds(productStableIds);
+    if (dto.channel === Channel.web && hiddenItemStableIds.length > 0) {
       throw new BadRequestException(
         'hidden menu items are not available for customer ordering',
       );

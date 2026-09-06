@@ -112,6 +112,177 @@ describe('CatalogAdminService availability reader', () => {
   });
 });
 
+describe('CatalogAdminService order facts reader', () => {
+  it('projects hidden item identity as stable ids only', async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ stableId: 'hidden-item-1' }]);
+    const service = new CatalogAdminService({
+      menuItem: { findMany },
+    } as never);
+
+    await expect(
+      service.findHiddenMenuItemStableIds([' hidden-item-1 ']),
+    ).resolves.toEqual(['hidden-item-1']);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        stableId: { in: ['hidden-item-1'] },
+        deletedAt: null,
+        visibility: 'HIDDEN',
+      },
+      select: { stableId: true },
+    });
+  });
+
+  it('projects stable-only materialization facts for Orders', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        stableId: 'item-1',
+        nameEn: 'Combo',
+        nameZh: '套餐',
+        basePriceCents: 1299,
+        isAvailable: true,
+        tempUnavailableUntil: new Date('2090-01-02T03:04:05.000Z'),
+        fixedComponents: [
+          {
+            componentItemStableId: 'component-1',
+            quantity: 2,
+            sortOrder: 0,
+          },
+        ],
+        optionGroups: [
+          {
+            minSelect: 0,
+            maxSelect: 1,
+            sortOrder: 0,
+            templateGroup: {
+              stableId: 'group-1',
+              nameEn: 'Choice',
+              nameZh: '选择',
+              defaultMinSelect: 0,
+              defaultMaxSelect: 1,
+              sortOrder: 0,
+              deletedAt: null,
+              options: [
+                {
+                  stableId: 'choice-1',
+                  nameEn: 'Soup',
+                  nameZh: '汤',
+                  priceDeltaCents: 100,
+                  targetItemStableId: 'component-1',
+                  isAvailable: true,
+                  tempUnavailableUntil: null,
+                  sortOrder: 0,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+    const service = new CatalogAdminService({
+      menuItem: { findMany },
+    } as never);
+
+    await expect(
+      service.getOrderItemMaterializationFacts([' item-1 ']),
+    ).resolves.toEqual([
+      {
+        stableId: 'item-1',
+        nameEn: 'Combo',
+        nameZh: '套餐',
+        basePriceCents: 1299,
+        isAvailable: true,
+        tempUnavailableUntil: '2090-01-02T03:04:05.000Z',
+        fixedComponents: [
+          {
+            componentItemStableId: 'component-1',
+            quantity: 2,
+            sortOrder: 0,
+          },
+        ],
+        optionGroups: [
+          {
+            minSelect: 0,
+            maxSelect: 1,
+            sortOrder: 0,
+            templateGroup: {
+              stableId: 'group-1',
+              nameEn: 'Choice',
+              nameZh: '选择',
+              defaultMinSelect: 0,
+              defaultMaxSelect: 1,
+              sortOrder: 0,
+              options: [
+                {
+                  stableId: 'choice-1',
+                  nameEn: 'Soup',
+                  nameZh: '汤',
+                  priceDeltaCents: 100,
+                  targetItemStableId: 'component-1',
+                  isAvailable: true,
+                  tempUnavailableUntil: null,
+                  sortOrder: 0,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { stableId: { in: ['item-1'] } } }),
+    );
+  });
+
+  it('projects label configuration without packaging persistence ids', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        stableId: 'item-1',
+        nameEn: 'Soup',
+        nameZh: '汤',
+        labelStrategy: 'ALWAYS',
+        packagings: [
+          {
+            sortOrder: 0,
+            packagingType: { stableId: '16oz', name: '16oz' },
+          },
+        ],
+        optionGroups: [
+          {
+            affectedPackagingTypeStableIds: ['16oz'],
+            templateGroup: { stableId: 'spice' },
+          },
+        ],
+      },
+    ]);
+    const service = new CatalogAdminService({
+      menuItem: { findMany },
+    } as never);
+
+    await expect(service.getOrderLabelConfigs([' item-1 '])).resolves.toEqual([
+      {
+        stableId: 'item-1',
+        nameEn: 'Soup',
+        nameZh: '汤',
+        labelStrategy: 'ALWAYS',
+        packagings: [
+          {
+            sortOrder: 0,
+            packagingType: { stableId: '16oz', name: '16oz' },
+          },
+        ],
+        optionGroups: [
+          {
+            affectedPackagingTypeStableIds: ['16oz'],
+            templateGroupStableId: 'spice',
+          },
+        ],
+      },
+    ]);
+  });
+});
+
 describe('CatalogAdminService pricing snapshots', () => {
   it('keeps the full Admin menu snapshot free of Offers-owned fields and persistence', async () => {
     const prisma = {
