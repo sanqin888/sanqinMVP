@@ -496,7 +496,7 @@ Cross-context direct-import counts remain unchanged at Commerce **20** and Store
 
 ### Slice 5B — Ready-notification use-case decomposition
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-b`, based on `origin/dev@3a37a625`.
+Status: **MERGED / CI GREEN** — PR #2210, squash merge `b7ecc00f`; merged dev is the Slice 5C baseline.
 
 Migration classification: **Class A same-context application decomposition**. No Prisma schema/migration, dependency/lockfile, public route, status-transition rule, payment/refund behavior, provider wire contract, Order lifecycle, notification payload or cross-context direct-import allowance changes.
 
@@ -506,4 +506,18 @@ Migration classification: **Class A same-context application decomposition**. No
 
 The central scanner prevents `ORDER_READY_NOTIFICATION`, notification result policy, contact/locale resolution, PII redaction or deep Notification/Email dependencies from returning to `OrdersService`; requires the use case to stay on `orders-prisma` plus Customer/Notifications public capabilities; and keeps `OrderReadyNotificationUseCase` internal to `OrdersModule` composition. Numeric baselines stay Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, and the public SCC remains empty.
 
-Planned follow-on after Slice 5B is: **continue Orders internal decomposition with a fresh readiness audit (delivery preparation/orchestration versus pricing/quote extraction) -> remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 5C — paid-order delivery dispatch use-case decomposition
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-c`, based on `origin/dev@b7ecc00f`.
+
+Migration classification: **Class A same-context Fulfillment application decomposition**. The fresh readiness audit chose delivery dispatch before pricing/quote extraction because the `order.paid.verified` Uber Direct branch is a self-contained leaf with already-public Delivery/Auth/Notifications capabilities, while quote extraction still shares line-item snapshot/pricing preparation with the transaction-sensitive POS payment preparation seam. No Prisma schema/migration, dependency/lockfile, public route, provider wire shape, retry policy, payment/refund behavior, Order lifecycle, PrintJob behavior or cross-context direct-import allowance changes.
+
+`OrderDeliveryDispatchUseCase` now owns the complete paid-order Uber Direct dispatch flow that previously lived in `FulfillmentProcessor`: load the eligible delivery Order and latest checkout metadata, reconstruct the trusted dropoff payload, call `UBER_DIRECT_DELIVERY_DISPATCHER`, persist the returned `externalDeliveryId`, preserve the provider-success/local-persistence-failure distinction, and request the existing operations alert through `OPERATIONS_ALERT_RECIPIENTS` + `DELIVERY_DISPATCH_FAILURE_NOTIFICATION` when provider creation itself fails. Existing destination precedence, pickup-time parsing, order reference/pickup code/item mapping, PII-safe alert routing and no-recipient behavior remain unchanged.
+
+`FulfillmentProcessor` remains the lifecycle adapter subscribed to `order.paid.verified`, but its paid callback now only delegates to the internal use case. It no longer owns Uber Direct provider injection, Admin recipient lookup, delivery-failure notification policy, dropoff extraction or provider/local-persistence error classification. Print lifecycle, reprint/amendment handling and durable preparation stay in the processor for later decomposition and are not mixed into 5C.
+
+The central scanner locks the new ownership: provider/auth/notification ports and dropoff policy cannot return to `FulfillmentProcessor`; the use case must use Orders-local persistence plus public Delivery/Auth/Notifications capabilities; and `OrderDeliveryDispatchUseCase` remains an internal `OrdersModule` provider rather than a cross-context service. Cross-context numeric baselines remain Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, and public SCC remains empty because this is same-context decomposition with existing public edges.
+
+Phase-level closeout verification retains Uber Direct successful dispatch, provider-create failure alert delivery, provider-success/local-persistence-failure non-retry classification, and non-delivery/already-dispatched no-op behavior. No standalone Slice 5C production checklist is required.
+
+Planned follow-on after Slice 5C is: **fresh readiness audit for pricing/quote extraction versus remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

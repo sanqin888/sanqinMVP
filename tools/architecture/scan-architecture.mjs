@@ -5272,6 +5272,96 @@ if (ordersReadyNotificationUseCaseDecomposition) {
   }
 }
 
+const ordersDeliveryDispatchUseCaseDecomposition =
+  config.ordersDeliveryDispatchUseCaseDecomposition ?? null;
+if (ordersDeliveryDispatchUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersDeliveryDispatchUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.fulfillmentProcessor,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders delivery-dispatch use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderDeliveryDispatchUseCase',
+      "from './orders-prisma'",
+      'UBER_DIRECT_DELIVERY_DISPATCHER',
+      'UberDirectDeliveryDispatcherPort',
+      'OPERATIONS_ALERT_RECIPIENTS',
+      'OperationsAlertRecipientPort',
+      'DELIVERY_DISPATCH_FAILURE_NOTIFICATION',
+      'DeliveryDispatchFailureNotificationPort',
+      'uber_direct_delivery_created_persistence_failed',
+      'DELIVERY_DESTINATION_REQUIRED',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders delivery-dispatch use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes("from './orders.service'") ||
+      source.includes('private readonly orders: OrdersService') ||
+      source.includes('../deliveries/uber-direct.service') ||
+      source.includes('../notifications/notification.service')
+    ) {
+      failures.push(
+        `Orders delivery-dispatch use case must stay on Orders-local persistence plus public Delivery/Auth/Notifications capabilities: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const processorPath = join(REPOSITORY_ROOT, boundary.fulfillmentProcessor);
+  if (existsSync(processorPath)) {
+    const source = readFileSync(processorPath, 'utf8');
+    if (
+      !source.includes("from '../order-delivery-dispatch.use-case'") ||
+      !source.includes(
+        'private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase',
+      ) ||
+      !source.includes('this.orderDeliveryDispatchUseCase.handle(payload)') ||
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      source.includes('DELIVERY_DISPATCH_FAILURE_NOTIFICATION') ||
+      source.includes('OPERATIONS_ALERT_RECIPIENTS') ||
+      source.includes('uber_direct_delivery_created_persistence_failed') ||
+      /\bextractDropoff\s*\(/.test(source)
+    ) {
+      failures.push(
+        `FulfillmentProcessor must delegate paid-order delivery dispatch orchestration without regaining provider/alert policy: ${boundary.fulfillmentProcessor}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-delivery-dispatch.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderDeliveryDispatchUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderDeliveryDispatchUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderDeliveryDispatchUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(
