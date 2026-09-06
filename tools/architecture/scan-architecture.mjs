@@ -4665,13 +4665,17 @@ if (ordersBenefitsRuntimeReadBoundary) {
     for (const requiredSymbol of [
       'ORDER_BENEFITS_READER',
       'OrderBenefitsReaderPort',
-      'OrderBenefitsReadModule',
     ]) {
       if (!source.includes(requiredSymbol)) {
         failures.push(
           `Benefits public surface is missing Orders read capability ${requiredSymbol}: ${boundary.publicSurface}`,
         );
       }
+    }
+    if (source.includes('order-benefits-read.module')) {
+      failures.push(
+        `Benefits top-level public barrel must not re-export the Orders read composition module because it creates eager module-loading cycles: ${boundary.publicSurface}`,
+      );
     }
   }
 
@@ -4712,11 +4716,13 @@ if (ordersBenefitsRuntimeReadBoundary) {
   if (existsSync(ordersModulePath)) {
     const source = readFileSync(ordersModulePath, 'utf8');
     if (
-      !source.includes("from '../benefits/public-api'") ||
+      !source.includes(
+        "from '../benefits/public-api/order-benefits-read.module'",
+      ) ||
       !source.includes('OrderBenefitsReadModule')
     ) {
       failures.push(
-        `OrdersModule must compose Benefits runtime reads through the Benefits public surface: ${boundary.ordersModule}`,
+        `OrdersModule must compose Benefits runtime reads through the dedicated Benefits public composition module: ${boundary.ordersModule}`,
       );
     }
   }

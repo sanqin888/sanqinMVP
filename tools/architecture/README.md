@@ -158,8 +158,11 @@ node tools/architecture/scan-architecture.mjs --report
 - Phase 5 Slice 4D reserves Orders runtime Benefits reads behind the stable-ID-only
   `ORDER_BENEFITS_READER`. Quote/coupon/tender/loyalty-only eligibility reads may not
   regain direct `LoyaltyAccount` persistence or concrete Loyalty tender conversion;
-  User/Coupon DB IDs stay inside the Benefits owner. The scanner intentionally still
-  permits the bounded concrete `LoyaltyService` / `MembershipService` preparation and
+  User/Coupon DB IDs stay inside the Benefits owner. The contract remains on the top-level
+  Benefits public barrel, while the Nest composition module is imported only from the
+  dedicated `benefits/public-api/order-benefits-read.module` subpath so the barrel cannot
+  eagerly recreate Auth/Loyalty/Promotions module-loading cycles. The scanner intentionally
+  still permits the bounded concrete `LoyaltyService` / `MembershipService` preparation and
   transaction/mutation seam while rejecting expansion beyond the two existing member
   resolution and coupon-validation call sites;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned

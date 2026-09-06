@@ -24,4 +24,3 @@ export {
   type OrderBenefitsReaderPort,
   type OrderCouponBenefit,
 } from './contracts/order-benefits-read.contract';
-export { OrderBenefitsReadModule } from './public-api/order-benefits-read.module';
