@@ -188,6 +188,7 @@ describe('OrdersService amendment characterization', () => {
   });
 
   it('reuses the canonical OrderItem snapshot builder for ADD items, including componentsJson', async () => {
+    const replacementProductStableId = 'c4234567890abcdefghijklmn';
     const currentOrder = {
       id: '8a3d4c0e-4750-4f6a-9138-000000000201',
       orderStableId: 'order_stable_amendment_add_1',
@@ -246,8 +247,8 @@ describe('OrdersService amendment characterization', () => {
     );
     const buildMany = jest.fn().mockResolvedValue([
       {
-        normalizedProductId: 'replacement_product',
-        productStableId: 'replacement_product',
+        normalizedProductId: replacementProductStableId,
+        productStableId: replacementProductStableId,
         qty: 1,
         displayName: 'Combo',
         nameEn: 'Combo',
@@ -295,7 +296,7 @@ describe('OrdersService amendment characterization', () => {
       items: [
         {
           action: OrderAmendmentItemAction.ADD,
-          productStableId: 'replacement_product',
+          productStableId: replacementProductStableId,
           qty: 1,
           unitPriceCents: 500,
           displayName: 'Combo',
@@ -311,7 +312,7 @@ describe('OrdersService amendment characterization', () => {
 
     expect(buildMany).toHaveBeenCalledWith([
       expect.objectContaining({
-        productStableId: 'replacement_product',
+        productStableId: replacementProductStableId,
         qty: 1,
         displayName: 'Combo',
         optionsSnapshot: [
@@ -325,7 +326,7 @@ describe('OrdersService amendment characterization', () => {
     expect(orderItemCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         orderId: currentOrder.id,
-        productStableId: 'replacement_product',
+        productStableId: replacementProductStableId,
         optionsJson: expect.any(Array) as unknown,
         componentsJson: expect.any(Array) as unknown,
       }) as unknown,

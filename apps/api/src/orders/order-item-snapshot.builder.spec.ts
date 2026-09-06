@@ -19,6 +19,32 @@ function menuItem(overrides: Record<string, unknown> = {}) {
 }
 
 describe('OrderItemSnapshotBuilder', () => {
+  it('keeps the same option stable id when selected in different component group paths', () => {
+    const builder = new OrderItemSnapshotBuilder({} as never) as unknown as {
+      collectOptionSelectionRefs: (
+        options?: Record<string, unknown>,
+      ) => Array<{ optionId: string; groupKey?: string; sequence: number }>;
+    };
+
+    expect(
+      builder.collectOptionSelectionRefs({
+        'root__combo__component-soup-a__group-spice': ['mild'],
+        'root__combo__component-soup-b__group-spice': ['mild'],
+      }),
+    ).toEqual([
+      {
+        optionId: 'mild',
+        groupKey: 'root__combo__component-soup-a__group-spice',
+        sequence: 0,
+      },
+      {
+        optionId: 'mild',
+        groupKey: 'root__combo__component-soup-b__group-spice',
+        sequence: 1,
+      },
+    ]);
+  });
+
   it('materializes fixed combo components into the canonical immutable snapshot', async () => {
     const parent = menuItem({
       fixedComponents: [
