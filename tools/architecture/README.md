@@ -194,6 +194,10 @@ node tools/architecture/scan-architecture.mjs --report
   delegates `order.paid.verified` payloads only; provider/auth/notification ports and dropoff
   extraction must not return to the processor. The use case stays on Orders-local persistence
   plus public Delivery/Auth/Notifications capabilities and remains internal to `OrdersModule`;
+- Phase 5 Slice 5D moves the read-only one-hour average preparation-time query into the internal
+  `OrderPrepTimeQueryUseCase`. The public `/orders/prep-time` route delegates to this use case;
+  `OrdersService` must not regain the query policy. Historical fallback `15` minutes and minimum
+  average `5` minutes remain unchanged, and the query stays on Orders-local persistence only;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import
