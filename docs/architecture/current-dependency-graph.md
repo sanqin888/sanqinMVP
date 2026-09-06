@@ -285,11 +285,12 @@ External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print *
 empty.
 
 The readiness inventory confirms Orders still reaches cross-owner persistence through Catalog `MenuItem`, Customer
-`User`/`UserAddress`, Benefits `LoyaltyAccount`, checkout/payment `CheckoutIntent`, provider
-`UberOrderItemModifier`, and the durable lifecycle's `PosPrintJob` existence probe. `OrdersService` also still
+`User`/`UserAddress`, Benefits `LoyaltyAccount`, checkout/payment `CheckoutIntent`, and provider
+`UberOrderItemModifier`. Slice 2 removes the durable lifecycle's former `PosPrintJob` existence probe and replaces
+it with an Orders-owned `order.initial_print_handoff` checkpoint after the Print handoff. `OrdersService` also still
 imports concrete `LoyaltyService`, `MembershipService`, `UberDirectService`, `LocationService`,
-`NotificationService` and `EmailService`; `FulfillmentProcessor` directly imports `UberDirectService`. These are
-recorded migration debts, not newly introduced edges.
+`NotificationService` and `EmailService`; `FulfillmentProcessor` directly imports `UberDirectService`. These remaining
+items are recorded migration debts, not newly introduced edges.
 
 Behavior coverage was locked before movement. Slice 0 added focused characterization for confirmed-payment
 finalization, `createAmendment()`, Uber Direct request/response mapping, the then-existing guarded `paid -> making`
@@ -297,14 +298,14 @@ same-process prep fast path, and exact sequential AUTO print deduplication behav
 status-write characterization but intentionally removes that prep-event side effect.
 
 The Slice 0 in-memory/durable audit found no deliberate fan-out into both initial-print mechanisms. After Slices
-1B-1E, the coexistence itself has now been removed: channel/provider acceptance records durable `order.accepted`,
-`OrderPreparationService` writes `making + durable order.prep_started` atomically, already-active orders do not append
-another durable prep fact, and the durable print claim requires no existing AUTO `PosPrintJob`. No private
-`OrderEventsBus` prep_started producer/consumer remains. Two hardening debts remain explicit: truly concurrent callers
-could race inside `PosGateway.sendPrintJob()` after the unique `(orderStableId, kind)` upsert but before the per-target
-socket emit is claimed, and Uber Direct's private `order.paid.verified` path can lose the local `externalDeliveryId`
-write after provider success. The first is the planned Print ownership/idempotency follow-on; the second remains a
-later Uber Direct durable-fulfillment slice.
+1B-1E, the coexistence itself was removed: channel/provider acceptance records durable `order.accepted`,
+`OrderPreparationService` writes `making + durable order.prep_started` atomically, and already-active orders do not append
+another durable prep fact. Slice 2 then closes the print-handoff hardening debt: Orders no longer reads AUTO `PosPrintJob`
+existence, Print owns AUTO/REPRINT/AMENDMENT identity and routing, per-target delivery is row-lock claimed before socket
+emit, ACK/timeout are terminal-state guarded, stale DELIVERED rows recover after restart, and the Windows agent suppresses
+repeated physical delivery by stable `jobId + target`. No private `OrderEventsBus` prep_started producer/consumer remains.
+The remaining explicit provider durability debt is Uber Direct's private `order.paid.verified` path, which can still lose
+the local `externalDeliveryId` write after provider success and remains a later Uber Direct durable-fulfillment slice.
 
 Detailed evidence and next-slice guidance are in
 `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
@@ -356,6 +357,16 @@ A staff `/advance` or direct `/status -> making` request arriving while an accep
 With Web, ordinary in-store, Terminal and Uber paid entry points all on durable preparation, the old private same-process `order.prep_started` first-print channel has no production caller. Slice 1E removes its emitter/listener API and Fulfillment memory-origin branch. `OrderEventsBus` remains only for `order.paid.verified`, which still drives the explicitly deferred Uber Direct provider dispatch path. Initial `AUTO` printing is now reachable only from durable `order.prep_started`; explicit `REPRINT:*` and `AMENDMENT:*` operations remain independent.
 
 This is same-context lifecycle contraction plus use of the already-public POS -> Orders preparation surface, so it adds no direct/public context edge and requires no baseline update. Direct-debt totals remain Payments/Clover **57**, External Channels **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty. The existing 500 ms lifecycle poll remains unchanged because the dedicated Uber worker cannot safely wake an API-process in-memory consumer; it continues to bridge/recover accepted immediate Uber orders until a later durable trigger design changes that boundary.
+
+### Phase 5 Slice 2 Print handoff / dispatch idempotency — 2026-09-06
+
+Slice 2 keeps the measured context graph unchanged while tightening the existing Orders -> POS/Print handoff. Orders/Fulfillment no longer chooses persistence `kind`; it emits only `INITIAL | REPRINT | AMENDMENT` intent through the existing public-surface listener. The POS/Print owner generates `AUTO`, fresh `REPRINT:<uuid>` and `AMENDMENT:<uuid>` identities and target routing. The lifecycle consumer no longer queries Print-owned `PosPrintJob`; successful INITIAL handoff is checkpointed with Orders-owned durable `order.initial_print_handoff`, so replay remains idempotent without a Commerce -> Print persistence read.
+
+`PosGateway` now claims each target under a database row lock before socket emission. Only `PENDING/FAILED` can become `DELIVERED`; concurrent callers see the committed claim and cannot emit the same delivery. ACK and timeout use the same row-lock discipline, `COMPLETED` is terminal, and reconnect recovery turns stale `DELIVERED` targets into retryable `FAILED/ACK_TIMEOUT`. The unchanged printer wire envelope is hardened on the Windows agent by persistent/in-flight `jobId + target` deduplication, with a bounded local completion file written by temp-file replacement.
+
+The POS amendment path is repaired in the same Print-ownership slice because it is an existing AMENDMENT handoff defect rather than a new cross-context capability. VOID/ADD/SWAP creates a kitchen difference ticket; combo components come from the immutable before/after OrderItem snapshots; labels use only the positive delta between before/after label plans; and amount or payment-method changes create a customer-only full-receipt REPRINT. Orders also centralizes normal-create and amendment-ADD option/component materialization in an internal `OrderItemSnapshotBuilder`; pricing/Daily Special/promotion stay in `calculateLineItems`, while amendment keeps its explicit unit price and does not invoke pricing policy.
+
+No new cross-context import or public SCC member is introduced, and no architecture allowance is relaxed. Direct-debt totals therefore remain Payments/Clover **57**, External Channels **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty. No Prisma schema/migration, package/lockfile, Web Clover, Uber wire/provider behavior or Benefits transaction semantics change.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

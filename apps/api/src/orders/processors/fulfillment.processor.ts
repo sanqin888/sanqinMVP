@@ -21,15 +21,16 @@ import {
 } from '../../deliveries/uber-direct.service';
 import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
+import type { OrderItemDto } from '../dto/order.dto';
 import { PrintPosPayloadService } from '../print-pos-payload.service';
 import {
   OrderLabelPlanService,
   type OrderLabelPlanDto,
 } from '../order-label-plan.service';
 import {
-  POS_PRINT_JOB_DISPATCH_REQUESTED,
-  type PosPrintJobDispatchRequest,
-  type PosPrintJobDispatchResult,
+  ORDER_PRINT_HANDOFF_REQUESTED,
+  type OrderPrintHandoffRequest,
+  type OrderPrintHandoffResult,
 } from '../pos-print-dispatch.contract';
 
 @Injectable()
@@ -124,8 +125,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     this.events.offOrderPaidVerified(this.onPaid);
   }
 
-  /** Durable prep_started materializer for the unique AUTO first-print path. */
-  async handleAcceptedLifecycle(payload: { orderId: string }): Promise<void> {
+  /** Durable prep_started handoff to the Print-owned unique initial job. */
+  async handleAcceptedLifecycle(
+    payload: { orderId: string },
+  ): Promise<OrderPrintHandoffResult | null> {
     this.logger.log({
       event: 'accepted_order_processing_started',
       orderId: payload.orderId,
@@ -142,7 +145,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
     if (!order) {
       this.logger.warn(`[Fulfillment] Order not found: ${payload.orderId}`);
-      return;
+      return null;
     }
 
     const storeId = order.storeId;
@@ -153,7 +156,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         orderStableId: order.orderStableId,
         reason: 'STORE_ID_MISSING',
       });
-      return;
+      return null;
     }
 
     let printPayload: PrintPosPayloadDto;
@@ -200,12 +203,12 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       label: labelPlan.labels.length > 0,
     };
     try {
-      const job = await this.dispatchPrintJob({
+      const job = await this.handoffPrint({
         orderId: order.id,
         orderStableId: order.orderStableId,
-        storeId,
-        kind: 'AUTO',
-        data: { ...printPayload, labelPlan, targets },
+        storeStableId: storeId,
+        purpose: 'INITIAL',
+        data: { ...printPayload, labelPlan },
       });
       this.logger.log({
         event: 'accepted_print_job_created',
@@ -214,6 +217,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         jobId: job.jobId,
         targets,
       });
+      return job;
     } catch (error) {
       this.logger.error({
         event: 'accepted_print_job_failed',
@@ -282,15 +286,15 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    await this.dispatchPrintJob({
+    await this.handoffPrint({
       orderId: order.id,
       orderStableId: payload.orderStableId,
-      storeId,
-      kind: `REPRINT:${Date.now()}`,
+      storeStableId: storeId,
+      purpose: 'REPRINT',
+      requestedTargets: targets,
       data: {
         ...printPayload,
         ...(labelPlan ? { labelPlan } : {}),
-        ...(targets ? { targets } : {}),
         ...(typeof payload.cashReceivedCents === 'number'
           ? { cashReceivedCents: payload.cashReceivedCents }
           : {}),
@@ -307,6 +311,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     locale?: 'zh' | 'en';
     reason: string;
     operatorName: string;
+    beforeLabelPlan?: OrderLabelPlanDto | null;
+    beforeOrderItems?: OrderItemDto[];
+    afterOrderItems?: OrderItemDto[];
+    printCustomerReceipt?: boolean;
     items: Array<{
       action: OrderAmendmentItemAction;
       productStableId: string;
@@ -348,79 +356,174 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
       const reason = payload.reason.trim();
       const operatorName = payload.operatorName.trim();
-      const headerNote =
-        locale === 'zh'
-          ? `原因: ${reason} / 操作人: ${operatorName}`
-          : `Reason: ${reason} / Operator: ${operatorName}`;
-      const headerItem = {
-        productStableId: '__order_amendment__',
-        nameZh: '****** 改单 ******',
-        nameEn: '****** ORDER CHANGE ******',
-        displayName: '****** 改单 / ORDER CHANGE ******',
-        quantity: 1,
-        lineTotalCents: 0,
-        specialInstructions: headerNote,
-        options: null,
-        components: [],
-      };
-      const changedItems = payload.items.map((item) => {
-        const isVoid = item.action === OrderAmendmentItemAction.VOID;
-        const zhPrefix = isVoid ? '[取消]' : '[新增]';
-        const enPrefix = isVoid ? '[VOID]' : '[ADD]';
-        const baseZh =
-          item.nameZh ??
-          item.displayName ??
-          item.nameEn ??
-          item.productStableId;
-        const baseEn =
-          item.nameEn ??
-          item.displayName ??
-          item.nameZh ??
-          item.productStableId;
-        const quantity = Math.max(1, Math.round(item.qty));
-        const unitPriceCents = Math.max(
-          0,
-          Math.round(item.unitPriceCents ?? 0),
-        );
-        return {
-          productStableId: item.productStableId,
-          nameZh: `${zhPrefix} ${baseZh}`,
-          nameEn: `${enPrefix} ${baseEn}`,
-          displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
-          quantity,
-          lineTotalCents: unitPriceCents * quantity,
-          specialInstructions: null,
-          options: Array.isArray(item.optionsJson)
-            ? (item.optionsJson as OrderItemOptionsSnapshot)
-            : null,
+
+      if (payload.items.length > 0) {
+        const headerNote =
+          locale === 'zh'
+            ? `原因: ${reason} / 操作人: ${operatorName}`
+            : `Reason: ${reason} / Operator: ${operatorName}`;
+        const headerItem = {
+          productStableId: '__order_amendment__',
+          nameZh: '****** 改单 ******',
+          nameEn: '****** ORDER CHANGE ******',
+          displayName: '****** 改单 / ORDER CHANGE ******',
+          quantity: 1,
+          lineTotalCents: 0,
+          specialInstructions: headerNote,
+          options: null,
           components: [],
         };
-      });
-      const amendmentPayload: PrintPosPayloadDto = {
-        ...basePayload,
-        snapshot: {
-          ...basePayload.snapshot,
-          items: [headerItem, ...changedItems],
-        },
-      };
+        const changedItems = payload.items.map((item) => {
+          const isVoid = item.action === OrderAmendmentItemAction.VOID;
+          const zhPrefix = isVoid ? '[取消]' : '[新增]';
+          const enPrefix = isVoid ? '[VOID]' : '[ADD]';
+          const baseZh =
+            item.nameZh ??
+            item.displayName ??
+            item.nameEn ??
+            item.productStableId;
+          const baseEn =
+            item.nameEn ??
+            item.displayName ??
+            item.nameZh ??
+            item.productStableId;
+          const quantity = Math.max(1, Math.round(item.qty));
+          const unitPriceCents = Math.max(
+            0,
+            Math.round(item.unitPriceCents ?? 0),
+          );
+          const sourceItems = isVoid
+            ? (payload.beforeOrderItems ?? [])
+            : (payload.afterOrderItems ?? []);
+          const amendmentOptionsKey = JSON.stringify(item.optionsJson ?? null);
+          const sourceItem =
+            sourceItems.find(
+              (candidate) =>
+                candidate.productStableId === item.productStableId &&
+                JSON.stringify(candidate.optionsJson ?? null) ===
+                  amendmentOptionsKey,
+            ) ??
+            sourceItems.find(
+              (candidate) =>
+                candidate.productStableId === item.productStableId,
+            );
+          const sourceQuantity = Math.max(1, sourceItem?.qty ?? quantity);
+          const componentScale = quantity / sourceQuantity;
+          const components = (sourceItem?.components ?? []).map((component) => ({
+            ...component,
+            quantity: Math.max(
+              1,
+              Math.round(component.quantity * componentScale),
+            ),
+          }));
+          return {
+            productStableId: item.productStableId,
+            nameZh: `${zhPrefix} ${baseZh}`,
+            nameEn: `${enPrefix} ${baseEn}`,
+            displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
+            quantity,
+            lineTotalCents: unitPriceCents * quantity,
+            specialInstructions: null,
+            options:
+              sourceItem?.displayOptions ??
+              (Array.isArray(item.optionsJson)
+                ? (item.optionsJson as OrderItemOptionsSnapshot)
+                : null),
+            components,
+          };
+        });
 
-      const job = await this.dispatchPrintJob({
-        orderId: order.id,
-        orderStableId: payload.orderStableId,
-        storeId,
-        kind: `AMENDMENT:${Date.now()}`,
-        data: {
-          ...amendmentPayload,
-          targets: { customer: false, kitchen: true },
-        },
-      });
-      this.logger.log({
-        event: 'amendment_print_job_created',
-        orderStableId: payload.orderStableId,
-        storeId,
-        jobId: job.jobId,
-        itemCount: payload.items.length,
-      });
+        let labelPlan: OrderLabelPlanDto = {
+          labelWidthMm: 70,
+          labelHeightMm: 30,
+          labels: [],
+        };
+        if (payload.beforeLabelPlan) {
+          try {
+            const afterLabelPlan = await this.orderLabelPlanService.getByStableId(
+              payload.orderStableId,
+            );
+            labelPlan = this.diffLabelPlans(
+              payload.beforeLabelPlan,
+              afterLabelPlan,
+            );
+          } catch (error) {
+            this.logger.error({
+              event: 'amendment_label_plan_after_failed',
+              orderStableId: payload.orderStableId,
+              storeId,
+              errorType: error instanceof Error ? error.name : 'UnknownError',
+            });
+          }
+        }
+
+        const amendmentPayload: PrintPosPayloadDto & {
+          labelPlan: OrderLabelPlanDto;
+        } = {
+          ...basePayload,
+          snapshot: {
+            ...basePayload.snapshot,
+            items: [headerItem, ...changedItems],
+          },
+          labelPlan,
+        };
+
+        try {
+          const job = await this.handoffPrint({
+            orderId: order.id,
+            orderStableId: payload.orderStableId,
+            storeStableId: storeId,
+            purpose: 'AMENDMENT',
+            data: amendmentPayload,
+          });
+          this.logger.log({
+            event: 'amendment_print_job_created',
+            orderStableId: payload.orderStableId,
+            storeId,
+            jobId: job.jobId,
+            itemCount: payload.items.length,
+            labelCount: labelPlan.labels.reduce(
+              (sum, label) => sum + label.copies,
+              0,
+            ),
+          });
+        } catch (error) {
+          this.logger.error({
+            event: 'amendment_kitchen_print_job_failed',
+            orderStableId: payload.orderStableId,
+            errorType: error instanceof Error ? error.name : 'UnknownError',
+          });
+        }
+      }
+
+      if (payload.printCustomerReceipt) {
+        try {
+          const receiptJob = await this.handoffPrint({
+            orderId: order.id,
+            orderStableId: payload.orderStableId,
+            storeStableId: storeId,
+            purpose: 'REPRINT',
+            requestedTargets: {
+              customer: true,
+              kitchen: false,
+              label: false,
+            },
+            data: basePayload,
+          });
+          this.logger.log({
+            event: 'amendment_customer_receipt_job_created',
+            orderStableId: payload.orderStableId,
+            storeId,
+            jobId: receiptJob.jobId,
+          });
+        } catch (error) {
+          this.logger.error({
+            event: 'amendment_customer_receipt_job_failed',
+            orderStableId: payload.orderStableId,
+            errorType: error instanceof Error ? error.name : 'UnknownError',
+          });
+        }
+      }
     } catch (error) {
       // The amendment is already committed. Do not make staff repeat the
       // financial/item operation merely because its kitchen copy failed.
@@ -432,15 +535,48 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async dispatchPrintJob(
-    request: PosPrintJobDispatchRequest,
-  ): Promise<PosPrintJobDispatchResult> {
+  private diffLabelPlans(
+    before: OrderLabelPlanDto,
+    after: OrderLabelPlanDto,
+  ): OrderLabelPlanDto {
+    const identity = (label: OrderLabelPlanDto['labels'][number]): string =>
+      JSON.stringify({
+        productStableId: label.productStableId,
+        pairCode: label.pairCode,
+        component: label.component,
+        packagingTypeStableId: label.packagingTypeStableId,
+        options: label.options.map((option) => option.stableId),
+        specialInstructions: label.specialInstructions,
+      });
+    const beforeCopies = new Map<string, number>();
+    for (const label of before.labels) {
+      const key = identity(label);
+      beforeCopies.set(key, (beforeCopies.get(key) ?? 0) + label.copies);
+    }
+    const labels = after.labels.flatMap((label) => {
+      const key = identity(label);
+      const deltaCopies = Math.max(
+        0,
+        label.copies - (beforeCopies.get(key) ?? 0),
+      );
+      return deltaCopies > 0 ? [{ ...label, copies: deltaCopies }] : [];
+    });
+    return {
+      labelWidthMm: 70,
+      labelHeightMm: 30,
+      labels,
+    };
+  }
+
+  private async handoffPrint(
+    request: OrderPrintHandoffRequest,
+  ): Promise<OrderPrintHandoffResult> {
     const results = await this.eventEmitter.emitAsync(
-      POS_PRINT_JOB_DISPATCH_REQUESTED,
+      ORDER_PRINT_HANDOFF_REQUESTED,
       request,
     );
     if (results.length !== 1) {
-      throw new Error(`POS_PRINT_JOB_DISPATCH_HANDLER_COUNT:${results.length}`);
+      throw new Error(`ORDER_PRINT_HANDOFF_HANDLER_COUNT:${results.length}`);
     }
     const result = results[0] as unknown;
     if (
@@ -448,9 +584,9 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       typeof result !== 'object' ||
       typeof (result as { jobId?: unknown }).jobId !== 'string'
     ) {
-      throw new Error('POS_PRINT_JOB_DISPATCH_INVALID_RESULT');
+      throw new Error('ORDER_PRINT_HANDOFF_INVALID_RESULT');
     }
-    return result as PosPrintJobDispatchResult;
+    return result as OrderPrintHandoffResult;
   }
 
   private extractDropoff(

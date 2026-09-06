@@ -7,6 +7,7 @@ import type {
 import type { OrderDto } from './dto/order.dto';
 import type { OrderFulfillmentTimingDto } from './dto/order-fulfillment-timing.dto';
 import type { ScheduledOrderSummaryDto } from './dto/scheduled-order-summary.dto';
+import type { OrderLabelPlanDto } from './order-label-plan.service';
 
 export const POS_ORDER_OPERATIONS = Symbol('POS_ORDER_OPERATIONS');
 
@@ -125,6 +126,10 @@ export interface PosOrderOperationsPort {
     storeStableId: string,
   ): Promise<OrderDto>;
   getExternalPaymentCents(orderStableId: string): Promise<number | null>;
+  getLabelPlanForStore(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<OrderLabelPlanDto>;
   createAmendment(input: PosOrderAmendmentInput): Promise<OrderDto>;
   createFullRefund(
     input: PosOrderFullRefundInput,

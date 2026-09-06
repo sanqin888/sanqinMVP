@@ -3,6 +3,7 @@ import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrdersService } from './orders.service';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
+import { OrderLabelPlanService } from './order-label-plan.service';
 import type {
   PosOrderAmendmentInput,
   PosOrderBoardQuery,
@@ -18,6 +19,7 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
     private readonly scheduling: OrderSchedulingQueryService,
     private readonly preparation: OrderPreparationService,
     private readonly lifecycleOutbox: OrderLifecycleOutboxProcessor,
+    private readonly labelPlan: OrderLabelPlanService,
   ) {}
 
   async createForStore(...args: Parameters<OrdersService['createForStore']>) {
@@ -102,6 +104,11 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
 
   getExternalPaymentCents(orderStableId: string) {
     return this.orders.getExternalPaymentCents(orderStableId);
+  }
+
+  async getLabelPlanForStore(orderStableId: string, storeStableId: string) {
+    await this.orders.getByStableIdForStore(orderStableId, storeStableId);
+    return this.labelPlan.getByStableId(orderStableId);
   }
 
   createAmendment(input: PosOrderAmendmentInput) {

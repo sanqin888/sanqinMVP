@@ -8,6 +8,7 @@ import {
   Get,
   HttpCode,
   Inject,
+  Logger,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -258,6 +259,8 @@ class CreatePosAmendmentDto {
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('ADMIN', 'STAFF')
 export class PosOrdersController {
+  private readonly logger = new Logger(PosOrdersController.name);
+
   constructor(
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orders: PosOrderOperationsPort,
@@ -657,9 +660,38 @@ export class PosOrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CreatePosAmendmentDto,
   ): Promise<PosOrderDto> {
+    const storeStableId = this.requireStoreStableId(req);
     const items = body.items ?? [];
+    const current = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
+    const hasItemChanges = items.some(
+      (item) =>
+        item.action === OrderAmendmentItemAction.VOID ||
+        item.action === OrderAmendmentItemAction.ADD,
+    );
+    let beforeLabelPlan:
+      | Awaited<ReturnType<PosOrderOperationsPort['getLabelPlanForStore']>>
+      | null = null;
+    if (hasItemChanges) {
+      try {
+        beforeLabelPlan = await this.orders.getLabelPlanForStore(
+          orderStableId,
+          storeStableId,
+        );
+      } catch (error) {
+        this.logger.error({
+          event: 'amendment_label_plan_before_failed',
+          orderStableId,
+          storeId: storeStableId,
+          errorType: error instanceof Error ? error.name : 'UnknownError',
+        });
+      }
+    }
+
     const updated = await this.posOrders.createAmendment(
-      this.requireStoreStableId(req),
+      storeStableId,
       orderStableId,
       {
         type: body.type,
@@ -672,16 +704,23 @@ export class PosOrdersController {
       },
     );
 
-    if (
-      body.type === OrderAmendmentType.VOID_ITEM ||
-      body.type === OrderAmendmentType.SWAP_ITEM
-    ) {
-      this.eventEmitter.emit('order.amendment.print', {
+    const paymentMethodChanged = current.paymentMethod !== updated.paymentMethod;
+    const amountChanged =
+      current.totalCents !== updated.totalCents ||
+      current.paymentTotalCents !== updated.paymentTotalCents ||
+      (body.refundGrossCents ?? 0) > 0 ||
+      (body.additionalChargeCents ?? 0) > 0;
+    if (hasItemChanges || paymentMethodChanged || amountChanged) {
+      await this.eventEmitter.emitAsync('order.amendment.print', {
         orderStableId,
         locale: body.locale ?? 'zh',
         reason: body.reason,
         operatorName: body.operatorName,
         items,
+        beforeOrderItems: current.items ?? [],
+        afterOrderItems: updated.items ?? [],
+        beforeLabelPlan,
+        printCustomerReceipt: paymentMethodChanged || amountChanged,
       });
     }
 

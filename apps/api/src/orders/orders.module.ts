@@ -22,6 +22,7 @@ import { ORDER_INGESTION_PROVIDER } from './order-ingestion.provider';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrderLabelPlanService } from './order-label-plan.service';
+import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import { POS_ORDER_READ } from './pos-order-read.contract';
 import { PosOrderReadService } from './pos-order-read.service';
 import { POS_ORDER_OPERATIONS } from './pos-order-operations.contract';
@@ -61,6 +62,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     OrderSchedulingQueryService,
     PrintPosPayloadService,
     OrderLabelPlanService,
+    OrderItemSnapshotBuilder,
     NotificationProcessor,
     FulfillmentProcessor,
     OrderLifecycleOutboxProcessor,

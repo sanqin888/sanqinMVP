@@ -30,7 +30,7 @@ describe('Orders ↔ POS transport boundary', () => {
     expect(module).not.toMatch(/from ['"]\.\.\/pos\//);
     expect(fulfillment).not.toContain('PosGateway');
     expect(fulfillment).not.toContain("from '../../pos/pos.gateway'");
-    expect(fulfillment).toContain('POS_PRINT_JOB_DISPATCH_REQUESTED');
+    expect(fulfillment).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
   });
 
   it('makes the canonical POS order transport use Orders public API', () => {
@@ -82,13 +82,40 @@ describe('Orders ↔ POS transport boundary', () => {
     }
   });
 
-  it('keeps POS print-job dispatch implementation on the POS side', () => {
+  it('keeps amendment kitchen/label and customer reprint effects explicit after mutation', () => {
+    const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
+    const fulfillment = read(
+      resolve(ORDERS_ROOT, 'processors', 'fulfillment.processor.ts'),
+    );
+    const operationsContract = read(
+      resolve(ORDERS_ROOT, 'pos-order-operations.contract.ts'),
+    );
+
+    expect(operationsContract).toContain('getLabelPlanForStore');
+    expect(canonical).toContain('beforeLabelPlan');
+    expect(canonical).toContain("emitAsync('order.amendment.print'");
+    expect(canonical).toContain('printCustomerReceipt');
+    expect(fulfillment).toContain('diffLabelPlans');
+    expect(fulfillment).toContain("purpose: 'AMENDMENT'");
+    expect(fulfillment).toContain("purpose: 'REPRINT'");
+    expect(fulfillment).toContain('customer: true');
+    expect(fulfillment).toContain('kitchen: false');
+  });
+
+  it('keeps Print job identity and dispatch implementation on the POS/Print side', () => {
     const listener = read(resolve(POS_ROOT, 'pos-print-dispatch.listener.ts'));
+    const gateway = read(resolve(POS_ROOT, 'pos.gateway.ts'));
     const publicApi = read(resolve(ORDERS_ROOT, 'public-api.ts'));
+    const handoffContract = read(
+      resolve(ORDERS_ROOT, 'pos-print-dispatch.contract.ts'),
+    );
 
     expect(listener).toContain("from '../orders/public-api'");
-    expect(listener).toContain('POS_PRINT_JOB_DISPATCH_REQUESTED');
-    expect(listener).toContain('this.posGateway.sendPrintJob(request)');
-    expect(publicApi).toContain('POS_PRINT_JOB_DISPATCH_REQUESTED');
+    expect(listener).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
+    expect(listener).toContain('this.posGateway.enqueuePrintHandoff(request)');
+    expect(publicApi).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
+    expect(handoffContract).toContain("'INITIAL' | 'REPRINT' | 'AMENDMENT'");
+    expect(handoffContract).not.toContain('kind: string');
+    expect(gateway).toContain("if (purpose === 'INITIAL') return 'AUTO'");
   });
 });
