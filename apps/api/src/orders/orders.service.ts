@@ -1260,7 +1260,9 @@ export class OrdersService {
     }
 
     const member = order.userStableId
-      ? await this.customerOrderContext.getOrderCustomerContext(order.userStableId)
+      ? await this.customerOrderContext.getOrderCustomerContext(
+          order.userStableId,
+        )
       : null;
     const locale = await this.resolveOrderReadyLocale(
       order,

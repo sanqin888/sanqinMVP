@@ -906,7 +906,9 @@ describe('OrdersService', () => {
       locale: 'en',
       userStableId: 'user-stable-1',
     });
-    expect(customerOrderContext.getOrderCustomerContext).toHaveBeenCalledTimes(1);
+    expect(
+      customerOrderContext.getOrderCustomerContext,
+    ).toHaveBeenCalledTimes(1);
     expect(customerOrderContext.getOrderCustomerContext).toHaveBeenCalledWith(
       'user-stable-1',
     );
