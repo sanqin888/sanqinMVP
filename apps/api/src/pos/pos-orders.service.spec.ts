@@ -19,6 +19,7 @@ describe('PosOrdersService', () => {
       getByStableIdForStore: jest.fn().mockResolvedValue(current),
       getExternalPaymentCents: jest.fn().mockResolvedValue(null),
       createFullRefund: jest.fn(),
+      acceptWebOrder: jest.fn().mockResolvedValue(undefined),
       activateImmediatePreparation: jest.fn().mockResolvedValue(undefined),
       advanceForStore: jest
         .fn()
@@ -89,6 +90,25 @@ describe('PosOrdersService', () => {
       '4750_Yonge_Street',
       { autoAcceptOnlineOrders: false },
     );
+  });
+
+  it('Web paid 只通过 durable acceptance 推进，不再使用通用 making 快路', async () => {
+    const paid = order({ status: 'paid', channel: 'web' });
+    const making = order({ status: 'making', channel: 'web' });
+    const { service, orders } = setup(paid);
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce(paid)
+      .mockResolvedValueOnce(making);
+
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(making);
+
+    expect(orders.acceptWebOrder).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
   });
 
   it('in_store paid 只通过 durable preparation 推进到 making', async () => {

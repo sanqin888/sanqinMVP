@@ -1,10 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
+import {
+  Channel,
+  OrderFulfillmentTiming,
+  OrderStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   ORDER_PREP_STARTED_LIFECYCLE_EVENT,
+  orderAcceptedIdempotencyKey,
   orderPrepStartedIdempotencyKey,
 } from './order-lifecycle';
 
@@ -32,6 +38,58 @@ export class OrderPreparationService {
   private readonly logger = new Logger(OrderPreparationService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Records the store's acceptance decision for a paid Web order. Preparation
+   * remains a separate idempotent durable step: immediate callers may materialize
+   * it eagerly, while the lifecycle/scheduled scanners retain recovery ownership.
+   */
+  async acceptWebOrderByStableId(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<OrderFulfillmentTiming | null> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<LockedOrder[]>`
+          SELECT id::text AS id,
+            "orderStableId",
+            "clientRequestId",
+            channel::text AS channel,
+            status,
+            "fulfillmentTiming",
+            "scheduledReadyAt",
+            "prepStartAt",
+            "scheduleActivatedAt"
+          FROM "Order"
+          WHERE "orderStableId" = ${orderStableId}
+            AND "storeId" = ${storeStableId.trim()}
+          FOR UPDATE
+        `;
+        const order = rows[0];
+        if (!order) return null;
+        if (
+          order.channel !== Channel.web ||
+          order.status !== OrderStatus.paid
+        ) {
+          return null;
+        }
+
+        await tx.opsEvent.createMany({
+          data: {
+            idempotencyKey: orderAcceptedIdempotencyKey(order.orderStableId),
+            eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
+            source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+            payload: { orderStableId: order.orderStableId },
+          },
+          skipDuplicates: true,
+        });
+        return order.fulfillmentTiming;
+      });
+    } catch (error) {
+      this.logFailure(orderStableId, error);
+      throw error;
+    }
+  }
 
   /** Materializes an accepted immediate order into the local making lifecycle. */
   async activateAcceptedImmediateOrder(

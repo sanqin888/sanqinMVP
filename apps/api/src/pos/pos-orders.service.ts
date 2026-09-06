@@ -163,6 +163,13 @@ export class PosOrdersService {
       }
     }
 
+    if (order.channel === 'web' && order.status === 'paid') {
+      await this.orders.acceptWebOrder(orderStableId, storeStableId);
+      return this.advanceResult(
+        await this.orders.getByStableIdForStore(orderStableId, storeStableId),
+      );
+    }
+
     if (order.channel === 'in_store' && order.status === 'paid') {
       await this.orders.activateImmediatePreparation(
         orderStableId,

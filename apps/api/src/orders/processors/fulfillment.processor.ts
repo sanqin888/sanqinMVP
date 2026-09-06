@@ -142,9 +142,9 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Shared prep-started print materializer. In-store initial printing is valid
-   * only from the durable lifecycle; a same-process status event must not create
-   * a second initial-print path.
+   * Shared prep-started print materializer. Web and in-store initial printing are
+   * valid only from the durable lifecycle; a same-process status event must not
+   * create a second initial-print path for either local channel.
    */
   async handleAcceptedLifecycle(payload: {
     orderId: string;
@@ -170,9 +170,12 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    if (order.channel === Channel.in_store && payload.origin !== 'durable') {
+    if (
+      (order.channel === Channel.in_store || order.channel === Channel.web) &&
+      payload.origin !== 'durable'
+    ) {
       this.logger.log(
-        `[Fulfillment] Skip non-durable auto print for in_store order: ${payload.orderId}`,
+        `[Fulfillment] Skip non-durable auto print for ${order.channel} order: ${payload.orderId}`,
       );
       return;
     }

@@ -176,11 +176,14 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     };
   }
 
-  it('web 订单接单后创建 AUTO 任务并同时请求 customer 和 kitchen', async () => {
-    const { runAccepted, sendPrintJob, getByStableId } =
+  it('durable Web prep_started 创建 AUTO 任务并同时请求 customer 和 kitchen', async () => {
+    const { processor, sendPrintJob, getByStableId } =
       setupAccepted('store-4750');
 
-    await runAccepted();
+    await processor.handleAcceptedLifecycle({
+      orderId: 'web-order-1',
+      origin: 'durable',
+    });
 
     expect(getByStableId).toHaveBeenCalledWith('stable-web-1', 'zh');
     expect(sendPrintJob).toHaveBeenCalledWith({
@@ -198,6 +201,14 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
         targets: { customer: true, kitchen: true, label: false },
       },
     });
+  });
+
+  it('same-process memory prep 跳过 Web，避免保留第二条首次打印链', async () => {
+    const { runAccepted, sendPrintJob } = setupAccepted('store-4750', 'web');
+
+    await runAccepted();
+
+    expect(sendPrintJob).not.toHaveBeenCalled();
   });
 
   it('durable POS prep_started 为 in_store 订单创建唯一 AUTO 首次打印', async () => {
@@ -236,9 +247,12 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     const errorSpy = jest
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
-    const { runAccepted, sendPrintJob } = setupAccepted(null);
+    const { processor, sendPrintJob } = setupAccepted(null);
 
-    await runAccepted();
+    await processor.handleAcceptedLifecycle({
+      orderId: 'web-order-1',
+      origin: 'durable',
+    });
 
     expect(errorSpy).toHaveBeenCalledWith(
       expect.objectContaining({

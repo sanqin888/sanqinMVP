@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@db7a1de9` (Slice 1A merge)  
-Current status: **SLICE 1B SOURCE COMPLETE / LOCAL REVIEW PENDING — POS ORDINARY CHECKOUT CUT OVER TO DURABLE ACCEPTED/PREP_STARTED/AUTO; PRODUCTION VERIFICATION PENDING**
+Current implementation base: `origin/dev@e4a783a5` (Slice 1B merge)  
+Current status: **SLICE 1C SOURCE COMPLETE / LOCAL REVIEW PENDING — WEB ACCEPTANCE/PREP/AUTO CUT OVER TO DURABLE LIFECYCLE; SLICES 1B/1C PRODUCTION VERIFICATION PENDING**
 
 ## Goal
 
@@ -208,7 +208,7 @@ Focused characterization locks server-derived change, including a non-five-cent 
 
 ### Slice 1B — POS ordinary checkout durable lifecycle cutover
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1b-pos-durable-lifecycle`.
+Status: **MERGED / CI GREEN / PRODUCTION UNVERIFIED** — PR #2195, final head `c8ed5579`, squash merge `e4a783a5`; PR CI #5200 passed.
 
 Migration classification: **Class C controlled critical cutover** for the store-facing POS fulfillment/printing path. The user explicitly authorized a maintenance-window cutover without preserving the old PWA first-print/first-advance sequence. No Prisma schema/migration, dependency, public route name, provider protocol or architecture allowance is changed.
 
@@ -243,7 +243,9 @@ Focused regression coverage locks:
 
 No active compatibility entry is added: the user explicitly chose not to support old cached POS payment bundles after cutover. Operational rollout is therefore scoped to a non-business-hours maintenance window. Before the first test order, the POS page/PWA must be closed/reopened or otherwise confirmed to have loaded the new bundle. If a problem is discovered **before** any new canonical POS order is created, the prior deployment may be restored. After a new durable POS order has been created, prefer an immediate forward fix rather than reverting lifecycle semantics, because historical accepted/prep facts must not be rewritten or treated as failed.
 
-Production verification required before Slice 1C:
+Slice 1B production verification remains required before it can be marked VERIFIED. The original sequencing gate required that verification before Slice 1C; on 2026-09-05 the user explicitly authorized proceeding with Slice 1C without running the 1B production checks first. This advances source work only: Slice 1C must not be used as evidence that Slice 1B was verified, and both slices remain part of the next deployment/active-test batch.
+
+Outstanding Slice 1B checks remain:
 
 1. cash pickup/dine-in order: one Order, automatic transition to `making`, exactly one initial customer/kitchen print, labels only when the label plan requires them, and correct persisted cash received/change;
 2. Store Balance + cash and points/discount combinations: exact charged/benefit amounts unchanged and one AUTO first print;
@@ -254,4 +256,38 @@ Production verification required before Slice 1C:
 
 Slice 1B does not change Web Clover Ecommerce, POS Clover Terminal finalization, Uber wire/order-action behavior, refunds, Benefits COMMIT semantics, pricing/promotion calculation or the known Print socket-concurrency hardening debt.
 
-Planned follow-on order after 1B is production verified: **1C Web/local durable lifecycle -> 1D POS Clover Terminal durable lifecycle -> 1E Uber convergence verification -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout**.
+### Slice 1C — Web/local durable lifecycle convergence
+
+Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1c-web-durable-lifecycle`.
+
+Migration classification: **Class C controlled critical cutover** for the Web order acceptance/preparation/initial-print path. It does not change Clover charge/session execution, amount/currency/payment-ID validation, checkout-intent consumption, surcharge calculation, refund behavior, or the fact that Web payment success itself only creates a `paid` Order. The existing store-facing acceptance policy remains authoritative: with auto-accept enabled, `StoreBoardWidget` detects a new Web `paid` order and invokes the canonical POS `/advance`; with auto-accept disabled, staff invoke that same action manually.
+
+Slice 1C moves what happens **after that acceptance decision**:
+
+```text
+Web payment success
+  -> Order(status=paid)                 # unchanged; no accepted fact yet
+  -> store auto/manual acceptance via /pos/orders/:id/advance
+  -> store-scoped durable order.accepted
+  -> IMMEDIATE: eagerly invoke the same OrderPreparationService materializer
+       (accepted-event 500 ms outbox scan remains crash/restart recovery)
+  -> SCHEDULED: remain paid/accepted until existing prepStartAt scheduler activates
+  -> making + durable order.prep_started
+  -> OrderLifecycleOutboxProcessor (eager wake for AUTO; 500 ms recovery)
+  -> FulfillmentProcessor(origin=durable)
+  -> AUTO PrintJob
+```
+
+`OrderPreparationService.acceptWebOrderByStableId()` locks the Order by `orderStableId + storeStableId`, accepts only `channel=web + status=paid`, appends `order.accepted:<orderStableId>` with `skipDuplicates`, and returns the locked fulfillment timing. After that acceptance transaction commits, IMMEDIATE Web acceptance synchronously invokes the same store-scoped `OrderPreparationService` materializer used by durable replay; its own transaction verifies the accepted fact and writes `making + order.prep_started`. The existing accepted-event outbox scan remains the crash/restart recovery path if the process stops after acceptance commit but before eager preparation. Once prep_started exists, `requestDrain()` eagerly runs the durable AUTO materializer while the 500 ms poll remains print recovery. For SCHEDULED Web orders no eager preparation/print drain runs; `ScheduledOrderProcessor` continues to own the `prepStartAt` time gate before writing `making + prep_started`.
+
+`PosOrderOperationsService` exposes only the narrow `acceptWebOrder()` capability to the POS transport. `PosOrdersService.advance()` routes Web `paid` through it instead of `OrdersService.advanceForStore()`. The retained generic `/pos/orders/:id/status` transport is also guarded: a Web `paid -> making` request is redirected to the same durable acceptance path, and an in-store `paid -> making` request remains redirected to Slice 1B durable preparation. Later state changes continue to use the existing status/advance behavior.
+
+Fulfillment now refuses memory-origin AUTO printing for both `web` and `in_store`; only durable prep may create their initial AUTO job. The private `OrderEventsBus` prep channel is intentionally not deleted yet because provider/legacy same-process transitions are outside Slice 1C, and `order.paid.verified` remains required by the later Uber Direct durability slice. This slice therefore contracts Web/local use of the memory fast path without prematurely changing Uber/provider behavior.
+
+Focused regression coverage locks durable Web acceptance without direct status mutation, scheduled Web acceptance without early preparation, Web `/advance` and `/status -> making` routing through durable acceptance, reuse of the same idempotent preparation materializer with accepted-event recovery for IMMEDIATE orders, durable Web AUTO printing, and memory-origin Web print suppression. Existing Orders characterization continues to prove that Web Order creation/payment completion itself does **not** append `order.accepted`.
+
+No Prisma schema/migration, dependency manifest, external route, Web Clover provider wire behavior, Uber runtime behavior, context graph/SCC allowance, PrintJob kind, printer protocol, refund logic, pricing/promotion calculation or Benefits COMMIT transaction changes in Slice 1C.
+
+Production verification for the combined 1B/1C deployment must additionally cover: Web card checkout and zero-external/benefit checkout still produce one paid Order; auto-accept ON moves an IMMEDIATE Web order to `making` and creates exactly one AUTO print; auto-accept OFF leaves it `paid` until staff accepts; a SCHEDULED Web order records acceptance but does not enter `making` or print before `prepStartAt`; explicit reprint and later `making -> ready` remain unchanged. If Web card scenarios are exercised, preserve the existing production Clover charge/session/finalization evidence and inspect only sanitized IDs/statuses.
+
+Planned follow-on order after Slice 1C review/CI is: **1D POS Clover Terminal durable lifecycle -> 1E Uber convergence verification -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout**.
