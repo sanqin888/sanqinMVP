@@ -35,15 +35,18 @@ describe('OrderInvoiceUseCase', () => {
     const printPayloadReader = {
       getByStableId: jest.fn().mockResolvedValue(createPrintPayload()),
     };
-    const orderInvoiceDelivery = {
-      sendOrderInvoice: jest.fn().mockResolvedValue({
+    const sendOrderInvoice = jest
+      .fn<OrderInvoiceDeliveryPort['sendOrderInvoice']>()
+      .mockResolvedValue({
         ok: true,
         sendId: 'invoice-1',
-      }),
+      });
+    const orderInvoiceDelivery: OrderInvoiceDeliveryPort = {
+      sendOrderInvoice,
     };
     const useCase = new OrderInvoiceUseCase(
       printPayloadReader as OrderPrintPayloadReaderPort,
-      orderInvoiceDelivery as OrderInvoiceDeliveryPort,
+      orderInvoiceDelivery,
     );
 
     await expect(
@@ -58,11 +61,8 @@ describe('OrderInvoiceUseCase', () => {
       'cordinvoice001',
       'en',
     );
-    expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledTimes(1);
-    const invoiceCall = orderInvoiceDelivery.sendOrderInvoice.mock.calls[0];
-    const [invoiceInput] = invoiceCall as [
-      Parameters<OrderInvoiceDeliveryPort['sendOrderInvoice']>[0],
-    ];
+    expect(sendOrderInvoice).toHaveBeenCalledTimes(1);
+    const [invoiceInput] = sendOrderInvoice.mock.calls[0];
     expect(invoiceInput).toMatchObject({
       to: 'invoice@example.com',
       locale: 'en',
