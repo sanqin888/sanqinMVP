@@ -766,15 +766,19 @@ describe('OrdersService', () => {
       'cordinvoice001',
       'en',
     );
-    expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledWith({
+    expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledTimes(1);
+    const [invoiceInput] = orderInvoiceDelivery.sendOrderInvoice.mock.calls[0] as [
+      Parameters<OrderInvoiceDeliveryPort['sendOrderInvoice']>[0],
+    ];
+    expect(invoiceInput).toMatchObject({
       to: 'invoice@example.com',
       locale: 'en',
-      payload: expect.objectContaining({
+      payload: {
         locale: 'en',
         orderNumber: 'WEB-INV-1',
         fulfillment: 'pickup',
         paymentMethod: 'card',
-      }),
+      },
     });
   });
 
