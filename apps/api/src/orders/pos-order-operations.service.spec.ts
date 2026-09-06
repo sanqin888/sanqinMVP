@@ -8,8 +8,11 @@ describe('PosOrderOperationsService durable POS creation', () => {
         channel: 'in_store',
         status: 'paid',
       }),
+      getByStableIdForStore: jest.fn(),
+      updateStatusForStore: jest.fn(),
     };
     const preparation = {
+      acceptWebOrderByStableId: jest.fn().mockResolvedValue('IMMEDIATE'),
       activateAcceptedImmediateOrderByStableId: jest
         .fn()
         .mockResolvedValue({ outcome: 'activated' }),
@@ -61,6 +64,70 @@ describe('PosOrderOperationsService durable POS creation', () => {
       preparation.activateAcceptedImmediateOrderByStableId,
     ).toHaveBeenCalledWith('cposdurableorder00000000001', '4750_Yonge_Street');
     expect(lifecycleOutbox.requestDrain).toHaveBeenCalledTimes(1);
+  });
+
+  it('records Web acceptance, materializes immediate prep, then wakes durable printing', async () => {
+    const { service, preparation, lifecycleOutbox } = setup();
+
+    await service.acceptWebOrder(
+      'cwebdurableorder00000000001',
+      '4750_Yonge_Street',
+    );
+
+    expect(preparation.acceptWebOrderByStableId).toHaveBeenCalledWith(
+      'cwebdurableorder00000000001',
+      '4750_Yonge_Street',
+    );
+    expect(
+      preparation.activateAcceptedImmediateOrderByStableId,
+    ).toHaveBeenCalledWith('cwebdurableorder00000000001', '4750_Yonge_Street');
+    expect(lifecycleOutbox.requestDrain).toHaveBeenCalledTimes(1);
+  });
+
+  it('records scheduled Web acceptance without starting prep or waking AUTO printing early', async () => {
+    const { service, preparation, lifecycleOutbox } = setup();
+    preparation.acceptWebOrderByStableId.mockResolvedValueOnce('SCHEDULED');
+
+    await service.acceptWebOrder(
+      'cwebscheduledorder0000000001',
+      '4750_Yonge_Street',
+    );
+
+    expect(
+      preparation.activateAcceptedImmediateOrderByStableId,
+    ).not.toHaveBeenCalled();
+    expect(lifecycleOutbox.requestDrain).not.toHaveBeenCalled();
+  });
+
+  it('routes Web paid -> making status requests through durable acceptance instead of direct status mutation', async () => {
+    const { service, orders, preparation } = setup();
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce({
+        orderStableId: 'cwebdurableorder00000000001',
+        channel: 'web',
+        status: 'paid',
+      })
+      .mockResolvedValueOnce({
+        orderStableId: 'cwebdurableorder00000000001',
+        channel: 'web',
+        status: 'making',
+      });
+
+    await expect(
+      service.updateStatusForStore(
+        'cwebdurableorder00000000001',
+        '4750_Yonge_Street',
+        'making',
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ channel: 'web', status: 'making' }),
+    );
+
+    expect(preparation.acceptWebOrderByStableId).toHaveBeenCalledWith(
+      'cwebdurableorder00000000001',
+      '4750_Yonge_Street',
+    );
+    expect(orders.updateStatusForStore).not.toHaveBeenCalled();
   });
 
   it('does not synthesize local acceptance for an Uber channel order', async () => {

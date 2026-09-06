@@ -54,11 +54,26 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
     return this.orders.getByStableIdForStore(orderStableId, storeStableId);
   }
 
-  updateStatusForStore(
+  async updateStatusForStore(
     orderStableId: string,
     storeStableId: string,
     status: Parameters<OrdersService['updateStatusForStore']>[2],
   ) {
+    if (status === 'making') {
+      const current = await this.orders.getByStableIdForStore(
+        orderStableId,
+        storeStableId,
+      );
+      if (current.status === 'paid' && current.channel === 'web') {
+        await this.acceptWebOrder(orderStableId, storeStableId);
+        return this.orders.getByStableIdForStore(orderStableId, storeStableId);
+      }
+      if (current.status === 'paid' && current.channel === 'in_store') {
+        await this.activateImmediatePreparation(orderStableId, storeStableId);
+        return this.orders.getByStableIdForStore(orderStableId, storeStableId);
+      }
+    }
+
     return this.orders.updateStatusForStore(
       orderStableId,
       storeStableId,
@@ -98,6 +113,23 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
       orderStableIds,
       storeStableId,
     );
+  }
+
+  async acceptWebOrder(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<void> {
+    const fulfillmentTiming = await this.preparation.acceptWebOrderByStableId(
+      orderStableId,
+      storeStableId,
+    );
+    if (fulfillmentTiming === 'IMMEDIATE') {
+      await this.preparation.activateAcceptedImmediateOrderByStableId(
+        orderStableId,
+        storeStableId,
+      );
+      this.lifecycleOutbox.requestDrain();
+    }
   }
 
   async activateImmediatePreparation(
