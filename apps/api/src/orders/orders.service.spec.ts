@@ -19,8 +19,10 @@ import type {
   PromotionContextReaderPort,
 } from '../promotions/public-api';
 import { LocationService } from '../location/location.service';
-import { NotificationService } from '../notifications/notification.service';
-import { EmailService } from '../email/email.service';
+import type {
+  OrderInvoiceDeliveryPort,
+  OrderReadyNotificationPort,
+} from '../notifications/public-api';
 import { OrderEventsBus } from './order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
@@ -125,11 +127,8 @@ describe('OrdersService', () => {
   let dailySpecialOffers: { getActiveDailySpecials: jest.Mock };
   let uberDirect: { createDelivery: jest.Mock };
   let locationService: { geocode: jest.Mock };
-  let notificationService: {
-    notifyOrderReady: jest.Mock;
-    notifyDeliveryDispatchFailed: jest.Mock;
-  };
-  let emailService: { sendOrderInvoice: jest.Mock };
+  let orderReadyNotification: { notifyOrderReady: jest.Mock };
+  let orderInvoiceDelivery: { sendOrderInvoice: jest.Mock };
   let orderEventsBus: OrderEventsBus;
   let printPosPayloadService: { getByStableId: jest.Mock };
   let orderItemSnapshotBuilder: OrderItemSnapshotBuilder;
@@ -280,17 +279,19 @@ describe('OrdersService', () => {
       }),
     };
 
-    notificationService = {
+    orderReadyNotification = {
       notifyOrderReady: jest.fn().mockResolvedValue({
         ok: true,
         finalChannel: 'sms',
         attemptedChannels: ['sms'],
       }),
-      notifyDeliveryDispatchFailed: jest.fn().mockResolvedValue({ ok: true }),
     };
 
-    emailService = {
-      sendOrderInvoice: jest.fn(),
+    orderInvoiceDelivery = {
+      sendOrderInvoice: jest.fn().mockResolvedValue({
+        ok: true,
+        sendId: 'invoice-1',
+      }),
     };
 
     orderEventsBus = new OrderEventsBus();
@@ -316,8 +317,8 @@ describe('OrdersService', () => {
       dailySpecialOffers as unknown as DailySpecialOffersPort,
       uberDirect as unknown as UberDirectService,
       locationService as unknown as LocationService,
-      notificationService as unknown as NotificationService,
-      emailService as unknown as EmailService,
+      orderReadyNotification as unknown as OrderReadyNotificationPort,
+      orderInvoiceDelivery as unknown as OrderInvoiceDeliveryPort,
       orderEventsBus,
       printPosPayloadService as unknown as PrintPosPayloadService,
       orderItemSnapshotBuilder as unknown as OrderItemSnapshotBuilder,
@@ -724,6 +725,64 @@ describe('OrdersService', () => {
     );
   });
 
+  it('delivers invoice through the Messaging public port with an Orders-built receipt snapshot', async () => {
+    printPosPayloadService.getByStableId.mockResolvedValue({
+      locale: 'en',
+      orderNumber: 'WEB-INV-1',
+      customerName: 'Invoice Customer',
+      pickupCode: 'A101',
+      fulfillment: 'pickup',
+      paymentMethod: 'card',
+      orderNotes: null,
+      utensils: null,
+      snapshot: {
+        items: [],
+        subtotalCents: 1000,
+        displaySubtotalCents: 1000,
+        appliedDiscounts: [],
+        loyaltyRedeemCents: 0,
+        taxCents: 130,
+        orderTotalCents: 1130,
+        balancePaidCents: 0,
+        externalPaidCents: 1130,
+        totalCents: 1130,
+        creditCardSurchargeCents: 0,
+        discountCents: 0,
+        deliveryFeeCents: 0,
+        deliveryCostCents: 0,
+        deliverySubsidyCents: 0,
+      },
+    });
+
+    await expect(
+      service.sendInvoiceEmail({
+        orderStableId: 'cordinvoice001',
+        email: ' Invoice@example.com ',
+        locale: 'en',
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(printPosPayloadService.getByStableId).toHaveBeenCalledWith(
+      'cordinvoice001',
+      'en',
+    );
+    expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledTimes(1);
+    const [invoiceInput] = orderInvoiceDelivery.sendOrderInvoice.mock
+      .calls[0] as [
+      Parameters<OrderInvoiceDeliveryPort['sendOrderInvoice']>[0],
+    ];
+    expect(invoiceInput).toMatchObject({
+      to: 'invoice@example.com',
+      locale: 'en',
+      payload: {
+        locale: 'en',
+        orderNumber: 'WEB-INV-1',
+        fulfillment: 'pickup',
+        paymentMethod: 'card',
+      },
+    });
+  });
+
   it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {
     const logSpy = jest
       .spyOn(Logger.prototype, 'log')
@@ -759,14 +818,14 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledTimes(1);
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledWith({
       email: null,
       phone: '+14165550000',
       orderNumber: 'cordpickupready001',
       name: 'Test',
       locale: 'en',
-      userId: null,
+      userStableId: null,
     });
     expect(logSpy).toHaveBeenCalledWith({
       event: 'order_ready_notification_completed',
@@ -782,7 +841,7 @@ describe('OrdersService', () => {
     const logSpy = jest
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
-    notificationService.notifyOrderReady.mockResolvedValueOnce({
+    orderReadyNotification.notifyOrderReady.mockResolvedValueOnce({
       ok: true,
       finalChannel: 'sms',
       attemptedChannels: ['email', 'sms'],
@@ -849,6 +908,7 @@ describe('OrdersService', () => {
         contactPhone: '+14165550000',
         contactName: 'Email Test',
         userId: 'user-1',
+        userStableId: 'user-stable-1',
         fulfillmentType: 'pickup',
         items: [],
       });
@@ -862,6 +922,7 @@ describe('OrdersService', () => {
       },
     });
     prisma.user.findUnique.mockResolvedValue({
+      userStableId: 'user-stable-member',
       email: 'member@example.com',
       emailVerifiedAt: new Date(),
       phone: null,
@@ -874,14 +935,14 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledTimes(1);
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledWith({
       email: 'checkout@example.com',
       phone: '+14165550000',
       orderNumber: 'cordpickupready002',
       name: 'Email Test',
       locale: 'en',
-      userId: 'user-1',
+      userStableId: 'user-stable-1',
     });
     expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
     expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
@@ -910,6 +971,7 @@ describe('OrdersService', () => {
       });
     prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
     prisma.user.findUnique.mockResolvedValue({
+      userStableId: 'user-stable-member',
       email: 'member@example.com',
       emailVerifiedAt: new Date(),
       phone: null,
@@ -922,10 +984,11 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith(
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'member@example.com',
         phone: null,
+        userStableId: 'user-stable-member',
       }),
     );
   });
@@ -960,7 +1023,7 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
+    expect(orderReadyNotification.notifyOrderReady).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith({
       event: 'order_ready_notification_completed',
       orderId: 'order-pickup-ready-no-contact',
@@ -976,7 +1039,7 @@ describe('OrdersService', () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
-    notificationService.notifyOrderReady.mockRejectedValueOnce(
+    orderReadyNotification.notifyOrderReady.mockRejectedValueOnce(
       new Error('template failed for private@example.com +1 416 555 9999'),
     );
     prisma.order.findUnique
@@ -1087,7 +1150,7 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
+    expect(orderReadyNotification.notifyOrderReady).not.toHaveBeenCalled();
   });
 
   it('propagates NotFoundException when the order is missing during update', async () => {
@@ -1639,9 +1702,6 @@ describe('OrdersService', () => {
         redeemValueCents: 0,
       }),
     );
-    expect(
-      notificationService.notifyDeliveryDispatchFailed,
-    ).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining(
         'Cannot calculate dynamic delivery fee (missing coords)',

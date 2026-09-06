@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@515be0a6` (Slice 2 merge / PR #2199)  
-Current status: **PRE-SLICE 3 UBER DIRECT FAILURE-ALERT HARDENING LOCAL / REVIEW PENDING — SLICE 2 IS MERGED WITH PR CI GREEN; ACTIVE UBER DIRECT DELIVERY-CREATION FAILURE NOW ROUTES THROUGH IDENTITY/MESSAGING PUBLIC CAPABILITIES WITH EMAIL-FIRST + SMS FALLBACK; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@f9e0014b` (pre-Slice 3 Uber Direct alert hardening merge / PR #2200)  
+Current status: **SLICE 3 ORDERS -> MESSAGING PUBLIC BOUNDARY CONTRACTION LOCAL / REVIEW PENDING — PRE-SLICE 3 HARDENING IS MERGED / PR CI GREEN; ORDER READY + INVOICE DELIVERY NOW USE MESSAGING PUBLIC CAPABILITIES LOCALLY, TARGETING COMMERCE -> MESSAGING DIRECT DEBT 3 -> 0 AND MESSAGING -> POS 1 -> 0; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -18,16 +18,16 @@ Historical Slice-level active verification evidence from earlier phases remains 
 
 ## Entry state
 
-Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The final public SCC baseline is empty. The current direct-import baseline remains:
+Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The final public SCC baseline is empty. On the current Slice 3 local source state, direct-import totals are:
 
 - payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
 - identity-customer-benefits: **33**
 - store-operations-pos-print: **31**
-- commerce-orders-fulfillment: **30**
+- commerce-orders-fulfillment: **26** *(pre-Slice 3 hardening 30 -> 29; Slice 3 local contraction 29 -> 26)*
 - accounting-reporting-analytics: **25**
 - catalog-pricing-offers: **15**
-- messaging-notifications: **10**
+- messaging-notifications: **9** *(Slice 3 local invoice contract removes the remaining Messaging -> POS direct edge)*
 - brand-store: **8**
 
 PR #2192 / `a464c1c3` fixed the separate POS Order Management historical query without changing the architecture graph, payment/refund semantics, or Phase 4 closure.
@@ -95,11 +95,9 @@ The narrow public ports already in use are not listed as concrete-service debt h
 | `OrdersService` | `MembershipService` | coupon validation/reserve/commit/mark-used behavior |
 | `OrdersService` | `UberDirectService` | **Static but apparently inactive legacy tail:** injected only for private `dispatchPriorityDelivery()`. Repository search finds no call site for that private helper; active paid-order Uber Direct dispatch is in `FulfillmentProcessor`. Keep as a review/deletion candidate, not as proof of a second active provider path. |
 | `OrdersService` | `LocationService` | address geocoding for delivery quoting/create |
-| `OrdersService` | `NotificationService` | order-ready and delivery-dispatch-failure delivery |
-| `OrdersService` | `EmailService` | invoice email delivery |
 | `FulfillmentProcessor` | `UberDirectService` | paid-order Uber Direct dispatch |
 
-Composition also directly imports `DeliveriesModule`, `LocationModule`, `NotificationModule`, and `EmailModule`. `LoyaltyModule`, `BrandStoreConfigModule`, `MembershipModule`, and `PromotionsModule` are imported through their registered public surfaces, but the broad `OrdersService` still consumes concrete Loyalty/Membership services in addition to narrower ports.
+After Slice 3, composition directly imports `DeliveriesModule` and `LocationModule`; `NotificationModule`, `LoyaltyModule`, `BrandStoreConfigModule`, `MembershipModule`, and `PromotionsModule` are imported through their registered public surfaces. The broad `OrdersService` still consumes concrete Loyalty/Membership services in addition to narrower ports, while order-ready and invoice delivery use Messaging public capabilities.
 
 For completeness, same-context concrete wiring found by the source audit is not classified as cross-owner debt by itself: `OrdersController -> OrdersService`; `PosOrderOperationsService -> OrdersService + OrderSchedulingQueryService`; `PosOrderReadService -> OrdersService`; `OrderLifecycleOutboxProcessor -> FulfillmentProcessor + OrderPreparationService`; `ScheduledOrderProcessor -> OrderPreparationService`; and `FulfillmentProcessor -> PrintPosPayloadService + OrderLabelPlanService`. These relationships still matter when `OrdersService` is later split, but Slice 0 does not manufacture interfaces around them merely to reduce concrete class references.
 
@@ -364,7 +362,7 @@ Focused automated/architecture coverage records the Phase-level verification sco
 
 ### Pre-Slice 3 hardening — active Uber Direct dispatch-failure alert
 
-Status: **LOCAL / REVIEW PENDING** on `fix/uber-direct-dispatch-failure-alert`, based on `origin/dev@515be0a6`.
+Status: **MERGED / PR CI GREEN** — PR #2200, final head `0feb44fa`, squash merge `f9e0014b`; PR CI #5220 passed.
 
 The Slice 3 readiness audit found that the old `OrdersService.notifyDeliveryDispatchFailureAlert()` helper had no caller and sat beside a separate uncalled priority-dispatch tail, while the real paid-order Uber Direct path in `FulfillmentProcessor.onPaid` only logged `UberDirectService.createDelivery()` failures. This batch wires the alert to that active failure path and removes the obsolete uncalled helper instead of adapting or reviving it.
 
@@ -372,4 +370,18 @@ Ownership is explicit: Commerce decides that Uber Direct delivery creation faile
 
 The implementation adds no Prisma migration, dependency, external route or Uber Direct provider wire change. `OrdersModule` consumes `NotificationModule` through the Messaging public surface, contracting `commerce-orders-fulfillment -> messaging-notifications` direct debt **4 -> 3** and Commerce total outgoing direct debt **30 -> 29**; the monotonic baseline is tightened accordingly and the public SCC baseline remains empty. Focused source tests cover active provider-failure -> alert routing, stable Admin recipient mapping, email-success/no-SMS, and email-failure -> SMS fallback. Per repository workflow no local lint/build/test is claimed before user review.
 
-Planned follow-on after this hardening is: **Orders -> Messaging public boundary contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 3 — Orders -> Messaging public boundary contraction
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice3-orders-messaging-boundary`, based on `origin/dev@f9e0014b`.
+
+Slice 3 removes the remaining concrete Messaging implementations from Orders. `ORDER_READY_NOTIFICATION` preserves the existing business split: Commerce still decides whether a ready notification applies, selects trusted checkout/member/external contact according to the existing policy, resolves locale/order number and logs the outcome; Messaging still owns template rendering, email-first delivery and SMS fallback. The cross-context recipient identity changes from the internal User DB UUID to `userStableId`; an existing member lookup also supplies the stable ID as a historical-order fallback without adding another query.
+
+Invoice delivery is contracted through `ORDER_INVOICE_DELIVERY`. Orders continues to validate the requested email and build the immutable receipt snapshot from `PrintPosPayloadService`; only a neutral receipt snapshot crosses into Messaging. The new `OrderInvoicePayload` deliberately contains no Prisma type, POS DTO, `@shared/order` import or Orders implementation type. `EmailService` consumes that Messaging-owned payload directly, which also removes the previous reverse `messaging-notifications -> store-operations-pos-print` dependency created by `PrintPosPayloadDto`.
+
+`OrdersService` therefore no longer imports concrete `NotificationService` or `EmailService`, and `OrdersModule` no longer imports `EmailModule`; both capabilities are injected from the existing Notifications public composition surface. The architecture scanner locks the two contracts as provider/persistence/DB-ID/Commerce/POS-free and prevents Orders from regaining concrete Messaging imports or Email invoice rendering from regaining the POS DTO.
+
+The monotonic direct-import baseline contracts `commerce-orders-fulfillment -> messaging-notifications` **3 -> 0**, reducing Commerce outgoing direct debt **29 -> 26**. The same neutral invoice-contract cleanup contracts `messaging-notifications -> store-operations-pos-print` **1 -> 0**, reducing Messaging outgoing direct debt **10 -> 9**. Both zero edges are removed from `legacyDirectImportLimits`; no public return edge is introduced and the public SCC baseline remains empty.
+
+Behavior intentionally unchanged: order-ready eligibility/trusted-contact precedence/locale selection, email-first + SMS fallback, invoice HTTP routes and email normalization, receipt contents/rendering/template type/provider dispatch, payment/pricing/refund/lifecycle behavior and Uber provider wire contracts. No Prisma schema/migration, dependency/lockfile, external route, compatibility or provider cutover is part of Slice 3. Focused source tests cover stable-ID order-ready delivery, historical member stable-ID fallback, invoice boundary mapping and Messaging invoice delegation. Per repository workflow no local lint/build/test is claimed before user review; Phase-level runtime verification remains deferred to the consolidated Phase 5 closeout gate.
+
+Planned follow-on after Slice 3 is: **remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

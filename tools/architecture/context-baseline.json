@@ -473,6 +473,16 @@
     "customerService": "apps/api/src/membership/customer.service.ts",
     "membershipModule": "apps/api/src/membership/membership.module.ts"
   },
+  "ordersMessagingBoundary": {
+    "orderReadyContract": "apps/api/src/notifications/contracts/order-ready-notification.contract.ts",
+    "invoiceContract": "apps/api/src/notifications/contracts/order-invoice-delivery.contract.ts",
+    "notificationService": "apps/api/src/notifications/notification.service.ts",
+    "notificationModule": "apps/api/src/notifications/notification.module.ts",
+    "publicSurface": "apps/api/src/notifications/public-api.ts",
+    "emailService": "apps/api/src/email/email.service.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",
@@ -568,7 +578,6 @@
     "commerce-orders-fulfillment -> architecture-foundation": 8,
     "commerce-orders-fulfillment -> brand-store": 2,
     "commerce-orders-fulfillment -> identity-customer-benefits": 4,
-    "commerce-orders-fulfillment -> messaging-notifications": 3,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> store-operations-pos-print": 2,
     "external-channels -> architecture-foundation": 11,
@@ -583,7 +592,6 @@
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 3,
     "messaging-notifications -> runtime-data-ci-ops": 6,
-    "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
     "payments-clover -> commerce-orders-fulfillment": 8,
     "payments-clover -> identity-customer-benefits": 13,

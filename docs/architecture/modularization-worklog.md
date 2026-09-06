@@ -1269,10 +1269,17 @@ is claimed per repository workflow.
 
 ### 2026-09-06 — Phase 5 pre-Slice 3: Uber Direct dispatch-failure operations alert
 
-**PR/SHA:** local branch `fix/uber-direct-dispatch-failure-alert` based on `origin/dev@515be0a6`  
-**State:** LOCAL / REVIEW PENDING — ACTIVE UBER DIRECT FAILURE PATH NOW REQUESTS ADMIN ALERT; EMAIL FIRST, SMS FALLBACK  
+**PR/SHA:** PR #2200; final head `0feb44fa`; squash merge `f9e0014b`  
+**State:** MERGED / PR CI GREEN — CI #5220 passed; ACTIVE UBER DIRECT FAILURE PATH REQUESTS ADMIN ALERT; EMAIL FIRST, SMS FALLBACK; RUNTIME VERIFICATION DEFERRED TO PHASE 5 CLOSEOUT  
 **Result:** The Slice 3 audit found that the existing `OrdersService.notifyDeliveryDispatchFailureAlert()` helper had no caller and sat beside a separate uncalled priority-delivery tail, while the active `FulfillmentProcessor -> UberDirectService.createDelivery()` path merely logged failures. The active catch now requests an operations alert after an Uber Direct delivery-creation error, and the obsolete uncalled OrdersService alert helper is removed rather than adapted to the new contract. Identity exposes active Admin recipients through the new stable-ID-only `OPERATIONS_ALERT_RECIPIENTS` capability; Commerce does not query User persistence for notification routing. Messaging exposes `DELIVERY_DISPATCH_FAILURE_NOTIFICATION`, renders bilingual email/SMS templates and applies the requested email-first policy, falling back to SMS only when email is absent or fails. Alert failure is best-effort and does not roll back the paid Order. If Uber Direct already returned a delivery ID but local `externalDeliveryId` persistence then fails, the flow emits a separate structured error and does not send the "new delivery creation failed" alert, avoiding a manual redispatch that could duplicate the provider delivery. `OrdersModule` now imports Notification composition through `../notifications/public-api`, contracting Commerce -> Messaging direct debt **4 -> 3** and Commerce total outgoing direct debt **30 -> 29**; the monotonic scanner baseline is tightened and the public SCC remains empty. No Prisma schema/migration, dependency, route, Uber provider request/response, payment or lifecycle contract changes. Focused tests are added for stable Admin recipient mapping, active provider-failure routing, successful-email/no-SMS, and failed-email/SMS fallback; per repository workflow no local lint/build/test is claimed before user review.  
 **Details:** `apps/api/src/orders/processors/fulfillment.processor.ts`, `apps/api/src/auth/operations-alert-recipient.*`, `apps/api/src/notifications/contracts/delivery-dispatch-failure-notification.contract.ts`, `apps/api/src/notifications/notification.service.ts`, bilingual Messaging templates, `tools/architecture/context-baseline.json`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, and `docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-06 — Phase 5 Slice 3: Orders -> Messaging public boundary contraction
+
+**PR/SHA:** local branch `refactor/phase5-slice3-orders-messaging-boundary` based on `origin/dev@f9e0014b`  
+**State:** LOCAL / REVIEW PENDING — ORDERS ORDER-READY + INVOICE DELIVERY USE MESSAGING PUBLIC CAPABILITIES; COMMERCE -> MESSAGING TARGET 3 -> 0; MESSAGING -> POS TARGET 1 -> 0  
+**Result:** Replaces the remaining concrete `NotificationService` / `EmailService` imports in `OrdersService` with the Messaging-owned `ORDER_READY_NOTIFICATION` and `ORDER_INVOICE_DELIVERY` public ports and removes `EmailModule` from Orders composition. Commerce keeps order-ready eligibility, trusted-contact precedence, locale/order presentation and receipt snapshot construction; Messaging keeps template/provider/channel delivery. Order-ready persistence now crosses the boundary with `userStableId`, using the existing member lookup as a historical stable-ID fallback without another query. Invoice delivery receives a neutral Messaging-owned `OrderInvoicePayload` instead of the POS `PrintPosPayloadDto`, so Email rendering also stops importing POS internals. The monotonic baseline removes the now-zero `commerce-orders-fulfillment -> messaging-notifications` edge (**3 -> 0**, Commerce total **29 -> 26**) and `messaging-notifications -> store-operations-pos-print` (**1 -> 0**, Messaging total **10 -> 9**); public SCC remains empty. Scanner guards lock both public contracts against Prisma/provider/DB-ID/Commerce/POS leakage and prevent Orders from regaining concrete Messaging imports. No Prisma schema/migration, dependency/lockfile, HTTP route, payment/pricing/refund/lifecycle, compatibility or provider-wire change. Focused source tests cover stable-ID order-ready delivery, historical member fallback, invoice boundary mapping and Messaging invoice delegation; per repository workflow no local lint/build/test is claimed before user review.  
+**Details:** `apps/api/src/notifications/contracts/order-ready-notification.contract.ts`, `apps/api/src/notifications/contracts/order-invoice-delivery.contract.ts`, `apps/api/src/notifications/notification.service.ts`, `apps/api/src/email/email.service.ts`, `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/orders.module.ts`, `tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, and `docs/architecture/current-dependency-graph.md`.
 
 ## Current position
 
@@ -1358,11 +1365,14 @@ is claimed per repository workflow.
   PR CI GREEN** via PR #2199 / `515be0a6`, final head `fb8110b3`; CI #5215 passed: Print owns job identity/routing,
   row-lock dispatch claim and ACK/retry; the Windows agent dedupes `jobId + target`; Orders no longer reads Print
   persistence; and POS amendment kitchen/label/customer reprints are restored through the shared canonical OrderItem
-  snapshot builder. The pre-Slice-3 Uber Direct alert hardening is now **LOCAL / REVIEW PENDING**: active delivery-create
-  failure requests an Admin alert through public Identity/Messaging capabilities with email-first/SMS-fallback routing,
-  and Commerce -> Messaging direct debt is tightened `4 -> 3` (Commerce total **29**). The public SCC baseline remains
-  empty. Under the 2026-09-06 repository-wide cadence, Phase 5 runtime verification is performed once against the final
-  merged Phase state immediately before closeout rather than after each Slice.
+  snapshot builder. The pre-Slice-3 Uber Direct alert hardening is **MERGED / PR CI GREEN** via PR #2200 / `f9e0014b`,
+  final head `0feb44fa`, with CI #5220 passing: active delivery-create failure requests an Admin alert through public
+  Identity/Messaging capabilities with email-first/SMS-fallback routing, and Commerce -> Messaging direct debt is
+  tightened `4 -> 3` (Commerce total **29**). Slice 3 is now **LOCAL / REVIEW PENDING** on
+  `refactor/phase5-slice3-orders-messaging-boundary`: Order-ready and invoice delivery use Messaging public ports,
+  targeting Commerce -> Messaging `3 -> 0` (Commerce total **26**) and Messaging -> POS `1 -> 0` (Messaging total
+  **9**) while keeping the public SCC baseline empty. Under the 2026-09-06 repository-wide cadence, Phase 5 runtime
+  verification is performed once against the final merged Phase state immediately before closeout rather than after each Slice.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

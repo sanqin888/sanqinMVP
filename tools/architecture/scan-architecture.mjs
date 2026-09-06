@@ -3893,6 +3893,218 @@ if (customerLifecycleNotificationBoundary) {
   }
 }
 
+const ordersMessagingBoundary = config.ordersMessagingBoundary ?? null;
+if (ordersMessagingBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersMessagingBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.orderReadyContract,
+    boundary.invoiceContract,
+    boundary.notificationService,
+    boundary.notificationModule,
+    boundary.publicSurface,
+    boundary.emailService,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders -> Messaging boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const orderReadyContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.orderReadyContract,
+  );
+  if (existsSync(orderReadyContractPath)) {
+    const source = readFileSync(orderReadyContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_READY_NOTIFICATION',
+      'OrderReadyNotificationPort',
+      'notifyOrderReady',
+      'userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Order-ready notification public contract is missing ${requiredSymbol}: ${boundary.orderReadyContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService') ||
+      source.includes('SmsService') ||
+      source.includes('NotificationService') ||
+      /\buserId\b/.test(source) ||
+      source.includes('/orders/') ||
+      source.includes('/pos/')
+    ) {
+      failures.push(
+        `Order-ready notification public contract must remain provider/persistence/DB-ID/Commerce/POS free: ${boundary.orderReadyContract}`,
+      );
+    }
+  }
+
+  const invoiceContractPath = join(REPOSITORY_ROOT, boundary.invoiceContract);
+  if (existsSync(invoiceContractPath)) {
+    const source = readFileSync(invoiceContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_INVOICE_DELIVERY',
+      'OrderInvoiceDeliveryPort',
+      'sendOrderInvoice',
+      'OrderInvoicePayload',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Order-invoice delivery public contract is missing ${requiredSymbol}: ${boundary.invoiceContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService') ||
+      source.includes('NotificationService') ||
+      source.includes('PrintPosPayloadDto') ||
+      source.includes('@shared/order') ||
+      source.includes('/orders/') ||
+      source.includes('/pos/')
+    ) {
+      failures.push(
+        `Order-invoice delivery public contract must remain provider/persistence/Commerce/POS free: ${boundary.invoiceContract}`,
+      );
+    }
+  }
+
+  const notificationServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.notificationService,
+  );
+  if (existsSync(notificationServicePath)) {
+    const source = readFileSync(notificationServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderReadyNotificationPort',
+      'OrderInvoiceDeliveryPort',
+      'async notifyOrderReady',
+      'async sendOrderInvoice',
+      'userStableId: params.userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Messaging Orders capability owner is missing ${requiredSymbol}: ${boundary.notificationService}`,
+        );
+      }
+    }
+    const orderReadyStart = source.indexOf('async notifyOrderReady');
+    const orderReadyEnd = source.indexOf('async sendOrderInvoice', orderReadyStart);
+    const orderReadySource =
+      orderReadyStart >= 0 && orderReadyEnd > orderReadyStart
+        ? source.slice(orderReadyStart, orderReadyEnd)
+        : '';
+    if (/\buserId\b/.test(orderReadySource)) {
+      failures.push(
+        `Order-ready notification owner must not regain DB userId at the public boundary: ${boundary.notificationService}`,
+      );
+    }
+  }
+
+  const notificationModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.notificationModule,
+  );
+  if (existsSync(notificationModulePath)) {
+    const source = readFileSync(notificationModulePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_READY_NOTIFICATION',
+      'ORDER_INVOICE_DELIVERY',
+      'useExisting: NotificationService',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `NotificationModule must expose Orders Messaging capability ${requiredSymbol}: ${boundary.notificationModule}`,
+        );
+      }
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_READY_NOTIFICATION',
+      'OrderReadyNotificationPort',
+      'ORDER_INVOICE_DELIVERY',
+      'OrderInvoiceDeliveryPort',
+      'OrderInvoicePayload',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Notifications public surface is missing Orders capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('ORDER_READY_NOTIFICATION') ||
+      !source.includes('OrderReadyNotificationPort') ||
+      !source.includes('ORDER_INVOICE_DELIVERY') ||
+      !source.includes('OrderInvoiceDeliveryPort') ||
+      source.includes("from '../notifications/notification.service'") ||
+      source.includes("from '../email/email.service'") ||
+      source.includes('NotificationService') ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `OrdersService must consume order-ready and invoice delivery only through the Notifications public surface: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('NotificationModule') ||
+      source.includes("from '../notifications/notification.module'") ||
+      source.includes("from '../email/email.module'") ||
+      source.includes('EmailModule')
+    ) {
+      failures.push(
+        `OrdersModule Messaging composition must use only the Notifications public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+
+  const emailServicePath = join(REPOSITORY_ROOT, boundary.emailService);
+  if (existsSync(emailServicePath)) {
+    const source = readFileSync(emailServicePath, 'utf8');
+    if (
+      !source.includes('OrderInvoicePayload') ||
+      source.includes("../pos/dto/print-pos-payload.dto") ||
+      source.includes('PrintPosPayloadDto')
+    ) {
+      failures.push(
+        `Email invoice rendering must consume the Messaging-owned invoice payload instead of the POS DTO: ${boundary.emailService}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

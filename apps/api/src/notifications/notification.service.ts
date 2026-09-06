@@ -15,6 +15,16 @@ import type {
   DeliveryDispatchFailureNotificationPort,
   DeliveryDispatchFailureNotificationResult,
 } from './contracts/delivery-dispatch-failure-notification.contract';
+import type {
+  OrderInvoiceDeliveryInput,
+  OrderInvoiceDeliveryPort,
+  OrderInvoiceDeliveryResult,
+} from './contracts/order-invoice-delivery.contract';
+import type {
+  OrderReadyNotificationInput,
+  OrderReadyNotificationPort,
+  OrderReadyNotificationResult,
+} from './contracts/order-ready-notification.contract';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
@@ -101,7 +111,9 @@ export class NotificationService
   implements
     CouponIssuedNotificationPort,
     CustomerLifecycleNotificationPort,
-    DeliveryDispatchFailureNotificationPort
+    DeliveryDispatchFailureNotificationPort,
+    OrderInvoiceDeliveryPort,
+    OrderReadyNotificationPort
 {
   private readonly logger = new Logger(NotificationService.name);
   private readonly marketingLimiter = new NotificationRateLimiter();
@@ -254,14 +266,9 @@ export class NotificationService
     });
   }
 
-  async notifyOrderReady(params: {
-    email?: string | null;
-    phone?: string | null;
-    orderNumber: string;
-    name?: string | null;
-    locale?: string;
-    userId?: string | null;
-  }) {
+  async notifyOrderReady(
+    params: OrderReadyNotificationInput,
+  ): Promise<OrderReadyNotificationResult> {
     const locale = params.locale?.toLowerCase().startsWith('zh') ? 'zh' : 'en';
     const { baseVars } =
       await this.businessConfigService.getMessagingSnapshot(locale);
@@ -293,7 +300,7 @@ export class NotificationService
           tags: { type: 'order_ready' },
           locale: locale === 'zh' ? 'zh-CN' : 'en',
           templateType: MessagingTemplateType.ORDER_READY,
-          userId: params.userId ?? undefined,
+          userStableId: params.userStableId ?? undefined,
           metadata: { trigger: 'order_ready' },
         });
       },
@@ -308,7 +315,7 @@ export class NotificationService
           body,
           templateType: MessagingTemplateType.ORDER_READY,
           locale,
-          userId: params.userId ?? undefined,
+          userStableId: params.userStableId ?? undefined,
           metadata: {
             trigger: 'order_ready',
             ...(fallbackReason
@@ -318,6 +325,12 @@ export class NotificationService
         });
       },
     });
+  }
+
+  async sendOrderInvoice(
+    input: OrderInvoiceDeliveryInput,
+  ): Promise<OrderInvoiceDeliveryResult> {
+    return this.emailService.sendOrderInvoice(input);
   }
 
   async notifyDeliveryDispatchFailed(
