@@ -99,7 +99,7 @@ pair fails CI.
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
 | identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 10; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 4; messaging-notifications 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
+| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 4; messaging-notifications 3; runtime-data-ci-ops 10; store-operations-pos-print 2 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 8; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; runtime-data-ci-ops 24 |
@@ -367,6 +367,12 @@ Slice 2 keeps the measured context graph unchanged while tightening the existing
 The POS amendment path is repaired in the same Print-ownership slice because it is an existing AMENDMENT handoff defect rather than a new cross-context capability. VOID/ADD/SWAP creates a kitchen difference ticket; combo components come from the immutable before/after OrderItem snapshots; labels use only the positive delta between before/after label plans; and amount or payment-method changes create a customer-only full-receipt REPRINT. Orders also centralizes normal-create and amendment-ADD option/component materialization in an internal `OrderItemSnapshotBuilder`; pricing/Daily Special/promotion stay in `calculateLineItems`, while amendment keeps its explicit unit price and does not invoke pricing policy.
 
 No new cross-context import or public SCC member is introduced, and no architecture allowance is relaxed. Direct-debt totals therefore remain Payments/Clover **57**, External Channels **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty. No Prisma schema/migration, package/lockfile, Web Clover, Uber wire/provider behavior or Benefits transaction semantics change.
+
+### Phase 5 pre-Slice 3 Uber Direct dispatch-failure alert hardening — 2026-09-06
+
+The previously dormant delivery-dispatch-failure notification is now wired to the active `FulfillmentProcessor -> UberDirectService.createDelivery()` failure path. Commerce owns the decision that an Uber Direct delivery creation failed, Identity exposes only active Admin alert recipients through a stable-ID public query, and Messaging owns bilingual template rendering plus channel routing. Alert delivery is email-first per Admin and falls back to SMS only when email is unavailable or fails; provider/recipient internals do not leak back into Commerce.
+
+`OrdersModule` also switches its Notification module composition import to `../notifications/public-api`, so `commerce-orders-fulfillment -> messaging-notifications` direct debt contracts **4 -> 3** and Commerce total outgoing direct debt contracts **30 -> 29**. The new Fulfillment imports use registered Identity/Messaging public surfaces, so no new direct-debt allowance is created and the public SCC baseline remains empty. No Prisma schema/migration, package/lockfile, Uber Direct provider request/response contract, order lifecycle, payment behavior or external route changes. This local source batch is not yet CI/deployment verified.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

@@ -7,12 +7,21 @@ import {
   Prisma,
 } from '@prisma/client';
 import {
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import {
+  OPERATIONS_ALERT_RECIPIENTS,
+  type OperationsAlertRecipientPort,
+} from '../../auth/public-api';
+import {
+  DELIVERY_DISPATCH_FAILURE_NOTIFICATION,
+  type DeliveryDispatchFailureNotificationPort,
+} from '../../notifications/public-api';
 import { OrderEventsBus } from '../order-events.bus';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -71,6 +80,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       select: { metadataJson: true },
     });
 
+    let providerDeliveryCreated = false;
     try {
       const destination = this.extractDropoff(
         checkoutIntent?.metadataJson ?? null,
@@ -92,6 +102,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         destination,
         pickupReadyAt: this.parsePickupTime(payload.pickupTime),
       });
+      providerDeliveryCreated = true;
 
       await this.prisma.order.update({
         where: { id: order.id },
@@ -100,13 +111,86 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
       this.logger.log(`[Fulfillment] Uber dispatched: ${payload.orderId}`);
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (providerDeliveryCreated) {
+        this.logger.error({
+          event: 'uber_direct_delivery_created_persistence_failed',
+          orderId: order.id,
+          orderStableId: order.orderStableId,
+          reason: errorMessage,
+        });
+        return;
+      }
       this.logger.error(
-        `[Fulfillment] Uber dispatch failed for ${payload.orderId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[Fulfillment] Uber dispatch failed for ${payload.orderId}: ${errorMessage}`,
       );
+      await this.notifyDeliveryDispatchFailure({
+        orderStableId: order.orderStableId,
+        orderNumber: order.clientRequestId ?? order.orderStableId,
+        deliveryProvider: 'Uber Direct',
+        errorMessage,
+      });
     }
   };
+
+  private async notifyDeliveryDispatchFailure(params: {
+    orderStableId: string;
+    orderNumber: string;
+    deliveryProvider: string;
+    errorMessage: string;
+  }): Promise<void> {
+    try {
+      const recipients =
+        await this.operationsAlertRecipients.listActiveAdminRecipients();
+      if (recipients.length === 0) {
+        this.logger.warn({
+          event: 'delivery_dispatch_failure_alert_skipped',
+          orderStableId: params.orderStableId,
+          reason: 'NO_ACTIVE_ADMIN_CONTACT',
+        });
+        return;
+      }
+
+      const publicBaseUrl = (
+        process.env.PUBLIC_BASE_URL ?? 'https://sanq.ca'
+      ).replace(/\/$/, '');
+      const result =
+        await this.deliveryDispatchFailureNotification.notifyDeliveryDispatchFailed(
+          {
+            recipients: recipients.map((recipient) => ({
+              userStableId: recipient.userStableId,
+              email: recipient.email,
+              phone: recipient.phone,
+              locale: recipient.language === 'ZH' ? 'zh' : 'en',
+            })),
+            orderNumber: params.orderNumber,
+            deliveryProvider: params.deliveryProvider,
+            errorMessage: params.errorMessage
+              .replace(/\s+/g, ' ')
+              .slice(0, 240),
+            orderDetailUrl: `${publicBaseUrl}/zh/order/${params.orderStableId}`,
+          },
+        );
+
+      if (!result.ok) {
+        this.logger.warn({
+          event: 'delivery_dispatch_failure_alert_failed',
+          orderStableId: params.orderStableId,
+          sentCount: result.sentCount ?? 0,
+          failedCount: result.failedCount ?? recipients.length,
+          reason: result.reason ?? 'DELIVERY_FAILED',
+        });
+      }
+    } catch (alertError) {
+      this.logger.error({
+        event: 'delivery_dispatch_failure_alert_exception',
+        orderStableId: params.orderStableId,
+        errorType:
+          alertError instanceof Error ? alertError.name : 'UnknownError',
+      });
+    }
+  }
 
   constructor(
     private readonly events: OrderEventsBus,
@@ -115,6 +199,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly eventEmitter: EventEmitter2,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly orderLabelPlanService: OrderLabelPlanService,
+    @Inject(OPERATIONS_ALERT_RECIPIENTS)
+    private readonly operationsAlertRecipients: OperationsAlertRecipientPort,
+    @Inject(DELIVERY_DISPATCH_FAILURE_NOTIFICATION)
+    private readonly deliveryDispatchFailureNotification: DeliveryDispatchFailureNotificationPort,
   ) {}
 
   onModuleInit(): void {

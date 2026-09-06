@@ -12,4 +12,11 @@ export {
   type RegistrationWelcomeNotificationInput,
   type SubscriptionWelcomeNotificationInput,
 } from './contracts/customer-lifecycle-notification.contract';
+export {
+  DELIVERY_DISPATCH_FAILURE_NOTIFICATION,
+  type DeliveryDispatchFailureNotificationInput,
+  type DeliveryDispatchFailureNotificationPort,
+  type DeliveryDispatchFailureNotificationRecipient,
+  type DeliveryDispatchFailureNotificationResult,
+} from './contracts/delivery-dispatch-failure-notification.contract';
 export { NotificationModule } from './notification.module';

@@ -46,6 +46,8 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
           labels: [],
         }),
       } as never,
+      { listActiveAdminRecipients: jest.fn().mockResolvedValue([]) } as never,
+      { notifyDeliveryDispatchFailed: jest.fn() } as never,
     );
 
     await expect(
