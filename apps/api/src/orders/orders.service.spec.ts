@@ -1342,12 +1342,18 @@ describe('OrdersService', () => {
           }) as unknown,
         }),
       );
+      const createdOrderStableId = (
+        prisma.order.create.mock.calls[0]?.[0] as {
+          data?: { orderStableId?: string };
+        }
+      )?.data?.orderStableId;
+      expect(createdOrderStableId).toBeTruthy();
       expect(prisma.opsEvent.createMany).toHaveBeenCalledWith({
         data: {
-          idempotencyKey: 'order.accepted:pos-store-order-stable',
+          idempotencyKey: `order.accepted:${createdOrderStableId}`,
           eventName: 'order.accepted',
           source: 'orders.lifecycle',
-          payload: { orderStableId: 'pos-store-order-stable' },
+          payload: { orderStableId: createdOrderStableId },
         },
         skipDuplicates: true,
       });
