@@ -4,6 +4,7 @@ import { PrismaModule } from './orders-prisma';
 import { OrdersController } from './orders.controller';
 import { OrderEventsBus } from './order-events.bus';
 import { OrderInvoiceUseCase } from './order-invoice.use-case';
+import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
@@ -52,6 +53,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
   providers: [
     OrderEventsBus,
     OrderInvoiceUseCase,
+    OrderReadyNotificationUseCase,
     OrdersService,
     AdminMemberOrdersReadService,
     PosOrderReadService,

@@ -426,11 +426,19 @@ The legacy direct graph therefore contracts in both directions: Commerce -> Stor
 
 ### Phase 5 Slice 5A — Order invoice use-case decomposition — 2026-09-06
 
-`OrderInvoiceUseCase` extracts the invoice leaf from the broad `OrdersService`. Both existing invoice HTTP routes call the dedicated use case directly. It normalizes/validates the requested email, reads the Orders-owned print projection through `ORDER_PRINT_PAYLOAD_READER`, preserves the existing fulfillment mapping and delegates the unchanged invoice payload through Notifications-owned `ORDER_INVOICE_DELIVERY`.
+Slice 5A merged through PR #2209 after final head `7346ec58f66b03c38738a700edcee090f24c36df` passed final PR CI #5255; squash merge `3a37a6251ad5fde63dcd3f8275277cd1a8d9ae43`. `OrderInvoiceUseCase` extracts the invoice leaf from the broad `OrdersService`. Both existing invoice HTTP routes call the dedicated use case directly. It normalizes/validates the requested email, reads the Orders-owned print projection through `ORDER_PRINT_PAYLOAD_READER`, preserves the existing fulfillment mapping and delegates the unchanged invoice payload through Notifications-owned `ORDER_INVOICE_DELIVERY`.
 
 `OrdersService` no longer owns invoice methods or injects either invoice delivery or the concrete `PrintPosPayloadService`; those dependencies were exclusive to this leaf. The use case remains internal to Orders composition and is not exported as a cross-context service. Focused characterization preserves recipient normalization, print-payload lookup, invoice delivery input and `invalid_email` fail-fast behavior. Scanner guards prevent the invoice leaf from being folded back into `OrdersService`.
 
 This same-context decomposition changes no direct-import baseline: Commerce remains **20**, Store Operations remains **29**, and public SCC remains empty. Create/finalize/refund/amendment transaction behavior and the deliberately preserved Benefits transaction seam are untouched.
+
+### Phase 5 Slice 5B — Ready-notification use-case decomposition — 2026-09-06
+
+`OrderReadyNotificationUseCase` extracts the complete post-`ready` notification leaf from `OrdersService`. The status owner still validates `ORDER_STATUS_TRANSITIONS`, performs the compare-and-set status mutation, writes `makingAt` / `readyAt`, and owns paid/refunded side effects; only after a successful `ready` write does it fire `void orderReadyNotificationUseCase.handle(updated)`.
+
+The new use case preserves the existing notification policy exactly: delivery orders are not notified; order number resolves from `clientRequestId ?? orderStableId`; member contact/language facts come through `CUSTOMER_ORDER_CONTEXT_READER`; checkout verified contacts outrank member contacts; only Uber orders may fall back to external order contacts; locale uses member language then checkout locale then `en`; delivery still goes through Notifications-owned `ORDER_READY_NOTIFICATION`; and structured success/failure logging keeps the same PII redaction. Its internal Promise chain preserves the old non-blocking timing semantics.
+
+Persistence access needed only to interpret checkout metadata is composed through the existing Orders-local `orders-prisma` facade, so the extraction does not add a new Commerce -> Runtime source edge. The scanner prevents ready-notification policy, Notifications delivery symbols, contact/locale resolution and redaction from returning to `OrdersService`, prevents deep Notification/Email/Prisma imports in the use case, and keeps the use case internal to `OrdersModule`. Direct-import totals remain Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, with public SCC empty.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

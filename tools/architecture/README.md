@@ -182,6 +182,12 @@ node tools/architecture/scan-architecture.mjs --report
   `OrdersService` may not regain `ORDER_INVOICE_DELIVERY`, the concrete print-payload service or
   invoice methods. The use case itself must depend on `ORDER_PRINT_PAYLOAD_READER` and
   `ORDER_INVOICE_DELIVERY` capabilities and must remain internal to `OrdersModule` composition;
+- Phase 5 Slice 5B moves post-`ready` contact/locale/notification/logging orchestration into the
+  internal `OrderReadyNotificationUseCase`. `OrdersService` keeps status-transition persistence
+  and paid/refunded side effects, and may only fire the ready use case after a successful guarded
+  write. The use case must consume Customer/Notifications public capabilities, obtain checkout
+  metadata through the Orders-local `orders-prisma` facade, preserve non-blocking delivery and
+  PII-redacted structured logging, and remain internal to `OrdersModule` composition;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

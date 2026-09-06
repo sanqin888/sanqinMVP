@@ -29,6 +29,7 @@ import type {
 } from '../menu/public-api';
 import type { OrderReadyNotificationPort } from '../notifications/public-api';
 import { OrderEventsBus } from './order-events.bus';
+import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
@@ -148,6 +149,7 @@ describe('OrdersService', () => {
   };
   let locationGeocoder: { geocode: jest.Mock };
   let orderReadyNotification: { notifyOrderReady: jest.Mock };
+  let orderReadyNotificationUseCase: OrderReadyNotificationUseCase;
   let orderEventsBus: OrderEventsBus;
   let orderItemSnapshotBuilder: OrderItemSnapshotBuilder;
   let emitOrderPaidVerified: jest.SpiedFunction<
@@ -287,6 +289,11 @@ describe('OrdersService', () => {
         attemptedChannels: ['sms'],
       }),
     };
+    orderReadyNotificationUseCase = new OrderReadyNotificationUseCase(
+      prisma as unknown as PrismaService,
+      customerOrderContext as unknown as CustomerOrderContextReaderPort,
+      orderReadyNotification as unknown as OrderReadyNotificationPort,
+    );
 
     orderEventsBus = new OrderEventsBus();
     orderItemSnapshotBuilder = new OrderItemSnapshotBuilder(
@@ -311,7 +318,7 @@ describe('OrdersService', () => {
       dailySpecialOffers as unknown as DailySpecialOffersPort,
       catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
       locationGeocoder as unknown as LocationGeocoderPort,
-      orderReadyNotification as unknown as OrderReadyNotificationPort,
+      orderReadyNotificationUseCase as unknown as OrderReadyNotificationUseCase,
       orderEventsBus,
       orderItemSnapshotBuilder as unknown as OrderItemSnapshotBuilder,
     );

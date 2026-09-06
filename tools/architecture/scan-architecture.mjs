@@ -4054,9 +4054,12 @@ if (ordersMessagingBoundary) {
     }
   }
 
-  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
-  if (existsSync(ordersServicePath)) {
-    const source = readFileSync(ordersServicePath, 'utf8');
+  const orderReadyUseCasePath = join(
+    REPOSITORY_ROOT,
+    boundary.orderReadyUseCase,
+  );
+  if (existsSync(orderReadyUseCasePath)) {
+    const source = readFileSync(orderReadyUseCasePath, 'utf8');
     if (
       !source.includes("from '../notifications/public-api'") ||
       !source.includes('ORDER_READY_NOTIFICATION') ||
@@ -4067,7 +4070,25 @@ if (ordersMessagingBoundary) {
       source.includes('EmailService')
     ) {
       failures.push(
-        `OrdersService must consume order-ready delivery only through the Notifications public surface: ${boundary.ordersService}`,
+        `Order-ready use case must consume delivery only through the Notifications public surface: ${boundary.orderReadyUseCase}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      source.includes("from '../notifications/public-api'") ||
+      source.includes('ORDER_READY_NOTIFICATION') ||
+      source.includes('OrderReadyNotificationPort') ||
+      source.includes("from '../notifications/notification.service'") ||
+      source.includes("from '../email/email.service'") ||
+      source.includes('NotificationService') ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `OrdersService must not regain direct order-ready Messaging delivery dependencies: ${boundary.ordersService}`,
       );
     }
   }
@@ -5107,8 +5128,6 @@ if (ordersInvoiceUseCaseDecomposition) {
       source.includes('OrderInvoicePayload') ||
       source.includes('PrintPosPayloadService') ||
       source.includes("../common/utils/email") ||
-      !source.includes("from './order-contact-normalization'") ||
-      !source.includes('normalizeOrderEmail') ||
       /\bsendInvoiceEmail\s*\(/.test(source) ||
       /\bsendInvoice\s*\(/.test(source)
     ) {
@@ -5144,6 +5163,110 @@ if (ordersInvoiceUseCaseDecomposition) {
     ) {
       failures.push(
         `OrderInvoiceUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersReadyNotificationUseCaseDecomposition =
+  config.ordersReadyNotificationUseCaseDecomposition ?? null;
+if (ordersReadyNotificationUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersReadyNotificationUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.contactNormalization,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders ready-notification use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderReadyNotificationUseCase',
+      "from './orders-prisma'",
+      'PrismaService',
+      'CUSTOMER_ORDER_CONTEXT_READER',
+      'CustomerOrderContextReaderPort',
+      'ORDER_READY_NOTIFICATION',
+      'OrderReadyNotificationPort',
+      'normalizeOrderEmail',
+      'handle(order: OrderReadyNotificationOrder)',
+      'notifyOrderReady',
+      'resolveOrderReadyLocale',
+      'sanitizeNotificationFailure',
+      'order_ready_notification_completed',
+      'delivery_order',
+      'no_trusted_contact',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders ready-notification use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes("../prisma/prisma.service") ||
+      source.includes("../prisma/prisma.module") ||
+      source.includes("../common/app-logger") ||
+      source.includes("from './orders.service'") ||
+      source.includes('private readonly orders: OrdersService') ||
+      source.includes("../notifications/notification.service") ||
+      source.includes("../email/email.service") ||
+      source.includes('NotificationService') ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `Orders ready-notification use case must stay on local Orders persistence composition and public Customer/Notifications capabilities: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      !source.includes("from './order-ready-notification.use-case'") ||
+      !source.includes(
+        'private readonly orderReadyNotificationUseCase: OrderReadyNotificationUseCase',
+      ) ||
+      !source.includes('void this.orderReadyNotificationUseCase.handle(updated)') ||
+      source.includes('ORDER_READY_NOTIFICATION') ||
+      source.includes('OrderReadyNotificationPort') ||
+      source.includes('OrderReadyNotificationResult') ||
+      source.includes('normalizeOrderEmail') ||
+      source.includes('order_ready_notification_completed') ||
+      /\bnotifyOrderReady\s*\(/.test(source) ||
+      /\bresolveOrderReadyLocale\s*\(/.test(source) ||
+      /\bsanitizeNotificationFailure\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must delegate ready-notification orchestration to OrderReadyNotificationUseCase without regaining its extracted policy/dependencies: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-ready-notification.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderReadyNotificationUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderReadyNotificationUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderReadyNotificationUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
       );
     }
   }
