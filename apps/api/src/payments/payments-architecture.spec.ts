@@ -316,6 +316,25 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
+  it('keeps POS Terminal first-print ownership on the Orders durable lifecycle boundary', () => {
+    const orchestration = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      {
+        productionOnly: true,
+      },
+    ).find(({ path }) =>
+      path.endsWith('pos-card-payment-orchestration.service.ts'),
+    );
+
+    expect(orchestration).toBeDefined();
+    expect(orchestration?.source).toContain("from '../orders/public-api'");
+    expect(orchestration?.source).toContain('POS_ORDER_OPERATIONS');
+    expect(orchestration?.source).toContain('activateImmediatePreparation');
+    expect(orchestration?.source).not.toContain('PrintPosPayloadService');
+    expect(orchestration?.source).not.toContain('sendPrintJob');
+    expect(orchestration?.source).not.toContain('PAYMENT_CHECKOUT:');
+  });
+
   it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
     const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       // AppModule is the repository composition root: importing both modules

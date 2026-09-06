@@ -6,9 +6,12 @@ import {
 } from '@nestjs/common';
 import type { CreateOrderInput } from '@shared/order';
 
-import type { OrderDto } from '../orders/dto/order.dto';
+import {
+  POS_ORDER_OPERATIONS,
+  type PosOrderDto,
+  type PosOrderOperationsPort,
+} from '../orders/public-api';
 import { OrdersService } from '../orders/orders.service';
-import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { TerminalPaymentService } from '../payments/application/create-payment-attempt.use-case';
 import {
   PAYMENT_TRANSACTION_REPOSITORY,
@@ -67,7 +70,8 @@ export class PosCardPaymentOrchestrationService {
     @Inject(PAYMENT_TRANSACTION_REPOSITORY)
     private readonly paymentTransactions: PaymentTransactionRepository,
     private readonly orders: OrdersService,
-    private readonly printPosPayloadService: PrintPosPayloadService,
+    @Inject(POS_ORDER_OPERATIONS)
+    private readonly orderOperations: PosOrderOperationsPort,
     private readonly posGateway: PosGateway,
   ) {}
 
@@ -391,7 +395,10 @@ export class PosCardPaymentOrchestrationService {
         knownPayment ??
         (await this.findPaymentForCheckout(checkout)) ??
         undefined;
-      await this.printOrderOnce(checkout, existingOrder);
+      await this.orderOperations.activateImmediatePreparation(
+        existingOrder.orderStableId,
+        storeId,
+      );
       const view = this.toView(checkout, payment, existingOrder, {
         status: 'SUCCEEDED',
       });
@@ -484,7 +491,10 @@ export class PosCardPaymentOrchestrationService {
       attemptId: checkout.attemptId,
       orderId: created.internalOrderId,
     });
-    await this.printOrderOnce(checkout, created.order);
+    await this.orderOperations.activateImmediatePreparation(
+      created.order.orderStableId,
+      storeId,
+    );
 
     const view = this.toView(checkout, payment, created.order, {
       status: 'SUCCEEDED',
@@ -511,26 +521,6 @@ export class PosCardPaymentOrchestrationService {
   private processingCanBeReconciled(payment: PaymentTransaction): boolean {
     const updatedAt = payment.toSnapshot().updatedAt.getTime();
     return Date.now() - updatedAt >= PROCESSING_RECONCILE_AFTER_MS;
-  }
-
-  private async printOrderOnce(
-    checkout: PreparedPaymentCheckout,
-    order: OrderDto,
-  ): Promise<void> {
-    const payload = await this.printPosPayloadService.getByStableId(
-      order.orderStableId,
-      'zh',
-    );
-    await this.posGateway.sendPrintJob({
-      orderId: checkout.orderId ?? checkout.plannedOrderId,
-      orderStableId: order.orderStableId,
-      storeId: checkout.storeId,
-      kind: `PAYMENT_CHECKOUT:${checkout.attemptId}`,
-      data: {
-        ...payload,
-        targets: { customer: true, kitchen: true },
-      },
-    });
   }
 
   private requireEnabled(): void {
@@ -567,7 +557,7 @@ export class PosCardPaymentOrchestrationService {
   private toView(
     checkout: PreparedPaymentCheckout,
     payment?: PaymentTransaction,
-    order?: OrderDto,
+    order?: PosOrderDto,
     override?: Partial<
       Pick<PosCardPaymentView, 'status' | 'failureCode' | 'failureMessage'>
     >,

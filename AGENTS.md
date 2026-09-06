@@ -786,11 +786,13 @@ impact**, not by directory name:
   modularization change; it is not permission for unrelated payment redesign or
   early Phase G traffic cutover;
 * every change that can affect the production Web Clover path must include focused
-  regression coverage and a post-deployment **active verification checklist** for
-  the user. The checklist must identify concrete payment scenarios to execute and
-  the expected UI/API behavior plus relevant sanitized payment/order/log evidence.
-  The affected Web Clover slice is not considered production-verified until the
-  user confirms those active tests passed;
+  regression coverage plus a precise record of the payment scenarios, rollback/forward-fix
+  conditions, and sanitized payment/order/log evidence that the eventual Phase verification
+  must cover. Do **not** require a separate production deployment/active-verification cycle
+  after each modularization slice. Immediately before the owning Phase closeout, produce one
+  consolidated active verification plan from the final merged Phase state; the Phase cannot
+  be marked production-verified or closed until the user confirms those Web Clover scenarios
+  and the rest of the Phase verification plan passed;
 * shared Unified Payment Core, provider, orchestration, persistence or public
   contract code is judged by actual production Web usage. It may be changed for
   POS Terminal modularization only when the Web behavior is unchanged; if Web
@@ -805,24 +807,28 @@ impact**, not by directory name:
 
 ### UberEats modification verification gate
 
-UberEats changes must proceed as small, independently deployable slices. For each
-slice that changes UberEats runtime behavior, identity, persistence, transport,
-composition, menu, order, store-status, reconciliation, operations, worker, or
-provider integration behavior:
+UberEats changes must still proceed as small, independently deployable slices, but
+production active verification is now **Phase-closeout based rather than slice based**.
+For each slice that changes UberEats runtime behavior, identity, persistence, transport,
+composition, menu, order, store-status, reconciliation, operations, worker, or provider
+integration behavior:
 
 1. before implementation, identify the affected UberEats capabilities and preserve
    unrelated verified flows;
-2. after the local change, report the exact affected files/contracts and provide
-   focused active test steps for every affected capability, including expected
-   UI/API behavior and relevant sanitized log/DB evidence where useful;
-3. after CI passes and the slice is deployed, perform or have the user perform the
-   focused active tests instead of waiting for organic traffic;
-4. do not begin the next UberEats code slice until the affected tests from the
-   current slice have been confirmed successful by the user;
-5. if an active test exposes a regression, stop the sequence and fix/verify that
-   slice before continuing;
-6. continue this slice-by-slice gate until the approved UberEats integration work
-   is fully contracted and production-ready.
+2. after the local change, report the exact affected files/contracts, add focused
+   regression/characterization coverage, and record the concrete UI/API/provider/log/DB
+   behaviors that the owning Phase's final verification must exercise;
+3. after CI passes, the next UberEats source slice may proceed without a separate
+   deployment/active-test cycle for the just-merged slice, unless a compatibility exit,
+   destructive migration, external cutover, provider certification requirement, or an
+   observed regression creates an explicit earlier gate;
+4. immediately before the owning Phase closeout, produce one consolidated UberEats
+   active verification plan from the final merged Phase state and execute it deliberately
+   rather than relying on organic traffic;
+5. if that consolidated active test exposes a regression, stop closeout, fix the defect,
+   rerun the affected verification, and only then resume closeout;
+6. the Phase must not be marked production-verified or closed until the consolidated
+   UberEats verification and all other Phase verification items are confirmed successful.
 
 External Uber wire protocols, webhook signatures, idempotency semantics, order
 state transitions, and provider truth remain critical contracts. A task that must
@@ -900,6 +906,33 @@ remain deployable on its own. Recompute or rerun applicable dependency/architect
 checks at the end of every slice. A phase is not complete if it introduces a new
 cycle, new internal cross-context import, ambiguous identity, duplicate active
 implementation, or unregistered compatibility path.
+
+### Phase closeout active-verification gate
+
+The default modularization verification cadence is **Phase-level**, not Slice-level:
+
+1. individual slices must be source-complete, reviewable, independently deployable,
+   covered by focused automated tests/architecture guards, and CI-green before their
+   merge to `dev`;
+2. do not require a separate production deployment or user-operated active-test
+   checklist after every slice. While implementing each slice, record any runtime,
+   payment, provider, printing, PWA, migration, reconciliation, or compatibility behavior
+   that must be exercised later;
+3. after the planned source slices for a Phase are merged and before Phase closeout,
+   perform a closeout/readiness audit against the **final merged Phase state** and produce
+   one consolidated deployment + active verification plan covering all affected flows and
+   required sanitized UI/API/log/DB/provider evidence;
+4. deploy that Phase state and execute the consolidated verification deliberately. A
+   failed item blocks closeout and requires a forward fix plus rerun of the affected
+   verification; and
+5. only after the consolidated Phase verification passes may the Phase be marked
+   `PRODUCTION VERIFIED / CLOSED` (or the equivalent closed state).
+
+An explicit earlier gate still takes precedence when required by a destructive migration,
+compatibility contraction/traffic cutover, external provider certification, settlement
+cycle, irreversible operation, or a regression already observed during development.
+Historical slices that were already individually production-verified remain valid evidence;
+do not rewrite their historical records merely to match the new cadence.
 
 ---
 

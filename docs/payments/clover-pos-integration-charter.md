@@ -1,7 +1,7 @@
 # SanQ 支付域模块化 + Clover POS 实时同步任务目标与边界
 
-**状态：** Implementation Charter v3（2026-09-03 governance revision）  
-**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03  
+**状态：** Implementation Charter v3（2026-09-06 verification-cadence revision）  
+**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；Phase-level verification cadence 修订于 2026-09-06  
 **适用范围：** SanQ Payments / Clover / POS / Orders 的支付相关边界
 
 ## 1. 文档目的
@@ -21,7 +21,7 @@
 - POS Clover Terminal 目前仍是未完成真实 Clover merchant/device 验收的 pre-production prototype。其 terminal communication、terminal-specific orchestration、reconciliation、provider adapter、POS contract 和 feature-flagged implementation 可以在模块化期间继续结构性整理，不必等待 Clover sandbox/developer 身份问题解除。
 - 上述 POS/Terminal 改动不得因为共享代码而静默改变当前生产 Web Ecommerce 的支付行为、持久化金额事实、历史 transaction 语义或 live checkout contract。共享 Unified Payment Core/provider/orchestration 以“是否被生产 Web 实际使用、是否改变 Web 行为”为判断标准，而不是按目录整体冻结。
 - 当前生产 Web Clover Ecommerce 默认仍受保护，因为它正在真实收款。但它不再绝对冻结：如果现有 Web Clover 代码成为模块化的**关键进度阻塞项**，允许进行最小必要结构修改。实施前必须在当前模块化进度文档记录阻塞原因、影响的生产合同/行为、为什么无法在 Web 路径之外解决、替代方案以及 rollback/forward-fix 策略。
-- 任何可能影响生产 Web Clover 的修改都必须增加/更新聚焦回归覆盖，并在改动报告中提供部署后的主动实测项目。至少覆盖受影响的 CARD/wallet/支付状态/订单落单/退款或 reconciliation 场景中的实际相关项，写清预期 UI/API 结果以及应核对的脱敏 payment/order/log 证据。只有用户完成并确认这些实测后，该 slice 才能标记为 production verified。
+- 任何可能影响生产 Web Clover 的修改都必须增加/更新聚焦回归覆盖，并在改动记录中明确受影响的 CARD/wallet/支付状态/订单落单/退款或 reconciliation 场景，以及最终 Phase 验证时应核对的脱敏 payment/order/log 证据。模块化 Slice 不再各自要求一次部署后主动实测；在所属 Phase 的全部计划 Slice 合并后、closeout 之前，基于最终 merged state 统一给出并执行一套 consolidated active verification。只有该 Phase 的支付相关实测与其余 closeout 验证全部通过后，Phase 才能标记为 production verified / closed。实际切流、compatibility 删除、settlement 或 provider acceptance 等独立硬门禁仍可要求更早实测。
 - 允许修改生产 Web 代码来解除模块化阻塞，不等于允许提前完成 Phase G 流量切换、删除 legacy Web compatibility、放宽 feature flag 或跳过 settlement/parity 门禁。实际切流与兼容删除仍按本文档原有验收条件执行。
 
 ## 2. 当前状态基线
@@ -347,11 +347,13 @@ Refund 也必须读取 Clover 实际 refund/additional-charge 事实，不得按
 
 在新 Terminal 主链路完整完成以前，当前 `POS CARD -> /pos/orders -> 直接创建 CARD Order` 必须继续工作。不得提前加入“CARD Order 必须提供 Clover paymentId”等硬约束。
 
-现有 Web `CheckoutIntent / CloverPayController / Clover Ecommerce` 仍是生产收款链路，默认保持其外部行为和生产事实不变。POS Terminal 的模块化不得自动把 Web 流量切入新核心。若这条 Web 生产路径本身成为无法绕开的模块化关键阻塞，可以按 1.1 的 guarded-production 规则进行最小必要修改，但必须先记录影响/替代方案/回退策略，并在部署后完成与受影响行为对应的主动支付实测。该例外只用于解除明确的模块化阻塞，不等于提前授权 Phase G 流量切换或 legacy 删除。
+现有 Web `CheckoutIntent / CloverPayController / Clover Ecommerce` 仍是生产收款链路，默认保持其外部行为和生产事实不变。POS Terminal 的模块化不得自动把 Web 流量切入新核心。若这条 Web 生产路径本身成为无法绕开的模块化关键阻塞，可以按 1.1 的 guarded-production 规则进行最小必要修改，但必须先记录影响/替代方案/回退策略，并把受影响支付行为纳入所属 Phase closeout 前的 consolidated active verification；普通模块化 Slice 不再单独要求一次部署后实测。该例外只用于解除明确的模块化阻塞，不等于提前授权 Phase G 流量切换或 legacy 删除。
 
 ### 9.2 每个中间提交都必须可部署
 
 开发期间 VM 仍允许 pull / rebuild / deploy。任何合入 dev 的中间版本不得因为“新支付还没做完”导致 POS CARD 无法收银。
+
+2026-09-06 Phase 5 Slice 1D 将 pre-production Terminal 的成功落单/首次打印进一步收口：confirmed-payment transaction 在 Benefits/Coupon COMMIT + paid Order 创建的同一事务内追加 Orders-owned durable `order.accepted`；Terminal orchestration 不再直接构造 `PrintPosPayload` 或 `PAYMENT_CHECKOUT:*` PrintJob，而是在落单后调用 Orders public durable preparation capability，由 `order.prep_started -> AUTO` 统一首次打印。`PosGateway` 在该 orchestration 中仅保留支付状态 realtime publication。历史已存在且没有 accepted fact 的 prototype Order 不做 accepted backfill，避免 recovery 产生新 AUTO 重复打印。此结构调整不改变 provider payment truth、UNKNOWN/reconciliation、refund 或生产 Web Ecommerce 行为。
 
 ### 9.3 新能力采用 additive rollout
 
@@ -464,7 +466,7 @@ Refund 为 UNKNOWN 时，Order 不得假装已退款成功，必须等待 reconc
 
 ## 15. CheckoutIntent 边界
 
-`CheckoutIntent` 仍属于当前 Web 生产链路的 guarded compatibility。POS Terminal 模块化本身不得删除、迁移或改变它的生产语义；但如果 `CheckoutIntent` 或其直接 Web Clover 依赖成为模块化关键阻塞，可按 1.1 的 guarded-production 例外做最小必要调整，并执行对应的部署后主动实测。任何删除、事实语义迁移或 Web 流量切换仍属于后续受控 cutover/cleanup，而不是普通内部重构。
+`CheckoutIntent` 仍属于当前 Web 生产链路的 guarded compatibility。POS Terminal 模块化本身不得删除、迁移或改变它的生产语义；但如果 `CheckoutIntent` 或其直接 Web Clover 依赖成为模块化关键阻塞，可按 1.1 的 guarded-production 例外做最小必要调整，并把对应行为纳入所属 Phase closeout 前的 consolidated active verification。任何删除、事实语义迁移或 Web 流量切换仍属于后续受控 cutover/cleanup，而不是普通内部重构，并继续服从各自独立的 cutover/settlement/compatibility exit 门禁。
 
 长期目标不是保留两套支付状态机。Web 迁入 Unified Payment Core 后：
 

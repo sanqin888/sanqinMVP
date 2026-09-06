@@ -120,7 +120,11 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
           }),
         ),
       );
-    const tx = { order: { create: orderCreate } };
+    const createLifecycleEvent = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      order: { create: orderCreate },
+      opsEvent: { createMany: createLifecycleEvent },
+    };
     const transaction = jest.fn(
       (work: (client: typeof tx) => Promise<unknown>) => work(tx),
     );
@@ -208,6 +212,15 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
         include: { items: true },
       }),
     );
+    expect(createLifecycleEvent).toHaveBeenCalledWith({
+      data: {
+        idempotencyKey: 'order.accepted:order_stable_1',
+        eventName: 'order.accepted',
+        source: 'orders.lifecycle',
+        payload: { orderStableId: 'order_stable_1' },
+      },
+      skipDuplicates: true,
+    });
     expect(paidSideEffects).toHaveBeenCalledTimes(1);
     expect(result.internalOrderId).toBe('8a3d4c0e-4750-4f6a-9138-000000000030');
   });

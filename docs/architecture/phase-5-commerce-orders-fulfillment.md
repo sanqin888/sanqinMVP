@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@e4a783a5` (Slice 1B merge)  
-Current status: **SLICE 1C SOURCE COMPLETE / LOCAL REVIEW PENDING — WEB ACCEPTANCE/PREP/AUTO CUT OVER TO DURABLE LIFECYCLE; SLICES 1B/1C PRODUCTION VERIFICATION PENDING**
+Current implementation base: `origin/dev@61f5917d` (Slice 1C merge)  
+Current status: **SLICE 1D SOURCE COMPLETE / LOCAL REVIEW PENDING — POS CLOVER TERMINAL FINALIZATION NOW CONVERGES ON DURABLE ACCEPTED/PREP_STARTED/AUTO; PHASE 5 ACTIVE VERIFICATION IS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -10,11 +10,17 @@ Phase 5 turns Commerce / Orders / Fulfillment into an enforceable L3 boundary be
 
 This phase is not a rewrite and does not begin by mechanically splitting `orders.service.ts`. Each later slice must first establish the smallest owner/public capability required by the behavior being moved, preserve transaction/idempotency semantics, and then delete the old direct dependency in the same reviewed slice when the migration class permits it.
 
+## Phase 5 verification cadence
+
+Per the repository-wide modularization rule adopted on 2026-09-06, Phase 5 does **not** require a separate production deployment/active-test checklist after every slice. Each slice must remain independently deployable, focused-test/architecture guarded and CI-green, and it must record any runtime/payment/provider/printing/PWA/reconciliation behavior that the final Phase verification must cover. After all planned Phase 5 source slices are merged and immediately before Phase 5 closeout, perform one readiness audit against the final merged state, produce the consolidated Phase 5 deployment + active-verification plan, execute it deliberately, fix any regression found, and only then mark Phase 5 `PRODUCTION VERIFIED / CLOSED`. Explicit compatibility exits, destructive migrations, provider certification, settlement gates or irreversible cutovers may still require an earlier dedicated verification event.
+
+Historical Slice-level active verification evidence from earlier phases remains valid and is not rewritten by this cadence change.
+
 ## Entry state
 
 Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The final public SCC baseline is empty. The current direct-import baseline remains:
 
-- payments-clover: **59**
+- payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
 - identity-customer-benefits: **33**
 - store-operations-pos-print: **31**
@@ -208,7 +214,7 @@ Focused characterization locks server-derived change, including a non-five-cent 
 
 ### Slice 1B — POS ordinary checkout durable lifecycle cutover
 
-Status: **MERGED / CI GREEN / PRODUCTION UNVERIFIED** — PR #2195, final head `c8ed5579`, squash merge `e4a783a5`; PR CI #5200 passed.
+Status: **MERGED / CI GREEN** — PR #2195, final head `c8ed5579`, squash merge `e4a783a5`; PR CI #5200 passed. Runtime verification is accumulated into the Phase 5 closeout gate rather than blocking the next Slice.
 
 Migration classification: **Class C controlled critical cutover** for the store-facing POS fulfillment/printing path. The user explicitly authorized a maintenance-window cutover without preserving the old PWA first-print/first-advance sequence. No Prisma schema/migration, dependency, public route name, provider protocol or architecture allowance is changed.
 
@@ -241,24 +247,15 @@ Focused regression coverage locks:
 - durable in-store prep creating `kind=AUTO`, while memory-origin in-store prep remains non-printing;
 - the POS payment page retaining `/pos/orders` creation and cash receipt submission while containing neither `printOrderCloud()` nor `advanceOrder()`.
 
-No active compatibility entry is added: the user explicitly chose not to support old cached POS payment bundles after cutover. Operational rollout is therefore scoped to a non-business-hours maintenance window. Before the first test order, the POS page/PWA must be closed/reopened or otherwise confirmed to have loaded the new bundle. If a problem is discovered **before** any new canonical POS order is created, the prior deployment may be restored. After a new durable POS order has been created, prefer an immediate forward fix rather than reverting lifecycle semantics, because historical accepted/prep facts must not be rewritten or treated as failed.
+No active compatibility entry is added: the user explicitly chose not to support old cached POS payment bundles after cutover. Operational rollout must therefore ensure the deployed POS/PWA is on the intended Phase 5 bundle before Phase-closeout testing begins. Rollback/forward-fix semantics remain important because historical accepted/prep facts must not be rewritten or treated as failed.
 
-Slice 1B production verification remains required before it can be marked VERIFIED. The original sequencing gate required that verification before Slice 1C; on 2026-09-05 the user explicitly authorized proceeding with Slice 1C without running the 1B production checks first. This advances source work only: Slice 1C must not be used as evidence that Slice 1B was verified, and both slices remain part of the next deployment/active-test batch.
-
-Outstanding Slice 1B checks remain:
-
-1. cash pickup/dine-in order: one Order, automatic transition to `making`, exactly one initial customer/kitchen print, labels only when the label plan requires them, and correct persisted cash received/change;
-2. Store Balance + cash and points/discount combinations: exact charged/benefit amounts unchanged and one AUTO first print;
-3. printer offline/reconnect: Order still reaches `making`; existing durable AUTO/PrintJob retry resumes printing without manually re-submitting the order;
-4. explicit manual reprint from Order Management still creates another print without changing Order state;
-5. staff `advance` from `making -> ready` still works and does not create another AUTO initial job;
-6. inspect sanitized logs/DB as needed for one `order.accepted`, one `order.prep_started` and one `PosPrintJob(kind=AUTO)` for the test order.
+Under the 2026-09-06 verification-cadence rule, Slice 1B no longer carries its own post-deployment active-test checklist or a "verify before next Slice" gate. Its affected POS cash/benefit/order-state/printing/reconnect/reprint behaviors are inputs to the consolidated Phase 5 closeout verification plan, which will be generated from the final merged Phase state immediately before closeout.
 
 Slice 1B does not change Web Clover Ecommerce, POS Clover Terminal finalization, Uber wire/order-action behavior, refunds, Benefits COMMIT semantics, pricing/promotion calculation or the known Print socket-concurrency hardening debt.
 
 ### Slice 1C — Web/local durable lifecycle convergence
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1c-web-durable-lifecycle`.
+Status: **MERGED / CI GREEN** — PR #2196, final head `3dc21e5d`, squash merge `61f5917d`; PR CI #5204 and merged-dev CI #5205 passed.
 
 Migration classification: **Class C controlled critical cutover** for the Web order acceptance/preparation/initial-print path. It does not change Clover charge/session execution, amount/currency/payment-ID validation, checkout-intent consumption, surcharge calculation, refund behavior, or the fact that Web payment success itself only creates a `paid` Order. The existing store-facing acceptance policy remains authoritative: with auto-accept enabled, `StoreBoardWidget` detects a new Web `paid` order and invokes the canonical POS `/advance`; with auto-accept disabled, staff invoke that same action manually.
 
@@ -288,6 +285,32 @@ Focused regression coverage locks durable Web acceptance without direct status m
 
 No Prisma schema/migration, dependency manifest, external route, Web Clover provider wire behavior, Uber runtime behavior, context graph/SCC allowance, PrintJob kind, printer protocol, refund logic, pricing/promotion calculation or Benefits COMMIT transaction changes in Slice 1C.
 
-Production verification for the combined 1B/1C deployment must additionally cover: Web card checkout and zero-external/benefit checkout still produce one paid Order; auto-accept ON moves an IMMEDIATE Web order to `making` and creates exactly one AUTO print; auto-accept OFF leaves it `paid` until staff accepts; a SCHEDULED Web order records acceptance but does not enter `making` or print before `prepStartAt`; explicit reprint and later `making -> ready` remain unchanged. If Web card scenarios are exercised, preserve the existing production Clover charge/session/finalization evidence and inspect only sanitized IDs/statuses.
+Slice 1C's Web acceptance, scheduled-order, initial AUTO-print and guarded Web Clover behaviors are recorded as Phase-level verification scope; no standalone Slice 1C production checklist is required. The consolidated Phase 5 closeout plan will derive the exact scenarios and evidence from the final merged code after all planned slices are complete.
 
-Planned follow-on order after Slice 1C review/CI is: **1D POS Clover Terminal durable lifecycle -> 1E Uber convergence verification -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout**.
+### Slice 1D — POS Clover Terminal durable lifecycle convergence
+
+Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1d-terminal-durable-lifecycle`.
+
+Migration classification: **Class B internal boundary contraction inside a pre-production Terminal flow**, with one durable lifecycle fact added to the existing confirmed-payment transaction. No database schema or migration is required. The `payments.pos-card-legacy.v1` feature-flag compatibility remains active and is not contracted in this Slice; real-device/provider acceptance and eventual traffic cutover keep their independent compatibility/settlement gates.
+
+The confirmed-payment transaction remains intentionally atomic:
+
+```text
+Benefits points/balance COMMIT
+  + Coupon COMMIT
+  + paid Order.create
+  + durable order.accepted
+              # one existing Prisma transaction
+```
+
+`createFromConfirmedPaymentSnapshot()` appends `order.accepted:<orderStableId>` only when it creates the new paid in-store Order. Its existing-order/read-recovery branch deliberately does **not** synthesize accepted. This protects historical Terminal prototype Orders that may already have printed through the retired `PAYMENT_CHECKOUT:<attemptId>` path: recovering such an old Order after Slice 1D cannot manufacture a new AUTO first print. For a new Slice-1D Order, accepted is atomic with creation, so any retry after a crash can safely resume preparation.
+
+After successful creation and `markCompleted()`, and also when a checkout is already COMPLETED/order-bound, `PosCardPaymentOrchestrationService` calls the existing Orders public capability `POS_ORDER_OPERATIONS.activateImmediatePreparation(orderStableId, storeStableId)`. That capability validates the accepted durable fact, idempotently writes `making + order.prep_started`, and wakes `OrderLifecycleOutboxProcessor` so durable Fulfillment materializes the unique `AUTO` first print. The 500 ms lifecycle scan remains crash/restart recovery rather than a second business path.
+
+The Terminal orchestrator no longer imports `PrintPosPayloadService`, calls `PosGateway.sendPrintJob()`, or owns `PAYMENT_CHECKOUT:<attemptId>` print identity. `PosGateway` remains injected solely for existing best-effort card-payment status publication. This contracts two Payments/Clover -> Commerce deep imports by moving DTO/print interaction to the existing Orders public surface; the scanner allowance tightens `payments-clover -> commerce-orders-fulfillment` **10 -> 8**, and Payments/Clover outgoing direct debt **59 -> 57**. The public SCC baseline remains empty.
+
+Focused automated coverage records the Phase-level verification scope by locking: accepted-fact creation in the same transaction as Benefits/Coupon/Order; no synthetic accepted for an already-existing historical Order; successful external-card and zero-external internal-tender finalization entering durable preparation; DECLINED/UNKNOWN states not entering preparation; COMPLETED/repeated finalization replaying only the idempotent durable command; and an architecture guard forbidding Terminal orchestration from regaining `PrintPosPayloadService`, `sendPrintJob` or `PAYMENT_CHECKOUT:` first-print ownership.
+
+No production Web Clover Ecommerce behavior, provider execution/status mapping, canonical amount/surcharge facts, UNKNOWN/reconciliation, refund, pricing/promotion, Benefits reservation/COMMIT semantics, external route, dependency manifest or Prisma schema changes in Slice 1D. Its affected Terminal lifecycle/recovery/printing behaviors are retained as input to the consolidated Phase 5 closeout verification rather than a Slice-specific deployment checklist.
+
+Planned follow-on order after Slice 1D review/CI is: **1E Uber lifecycle convergence review -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
