@@ -177,7 +177,8 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
   }
 
   it('durable Web prep_started 创建 AUTO 任务并同时请求 customer 和 kitchen', async () => {
-    const { processor, sendPrintJob, getByStableId } = setupAccepted('store-4750');
+    const { processor, sendPrintJob, getByStableId } =
+      setupAccepted('store-4750');
 
     await processor.handleAcceptedLifecycle({
       orderId: 'web-order-1',

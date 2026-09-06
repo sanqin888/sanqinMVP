@@ -67,7 +67,10 @@ export class OrderPreparationService {
         `;
         const order = rows[0];
         if (!order) return null;
-        if (order.channel !== Channel.web || order.status !== OrderStatus.paid) {
+        if (
+          order.channel !== Channel.web ||
+          order.status !== OrderStatus.paid
+        ) {
           return null;
         }
 
