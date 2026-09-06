@@ -198,6 +198,12 @@ node tools/architecture/scan-architecture.mjs --report
   `OrderPrepTimeQueryUseCase`. The public `/orders/prep-time` route delegates to this use case;
   `OrdersService` must not regain the query policy. Historical fallback `15` minutes and minimum
   average `5` minutes remain unchanged, and the query stays on Orders-local persistence only;
+- Phase 5 Slice 5E moves the public thank-you/order-summary projection into the internal
+  `OrderPublicSummaryQueryUseCase`. The `/orders/:orderStableId/summary` route delegates directly
+  to that query use case; `OrdersService` must not regain summary projection, checkout-intent
+  surcharge metadata interpretation or summary-only discount helpers. The use case stays on
+  Orders-local persistence plus the existing Loyalty order-usage public reader and remains internal
+  to `OrdersModule` composition;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

@@ -522,7 +522,7 @@ Phase-level closeout verification retains Uber Direct successful dispatch, provi
 
 ### Slice 5D — preparation-time query use-case decomposition
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-d`, based on `origin/dev@8e90a89f`.
+Status: **MERGED / CI GREEN** — PR #2212, final head `0219d601`, squash merge `82c9d18f`; final PR CI #5264 passed API and Web.
 
 Migration classification: **Class A same-context read-side application decomposition**. The fresh readiness audit rechecked pricing/quote extraction and still found it coupled to shared line-item calculation, delivery destination/geocoding, promotion context and the transaction-sensitive Benefits reservation/COMMIT seams inside `createInternal()`. Rather than split those atomicity-sensitive paths, 5D selects the self-contained read-only preparation-time query as the next safe service-decomposition slice.
 
@@ -532,4 +532,18 @@ The use case remains an internal `OrdersModule` provider and is not exported cro
 
 No standalone Slice 5D production verification is required; the Phase-level closeout pass should confirm `/orders/prep-time` still returns a valid minutes value under normal production traffic.
 
-Planned follow-on after Slice 5D is: **fresh readiness audit for the remaining OrdersService write-side/payment/pricing seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 5E — public order-summary query use-case decomposition
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-e`, based on `origin/dev@82c9d18f`.
+
+Migration classification: **Class A same-context read-side application decomposition**. The fresh readiness audit first considered the POS external-payment query, but rejected it after confirming the shared `resolveExternalPaymentCents()` policy is also used inside `createFullRefund()` to classify Web zero-external refund behavior. 5E therefore selects the isolated public thank-you/order-summary projection instead, avoiding any payment/refund write-path change.
+
+`OrderPublicSummaryQueryUseCase` now owns the complete `/orders/:orderStableId/summary` read flow: stable-ID-only validation, Order + line-item projection, promotion/discount display reconstruction, checkout-intent surcharge metadata fallback, Loyalty order-usage projection, external-paid calculation and charge-status warning fields. `OrdersController` delegates the existing public route directly to the use case. `OrdersService` no longer exposes `getPublicOrderSummary()` and no longer owns the summary-only discount, checkout-intent metadata or surcharge interpretation helpers.
+
+The use case remains an internal `OrdersModule` provider and consumes only Orders-local persistence plus the existing `LOYALTY_ORDER_USAGE_READER` public capability. The public route and `OrderSummaryDto` shape are unchanged. Focused characterization preserves surcharge metadata, payment-total fallback, Loyalty balance/points projection, external-paid cents, item count/line totals and stable-ID-only rejection before persistence access. The central scanner reserves this ownership and prevents summary projection policy from returning to `OrdersService`.
+
+No Prisma schema/migration, dependency/lockfile, public route shape, payment capture/refund behavior, pricing/promotion write semantics, Order lifecycle write, PrintJob behavior or cross-context direct-import allowance changes are introduced. Numeric baselines remain Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, and public SCC remains empty.
+
+No standalone Slice 5E production verification is required; Phase closeout should include opening a completed Web order thank-you/summary view and confirming subtotal/discount/tax/surcharge/payment split and item projection remain correct.
+
+Planned follow-on after Slice 5E is: **fresh readiness audit for remaining OrdersService read/write/payment/pricing seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
