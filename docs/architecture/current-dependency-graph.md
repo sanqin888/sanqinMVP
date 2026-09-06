@@ -273,6 +273,43 @@ final numeric baseline plus empty public SCC remain authoritative. The POS Order
 found during verification is separate: it loaded only the newest 30 Orders even though older production rows are
 present, so its server-side historical query/pagination repair does not reopen Phase 4.
 
+### Phase 5 Slice 0 Orders/Fulfillment readiness + characterization — 2026-09-05
+
+Audit base is `origin/dev@a464c1c3` after PR #2192. Slice 0 changes tests and architecture documentation only: no
+production implementation, public contract, Prisma schema/migration, dependency, active/closed compatibility path,
+architecture allowance or provider wire behavior is changed. The compatibility review queue only records the
+EventEmitter/outbox candidate as resolved without assigning a `compat_id`. The exact direct-debt totals therefore
+remain Payments/Clover **59**,
+External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment
+**30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains
+empty.
+
+The readiness inventory confirms Orders still reaches cross-owner persistence through Catalog `MenuItem`, Customer
+`User`/`UserAddress`, Benefits `LoyaltyAccount`, checkout/payment `CheckoutIntent`, provider
+`UberOrderItemModifier`, and the durable lifecycle's `PosPrintJob` existence probe. `OrdersService` also still
+imports concrete `LoyaltyService`, `MembershipService`, `UberDirectService`, `LocationService`,
+`NotificationService` and `EmailService`; `FulfillmentProcessor` directly imports `UberDirectService`. These are
+recorded migration debts, not newly introduced edges.
+
+Behavior coverage is locked before movement. Existing tests already cover quote/create/status/full-refund/outbox and
+most print behavior. Slice 0 adds focused characterization for confirmed-payment finalization, `createAmendment()`,
+Uber Direct request/response mapping, the successful guarded `paid -> making` same-process fast path, and exact
+sequential AUTO print deduplication behavior.
+
+The in-memory/durable audit found no current source path that deliberately fans one successful preparation transition
+into both print materialization mechanisms. Manual/POS `paid -> making` emits the private same-process
+`order.prep_started` only after the guarded state write wins; durable acceptance instead uses
+`order.accepted -> OrderPreparationService`, which writes `making + durable order.prep_started` atomically and does
+not emit the private bus. Already-active orders do not append another durable prep fact, and the durable print claim
+requires no existing AUTO `PosPrintJob`. Two hardening debts remain explicit: truly concurrent callers could race
+inside `PosGateway.sendPrintJob()` after the unique `(orderStableId, kind)` upsert but before the per-target socket
+emit is claimed, and Uber Direct's private `order.paid.verified` path can lose the local `externalDeliveryId` write
+after provider success. Neither is changed by Slice 0 because no active duplicate source was proven and Uber Direct
+is an externally observable controlled-cutover concern.
+
+Detailed evidence and next-slice guidance are in
+`docs/architecture/phase-5-commerce-orders-fulfillment.md`.
+
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:
 

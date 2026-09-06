@@ -110,6 +110,7 @@ describe('PosGateway durable print delivery', () => {
       'PRINT_JOB',
       expect.objectContaining({ target: 'kitchen' }),
     );
+    expect(emit).toHaveBeenCalledTimes(2);
   });
 
   it('离线记录原因，joinStore 重连后补发未完成目标', async () => {

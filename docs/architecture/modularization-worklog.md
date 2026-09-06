@@ -1187,6 +1187,37 @@ context direction, numeric architecture baseline or SCC allowance changes.
 `apps/web/src/app/[locale]/(device)/store/pos/orders/page.tsx`, `apps/web/src/lib/time/tz.ts`,
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`, `docs/architecture/current-dependency-graph.md`.
 
+### 2026-09-05 — Phase 5 Slice 0: Orders/Fulfillment readiness + characterization
+
+**PR/SHA:** local branch `refactor/phase5-slice0-orders-readiness` based on `origin/dev@a464c1c3`  
+**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING — TEST/DOCS ONLY; NO RUNTIME BEHAVIOR MOVED  
+**Result:** Opened Phase 5 with a read-only ownership/event audit plus focused characterization before any
+Commerce/Orders/Fulfillment implementation movement. Existing coverage already locks quote, Web/POS create,
+status/ready notifications, full refund, preparation/outbox and most durable print behavior. Slice 0 adds direct
+characterization for confirmed-payment finalization (Points/Balance COMMIT + Coupon COMMIT + `Order.create()` in the
+same transaction, immutable prepared snapshot and idempotent existing-Order return), `createAmendment()` validation/
+transactional item+total mutation, Uber Direct request/response mapping and DB-UUID rejection, the guarded
+`paid -> making` private `prep_started` fast path, and exact sequential AUTO PrintJob deduplication behavior.
+The production Orders tree is inventoried for direct persistence and concrete dependencies: cross-owner persistence
+still reaches Catalog `MenuItem`, Customer `User`/`UserAddress`, Benefits `LoyaltyAccount`, payment/checkout
+`CheckoutIntent`, provider `UberOrderItemModifier`, and the durable lifecycle's `PosPrintJob` existence probe;
+`OrdersService` still imports concrete Loyalty, Membership, Uber Direct, Location, Notification and Email services,
+with `FulfillmentProcessor` also importing Uber Direct directly. The event audit found no current source path that
+intentionally sends one successful preparation transition through both the private fast path and durable outbox:
+manual/POS making emits only the private bus, while durable accepted activation writes `making + prep_started` in
+one transaction without emitting that bus, and durable print materialization requires no existing AUTO job. Two
+later hardening debts are recorded without runtime changes: a theoretical concurrent `PosGateway.sendPrintJob()`
+socket-emission race after the unique AUTO upsert, and Uber Direct provider-success/DB-write crash durability. Direct
+debt counts and the empty SCC baseline are unchanged. No schema/migration, dependency, public contract,
+active/closed compatibility path, architecture baseline or provider behavior changed; the compatibility review queue
+only removes the now-resolved EventEmitter/outbox candidate without assigning a `compat_id`. No local lint/build/test
+is claimed per repository workflow.  
+**Details:** `docs/architecture/phase-5-commerce-orders-fulfillment.md`,
+`docs/architecture/current-dependency-graph.md`, `docs/architecture/active-compatibility-register.json`,
+`docs/architecture/active-compatibility-register.md`, `apps/api/src/orders/orders-payment-finalization.characterization.spec.ts`,
+`apps/api/src/orders/orders-amendment.characterization.spec.ts`, `apps/api/src/deliveries/uber-direct.service.spec.ts`,
+`apps/api/src/orders/orders.service.spec.ts`, `apps/api/src/pos/pos.gateway.spec.ts`.
+
 ## Current position
 
 - Phase 1: closed.
@@ -1252,6 +1283,12 @@ context direction, numeric architecture baseline or SCC allowance changes.
   5xx/Prisma/OTP anomalies. Recharge SMS is N/A under the current email-first account mix; SMS Login 2FA negative,
   cooldown and success behavior was verified separately. The POS Order Management 30-row historical-query defect
   found during verification is a separate post-Phase-4 hotfix and does not reopen the closed phase.
+- Phase 5: **SLICE 0 SOURCE COMPLETE / LOCAL REVIEW PENDING** on 2026-09-05. Readiness/characterization is based on
+  `origin/dev@a464c1c3`; no production behavior or architecture baseline is moved. Confirmed-payment finalization,
+  amendment, Uber Direct, making fast-path and sequential AUTO print behavior now have focused characterization,
+  while the complete Orders persistence/concrete-service/EventEmitter inventory and duplicate-side-effect audit are
+  recorded in `docs/architecture/phase-5-commerce-orders-fulfillment.md`. The recommended first ownership move after
+  Slice 0 review/CI is Orders -> Messaging delivery contraction.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
