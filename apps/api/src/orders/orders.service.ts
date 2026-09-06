@@ -33,9 +33,15 @@ import {
 } from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
 import {
+  CUSTOMER_EXISTENCE_READER,
   CUSTOMER_ORDER_CONTEXT_READER,
+  type CustomerExistenceReaderPort,
   type CustomerOrderContextReaderPort,
 } from '../membership/public-api';
+import {
+  ORDER_BENEFITS_READER,
+  type OrderBenefitsReaderPort,
+} from '../benefits/public-api';
 import {
   CreateOrderInput,
   DeliveryDestinationInput,
@@ -398,6 +404,10 @@ export class OrdersService {
     @Inject(LOYALTY_POLICY_READER)
     private readonly loyaltyPolicyReader: LoyaltyPolicyReaderPort,
     private readonly membership: MembershipService,
+    @Inject(CUSTOMER_EXISTENCE_READER)
+    private readonly customerExistence: CustomerExistenceReaderPort,
+    @Inject(ORDER_BENEFITS_READER)
+    private readonly orderBenefitsReader: OrderBenefitsReaderPort,
     @Inject(CUSTOMER_ORDER_CONTEXT_READER)
     private readonly customerOrderContext: CustomerOrderContextReaderPort,
     @Inject(PROMOTION_CONTEXT_READER)
@@ -462,9 +472,13 @@ export class OrdersService {
       throw new BadRequestException('userStableId must be a cuid');
     }
 
-    const userId = normalizedUserStableId
-      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
-      : undefined;
+    const isMember = Boolean(normalizedUserStableId);
+    if (
+      normalizedUserStableId &&
+      !(await this.customerExistence.customerExists(normalizedUserStableId))
+    ) {
+      throw new BadRequestException('member not found');
+    }
 
     const rawCouponStableId =
       typeof dto.couponStableId === 'string' ? dto.couponStableId.trim() : '';
@@ -489,7 +503,7 @@ export class OrdersService {
     const pricingConfig = await this.getStorePricingConfig();
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
     const hasLoyaltyRedemptionInput =
-      Boolean(userId) &&
+      isMember &&
       (typeof dto.pointsToRedeem === 'number' ||
         typeof dto.redeemValueCents === 'number');
     const loyaltyPolicy = hasLoyaltyRedemptionInput
@@ -575,8 +589,8 @@ export class OrdersService {
       );
     }
 
-    const couponInfo = await this.membership.validateCouponForOrder({
-      userId,
+    const couponInfo = await this.orderBenefitsReader.validateCouponForOrder({
+      userStableId: normalizedUserStableId ?? undefined,
       couponStableId: normalizedCouponStableId ?? undefined,
     });
     const promotionRuleChannel = resolvePromotionRuleChannel(dto.channel);
@@ -589,7 +603,7 @@ export class OrdersService {
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
       promotionContext,
-      customer: { isMember: Boolean(userId) },
+      customer: { isMember },
       posDiscountCents:
         dto.channel === Channel.in_store ? dto.discountCents : undefined,
     });
@@ -620,16 +634,15 @@ export class OrdersService {
     let loyaltyRedeemCents = 0;
     if (
       loyaltyPolicy &&
-      userId &&
+      normalizedUserStableId &&
       typeof requestedPoints === 'number' &&
       requestedPoints > 0
     ) {
       const availableTender =
-        await this.loyalty.getAvailablePaymentTender(userId);
-      const maxRedeemableCents =
-        await this.loyalty.maxRedeemableCentsFromBalance(
-          availableTender.pointsMicro,
+        await this.orderBenefitsReader.getAvailablePaymentTender(
+          normalizedUserStableId,
         );
+      const maxRedeemableCents = availableTender.maxRedeemableCents;
       const requestedRedeemCents = resolveRequestedLoyaltyRedeemCents(
         requestedPoints,
         loyaltyPolicy.redeemDollarPerPoint,
@@ -698,9 +711,8 @@ export class OrdersService {
         'member is required for stored balance payment',
       );
     }
-    const userId = await this.loyalty.resolveUserIdByStableId(userStableId);
     const availableTender =
-      await this.loyalty.getAvailablePaymentTender(userId);
+      await this.orderBenefitsReader.getAvailablePaymentTender(userStableId);
     if (requestedBalanceCents > availableTender.balanceCents) {
       throw new ConflictException({
         code: 'STORE_BALANCE_CHANGED',
@@ -3031,14 +3043,10 @@ export class OrdersService {
 
     const { calculatedSubtotal } = await this.calculateLineItems(items);
 
-    const userId = await this.loyalty.resolveUserIdByStableId(userStableId);
-    const account = await this.prisma.loyaltyAccount.findUnique({
-      where: { userId },
-      select: { pointsMicro: true },
-    });
-    const pointsMicro = account?.pointsMicro ?? 0n;
     const maxRedeemableCents =
-      await this.loyalty.maxRedeemableCentsFromBalance(pointsMicro);
+      await this.orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents(
+        userStableId,
+      );
 
     if (maxRedeemableCents < calculatedSubtotal) {
       throw new BadRequestException('insufficient loyalty balance');

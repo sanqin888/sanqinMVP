@@ -4561,6 +4561,167 @@ if (ordersCustomerRuntimeReadBoundary) {
   }
 }
 
+const ordersBenefitsRuntimeReadBoundary =
+  config.ordersBenefitsRuntimeReadBoundary ?? null;
+if (ordersBenefitsRuntimeReadBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersBenefitsRuntimeReadBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.compositionModule,
+    boundary.publicSurface,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Benefits runtime-read boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_BENEFITS_READER',
+      'OrderBenefitsReaderPort',
+      'validateCouponForOrder',
+      'getAvailablePaymentTender',
+      'getLoyaltyOnlyRedeemCapacityCents',
+      'userStableId',
+      'couponStableId',
+      'balanceCents',
+      'maxRedeemableCents',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Benefits Orders read contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('LoyaltyService') ||
+      source.includes('MembershipService') ||
+      /\buserId\b/.test(source) ||
+      /\bcouponId\b/.test(source) ||
+      /(^|\s)id\s*:/m.test(source)
+    ) {
+      failures.push(
+        `Benefits Orders read contract must remain framework/persistence/concrete-service/DB-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderBenefitsReaderPort',
+      'LoyaltyService',
+      'MembershipService',
+      'validateCouponForOrder',
+      'getAvailablePaymentTender',
+      'getLoyaltyOnlyRedeemCapacityCents',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Benefits owner is missing Orders runtime-read capability ${requiredSymbol}: ${boundary.ownerService}`,
+        );
+      }
+    }
+  }
+
+  const compositionModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.compositionModule,
+  );
+  if (existsSync(compositionModulePath)) {
+    const source = readFileSync(compositionModulePath, 'utf8');
+    if (
+      !source.includes('ORDER_BENEFITS_READER') ||
+      !source.includes('useExisting: OrderBenefitsReadService') ||
+      !/exports:\s*\[[\s\S]*ORDER_BENEFITS_READER/.test(source)
+    ) {
+      failures.push(
+        `Benefits Orders read module must expose the token-backed owner capability: ${boundary.compositionModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_BENEFITS_READER',
+      'OrderBenefitsReaderPort',
+      'OrderBenefitsReadModule',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Benefits public surface is missing Orders read capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    const concreteMemberResolutionCount = (
+      source.match(/this\.loyalty\.resolveUserIdByStableId/g) ?? []
+    ).length;
+    const concreteCouponReadCount = (
+      source.match(/this\.membership\.validateCouponForOrder/g) ?? []
+    ).length;
+    if (
+      !source.includes("from '../benefits/public-api'") ||
+      !source.includes('ORDER_BENEFITS_READER') ||
+      !source.includes('private readonly orderBenefitsReader') ||
+      !source.includes('CUSTOMER_EXISTENCE_READER') ||
+      !source.includes('this.customerExistence.customerExists') ||
+      !source.includes('this.orderBenefitsReader.validateCouponForOrder') ||
+      !source.includes('this.orderBenefitsReader.getAvailablePaymentTender') ||
+      !source.includes(
+        'this.orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents',
+      ) ||
+      source.includes('this.loyalty.getAvailablePaymentTender') ||
+      source.includes('this.loyalty.maxRedeemableCentsFromBalance') ||
+      source.includes('this.loyalty.peekBalanceMicro') ||
+      source.includes('.loyaltyAccount.') ||
+      concreteMemberResolutionCount > 2 ||
+      concreteCouponReadCount > 2
+    ) {
+      failures.push(
+        `Orders Benefits runtime reads must use only the stable-ID Benefits public capability; concrete Loyalty/Membership access may remain only at the preserved transaction/preparation seam: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../benefits/public-api'") ||
+      !source.includes('OrderBenefitsReadModule')
+    ) {
+      failures.push(
+        `OrdersModule must compose Benefits runtime reads through the Benefits public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

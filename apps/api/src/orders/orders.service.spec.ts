@@ -13,7 +13,11 @@ import type {
   LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
-import type { CustomerOrderContextReaderPort } from '../membership/public-api';
+import type {
+  CustomerExistenceReaderPort,
+  CustomerOrderContextReaderPort,
+} from '../membership/public-api';
+import type { OrderBenefitsReaderPort } from '../benefits/public-api';
 import type {
   DailySpecialOffersPort,
   PromotionContextReaderPort,
@@ -128,6 +132,12 @@ describe('OrdersService', () => {
     releaseCouponForOrder: jest.Mock;
     markCouponUsedForOrder: jest.Mock;
   };
+  let customerExistence: { customerExists: jest.Mock };
+  let orderBenefitsReader: {
+    validateCouponForOrder: jest.Mock;
+    getAvailablePaymentTender: jest.Mock;
+    getLoyaltyOnlyRedeemCapacityCents: jest.Mock;
+  };
   let customerOrderContext: {
     getOrderCustomerContext: jest.Mock;
     getSavedDeliveryAddress: jest.Mock;
@@ -228,6 +238,17 @@ describe('OrdersService', () => {
       releaseCouponForOrder: jest.fn(),
       markCouponUsedForOrder: jest.fn(),
     };
+    customerExistence = {
+      customerExists: jest.fn().mockResolvedValue(true),
+    };
+    orderBenefitsReader = {
+      validateCouponForOrder: jest.fn().mockResolvedValue(null),
+      getAvailablePaymentTender: jest.fn().mockResolvedValue({
+        balanceCents: 0,
+        maxRedeemableCents: 0,
+      }),
+      getLoyaltyOnlyRedeemCapacityCents: jest.fn().mockResolvedValue(0),
+    };
     customerOrderContext = {
       getOrderCustomerContext: jest.fn().mockResolvedValue(null),
       getSavedDeliveryAddress: jest.fn().mockResolvedValue(null),
@@ -299,6 +320,8 @@ describe('OrdersService', () => {
       loyaltyOrderUsageReader as unknown as LoyaltyOrderUsageReaderPort,
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
+      customerExistence as unknown as CustomerExistenceReaderPort,
+      orderBenefitsReader as unknown as OrderBenefitsReaderPort,
       customerOrderContext as unknown as CustomerOrderContextReaderPort,
       promotions as unknown as PromotionContextReaderPort,
       dailySpecialOffers as unknown as DailySpecialOffersPort,
@@ -440,10 +463,8 @@ describe('OrdersService', () => {
   it('uses Promotion Engine as the coupon min-spend eligibility source', async () => {
     const userStableId = 'c2234567890abcdefghijklmn';
     const couponStableId = 'c3234567890abcdefghijklmn';
-    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
-    membership.validateCouponForOrder.mockResolvedValue({
+    orderBenefitsReader.validateCouponForOrder.mockResolvedValue({
       coupon: {
-        id: '11111111-1111-1111-1111-111111111111',
         couponStableId,
         code: 'SAVE10',
         title: 'Save 10%',
@@ -465,8 +486,8 @@ describe('OrdersService', () => {
       }),
     ).rejects.toThrow('order subtotal does not meet coupon rules');
 
-    expect(membership.validateCouponForOrder).toHaveBeenCalledWith({
-      userId: 'user-1',
+    expect(orderBenefitsReader.validateCouponForOrder).toHaveBeenCalledWith({
+      userStableId,
       couponStableId,
     });
   });
@@ -474,7 +495,6 @@ describe('OrdersService', () => {
   it('rejects hidden menu items instead of unlocking them through coupons', async () => {
     const productStableId = 'c1234567890abcdefghijklmn';
     const userStableId = 'c2234567890abcdefghijklmn';
-    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
     catalogOrderFacts.findHiddenMenuItemStableIds.mockResolvedValueOnce([
       productStableId,
     ]);
@@ -493,14 +513,29 @@ describe('OrdersService', () => {
     expect(prisma.userCoupon.findFirst).not.toHaveBeenCalled();
   });
 
+  it('uses the Benefits-owned raw loyalty capacity for loyalty-only order eligibility', async () => {
+    const userStableId = 'c2234567890abcdefghijklmn';
+    orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents.mockResolvedValue(999);
+
+    await expect(
+      service.createLoyaltyOnlyOrder({
+        userStableId,
+        fulfillmentType: 'pickup',
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      }),
+    ).rejects.toThrow('insufficient loyalty balance');
+
+    expect(
+      orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents,
+    ).toHaveBeenCalledWith(userStableId);
+  });
+
   it('uses the Benefits policy rate for loyalty redemption in order quotes', async () => {
     const userStableId = 'c2234567890abcdefghijklmn';
-    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
-    loyalty.getAvailablePaymentTender.mockResolvedValue({
-      pointsMicro: 100_000_000n,
+    orderBenefitsReader.getAvailablePaymentTender.mockResolvedValue({
       balanceCents: 0,
+      maxRedeemableCents: 1000,
     });
-    loyalty.maxRedeemableCentsFromBalance.mockResolvedValue(1000);
     loyaltyPolicyReader.getLoyaltyPolicySnapshot.mockResolvedValue({
       earnPtPerDollar: 0.01,
       redeemDollarPerPoint: 0.5,

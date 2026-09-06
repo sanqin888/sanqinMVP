@@ -18,3 +18,10 @@ export {
   type PaymentCouponReservationPort,
   type PaymentTenderReservationPort,
 } from './contracts/payment-benefit-reservation.contract';
+export {
+  ORDER_BENEFITS_READER,
+  type OrderAvailableTender,
+  type OrderBenefitsReaderPort,
+  type OrderCouponBenefit,
+} from './contracts/order-benefits-read.contract';
+export { OrderBenefitsReadModule } from './public-api/order-benefits-read.module';

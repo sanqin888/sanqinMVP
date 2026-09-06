@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@1f58f1a3` (Slice 4C Customer runtime read contraction merge / PR #2204)  
-Current status: **SLICE 4C-A USERADDRESS STABLE-ID CUID REPAIR LOCAL / REVIEW PENDING — NEW CUSTOMER ADDRESSES USE THE CANONICAL `c...` STABLE-ID GENERATOR; THE TWO HISTORICAL PRODUCTION `a...` ROWS REMAIN DATA-REPAIR PENDING; NO SCHEMA/MIGRATION OR DEPENDENCY-GRAPH CHANGE; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@c02c3bac` (Slice 4C-A source merge / PR #2205; production address-row repair remains separately gated)  
+Current status: **SLICE 4D BENEFITS RUNTIME READ CONTRACTION LOCAL / REVIEW PENDING — ORDERS QUOTE/WEB-TENDER/LOYALTY-ONLY ELIGIBILITY READS USE THE STABLE-ID BENEFITS PUBLIC CAPABILITY; DIRECT LOYALTYACCOUNT PERSISTENCE READS ARE REMOVED; THE EXISTING TRANSACTION/PREPARATION MUTATION SEAM IS PRESERVED; COMMERCE DIRECT-DEBT BASELINE REMAINS 22; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -428,7 +428,7 @@ A separate pre-existing saved-address identity defect was discovered read-only d
 
 ### Slice 4C-A — UserAddress canonical StableId repair
 
-Status: **LOCAL / REVIEW PENDING** on `fix/customer-address-stable-id-cuid`, based on `origin/dev@1f58f1a3`.
+Status: **SOURCE MERGED / CI GREEN; PRODUCTION DATA REPAIR STILL PENDING** — PR #2205, final head `227643935d6c8ad02e39ef1b91fff176c49bb204`, squash merge `c02c3bac`; PR CI #5238 passed API and Web. The separately gated two-row production correction has not been executed.
 
 Migration classification: **Class B persisted-identity repair with a very small deterministic data correction**. No Prisma schema or migration is required because `UserAddress.addressStableId` is already `@default(cuid())`; the defect is application code that generated a normal `c...` ID and then replaced its first character with `a`.
 
@@ -438,4 +438,20 @@ Read-only production audit before implementation found exactly **2** `UserAddres
 
 This repair changes no public route shape, dependency direction, scanner baseline, payment/provider behavior, order lifecycle, pricing, or Benefits transaction semantics. After source review/merge and the later two-row production repair, Phase 5 closeout verification must include selecting an existing saved delivery address and confirming Orders resolves it through `CUSTOMER_ORDER_CONTEXT_READER` rather than treating it as an untrusted free-form address.
 
-Planned follow-on after Slice 4C-A is: **Slice 4D Benefits read contraction while preserving the existing transaction seam -> remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 4D — Benefits runtime read contraction / transaction-seam preservation
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4d`, based on `origin/dev@c02c3bac`.
+
+Migration classification: **Class A owner-boundary/runtime-read contraction**. No Prisma schema/migration, dependency/lockfile, public HTTP route, pricing/promotion policy, payment/refund behavior, order lifecycle, provider wire contract or Benefits reservation/COMMIT transaction semantics change.
+
+Benefits now exposes the narrow stable-ID-only `ORDER_BENEFITS_READER`. Its public contract carries only member/coupon business stable IDs plus order-facing coupon and tender/capacity facts. The Benefits-owned implementation may resolve `userStableId -> User.id` and use existing Loyalty/Membership concrete services internally, but User/Coupon DB UUIDs, Prisma types and concrete services do not cross into Commerce. Member existence remains Customer ownership and Orders reuses the already-established `CUSTOMER_EXISTENCE_READER`; 4D does not duplicate that capability inside Benefits.
+
+Orders uses the Benefits reader for coupon eligibility facts, loyalty redeem availability, Web stored-balance availability and loyalty-only order eligibility, while quote-time member existence uses the Customer public capability and preserves the historical `member not found` behavior. The previous `createLoyaltyOnlyOrder()` direct `prisma.loyaltyAccount` read is removed. Normal checkout tender uses availability after active payment holds, while loyalty-only eligibility deliberately preserves the previous raw-account-points capacity check rather than becoming stricter because of HELD reservations. Commerce retains pricing, promotion stacking/min-spend acceptance, requested-points calculation, insufficient-balance policy and Order snapshot decisions; Benefits owns only the current entitlement/account facts needed by those decisions.
+
+The existing concrete `LoyaltyService` / `MembershipService` constructor seam is deliberately preserved for the transaction-/mutation-sensitive paths that are not safe to contract in this Slice: POS payment preparation currently carries internal user/coupon identity into the immutable prepared snapshot; confirmed-payment Tender/Coupon COMMIT remains inside the same Prisma transaction as Order creation; normal Order creation still validates/reserves coupon and reserves/deducts Loyalty inside its transaction; refund/amendment/paid-side-effect mutation behavior is unchanged. This is the same deferred atomicity constraint recorded by Phase 3 Slice 2C; 4D does not export `Prisma.TransactionClient`, split the transaction, or move Benefits persistence into Orders.
+
+Because the two concrete import statements remain for that preserved seam, the monotonic direct-import baseline intentionally stays `commerce-orders-fulfillment -> identity-customer-benefits = 2` and Commerce outgoing direct debt stays **22**; the public SCC baseline remains empty. The architecture scanner instead locks the measurable read-side contraction: Orders cannot regain direct `loyaltyAccount` persistence, concrete `getAvailablePaymentTender()` / `maxRedeemableCentsFromBalance()` reads, or expand concrete stable-member/coupon runtime reads beyond the two preserved preparation/transaction call sites. Focused Benefits/Orders tests lock stable-ID input, DB-ID hiding, coupon projection and current tender semantics.
+
+Phase-level closeout verification must retain member coupon pricing, points redemption, Web stored-balance checkout and loyalty-only order scenarios. No standalone Slice 4D production checklist is required under the Phase 5 verification cadence.
+
+Planned follow-on after Slice 4D is: **remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
