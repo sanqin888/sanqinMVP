@@ -318,6 +318,16 @@ The POS cash browser now supplies optional `cashReceivedCents` on canonical `/po
 
 `PrintPosPayloadService` can now recover persisted cash receipt facts into the existing print payload, while the current browser `/print` transient fields remain valid for older PWA bundles. No lifecycle transition, `order.accepted` / `order.prep_started` producer, PrintJob kind, printer transport, Clover provider behavior, Prisma schema/migration or architecture allowance changes in 1A. The actual POS first-print convergence from `REPRINT:* + advance` to durable `accepted -> prep_started -> AUTO` remains Slice 1B.
 
+### Phase 5 Slice 1B POS ordinary durable lifecycle cutover — 2026-09-05
+
+Slice 1B changes runtime orchestration but **does not change the measured context graph or architecture allowance baseline**. Direct-debt totals remain Payments/Clover **59**, External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty.
+
+Canonical in-store creation now writes the Orders-owned durable `order.accepted` fact atomically with the paid Order, then asks the existing `OrderLifecycleOutboxProcessor` to drain after commit. The same durable path owns `making + order.prep_started` and AUTO first-print materialization. The POS payment browser no longer performs first-print `REPRINT:*` or the first `advance`, so the old create/print/advance orchestration is contracted rather than retained in parallel. The existing POS -> Orders operations boundary is expanded narrowly with store-scoped `activateImmediatePreparation()` so a manual `/advance` arriving while an in-store Order is still `paid` also joins that same durable path; later `making -> ready` advancement and explicit operator reprint remain separate store-operation capabilities.
+
+This slice adds no new cross-context import: `OrdersService -> order-lifecycle`, `PosOrderOperationsService -> OrderLifecycleOutboxProcessor`, and the durable-origin marker inside Fulfillment are all Commerce/Orders/Fulfillment internal wiring. The existing Orders -> POS print-type/dispatch debt is unchanged and remains scheduled for the later Print ownership slice. No Prisma schema/migration, Clover/Web payment path, Uber provider behavior, dependency manifest, SCC member/edge or scanner baseline is changed.
+
+The cutover is intentionally not represented as an active compatibility path: the user authorized a non-business-hours deployment with no support for an old cached POS payment bundle after cutover. Production verification must complete before Slice 1C.
+
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:
 

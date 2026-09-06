@@ -9,10 +9,8 @@ import type { Locale } from "@/lib/i18n/locales";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import { fetchPosLoyaltyPolicy } from "@/lib/api/loyalty";
 import {
-  advanceOrder,
   cancelPosCardPayment,
   fetchPosCardTerminalConfig,
-  printOrderCloud,
   quotePosCadToCny,
   quotePosOrderPricing,
   recoverPosCardPayment,
@@ -1084,22 +1082,6 @@ export default function StorePosPaymentPage() {
         cashChangeCents: cashMeta?.cashChangeCents ?? 0,
       });
 
-      if (order.orderStableId) {
-        try {
-          await printOrderCloud(order.orderStableId, {
-            targets: { customer: true, kitchen: true, label: true },
-            ...(cashMeta
-              ? {
-                  cashReceivedCents: cashMeta.cashReceivedCents,
-                  cashChangeCents: cashMeta.cashChangeCents,
-                }
-              : {}),
-          });
-        } catch (e) {
-          console.warn("Failed to trigger POS print:", e);
-        }
-        try { await advanceOrder(order.orderStableId); } catch (e) { console.warn(e); }
-      }
     } catch (err) {
       console.error("Failed to place POS order:", err);
       setError(err instanceof Error ? err.message : t.errorGeneric);

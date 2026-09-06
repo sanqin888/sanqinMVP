@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrdersService } from './orders.service';
+import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
 import type {
   PosOrderAmendmentInput,
   PosOrderBoardQuery,
@@ -16,10 +17,15 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
     private readonly orders: OrdersService,
     private readonly scheduling: OrderSchedulingQueryService,
     private readonly preparation: OrderPreparationService,
+    private readonly lifecycleOutbox: OrderLifecycleOutboxProcessor,
   ) {}
 
-  createForStore(...args: Parameters<OrdersService['createForStore']>) {
-    return this.orders.createForStore(...args);
+  async createForStore(...args: Parameters<OrdersService['createForStore']>) {
+    const order = await this.orders.createForStore(...args);
+    if (args[0].channel === 'in_store') {
+      this.lifecycleOutbox.requestDrain();
+    }
+    return order;
   }
 
   quotePricingForStore(
@@ -92,6 +98,17 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
       orderStableIds,
       storeStableId,
     );
+  }
+
+  async activateImmediatePreparation(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<void> {
+    await this.preparation.activateAcceptedImmediateOrderByStableId(
+      orderStableId,
+      storeStableId,
+    );
+    this.lifecycleOutbox.requestDrain();
   }
 
   async activateScheduledPreparation(

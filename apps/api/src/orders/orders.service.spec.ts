@@ -93,6 +93,9 @@ describe('OrdersService', () => {
       findFirst: jest.Mock;
       updateMany: jest.Mock;
     };
+    opsEvent: {
+      createMany: jest.Mock;
+    };
   };
   let brandStoreConfigReader: {
     getConfiguredStoreSnapshot: jest.Mock;
@@ -200,6 +203,9 @@ describe('OrdersService', () => {
       checkoutIntent: {
         findFirst: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      opsEvent: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -1295,6 +1301,7 @@ describe('OrdersService', () => {
           data: expect.objectContaining({ storeId: 'server-store' }) as unknown,
         }),
       );
+      expect(prisma.opsEvent.createMany).not.toHaveBeenCalled();
     } finally {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;
@@ -1335,6 +1342,15 @@ describe('OrdersService', () => {
           }) as unknown,
         }),
       );
+      expect(prisma.opsEvent.createMany).toHaveBeenCalledWith({
+        data: {
+          idempotencyKey: 'order.accepted:pos-store-order-stable',
+          eventName: 'order.accepted',
+          source: 'orders.lifecycle',
+          payload: { orderStableId: 'pos-store-order-stable' },
+        },
+        skipDuplicates: true,
+      });
     } finally {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;

@@ -107,7 +107,7 @@ describe('FulfillmentProcessor reprint store routing', () => {
   });
 });
 
-describe('FulfillmentProcessor accepted web order printing', () => {
+describe('FulfillmentProcessor accepted lifecycle printing', () => {
   const originalStoreId = process.env.STORE_ID;
 
   afterEach(() => {
@@ -116,7 +116,10 @@ describe('FulfillmentProcessor accepted web order printing', () => {
     jest.restoreAllMocks();
   });
 
-  function setupAccepted(storeId: string | null) {
+  function setupAccepted(
+    storeId: string | null,
+    channel: 'web' | 'in_store' = 'web',
+  ) {
     let acceptedHandler:
       | ((payload: { orderId: string }) => Promise<void>)
       | null = null;
@@ -143,7 +146,7 @@ describe('FulfillmentProcessor accepted web order printing', () => {
           findUnique: jest.fn().mockResolvedValue({
             id: 'web-order-1',
             orderStableId: 'stable-web-1',
-            channel: 'web',
+            channel,
             storeId,
           }),
         },
@@ -162,6 +165,7 @@ describe('FulfillmentProcessor accepted web order printing', () => {
     processor.onModuleInit();
 
     return {
+      processor,
       runAccepted: async () => {
         if (!acceptedHandler)
           throw new Error('accepted handler not registered');
@@ -194,6 +198,41 @@ describe('FulfillmentProcessor accepted web order printing', () => {
         targets: { customer: true, kitchen: true, label: false },
       },
     });
+  });
+
+  it('durable POS prep_started 为 in_store 订单创建唯一 AUTO 首次打印', async () => {
+    const { processor, sendPrintJob } = setupAccepted(
+      'store-4750',
+      'in_store',
+    );
+
+    await processor.handleAcceptedLifecycle({
+      orderId: 'web-order-1',
+      origin: 'durable',
+    });
+
+    expect(sendPrintJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 'web-order-1',
+        orderStableId: 'stable-web-1',
+        storeId: 'store-4750',
+        kind: 'AUTO',
+        data: expect.objectContaining({
+          targets: { customer: true, kitchen: true, label: false },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('same-process memory prep 仍跳过 in_store，避免产生第二条首次打印链', async () => {
+    const { runAccepted, sendPrintJob } = setupAccepted(
+      'store-4750',
+      'in_store',
+    );
+
+    await runAccepted();
+
+    expect(sendPrintJob).not.toHaveBeenCalled();
   });
 
   it('订单缺少 storeId 时记录结构化错误并停止自动打印派发', async () => {
