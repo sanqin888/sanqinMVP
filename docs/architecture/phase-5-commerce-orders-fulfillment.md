@@ -386,7 +386,7 @@ Behavior intentionally unchanged: order-ready eligibility/trusted-contact preced
 
 ### Slice 4A — low-risk direct-edge + dead-code contraction
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4a-direct-edge-dead-code`, based on `origin/dev@62790355`.
+Status: **REMOTE / CI RERUN PENDING** on PR #2202 from `refactor/phase5-slice4a-direct-edge-dead-code`, based on `origin/dev@62790355`; initial CI #5227 passed the Architecture gate and failed API lint only on two Prettier formatting errors, now corrected in the current PR head with rerun pending.
 
 Migration classification: **Class A atomic internal contraction**. No Prisma schema/migration, dependency/lockfile, public HTTP route, Web Clover behavior, Uber provider protocol, payment/refund semantics, order lifecycle, pricing/promotion policy or Benefits COMMIT transaction changes are part of 4A.
 

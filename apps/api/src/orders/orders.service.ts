@@ -4321,5 +4321,4 @@ export class OrdersService {
       parts.push(`orderStableId=${params.orderStableId}`);
     return parts.length ? `[${parts.join(' ')}] ` : '';
   }
-
 }
