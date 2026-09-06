@@ -1,10 +1,7 @@
 /* eslint-disable @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/unbound-method */
 import type { CreateOrderInput } from '@shared/order';
 
-import type {
-  PosOrderDto,
-  PosOrderOperationsPort,
-} from '../orders/public-api';
+import type { PosOrderDto, PosOrderOperationsPort } from '../orders/public-api';
 import type { OrdersService } from '../orders/orders.service';
 import type { TerminalPaymentService } from '../payments/application/create-payment-attempt.use-case';
 import type { PaymentTransactionRepository } from '../payments/application/payment-transaction.repository';

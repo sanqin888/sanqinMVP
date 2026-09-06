@@ -317,9 +317,12 @@ describe('Payments bounded-context architecture', () => {
   });
 
   it('keeps POS Terminal first-print ownership on the Orders durable lifecycle boundary', () => {
-    const orchestration = scanTypeScript(resolve(SOURCE_ROOT, 'orchestration'), {
-      productionOnly: true,
-    }).find(({ path }) =>
+    const orchestration = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      {
+        productionOnly: true,
+      },
+    ).find(({ path }) =>
       path.endsWith('pos-card-payment-orchestration.service.ts'),
     );
 
