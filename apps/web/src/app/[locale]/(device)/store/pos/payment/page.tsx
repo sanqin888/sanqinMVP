@@ -1065,10 +1065,13 @@ export default function StorePosPaymentPage() {
         return;
       }
 
+      const orderRequest: CreateOrderInput = cashMeta
+        ? { ...body, cashReceivedCents: cashMeta.cashReceivedCents }
+        : body;
       const order = await apiFetch<CreatePosOrderResponse>("/pos/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(orderRequest),
       });
 
       if (typeof window !== "undefined" && order.orderStableId) {

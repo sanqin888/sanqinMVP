@@ -1515,6 +1515,43 @@ export class OrdersService {
     return PaymentMethod.CASH;
   }
 
+  private resolveCashPaymentBreakdown(params: {
+    dto: CreateOrderInput;
+    paymentMethod: PaymentMethod;
+    externalPaymentCents: number;
+  }): Prisma.InputJsonValue | null {
+    const cashReceivedCents = params.dto.cashReceivedCents;
+    if (cashReceivedCents === undefined) return null;
+
+    if (
+      params.dto.channel !== Channel.in_store ||
+      params.paymentMethod !== PaymentMethod.CASH
+    ) {
+      throw new BadRequestException(
+        'cashReceivedCents is only allowed for in-store cash orders',
+      );
+    }
+    if (!Number.isSafeInteger(cashReceivedCents) || cashReceivedCents < 0) {
+      throw new BadRequestException(
+        'cashReceivedCents must be a non-negative safe integer',
+      );
+    }
+    const cashAmountDueCents =
+      params.externalPaymentCents <= 0
+        ? 0
+        : Math.ceil(params.externalPaymentCents / 5) * 5;
+    if (cashReceivedCents < cashAmountDueCents) {
+      throw new BadRequestException(
+        'cashReceivedCents cannot be less than the cash amount due',
+      );
+    }
+
+    return {
+      cashReceivedCents,
+      cashChangeCents: cashReceivedCents - cashAmountDueCents,
+    } as Prisma.InputJsonValue;
+  }
+
   private async getStorePricingConfig(): Promise<DeliveryPricingConfig> {
     const existing =
       await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
@@ -3347,6 +3384,11 @@ export class OrdersService {
               0,
               totalCents - Math.min(totalCents, balanceUsedCents),
             );
+            const cashPaymentBreakdown = this.resolveCashPaymentBreakdown({
+              dto,
+              paymentMethod,
+              externalPaymentCents,
+            });
             if (
               verifiedCheckoutIntent &&
               externalPaymentCents !== verifiedCheckoutIntent.amountCents
@@ -3424,7 +3466,9 @@ export class OrdersService {
                         externalCents: externalPaymentCents,
                       },
                     }
-                  : {}),
+                  : cashPaymentBreakdown
+                    ? { paymentBreakdownJson: cashPaymentBreakdown }
+                    : {}),
                 deliveryFeeCents: deliveryFeeCustomerCents, // ⭐ 写入服务端计算的配送费
                 deliveryCostCents: 0,
                 deliverySubsidyCents: 0,

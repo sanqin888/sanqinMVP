@@ -1189,8 +1189,8 @@ context direction, numeric architecture baseline or SCC allowance changes.
 
 ### 2026-09-05 — Phase 5 Slice 0: Orders/Fulfillment readiness + characterization
 
-**PR/SHA:** local branch `refactor/phase5-slice0-orders-readiness` based on `origin/dev@a464c1c3`  
-**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING — TEST/DOCS ONLY; NO RUNTIME BEHAVIOR MOVED  
+**PR/SHA:** PR #2193; final head `a8be129b`; squash merge `07311f74`  
+**State:** MERGED / CI GREEN — TEST/DOCS ONLY; NO RUNTIME BEHAVIOR MOVED. Merged dev CI #5194 passed.  
 **Result:** Opened Phase 5 with a read-only ownership/event audit plus focused characterization before any
 Commerce/Orders/Fulfillment implementation movement. Existing coverage already locks quote, Web/POS create,
 status/ready notifications, full refund, preparation/outbox and most durable print behavior. Slice 0 adds direct
@@ -1217,6 +1217,13 @@ is claimed per repository workflow.
 `docs/architecture/active-compatibility-register.md`, `apps/api/src/orders/orders-payment-finalization.characterization.spec.ts`,
 `apps/api/src/orders/orders-amendment.characterization.spec.ts`, `apps/api/src/deliveries/uber-direct.service.spec.ts`,
 `apps/api/src/orders/orders.service.spec.ts`, `apps/api/src/pos/pos.gateway.spec.ts`.
+
+### 2026-09-05 — Phase 5 Slice 1A: POS cash payment-summary snapshot readiness
+
+**PR/SHA:** local branch `refactor/phase5-slice1a-pos-cash-snapshot` based on `origin/dev@07311f74`  
+**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING — NO LIFECYCLE OR PRINT-TRIGGER CUTOVER  
+**Result:** Post-Slice-0 tracing showed current POS first print is still triggered by the browser through `/pos/orders/:orderStableId/print`, which is semantically an `order.reprint` / `REPRINT:<timestamp>`, followed by a separate `advanceOrder()` to `making`. Before that path can converge on durable `order.accepted -> order.prep_started -> AUTO`, the cash receipt's `cashReceivedCents` / `cashChangeCents` must be recoverable without the browser. Slice 1A adds optional `cashReceivedCents` to the shared CreateOrder contract and sends it only on POS cash creation. Orders accepts it only for authenticated in-store CASH orders, validates the amount against the server-calculated remaining cash tender, preserves the existing POS upward-to-5-cent cash collection rule, derives change server-side, and stores only `{ cashReceivedCents, cashChangeCents }` in the existing `Order.paymentBreakdownJson`. It deliberately does not write in-store `externalCents`, so current Web external-payment/refund reconstruction and in-store refund semantics are unchanged. `Order.totalCents`, tax, promotions, Benefits settlement, Order status and paid/making transitions remain unchanged. `PrintPosPayloadService` now recovers those persisted cash receipt facts into the same top-level payload fields already understood by the Windows printer agent; the existing transient `/print` cash fields remain usable by older PWA bundles until Slice 1B removes the first-print browser orchestration. Focused tests cover server-derived change with an exact Order total that requires 5-cent cash rounding, insufficient-cash rejection, and persisted print-payload recovery. No Prisma schema/migration, dependency, architecture allowance/SCC, Clover/Web Ecommerce provider path, Uber runtime, PrintJob kind or printer protocol change is included. No local lint/build/test is claimed per repository workflow.  
+**Details:** `libs/order/contracts.ts`, `apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx`, `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/print-pos-payload.service.ts`, `apps/api/src/pos/dto/print-pos-payload.dto.ts`, focused specs, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, `docs/architecture/current-dependency-graph.md`.
 
 ## Current position
 
@@ -1283,12 +1290,13 @@ is claimed per repository workflow.
   5xx/Prisma/OTP anomalies. Recharge SMS is N/A under the current email-first account mix; SMS Login 2FA negative,
   cooldown and success behavior was verified separately. The POS Order Management 30-row historical-query defect
   found during verification is a separate post-Phase-4 hotfix and does not reopen the closed phase.
-- Phase 5: **SLICE 0 SOURCE COMPLETE / LOCAL REVIEW PENDING** on 2026-09-05. Readiness/characterization is based on
-  `origin/dev@a464c1c3`; no production behavior or architecture baseline is moved. Confirmed-payment finalization,
-  amendment, Uber Direct, making fast-path and sequential AUTO print behavior now have focused characterization,
-  while the complete Orders persistence/concrete-service/EventEmitter inventory and duplicate-side-effect audit are
-  recorded in `docs/architecture/phase-5-commerce-orders-fulfillment.md`. The recommended first ownership move after
-  Slice 0 review/CI is Orders -> Messaging delivery contraction.
+- Phase 5: Slice 0 is **MERGED / CI GREEN** via PR #2193 / `07311f74`, including merged dev CI #5194. Slice 1A is
+  **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1a-pos-cash-snapshot`. It makes POS cash
+  `cashReceivedCents` / server-derived `cashChangeCents` recoverable from the existing Order payment-summary JSON,
+  preserving the current upward-to-5-cent cash collection rule without changing exact Order totals, refunds,
+  lifecycle transitions, PrintJob kinds, Web Clover or Uber runtime. Phase 5 execution is revised to converge the
+  four initial-print/lifecycle paths before Messaging contraction; Slice 1B is the planned POS
+  `REPRINT + advance -> durable accepted/prep_started/AUTO` cutover after 1A review/CI and production verification.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.
