@@ -4911,7 +4911,7 @@ if (brandStoreCanonicalConfigOwnership) {
       if (
         source.includes('PosGateway') ||
         source.includes("from '../../pos/pos.gateway'") ||
-        !source.includes('POS_PRINT_JOB_DISPATCH_REQUESTED')
+        !source.includes('ORDER_PRINT_HANDOFF_REQUESTED')
       ) {
         failures.push(
           `Orders fulfillment must request POS print dispatch through the Orders-owned event boundary instead of importing PosGateway: ${ordersFulfillmentProcessor}`,
@@ -4937,8 +4937,8 @@ if (brandStoreCanonicalConfigOwnership) {
       const source = readFileSync(posPrintDispatchPath, 'utf8');
       if (
         !source.includes("from '../orders/public-api'") ||
-        !source.includes('POS_PRINT_JOB_DISPATCH_REQUESTED') ||
-        !source.includes('this.posGateway.sendPrintJob(request)')
+        !source.includes('ORDER_PRINT_HANDOFF_REQUESTED') ||
+        !source.includes('this.posGateway.enqueuePrintHandoff(request)')
       ) {
         failures.push(
           `POS must own the print-job transport listener behind the Orders dispatch event boundary: ${posPrintDispatchListener}`,

@@ -16,9 +16,6 @@ import {
   DeliveryProvider,
   DeliveryType,
   FulfillmentType,
-  MenuItemOptionGroup,
-  MenuOptionGroupTemplate,
-  MenuOptionTemplateChoice,
   PaymentMethod,
   OrderAmendmentType,
   OrderAmendmentItemAction,
@@ -62,18 +59,11 @@ import {
   buildClientRequestId,
   CLIENT_REQUEST_ID_RE,
 } from '../common/utils/client-request-id';
-import {
-  OrderItemOptionChoiceSnapshot,
-  OrderItemOptionGroupSnapshot,
-  OrderItemOptionsSnapshot,
-} from './order-item-options';
+import { OrderItemOptionsSnapshot } from './order-item-options';
 import {
   buildOrderItemComponentDisplaySnapshots,
   buildOrderItemParentDisplayOptions,
-  type OrderItemComponentSnapshot,
-  type OrderItemComponentsSnapshot,
 } from './order-item-components';
-import { isAvailableNow } from '@shared/menu';
 import {
   DAILY_SPECIAL_OFFERS,
   PROMOTION_CONTEXT_READER,
@@ -93,6 +83,7 @@ import { EmailService } from '../email/email.service';
 import { OrderEventsBus } from './order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { PrintPosPayloadService } from './print-pos-payload.service';
+import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import {
   BRAND_STORE_CONFIG_READER,
   resolveConfiguredStoreStableId,
@@ -179,25 +170,6 @@ type OrderItemInput = NonNullable<CreateOrderInput['items']>[number] & {
   qty: number;
   options?: Record<string, unknown>;
 };
-type MenuItemWithOptions = Prisma.MenuItemGetPayload<{
-  include: {
-    fixedComponents: true;
-    optionGroups: {
-      include: {
-        templateGroup: {
-          include: {
-            options: true;
-          };
-        };
-      };
-    };
-  };
-}>;
-type OptionChoiceContext = {
-  choice: MenuOptionTemplateChoice;
-  group: MenuOptionGroupTemplate;
-  link: MenuItemOptionGroup;
-};
 type CouponForPromotion = {
   couponStableId: string;
   code: string;
@@ -275,18 +247,6 @@ function resolveCouponPromotionDiscountCents(
   evaluation: PromotionOrderEvaluation,
 ): number {
   return resolvePromotionDiscountCentsBySource(evaluation, 'COUPON');
-}
-
-function availabilityFromDb(
-  isAvailable: boolean,
-  tempUnavailableUntil: Date | null,
-) {
-  return {
-    isAvailable,
-    tempUnavailableUntil: tempUnavailableUntil
-      ? tempUnavailableUntil.toISOString()
-      : null,
-  };
 }
 
 // --- 辅助函数：解析数字环境变量 ---
@@ -448,6 +408,7 @@ export class OrdersService {
     private readonly emailService: EmailService,
     private readonly orderEventsBus: OrderEventsBus,
     private readonly printPosPayloadService: PrintPosPayloadService,
+    private readonly orderItemSnapshotBuilder: OrderItemSnapshotBuilder,
   ) {}
 
   private resolveContactPolicy(dto: CreateOrderInput): OrderContactPolicy {
@@ -1821,54 +1782,6 @@ export class OrdersService {
     return undefined;
   }
 
-  private collectOptionSelectionRefs(
-    options?: Record<string, unknown>,
-  ): Array<{ optionId: string; groupKey?: string; sequence: number }> {
-    if (!options || typeof options !== 'object') return [];
-
-    const refs: Array<{
-      optionId: string;
-      groupKey?: string;
-      sequence: number;
-    }> = [];
-    const seen = new Set<string>();
-    let sequence = 0;
-
-    const pushOptionId = (value: unknown, groupKey?: string) => {
-      let optionId: string | null = null;
-
-      if (typeof value === 'string') {
-        optionId = value.trim();
-      } else if (value && typeof value === 'object') {
-        const record = value as Record<string, unknown>;
-        const byId = record.id;
-        const byStableId = record.optionStableId;
-        if (typeof byId === 'string' && byId.trim()) {
-          optionId = byId.trim();
-        } else if (typeof byStableId === 'string' && byStableId.trim()) {
-          optionId = byStableId.trim();
-        }
-      }
-
-      if (!optionId) return;
-      const selectionKey = `${groupKey ?? ''}::${optionId}`;
-      if (seen.has(selectionKey)) return;
-      seen.add(selectionKey);
-      refs.push({ optionId, groupKey, sequence: sequence++ });
-    };
-
-    Object.entries(options).forEach(([groupKey, val]) => {
-      if (groupKey === 'notes') return;
-      if (Array.isArray(val)) {
-        val.forEach((entry) => pushOptionId(entry, groupKey));
-        return;
-      }
-      pushOptionId(val, groupKey);
-    });
-
-    return refs;
-  }
-
   private async ensureLoyaltyAccountWithTx(
     tx: Prisma.TransactionClient,
     userId: string,
@@ -1903,223 +1816,31 @@ export class OrdersService {
     calculatedSubtotal: number;
     promotionLines: PromotionOrderLine[];
   }> {
-    const normalizedItems = itemsDto.map((item) => {
-      const normalizedId = normalizeStableId(
-        item.productId ?? item.productStableId,
-      );
-      if (!normalizedId) {
-        throw new BadRequestException('Product id is required');
-      }
-      return {
-        ...item,
-        normalizedProductId: normalizedId,
-      };
-    });
-
     const allowCustomUnitPrice = options?.allowCustomUnitPrice === true;
-    const productIds = normalizedItems.map((i) => i.normalizedProductId);
-    const allChoiceIds: string[] = [];
+    const itemSnapshots = await this.orderItemSnapshotBuilder.buildMany(
+      itemsDto.map((item) => ({
+        productStableId:
+          normalizeStableId(item.productId ?? item.productStableId) ?? '',
+        qty: item.qty,
+        displayName: item.displayName ?? null,
+        options: item.options,
+      })),
+    );
 
-    for (const item of normalizedItems) {
-      if (item.options && typeof item.options === 'object') {
-        Object.values(item.options).forEach((val) => {
-          if (typeof val === 'string') allChoiceIds.push(val);
-          else if (Array.isArray(val)) {
-            val.forEach((v) => {
-              if (typeof v === 'string') allChoiceIds.push(v);
-            });
-          }
-        });
-      }
-    }
-
-    const dbProducts = await this.prisma.menuItem.findMany({
-      where: {
-        OR: [{ id: { in: productIds } }, { stableId: { in: productIds } }],
-      },
-      include: {
-        fixedComponents: {
-          orderBy: { sortOrder: 'asc' },
-        },
-        optionGroups: {
-          where: { isEnabled: true },
-          include: {
-            templateGroup: {
-              include: {
-                options: {
-                  where: { deletedAt: null },
-                },
-              },
-            },
+    const dailySpecialSubjects = Array.from(
+      new Map(
+        itemSnapshots.map((snapshot) => [
+          snapshot.productStableId,
+          {
+            itemStableId: snapshot.productStableId,
+            basePriceCents: snapshot.basePriceCents,
           },
-        },
-      },
-    });
-
-    const productMap = new Map<string, MenuItemWithOptions>();
-    const choiceLookupByProductId = new Map<
-      string,
-      Map<string, OptionChoiceContext>
-    >();
-    const itemAvailabilityByStableId = new Map<string, boolean>();
-
-    const setItemAvailability = (
-      stableId: string,
-      isAvailable: boolean,
-      tempUnavailableUntil: Date | null,
-    ) => {
-      itemAvailabilityByStableId.set(
-        stableId,
-        isAvailableNow(availabilityFromDb(isAvailable, tempUnavailableUntil)),
-      );
-    };
-
-    const addProductOptionChoices = (
-      optionLookup: Map<string, OptionChoiceContext>,
-      product: MenuItemWithOptions,
-    ) => {
-      for (const link of product.optionGroups ?? []) {
-        if (!link.isEnabled || !link.templateGroup) continue;
-        const templateGroup = link.templateGroup;
-        if ((templateGroup as { deletedAt?: Date | null }).deletedAt) continue;
-
-        const choices = (templateGroup.options ?? []).filter((opt) => {
-          const deleted = (opt as { deletedAt?: Date | null }).deletedAt;
-          if (deleted) return false;
-
-          const selfAvailable = isAvailableNow(
-            availabilityFromDb(opt.isAvailable, opt.tempUnavailableUntil),
-          );
-          if (!selfAvailable) return false;
-
-          const targetItemStableId = opt.targetItemStableId?.trim();
-          if (!targetItemStableId) return true;
-
-          return itemAvailabilityByStableId.get(targetItemStableId) !== false;
-        });
-
-        choices.forEach((choice) => {
-          optionLookup.set(choice.id, { choice, group: templateGroup, link });
-          optionLookup.set(choice.stableId, {
-            choice,
-            group: templateGroup,
-            link,
-          });
-        });
-      }
-    };
-
-    for (const product of dbProducts) {
-      productMap.set(product.id, product);
-      productMap.set(product.stableId, product);
-      setItemAvailability(
-        product.stableId,
-        product.isAvailable,
-        product.tempUnavailableUntil,
-      );
-
-      const optionLookup = new Map<string, OptionChoiceContext>();
-      addProductOptionChoices(optionLookup, product);
-
-      choiceLookupByProductId.set(product.id, optionLookup);
-      choiceLookupByProductId.set(product.stableId, optionLookup);
-    }
-
-    const linkedProductByStableId = new Map<
-      string,
-      MenuItemWithOptions | null
-    >();
-    const ensureLinkedProductByStableId = async (
-      stableId: string,
-    ): Promise<MenuItemWithOptions | null> => {
-      if (linkedProductByStableId.has(stableId)) {
-        return linkedProductByStableId.get(stableId) ?? null;
-      }
-
-      const linkedProduct = await this.prisma.menuItem.findFirst({
-        where: {
-          stableId,
-          deletedAt: null,
-        },
-        include: {
-          fixedComponents: {
-            orderBy: { sortOrder: 'asc' },
-          },
-          optionGroups: {
-            where: { isEnabled: true },
-            include: {
-              templateGroup: {
-                include: {
-                  options: {
-                    where: { deletedAt: null },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      linkedProductByStableId.set(stableId, linkedProduct);
-      if (linkedProduct) {
-        setItemAvailability(
-          linkedProduct.stableId,
-          linkedProduct.isAvailable,
-          linkedProduct.tempUnavailableUntil,
-        );
-      }
-      return linkedProduct;
-    };
-
-    const prepareFixedComponentTree = async (
-      product: MenuItemWithOptions,
-      optionLookup: Map<string, OptionChoiceContext>,
-      visiting = new Set<string>(),
-    ): Promise<void> => {
-      if (visiting.has(product.stableId)) {
-        throw new BadRequestException(
-          `Fixed combo component cycle detected at ${product.stableId}`,
-        );
-      }
-      const nextVisiting = new Set(visiting);
-      nextVisiting.add(product.stableId);
-
-      for (const component of product.fixedComponents ?? []) {
-        const linkedProduct = await ensureLinkedProductByStableId(
-          component.componentItemStableId,
-        );
-        if (!linkedProduct) {
-          throw new BadRequestException(
-            `Fixed component item not found: ${component.componentItemStableId}`,
-          );
-        }
-        if (
-          !isAvailableNow(
-            availabilityFromDb(
-              linkedProduct.isAvailable,
-              linkedProduct.tempUnavailableUntil,
-            ),
-          )
-        ) {
-          throw new BadRequestException(
-            `Fixed component item not available: ${component.componentItemStableId}`,
-          );
-        }
-        addProductOptionChoices(optionLookup, linkedProduct);
-        await prepareFixedComponentTree(
-          linkedProduct,
-          optionLookup,
-          nextVisiting,
-        );
-      }
-    };
-
+        ]),
+      ).values(),
+    );
     const { specials: activeDailySpecials } =
       await this.dailySpecialOffers.getActiveDailySpecials(
-        dbProducts.map((product) => ({
-          itemStableId: product.stableId,
-          basePriceCents: product.basePriceCents,
-        })),
+        dailySpecialSubjects,
       );
     const activeSpecialsByItemStableId = new Map<
       string,
@@ -2135,269 +1856,16 @@ export class OrdersService {
     const calculatedItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
     const promotionLines: PromotionOrderLine[] = [];
 
-    for (const itemDto of normalizedItems) {
-      const product = productMap.get(itemDto.normalizedProductId);
-      if (!product) {
-        throw new BadRequestException(
-          `Product not found or unavailable: ${itemDto.normalizedProductId}`,
-        );
+    for (const [index, snapshot] of itemSnapshots.entries()) {
+      const itemDto = itemsDto[index];
+      if (!itemDto) {
+        throw new ConflictException('order item snapshot preparation mismatch');
       }
-      const productAvailability = availabilityFromDb(
-        product.isAvailable,
-        product.tempUnavailableUntil,
-      );
-      if (!isAvailableNow(productAvailability)) {
-        throw new BadRequestException(
-          `Product not available: ${itemDto.normalizedProductId}`,
-        );
-      }
-
-      const selectedOptionRefs = this.collectOptionSelectionRefs(
-        itemDto.options,
-      );
-      const selectedOptionIds = selectedOptionRefs.map((it) => it.optionId);
-
-      const baseOptionLookup =
-        choiceLookupByProductId.get(itemDto.normalizedProductId) ??
-        new Map<string, OptionChoiceContext>();
-      const optionLookup = new Map(baseOptionLookup);
-      await prepareFixedComponentTree(product, optionLookup);
-
-      const processedSelectedOptionIds = new Set<string>();
-      const expandedTargetItems = new Set<string>();
-      const pendingSelectedOptionIds = [...selectedOptionIds];
-
-      while (pendingSelectedOptionIds.length > 0) {
-        const optionId = pendingSelectedOptionIds.pop();
-        if (!optionId || processedSelectedOptionIds.has(optionId)) continue;
-        processedSelectedOptionIds.add(optionId);
-
-        const context = optionLookup.get(optionId);
-        if (!context) continue;
-
-        const targetItemStableId = context.choice.targetItemStableId?.trim();
-        if (
-          !targetItemStableId ||
-          expandedTargetItems.has(targetItemStableId)
-        ) {
-          continue;
-        }
-
-        expandedTargetItems.add(targetItemStableId);
-        const linkedProduct =
-          await ensureLinkedProductByStableId(targetItemStableId);
-        if (!linkedProduct) continue;
-
-        addProductOptionChoices(optionLookup, linkedProduct);
-
-        selectedOptionIds.forEach((selectedId) => {
-          if (!processedSelectedOptionIds.has(selectedId)) {
-            pendingSelectedOptionIds.push(selectedId);
-          }
-        });
-      }
-
       const activeSpecial =
-        activeSpecialsByItemStableId.get(product.stableId) ?? null;
+        activeSpecialsByItemStableId.get(snapshot.productStableId) ?? null;
       const baseUnitPriceCents =
-        activeSpecial?.effectivePriceCents ?? product.basePriceCents;
-      let optionsUnitPriceCents = 0;
-
-      const optionGroupSnapshots = new Map<
-        string,
-        OrderItemOptionGroupSnapshot & { sequence: number }
-      >();
-
-      for (const selectedRef of selectedOptionRefs) {
-        const optionId = selectedRef.optionId;
-        const context = optionLookup.get(optionId);
-        if (!context) {
-          throw new BadRequestException(
-            `Option not found or unavailable: ${optionId} for product ${itemDto.normalizedProductId}`,
-          );
-        }
-
-        const targetItemStableId = context.choice.targetItemStableId?.trim();
-        if (targetItemStableId) {
-          const cachedTargetAvailability =
-            itemAvailabilityByStableId.get(targetItemStableId);
-          if (cachedTargetAvailability === false) {
-            throw new BadRequestException(
-              `Option not available because target item is unavailable: ${optionId}`,
-            );
-          }
-          if (cachedTargetAvailability === undefined) {
-            const linkedTarget =
-              await ensureLinkedProductByStableId(targetItemStableId);
-            const isTargetAvailable =
-              !!linkedTarget &&
-              isAvailableNow(
-                availabilityFromDb(
-                  linkedTarget.isAvailable,
-                  linkedTarget.tempUnavailableUntil,
-                ),
-              );
-            if (!isTargetAvailable) {
-              throw new BadRequestException(
-                `Option not available because target item is unavailable: ${optionId}`,
-              );
-            }
-          }
-        }
-
-        optionsUnitPriceCents += context.choice.priceDeltaCents;
-        const templateGroupStableId = context.group.stableId;
-        const snapshotKey = selectedRef.groupKey
-          ? `${templateGroupStableId}::${selectedRef.groupKey}`
-          : templateGroupStableId;
-
-        const groupSnapshot =
-          optionGroupSnapshots.get(snapshotKey) ??
-          ({
-            templateGroupStableId,
-            groupKey: selectedRef.groupKey ?? null,
-            nameEn: context.group.nameEn,
-            nameZh: context.group.nameZh ?? null,
-            minSelect:
-              typeof context.link?.minSelect === 'number'
-                ? context.link.minSelect
-                : context.group.defaultMinSelect,
-            maxSelect:
-              context.link?.maxSelect ?? context.group.defaultMaxSelect ?? null,
-            sortOrder:
-              typeof context.link?.sortOrder === 'number'
-                ? context.link.sortOrder
-                : (context.group.sortOrder ?? 0),
-            sequence: selectedRef.sequence,
-            choices: [] as OrderItemOptionChoiceSnapshot[],
-          } satisfies OrderItemOptionGroupSnapshot & { sequence: number });
-
-        groupSnapshot.choices.push({
-          stableId: context.choice.stableId,
-          templateGroupStableId,
-          targetItemStableId: context.choice.targetItemStableId?.trim() || null,
-          nameEn: context.choice.nameEn,
-          nameZh: context.choice.nameZh ?? null,
-          priceDeltaCents: context.choice.priceDeltaCents,
-          sortOrder:
-            typeof selectedRef?.sequence === 'number'
-              ? selectedRef.sequence
-              : (context.choice.sortOrder ?? 0),
-        });
-
-        optionGroupSnapshots.set(snapshotKey, groupSnapshot);
-      }
-
-      const optionsSnapshot: OrderItemOptionsSnapshot = Array.from(
-        optionGroupSnapshots.values(),
-      )
-        .map((group) => ({
-          ...group,
-          choices: [...group.choices].sort((a, b) => a.sortOrder - b.sortOrder),
-        }))
-        .sort((a, b) => {
-          if (a.sequence !== b.sequence) return a.sequence - b.sequence;
-          return a.sortOrder - b.sortOrder;
-        })
-        .map((group) => {
-          const { sequence, ...rest } = group;
-          void sequence;
-          return rest;
-        });
-
-      const componentSnapshots: OrderItemComponentsSnapshot = [];
-      const componentPathQuantity = new Map<string, number>();
-      const optionGroupsUnderPath = (
-        pathKey: string,
-      ): OrderItemOptionsSnapshot =>
-        optionsSnapshot.filter((group) =>
-          group.groupKey?.startsWith(`${pathKey}__`),
-        );
-
-      const appendFixedComponentSnapshots = async (
-        parent: MenuItemWithOptions,
-        basePathKey: string,
-        parentQuantity: number,
-        visiting = new Set<string>(),
-      ): Promise<void> => {
-        if (visiting.has(parent.stableId)) return;
-        const nextVisiting = new Set(visiting);
-        nextVisiting.add(parent.stableId);
-
-        for (const component of parent.fixedComponents ?? []) {
-          const linkedProduct = await ensureLinkedProductByStableId(
-            component.componentItemStableId,
-          );
-          if (!linkedProduct) continue;
-          const quantityPerParent =
-            parentQuantity * Math.max(1, Math.trunc(component.quantity));
-          const componentPathKey = `${basePathKey}__component-${component.componentItemStableId}`;
-          componentPathQuantity.set(componentPathKey, quantityPerParent);
-
-          if ((linkedProduct.fixedComponents ?? []).length > 0) {
-            await appendFixedComponentSnapshots(
-              linkedProduct,
-              componentPathKey,
-              quantityPerParent,
-              nextVisiting,
-            );
-            continue;
-          }
-
-          componentSnapshots.push({
-            productStableId: linkedProduct.stableId,
-            nameEn: linkedProduct.nameEn,
-            nameZh: linkedProduct.nameZh ?? null,
-            quantityPerParent,
-            source: 'FIXED',
-            options: optionGroupsUnderPath(componentPathKey),
-          });
-        }
-      };
-
-      await appendFixedComponentSnapshots(
-        product,
-        `root__${product.stableId}`,
-        1,
-      );
-
-      const quantityForGroupPath = (groupKey: string | null | undefined) => {
-        if (!groupKey) return 1;
-        let multiplier = 1;
-        let matchedLength = -1;
-        for (const [pathKey, quantity] of componentPathQuantity) {
-          if (
-            (groupKey === pathKey || groupKey.startsWith(`${pathKey}__`)) &&
-            pathKey.length > matchedLength
-          ) {
-            multiplier = quantity;
-            matchedLength = pathKey.length;
-          }
-        }
-        return multiplier;
-      };
-
-      for (const group of optionsSnapshot) {
-        for (const choice of group.choices) {
-          const targetItemStableId = choice.targetItemStableId?.trim();
-          if (!targetItemStableId) continue;
-          const linkedProduct =
-            await ensureLinkedProductByStableId(targetItemStableId);
-          const targetPathKey = group.groupKey
-            ? `${group.groupKey}__option-${choice.stableId}`
-            : null;
-          const optionComponent: OrderItemComponentSnapshot = {
-            productStableId: targetItemStableId,
-            nameEn: linkedProduct?.nameEn ?? choice.nameEn,
-            nameZh: linkedProduct?.nameZh ?? choice.nameZh ?? null,
-            quantityPerParent: quantityForGroupPath(group.groupKey),
-            source: 'OPTION',
-            sourceOptionStableId: choice.stableId,
-            options: targetPathKey ? optionGroupsUnderPath(targetPathKey) : [],
-          };
-          componentSnapshots.push(optionComponent);
-        }
-      }
+        activeSpecial?.effectivePriceCents ?? snapshot.basePriceCents;
+      const optionsUnitPriceCents = snapshot.optionsUnitPriceCents;
 
       const submittedCustomUnitPriceCents =
         allowCustomUnitPrice &&
@@ -2413,39 +1881,36 @@ export class OrdersService {
         submittedCustomUnitPriceCents === null
           ? baseUnitPriceCents
           : Math.max(0, unitPriceCents - optionsUnitPriceCents);
-      const lineTotal = unitPriceCents * itemDto.qty;
+      const lineTotal = unitPriceCents * snapshot.qty;
       const lineKey = crypto.randomUUID();
       calculatedSubtotal += lineTotal;
       promotionLines.push({
         lineKey,
-        productStableId: product.stableId,
-        quantity: itemDto.qty,
-        baseUnitPriceCents: product.basePriceCents,
+        productStableId: snapshot.productStableId,
+        quantity: snapshot.qty,
+        baseUnitPriceCents: snapshot.basePriceCents,
         lineTotalCents: lineTotal,
         dailySpecial: activeSpecial,
         dailySpecialPriceApplied: submittedCustomUnitPriceCents === null,
       });
 
-      const displayName =
-        product.nameEn || product.nameZh || itemDto.displayName || 'Unknown';
-
       calculatedItems.push({
         id: lineKey,
-        productStableId: itemDto.normalizedProductId,
-        qty: itemDto.qty,
-        displayName,
-        nameEn: product.nameEn,
-        nameZh: product.nameZh,
+        productStableId: snapshot.productStableId,
+        qty: snapshot.qty,
+        displayName: snapshot.displayName,
+        nameEn: snapshot.nameEn,
+        nameZh: snapshot.nameZh,
         unitPriceCents,
         baseUnitPriceCents: effectiveBaseUnitPriceCents,
         optionsUnitPriceCents,
         isDailySpecialApplied: Boolean(activeSpecial),
         dailySpecialStableId: activeSpecial?.stableId ?? null,
-        optionsJson: optionsSnapshot.length
-          ? (optionsSnapshot as Prisma.InputJsonValue)
+        optionsJson: snapshot.optionsSnapshot.length
+          ? (snapshot.optionsSnapshot as Prisma.InputJsonValue)
           : undefined,
-        componentsJson: componentSnapshots.length
-          ? (componentSnapshots as Prisma.InputJsonValue)
+        componentsJson: snapshot.componentSnapshots.length
+          ? (snapshot.componentSnapshots as Prisma.InputJsonValue)
           : undefined,
       });
     }
@@ -4370,9 +3835,13 @@ export class OrdersService {
       if (items.length > 0) {
         throw new BadRequestException('RETENDER does not accept items');
       }
-      if (refundGrossCentsRaw <= 0 && additionalChargeCentsRaw <= 0) {
+      if (
+        refundGrossCentsRaw <= 0 &&
+        additionalChargeCentsRaw <= 0 &&
+        paymentMethod === null
+      ) {
         throw new BadRequestException(
-          'RETENDER requires refundGrossCents > 0 or additionalChargeCents > 0',
+          'RETENDER requires a paymentMethod change or a refund/additional charge',
         );
       }
     } else {
@@ -4402,6 +3871,68 @@ export class OrdersService {
       );
     }
 
+    for (const item of items) {
+      if (!Number.isFinite(item.qty) || item.qty <= 0) {
+        throw new BadRequestException('qty must be > 0');
+      }
+    }
+
+    const addItems = items.filter(
+      (item) => item.action === OrderAmendmentItemAction.ADD,
+    );
+    const canonicalAddItemSnapshots =
+      addItems.length > 0
+        ? await this.orderItemSnapshotBuilder.buildMany(
+            addItems.map((item) => ({
+              productStableId: normalizeStableId(item.productStableId) ?? '',
+              qty: Math.round(item.qty),
+              displayName: item.displayName ?? null,
+              optionsSnapshot: item.optionsJson,
+            })),
+          )
+        : [];
+    if (canonicalAddItemSnapshots.length !== addItems.length) {
+      throw new ConflictException(
+        'amendment item snapshot preparation mismatch',
+      );
+    }
+    const preparedAddItemSnapshots = canonicalAddItemSnapshots.map(
+      (snapshot, index) => {
+        const addItem = addItems[index];
+        if (!addItem) {
+          throw new ConflictException(
+            'amendment item snapshot preparation mismatch',
+          );
+        }
+        const unitPriceCents =
+          typeof addItem.unitPriceCents === 'number' &&
+          Number.isFinite(addItem.unitPriceCents)
+            ? Math.max(0, Math.round(addItem.unitPriceCents))
+            : 0;
+        return {
+          productStableId: snapshot.productStableId,
+          qty: snapshot.qty,
+          displayName: snapshot.displayName,
+          nameEn: snapshot.nameEn,
+          nameZh: snapshot.nameZh,
+          unitPriceCents,
+          baseUnitPriceCents: Math.max(
+            0,
+            unitPriceCents - snapshot.optionsUnitPriceCents,
+          ),
+          optionsUnitPriceCents: snapshot.optionsUnitPriceCents,
+          isDailySpecialApplied: false,
+          dailySpecialStableId: null,
+          optionsJson: snapshot.optionsSnapshot.length
+            ? (snapshot.optionsSnapshot as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          componentsJson: snapshot.componentSnapshots.length
+            ? (snapshot.componentSnapshots as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+        };
+      },
+    );
+
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       // ✅ 外部 orderId 允许 stableId/uuid；这里统一 resolve 成内部 UUID
       const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(
@@ -4419,6 +3950,14 @@ export class OrdersService {
         throw new BadRequestException(
           'only paid/fulfilled order can be amended',
         );
+      }
+      if (
+        type === OrderAmendmentType.RETENDER &&
+        refundGrossCentsRaw <= 0 &&
+        additionalChargeCentsRaw <= 0 &&
+        paymentMethod === order.paymentMethod
+      ) {
+        throw new BadRequestException('RETENDER paymentMethod must change');
       }
 
       const amendment = await tx.orderAmendment.create({
@@ -4604,9 +4143,6 @@ export class OrdersService {
       const voidItems = items.filter(
         (item) => item.action === OrderAmendmentItemAction.VOID,
       );
-      const addItems = items.filter(
-        (item) => item.action === OrderAmendmentItemAction.ADD,
-      );
 
       const parsedOrderItems = order.items.map((item) => ({
         id: item.id,
@@ -4648,33 +4184,18 @@ export class OrdersService {
       }
 
       let addedSubtotalCents = 0;
-      if (addItems.length > 0) {
-        for (const addItem of addItems) {
-          const addQty = Math.max(0, Math.round(addItem.qty));
-          const unitPriceCents =
-            typeof addItem.unitPriceCents === 'number' &&
-            Number.isFinite(addItem.unitPriceCents)
-              ? Math.round(addItem.unitPriceCents)
-              : 0;
-          if (addQty <= 0) continue;
-          addedSubtotalCents += addQty * unitPriceCents;
+      for (const preparedItem of preparedAddItemSnapshots) {
+        const addQty = Math.max(0, Math.round(preparedItem.qty));
+        const unitPriceCents = Math.max(0, preparedItem.unitPriceCents ?? 0);
+        if (addQty <= 0) continue;
+        addedSubtotalCents += addQty * unitPriceCents;
 
-          await tx.orderItem.create({
-            data: {
-              orderId: internalOrderId,
-              productStableId: addItem.productStableId,
-              qty: addQty,
-              unitPriceCents,
-              displayName: addItem.displayName ?? null,
-              nameEn: addItem.nameEn ?? null,
-              nameZh: addItem.nameZh ?? null,
-              optionsJson:
-                addItem.optionsJson !== undefined
-                  ? addItem.optionsJson
-                  : Prisma.JsonNull,
-            },
-          });
-        }
+        await tx.orderItem.create({
+          data: {
+            orderId: internalOrderId,
+            ...preparedItem,
+          } as Prisma.OrderItemUncheckedCreateInput,
+        });
       }
 
       if (voidItems.length > 0 || addItems.length > 0) {

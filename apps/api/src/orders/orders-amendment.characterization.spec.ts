@@ -187,6 +187,263 @@ describe('OrdersService amendment characterization', () => {
     expect(applyAmendmentAdjustments).not.toHaveBeenCalled();
   });
 
+  it('reuses the canonical OrderItem snapshot builder for ADD items, including componentsJson', async () => {
+    const replacementProductStableId = 'c4234567890abcdefghijklmn';
+    const currentOrder = {
+      id: '8a3d4c0e-4750-4f6a-9138-000000000201',
+      orderStableId: 'order_stable_amendment_add_1',
+      status: 'paid',
+      channel: Channel.in_store,
+      fulfillmentType: FulfillmentType.pickup,
+      paymentMethod: PaymentMethod.CASH,
+      userId: null,
+      subtotalCents: 1000,
+      subtotalAfterDiscountCents: 1000,
+      couponDiscountCents: 0,
+      loyaltyRedeemCents: 0,
+      taxCents: 130,
+      deliveryFeeCents: 0,
+      totalCents: 1130,
+      items: [],
+    };
+    const finalOrder = {
+      ...currentOrder,
+      subtotalCents: 1500,
+      subtotalAfterDiscountCents: 1500,
+      taxCents: 195,
+      totalCents: 1695,
+      paymentTotalCents: 1695,
+    };
+    const orderFindUnique = jest
+      .fn()
+      .mockResolvedValueOnce(currentOrder)
+      .mockResolvedValueOnce(finalOrder);
+    const orderUpdate = jest.fn().mockResolvedValue({});
+    const orderItemCreate = jest.fn().mockResolvedValue({});
+    const tx = {
+      order: { findUnique: orderFindUnique, update: orderUpdate },
+      orderAmendment: {
+        create: jest.fn().mockResolvedValue({
+          id: '8a3d4c0e-4750-4f6a-9138-000000000203',
+          amendmentStableId: 'amendment_stable_add_1',
+          orderId: currentOrder.id,
+        }),
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { refundCents: 0, redeemReturnCents: 0 },
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      orderAmendmentItem: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      orderItem: {
+        update: jest.fn(),
+        delete: jest.fn(),
+        create: orderItemCreate,
+      },
+    };
+    const transaction = jest.fn(
+      (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    const buildMany = jest.fn().mockResolvedValue([
+      {
+        normalizedProductId: replacementProductStableId,
+        productStableId: replacementProductStableId,
+        qty: 1,
+        displayName: 'Combo',
+        nameEn: 'Combo',
+        nameZh: '套餐',
+        basePriceCents: 500,
+        optionsUnitPriceCents: 0,
+        optionsSnapshot: [
+          {
+            templateGroupStableId: 'group_1',
+            choices: [{ stableId: 'choice_1' }],
+          },
+        ],
+        componentSnapshots: [
+          {
+            productStableId: 'component_1',
+            nameEn: 'Soup',
+            nameZh: '汤',
+            quantityPerParent: 1,
+            source: 'FIXED',
+            options: [],
+          },
+        ],
+      },
+    ]);
+    const service = Object.create(OrdersService.prototype) as OrdersService;
+    Object.assign(service as unknown as Record<string, unknown>, {
+      prisma: { $transaction: transaction },
+      loyalty: { applyAmendmentAdjustments: jest.fn() },
+      resolveInternalOrderIdByStableIdOrThrow: jest.fn().mockResolvedValue({
+        id: currentOrder.id,
+        orderStableId: currentOrder.orderStableId,
+        clientRequestId: null,
+      }),
+      toOrderDto: jest.fn().mockReturnValue({
+        orderStableId: currentOrder.orderStableId,
+      }),
+      orderItemSnapshotBuilder: { buildMany },
+    });
+
+    await service.createAmendment({
+      orderStableId: currentOrder.orderStableId,
+      type: OrderAmendmentType.ADDITIONAL_CHARGE,
+      reason: 'add combo',
+      additionalChargeCents: 500,
+      items: [
+        {
+          action: OrderAmendmentItemAction.ADD,
+          productStableId: replacementProductStableId,
+          qty: 1,
+          unitPriceCents: 500,
+          displayName: 'Combo',
+          optionsJson: [
+            {
+              templateGroupStableId: 'group_1',
+              choices: [{ stableId: 'choice_1' }],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(buildMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        productStableId: replacementProductStableId,
+        qty: 1,
+        displayName: 'Combo',
+        optionsSnapshot: [
+          {
+            templateGroupStableId: 'group_1',
+            choices: [{ stableId: 'choice_1' }],
+          },
+        ],
+      }),
+    ]);
+    expect(orderItemCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        orderId: currentOrder.id,
+        productStableId: replacementProductStableId,
+        optionsJson: expect.any(Array) as unknown,
+        componentsJson: expect.any(Array) as unknown,
+      }) as unknown,
+    });
+  });
+
+  it('allows a payment-method-only RETENDER and updates the Order payment method', async () => {
+    const currentOrder = {
+      id: '8a3d4c0e-4750-4f6a-9138-000000000301',
+      orderStableId: 'order_stable_retender_1',
+      status: 'paid',
+      channel: Channel.in_store,
+      fulfillmentType: FulfillmentType.pickup,
+      paymentMethod: PaymentMethod.CASH,
+      userId: null,
+      subtotalCents: 1000,
+      subtotalAfterDiscountCents: 1000,
+      couponDiscountCents: 0,
+      loyaltyRedeemCents: 0,
+      taxCents: 130,
+      deliveryFeeCents: 0,
+      totalCents: 1130,
+      items: [],
+    };
+    const finalOrder = { ...currentOrder, paymentMethod: PaymentMethod.CARD };
+    const orderUpdate = jest.fn().mockResolvedValue({});
+    const tx = {
+      order: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(currentOrder)
+          .mockResolvedValueOnce(finalOrder),
+        update: orderUpdate,
+      },
+      orderAmendment: {
+        create: jest.fn().mockResolvedValue({
+          id: '8a3d4c0e-4750-4f6a-9138-000000000302',
+          amendmentStableId: 'amendment_retender_1',
+          orderId: currentOrder.id,
+        }),
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { refundCents: 0, redeemReturnCents: 0 },
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      orderAmendmentItem: { createMany: jest.fn() },
+      orderItem: { update: jest.fn(), delete: jest.fn(), create: jest.fn() },
+    };
+    const service = Object.create(OrdersService.prototype) as OrdersService;
+    Object.assign(service as unknown as Record<string, unknown>, {
+      prisma: {
+        $transaction: (work: (client: typeof tx) => Promise<unknown>) =>
+          work(tx),
+      },
+      loyalty: { applyAmendmentAdjustments: jest.fn() },
+      resolveInternalOrderIdByStableIdOrThrow: jest.fn().mockResolvedValue({
+        id: currentOrder.id,
+        orderStableId: currentOrder.orderStableId,
+        clientRequestId: null,
+      }),
+      toOrderDto: jest.fn().mockReturnValue({
+        orderStableId: currentOrder.orderStableId,
+        paymentMethod: PaymentMethod.CARD,
+      }),
+    });
+
+    await expect(
+      service.createAmendment({
+        orderStableId: currentOrder.orderStableId,
+        type: OrderAmendmentType.RETENDER,
+        reason: 'change tender',
+        paymentMethod: PaymentMethod.CARD,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({ paymentMethod: PaymentMethod.CARD }),
+    );
+    expect(orderUpdate).toHaveBeenCalledWith({
+      where: { id: currentOrder.id },
+      data: { paymentMethod: PaymentMethod.CARD },
+    });
+  });
+
+  it('rejects a payment-method-only RETENDER when the method did not change', async () => {
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: '8a3d4c0e-4750-4f6a-9138-000000000311',
+          orderStableId: 'order_stable_retender_same_1',
+          status: 'paid',
+          paymentMethod: PaymentMethod.CASH,
+          items: [],
+        }),
+      },
+    };
+    const service = Object.create(OrdersService.prototype) as OrdersService;
+    Object.assign(service as unknown as Record<string, unknown>, {
+      prisma: {
+        $transaction: (work: (client: typeof tx) => Promise<unknown>) =>
+          work(tx),
+      },
+      resolveInternalOrderIdByStableIdOrThrow: jest.fn().mockResolvedValue({
+        id: '8a3d4c0e-4750-4f6a-9138-000000000311',
+        orderStableId: 'order_stable_retender_same_1',
+        clientRequestId: null,
+      }),
+    });
+
+    await expect(
+      service.createAmendment({
+        orderStableId: 'order_stable_retender_same_1',
+        type: OrderAmendmentType.RETENDER,
+        reason: 'no-op tender',
+        paymentMethod: PaymentMethod.CASH,
+      }),
+    ).rejects.toThrow('RETENDER paymentMethod must change');
+  });
+
   it('rejects an invalid SWAP_ITEM before opening a transaction', async () => {
     const transaction = jest.fn();
     const service = Object.create(OrdersService.prototype) as OrdersService;

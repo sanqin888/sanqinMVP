@@ -25,6 +25,7 @@ import { OrderEventsBus } from './order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
 import type { PrintPosPayloadService } from './print-pos-payload.service';
+import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import type {
   BrandStoreConfigReaderPort,
   StoreConfigSnapshot,
@@ -131,6 +132,7 @@ describe('OrdersService', () => {
   let emailService: { sendOrderInvoice: jest.Mock };
   let orderEventsBus: OrderEventsBus;
   let printPosPayloadService: { getByStableId: jest.Mock };
+  let orderItemSnapshotBuilder: OrderItemSnapshotBuilder;
   let emitOrderPaidVerified: jest.SpiedFunction<
     OrderEventsBus['emitOrderPaidVerified']
   >;
@@ -295,6 +297,9 @@ describe('OrdersService', () => {
     printPosPayloadService = {
       getByStableId: jest.fn(),
     };
+    orderItemSnapshotBuilder = new OrderItemSnapshotBuilder(
+      prisma as unknown as PrismaService,
+    );
     emitOrderPaidVerified = jest
       .spyOn(orderEventsBus, 'emitOrderPaidVerified')
       .mockImplementation(() => undefined);
@@ -315,6 +320,7 @@ describe('OrdersService', () => {
       emailService as unknown as EmailService,
       orderEventsBus,
       printPosPayloadService as unknown as PrintPosPayloadService,
+      orderItemSnapshotBuilder as unknown as OrderItemSnapshotBuilder,
     );
   });
 
@@ -441,32 +447,6 @@ describe('OrdersService', () => {
       orderStableId: 'order-stable-usage',
     });
     expect('loyaltyLedger' in prisma).toBe(false);
-  });
-
-  it('keeps the same option stable id when selected in different component group paths', () => {
-    const internalService = service as unknown as {
-      collectOptionSelectionRefs: (
-        options?: Record<string, unknown>,
-      ) => Array<{ optionId: string; groupKey?: string; sequence: number }>;
-    };
-
-    expect(
-      internalService.collectOptionSelectionRefs({
-        'root__combo__component-soup-a__group-spice': ['mild'],
-        'root__combo__component-soup-b__group-spice': ['mild'],
-      }),
-    ).toEqual([
-      {
-        optionId: 'mild',
-        groupKey: 'root__combo__component-soup-a__group-spice',
-        sequence: 0,
-      },
-      {
-        optionId: 'mild',
-        groupKey: 'root__combo__component-soup-b__group-spice',
-        sequence: 1,
-      },
-    ]);
   });
 
   it('uses Promotion Engine as the coupon min-spend eligibility source', async () => {

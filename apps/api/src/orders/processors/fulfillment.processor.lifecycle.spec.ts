@@ -58,7 +58,8 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
       expect.objectContaining({
         orderId: 'order-1',
         orderStableId: 'stable-1',
-        kind: 'AUTO',
+        storeStableId: '4750_Yonge_Street',
+        purpose: 'INITIAL',
       }),
     );
   });

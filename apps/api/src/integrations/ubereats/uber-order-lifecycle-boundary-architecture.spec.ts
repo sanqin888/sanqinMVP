@@ -29,9 +29,11 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     const uberModule = source('ubereats.module.ts');
 
     expect(lifecycle).toContain('ORDER_PREP_STARTED_LIFECYCLE_EVENT');
+    expect(lifecycle).toContain('ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT');
+    expect(lifecycle).toContain('orderInitialPrintHandoffIdempotencyKey');
     expect(lifecycle).toContain('FulfillmentProcessor');
     expect(lifecycle).toContain('FOR UPDATE OF event SKIP LOCKED');
-    expect(lifecycle).toContain('FROM "PosPrintJob" job');
+    expect(lifecycle).not.toContain('PosPrintJob');
     expect(activation).toContain('FOR UPDATE OF orders SKIP LOCKED');
     expect(activation).toContain('orderPrepStartedIdempotencyKey');
     expect(scheduler).not.toMatch(

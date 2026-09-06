@@ -32,6 +32,20 @@ type PosSocketData = {
 };
 
 type PosPrintTarget = 'customer' | 'kitchen' | 'label';
+type PosPrintPurpose = 'INITIAL' | 'REPRINT' | 'AMENDMENT';
+type PosPrintTargets = {
+  customer?: boolean;
+  kitchen?: boolean;
+  label?: boolean;
+};
+type PosPrintHandoffInput = {
+  orderId: string;
+  orderStableId: string;
+  storeStableId: string;
+  purpose: PosPrintPurpose;
+  data: unknown;
+  requestedTargets?: PosPrintTargets;
+};
 
 const POS_PRINT_TARGETS: readonly PosPrintTarget[] = [
   'customer',
@@ -286,10 +300,43 @@ export class PosGateway
       return;
     }
 
-    const existingJob = await this.prisma.posPrintJob.findUnique({
-      where: { jobId },
+    const failureReason =
+      typeof payload?.error === 'string' && payload.error.trim()
+        ? payload.error.trim().slice(0, 256)
+        : 'PRINT_EXCEPTION';
+    const ackResult = await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ jobId: string }>>`
+        SELECT "jobId"
+        FROM "PosPrintJob"
+        WHERE "jobId" = ${jobId}
+        FOR UPDATE
+      `;
+      if (!locked.length) return { outcome: 'NOT_FOUND' as const };
+      const existingJob = await tx.posPrintJob.findUnique({ where: { jobId } });
+      if (!existingJob) return { outcome: 'NOT_FOUND' as const };
+      if (existingJob.storeId !== device.storeStableId) {
+        return { outcome: 'STORE_MISMATCH' as const, job: existingJob };
+      }
+      if (existingJob[`${target}Status`] === 'COMPLETED') {
+        return { outcome: 'ALREADY_COMPLETED' as const, job: existingJob };
+      }
+      const job = await tx.posPrintJob.update({
+        where: { jobId },
+        data: success
+          ? {
+              [`${target}Status`]: 'COMPLETED',
+              [`${target}FailureReason`]: null,
+              [`${target}CompletedAt`]: new Date(),
+            }
+          : {
+              [`${target}Status`]: 'FAILED',
+              [`${target}FailureReason`]: failureReason,
+            },
+      });
+      return { outcome: 'UPDATED' as const, job };
     });
-    if (!existingJob) {
+
+    if (ackResult.outcome === 'NOT_FOUND') {
       this.logger.warn({
         event: 'pos_print_ack_rejected',
         socketId: client.id,
@@ -300,14 +347,14 @@ export class PosGateway
       });
       return;
     }
-    if (existingJob.storeId !== device.storeStableId) {
+    if (ackResult.outcome === 'STORE_MISMATCH') {
       this.logger.warn({
         event: 'pos_print_ack_rejected',
         socketId: client.id,
         deviceStableId: device.deviceStableId,
         storeId: device.storeStableId,
         jobId,
-        jobStoreId: existingJob.storeId,
+        jobStoreId: ackResult.job.storeId,
         reason: 'STORE_MISMATCH',
       });
       return;
@@ -315,69 +362,57 @@ export class PosGateway
 
     clearTimeout(this.timers.get(`${jobId}:${target}`));
     this.timers.delete(`${jobId}:${target}`);
-    const failureReason =
-      typeof payload?.error === 'string' && payload.error.trim()
-        ? payload.error.trim().slice(0, 256)
-        : 'PRINT_EXCEPTION';
-    const job = await this.prisma.posPrintJob.update({
-      where: { jobId },
-      data: success
-        ? {
-            [`${target}Status`]: 'COMPLETED',
-            [`${target}FailureReason`]: null,
-            [`${target}CompletedAt`]: new Date(),
-          }
-        : {
-            [`${target}Status`]: 'FAILED',
-            [`${target}FailureReason`]: failureReason,
-          },
-    });
+    const job = ackResult.job;
     this.logger.log({
-      event: 'pos_print_ack_received',
+      event:
+        ackResult.outcome === 'ALREADY_COMPLETED'
+          ? 'pos_print_ack_duplicate'
+          : 'pos_print_ack_received',
       jobId: job.jobId,
       orderStableId: job.orderStableId,
       storeId: job.storeId,
       deviceStableId: device.deviceStableId,
       target,
       attempt: job[`${target}Attempts`],
-      status: success ? 'COMPLETED' : 'FAILED',
-      reason: success ? null : failureReason,
+      status:
+        ackResult.outcome === 'ALREADY_COMPLETED'
+          ? 'COMPLETED'
+          : success
+            ? 'COMPLETED'
+            : 'FAILED',
+      reason:
+        ackResult.outcome === 'ALREADY_COMPLETED' || success
+          ? null
+          : failureReason,
     });
-    if (!success) await this.dispatchTarget(jobId, target);
+    if (!success && ackResult.outcome === 'UPDATED') {
+      await this.dispatchTarget(jobId, target);
+    }
   }
 
-  async sendPrintJob(input: {
-    orderId: string;
-    orderStableId: string;
-    storeId: string;
-    kind: string;
-    data: unknown;
-  }) {
-    const targets = (
-      input.data as {
-        targets?: { customer?: boolean; kitchen?: boolean; label?: boolean };
-      }
-    )?.targets;
+  async enqueuePrintHandoff(input: PosPrintHandoffInput) {
+    const kind = this.resolvePrintJobKind(input.purpose);
+    const targets = this.resolvePrintTargets(input);
     const job = await this.prisma.posPrintJob.upsert({
       where: {
         orderStableId_kind: {
           orderStableId: input.orderStableId,
-          kind: input.kind,
+          kind,
         },
       },
       create: {
         jobId: randomUUID(),
         orderId: input.orderId,
         orderStableId: input.orderStableId,
-        storeId: input.storeId,
-        kind: input.kind,
+        storeId: input.storeStableId,
+        kind,
         payload: input.data as never,
-        customerRequested: targets?.customer === true,
-        kitchenRequested: targets?.kitchen === true,
-        labelRequested: targets?.label === true,
-        customerStatus: targets?.customer === true ? 'PENDING' : 'SKIPPED',
-        kitchenStatus: targets?.kitchen === true ? 'PENDING' : 'SKIPPED',
-        labelStatus: targets?.label === true ? 'PENDING' : 'SKIPPED',
+        customerRequested: targets.customer,
+        kitchenRequested: targets.kitchen,
+        labelRequested: targets.label,
+        customerStatus: targets.customer ? 'PENDING' : 'SKIPPED',
+        kitchenStatus: targets.kitchen ? 'PENDING' : 'SKIPPED',
+        labelStatus: targets.label ? 'PENDING' : 'SKIPPED',
       },
       update: {},
     });
@@ -386,6 +421,8 @@ export class PosGateway
       jobId: job.jobId,
       orderStableId: job.orderStableId,
       storeId: job.storeId,
+      purpose: input.purpose,
+      kind: job.kind,
       targets: {
         customer: job.customerRequested,
         kitchen: job.kitchenRequested,
@@ -403,7 +440,73 @@ export class PosGateway
     return job;
   }
 
+  private resolvePrintJobKind(purpose: PosPrintPurpose): string {
+    if (purpose === 'INITIAL') return 'AUTO';
+    return `${purpose}:${randomUUID()}`;
+  }
+
+  private resolvePrintTargets(input: PosPrintHandoffInput): {
+    customer: boolean;
+    kitchen: boolean;
+    label: boolean;
+  } {
+    if (input.purpose === 'AMENDMENT') {
+      const labelPlan = (
+        input.data as { labelPlan?: { labels?: unknown[] } } | null | undefined
+      )?.labelPlan;
+      return {
+        customer: false,
+        kitchen: true,
+        label: Array.isArray(labelPlan?.labels) && labelPlan.labels.length > 0,
+      };
+    }
+    if (input.purpose === 'INITIAL') {
+      const labelPlan = (
+        input.data as { labelPlan?: { labels?: unknown[] } } | null | undefined
+      )?.labelPlan;
+      return {
+        customer: true,
+        kitchen: true,
+        label: Array.isArray(labelPlan?.labels) && labelPlan.labels.length > 0,
+      };
+    }
+    return {
+      customer: input.requestedTargets?.customer ?? true,
+      kitchen: input.requestedTargets?.kitchen ?? false,
+      label: input.requestedTargets?.label ?? false,
+    };
+  }
+
+  private async recoverStaleDelivered(storeId: string) {
+    const staleBefore = new Date(Date.now() - this.ackTimeoutMs);
+    for (const target of POS_PRINT_TARGETS) {
+      const result = await this.prisma.posPrintJob.updateMany({
+        where: {
+          storeId,
+          [`${target}Requested`]: true,
+          [`${target}Status`]: 'DELIVERED',
+          [`${target}Attempts`]: { lt: this.maxAttempts },
+          updatedAt: { lte: staleBefore },
+        } as never,
+        data: {
+          [`${target}Status`]: 'FAILED',
+          [`${target}FailureReason`]: 'ACK_TIMEOUT',
+        } as never,
+      });
+      if (result.count > 0) {
+        this.logger.warn({
+          event: 'pos_print_stale_delivery_recovered',
+          storeId,
+          target,
+          count: result.count,
+          reason: 'ACK_TIMEOUT',
+        });
+      }
+    }
+  }
+
   private async dispatchPending(storeId: string) {
+    await this.recoverStaleDelivered(storeId);
     const jobs = await this.prisma.posPrintJob.findMany({
       where: {
         storeId,
@@ -459,93 +562,120 @@ export class PosGateway
   }
 
   private async dispatchTarget(jobId: string, target: PosPrintTarget) {
-    if (this.timers.has(`${jobId}:${target}`)) return;
-    const job = await this.prisma.posPrintJob.findUnique({ where: { jobId } });
-    if (
-      !job ||
-      !job[`${target}Requested`] ||
-      job[`${target}Status`] === 'COMPLETED'
-    )
-      return;
-    const attemptsKey = `${target}Attempts` as const;
-    let attempt = job[attemptsKey];
-    if (attempt >= this.maxAttempts) {
-      // Older versions counted an offline lookup as a send. Such jobs were never
-      // delivered and are safe to recover; a REPRINT creates a fresh kind/job too.
-      if (job[`${target}FailureReason`] === 'CLIENT_OFFLINE') {
-        await this.prisma.posPrintJob.update({
+    const timerKey = `${jobId}:${target}`;
+    if (this.timers.has(timerKey)) return;
+
+    const candidate = await this.prisma.posPrintJob.findUnique({
+      where: { jobId },
+      select: { storeId: true },
+    });
+    if (!candidate) return;
+    const sockets = await this.server
+      .in(`store:${candidate.storeId}`)
+      .fetchSockets();
+
+    const claim = await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ jobId: string }>>`
+        SELECT "jobId"
+        FROM "PosPrintJob"
+        WHERE "jobId" = ${jobId}
+        FOR UPDATE
+      `;
+      if (!locked.length) return null;
+
+      const job = await tx.posPrintJob.findUnique({ where: { jobId } });
+      if (!job || !job[`${target}Requested`]) return null;
+      const status = job[`${target}Status`];
+      if (status !== 'PENDING' && status !== 'FAILED') return null;
+
+      const attemptsKey = `${target}Attempts` as const;
+      let attempt = job[attemptsKey];
+      if (attempt >= this.maxAttempts) {
+        // Older versions counted an offline lookup as a send. Such jobs were never
+        // delivered and are safe to recover; a REPRINT creates a fresh kind/job too.
+        if (job[`${target}FailureReason`] === 'CLIENT_OFFLINE') {
+          await tx.posPrintJob.update({
+            where: { jobId },
+            data: { [attemptsKey]: 0, [`${target}Status`]: 'PENDING' },
+          });
+          attempt = 0;
+          this.logger.warn({
+            event: 'pos_print_legacy_offline_recovered',
+            jobId,
+            orderStableId: job.orderStableId,
+            storeId: job.storeId,
+            target,
+            attempt,
+            status: 'PENDING',
+            reason: 'LEGACY_OFFLINE_ATTEMPTS_RESET',
+          });
+        } else {
+          this.logger.warn({
+            event: 'pos_print_retry_stopped',
+            jobId,
+            orderStableId: job.orderStableId,
+            storeId: job.storeId,
+            target,
+            attempt,
+            status,
+            reason: 'MAX_SEND_ATTEMPTS_REACHED',
+            recovery: 'REQUEST_ORDER_REPRINT',
+          });
+          return null;
+        }
+      }
+
+      if (!sockets.length) {
+        await tx.posPrintJob.update({
           where: { jobId },
-          data: { [attemptsKey]: 0, [`${target}Status`]: 'PENDING' },
+          data: {
+            [`${target}Status`]: 'PENDING',
+            [`${target}FailureReason`]: 'CLIENT_OFFLINE',
+          },
         });
-        attempt = 0;
         this.logger.warn({
-          event: 'pos_print_legacy_offline_recovered',
+          event: 'pos_print_dispatch_deferred',
           jobId,
           orderStableId: job.orderStableId,
           storeId: job.storeId,
           target,
           attempt,
           status: 'PENDING',
-          reason: 'LEGACY_OFFLINE_ATTEMPTS_RESET',
+          reason: 'CLIENT_OFFLINE',
         });
-      } else {
-        this.logger.warn({
-          event: 'pos_print_retry_stopped',
-          jobId,
-          orderStableId: job.orderStableId,
-          storeId: job.storeId,
-          target,
-          attempt,
-          status: job[`${target}Status`],
-          reason: 'MAX_SEND_ATTEMPTS_REACHED',
-          recovery: 'REQUEST_ORDER_REPRINT',
-        });
-        return;
+        return null;
       }
-    }
-    const sockets = await this.server.in(`store:${job.storeId}`).fetchSockets();
-    if (!sockets.length) {
-      await this.prisma.posPrintJob.update({
+
+      await tx.posPrintJob.update({
         where: { jobId },
         data: {
-          [`${target}Status`]: 'PENDING',
-          [`${target}FailureReason`]: 'CLIENT_OFFLINE',
+          [attemptsKey]: { increment: 1 },
+          [`${target}Status`]: 'DELIVERED',
+          [`${target}FailureReason`]: null,
         },
       });
-      this.logger.warn({
-        event: 'pos_print_dispatch_deferred',
-        jobId,
-        orderStableId: job.orderStableId,
+      return {
         storeId: job.storeId,
-        target,
-        attempt,
-        status: 'PENDING',
-        reason: 'CLIENT_OFFLINE',
-      });
-      return;
-    }
-    this.server
-      .to(`store:${job.storeId}`)
-      .emit('PRINT_JOB', { jobId, target, payload: job.payload });
-    await this.prisma.posPrintJob.update({
-      where: { jobId },
-      data: {
-        [attemptsKey]: { increment: 1 },
-        [`${target}Status`]: 'DELIVERED',
-        [`${target}FailureReason`]: null,
-      },
+        orderStableId: job.orderStableId,
+        payload: job.payload,
+        attempt: attempt + 1,
+      };
     });
+
+    if (!claim) return;
+    this.server
+      .to(`store:${claim.storeId}`)
+      .emit('PRINT_JOB', { jobId, target, payload: claim.payload });
     this.logger.log({
       event: 'pos_print_job_emitted',
       jobId,
-      orderStableId: job.orderStableId,
-      storeId: job.storeId,
+      orderStableId: claim.orderStableId,
+      storeId: claim.storeId,
       target,
-      attempt: attempt + 1,
+      attempt: claim.attempt,
       status: 'DELIVERED',
       reason: null,
     });
-    const timerKey = `${jobId}:${target}`;
     clearTimeout(this.timers.get(timerKey));
     this.timers.set(
       timerKey,
@@ -558,20 +688,34 @@ export class PosGateway
 
   private async markTimeoutAndRetry(jobId: string, target: PosPrintTarget) {
     this.timers.delete(`${jobId}:${target}`);
-    const job = await this.prisma.posPrintJob.update({
-      where: { jobId },
-      data: {
-        [`${target}Status`]: 'FAILED',
-        [`${target}FailureReason`]: 'ACK_TIMEOUT',
-      },
+    const timeoutResult = await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ jobId: string }>>`
+        SELECT "jobId"
+        FROM "PosPrintJob"
+        WHERE "jobId" = ${jobId}
+        FOR UPDATE
+      `;
+      if (!locked.length) return null;
+      const existingJob = await tx.posPrintJob.findUnique({ where: { jobId } });
+      if (!existingJob || existingJob[`${target}Status`] !== 'DELIVERED') {
+        return null;
+      }
+      return tx.posPrintJob.update({
+        where: { jobId },
+        data: {
+          [`${target}Status`]: 'FAILED',
+          [`${target}FailureReason`]: 'ACK_TIMEOUT',
+        },
+      });
     });
+    if (!timeoutResult) return;
     this.logger.warn({
       event: 'pos_print_ack_timeout',
-      jobId: job.jobId,
-      orderStableId: job.orderStableId,
-      storeId: job.storeId,
+      jobId: timeoutResult.jobId,
+      orderStableId: timeoutResult.orderStableId,
+      storeId: timeoutResult.storeId,
       target,
-      attempt: job[`${target}Attempts`],
+      attempt: timeoutResult[`${target}Attempts`],
       status: 'FAILED',
       reason: 'ACK_TIMEOUT',
     });

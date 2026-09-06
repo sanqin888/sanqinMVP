@@ -7,14 +7,17 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
+  ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   ORDER_PREP_STARTED_LIFECYCLE_EVENT,
+  orderInitialPrintHandoffIdempotencyKey,
 } from '../order-lifecycle';
 import { OrderPreparationService } from '../order-preparation.service';
 import { FulfillmentProcessor } from './fulfillment.processor';
 
 export {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
+  ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   ORDER_PREP_STARTED_LIFECYCLE_EVENT,
 } from '../order-lifecycle';
@@ -31,8 +34,9 @@ type DurableOrderEvent = {
  * API-process consumer for append-only Order lifecycle events.
  *
  * order.accepted is materialized into local preparation for immediate orders.
- * order.prep_started is materialized into the unique AUTO PosPrintJob. Durable
- * facts plus database locks make both stages replayable after process restarts.
+ * order.prep_started is handed to the Print owner, then checkpointed as
+ * order.initial_print_handoff. Durable facts plus database locks make both stages
+ * replayable after process restarts without reading Print-owned persistence.
  */
 @Injectable()
 export class OrderLifecycleOutboxProcessor
@@ -118,9 +122,10 @@ export class OrderLifecycleOutboxProcessor
           AND event."eventName" = ${ORDER_PREP_STARTED_LIFECYCLE_EVENT}
           AND event.payload->>'orderStableId' IS NOT NULL
           AND NOT EXISTS (
-            SELECT 1 FROM "PosPrintJob" job
-            WHERE job."orderStableId" = event.payload->>'orderStableId'
-              AND job.kind = 'AUTO'
+            SELECT 1 FROM "OpsEvent" handoff
+            WHERE handoff.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
+              AND handoff."eventName" = ${ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT}
+              AND handoff.payload->>'orderStableId' = orders."orderStableId"
           )
         ORDER BY event."createdAt" ASC, event.id ASC
         FOR UPDATE OF event SKIP LOCKED
@@ -129,8 +134,20 @@ export class OrderLifecycleOutboxProcessor
       const item = rows[0];
       if (!item) return false;
 
-      await this.fulfillment.handleAcceptedLifecycle({
+      const handoff = await this.fulfillment.handleAcceptedLifecycle({
         orderId: item.orderId,
+      });
+      if (!handoff) return false;
+      await tx.opsEvent.createMany({
+        data: {
+          idempotencyKey: orderInitialPrintHandoffIdempotencyKey(
+            item.orderStableId,
+          ),
+          eventName: ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT,
+          source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+          payload: { orderStableId: item.orderStableId },
+        },
+        skipDuplicates: true,
       });
       return true;
     });

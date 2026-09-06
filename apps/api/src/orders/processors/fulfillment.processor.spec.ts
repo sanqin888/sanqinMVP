@@ -25,6 +25,11 @@ describe('FulfillmentProcessor reprint store routing', () => {
       await sendPrintJob(input);
       return [{ jobId: 'job-1' }];
     });
+    const getLabelPlanByStableId = jest.fn().mockResolvedValue({
+      labelWidthMm: 70,
+      labelHeightMm: 30,
+      labels: [],
+    });
     const processor = new FulfillmentProcessor(
       {} as never,
       {
@@ -38,17 +43,16 @@ describe('FulfillmentProcessor reprint store routing', () => {
       {} as never,
       { emitAsync } as never,
       {
-        getByStableId: jest.fn().mockResolvedValue({ orderNumber: '1001' }),
-      } as never,
-      {
         getByStableId: jest.fn().mockResolvedValue({
-          labelWidthMm: 70,
-          labelHeightMm: 30,
-          labels: [],
+          orderNumber: '1001',
+          snapshot: { items: [] },
         }),
       } as never,
+      {
+        getByStableId: getLabelPlanByStableId,
+      } as never,
     );
-    return { processor, sendPrintJob };
+    return { processor, sendPrintJob, getLabelPlanByStableId };
   }
 
   it('订单缺少 storeId 时拒绝猜测门店并停止重打派发', async () => {
@@ -79,7 +83,10 @@ describe('FulfillmentProcessor reprint store routing', () => {
     await processor.handleOrderReprint({ orderStableId: 'stable-1' });
 
     expect(sendPrintJob).toHaveBeenCalledWith(
-      expect.objectContaining({ storeId: 'order-store' }),
+      expect.objectContaining({
+        storeStableId: 'order-store',
+        purpose: 'REPRINT',
+      }),
     );
   });
 
@@ -104,6 +111,137 @@ describe('FulfillmentProcessor reprint store routing', () => {
       }),
     );
     expect(sendPrintJob).not.toHaveBeenCalled();
+  });
+
+  it('菜品改单只把新增标签差额交给 AMENDMENT，并独立重打完整收银单', async () => {
+    const { processor, sendPrintJob, getLabelPlanByStableId } =
+      setup('order-store');
+    const label = {
+      productStableId: 'item-added',
+      pairCode: null,
+      component: 'main',
+      componentNameZh: null,
+      componentNameEn: null,
+      packagingTypeStableId: 'package-bowl',
+      packagingTypeName: 'Bowl',
+      nameZh: '新增菜',
+      nameEn: 'Added Item',
+      options: [],
+      specialInstructions: null,
+      copies: 1,
+    };
+    getLabelPlanByStableId.mockResolvedValueOnce({
+      labelWidthMm: 70,
+      labelHeightMm: 30,
+      labels: [{ ...label, copies: 2 }],
+    });
+
+    await processor.handleOrderAmendmentPrint({
+      orderStableId: 'stable-1',
+      reason: '换菜',
+      operatorName: 'staff',
+      beforeLabelPlan: {
+        labelWidthMm: 70,
+        labelHeightMm: 30,
+        labels: [label],
+      },
+      printCustomerReceipt: true,
+      afterOrderItems: [
+        {
+          productStableId: 'item-added',
+          qty: 1,
+          displayName: 'Added Item',
+          nameEn: 'Added Item',
+          nameZh: '新增菜',
+          unitPriceCents: 500,
+          specialInstructions: null,
+          displayOptions: null,
+          components: [
+            {
+              productStableId: 'component-soup',
+              nameEn: 'Soup',
+              nameZh: '汤',
+              quantity: 2,
+              priceDeltaCents: 0,
+              source: 'FIXED',
+              sourceOptionStableId: null,
+              options: [],
+            },
+          ],
+        },
+      ],
+      items: [
+        {
+          action: 'ADD' as never,
+          productStableId: 'item-added',
+          qty: 1,
+          unitPriceCents: 500,
+          displayName: 'Added Item',
+        },
+      ],
+    });
+
+    expect(sendPrintJob).toHaveBeenCalledTimes(2);
+    expect(sendPrintJob).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        purpose: 'AMENDMENT',
+        storeStableId: 'order-store',
+        data: expect.objectContaining({
+          labelPlan: expect.objectContaining({
+            labels: [expect.objectContaining({ copies: 1 })],
+          }) as unknown,
+          snapshot: expect.objectContaining({
+            items: expect.arrayContaining([
+              expect.objectContaining({
+                productStableId: 'item-added',
+                components: [
+                  expect.objectContaining({
+                    productStableId: 'component-soup',
+                    quantity: 2,
+                  }),
+                ],
+              }),
+            ]) as unknown,
+          }) as unknown,
+        }) as unknown,
+      }),
+    );
+    expect(sendPrintJob).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        purpose: 'REPRINT',
+        requestedTargets: {
+          customer: true,
+          kitchen: false,
+          label: false,
+        },
+      }),
+    );
+  });
+
+  it('纯支付方式变化只创建 customer-only REPRINT，不创建厨房改单任务', async () => {
+    const { processor, sendPrintJob } = setup('order-store');
+
+    await processor.handleOrderAmendmentPrint({
+      orderStableId: 'stable-1',
+      reason: '支付方式调整',
+      operatorName: 'staff',
+      printCustomerReceipt: true,
+      items: [],
+    });
+
+    expect(sendPrintJob).toHaveBeenCalledTimes(1);
+    expect(sendPrintJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'REPRINT',
+        requestedTargets: {
+          customer: true,
+          kitchen: false,
+          label: false,
+        },
+      }),
+    );
   });
 });
 
@@ -167,8 +305,8 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     expect(sendPrintJob).toHaveBeenCalledWith({
       orderId: 'web-order-1',
       orderStableId: 'stable-web-1',
-      storeId: 'store-4750',
-      kind: 'AUTO',
+      storeStableId: 'store-4750',
+      purpose: 'INITIAL',
       data: {
         orderNumber: 'SQ2608110001',
         labelPlan: {
@@ -176,7 +314,6 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
           labelHeightMm: 30,
           labels: [],
         },
-        targets: { customer: true, kitchen: true, label: false },
       },
     });
   });
@@ -192,11 +329,8 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
       expect.objectContaining({
         orderId: 'web-order-1',
         orderStableId: 'stable-web-1',
-        storeId: 'store-4750',
-        kind: 'AUTO',
-        data: expect.objectContaining({
-          targets: { customer: true, kitchen: true, label: false },
-        }) as unknown,
+        storeStableId: 'store-4750',
+        purpose: 'INITIAL',
       }),
     );
   });

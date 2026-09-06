@@ -28,13 +28,24 @@ describe('PosOrderOperationsService durable POS creation', () => {
         .mockResolvedValue({ outcome: 'activated' }),
     };
     const lifecycleOutbox = { requestDrain: jest.fn() };
+    const labelPlan = {
+      getByStableId: jest.fn().mockResolvedValue({ labels: [] }),
+    };
     const service = new PosOrderOperationsService(
       orders as never,
       scheduling as never,
       preparation as never,
       lifecycleOutbox as never,
+      labelPlan as never,
     );
-    return { service, orders, scheduling, preparation, lifecycleOutbox };
+    return {
+      service,
+      orders,
+      scheduling,
+      preparation,
+      lifecycleOutbox,
+      labelPlan,
+    };
   }
 
   it('wakes the durable lifecycle consumer after an in-store order has committed', async () => {
