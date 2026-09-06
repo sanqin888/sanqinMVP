@@ -87,6 +87,7 @@ import {
   resolveConfiguredStoreStableId,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
+import { buildOrderPricingDisplay } from './order-pricing-display';
 import {
   resolveRequestedLoyaltyPoints,
   resolveRequestedLoyaltyRedeemCents,
@@ -1874,8 +1875,7 @@ export class OrdersService {
             where: { id: checkoutIntent.orderId },
             include: { items: true },
           });
-          if (existingOrder)
-            return toOrderDto(existingOrder as OrderWithItems);
+          if (existingOrder) return toOrderDto(existingOrder as OrderWithItems);
 
           throw new ConflictException({
             code: 'ORDER_NOT_FOUND',

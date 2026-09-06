@@ -42,7 +42,8 @@ export class OrderManagementQueryUseCase {
         : 50;
     const page = Math.max(1, requestedPage);
     const pageSize = Math.max(1, Math.min(100, requestedPageSize));
-    const where: Prisma.OrderWhereInput = buildTrustedStoreOrderWhere(storeStableId);
+    const where: Prisma.OrderWhereInput =
+      buildTrustedStoreOrderWhere(storeStableId);
 
     if (params.statusIn && params.statusIn.length > 0) {
       where.status = { in: params.statusIn };
@@ -94,7 +95,8 @@ export class OrderManagementQueryUseCase {
       sinceMinutes = 24 * 60,
       requireItems = true,
     } = params;
-    const where: Prisma.OrderWhereInput = buildTrustedStoreOrderWhere(storeStableId);
+    const where: Prisma.OrderWhereInput =
+      buildTrustedStoreOrderWhere(storeStableId);
     if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
     if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
     if (requireItems) where.items = { some: {} };

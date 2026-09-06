@@ -117,7 +117,8 @@ export function toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     return {
       productStableId: it.productStableId,
       qty: it.qty,
-      displayName: it.displayName || it.nameEn || it.nameZh || it.productStableId,
+      displayName:
+        it.displayName || it.nameEn || it.nameZh || it.productStableId,
       nameEn: it.nameEn ?? null,
       nameZh: it.nameZh ?? null,
       unitPriceCents: it.unitPriceCents ?? 0,
