@@ -102,6 +102,40 @@ describe('Orders ↔ POS transport boundary', () => {
     expect(fulfillment).toContain('kitchen: false');
   });
 
+  it('keeps print payload ownership on the Orders public boundary', () => {
+    const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
+    const module = read(resolve(ORDERS_ROOT, 'orders.module.ts'));
+    const publicApi = read(resolve(ORDERS_ROOT, 'public-api.ts'));
+    const payloadContract = read(
+      resolve(ORDERS_ROOT, 'order-print-payload.contract.ts'),
+    );
+    const payloadService = read(
+      resolve(ORDERS_ROOT, 'print-pos-payload.service.ts'),
+    );
+    const fulfillment = read(
+      resolve(ORDERS_ROOT, 'processors', 'fulfillment.processor.ts'),
+    );
+
+    expect(payloadContract).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(payloadContract).toContain('OrderPrintPayloadReaderPort');
+    expect(payloadContract).toContain('PrintPosPayloadDto');
+    expect(payloadContract).not.toContain('@prisma/client');
+    expect(payloadContract).not.toContain('../pos/');
+    expect(payloadService).toContain('implements OrderPrintPayloadReaderPort');
+    expect(payloadService).not.toContain('../pos/dto/print-pos-payload.dto');
+    expect(module).toContain('useExisting: PrintPosPayloadService');
+    expect(module).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(publicApi).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(publicApi).not.toContain('PrintPosPayloadService');
+    expect(canonical).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(canonical).toContain('OrderPrintPayloadReaderPort');
+    expect(canonical).toContain('this.printPosPayloadReader.getByStableId');
+    expect(canonical).not.toContain('PrintPosPayloadService');
+    expect(canonical).not.toContain('print-pos-payload.dto');
+    expect(fulfillment).toContain("from '../order-print-payload.contract'");
+    expect(fulfillment).not.toContain('../../pos/dto/print-pos-payload.dto');
+  });
+
   it('keeps Print job identity and dispatch implementation on the POS/Print side', () => {
     const listener = read(resolve(POS_ROOT, 'pos-print-dispatch.listener.ts'));
     const gateway = read(resolve(POS_ROOT, 'pos.gateway.ts'));

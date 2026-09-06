@@ -5,7 +5,10 @@ import {
   LOYALTY_ORDER_USAGE_READER,
   type LoyaltyOrderUsageReaderPort,
 } from '../loyalty/public-api';
-import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
+import type {
+  OrderPrintPayloadReaderPort,
+  PrintPosPayloadDto,
+} from './order-print-payload.contract';
 import {
   buildOrderItemComponentDisplaySnapshots,
   buildOrderItemParentDisplayOptions,
@@ -17,7 +20,7 @@ type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type CheckoutMetadataRecord = Record<string, unknown>;
 
 @Injectable()
-export class PrintPosPayloadService {
+export class PrintPosPayloadService implements OrderPrintPayloadReaderPort {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(LOYALTY_ORDER_USAGE_READER)

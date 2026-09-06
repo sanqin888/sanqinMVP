@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@a88d82f7` (Slice 4D merge / PR #2206; production address-row repair remains separately gated)  
-Current status: **SLICE 4E UBER DIRECT PROVIDER IMPLEMENTATION CONTRACTION LOCAL / REVIEW PENDING — FULFILLMENT CONSUMES A TOKEN-BACKED DELIVERIES DISPATCH PORT INSTEAD OF `UberDirectService`; PROVIDER WIRE / ALERT / LOCAL-PERSISTENCE-FAILURE SEMANTICS ARE UNCHANGED; COMMERCE DIRECT-DEBT BASELINE REMAINS 22; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@24e7976d` (Slice 4E merge / PR #2207; production address-row repair remains separately gated)  
+Current status: **SLICE 4F FULFILLMENT / PRINT BOUNDARY CONTRACTION LOCAL / REVIEW PENDING — PRINT PAYLOAD OWNERSHIP MOVES TO THE ORDERS PUBLIC CONTRACT, POS CONSUMES A TOKEN-BACKED PAYLOAD READER, BOTH COMMERCE↔STORE-OPERATIONS LEGACY DIRECT EDGES CONTRACT TO 0; COMMERCE DIRECT DEBT 22 -> 20 AND STORE OPERATIONS 31 -> 29; PRINT WIRE / JOB / ACK / RETRY BEHAVIOR IS UNCHANGED**
 
 ## Goal
 
@@ -18,19 +18,19 @@ Historical Slice-level active verification evidence from earlier phases remains 
 
 ## Entry state
 
-Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 4E local source state, direct-import totals are:
+Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 4F local source state, direct-import totals are:
 
 - payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
 - identity-customer-benefits: **33**
-- store-operations-pos-print: **31**
-- commerce-orders-fulfillment: **22** *(pre-Slice 3 hardening 30 -> 29; Slice 3 29 -> 26; Slice 4A 26 -> 22)*
+- store-operations-pos-print: **29** *(Slice 4F contracts Store Operations -> Commerce 2 -> 0)*
+- commerce-orders-fulfillment: **20** *(pre-Slice 3 hardening 30 -> 29; Slice 3 29 -> 26; Slice 4A 26 -> 22; Slice 4F 22 -> 20)*
 - accounting-reporting-analytics: **25**
 - catalog-pricing-offers: **15**
 - messaging-notifications: **9** *(Slice 3 removes the remaining Messaging -> POS direct edge)*
 - brand-store: **8**
 
-Slice 4B and Slice 4C change persistence ownership rather than legacy direct-import counts: Commerce already reaches Catalog and Customer through registered public surfaces, so its numeric direct debt remains **22** while non-owner `MenuItem`, `User`, and `UserAddress` delegates in `apps/api/src/orders/**` contract to zero.
+Slice 4B, Slice 4C and Slice 4D contract hidden persistence/runtime ownership without changing legacy direct-import counts. Slice 4F then removes both remaining Commerce -> Store Operations print-payload imports and both reverse Store Operations -> Commerce deep imports, while preserving the registered POS -> Orders public direction.
 
 PR #2192 / `a464c1c3` fixed the separate POS Order Management historical query without changing the architecture graph, payment/refund semantics, or Phase 4 closure.
 
@@ -97,7 +97,7 @@ After Slice 4E, Deliveries composition is through `deliveries/public-api.ts`; Lo
 
 For completeness, same-context concrete wiring found by the source audit is not classified as cross-owner debt by itself: `OrdersController -> OrdersService`; `PosOrderOperationsService -> OrdersService + OrderSchedulingQueryService`; `PosOrderReadService -> OrdersService`; `OrderLifecycleOutboxProcessor -> FulfillmentProcessor + OrderPreparationService`; `ScheduledOrderProcessor -> OrderPreparationService`; and `FulfillmentProcessor -> PrintPosPayloadService + OrderLabelPlanService`. These relationships still matter when `OrdersService` is later split, but Slice 0 does not manufacture interfaces around them merely to reduce concrete class references.
 
-There are also two direct POS type couplings from Orders implementation code (`PrintPosPayloadDto` in `print-pos-payload.service.ts` and `fulfillment.processor.ts`) even though Print is a Store Operations owner. These are recorded for the later Fulfillment/Print slice rather than changed in Slice 0.
+Slice 0 also recorded two direct POS type couplings from Orders implementation code (`PrintPosPayloadDto` in `print-pos-payload.service.ts` and `fulfillment.processor.ts`). Slice 4F closes both by moving the unchanged payload shape to the Orders-owned public contract; the reverse POS deep imports are closed in the same slice.
 
 ## EventEmitter / lifecycle consumer inventory
 
@@ -454,7 +454,7 @@ Phase-level closeout verification must retain member coupon pricing, points rede
 
 ### Slice 4E — Uber Direct provider implementation contraction
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4e`, based on `origin/dev@a88d82f7`.
+Status: **MERGED / CI GREEN** — PR #2207, final head `4cc113e6b47bf95ac4a72a6a34c87eabe0143c1a`, squash merge `24e7976d1851788a3d80cae37f95f92b0d5ffb6f`; final PR CI #5245 passed API and Web after lint-only CI #5244 follow-up.
 
 Migration classification: **Class A internal provider-boundary contraction**. No Prisma schema/migration, package/lockfile, public HTTP route, Uber Direct provider request/response wire shape, authentication mode, Order lifecycle, payment/refund behavior, dispatch-failure alert policy or external-delivery persistence semantics change.
 
@@ -468,4 +468,18 @@ Because `deliveries/**` and `orders/**` are both mapped to Commerce today, this 
 
 Phase-level closeout verification should retain one Uber Direct success path plus provider-create failure alert behavior when an appropriate test/sandbox delivery path is available. No standalone 4E production verification is required under the Phase 5 cadence.
 
-Planned follow-on after Slice 4E is: **Fulfillment / Print type-boundary contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 4F — Fulfillment / Print payload boundary contraction
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4f-print-boundary`, based on `origin/dev@24e7976d`.
+
+Migration classification: **Class A bidirectional public-boundary contraction**. No Prisma schema/migration, dependency/lockfile, POS HTTP route, printer-agent wire payload, PrintJob identity, target routing, ACK/retry semantics, Order lifecycle, payment/refund behavior or physical printing policy changes.
+
+The receipt/kitchen payload is now explicitly an Orders-owned output projection rather than a POS-owned DTO that Orders itself imported. `order-print-payload.contract.ts` preserves the same locale/order/customer/pickup/fulfillment/payment/notes/utensils/snapshot shape while using the shared Order fulfillment type instead of Prisma in the public contract. `PrintPosPayloadService` remains the Orders-owned projection implementation and implements `OrderPrintPayloadReaderPort`; `OrdersModule` binds `ORDER_PRINT_PAYLOAD_READER` with `useExisting` and exports only the token-backed reader, not the concrete service.
+
+`FulfillmentProcessor` consumes the payload type from the local Orders contract and no longer imports any POS DTO. The canonical POS print-payload route keeps the same response shape and store-scope check but injects `ORDER_PRINT_PAYLOAD_READER` through `orders/public-api.ts` rather than deep-importing `PrintPosPayloadService`. The former `apps/api/src/pos/dto/print-pos-payload.dto.ts` is deleted, which also removes its reverse deep import of the Orders item-option snapshot type.
+
+The measurable legacy graph contracts in both directions: `commerce-orders-fulfillment -> store-operations-pos-print` **2 -> 0**, reducing Commerce outgoing direct debt **22 -> 20**; `store-operations-pos-print -> commerce-orders-fulfillment` **2 -> 0**, reducing Store Operations outgoing direct debt **31 -> 29**. Zero edges are removed from the monotonic baseline and the public SCC baseline remains empty. Central scanner and focused architecture coverage reserve the payload contract to Orders, forbid POS DTO/concrete-service deep imports from reappearing, and require POS transport to use the Orders public token.
+
+Existing `PrintPosPayloadService` behavior tests continue to lock receipt/kitchen projection fields. Existing Print dispatch tests continue to lock `INITIAL`/`REPRINT`/`AMENDMENT`, target routing, durable job identity, dispatch claim and ACK/retry behavior; 4F changes only compile-time ownership and DI composition. Phase-level closeout verification therefore keeps the existing POS/Web/Uber receipt, kitchen and label printing scenarios without a standalone 4F production gate.
+
+Planned follow-on after Slice 4F is: **Orders use-case decomposition -> remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

@@ -526,6 +526,15 @@
     "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
+  "ordersPrintPayloadBoundary": {
+    "contract": "apps/api/src/orders/order-print-payload.contract.ts",
+    "ownerService": "apps/api/src/orders/print-pos-payload.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts",
+    "publicSurface": "apps/api/src/orders/public-api.ts",
+    "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
+    "posController": "apps/api/src/pos/pos-orders.controller.ts",
+    "retiredPosDto": "apps/api/src/pos/dto/print-pos-payload.dto.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",
@@ -621,7 +630,6 @@
     "commerce-orders-fulfillment -> architecture-foundation": 8,
     "commerce-orders-fulfillment -> identity-customer-benefits": 2,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
-    "commerce-orders-fulfillment -> store-operations-pos-print": 2,
     "external-channels -> architecture-foundation": 11,
     "external-channels -> commerce-orders-fulfillment": 1,
     "external-channels -> identity-customer-benefits": 6,
@@ -642,7 +650,6 @@
     "payments-clover -> store-operations-pos-print": 11,
     "store-operations-pos-print -> architecture-foundation": 7,
     "store-operations-pos-print -> brand-store": 2,
-    "store-operations-pos-print -> commerce-orders-fulfillment": 2,
     "store-operations-pos-print -> external-channels": 1,
     "store-operations-pos-print -> identity-customer-benefits": 14,
     "store-operations-pos-print -> runtime-data-ci-ops": 5
