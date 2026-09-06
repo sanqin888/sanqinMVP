@@ -1879,7 +1879,8 @@ export class OrdersService {
             where: { id: checkoutIntent.orderId },
             include: { items: true },
           });
-          if (existingOrder) return this.toOrderDto(existingOrder as OrderWithItems);
+          if (existingOrder)
+            return this.toOrderDto(existingOrder as OrderWithItems);
 
           throw new ConflictException({
             code: 'ORDER_NOT_FOUND',
