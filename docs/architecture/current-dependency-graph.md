@@ -310,6 +310,14 @@ is an externally observable controlled-cutover concern.
 Detailed evidence and next-slice guidance are in
 `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
 
+### Phase 5 Slice 1A POS cash payment-summary snapshot readiness — 2026-09-05
+
+Slice 1A is a backward-compatible additive contract/snapshot change and does not alter the measured context graph. The direct-debt totals remain Payments/Clover **59**, External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty.
+
+The POS cash browser now supplies optional `cashReceivedCents` on canonical `/pos/orders` creation. Orders validates it only for authenticated in-store cash orders, derives `cashChangeCents` from the server-calculated remaining cash tender using the existing POS upward-to-5-cent cash rounding rule, and persists only those two receipt-display facts in the existing `Order.paymentBreakdownJson`. `Order.totalCents`, tax, discounts, benefit settlement and refund semantics remain unchanged; in particular Slice 1A deliberately does not add in-store `externalCents`, so the existing Web external-payment reconstruction/refund interpretation is not broadened.
+
+`PrintPosPayloadService` can now recover persisted cash receipt facts into the existing print payload, while the current browser `/print` transient fields remain valid for older PWA bundles. No lifecycle transition, `order.accepted` / `order.prep_started` producer, PrintJob kind, printer transport, Clover provider behavior, Prisma schema/migration or architecture allowance changes in 1A. The actual POS first-print convergence from `REPRINT:* + advance` to durable `accepted -> prep_started -> AUTO` remains Slice 1B.
+
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:
 

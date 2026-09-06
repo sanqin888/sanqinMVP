@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Planning/readiness base: `origin/dev@a464c1c3`  
-Current status: **SLICE 0 SOURCE COMPLETE / LOCAL REVIEW PENDING — NO RUNTIME BEHAVIOR MOVED**
+Current implementation base: `origin/dev@07311f74` (Slice 0 merge)  
+Current status: **SLICE 1A SOURCE COMPLETE / LOCAL REVIEW PENDING — POS CASH SNAPSHOT READINESS; NO LIFECYCLE/PRINT-TRIGGER CUTOVER YET**
 
 ## Goal
 
@@ -30,7 +30,7 @@ Phase 3 Slice 2C remains explicitly deferred: confirmed-payment finalization cur
 
 ## Slice 0 — Orders/Fulfillment readiness + characterization
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING**.
+Status: **MERGED / CI GREEN** — PR #2193, final head `a8be129b`, squash merge `07311f74`; merged dev CI #5194 passed.
 
 Migration classification: **Class A, test/documentation-only readiness work**. Slice 0 changes no production behavior, public contract, persistence schema, migration history, provider protocol, dependency direction, architecture allowance, or compatibility path.
 
@@ -172,10 +172,38 @@ Documentation:
 
 No production `.ts` implementation, Prisma schema/migration, dependency manifest/lockfile, public API, active/closed compatibility path, architecture scanner baseline, provider wire contract, Web/POS behavior or database state is changed. The compatibility register's review queue is updated only to record that the EventEmitter/outbox candidate was audited and does not require a `compat_id`.
 
-## Recommended next slice after Slice 0 is reviewed/merged
+## Revised execution sequence after Slice 0 print-flow audit
 
-### Slice 1 — Orders -> Messaging delivery contraction
+Post-merge source tracing found that the existing POS payment page performs its first successful print by calling the manual `/pos/orders/:orderStableId/print` route, which emits `order.reprint` and creates `REPRINT:<timestamp>`, then separately advances the Order from `paid -> making`. The accepted/prep lifecycle AUTO path skips `channel=in_store`, while the pre-production Clover Terminal orchestration has its own `PAYMENT_CHECKOUT:<attemptId>` print path. Uber already uses the durable `order.accepted -> order.prep_started -> AUTO` path. Phase 5 therefore prioritizes lifecycle/initial-print convergence before the previously planned Messaging contraction.
 
-This is the lowest-risk first owner movement. Move the order-ready, delivery-dispatch-failed and invoice-delivery calls behind narrow Messaging-owned public capabilities. Orders continues to decide **why/when** the message is required and which trusted business facts are supplied; Messaging continues to own template/provider/channel delivery. The slice should remove Orders' direct `NotificationService` / `EmailService` dependencies and corresponding concrete module wiring without changing notification triggers, fallback policy or customer-visible content.
+Target first-print semantics are:
 
-Do not begin the Catalog orderable-snapshot or Uber Direct/Print critical slices until Slice 1 is independently reviewed/CI-green (and actively verified if its runtime notification behavior changes).
+```text
+channel-specific paid/accept eligibility
+  -> durable order.accepted
+  -> OrderPreparationService
+  -> status=making + durable order.prep_started in one Orders transaction
+  -> unique AUTO PrintJob materialization
+  -> Print-owned dispatch/retry/ack
+```
+
+Explicit operator reprints remain separate `REPRINT:*` operations, and amendment copies remain `AMENDMENT:*`; only the initial automatic print converges on `AUTO`.
+
+### Slice 1A — POS cash payment-summary snapshot readiness
+
+Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1a-pos-cash-snapshot`.
+
+Migration classification: **backward-compatible additive contract/snapshot change**. No Prisma schema/migration, provider protocol, Order lifecycle transition, PrintJob identity, architecture allowance or context dependency direction changes.
+
+Current POS cash collection computes `cashReceivedCents` and `cashChangeCents` only in the browser and forwards them as transient parameters to the `/print` request. That prevents the future durable `prep_started -> AUTO` path from reconstructing the same customer receipt after a process restart or without the original browser request. Slice 1A therefore:
+
+- adds optional `cashReceivedCents` to the shared CreateOrder contract; old PWA bundles remain valid because the field is additive/optional;
+- accepts it only for authenticated `channel=in_store` + `paymentMethod=CASH` creation and rejects underpayment/non-cash misuse;
+- preserves the existing POS cash rounding rule exactly: the remaining cash tender is rounded upward to the next 5 cents for collection/change calculation, while `Order.totalCents`, tax, discounts and accounting amounts remain the exact server-calculated cents;
+- persists only `{ cashReceivedCents, cashChangeCents }` into the existing nullable `Order.paymentBreakdownJson` for these cash Orders. It deliberately does **not** add `externalCents` for in-store Orders, because that key currently participates in Web external-payment/refund reconstruction and changing in-store interpretation would exceed Slice 1A;
+- makes `PrintPosPayloadService` recover the persisted cash receipt facts into the existing top-level print payload shape, so a later AUTO print or operator reprint can reproduce the receipt without browser-only state;
+- keeps the current POS first `/print` + `advanceOrder()` behavior untouched in 1A. Existing transient `/print` cash parameters continue to work for old PWA bundles; Slice 1B owns the actual initial-print/lifecycle cutover.
+
+Focused characterization locks server-derived change, including a non-five-cent exact Order total, rejects insufficient cash, and proves print-payload recovery from persisted Order facts.
+
+Planned follow-on order is: **1B POS ordinary durable lifecycle cutover -> 1C Web/local durable lifecycle -> 1D POS Clover Terminal durable lifecycle -> 1E Uber convergence verification -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout**.

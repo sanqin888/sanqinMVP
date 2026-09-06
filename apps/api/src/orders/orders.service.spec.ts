@@ -103,6 +103,7 @@ describe('OrdersService', () => {
     maxRedeemableCentsFromBalance: jest.Mock;
     reserveRedeemForOrder: jest.Mock;
     resolveUserIdByStableId: jest.Mock;
+    deductBalanceForOrder: jest.Mock;
     rollbackOnRefund: jest.Mock;
   };
   let loyaltyOrderPaidSettlement: { settleOrderPaid: jest.Mock };
@@ -216,6 +217,7 @@ describe('OrdersService', () => {
       maxRedeemableCentsFromBalance: jest.fn().mockResolvedValue(0),
       reserveRedeemForOrder: jest.fn().mockResolvedValue(0),
       resolveUserIdByStableId: jest.fn(),
+      deductBalanceForOrder: jest.fn().mockResolvedValue(undefined),
       rollbackOnRefund: jest.fn(),
     };
     loyaltyOrderPaidSettlement = {
@@ -1337,6 +1339,113 @@ describe('OrdersService', () => {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;
     }
+  });
+
+  it('POS 现金建单持久化服务端确认的实收与找零快照', async () => {
+    prisma.order.create.mockResolvedValue({
+      id: 'pos-cash-order',
+      orderStableId: 'pos-cash-order-stable',
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: new Date(),
+      paymentMethod: 'CASH',
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1129,
+      items: [],
+    });
+
+    await service.createForStore(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        paymentMethod: 'CASH',
+        cashReceivedCents: 2000,
+        discountCents: 1,
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      },
+      '4750_Yonge_Street',
+    );
+
+    expect(prisma.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          totalCents: 1129,
+          paymentBreakdownJson: {
+            cashReceivedCents: 2000,
+            cashChangeCents: 870,
+          },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('POS 余额加现金按剩余现金应付计算找零，而不是按整个订单总额', async () => {
+    loyalty.resolveUserIdByStableId.mockResolvedValue(
+      '00000000-0000-4000-8000-000000000099',
+    );
+    prisma.order.create.mockResolvedValue({
+      id: 'pos-mixed-cash-order',
+      orderStableId: 'pos-mixed-cash-order-stable',
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: new Date(),
+      paymentMethod: 'CASH',
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1129,
+      items: [],
+    });
+
+    await service.createForStore(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        paymentMethod: 'CASH',
+        userStableId: demoProductId,
+        balanceUsedCents: 500,
+        cashReceivedCents: 1000,
+        discountCents: 1,
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      },
+      '4750_Yonge_Street',
+    );
+
+    expect(loyalty.deductBalanceForOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ amountCents: 500 }),
+    );
+    expect(prisma.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          totalCents: 1129,
+          paymentBreakdownJson: {
+            cashReceivedCents: 1000,
+            cashChangeCents: 370,
+          },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('POS 现金实收低于服务端确认应付金额时拒绝建单', async () => {
+    await expect(
+      service.createForStore(
+        {
+          channel: 'in_store',
+          fulfillmentType: 'pickup',
+          paymentMethod: 'CASH',
+          cashReceivedCents: 1000,
+          items: [{ productStableId: demoProductId, qty: 1 }],
+        },
+        '4750_Yonge_Street',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.order.create).not.toHaveBeenCalled();
   });
 
   it('通用 create 不允许非 Web 调用绕过 authenticated store context', async () => {

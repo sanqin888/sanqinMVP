@@ -67,5 +67,7 @@ export type PrintPosPayloadDto = {
   paymentMethod: PrintPosPaymentMethod;
   orderNotes: string | null;
   utensils: PrintPosUtensilsSnapshot | null;
+  cashReceivedCents?: number;
+  cashChangeCents?: number;
   snapshot: PrintPosOrderSnapshot;
 };

@@ -102,6 +102,10 @@ export class PrintPosPayloadService {
         ? Math.round(order.paymentTotalCents)
         : (order.totalCents ?? 0) + creditCardSurchargeCents;
 
+    const cashPaymentSummary =
+      order.paymentMethod === PaymentMethod.CASH
+        ? this.extractCashPaymentSummary(order.paymentBreakdownJson)
+        : null;
     const paymentMethod = (() => {
       switch (order.paymentMethod) {
         case PaymentMethod.CASH:
@@ -129,6 +133,7 @@ export class PrintPosPayloadService {
       orderNotes:
         order.externalOrderNotes ?? this.extractOrderNotes(intentMetadata),
       utensils: this.extractUtensils(intentMetadata),
+      ...(cashPaymentSummary ?? {}),
       snapshot: {
         items,
         subtotalCents: order.subtotalCents ?? 0,
@@ -184,6 +189,19 @@ export class PrintPosPayloadService {
 
     const finalCents = cents > 0 ? cents : persistedSurcharge;
     return finalCents > 0 ? { cents: finalCents } : null;
+  }
+
+  private extractCashPaymentSummary(
+    value: Prisma.JsonValue | null,
+  ): Pick<PrintPosPayloadDto, 'cashReceivedCents' | 'cashChangeCents'> | null {
+    const breakdown = this.asRecord(value);
+    if (!breakdown) return null;
+
+    const cashReceivedCents = this.asFiniteInteger(breakdown.cashReceivedCents);
+    const cashChangeCents = this.asFiniteInteger(breakdown.cashChangeCents);
+    if (cashReceivedCents === null || cashChangeCents === null) return null;
+
+    return { cashReceivedCents, cashChangeCents };
   }
 
   private extractOrderNotes(
