@@ -18,6 +18,25 @@ export type PosOrderBoardQuery = {
   requireItems?: boolean;
 };
 
+export type PosOrderManagementQuery = {
+  statusIn?: OrderStatus[];
+  channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
+  fulfillmentIn?: Array<'pickup' | 'dine_in' | 'delivery'>;
+  createdAtGte?: Date;
+  createdAtLt?: Date;
+  minTotalCents?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+export type PosOrderManagementPage = {
+  orders: OrderDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export type PosOrderJsonPrimitive = string | number | boolean | null;
 export type PosOrderJsonNestedValue =
   | PosOrderJsonPrimitive
@@ -87,6 +106,10 @@ export interface PosOrderOperationsPort {
     storeStableId: string,
   ): Promise<PosOrderPricingQuote>;
   recent(storeStableId: string, limit?: number): Promise<OrderDto[]>;
+  searchForStore(
+    storeStableId: string,
+    query: PosOrderManagementQuery,
+  ): Promise<PosOrderManagementPage>;
   board(storeStableId: string, query: PosOrderBoardQuery): Promise<OrderDto[]>;
   getByStableIdForStore(
     orderStableId: string,

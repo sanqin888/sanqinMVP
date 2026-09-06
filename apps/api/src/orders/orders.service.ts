@@ -99,6 +99,10 @@ import {
   resolveRequestedLoyaltyPoints,
   resolveRequestedLoyaltyRedeemCents,
 } from './orders-loyalty-redemption';
+import type {
+  PosOrderManagementPage,
+  PosOrderManagementQuery,
+} from './pos-order-operations.contract';
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
@@ -3586,6 +3590,62 @@ export class OrdersService {
     })) as OrderWithItems[];
 
     return orders.map((o) => this.toOrderDto(o));
+  }
+
+  async searchForStore(
+    storeStableId: string,
+    params: PosOrderManagementQuery,
+  ): Promise<PosOrderManagementPage> {
+    const requestedPage =
+      typeof params.page === 'number' && Number.isFinite(params.page)
+        ? Math.trunc(params.page)
+        : 1;
+    const requestedPageSize =
+      typeof params.pageSize === 'number' && Number.isFinite(params.pageSize)
+        ? Math.trunc(params.pageSize)
+        : 50;
+    const page = Math.max(1, requestedPage);
+    const pageSize = Math.max(1, Math.min(100, requestedPageSize));
+    const where: Prisma.OrderWhereInput =
+      this.trustedStoreOrderWhere(storeStableId);
+
+    if (params.statusIn && params.statusIn.length > 0) {
+      where.status = { in: params.statusIn };
+    }
+    if (params.channelIn && params.channelIn.length > 0) {
+      where.channel = { in: params.channelIn };
+    }
+    if (params.fulfillmentIn && params.fulfillmentIn.length > 0) {
+      where.fulfillmentType = { in: params.fulfillmentIn };
+    }
+    if (params.minTotalCents !== undefined) {
+      where.totalCents = { gte: Math.max(0, Math.trunc(params.minTotalCents)) };
+    }
+    if (params.createdAtGte || params.createdAtLt) {
+      where.createdAt = {
+        ...(params.createdAtGte ? { gte: params.createdAtGte } : {}),
+        ...(params.createdAtLt ? { lt: params.createdAtLt } : {}),
+      };
+    }
+
+    const [total, orders] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { orderStableId: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { items: true },
+      }),
+    ]);
+
+    return {
+      orders: (orders as OrderWithItems[]).map((order) => this.toOrderDto(order)),
+      page,
+      pageSize,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+    };
   }
 
   async board(

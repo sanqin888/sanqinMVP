@@ -1,6 +1,8 @@
 # Current 12-context dependency graph
 
 Phase 3 is **PRODUCTION VERIFIED / CLOSED** for its approved scope as of 2026-09-04.
+Phase 4 is **PRODUCTION VERIFIED / CLOSED** as of 2026-09-05 after the consolidated migration recovery,
+deployment and active verification; its final source graph remains cycle-free under the recorded baseline.
 Slice 6 merged via PR #2157 with final PR head `8547b46c`, squash merge `b91afb6a`, and
 CI #5070 green; focused Uber menu item availability OFF -> ON, temporary suspension /
 recovery, and option availability OFF -> ON verification were completed successfully.
@@ -106,16 +108,11 @@ pair fails CI.
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
 
-## Phase 4 planning baseline
+## Phase 4 final baseline and production verification
 
-The next formal modularization phase is **Phase 4 — Identity / Customer / Benefits +
-Messaging Boundary Contraction**, tracked in
-`docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
-
-The current local monotonic baseline after the Slice 5A Loyalty ledger identity source contraction
-records these direct-debt totals. Slice 5A consolidates Loyalty Runtime composition through one
-context-local Prisma boundary while preserving the established Staff/Customer/Security ownership
-contractions:
+**Phase 4 — Identity / Customer / Benefits + Messaging Boundary Contraction** is complete and tracked in
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`. The final monotonic baseline after Slice 6
+and the production-verified rollout records these direct-debt totals:
 
 - payments-clover: **59**
 - external-channels: **42**
@@ -168,8 +165,9 @@ than the Prisma UUID. Identity -> Architecture remains **13**, Identity -> Runti
 **35**, Identity -> Messaging **0**, and the public SCC baseline remains empty. The TrustedDevice
 migration was successfully applied to production when the consolidated Phase 4 rollout began on 2026-09-05.
 
-Slice 4C is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2182. Final head
-`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`. The approved
+Slice 4C is **PRODUCTION VERIFIED** via PR #2182 plus UUID recovery PR #2190. Final Slice 4C head
+`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`; recovery head
+`8392e42f` passed CI #5182, squash-merged as `ccf0aee9`, and the merged dev source passed CI #5183. The approved
 additive migration adds nullable `Order.userStableId`, deterministically backfills it from the existing
 `Order.userId -> User.id` association with count/mismatch/orphan checks, and adds the
 `(userStableId, createdAt)` index. The two existing `/admin/members/:userStableId/orders` and
@@ -185,15 +183,17 @@ then `20260905145500_add_order_user_stable_id` failed with PostgreSQL `42883` an
 verification found all **45/45** non-null `Order.userId` values are valid UUID text and map to `User.id`. The recovery
 therefore adds ordered prerequisite `20260905144000_normalize_order_user_id_uuid`, models `Order.userId` as
 `String? @db.Uuid`, converts it with `USING "userId"::uuid`, and deliberately adds no FK/NOT NULL/delete semantics
-before retrying the untouched stable-ID migration.
+before retrying the untouched stable-ID migration. Production recovery completed successfully: `Order.userId`
+is now PostgreSQL UUID, **45/45** member-linked Orders have matching `userStableId`, and orphan/mismatch counts
+are **0**.
 
-Slice 4D-A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2183. Final head
+Slice 4D-A is **PRODUCTION VERIFIED** via PR #2183. Final head
 `cec141ba` passed GitHub Actions CI #5162 and squash-merged to `dev` as `07dc1206`. The Identity-owned
 `MEMBER_RECHARGE_VERIFICATION` public capability owns the existing `pos-recharge` member/contact
 resolution, challenge/token lifecycle and Admin delegation boundary while `AdminMembersService` retains
 the unchanged amount/token input validation and `LoyaltyService.applyTopup()` orchestration.
 
-Slice 4D-H is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2184. Final head
+Slice 4D-H is **PRODUCTION VERIFIED** via PR #2184. Final head
 `4d850ba1` passed CI #5165 and squash-merged as `7853e4f9`. Recharge Email/SMS share one Identity-owned
 challenge policy and DB-backed per-member send budget (one per 60 seconds, five per rolling 24 hours).
 SMS uses Messaging `PHONE_VERIFICATION_DELIVERY` only for delivery rather than delegating its challenge
@@ -201,7 +201,7 @@ lifecycle to `PhoneVerificationService`. New recharge codes use required `MEMBER
 and non-zero six-digit generation uses `crypto.randomInt`. POS rejects backend `{ ok:false }` sends
 without entering `code-sent`; the approved rollout remains an atomic cutover with no legacy-secret fallback.
 
-Slice 4D-I is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2185. Final head
+Slice 4D-I is **PRODUCTION VERIFIED** via PR #2185. Final head
 `d4b85e3a` passed GitHub Actions CI #5168 and squash-merged to `dev` as `b27ad8ce`. The new
 Identity-internal `OtpChallengePolicyService` centralizes DB-backed cooldown/quota/supersession behavior
 for Login 2FA, Phone Enrollment, Membership Login, Checkout, Email Verify, POS Recharge and generic Phone
@@ -214,7 +214,7 @@ No Prisma/dependency/context-import change is introduced. Expected numeric graph
 Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
 **0**, Commerce -> Identity **4**, with the public SCC baseline empty.
 
-Slice 5A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2186. Final head
+Slice 5A is **PRODUCTION VERIFIED** via PR #2186. Final head
 `3b904dd1` passed GitHub Actions CI #5171 and squash-merged to `dev` as `c28df1b5`. The authorized additive
 migration adds nullable `LoyaltyLedger.orderStableId`, deterministically backfills the existing Order mapping
 with count/mismatch/orphan checks, and deliberately leaves the existing `(orderId, type, sourceKey)` internal
@@ -225,7 +225,8 @@ stop performing `Order.id -> orderStableId` enrichment. The normal order-create 
 before Loyalty writes, while payment/refund/amendment/top-up paths reuse their already-known stable identity.
 Consolidating Loyalty Runtime imports through `loyalty-prisma.ts` contracts Identity -> Runtime **12 -> 10** and
 Identity total **35 -> 33**. No new public dependency edge is introduced, so the public SCC baseline remains
-empty. The migration remains unapplied in production.
+empty. Production migration verification later confirmed **89/89** order-linked ledger rows carry matching
+`orderStableId`, the **2** manual no-order adjustments remain NULL, and orphan/mismatch counts are **0**.
 
 ### Phase 4 Slice 6 final dependency/SCC closeout — 2026-09-05
 
@@ -238,7 +239,7 @@ Messaging **10**, Brand/Store **8**. Slice 5B did not require a numeric allowanc
 `LOYALTY_ORDER_USAGE_READER` reused the already-existing Commerce -> Identity/Benefits direction.
 `legacyPublicCycleComponents` remains empty and no reduced allowance is stale.
 
-Slice 5B is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**. Orders detail/public-summary, legacy Web
+Slice 5B is **PRODUCTION VERIFIED**. Orders detail/public-summary, legacy Web
 external-payment reconstruction and POS/receipt/email print now delegate order usage to the Benefits-owned
 stable-ID reader. Production-source search finds `this.prisma.loyaltyLedger` only under `apps/api/src/loyalty/**`;
 `orderStableById` and `getSettledBalancePaymentCentsForOrder` have no remaining source matches. The non-unique
@@ -258,19 +259,19 @@ Loyalty's paid-settlement Order lookup and UUID-based refund rollback also remai
 retained internal `LoyaltyLedger.orderId` idempotency/refund implementation from Slice 5A; they are not a
 Commerce-side read-owner leak and are not silently reclassified as closed debt.
 
-Production rollout has now partially advanced: `20260905134000_add_trusted_device_stable_id` is applied;
-`20260905145500_add_order_user_stable_id` has a failed/rolled-back attempt caused by the historical
-`Order.userId TEXT` / `User.id UUID` mismatch. Recovery source adds
-`20260905144000_normalize_order_user_id_uuid` ahead of the untouched 14:55 migration. After the failed migration
-is marked rolled back, deploy order must be 14:40 UUID normalization -> retry 14:55 stable-ID backfill ->
-`20260905193000_add_loyalty_ledger_order_stable_id` ->
-`20260905204500_add_loyalty_ledger_order_stable_id_index`, all before the new API source is activated.
-`MEMBER_RECHARGE_OTP_SECRET` remains a required rollout prerequisite. This recovery does not change dependency
-counts or the empty public SCC baseline.
+Production rollout is complete. The failed 14:55 Order migration was marked rolled back, then 14:40 UUID
+normalization, the retried 14:55 stable-ID backfill, the 19:30 Loyalty stable-ID migration and the 20:45 Loyalty
+index migration all applied successfully before the new API/Web/Uber worker were activated. Post-deploy evidence:
+TrustedDevice **2/2 populated + unique**; Order member identity **45/45 populated with 0 orphan/mismatch**;
+LoyaltyLedger **89/89 order-linked stable IDs populated with 0 orphan/mismatch**, with **2** manual no-order rows
+remaining NULL by design. Active member/Admin/OTP/points/balance/receipt/refund/POS-recharge smoke checks completed
+without relevant 5xx/Prisma/OTP runtime errors. Recharge SMS is N/A under the current email-first account mix;
+separate SMS Login 2FA negative/cooldown/success behavior was verified.
 
-No further safe Phase 4 dependency contraction is identified. The Phase 4 **source graph is closed**; the next
-step is consolidated deployment readiness, migration/secret preflight, deployment, and focused active
-verification.
+No further safe Phase 4 dependency contraction is identified. Phase 4 is **PRODUCTION VERIFIED / CLOSED** and the
+final numeric baseline plus empty public SCC remain authoritative. The POS Order Management "full query" page bug
+found during verification is separate: it loaded only the newest 30 Orders even though older production rows are
+present, so its server-side historical query/pagination repair does not reopen Phase 4.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

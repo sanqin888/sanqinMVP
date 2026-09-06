@@ -60,6 +60,7 @@ describe('Orders ↔ POS transport boundary', () => {
     for (const route of [
       "@Post('pricing/quote')",
       "@Get('recent')",
+      "@Get('search')",
       "@Get('board')",
       "@Patch(':orderStableId/status')",
       "@Post(':orderStableId/amendments')",

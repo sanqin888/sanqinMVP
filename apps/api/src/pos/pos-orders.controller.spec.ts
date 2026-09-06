@@ -10,6 +10,7 @@ describe('PosOrdersController Uber orders', () => {
   const orders = {
     board: jest.fn(),
     recent: jest.fn(),
+    searchForStore: jest.fn(),
     createForStore: jest.fn(),
     quotePricingForStore: jest.fn(),
     getByStableIdForStore: jest.fn(),
@@ -167,6 +168,59 @@ describe('PosOrdersController Uber orders', () => {
 
     await expect(controller.recent(posRequest, 10)).resolves.toEqual([]);
     expect(orders.recent).toHaveBeenCalledWith('4750_Yonge_Street', 10);
+  });
+
+  it('POS 订单管理把筛选与分页下推到 authenticated store Orders 查询', async () => {
+    const result = {
+      orders: [],
+      page: 2,
+      pageSize: 50,
+      total: 73,
+      totalPages: 2,
+    };
+    orders.searchForStore.mockResolvedValue(result);
+
+    await expect(
+      controller.search(
+        posRequest,
+        'paid,completed',
+        'web,in_store',
+        'pickup,dine_in',
+        '2026-09-03T04:00:00.000Z',
+        '2026-09-04T04:00:00.000Z',
+        '5000',
+        '2',
+        '50',
+      ),
+    ).resolves.toEqual(result);
+
+    expect(orders.searchForStore).toHaveBeenCalledWith('4750_Yonge_Street', {
+      statusIn: ['paid', 'completed'],
+      channelIn: ['web', 'in_store'],
+      fulfillmentIn: ['pickup', 'dine_in'],
+      createdAtGte: new Date('2026-09-03T04:00:00.000Z'),
+      createdAtLt: new Date('2026-09-04T04:00:00.000Z'),
+      minTotalCents: 5000,
+      page: 2,
+      pageSize: 50,
+    });
+  });
+
+  it('POS 订单管理拒绝非法筛选而不是把错误值传给 Prisma', async () => {
+    expect(() =>
+      controller.search(
+        posRequest,
+        'not-a-status',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      ),
+    ).toThrow(BadRequestException);
+    expect(orders.searchForStore).not.toHaveBeenCalled();
   });
 
   it('POS 普通看板排除尚未激活的预约单', async () => {

@@ -21,6 +21,19 @@ export function ymdInTimeZone(date: Date, timeZone: string): string {
     return `${y}-${m}-${d}`;
   }
 }
+
+export function utcRangeForYmdInTimeZone(
+  ymd: string,
+  timeZone: string,
+): { createdAtGte: string; createdAtLt: string } | null {
+  const start = DateTime.fromISO(ymd, { zone: timeZone }).startOf("day");
+  if (!start.isValid) return null;
+  const end = start.plus({ days: 1 });
+  const createdAtGte = start.toUTC().toISO();
+  const createdAtLt = end.toUTC().toISO();
+  if (!createdAtGte || !createdAtLt) return null;
+  return { createdAtGte, createdAtLt };
+}
 export function parseBackendDate(value: unknown): Date {
   if (value instanceof Date) return value;
   if (typeof value === "number") return new Date(value);

@@ -6,6 +6,7 @@ import type {
   PosOrderAmendmentInput,
   PosOrderBoardQuery,
   PosOrderFullRefundInput,
+  PosOrderManagementQuery,
   PosOrderOperationsPort,
 } from './pos-order-operations.contract';
 
@@ -33,6 +34,10 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
 
   recent(storeStableId: string, limit?: number) {
     return this.orders.recent(storeStableId, limit);
+  }
+
+  searchForStore(storeStableId: string, query: PosOrderManagementQuery) {
+    return this.orders.searchForStore(storeStableId, query);
   }
 
   board(storeStableId: string, query: PosOrderBoardQuery) {
