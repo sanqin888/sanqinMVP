@@ -44,6 +44,32 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     expect(uberModule).not.toContain('CatalogAvailabilityModule');
   });
 
+  it('keeps first-print preparation durable-only after Uber acceptance', () => {
+    const ordersService = source('../../orders/orders.service.ts');
+    const eventsBus = source('../../orders/order-events.bus.ts');
+    const fulfillment = source(
+      '../../orders/processors/fulfillment.processor.ts',
+    );
+    const posOrders = source('../../pos/pos-orders.service.ts');
+    const posOperations = source(
+      '../../orders/pos-order-operations.service.ts',
+    );
+
+    expect(ordersService).not.toContain('emitOrderAccepted');
+    expect(eventsBus).not.toContain('order.prep_started');
+    expect(eventsBus).not.toContain('emitOrderAccepted');
+    expect(eventsBus).not.toContain('onOrderAccepted');
+    expect(eventsBus).toContain('order.paid.verified');
+    expect(fulfillment).not.toContain("origin: 'memory'");
+    expect(fulfillment).not.toContain('onOrderAccepted');
+    expect(posOrders).toContain("order.channel === 'ubereats'");
+    expect(posOrders).toContain('getFulfillmentTimingForStore');
+    expect(posOrders).toContain('activateImmediatePreparation');
+    expect(posOrders).toContain('activateScheduledPreparation');
+    expect(posOperations).toContain("current.channel === 'ubereats'");
+    expect(posOperations).toContain('findByStableIdForStore');
+  });
+
   it('shares preparation policy through the existing public shared Order package', () => {
     const uberPolicy = source('domain/orders/uber-order-preparation.policy.ts');
     expect(uberPolicy).toContain("from '@shared/order'");

@@ -116,21 +116,7 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     jest.restoreAllMocks();
   });
 
-  function setupAccepted(
-    storeId: string | null,
-    channel: 'web' | 'in_store' = 'web',
-  ) {
-    let acceptedHandler:
-      | ((payload: { orderId: string }) => Promise<void>)
-      | null = null;
-    const events = {
-      onOrderPaidVerified: jest.fn(),
-      onOrderAccepted: jest.fn(
-        (handler: (payload: { orderId: string }) => Promise<void>) => {
-          acceptedHandler = handler;
-        },
-      ),
-    };
+  function setupAccepted(storeId: string | null) {
     const sendPrintJob = jest.fn().mockResolvedValue({ jobId: 'auto-job-1' });
     const emitAsync = jest.fn(async (_event: string, input: unknown) => {
       await sendPrintJob(input);
@@ -140,13 +126,12 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
       .fn()
       .mockResolvedValue({ orderNumber: 'SQ2608110001' });
     const processor = new FulfillmentProcessor(
-      events as never,
+      {} as never,
       {
         order: {
           findUnique: jest.fn().mockResolvedValue({
             id: 'web-order-1',
             orderStableId: 'stable-web-1',
-            channel,
             storeId,
           }),
         },
@@ -162,15 +147,9 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
         }),
       } as never,
     );
-    processor.onModuleInit();
 
     return {
       processor,
-      runAccepted: async () => {
-        if (!acceptedHandler)
-          throw new Error('accepted handler not registered');
-        await acceptedHandler({ orderId: 'web-order-1' });
-      },
       sendPrintJob,
       getByStableId,
     };
@@ -182,7 +161,6 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
 
     await processor.handleAcceptedLifecycle({
       orderId: 'web-order-1',
-      origin: 'durable',
     });
 
     expect(getByStableId).toHaveBeenCalledWith('stable-web-1', 'zh');
@@ -203,20 +181,11 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     });
   });
 
-  it('same-process memory prep 跳过 Web，避免保留第二条首次打印链', async () => {
-    const { runAccepted, sendPrintJob } = setupAccepted('store-4750', 'web');
-
-    await runAccepted();
-
-    expect(sendPrintJob).not.toHaveBeenCalled();
-  });
-
   it('durable POS prep_started 为 in_store 订单创建唯一 AUTO 首次打印', async () => {
-    const { processor, sendPrintJob } = setupAccepted('store-4750', 'in_store');
+    const { processor, sendPrintJob } = setupAccepted('store-4750');
 
     await processor.handleAcceptedLifecycle({
       orderId: 'web-order-1',
-      origin: 'durable',
     });
 
     expect(sendPrintJob).toHaveBeenCalledWith(
@@ -232,17 +201,6 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     );
   });
 
-  it('same-process memory prep 仍跳过 in_store，避免产生第二条首次打印链', async () => {
-    const { runAccepted, sendPrintJob } = setupAccepted(
-      'store-4750',
-      'in_store',
-    );
-
-    await runAccepted();
-
-    expect(sendPrintJob).not.toHaveBeenCalled();
-  });
-
   it('订单缺少 storeId 时记录结构化错误并停止自动打印派发', async () => {
     const errorSpy = jest
       .spyOn(Logger.prototype, 'error')
@@ -251,7 +209,6 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
 
     await processor.handleAcceptedLifecycle({
       orderId: 'web-order-1',
-      origin: 'durable',
     });
 
     expect(errorSpy).toHaveBeenCalledWith(

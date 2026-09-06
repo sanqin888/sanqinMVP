@@ -1241,17 +1241,24 @@ is claimed per repository workflow.
 
 ### 2026-09-06 — Modularization governance: Phase-level active verification cadence
 
-**PR/SHA:** local governance update on `refactor/phase5-slice1d-terminal-durable-lifecycle` based on `origin/dev@61f5917d`  
-**State:** DOCUMENTATION/RULE UPDATE COMPLETE / LOCAL REVIEW PENDING  
+**PR/SHA:** PR #2197; final head `04a4a5ed`; squash merge `9a338704`  
+**State:** MERGED / PR+DEV CI GREEN — PR CI #5207 and merged-dev CI #5208 passed  
 **Result:** The user replaced the default per-Slice deployment/active-test cadence with one consolidated active verification gate immediately before each Phase closeout. Normal modularization Slices must remain independently deployable, focused-test/architecture guarded and CI-green, and must record affected runtime/payment/provider/printing/PWA/reconciliation behaviors as Phase verification scope, but do not each require a production deployment/user test before the next source Slice. After all planned source Slices for a Phase are merged, perform a closeout readiness audit against the final merged state, produce one consolidated deployment + active-verification plan, execute it deliberately, forward-fix/retest any failure, and only then mark the Phase `PRODUCTION VERIFIED / CLOSED`. Earlier explicit gates still override for destructive migrations, compatibility/traffic cutovers, provider certification, settlement cycles, irreversible operations or observed regressions. Historical already-completed Slice verification evidence remains valid. UberEats and guarded production Web Clover governance were updated to follow the Phase-level cadence while retaining their independent provider/cutover/settlement hard gates.  
 **Details:** `AGENTS.md`, `docs/architecture/active-compatibility-register.md`, `docs/architecture/active-compatibility-register.json`, `docs/payments/clover-pos-integration-charter.md`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, and this worklog.
 
 ### 2026-09-06 — Phase 5 Slice 1D: POS Clover Terminal durable lifecycle convergence
 
-**PR/SHA:** local branch `refactor/phase5-slice1d-terminal-durable-lifecycle` based on `origin/dev@61f5917d`  
-**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING — TERMINAL CONFIRMED-PAYMENT FINALIZATION CONVERGED ON DURABLE ACCEPTED/PREP_STARTED/AUTO  
+**PR/SHA:** PR #2197; final head `04a4a5ed`; squash merge `9a338704`  
+**State:** MERGED / PR+DEV CI GREEN — PR CI #5207 and merged-dev CI #5208 passed; TERMINAL CONFIRMED-PAYMENT FINALIZATION CONVERGED ON DURABLE ACCEPTED/PREP_STARTED/AUTO  
 **Result:** Preserves the existing confirmed-payment transaction and extends it atomically with the Orders-owned `order.accepted` fact: Benefits points/balance COMMIT, Coupon COMMIT, paid in-store Order creation and `order.accepted:<orderStableId>` now commit together without exporting `Prisma.TransactionClient`. The existing-order recovery branch intentionally does not synthesize accepted, protecting historical pre-1D Terminal prototype Orders from a new AUTO print on recovery. `PosCardPaymentOrchestrationService` removes `PrintPosPayloadService`, direct `PosGateway.sendPrintJob()` and `PAYMENT_CHECKOUT:<attemptId>` first-print ownership; successful new finalization and COMPLETED/order-bound recovery instead call the existing public `POS_ORDER_OPERATIONS.activateImmediatePreparation()` capability, whose accepted-fact-gated idempotent preparation writes `making + durable order.prep_started` and wakes the shared AUTO lifecycle. `PosGateway` remains only for best-effort card-payment realtime status publication. DECLINED/UNKNOWN/payment-fact guard paths remain non-finalizing/non-preparing. The `payments.pos-card-legacy.v1` flag/cutover compatibility is unchanged. Direct Payments/Clover -> Commerce debt contracts `10 -> 8`, reducing Payments/Clover total outgoing direct debt `59 -> 57`; the public SCC baseline remains empty. No Prisma schema/migration, dependency manifest, production Web Clover Ecommerce, provider payment-state/amount/surcharge truth, UNKNOWN/reconciliation, refund, pricing/promotion or Benefits COMMIT semantics change. Runtime verification scope is accumulated into the Phase 5 closeout gate under the 2026-09-06 cadence. No local lint/build/test is claimed per repository workflow.  
 **Details:** `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/orders-payment-finalization.characterization.spec.ts`, `apps/api/src/orchestration/pos-card-payment-orchestration.service.ts`, `apps/api/src/orchestration/pos-card-payment-orchestration.service.spec.ts`, `apps/api/src/orchestration/pos-card-payment-orchestration.module.ts`, `apps/api/src/payments/payments-architecture.spec.ts`, `tools/architecture/context-baseline.json`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, and `docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-06 — Phase 5 Slice 1E: Uber durable preparation / first-print convergence
+
+**PR/SHA:** local branch `refactor/phase5-slice1e-uber-durable-lifecycle` based on `origin/dev@9a338704`  
+**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING — UBER PAID PREPARATION BYPASSES CLOSED; INITIAL AUTO PRINT IS DURABLE-ONLY  
+**Result:** Readiness audit found a narrow race after successful Uber ACCEPT: the durable worker already commits local `paid + order.accepted`, but a staff POS `/advance` or direct `/status -> making` arriving before the lifecycle consumer could still fall through to generic Orders mutation and depend on the private same-process prep event. Slice 1E redirects both Uber paid entry points through existing store-scoped Orders preparation capabilities, resolving IMMEDIATE vs SCHEDULED from the Orders-owned timing snapshot. IMMEDIATE uses `activateImmediatePreparation`; SCHEDULED explicit early-start uses `activateScheduledPreparation`, preserving early-start semantics while requiring the accepted fact and atomically writing `making + durable order.prep_started`. With Web, in-store, Terminal and Uber now converged, repository-wide production-call search shows no legitimate same-process prep first-print consumer, so `OrderEventsBus` drops accepted/prep_started emit/listener APIs and `FulfillmentProcessor` drops its memory-origin branch. `OrderEventsBus` remains solely for `order.paid.verified`, preserving the separately deferred Uber Direct provider-dispatch path. Uber wire schema, webhook, action-worker lease/idempotency, provider truth, READY sync, Prisma schema, dependency manifests, Web Clover, Benefits/pricing/refund behavior and compatibility state are unchanged. No cross-context edge or baseline changes; totals remain Payments/Clover 57, External 42, Commerce 30, POS/Print 31 and the public SCC baseline remains empty. The existing 500 ms lifecycle poll is retained because dedicated Uber worker acceptance cannot safely in-process-wake the API lifecycle consumer. Affected Uber acceptance/preparation/AUTO/replay behavior is accumulated into the consolidated Phase 5 closeout verification plan under the repository-wide cadence. No local lint/build/test is claimed per repository workflow.  
+**Details:** `apps/api/src/pos/pos-orders.service.ts`, `apps/api/src/orders/pos-order-operations.service.ts`, `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/order-events.bus.ts`, `apps/api/src/orders/processors/fulfillment.processor.ts`, `apps/api/src/orders/processors/order-lifecycle-outbox.processor.ts`, focused specs, `apps/api/src/integrations/ubereats/uber-order-lifecycle-boundary-architecture.spec.ts`, `apps/api/src/integrations/ubereats/ARCHITECTURE.md`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, and `docs/architecture/current-dependency-graph.md`.
 
 ## Current position
 
@@ -1326,13 +1333,16 @@ is claimed per repository workflow.
   `61f5917d`, final head `3dc21e5d`; PR CI #5204 and merged-dev CI #5205 passed. Web payment still creates only a paid
   Order, while store-side auto/manual acceptance writes durable `order.accepted`; immediate Web acceptance reuses the
   idempotent preparation materializer to write `making + order.prep_started`, scheduled Web acceptance waits for the
-  existing prepStartAt scheduler, and Web/in-store first AUTO printing is durable-origin only. Slice 1D is **SOURCE
-  COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1d-terminal-durable-lifecycle`: Terminal confirmed-payment
-  creation now atomically adds durable `order.accepted`, direct `PAYMENT_CHECKOUT:*` first-print ownership is removed,
-  and finalization/recovery reuse the public durable preparation capability. Payments/Clover -> Commerce direct debt
-  contracts `10 -> 8`, so Payments/Clover total outgoing direct debt is now **57**; the public SCC baseline remains empty.
-  Under the 2026-09-06 repository-wide cadence, Phase 5 runtime verification is performed once against the final merged
-  Phase state immediately before closeout rather than after each Slice.
+  existing prepStartAt scheduler, and Web/in-store first AUTO printing is durable-origin only. Slice 1D is **MERGED /
+  PR+DEV CI GREEN** via PR #2197 / `9a338704`, final head `04a4a5ed`; PR CI #5207 and merged-dev CI #5208 passed.
+  Terminal confirmed-payment creation atomically adds durable `order.accepted`, direct `PAYMENT_CHECKOUT:*` first-print
+  ownership is removed, and finalization/recovery reuse the public durable preparation capability. Payments/Clover ->
+  Commerce direct debt is `8`, so Payments/Clover total outgoing direct debt is **57**. Slice 1E is **SOURCE COMPLETE /
+  LOCAL REVIEW PENDING** on `refactor/phase5-slice1e-uber-durable-lifecycle`: Uber paid IMMEDIATE/SCHEDULED staff
+  preparation now uses accepted-fact-gated durable commands, and the obsolete same-process prep first-print event has
+  been removed while `order.paid.verified` remains for deferred Uber Direct work. No graph count changes; the public
+  SCC baseline remains empty. Under the 2026-09-06 repository-wide cadence, Phase 5 runtime verification is performed
+  once against the final merged Phase state immediately before closeout rather than after each Slice.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

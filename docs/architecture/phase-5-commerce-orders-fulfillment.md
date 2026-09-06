@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@61f5917d` (Slice 1C merge)  
-Current status: **SLICE 1D SOURCE COMPLETE / LOCAL REVIEW PENDING — POS CLOVER TERMINAL FINALIZATION NOW CONVERGES ON DURABLE ACCEPTED/PREP_STARTED/AUTO; PHASE 5 ACTIVE VERIFICATION IS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@9a338704` (Slice 1D merge)  
+Current status: **SLICE 1E SOURCE COMPLETE / LOCAL REVIEW PENDING — UBER PAID PREPARATION NOW CONVERGES ON DURABLE PREP_STARTED/AUTO AND THE OBSOLETE MEMORY FIRST-PRINT PATH IS RETIRED; PHASE 5 ACTIVE VERIFICATION IS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -49,7 +49,7 @@ Slice 0 locks or inventories the current behavior before any owner movement. Exi
 | Quote | `OrdersService.quoteOrderPricing()` | Existing `orders.service.spec.ts` locks Brand/Store pricing inputs, Daily Special, coupon eligibility, hidden item policy, loyalty redemption, PromotionRule channel mapping, automatic promotion, BOGO and retained POS manual discount. |
 | Create | `OrdersService.create()` / `createForStore()` / `createImmediatePaid()` | Existing `orders.service.spec.ts` locks Web-only generic create, authenticated POS store identity, checkout contact handling, priority-delivery tolerance and paid-event behavior. |
 | Confirmed payment finalize | `OrdersService.createFromConfirmedPaymentSnapshot()` | **New characterization** locks the same-transaction Points/Balance COMMIT + Coupon COMMIT + paid `Order` snapshot creation, immutable prepared amounts/items, surcharge/payment breakdown, idempotent existing-order return, and no replay of paid side effects on that early return. |
-| Status | `updateStatus*()` / `updateStatusByInternalId()` | Existing illegal/missing/ready notification tests plus **new characterization** locking the successful guarded `paid -> making` write and the same-process `prep_started` fast-path emission. |
+| Status | `updateStatus*()` / `updateStatusByInternalId()` | Slice 0 characterization locked the successful guarded `paid -> making` write and the then-existing same-process `prep_started` emission. Slice 1E retains the guarded write but retires that first-print event side effect; durable preparation now owns `prep_started`. |
 | Full refund | `createFullRefund()` | Existing dedicated `orders.full-refund.spec.ts` locks Uber/manual pending behavior, internally-finalizable in-store/zero-external Web refunds, Loyalty rollback order, full-amount/method validation and concurrency/idempotency guard. |
 | Amendment | `createAmendment()` | **New characterization** locks validation before transaction and a VOID_ITEM transaction that creates amendment facts, mutates the OrderItem snapshot and recalculates persisted Order totals without moving ownership. |
 | Durable lifecycle/outbox | `OrderPreparationService` + `OrderLifecycleOutboxProcessor` | Existing tests lock accepted-fact gating, row locks/SKIP LOCKED, idempotent `prep_started`, replay after failure, and `NOT EXISTS PosPrintJob(kind=AUTO)` materialization gating. |
@@ -106,16 +106,15 @@ There are also two direct POS type couplings from Orders implementation code (`P
 
 ## EventEmitter / lifecycle consumer inventory
 
-There are two separate in-process event mechanisms plus the durable Orders lifecycle facts.
+Slice 0 initially found two in-process event mechanisms plus the durable Orders lifecycle facts. Slice 1E retires the private prep-started first-print event, leaving only one private Node event plus the durable lifecycle.
 
 ### Private Node `EventEmitter` — `OrderEventsBus`
 
 | Event/channel | Emitter | Consumer | Current side effect |
 |---|---|---|---|
 | `order.paid.verified` | `OrdersService.handleOrderPaidSideEffects()` | `FulfillmentProcessor.onPaid` | For eligible delivery orders, call Uber Direct and persist `Order.externalDeliveryId`. |
-| `order.prep_started` | `OrdersService.updateStatusByInternalId()` via compatibility-named `emitOrderAccepted()` | `FulfillmentProcessor.onAccepted` | Build receipt/label payload and request the AUTO PrintJob path. |
 
-`emitOrderAccepted()` and `onOrderAccepted()` are compatibility names only; both use the actual same-process `order.prep_started` channel. `emitOrderPrepStarted()` / `onOrderPrepStarted()` also exist on the private bus, but repository search found no separate production consumer currently using that pair. `NotificationProcessor` is also wired in `OrdersModule` but registers no event consumer; it only logs that automatic invoice email is disabled, so it is another later atomic deletion candidate after confirming no composition/bootstrap dependency. The audit also found the older private `OrdersService.dispatchPriorityDelivery()` / `buildUberPickupOverride()` / `notifyDeliveryDispatchFailureAlert()` tail has no source call site; it is not a second active Uber Direct producer and should be reviewed as dead-code debt in a later atomic cleanup. `OrdersService.ensureLoyaltyAccountWithTx()` likewise has only its definition and no source call site; its presence must not be mistaken for an active second Loyalty-account creation path.
+The former same-process `order.prep_started` / compatibility-named `emitOrderAccepted()` path was a Slice 0 baseline fact and is retired by Slice 1E. Initial AUTO printing now consumes only durable `orders.lifecycle/order.prep_started`. `NotificationProcessor` is still wired in `OrdersModule` but registers no event consumer; it only logs that automatic invoice email is disabled, so it remains a later atomic deletion candidate after confirming no composition/bootstrap dependency. The audit also found the older private `OrdersService.dispatchPriorityDelivery()` / `buildUberPickupOverride()` / `notifyDeliveryDispatchFailureAlert()` tail has no source call site; it is not a second active Uber Direct producer and should be reviewed as dead-code debt in a later atomic cleanup. `OrdersService.ensureLoyaltyAccountWithTx()` likewise has only its definition and no source call site; its presence must not be mistaken for an active second Loyalty-account creation path.
 
 ### Nest `EventEmitter2`
 
@@ -131,16 +130,19 @@ There are two separate in-process event mechanisms plus the durable Orders lifec
 
 ## In-memory + durable duplicate-side-effect audit
 
-### Finding 1 — no current source path deliberately emits both prep paths for the same successful state transition
+### Finding 1 — Slice 0 coexistence was safe enough for readiness; Slice 1E removes it entirely
 
-The same-process path and durable path both ultimately call `FulfillmentProcessor.handleAcceptedLifecycle()`, but current source does not fan one transition into both mechanisms:
+At the Slice 0 baseline, the same-process prep path and durable path both ultimately called `FulfillmentProcessor.handleAcceptedLifecycle()`, and source analysis found no intentional fan-out of one successful transition into both mechanisms. Slice 1E closes the remaining Uber staff-transition bypass and retires the same-process prep producer/consumer entirely.
 
-- manual/POS-style `paid -> making` through `updateStatusByInternalId()` performs a guarded `updateMany` and emits the private same-process `order.prep_started` only when that write wins;
-- durable external acceptance goes through `order.accepted` -> `OrderPreparationService`; that service locks the Order and, when it actually activates it, writes status=`making` plus durable `order.prep_started` in one transaction without emitting `OrderEventsBus`;
+Current source after Slice 1E therefore has one initial-print lifecycle:
+
+- channel/provider-specific acceptance records durable `order.accepted`;
+- `OrderPreparationService` requires that accepted fact, locks the Order, and writes status=`making` plus durable `order.prep_started` atomically;
 - if the Order is already `making/ready/completed`, `OrderPreparationService` returns `already_active` and does not append another `prep_started` fact;
-- the durable print claim requires `NOT EXISTS` an AUTO `PosPrintJob` for the Order.
+- the durable print claim requires `NOT EXISTS` an AUTO `PosPrintJob` for the Order;
+- no `OrderEventsBus` prep_started emitter/listener remains.
 
-Result: **no proven active double-print path was found from the coexistence of the private fast path and durable outbox itself.**
+Result: **the previous coexistence is no longer part of the current architecture; initial AUTO materialization is durable-only.**
 
 ### Finding 2 — PrintJob persistence is idempotent, but the final socket emit is not a database-claimed critical section
 
@@ -289,7 +291,7 @@ Slice 1C's Web acceptance, scheduled-order, initial AUTO-print and guarded Web C
 
 ### Slice 1D — POS Clover Terminal durable lifecycle convergence
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1d-terminal-durable-lifecycle`.
+Status: **MERGED / CI GREEN** — PR #2197, final head `04a4a5ed`, squash merge `9a338704`; PR CI #5207 and merged-dev CI #5208 passed.
 
 Migration classification: **Class B internal boundary contraction inside a pre-production Terminal flow**, with one durable lifecycle fact added to the existing confirmed-payment transaction. No database schema or migration is required. The `payments.pos-card-legacy.v1` feature-flag compatibility remains active and is not contracted in this Slice; real-device/provider acceptance and eventual traffic cutover keep their independent compatibility/settlement gates.
 
@@ -313,4 +315,33 @@ Focused automated coverage records the Phase-level verification scope by locking
 
 No production Web Clover Ecommerce behavior, provider execution/status mapping, canonical amount/surcharge facts, UNKNOWN/reconciliation, refund, pricing/promotion, Benefits reservation/COMMIT semantics, external route, dependency manifest or Prisma schema changes in Slice 1D. Its affected Terminal lifecycle/recovery/printing behaviors are retained as input to the consolidated Phase 5 closeout verification rather than a Slice-specific deployment checklist.
 
-Planned follow-on order after Slice 1D review/CI is: **1E Uber lifecycle convergence review -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 1E — Uber durable preparation / first-print convergence
+
+Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1e-uber-durable-lifecycle`, based on `origin/dev@9a338704`.
+
+Migration classification: **Class C critical lifecycle contraction with no Uber wire/provider contract change**. Uber `ACCEPT` continues to be owned by the existing durable action worker: successful provider acceptance atomically fences the action lease, moves the local imported Order only to `paid`, and appends idempotent `orders.lifecycle/order.accepted`. Slice 1E changes neither the Uber API request/response contract nor webhook signature/idempotency/provider truth.
+
+The readiness audit found one remaining local bypass after a successful Uber ACCEPT: during the short `paid + order.accepted` window before the durable consumer starts preparation, a staff `/pos/orders/:id/advance` or direct `/status -> making` request could fall through to generic Orders status mutation. That path entered `making` without writing durable `order.prep_started` and relied on the obsolete same-process `OrderEventsBus` prep event for first-print materialization.
+
+Slice 1E routes both store-facing Uber `paid -> making` entry points through the existing accepted-fact-gated Orders preparation capability. IMMEDIATE orders use `activateImmediatePreparation()`; SCHEDULED orders use `activateScheduledPreparation()` so explicit staff early-start retains its existing meaning while writing `scheduleActivatedAt + making + durable order.prep_started` atomically. Both commands are store-scoped and idempotent; neither synthesizes acceptance, so an Uber order whose external ACCEPT has not succeeded cannot be started through these paths.
+
+After those bypasses are closed, repository-wide production-call search proves the private same-process prep channel has no remaining legitimate first-print producer/consumer. Slice 1E therefore deletes `emitOrderAccepted` / `emitOrderPrepStarted` and their listeners from `OrderEventsBus`, removes the Fulfillment memory-origin branch, and makes `FulfillmentProcessor.handleAcceptedLifecycle()` reachable only from the durable lifecycle consumer. `OrderEventsBus` itself remains because `order.paid.verified` still drives the separately deferred Uber Direct delivery fast path; that provider durability/idempotency gap is not changed here.
+
+Canonical first-print semantics after 1E are therefore uniform across Web, ordinary POS, POS Clover Terminal and Uber Eats:
+
+```text
+channel/provider-specific acceptance eligibility
+  -> durable order.accepted
+  -> accepted-fact-gated OrderPreparationService
+  -> making + durable order.prep_started
+  -> OrderLifecycleOutboxProcessor
+  -> AUTO PrintJob materialization
+```
+
+Explicit operator `REPRINT:*` and `AMENDMENT:*` jobs remain separate by design. The 500 ms Orders lifecycle poll is retained: Uber ACCEPT is completed in the dedicated worker process and cannot safely use an in-process API wake signal, so the poll remains the normal API-side bridge/recovery mechanism for Uber immediate acceptance. Slice 1E does not slow or replace it.
+
+Focused regression/architecture coverage locks IMMEDIATE and SCHEDULED Uber paid advancement through durable preparation, direct status-to-making routing through the same boundary, the absence of the memory prep bus, continued presence of `order.paid.verified`, and Uber action completion remaining POS/Fulfillment agnostic. No new cross-context import is introduced, no allowance changes, and the public SCC baseline remains empty; measured direct-debt totals remain Payments/Clover **57**, External Channels **42**, Commerce/Orders/Fulfillment **30**, and Store Operations/POS/Print **31**.
+
+The affected Uber ACCEPT -> paid -> preparation -> AUTO, scheduled early-start, POS manual advance, and crash/replay behavior is recorded for the consolidated Phase 5 closeout verification. Uber provider certification, wire-contract changes, destructive migrations, traffic cutovers, and observed regressions still retain their independent earlier hard gates.
+
+Planned follow-on order after Slice 1E review/CI is: **Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

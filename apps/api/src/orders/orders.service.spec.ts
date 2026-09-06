@@ -131,9 +131,6 @@ describe('OrdersService', () => {
   let emailService: { sendOrderInvoice: jest.Mock };
   let orderEventsBus: OrderEventsBus;
   let printPosPayloadService: { getByStableId: jest.Mock };
-  let emitOrderAccepted: jest.SpiedFunction<
-    OrderEventsBus['emitOrderAccepted']
-  >;
   let emitOrderPaidVerified: jest.SpiedFunction<
     OrderEventsBus['emitOrderPaidVerified']
   >;
@@ -298,9 +295,6 @@ describe('OrdersService', () => {
     printPosPayloadService = {
       getByStableId: jest.fn(),
     };
-    emitOrderAccepted = jest
-      .spyOn(orderEventsBus, 'emitOrderAccepted')
-      .mockImplementation(() => undefined);
     emitOrderPaidVerified = jest
       .spyOn(orderEventsBus, 'emitOrderPaidVerified')
       .mockImplementation(() => undefined);
@@ -1136,7 +1130,7 @@ describe('OrdersService', () => {
     expect(prisma.order.updateMany).not.toHaveBeenCalled();
   });
 
-  it('keeps paid -> making as the same-process prep_started fast path after the guarded status write wins', async () => {
+  it('keeps the guarded paid -> making status write without emitting a second first-print path', async () => {
     const paidAt = new Date('2026-09-05T20:00:00.000Z');
     let updateManyInput: unknown;
     prisma.order.updateMany.mockImplementation((input: unknown) => {
@@ -1175,11 +1169,7 @@ describe('OrdersService', () => {
     });
     expect(updateArgs.data.status).toBe('making');
     expect(updateArgs.data.makingAt).toBeInstanceOf(Date);
-    expect(emitOrderAccepted).toHaveBeenCalledTimes(1);
-    expect(emitOrderAccepted).toHaveBeenCalledWith({
-      orderId: '8a3d4c0e-4750-4f6a-9138-000000000111',
-      stableId: 'order_stable_fast_path_1',
-    });
+    expect(emitOrderPaidVerified).not.toHaveBeenCalled();
   });
 
   it('propagates NotFoundException when advancing a missing order', async () => {
@@ -1226,7 +1216,6 @@ describe('OrdersService', () => {
 
       // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
       expect(uberDirect.createDelivery).not.toHaveBeenCalled();
-      expect(emitOrderAccepted).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         'Priority delivery order is missing deliveryDestination.',
       );

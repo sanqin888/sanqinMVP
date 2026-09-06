@@ -46,7 +46,6 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
 
     expect(fulfillment).toHaveBeenCalledWith({
       orderId: 'order-a',
-      origin: 'durable',
     });
     const statement = sqlText(queryRaw.mock.calls[0][0]);
     expect(statement).toContain('FOR UPDATE OF event SKIP LOCKED');

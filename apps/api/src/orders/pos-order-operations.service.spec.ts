@@ -11,20 +11,30 @@ describe('PosOrderOperationsService durable POS creation', () => {
       getByStableIdForStore: jest.fn(),
       updateStatusForStore: jest.fn(),
     };
+    const scheduling = {
+      findByStableIdForStore: jest.fn().mockResolvedValue({
+        orderStableId: 'cposdurableorder00000000001',
+        status: 'paid',
+        fulfillmentTiming: 'IMMEDIATE',
+      }),
+    };
     const preparation = {
       acceptWebOrderByStableId: jest.fn().mockResolvedValue('IMMEDIATE'),
       activateAcceptedImmediateOrderByStableId: jest
+        .fn()
+        .mockResolvedValue({ outcome: 'activated' }),
+      activateScheduledOrderByStableId: jest
         .fn()
         .mockResolvedValue({ outcome: 'activated' }),
     };
     const lifecycleOutbox = { requestDrain: jest.fn() };
     const service = new PosOrderOperationsService(
       orders as never,
-      {} as never,
+      scheduling as never,
       preparation as never,
       lifecycleOutbox as never,
     );
-    return { service, orders, preparation, lifecycleOutbox };
+    return { service, orders, scheduling, preparation, lifecycleOutbox };
   }
 
   it('wakes the durable lifecycle consumer after an in-store order has committed', async () => {
@@ -127,6 +137,78 @@ describe('PosOrderOperationsService durable POS creation', () => {
       'cwebdurableorder00000000001',
       '4750_Yonge_Street',
     );
+    expect(orders.updateStatusForStore).not.toHaveBeenCalled();
+  });
+
+  it('routes Uber paid -> making status through durable IMMEDIATE preparation', async () => {
+    const { service, orders, preparation, lifecycleOutbox } = setup();
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce({
+        orderStableId: 'cuberorder00000000000000001',
+        channel: 'ubereats',
+        status: 'paid',
+      })
+      .mockResolvedValueOnce({
+        orderStableId: 'cuberorder00000000000000001',
+        channel: 'ubereats',
+        status: 'making',
+      });
+
+    await expect(
+      service.updateStatusForStore(
+        'cuberorder00000000000000001',
+        '4750_Yonge_Street',
+        'making',
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ channel: 'ubereats', status: 'making' }),
+    );
+
+    expect(
+      preparation.activateAcceptedImmediateOrderByStableId,
+    ).toHaveBeenCalledWith('cuberorder00000000000000001', '4750_Yonge_Street');
+    expect(lifecycleOutbox.requestDrain).toHaveBeenCalledTimes(1);
+    expect(orders.updateStatusForStore).not.toHaveBeenCalled();
+  });
+
+  it('routes Uber paid -> making status through durable SCHEDULED preparation', async () => {
+    const { service, orders, scheduling, preparation, lifecycleOutbox } =
+      setup();
+    scheduling.findByStableIdForStore.mockResolvedValueOnce({
+      orderStableId: 'cuberscheduled00000000000001',
+      status: 'paid',
+      fulfillmentTiming: 'SCHEDULED',
+    });
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce({
+        orderStableId: 'cuberscheduled00000000000001',
+        channel: 'ubereats',
+        status: 'paid',
+      })
+      .mockResolvedValueOnce({
+        orderStableId: 'cuberscheduled00000000000001',
+        channel: 'ubereats',
+        status: 'making',
+      });
+
+    await expect(
+      service.updateStatusForStore(
+        'cuberscheduled00000000000001',
+        '4750_Yonge_Street',
+        'making',
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ channel: 'ubereats', status: 'making' }),
+    );
+
+    expect(preparation.activateScheduledOrderByStableId).toHaveBeenCalledWith(
+      'cuberscheduled00000000000001',
+      '4750_Yonge_Street',
+    );
+    expect(
+      preparation.activateAcceptedImmediateOrderByStableId,
+    ).not.toHaveBeenCalled();
+    expect(lifecycleOutbox.requestDrain).not.toHaveBeenCalled();
     expect(orders.updateStatusForStore).not.toHaveBeenCalled();
   });
 
