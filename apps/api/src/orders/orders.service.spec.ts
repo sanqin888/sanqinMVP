@@ -13,6 +13,7 @@ import type {
   LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
 import { MembershipService } from '../membership/membership.service';
+import type { CustomerOrderContextReaderPort } from '../membership/public-api';
 import type {
   DailySpecialOffersPort,
   PromotionContextReaderPort,
@@ -93,9 +94,6 @@ describe('OrdersService', () => {
       count: jest.Mock;
       delete: jest.Mock;
     };
-    user: {
-      findUnique: jest.Mock;
-    };
     userCoupon: {
       findFirst: jest.Mock;
     };
@@ -130,6 +128,10 @@ describe('OrdersService', () => {
     releaseCouponForOrder: jest.Mock;
     markCouponUsedForOrder: jest.Mock;
   };
+  let customerOrderContext: {
+    getOrderCustomerContext: jest.Mock;
+    getSavedDeliveryAddress: jest.Mock;
+  };
   let promotions: { getOrderPromotionContext: jest.Mock };
   let dailySpecialOffers: { getActiveDailySpecials: jest.Mock };
   let catalogOrderFacts: {
@@ -163,9 +165,6 @@ describe('OrdersService', () => {
         findMany: jest.fn(),
         count: jest.fn(),
         delete: jest.fn(),
-      },
-      user: {
-        findUnique: jest.fn(),
       },
       userCoupon: {
         findFirst: jest.fn(),
@@ -228,6 +227,10 @@ describe('OrdersService', () => {
       reserveCouponForOrder: jest.fn(),
       releaseCouponForOrder: jest.fn(),
       markCouponUsedForOrder: jest.fn(),
+    };
+    customerOrderContext = {
+      getOrderCustomerContext: jest.fn().mockResolvedValue(null),
+      getSavedDeliveryAddress: jest.fn().mockResolvedValue(null),
     };
 
     promotions = {
@@ -296,6 +299,7 @@ describe('OrdersService', () => {
       loyaltyOrderUsageReader as unknown as LoyaltyOrderUsageReaderPort,
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
+      customerOrderContext as unknown as CustomerOrderContextReaderPort,
       promotions as unknown as PromotionContextReaderPort,
       dailySpecialOffers as unknown as DailySpecialOffersPort,
       catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
@@ -880,12 +884,11 @@ describe('OrdersService', () => {
         },
       },
     });
-    prisma.user.findUnique.mockResolvedValue({
-      userStableId: 'user-stable-member',
-      email: 'member@example.com',
-      emailVerifiedAt: new Date(),
-      phone: null,
-      phoneVerifiedAt: null,
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
+      userStableId: 'user-stable-1',
+      verifiedEmail: 'member@example.com',
+      verifiedPhone: null,
+      language: 'EN',
     });
 
     await service.updateStatusInternal(
@@ -903,13 +906,13 @@ describe('OrdersService', () => {
       locale: 'en',
       userStableId: 'user-stable-1',
     });
-    expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
-    expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
-      expect.objectContaining({ select: { email: true } }),
+    expect(customerOrderContext.getOrderCustomerContext).toHaveBeenCalledTimes(1);
+    expect(customerOrderContext.getOrderCustomerContext).toHaveBeenCalledWith(
+      'user-stable-1',
     );
   });
 
-  it('falls back to the member email for an old order without contactEmail', async () => {
+  it('falls back to the member email for a historical order with persisted userStableId', async () => {
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'making',
@@ -924,17 +927,16 @@ describe('OrdersService', () => {
         contactEmail: null,
         contactPhone: null,
         contactName: 'Old Member',
-        userId: 'user-old',
+        userStableId: 'user-stable-member',
         fulfillmentType: 'pickup',
         items: [],
       });
     prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
-    prisma.user.findUnique.mockResolvedValue({
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
       userStableId: 'user-stable-member',
-      email: 'member@example.com',
-      emailVerifiedAt: new Date(),
-      phone: null,
-      phoneVerifiedAt: null,
+      verifiedEmail: 'member@example.com',
+      verifiedPhone: null,
+      language: 'EN',
     });
 
     await service.updateStatusInternal(
@@ -1718,7 +1720,7 @@ describe('OrdersService', () => {
     const resolver = service as unknown as {
       resolveDeliveryPhone(params: {
         submittedPhone?: string | null;
-        userId?: string;
+        userStableId?: string;
         requirePhone: boolean;
       }): Promise<string | undefined>;
     };
@@ -1726,22 +1728,24 @@ describe('OrdersService', () => {
     await expect(
       resolver.resolveDeliveryPhone({
         submittedPhone: '(416) 555-0199',
-        userId: 'member-1',
+        userStableId: 'c2234567890abcdefghijklmn',
         requirePhone: true,
       }),
     ).resolves.toBe('+14165550199');
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(customerOrderContext.getOrderCustomerContext).not.toHaveBeenCalled();
   });
 
   it('外送未填写号码时仅回退到会员已验证号码', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      phone: '4165550188',
-      phoneVerifiedAt: new Date(),
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
+      userStableId: 'c2234567890abcdefghijklmn',
+      verifiedEmail: null,
+      verifiedPhone: '4165550188',
+      language: 'EN',
     });
     const resolver = service as unknown as {
       resolveDeliveryPhone(params: {
         submittedPhone?: string | null;
-        userId?: string;
+        userStableId?: string;
         requirePhone: boolean;
       }): Promise<string | undefined>;
     };
@@ -1749,21 +1753,23 @@ describe('OrdersService', () => {
     await expect(
       resolver.resolveDeliveryPhone({
         submittedPhone: null,
-        userId: 'member-1',
+        userStableId: 'c2234567890abcdefghijklmn',
         requirePhone: true,
       }),
     ).resolves.toBe('+14165550188');
   });
 
   it('外送没有本单号码或会员已验证号码时拒绝', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      phone: '4165550188',
-      phoneVerifiedAt: null,
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
+      userStableId: 'c2234567890abcdefghijklmn',
+      verifiedEmail: null,
+      verifiedPhone: null,
+      language: 'EN',
     });
     const resolver = service as unknown as {
       resolveDeliveryPhone(params: {
         submittedPhone?: string | null;
-        userId?: string;
+        userStableId?: string;
         requirePhone: boolean;
       }): Promise<string | undefined>;
     };
@@ -1771,7 +1777,7 @@ describe('OrdersService', () => {
     await expect(
       resolver.resolveDeliveryPhone({
         submittedPhone: null,
-        userId: 'member-1',
+        userStableId: 'c2234567890abcdefghijklmn',
         requirePhone: true,
       }),
     ).rejects.toMatchObject({

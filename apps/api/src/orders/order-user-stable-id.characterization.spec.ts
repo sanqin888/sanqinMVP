@@ -50,6 +50,20 @@ describe('Order member stable identity persistence', () => {
     );
   });
 
+  it('uses persisted stable member identity for order ownership without resolving User persistence', () => {
+    const ordersService = readFileSync(
+      join(__dirname, './orders.service.ts'),
+      'utf8',
+    );
+
+    expect(ordersService).toContain('userStableId: true');
+    expect(ordersService).toContain(
+      'const ownerUserStableId = order.userStableId ?? null;',
+    );
+    expect(ordersService).not.toMatch(/\.user\.find(?:Unique|First|Many)\(/);
+    expect(ordersService).not.toMatch(/\.userAddress\./);
+  });
+
   it('dual-writes the stable member identity on every member Order creation path', () => {
     const ordersService = readFileSync(
       join(__dirname, './orders.service.ts'),

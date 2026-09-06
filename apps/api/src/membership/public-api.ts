@@ -10,3 +10,9 @@ export {
   CUSTOMER_EXISTENCE_READER,
   type CustomerExistenceReaderPort,
 } from './customer-existence.contract';
+export {
+  CUSTOMER_ORDER_CONTEXT_READER,
+  type CustomerOrderContactContext,
+  type CustomerOrderContextReaderPort,
+  type CustomerOrderDeliveryAddress,
+} from './customer-order-context.contract';
