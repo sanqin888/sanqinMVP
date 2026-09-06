@@ -48,10 +48,13 @@ or other state that Production initialization still requires.
 
 ## Candidate review queue
 
-These are not yet declared active compatibility. Before deleting or preserving
-them, verify live callers, traffic, queue/dynamic loading, and side effects:
-
-- EventEmitter aliases versus durable outbox events.
+No unresolved candidate remains after Phase 5 Slice 0. The former EventEmitter-alias
+versus durable-outbox candidate was audited on 2026-09-05: repository consumers and
+side effects show no current source path that deliberately fans one successful
+preparation transition through both mechanisms, so no compatibility ID is required.
+The deprecated private `OrderEventsBus` accepted/prep naming remains an ordinary
+future atomic cleanup candidate rather than active compatibility debt. Detailed
+evidence is recorded in `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
 
 The former Next rewrite versus `app/api/[...path]` proxy overlap was resolved in
 PR #2020 by making the App Router BFF the single regular JSON API entry.

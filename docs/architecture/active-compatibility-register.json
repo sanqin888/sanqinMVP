@@ -218,10 +218,5 @@
       ]
     }
   ],
-  "reviewCandidates": [
-    {
-      "candidate": "EventEmitter aliases alongside durable outbox events",
-      "decisionNeeded": "Measure consumers and duplicate side effects before assigning a compat_id"
-    }
-  ]
+  "reviewCandidates": []
 }

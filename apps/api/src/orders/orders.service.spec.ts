@@ -1128,6 +1128,47 @@ describe('OrdersService', () => {
     expect(prisma.order.updateMany).not.toHaveBeenCalled();
   });
 
+  it('keeps paid -> making as the same-process prep_started fast path after the guarded status write wins', async () => {
+    const paidAt = new Date('2026-09-05T20:00:00.000Z');
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'paid',
+        paidAt,
+        makingAt: null,
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: '8a3d4c0e-4750-4f6a-9138-000000000111',
+        orderStableId: 'order_stable_fast_path_1',
+        status: 'making',
+        paidAt,
+        makingAt: new Date('2026-09-05T20:01:00.000Z'),
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+
+    await service.updateStatusInternal(
+      '8a3d4c0e-4750-4f6a-9138-000000000111',
+      'making',
+    );
+
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: '8a3d4c0e-4750-4f6a-9138-000000000111',
+        status: 'paid',
+      },
+      data: expect.objectContaining({
+        status: 'making',
+        makingAt: expect.any(Date),
+      }),
+    });
+    expect(emitOrderAccepted).toHaveBeenCalledTimes(1);
+    expect(emitOrderAccepted).toHaveBeenCalledWith({
+      orderId: '8a3d4c0e-4750-4f6a-9138-000000000111',
+      stableId: 'order_stable_fast_path_1',
+    });
+  });
+
   it('propagates NotFoundException when advancing a missing order', async () => {
     prisma.order.findUnique.mockResolvedValue(null);
     await expect(service.advance('nope')).rejects.toBeInstanceOf(
