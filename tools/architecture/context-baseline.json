@@ -480,6 +480,7 @@
     "notificationModule": "apps/api/src/notifications/notification.module.ts",
     "publicSurface": "apps/api/src/notifications/public-api.ts",
     "emailService": "apps/api/src/email/email.service.ts",
+    "orderReadyUseCase": "apps/api/src/orders/order-ready-notification.use-case.ts",
     "ordersService": "apps/api/src/orders/orders.service.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
@@ -540,6 +541,12 @@
     "contactNormalization": "apps/api/src/orders/order-contact-normalization.ts",
     "ordersService": "apps/api/src/orders/orders.service.ts",
     "ordersController": "apps/api/src/orders/orders.controller.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersReadyNotificationUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-ready-notification.use-case.ts",
+    "contactNormalization": "apps/api/src/orders/order-contact-normalization.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
   "awsMessageInfrastructureRetirementBoundary": {

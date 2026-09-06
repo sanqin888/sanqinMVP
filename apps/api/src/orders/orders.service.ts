@@ -9,7 +9,6 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
-import { normalizeOrderEmail } from './order-contact-normalization';
 import { normalizePhone } from '../common/utils/phone';
 import {
   Channel,
@@ -85,12 +84,8 @@ import {
   LOCATION_GEOCODER,
   type LocationGeocoderPort,
 } from '../location/public-api';
-import {
-  ORDER_READY_NOTIFICATION,
-  type OrderReadyNotificationPort,
-  type OrderReadyNotificationResult,
-} from '../notifications/public-api';
 import { OrderEventsBus } from './order-events.bus';
+import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
 import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import {
@@ -414,8 +409,7 @@ export class OrdersService {
     private readonly catalogOrderFacts: CatalogOrderFactsReaderPort,
     @Inject(LOCATION_GEOCODER)
     private readonly locationGeocoder: LocationGeocoderPort,
-    @Inject(ORDER_READY_NOTIFICATION)
-    private readonly orderReadyNotification: OrderReadyNotificationPort,
+    private readonly orderReadyNotificationUseCase: OrderReadyNotificationUseCase,
     private readonly orderEventsBus: OrderEventsBus,
     private readonly orderItemSnapshotBuilder: OrderItemSnapshotBuilder,
   ) {}
@@ -1158,18 +1152,7 @@ export class OrdersService {
     } else if (next === 'refunded') {
       void this.loyalty.rollbackOnRefund(updated.id);
     } else if (next === 'ready') {
-      this.notifyOrderReady(updated)
-        .then((notificationResult) => {
-          this.logOrderReadyNotificationResult(updated, notificationResult);
-        })
-        .catch((error: unknown) => {
-          this.logOrderReadyNotificationResult(updated, {
-            ok: false,
-            finalChannel: null,
-            attemptedChannels: [],
-            reason: this.sanitizeNotificationFailure(error),
-          });
-        });
+      void this.orderReadyNotificationUseCase.handle(updated);
     }
     return updated;
   }
@@ -1201,153 +1184,6 @@ export class OrdersService {
 
     const avg = Math.round(totalMinutes / recentOrders.length);
     return Math.max(avg, 5);
-  }
-
-  private logOrderReadyNotificationResult(
-    order: Pick<OrderWithItems, 'id' | 'orderStableId'>,
-    result: OrderReadyNotificationResult,
-  ): void {
-    const failureReason =
-      result.reason ?? result.error ?? result.fallbackReason;
-    const fields = {
-      event: 'order_ready_notification_completed',
-      orderId: order.id,
-      orderStableId: order.orderStableId ?? null,
-      finalChannel: result.finalChannel,
-      attemptedChannels: [...result.attemptedChannels],
-      ok: result.ok,
-      ...(failureReason
-        ? {
-            failureReason: this.sanitizeNotificationFailure(failureReason),
-          }
-        : {}),
-    };
-
-    if (result.ok) this.logger.log(fields);
-    else this.logger.warn(fields);
-  }
-
-  private sanitizeNotificationFailure(reason: unknown): string {
-    const raw =
-      reason instanceof Error
-        ? reason.message
-        : typeof reason === 'string'
-          ? reason
-          : 'notification_failed';
-
-    return raw
-      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
-      .replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, '[redacted-phone]')
-      .replace(/\s+/g, ' ')
-      .slice(0, 200);
-  }
-
-  private async notifyOrderReady(
-    order: OrderWithItems,
-  ): Promise<OrderReadyNotificationResult> {
-    if (order.fulfillmentType === FulfillmentType.delivery) {
-      return {
-        ok: false,
-        finalChannel: null,
-        attemptedChannels: [],
-        reason: 'delivery_order',
-      };
-    }
-
-    const orderNumber = order.clientRequestId ?? order.orderStableId;
-    if (!orderNumber) {
-      return {
-        ok: false,
-        finalChannel: null,
-        attemptedChannels: [],
-        reason: 'missing_order_number',
-      };
-    }
-
-    const member = order.userStableId
-      ? await this.customerOrderContext.getOrderCustomerContext(
-          order.userStableId,
-        )
-      : null;
-    const locale = await this.resolveOrderReadyLocale(
-      order,
-      member?.language ?? null,
-    );
-    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
-      where: { orderId: order.id },
-      orderBy: { createdAt: 'desc' },
-      select: { metadataJson: true },
-    });
-    const metadata = this.asRecord(checkoutIntent?.metadataJson);
-    const verifiedContacts = this.asRecord(metadata?.verifiedContacts);
-    const verifiedEmail = normalizeOrderEmail(
-      typeof verifiedContacts?.email === 'string'
-        ? verifiedContacts.email
-        : null,
-    );
-    const verifiedPhone =
-      typeof verifiedContacts?.phone === 'string'
-        ? verifiedContacts.phone.trim() || null
-        : null;
-
-    const memberEmail = member?.verifiedEmail ?? null;
-    const memberPhone = member?.verifiedPhone ?? null;
-
-    const allowExternalContacts = order.channel === Channel.ubereats;
-    const email =
-      verifiedEmail ??
-      memberEmail ??
-      (allowExternalContacts ? normalizeOrderEmail(order.contactEmail) : null);
-    const phone =
-      verifiedPhone ??
-      memberPhone ??
-      (allowExternalContacts ? order.contactPhone?.trim() || null : null);
-
-    if (!email && !phone) {
-      return {
-        ok: false,
-        finalChannel: null,
-        attemptedChannels: [],
-        reason: 'no_trusted_contact',
-      };
-    }
-
-    return this.orderReadyNotification.notifyOrderReady({
-      email,
-      phone,
-      orderNumber,
-      name: order.contactName ?? null,
-      locale,
-      userStableId: order.userStableId ?? null,
-    });
-  }
-
-  private async resolveOrderReadyLocale(
-    order: Pick<OrderWithItems, 'id'>,
-    memberLanguage: 'ZH' | 'EN' | null,
-  ): Promise<'zh' | 'en'> {
-    if (memberLanguage === 'ZH') {
-      return 'zh';
-    }
-
-    if (memberLanguage === 'EN') {
-      return 'en';
-    }
-
-    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
-      where: {
-        orderId: order.id,
-        locale: { not: null },
-      },
-      select: { locale: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (checkoutIntent?.locale?.toLowerCase().startsWith('zh')) {
-      return 'zh';
-    }
-
-    return 'en';
   }
 
   private async handleOrderPaidSideEffects(order: OrderWithItems) {

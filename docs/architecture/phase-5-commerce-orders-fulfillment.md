@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@3cc775f1` (Slice 4F merge / PR #2208; production address-row repair remains separately gated)  
-Current status: **SLICE 5A ORDER INVOICE USE-CASE DECOMPOSITION LOCAL / REVIEW PENDING — INVOICE HTTP ROUTES CALL A DEDICATED `OrderInvoiceUseCase`; `OrdersService` NO LONGER OWNS INVOICE DELIVERY OR PRINT-PAYLOAD DEPENDENCIES; CROSS-CONTEXT DIRECT-DEBT BASELINES REMAIN COMMERCE 20 / STORE OPERATIONS 29; CREATE/FINALIZE/REFUND/AMENDMENT TRANSACTION SEMANTICS ARE UNCHANGED**
+Current implementation base: `origin/dev@3a37a625` (Slice 5A merge / PR #2209; production address-row repair remains separately gated)  
+Current status: **SLICE 5B READY-NOTIFICATION USE-CASE DECOMPOSITION LOCAL / REVIEW PENDING — SUCCESSFUL READY STATUS WRITES DELEGATE NON-BLOCKING CONTACT/LOCALE/NOTIFICATION/STRUCTURED-LOG ORCHESTRATION TO INTERNAL `OrderReadyNotificationUseCase`; `OrdersService` RETAINS STATUS TRANSITIONS AND PAID/REFUNDED SIDE EFFECTS; CROSS-CONTEXT DIRECT-DEBT BASELINES REMAIN COMMERCE 20 / STORE OPERATIONS 29**
 
 ## Goal
 
@@ -18,7 +18,7 @@ Historical Slice-level active verification evidence from earlier phases remains 
 
 ## Entry state
 
-Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 5A local source state, direct-import totals are:
+Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 5B local source state, direct-import totals are:
 
 - payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
@@ -484,7 +484,7 @@ Existing `PrintPosPayloadService` behavior tests continue to lock receipt/kitche
 
 ### Slice 5A — Order invoice use-case decomposition
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-a`, based on `origin/dev@3cc775f1`.
+Status: **MERGED / CI GREEN** — PR #2209, final head `7346ec58f66b03c38738a700edcee090f24c36df`, squash merge `3a37a6251ad5fde63dcd3f8275277cd1a8d9ae43`; final PR CI #5255 passed API and Web.
 
 Migration classification: **Class A same-context application decomposition**. No Prisma schema/migration, dependency/lockfile, HTTP route, invoice payload shape, email normalization rule, payment/refund behavior, Order lifecycle, PrintJob behavior or cross-context dependency direction changes.
 
@@ -494,4 +494,16 @@ This is intentionally the first decomposition slice because both removed depende
 
 Cross-context direct-import counts remain unchanged at Commerce **20** and Store Operations **29**; public SCC remains empty. Phase 3 Slice 2C atomicity is untouched: confirmed-payment finalization and normal Order creation still keep their existing Benefits transaction/mutation seam.
 
-Planned follow-on after Slice 5A is: **continue leaf/use-case decomposition (next readiness target: status/ready-notification versus pricing/quote separation) -> remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 5B — Ready-notification use-case decomposition
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-b`, based on `origin/dev@3a37a625`.
+
+Migration classification: **Class A same-context application decomposition**. No Prisma schema/migration, dependency/lockfile, public route, status-transition rule, payment/refund behavior, provider wire contract, Order lifecycle, notification payload or cross-context direct-import allowance changes.
+
+`OrderReadyNotificationUseCase` now owns the complete non-blocking `ready` notification application flow that previously lived inside `OrdersService`: reject delivery notifications, resolve the display/order number, obtain member contact/language facts through `CUSTOMER_ORDER_CONTEXT_READER`, preserve checkout verified-contact precedence and Uber-only external-contact fallback, resolve locale, call Notifications through `ORDER_READY_NOTIFICATION`, and emit the same structured success/failure log with PII redaction. The Promise `.then(...).catch(...)` shape is deliberately preserved inside the use case so a successful status write still returns without waiting for delivery.
+
+`OrdersService` retains status-transition validation, `makingAt` / `readyAt` persistence, compare-and-set `updateMany`, and the existing `paid` / `refunded` side effects. After a successful `ready` mutation it only invokes `void orderReadyNotificationUseCase.handle(updated)`. The use case obtains checkout-intent metadata through the existing Orders-local `orders-prisma` composition facade rather than adding a new Commerce -> Runtime direct source edge; Notifications and Customer are consumed only through their existing public capability surfaces. Existing ready-notification regression tests continue to exercise phone-only pickup, email->SMS fallback, checkout-vs-member contact priority, historical member fallback, no-trusted-contact, provider/template failure redaction, database-read failure and delivery-order suppression through the new use case.
+
+The central scanner prevents `ORDER_READY_NOTIFICATION`, notification result policy, contact/locale resolution, PII redaction or deep Notification/Email dependencies from returning to `OrdersService`; requires the use case to stay on `orders-prisma` plus Customer/Notifications public capabilities; and keeps `OrderReadyNotificationUseCase` internal to `OrdersModule` composition. Numeric baselines stay Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, and the public SCC remains empty.
+
+Planned follow-on after Slice 5B is: **continue Orders internal decomposition with a fresh readiness audit (delivery preparation/orchestration versus pricing/quote extraction) -> remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
