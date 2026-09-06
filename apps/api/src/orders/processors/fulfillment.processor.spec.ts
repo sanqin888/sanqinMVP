@@ -8,6 +8,7 @@ jest.mock(
 );
 
 import { FulfillmentProcessor } from './fulfillment.processor';
+import { OrderDeliveryDispatchUseCase } from '../order-delivery-dispatch.use-case';
 import { Logger } from '@nestjs/common';
 
 describe('FulfillmentProcessor reprint store routing', () => {
@@ -51,8 +52,6 @@ describe('FulfillmentProcessor reprint store routing', () => {
       {
         getByStableId: getLabelPlanByStableId,
       } as never,
-      { listActiveAdminRecipients: jest.fn().mockResolvedValue([]) } as never,
-      { notifyDeliveryDispatchFailed: jest.fn() } as never,
     );
     return { processor, sendPrintJob, getLabelPlanByStableId };
   }
@@ -266,53 +265,58 @@ describe('FulfillmentProcessor Uber Direct failure alert', () => {
     const notifyDeliveryDispatchFailed = jest
       .fn()
       .mockResolvedValue({ ok: true, sentCount: 1, failedCount: 0 });
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-delivery-1',
+          orderStableId: 'corddelivery001',
+          clientRequestId: 'WEB-1001',
+          pickupCode: 'A123',
+          fulfillmentType: 'delivery',
+          deliveryProvider: 'UBER',
+          externalDeliveryId: null,
+          totalCents: 2599,
+          contactName: 'Customer',
+          contactPhone: '+14165550123',
+          items: [
+            {
+              displayName: 'Roujiamo',
+              productStableId: 'item-1',
+              qty: 1,
+              unitPriceCents: 1299,
+            },
+          ],
+        }),
+      },
+      checkoutIntent: {
+        findFirst: jest.fn().mockResolvedValue({
+          metadataJson: {
+            customer: {
+              firstName: 'Test',
+              lastName: 'Customer',
+              phone: '+14165550123',
+              addressLine1: '100 Yonge St',
+              city: 'Toronto',
+              province: 'ON',
+              postalCode: 'M5C 2W1',
+            },
+          },
+        }),
+      },
+    };
+    const dispatchUseCase = new OrderDeliveryDispatchUseCase(
+      prisma as never,
+      { createDelivery } as never,
+      { listActiveAdminRecipients } as never,
+      { notifyDeliveryDispatchFailed } as never,
+    );
     const processor = new FulfillmentProcessor(
       {} as never,
-      {
-        order: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'order-delivery-1',
-            orderStableId: 'corddelivery001',
-            clientRequestId: 'WEB-1001',
-            pickupCode: 'A123',
-            fulfillmentType: 'delivery',
-            deliveryProvider: 'UBER',
-            externalDeliveryId: null,
-            totalCents: 2599,
-            contactName: 'Customer',
-            contactPhone: '+14165550123',
-            items: [
-              {
-                displayName: 'Roujiamo',
-                productStableId: 'item-1',
-                qty: 1,
-                unitPriceCents: 1299,
-              },
-            ],
-          }),
-        },
-        checkoutIntent: {
-          findFirst: jest.fn().mockResolvedValue({
-            metadataJson: {
-              customer: {
-                firstName: 'Test',
-                lastName: 'Customer',
-                phone: '+14165550123',
-                addressLine1: '100 Yonge St',
-                city: 'Toronto',
-                province: 'ON',
-                postalCode: 'M5C 2W1',
-              },
-            },
-          }),
-        },
-      } as never,
-      { createDelivery } as never,
+      prisma as never,
+      dispatchUseCase,
       { emitAsync: jest.fn() } as never,
       { getByStableId: jest.fn() } as never,
       { getByStableId: jest.fn() } as never,
-      { listActiveAdminRecipients } as never,
-      { notifyDeliveryDispatchFailed } as never,
     );
 
     const onPaid = (
@@ -370,53 +374,56 @@ describe('FulfillmentProcessor Uber Direct failure alert', () => {
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
     const notifyDeliveryDispatchFailed = jest.fn();
-    const processor = new FulfillmentProcessor(
-      {} as never,
-      {
-        order: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'order-delivery-2',
-            orderStableId: 'corddelivery002',
-            clientRequestId: 'WEB-1002',
-            pickupCode: 'B123',
-            fulfillmentType: 'delivery',
-            deliveryProvider: 'UBER',
-            externalDeliveryId: null,
-            totalCents: 1999,
-            contactName: 'Customer',
-            contactPhone: '+14165550124',
-            items: [],
-          }),
-          update: jest
-            .fn()
-            .mockRejectedValue(new Error('database unavailable')),
-        },
-        checkoutIntent: {
-          findFirst: jest.fn().mockResolvedValue({
-            metadataJson: {
-              customer: {
-                firstName: 'Test',
-                phone: '+14165550124',
-                addressLine1: '100 Yonge St',
-                city: 'Toronto',
-                province: 'ON',
-                postalCode: 'M5C 2W1',
-              },
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order-delivery-2',
+          orderStableId: 'corddelivery002',
+          clientRequestId: 'WEB-1002',
+          pickupCode: 'B123',
+          fulfillmentType: 'delivery',
+          deliveryProvider: 'UBER',
+          externalDeliveryId: null,
+          totalCents: 1999,
+          contactName: 'Customer',
+          contactPhone: '+14165550124',
+          items: [],
+        }),
+        update: jest.fn().mockRejectedValue(new Error('database unavailable')),
+      },
+      checkoutIntent: {
+        findFirst: jest.fn().mockResolvedValue({
+          metadataJson: {
+            customer: {
+              firstName: 'Test',
+              phone: '+14165550124',
+              addressLine1: '100 Yonge St',
+              city: 'Toronto',
+              province: 'ON',
+              postalCode: 'M5C 2W1',
             },
-          }),
-        },
-      } as never,
+          },
+        }),
+      },
+    };
+    const dispatchUseCase = new OrderDeliveryDispatchUseCase(
+      prisma as never,
       {
         createDelivery: jest.fn().mockResolvedValue({
           deliveryId: 'uber-delivery-1',
           externalDeliveryId: 'uber-delivery-1',
         }),
       } as never,
+      { listActiveAdminRecipients: jest.fn() } as never,
+      { notifyDeliveryDispatchFailed } as never,
+    );
+    const processor = new FulfillmentProcessor(
+      {} as never,
+      prisma as never,
+      dispatchUseCase,
       { emitAsync: jest.fn() } as never,
       { getByStableId: jest.fn() } as never,
       { getByStableId: jest.fn() } as never,
-      { listActiveAdminRecipients: jest.fn() } as never,
-      { notifyDeliveryDispatchFailed } as never,
     );
 
     const onPaid = (
@@ -475,8 +482,6 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
           labels: [],
         }),
       } as never,
-      { listActiveAdminRecipients: jest.fn().mockResolvedValue([]) } as never,
-      { notifyDeliveryDispatchFailed: jest.fn() } as never,
     );
 
     return {

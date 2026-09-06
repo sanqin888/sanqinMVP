@@ -188,6 +188,12 @@ node tools/architecture/scan-architecture.mjs --report
   write. The use case must consume Customer/Notifications public capabilities, obtain checkout
   metadata through the Orders-local `orders-prisma` facade, preserve non-blocking delivery and
   PII-redacted structured logging, and remain internal to `OrdersModule` composition;
+- Phase 5 Slice 5C moves paid-order Uber Direct dispatch preparation, provider invocation,
+  local delivery-id persistence and operations-alert policy into the internal
+  `OrderDeliveryDispatchUseCase`. `FulfillmentProcessor` remains the lifecycle consumer and
+  delegates `order.paid.verified` payloads only; provider/auth/notification ports and dropoff
+  extraction must not return to the processor. The use case stays on Orders-local persistence
+  plus public Delivery/Auth/Notifications capabilities and remains internal to `OrdersModule`;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

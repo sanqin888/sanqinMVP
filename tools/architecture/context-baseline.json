@@ -549,6 +549,11 @@
     "ordersService": "apps/api/src/orders/orders.service.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
+  "ordersDeliveryDispatchUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-delivery-dispatch.use-case.ts",
+    "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",
