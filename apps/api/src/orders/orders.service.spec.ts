@@ -12,13 +12,12 @@ import type {
   LoyaltyOrderUsageReaderPort,
   LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
-import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
 import type {
   DailySpecialOffersPort,
   PromotionContextReaderPort,
 } from '../promotions/public-api';
-import { LocationService } from '../location/location.service';
+import type { LocationGeocoderPort } from '../location/public-api';
 import type {
   OrderInvoiceDeliveryPort,
   OrderReadyNotificationPort,
@@ -86,7 +85,6 @@ describe('OrdersService', () => {
       findMany: jest.Mock;
     };
     user: {
-      findMany: jest.Mock;
       findUnique: jest.Mock;
     };
     userCoupon: {
@@ -125,8 +123,7 @@ describe('OrdersService', () => {
   };
   let promotions: { getOrderPromotionContext: jest.Mock };
   let dailySpecialOffers: { getActiveDailySpecials: jest.Mock };
-  let uberDirect: { createDelivery: jest.Mock };
-  let locationService: { geocode: jest.Mock };
+  let locationGeocoder: { geocode: jest.Mock };
   let orderReadyNotification: { notifyOrderReady: jest.Mock };
   let orderInvoiceDelivery: { sendOrderInvoice: jest.Mock };
   let orderEventsBus: OrderEventsBus;
@@ -136,7 +133,6 @@ describe('OrdersService', () => {
     OrderEventsBus['emitOrderPaidVerified']
   >;
   beforeEach(() => {
-    process.env.UBER_DIRECT_ENABLED = '1';
     type MenuItemFindManyArgs = {
       where?: {
         OR?: Array<{
@@ -192,7 +188,6 @@ describe('OrdersService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       user: {
-        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
       },
       userCoupon: {
@@ -268,11 +263,7 @@ describe('OrdersService', () => {
       getActiveDailySpecials: jest.fn().mockResolvedValue({ specials: [] }),
     };
 
-    uberDirect = {
-      createDelivery: jest.fn(),
-    };
-
-    locationService = {
+    locationGeocoder = {
       geocode: jest.fn().mockResolvedValue({
         latitude: 43.6532,
         longitude: -79.3832,
@@ -315,8 +306,7 @@ describe('OrdersService', () => {
       membership as unknown as MembershipService,
       promotions as unknown as PromotionContextReaderPort,
       dailySpecialOffers as unknown as DailySpecialOffersPort,
-      uberDirect as unknown as UberDirectService,
-      locationService as unknown as LocationService,
+      locationGeocoder as unknown as LocationGeocoderPort,
       orderReadyNotification as unknown as OrderReadyNotificationPort,
       orderInvoiceDelivery as unknown as OrderInvoiceDeliveryPort,
       orderEventsBus,
@@ -1257,8 +1247,6 @@ describe('OrdersService', () => {
       expect(prisma.order.create).toHaveBeenCalled();
       expect(order.orderStableId).toBe('cord-no-dest');
 
-      // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
-      expect(uberDirect.createDelivery).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         'Priority delivery order is missing deliveryDestination.',
       );
@@ -1584,14 +1572,6 @@ describe('OrdersService', () => {
       ],
     };
     prisma.order.create.mockResolvedValue(storedOrder);
-    uberDirect.createDelivery.mockResolvedValue({
-      deliveryId: 'uber-123',
-      externalDeliveryId: 'req-1',
-    });
-    prisma.order.update.mockResolvedValue({
-      ...storedOrder,
-      externalDeliveryId: 'uber-123',
-    });
 
     const dto: CreateOrderInput = {
       channel: 'web',
@@ -1626,7 +1606,6 @@ describe('OrdersService', () => {
         redeemValueCents: 0,
         earnMultiplier: 1,
       });
-      expect(uberDirect.createDelivery).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(
           'Cannot calculate dynamic delivery fee (missing coords)',
@@ -1635,7 +1614,7 @@ describe('OrdersService', () => {
     });
   });
 
-  it('keeps the order and still emits event when dispatch path errors are irrelevant', async () => {
+  it('keeps the order and emits paid-verified when priority delivery uses fee fallback', async () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
@@ -1655,13 +1634,6 @@ describe('OrdersService', () => {
       items: [],
     };
     prisma.order.create.mockResolvedValue(storedOrder);
-    prisma.user.findMany.mockResolvedValue([
-      {
-        id: 'admin-1',
-        phone: '+14165551234',
-        language: 'ZH',
-      },
-    ]);
 
     const dto: CreateOrderInput = {
       channel: 'web',

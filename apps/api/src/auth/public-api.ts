@@ -57,4 +57,5 @@ export {
 export { AdminMfaGuard } from './admin-mfa.guard';
 export { Roles } from './roles.decorator';
 export { RolesGuard } from './roles.guard';
+export { OptionalSessionAuthGuard } from './optional-session-auth.guard';
 export { SessionAuthGuard } from './session-auth.guard';

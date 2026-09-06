@@ -483,6 +483,15 @@
     "ordersService": "apps/api/src/orders/orders.service.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
+  "ordersLowRiskBoundaryContraction": {
+    "locationContract": "apps/api/src/location/location-geocoding.contract.ts",
+    "locationModule": "apps/api/src/location/location.module.ts",
+    "locationPublicSurface": "apps/api/src/location/public-api.ts",
+    "authPublicSurface": "apps/api/src/auth/public-api.ts",
+    "ordersController": "apps/api/src/orders/orders.controller.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",
@@ -576,8 +585,7 @@
     "catalog-pricing-offers -> identity-customer-benefits": 3,
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> architecture-foundation": 8,
-    "commerce-orders-fulfillment -> brand-store": 2,
-    "commerce-orders-fulfillment -> identity-customer-benefits": 4,
+    "commerce-orders-fulfillment -> identity-customer-benefits": 2,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> store-operations-pos-print": 2,
     "external-channels -> architecture-foundation": 11,

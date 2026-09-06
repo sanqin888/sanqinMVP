@@ -32,8 +32,10 @@ import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
 import type { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { OptionalSessionAuthGuard } from '../auth/optional-session-auth.guard';
+import {
+  OptionalSessionAuthGuard,
+  SessionAuthGuard,
+} from '../auth/public-api';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
