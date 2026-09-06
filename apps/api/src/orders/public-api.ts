@@ -41,6 +41,16 @@ export {
   type OrderPrintPurpose,
   type OrderPrintTargets,
 } from './pos-print-dispatch.contract';
+export {
+  ORDER_PRINT_PAYLOAD_READER,
+  type OrderPrintPayloadReaderPort,
+  type PrintPosComponentSnapshot,
+  type PrintPosItemSnapshot,
+  type PrintPosOrderSnapshot,
+  type PrintPosPayloadDto,
+  type PrintPosPaymentMethod,
+  type PrintPosUtensilsSnapshot,
+} from './order-print-payload.contract';
 export type {
   OrderFoodLabelDto,
   OrderLabelPlanDto,

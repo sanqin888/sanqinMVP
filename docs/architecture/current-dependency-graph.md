@@ -99,9 +99,9 @@ pair fails CI.
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
 | identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 10; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 8; identity-customer-benefits 2; runtime-data-ci-ops 10; store-operations-pos-print 2 |
+| commerce-orders-fulfillment | architecture-foundation 8; identity-customer-benefits 2; runtime-data-ci-ops 10 |
 | payments-clover | architecture-foundation 15; commerce-orders-fulfillment 8; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
@@ -410,11 +410,19 @@ The existing `LoyaltyService` and `MembershipService` direct imports are deliber
 
 ### Phase 5 Slice 4E — Uber Direct provider implementation contraction — 2026-09-06
 
-Slice 4E removes the remaining production `FulfillmentProcessor -> UberDirectService` concrete dependency. Deliveries exposes `UBER_DIRECT_DELIVERY_DISPATCHER` plus stable request/result types through `deliveries/public-api.ts`; the existing `UberDirectService` implements the port internally, and `DeliveriesModule` binds the token with `useExisting` while exporting only that token. `OrdersModule` now composes Deliveries through the public surface rather than deep-importing `deliveries.module`.
+Slice 4E merged through PR #2207 after final head `4cc113e6b47bf95ac4a72a6a34c87eabe0143c1a` passed final PR CI #5245; squash merge `24e7976d1851788a3d80cae37f95f92b0d5ffb6f`. It removes the remaining production `FulfillmentProcessor -> UberDirectService` concrete dependency. Deliveries exposes `UBER_DIRECT_DELIVERY_DISPATCHER` plus stable request/result types through `deliveries/public-api.ts`; the existing `UberDirectService` implements the port internally, and `DeliveriesModule` binds the token with `useExisting` while exporting only that token. `OrdersModule` now composes Deliveries through the public surface rather than deep-importing `deliveries.module`.
 
 Fulfillment still owns Uber-delivery eligibility and builds exactly the same `orderRef`, pickup code, manifest, destination and pickup-ready input. The provider adapter still owns HTTP/auth, payload transformation and response normalization, and Fulfillment still persists the returned `deliveryId` into `Order.externalDeliveryId`. The existing provider-create failure -> Admin alert behavior and the provider-success/local-persistence-failure distinction are unchanged; the latter remains log-only to avoid accidentally creating a duplicate provider delivery. The broader in-memory `order.paid.verified` durability/idempotency gap remains deferred.
 
 This is a same-context provider-implementation contraction, so the numeric direct-import table does not change: Commerce remains **22** and public SCC remains empty. Scanner guards prevent `FulfillmentProcessor` from importing `UberDirectService`, prevent `OrdersModule` from deep-importing `deliveries.module`, keep the public dispatch contract free of Nest/Prisma/Http/concrete-service/internal Order DB IDs, and require `DeliveriesModule` to export only the token-backed capability. Existing Uber Direct characterization continues to lock provider wire behavior, while Fulfillment coverage locks the request handed to the dispatcher and the existing failure semantics.
+
+### Phase 5 Slice 4F — Fulfillment / Print payload boundary contraction — 2026-09-06
+
+Slice 4F makes the receipt/kitchen payload an Orders-owned public output contract. `PrintPosPayloadService` implements `OrderPrintPayloadReaderPort`, `OrdersModule` exports only `ORDER_PRINT_PAYLOAD_READER`, and the payload contract preserves the existing print shape without Prisma or POS implementation types. `FulfillmentProcessor` consumes the local Orders contract instead of a POS DTO.
+
+The POS print-payload route keeps its existing route, store-scope check and response shape but now injects the reader token from `orders/public-api.ts`; it no longer deep-imports `PrintPosPayloadService`. The former POS-owned `print-pos-payload.dto.ts` is removed, eliminating its reverse deep import of Orders item-option snapshots. Print job identity, target routing, socket dispatch, agent wire payload and ACK/retry semantics remain unchanged.
+
+The legacy direct graph therefore contracts in both directions: Commerce -> Store Operations **2 -> 0** and Store Operations -> Commerce **2 -> 0**. Commerce outgoing direct debt becomes **20**, Store Operations becomes **29**, both zero edges are removed from the monotonic baseline, and the public SCC remains empty. Scanner and focused architecture coverage prevent the DTO/concrete-service deep imports from returning.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

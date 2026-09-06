@@ -19,6 +19,7 @@ import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
 import { ScheduledOrderProcessor } from './processors/scheduled-order.processor';
 import { PrintPosPayloadService } from './print-pos-payload.service';
+import { ORDER_PRINT_PAYLOAD_READER } from './order-print-payload.contract';
 import { ORDER_INGESTION } from './order-ingestion.contract';
 import { ORDER_INGESTION_PROVIDER } from './order-ingestion.provider';
 import { OrderPreparationService } from './order-preparation.service';
@@ -65,6 +66,10 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     OrderPreparationService,
     OrderSchedulingQueryService,
     PrintPosPayloadService,
+    {
+      provide: ORDER_PRINT_PAYLOAD_READER,
+      useExisting: PrintPosPayloadService,
+    },
     OrderLabelPlanService,
     OrderItemSnapshotBuilder,
     NotificationProcessor,
@@ -79,7 +84,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     ORDER_INGESTION,
     OrderPreparationService,
     OrderSchedulingQueryService,
-    PrintPosPayloadService,
+    ORDER_PRINT_PAYLOAD_READER,
   ],
 })
 export class OrdersModule {}

@@ -172,6 +172,11 @@ node tools/architecture/scan-architecture.mjs --report
   rejects a concrete Uber Direct service import or deep `deliveries.module` composition from
   Orders while preserving the current provider request/response and persistence-failure
   semantics;
+- Phase 5 Slice 4F makes the receipt/kitchen print payload an Orders-owned output contract and
+  exposes `ORDER_PRINT_PAYLOAD_READER` instead of the concrete `PrintPosPayloadService`. Orders
+  and Fulfillment may not import POS DTOs; POS transport must consume the reader and payload
+  type through `orders/public-api.ts`. The former POS-owned `print-pos-payload.dto.ts` stays
+  deleted, and `OrdersModule` exports only the token-backed reader across the boundary;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

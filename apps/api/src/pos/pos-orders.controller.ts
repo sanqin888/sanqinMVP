@@ -43,21 +43,22 @@ import type {
   OrderStatus,
 } from '@shared/order';
 import {
+  ORDER_PRINT_PAYLOAD_READER,
   POS_ORDER_OPERATIONS,
+  type OrderPrintPayloadReaderPort,
   type PosOrderDto,
   type PosOrderFulfillmentTimingDto,
   type PosOrderJsonInput,
   type PosOrderManagementPage,
   type PosOrderOperationsPort,
   type PosOrderPricingQuote,
+  type PrintPosPayloadDto,
 } from '../orders/public-api';
 import {
   OrderAmendmentItemAction,
   OrderAmendmentType,
   PaymentMethod,
 } from '@prisma/client';
-import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
-import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
 import { PosGateway } from './pos.gateway';
@@ -264,7 +265,8 @@ export class PosOrdersController {
   constructor(
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orders: PosOrderOperationsPort,
-    private readonly printPosPayloadService: PrintPosPayloadService,
+    @Inject(ORDER_PRINT_PAYLOAD_READER)
+    private readonly printPosPayloadReader: OrderPrintPayloadReaderPort,
     private readonly eventEmitter: EventEmitter2,
     private readonly posGateway: PosGateway,
     private readonly posOrders: PosOrdersService,
@@ -536,7 +538,7 @@ export class PosOrdersController {
       orderStableId,
       this.requireStoreStableId(req),
     );
-    return this.printPosPayloadService.getByStableId(orderStableId, locale);
+    return this.printPosPayloadReader.getByStableId(orderStableId, locale);
   }
 
   @Get(':orderStableId/print-status')

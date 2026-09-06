@@ -4876,6 +4876,157 @@ if (ordersUberDirectDispatchBoundary) {
   }
 }
 
+const ordersPrintPayloadBoundary = config.ordersPrintPayloadBoundary ?? null;
+if (ordersPrintPayloadBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersPrintPayloadBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.ordersModule,
+    boundary.publicSurface,
+    boundary.fulfillmentProcessor,
+    boundary.posController,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Print payload boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const retiredPosDtoPath = join(REPOSITORY_ROOT, boundary.retiredPosDto);
+  if (boundary.retiredPosDto && existsSync(retiredPosDtoPath)) {
+    failures.push(
+      `retired POS-owned print payload DTO must stay deleted: ${boundary.retiredPosDto}`,
+    );
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_PRINT_PAYLOAD_READER',
+      'OrderPrintPayloadReaderPort',
+      'PrintPosPayloadDto',
+      'getByStableId',
+      'orderStableId',
+      'snapshot',
+      'appliedDiscounts',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders Print payload contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('PrintPosPayloadService') ||
+      source.includes('../pos/') ||
+      /\borderId\b/.test(source)
+    ) {
+      failures.push(
+        `Orders Print payload contract must remain framework/Prisma/POS/concrete-service/internal-order-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    if (
+      !source.includes('implements OrderPrintPayloadReaderPort') ||
+      !source.includes("from './order-print-payload.contract'") ||
+      source.includes('../pos/dto/print-pos-payload.dto')
+    ) {
+      failures.push(
+        `Orders Print payload owner must implement the Orders-owned reader contract without importing POS DTOs: ${boundary.ownerService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes('ORDER_PRINT_PAYLOAD_READER') ||
+      !source.includes('useExisting: PrintPosPayloadService') ||
+      !/exports:\s*\[[\s\S]*ORDER_PRINT_PAYLOAD_READER/.test(source) ||
+      /exports:\s*\[[\s\S]*PrintPosPayloadService/.test(source)
+    ) {
+      failures.push(
+        `OrdersModule must export only the token-backed Print payload reader capability, not the concrete service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_PRINT_PAYLOAD_READER',
+      'OrderPrintPayloadReaderPort',
+      'PrintPosPayloadDto',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders public surface is missing Print payload capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+    if (source.includes('PrintPosPayloadService')) {
+      failures.push(
+        `Orders public surface must not expose the concrete Print payload service: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const fulfillmentPath = join(
+    REPOSITORY_ROOT,
+    boundary.fulfillmentProcessor,
+  );
+  if (existsSync(fulfillmentPath)) {
+    const source = readFileSync(fulfillmentPath, 'utf8');
+    if (
+      !source.includes("from '../order-print-payload.contract'") ||
+      !source.includes('PrintPosPayloadDto') ||
+      source.includes('../../pos/dto/print-pos-payload.dto')
+    ) {
+      failures.push(
+        `Fulfillment must use the Orders-owned Print payload contract and must not import POS DTOs: ${boundary.fulfillmentProcessor}`,
+      );
+    }
+  }
+
+  const posControllerPath = join(REPOSITORY_ROOT, boundary.posController);
+  if (existsSync(posControllerPath)) {
+    const source = readFileSync(posControllerPath, 'utf8');
+    if (
+      !source.includes("from '../orders/public-api'") ||
+      !source.includes('ORDER_PRINT_PAYLOAD_READER') ||
+      !source.includes('OrderPrintPayloadReaderPort') ||
+      !source.includes('private readonly printPosPayloadReader') ||
+      !source.includes('this.printPosPayloadReader.getByStableId') ||
+      source.includes('PrintPosPayloadService') ||
+      source.includes('print-pos-payload.dto') ||
+      source.includes("from '../orders/print-pos-payload.service'")
+    ) {
+      failures.push(
+        `POS Print payload transport must consume the Orders public reader capability without concrete/deep imports: ${boundary.posController}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

@@ -29,7 +29,7 @@ import {
   type UberDirectDeliveryDispatcherPort,
   type UberDirectDropoffDetails,
 } from '../../deliveries/public-api';
-import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
+import type { PrintPosPayloadDto } from '../order-print-payload.contract';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
 import type { OrderItemDto } from '../dto/order.dto';
 import { PrintPosPayloadService } from '../print-pos-payload.service';
