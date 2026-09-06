@@ -1,6 +1,12 @@
 import { FulfillmentType } from '@prisma/client';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  CATALOG_ORDER_FACTS_READER,
+  type CatalogOrderFactsReaderPort,
+  type CatalogOrderLabelConfigFact,
+  type CatalogOrderLabelStrategy,
+} from '../menu/public-api';
 import type {
   OrderItemOptionChoiceSnapshot,
   OrderItemOptionGroupSnapshot,
@@ -8,7 +14,7 @@ import type {
 } from './order-item-options';
 import { readOrderItemComponentsSnapshot } from './order-item-components';
 
-type LabelStrategy = 'AUTO' | 'ALWAYS' | 'NEVER';
+type LabelStrategy = CatalogOrderLabelStrategy;
 
 type LabelOption = {
   stableId: string;
@@ -38,24 +44,7 @@ export type OrderLabelPlanDto = {
   labels: OrderFoodLabelDto[];
 };
 
-type MenuItemConfig = {
-  stableId: string;
-  nameEn: string;
-  nameZh: string | null;
-  labelStrategy: LabelStrategy;
-  packagings: Array<{
-    id: string;
-    sortOrder: number;
-    packagingType: {
-      stableId: string;
-      name: string;
-    };
-  }>;
-  optionGroups: Array<{
-    affectedPackagingTypeStableIds: string[];
-    templateGroup: { stableId: string };
-  }>;
-};
+type MenuItemConfig = CatalogOrderLabelConfigFact;
 
 type FulfillmentItem = {
   instanceId: string;
@@ -102,7 +91,11 @@ const EMPTY_PLAN: OrderLabelPlanDto = {
 
 @Injectable()
 export class OrderLabelPlanService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(CATALOG_ORDER_FACTS_READER)
+    private readonly catalogOrderFacts: CatalogOrderFactsReaderPort,
+  ) {}
 
   async getByStableId(orderStableId: string): Promise<OrderLabelPlanDto> {
     const stableId = orderStableId.trim();
@@ -134,37 +127,10 @@ export class OrderLabelPlanService {
     const productStableIds = [
       ...new Set(resolved.map((item) => item.productStableId)),
     ];
-    const configs = await this.prisma.menuItem.findMany({
-      where: {
-        stableId: { in: productStableIds },
-        deletedAt: null,
-      },
-      select: {
-        stableId: true,
-        nameEn: true,
-        nameZh: true,
-        labelStrategy: true,
-        packagings: {
-          orderBy: { sortOrder: 'asc' },
-          select: {
-            id: true,
-            sortOrder: true,
-            packagingType: {
-              select: { stableId: true, name: true },
-            },
-          },
-        },
-        optionGroups: {
-          where: { isEnabled: true },
-          select: {
-            affectedPackagingTypeStableIds: true,
-            templateGroup: { select: { stableId: true } },
-          },
-        },
-      },
-    });
+    const configs =
+      await this.catalogOrderFacts.getOrderLabelConfigs(productStableIds);
     const configByStableId = new Map(
-      configs.map((config) => [config.stableId, config as MenuItemConfig]),
+      configs.map((config) => [config.stableId, config]),
     );
 
     const fulfillmentItems: FulfillmentItem[] = [];
@@ -278,7 +244,6 @@ export class OrderLabelPlanService {
         : item.config.labelStrategy === 'ALWAYS'
           ? [
               {
-                id: `unconfigured:${item.productStableId}`,
                 sortOrder: 0,
                 packagingType: {
                   stableId: `unconfigured:${item.productStableId}`,
@@ -291,7 +256,7 @@ export class OrderLabelPlanService {
 
     const affectedPackagingTypesByTemplate = new Map(
       item.config.optionGroups.map((binding) => [
-        binding.templateGroup.stableId,
+        binding.templateGroupStableId,
         binding.affectedPackagingTypeStableIds,
       ]),
     );
@@ -317,7 +282,7 @@ export class OrderLabelPlanService {
       });
 
       return {
-        instanceId: `${item.instanceId}:${packaging.id}`,
+        instanceId: `${item.instanceId}:${packaging.packagingType.stableId}`,
         pairIdentity,
         productStableId: item.productStableId,
         nameEn: item.nameEn,

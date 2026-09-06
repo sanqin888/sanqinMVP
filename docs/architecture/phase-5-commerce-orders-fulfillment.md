@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@62790355` (Slice 3 Orders -> Messaging merge / PR #2201)  
-Current status: **SLICE 4A LOW-RISK DIRECT-EDGE + DEAD-CODE CONTRACTION LOCAL / REVIEW PENDING — SLICE 3 IS MERGED / PR CI GREEN; AUTH GUARD AND LOCATION ACCESS NOW USE OWNER PUBLIC SURFACES LOCALLY, THE OBSOLETE ORDERSERVICE UBER DIRECT / LOYALTY TAIL IS REMOVED, TARGETING COMMERCE -> BRAND/STORE 2 -> 0 AND COMMERCE -> IDENTITY 4 -> 2; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@6e2da654` (Slice 4A low-risk boundary contraction merge / PR #2202)  
+Current status: **SLICE 4B CATALOG PERSISTENCE CONTRACTION REMOTE / CI RERUN PENDING — PR #2203 CI #5231 PASSED ARCHITECTURE/LINT/BUILD/STRICT AND EXPOSED ONE MISSED `TX.MENUITEM` READ IN API JEST; CURRENT FOLLOW-UP MOVES THAT FINAL HIDDEN-ITEM READ THROUGH THE CATALOG PUBLIC READER AND HARDENS THE SCANNER AGAINST ANY `.MENUITEM.` DELEGATE; DIRECT COMMERCE DEBT REMAINS 22 AND NON-OWNER MENUITEM PERSISTENCE NOW TARGETS ZERO; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -18,17 +18,19 @@ Historical Slice-level active verification evidence from earlier phases remains 
 
 ## Entry state
 
-Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The final public SCC baseline is empty. On the current Slice 3 local source state, direct-import totals are:
+Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 4B local source state, direct-import totals are:
 
 - payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
 - identity-customer-benefits: **33**
 - store-operations-pos-print: **31**
-- commerce-orders-fulfillment: **26** *(pre-Slice 3 hardening 30 -> 29; Slice 3 local contraction 29 -> 26)*
+- commerce-orders-fulfillment: **22** *(pre-Slice 3 hardening 30 -> 29; Slice 3 29 -> 26; Slice 4A 26 -> 22)*
 - accounting-reporting-analytics: **25**
 - catalog-pricing-offers: **15**
-- messaging-notifications: **9** *(Slice 3 local invoice contract removes the remaining Messaging -> POS direct edge)*
+- messaging-notifications: **9** *(Slice 3 removes the remaining Messaging -> POS direct edge)*
 - brand-store: **8**
+
+Slice 4B changes persistence ownership rather than legacy direct-import counts: Commerce already imports Catalog only through a registered public surface, so its numeric direct debt remains **22** while the non-owner `MenuItem` delegates in `apps/api/src/orders/**` contract to zero.
 
 PR #2192 / `a464c1c3` fixed the separate POS Order Management historical query without changing the architecture graph, payment/refund semantics, or Phase 4 closure.
 
@@ -62,10 +64,10 @@ This is a source inventory, not a claim that every listed access should be remov
 
 | Production file | Direct delegates / raw persistence | Ownership assessment |
 |---|---|---|
-| `orders.service.ts` | `order`, `menuItem`, `checkoutIntent`, `user`, `userAddress`, `loyaltyAccount`, `orderAmendment`, `orderAmendmentItem`, `orderItem`; `$transaction` | `order/orderItem/orderAmendment*` are Orders-owned. `menuItem` is Catalog leakage; `user/userAddress` are Identity/Customer leakage; `loyaltyAccount` is Benefits leakage; `checkoutIntent` is Payments/Web-checkout persistence and is production-sensitive. |
+| `orders.service.ts` | `order`, `checkoutIntent`, `user`, `userAddress`, `loyaltyAccount`, `orderAmendment`, `orderAmendmentItem`, `orderItem`; `$transaction` | `order/orderItem/orderAmendment*` are Orders-owned. Slice 4B removes the prior direct `menuItem` read through the Catalog-owned order-facts capability. `user/userAddress` remain Identity/Customer leakage; `loyaltyAccount` remains Benefits leakage; `checkoutIntent` is Payments/Web-checkout persistence and is production-sensitive. |
 | `order-ingestion.service.ts` | transaction-scoped `order`, `orderItem`, `uberOrderItemModifier` | Order persistence is owner-local; writing `uberOrderItemModifier` from the Orders ingestion service is provider-persistence coupling and requires a later controlled boundary decision. |
 | `order-scheduling-query.service.ts` | `order` | Orders-owned. |
-| `order-label-plan.service.ts` | `order`, `menuItem` | `order` is owner-local; `menuItem` is Catalog leakage used for current packaging/label configuration. |
+| `order-label-plan.service.ts` | `order` | `order` is owner-local. Slice 4B moves current packaging/label configuration reads behind the Catalog public capability. |
 | `print-pos-payload.service.ts` | `order`, `checkoutIntent` | Order snapshot is owner-local; checkout metadata read crosses into payment/checkout persistence. |
 | `order-preparation.service.ts` | transaction-scoped `order`, `opsEvent`, raw SQL against `Order` / `OpsEvent` | Orders lifecycle/outbox behavior; currently intentional L3 transaction/locking implementation. |
 | `pos-order-read.service.ts` | `order`, `orderAmendment` | Orders-owned read model. |
@@ -73,15 +75,14 @@ This is a source inventory, not a claim that every listed access should be remov
 | `processors/fulfillment.processor.ts` | `order`, `checkoutIntent` | Order read is local; checkout metadata dependency remains cross-owner. |
 | `processors/order-lifecycle-outbox.processor.ts` | `$transaction` + raw SQL across `OpsEvent`, `Order` | Durable Orders lifecycle reads only its own event/order facts and checkpoints successful INITIAL handoff as `order.initial_print_handoff`; Slice 2 removes the Print-owned `PosPrintJob` probe. |
 
-Unique non-Orders persistence surfaces reached from the Orders tree are therefore:
+Unique non-Orders persistence surfaces still reached directly from the Orders tree after local Slice 4B are therefore:
 
-- Catalog: `MenuItem`;
 - Identity / Customer: `User`, `UserAddress`;
 - Benefits: `LoyaltyAccount`;
 - Payments / Web checkout: `CheckoutIntent`;
 - External/provider persistence: `UberOrderItemModifier`.
 
-Slice 2 removes the prior Store Operations / Print `PosPrintJob` existence read from the Orders lifecycle query.
+Slice 4B removes Catalog `MenuItem` from this list. Slice 2 previously removed the Store Operations / Print `PosPrintJob` existence read from the Orders lifecycle query.
 
 ## Concrete service/module imports from the Orders tree
 
@@ -93,11 +94,9 @@ The narrow public ports already in use are not listed as concrete-service debt h
 |---|---|---|
 | `OrdersService` | `LoyaltyService` | stable customer -> DB identity resolution, available tender, reservation/mutation/refund/amendment behavior not yet fully behind Benefits public capabilities |
 | `OrdersService` | `MembershipService` | coupon validation/reserve/commit/mark-used behavior |
-| `OrdersService` | `UberDirectService` | **Static but apparently inactive legacy tail:** injected only for private `dispatchPriorityDelivery()`. Repository search finds no call site for that private helper; active paid-order Uber Direct dispatch is in `FulfillmentProcessor`. Keep as a review/deletion candidate, not as proof of a second active provider path. |
-| `OrdersService` | `LocationService` | address geocoding for delivery quoting/create |
-| `FulfillmentProcessor` | `UberDirectService` | paid-order Uber Direct dispatch |
+| `FulfillmentProcessor` | `UberDirectService` | paid-order Uber Direct dispatch; provider-specific implementation remains a later controlled Fulfillment concern |
 
-After Slice 3, composition directly imports `DeliveriesModule` and `LocationModule`; `NotificationModule`, `LoyaltyModule`, `BrandStoreConfigModule`, `MembershipModule`, and `PromotionsModule` are imported through their registered public surfaces. The broad `OrdersService` still consumes concrete Loyalty/Membership services in addition to narrower ports, while order-ready and invoice delivery use Messaging public capabilities.
+After Slice 4B, composition still directly imports same-context `DeliveriesModule`; Location, Catalog order facts, Notifications, Loyalty, Brand/Store config, Membership and Promotions are consumed through registered public surfaces. The broad `OrdersService` still consumes concrete Loyalty/Membership services in addition to narrower ports. Slice 4A removed the dead OrdersService Uber Direct tail and concrete Location import; Slice 4B removes Catalog Prisma types/delegates from the Orders item builder and label planning path.
 
 For completeness, same-context concrete wiring found by the source audit is not classified as cross-owner debt by itself: `OrdersController -> OrdersService`; `PosOrderOperationsService -> OrdersService + OrderSchedulingQueryService`; `PosOrderReadService -> OrdersService`; `OrderLifecycleOutboxProcessor -> FulfillmentProcessor + OrderPreparationService`; `ScheduledOrderProcessor -> OrderPreparationService`; and `FulfillmentProcessor -> PrintPosPayloadService + OrderLabelPlanService`. These relationships still matter when `OrdersService` is later split, but Slice 0 does not manufacture interfaces around them merely to reduce concrete class references.
 
@@ -113,7 +112,7 @@ Slice 0 initially found two in-process event mechanisms plus the durable Orders 
 |---|---|---|---|
 | `order.paid.verified` | `OrdersService.handleOrderPaidSideEffects()` | `FulfillmentProcessor.onPaid` | For eligible delivery orders, call Uber Direct and persist `Order.externalDeliveryId`. |
 
-The former same-process `order.prep_started` / compatibility-named `emitOrderAccepted()` path was a Slice 0 baseline fact and is retired by Slice 1E. Initial AUTO printing now consumes only durable `orders.lifecycle/order.prep_started`. `NotificationProcessor` is still wired in `OrdersModule` but registers no event consumer; it only logs that automatic invoice email is disabled, so it remains a later atomic deletion candidate after confirming no composition/bootstrap dependency. The audit also found the older private `OrdersService.dispatchPriorityDelivery()` / `buildUberPickupOverride()` tail has no source call site; it is not a second active Uber Direct producer and remains dead-code debt for a later atomic cleanup. The obsolete uncalled `OrdersService.notifyDeliveryDispatchFailureAlert()` helper was removed in the pre-Slice 3 Uber Direct alert hardening batch once the active `FulfillmentProcessor` path became canonical. `OrdersService.ensureLoyaltyAccountWithTx()` likewise has only its definition and no source call site; its presence must not be mistaken for an active second Loyalty-account creation path.
+The former same-process `order.prep_started` / compatibility-named `emitOrderAccepted()` path was a Slice 0 baseline fact and is retired by Slice 1E. Initial AUTO printing now consumes only durable `orders.lifecycle/order.prep_started`. `NotificationProcessor` is still wired in `OrdersModule` but registers no event consumer; it only logs that automatic invoice email is disabled, so it remains a later atomic deletion candidate after confirming no composition/bootstrap dependency. The obsolete uncalled `OrdersService.notifyDeliveryDispatchFailureAlert()` helper was removed in the pre-Slice 3 Uber Direct alert hardening batch once the active `FulfillmentProcessor` path became canonical. Slice 4A then removed the remaining verified-dead `dispatchPriorityDelivery()` / `buildUberPickupOverride()` delivery tail together with `ensureLoyaltyAccountWithTx()`; none is part of the current source graph.
 
 ### Nest `EventEmitter2`
 
@@ -386,7 +385,7 @@ Behavior intentionally unchanged: order-ready eligibility/trusted-contact preced
 
 ### Slice 4A — low-risk direct-edge + dead-code contraction
 
-Status: **REMOTE / CI RERUN PENDING** on PR #2202 from `refactor/phase5-slice4a-direct-edge-dead-code`, based on `origin/dev@62790355`; initial CI #5227 passed the Architecture gate and failed API lint only on two Prettier formatting errors, now corrected in the current PR head with rerun pending.
+Status: **MERGED / CI GREEN** — PR #2202, final head `09cdd74d`, merge `6e2da654`; rerun CI #5228 passed API and Web after the formatting-only CI #5227 follow-up.
 
 Migration classification: **Class A atomic internal contraction**. No Prisma schema/migration, dependency/lockfile, public HTTP route, Web Clover behavior, Uber provider protocol, payment/refund semantics, order lifecycle, pricing/promotion policy or Benefits COMMIT transaction changes are part of 4A.
 
@@ -396,6 +395,22 @@ The same slice removes verified uncalled `OrdersService` tails instead of adapti
 
 The monotonic direct-import baseline therefore targets `commerce-orders-fulfillment -> brand-store` **2 -> 0** and `commerce-orders-fulfillment -> identity-customer-benefits` **4 -> 2**, reducing Commerce outgoing direct debt **26 -> 22**. The remaining direct Identity debt is the transaction-/runtime-sensitive Loyalty/Membership implementation coupling scheduled for later Slice 4 stages. The public dependency directions already exist and the public SCC baseline remains empty. Architecture guards lock Orders transport to the Auth public surface, Orders geocoding to the Location public capability, and prevent the retired OrdersService direct-delivery/loyalty tails from returning.
 
-Focused source coverage is updated to inject the Location port rather than its concrete service and to remove assertions/mocks for the retired uncalled Uber Direct branch. Per repository workflow no local lint/build/test is claimed before user review; Phase-level runtime verification remains deferred to the consolidated Phase 5 closeout gate.
+Focused source coverage is updated to inject the Location port rather than its concrete service and to remove assertions/mocks for the retired uncalled Uber Direct branch. PR #2202 final head `09cdd74d` passed rerun CI #5228 and merged as `6e2da654`; Phase-level runtime verification remains deferred to the consolidated Phase 5 closeout gate.
 
-Planned follow-on after Slice 4A is: **Slice 4B Catalog persistence contraction -> Slice 4C Customer runtime read contraction -> Slice 4D Benefits read contraction while preserving the existing transaction seam -> remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 4B — Catalog persistence contraction
+
+Status: **REMOTE / CI RERUN PENDING** on PR #2203 from `refactor/phase5-slice4b-catalog-persistence-boundary`, based on `origin/dev@6e2da654`; initial CI #5230 exposed only lint issues, and rerun CI #5231 then passed Architecture/lint/build/strict before API Jest exposed one missed `tx.menuItem.findMany` hidden-item read inside `createInternal()`. The current follow-up moves that final Catalog read outside the Orders transaction through `CATALOG_ORDER_FACTS_READER` and tightens the scanner from specific `prisma.menuItem` strings to any `.menuItem.` delegate in the protected Orders consumers.
+
+Migration classification: **Class A owner-boundary contraction**. No Prisma schema/migration, package/lockfile, public HTTP route, pricing/promotion policy, payment/refund behavior, Benefits COMMIT transaction, order lifecycle or provider wire contract changes are part of 4B.
+
+Catalog now exposes the narrow `CATALOG_ORDER_FACTS_READER` capability through `menu/public-api.ts`. Its contract contains only business stable IDs and neutral order-materialization / label-configuration facts. The existing Catalog-owned `CatalogAdminService` implements the reader and remains the sole Prisma-backed owner implementation, wired through `CatalogOrderFactsModule` with `useExisting`; this avoids creating a second Catalog persistence service or increasing Catalog -> Runtime direct debt.
+
+Orders keeps all Commerce decisions. `OrdersService` still decides that hidden items are rejected only for Web while in-store POS may order them; it now asks Catalog only which requested stable IDs are hidden. `OrderItemSnapshotBuilder` still owns canonical immutable `optionsJson + componentsJson`, option/component validation and amendment parity, but no longer imports Prisma-generated Catalog types or queries `MenuItem`. `OrderLabelPlanService` still owns physical label planning and A/B pairing, but gets current packaging/label config from Catalog. The previous packaging-row DB UUID used only inside an ephemeral label-plan instance key is replaced by `packagingType.stableId`, which does not change the emitted label business facts.
+
+The former builder fallback accepting `MenuItem.id` / option-choice DB UUID is deliberately not carried into the public contract. All legitimate create/amendment call paths normalize product identity with the stable-ID validator before snapshot materialization, and Web/Uber/POS contracts already carry business stable IDs. Therefore 4B contracts an unreachable persistence-identity fallback instead of making UUID semantics permanent across the boundary.
+
+Architecture guards require Orders' three Catalog consumers to use `../menu/public-api`, forbid direct `MenuItem` persistence access from them, keep the snapshot builder free of Prisma/Catalog-generated persistence types and DB-ID lookups, and keep the public Catalog contract free of Prisma/concrete-service/DB-ID leakage. This extends the already-existing acyclic Commerce -> Catalog public direction (Orders already consumes `@shared/menu`) while the legacy direct-import numeric baseline stays **22** and the public SCC baseline remains empty.
+
+Focused tests preserve hidden-item Web/POS behavior, normal/amendment immutable snapshot materialization including fixed and selectable components, and the existing label packaging/pairing rules. Catalog owner tests lock stable-only projection and packaging configuration without persistence IDs. Per repository workflow no local lint/build/test is claimed before user review; GitHub Actions remains authoritative after approval to push.
+
+Planned follow-on after Slice 4B is: **Slice 4C Customer runtime read contraction -> Slice 4D Benefits read contraction while preserving the existing transaction seam -> remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

@@ -19,6 +19,10 @@ import type {
 } from '../promotions/public-api';
 import type { LocationGeocoderPort } from '../location/public-api';
 import type {
+  CatalogOrderFactsReaderPort,
+  CatalogOrderItemMaterializationFact,
+} from '../menu/public-api';
+import type {
   OrderInvoiceDeliveryPort,
   OrderReadyNotificationPort,
 } from '../notifications/public-api';
@@ -33,6 +37,17 @@ import type {
 } from '../store/public-api';
 
 const demoProductId = 'c1234567890abcdefghijklmn';
+
+const defaultCatalogOrderItemFact: CatalogOrderItemMaterializationFact = {
+  stableId: demoProductId,
+  nameEn: 'Demo Product',
+  nameZh: null,
+  basePriceCents: 1000,
+  isAvailable: true,
+  tempUnavailableUntil: null,
+  fixedComponents: [],
+  optionGroups: [],
+};
 
 const defaultStoreConfigSnapshot: StoreConfigSnapshot = {
   storeStableId: '4750_Yonge_Street',
@@ -78,12 +93,6 @@ describe('OrdersService', () => {
       count: jest.Mock;
       delete: jest.Mock;
     };
-    menuItem: {
-      findMany: jest.Mock;
-    };
-    menuOptionTemplateChoice: {
-      findMany: jest.Mock;
-    };
     user: {
       findUnique: jest.Mock;
     };
@@ -123,6 +132,12 @@ describe('OrdersService', () => {
   };
   let promotions: { getOrderPromotionContext: jest.Mock };
   let dailySpecialOffers: { getActiveDailySpecials: jest.Mock };
+  let catalogOrderFacts: {
+    findHiddenMenuItemStableIds: jest.Mock;
+    getOrderItemMaterializationFacts: jest.Mock;
+    getActiveOrderItemMaterializationFact: jest.Mock;
+    getOrderLabelConfigs: jest.Mock;
+  };
   let locationGeocoder: { geocode: jest.Mock };
   let orderReadyNotification: { notifyOrderReady: jest.Mock };
   let orderInvoiceDelivery: { sendOrderInvoice: jest.Mock };
@@ -133,16 +148,6 @@ describe('OrdersService', () => {
     OrderEventsBus['emitOrderPaidVerified']
   >;
   beforeEach(() => {
-    type MenuItemFindManyArgs = {
-      where?: {
-        OR?: Array<{
-          id?: { in?: string[] };
-          stableId?: { in?: string[] };
-        }>;
-        id?: { in?: string[] };
-      };
-    };
-
     prisma = {
       $transaction: jest
         .fn()
@@ -158,34 +163,6 @@ describe('OrdersService', () => {
         findMany: jest.fn(),
         count: jest.fn(),
         delete: jest.fn(),
-      },
-      menuItem: {
-        findMany: jest.fn().mockImplementation((args: MenuItemFindManyArgs) => {
-          const idsFromOr =
-            args?.where?.OR?.flatMap((cond) => [
-              ...(cond.id?.in ?? []),
-              ...(cond.stableId?.in ?? []),
-            ]) ?? [];
-          const directIds = args?.where?.id?.in ?? [];
-          const ids = [...idsFromOr, ...directIds];
-          if (ids.length === 0) return Promise.resolve([]);
-          return Promise.resolve([
-            {
-              id: demoProductId,
-              stableId: demoProductId,
-              basePriceCents: 1000,
-              nameEn: 'Demo Product',
-              nameZh: null,
-              isAvailable: true,
-              visibility: 'PUBLIC',
-              tempUnavailableUntil: null,
-              optionGroups: [],
-            },
-          ]);
-        }),
-      },
-      menuOptionTemplateChoice: {
-        findMany: jest.fn().mockResolvedValue([]),
       },
       user: {
         findUnique: jest.fn(),
@@ -262,6 +239,21 @@ describe('OrdersService', () => {
     dailySpecialOffers = {
       getActiveDailySpecials: jest.fn().mockResolvedValue({ specials: [] }),
     };
+    catalogOrderFacts = {
+      findHiddenMenuItemStableIds: jest.fn().mockResolvedValue([]),
+      getOrderItemMaterializationFacts: jest
+        .fn()
+        .mockImplementation((stableIds: string[]) =>
+          Promise.resolve(
+            stableIds.map((stableId) => ({
+              ...defaultCatalogOrderItemFact,
+              stableId,
+            })),
+          ),
+        ),
+      getActiveOrderItemMaterializationFact: jest.fn().mockResolvedValue(null),
+      getOrderLabelConfigs: jest.fn().mockResolvedValue([]),
+    };
 
     locationGeocoder = {
       geocode: jest.fn().mockResolvedValue({
@@ -290,7 +282,7 @@ describe('OrdersService', () => {
       getByStableId: jest.fn(),
     };
     orderItemSnapshotBuilder = new OrderItemSnapshotBuilder(
-      prisma as unknown as PrismaService,
+      catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
     );
     emitOrderPaidVerified = jest
       .spyOn(orderEventsBus, 'emitOrderPaidVerified')
@@ -306,6 +298,7 @@ describe('OrdersService', () => {
       membership as unknown as MembershipService,
       promotions as unknown as PromotionContextReaderPort,
       dailySpecialOffers as unknown as DailySpecialOffersPort,
+      catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
       locationGeocoder as unknown as LocationGeocoderPort,
       orderReadyNotification as unknown as OrderReadyNotificationPort,
       orderInvoiceDelivery as unknown as OrderInvoiceDeliveryPort,
@@ -478,21 +471,9 @@ describe('OrdersService', () => {
     const productStableId = 'c1234567890abcdefghijklmn';
     const userStableId = 'c2234567890abcdefghijklmn';
     loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
-    prisma.menuItem.findMany
-      .mockResolvedValueOnce([
-        {
-          id: productStableId,
-          stableId: productStableId,
-          basePriceCents: 1000,
-          nameEn: 'Hidden Product',
-          nameZh: null,
-          isAvailable: true,
-          visibility: 'HIDDEN',
-          tempUnavailableUntil: null,
-          optionGroups: [],
-        },
-      ])
-      .mockResolvedValueOnce([{ stableId: productStableId }]);
+    catalogOrderFacts.findHiddenMenuItemStableIds.mockResolvedValueOnce([
+      productStableId,
+    ]);
 
     await expect(
       service.quoteOrderPricing({
@@ -551,21 +532,9 @@ describe('OrdersService', () => {
 
   it('keeps hidden menu items available to the in-store POS channel', async () => {
     const productStableId = 'c1234567890abcdefghijklmn';
-    prisma.menuItem.findMany
-      .mockResolvedValueOnce([
-        {
-          id: productStableId,
-          stableId: productStableId,
-          basePriceCents: 1000,
-          nameEn: 'Hidden Product',
-          nameZh: null,
-          isAvailable: true,
-          visibility: 'HIDDEN',
-          tempUnavailableUntil: null,
-          optionGroups: [],
-        },
-      ])
-      .mockResolvedValueOnce([{ stableId: productStableId }]);
+    catalogOrderFacts.findHiddenMenuItemStableIds.mockResolvedValueOnce([
+      productStableId,
+    ]);
 
     const quote = await service.quoteOrderPricing({
       channel: 'in_store',
