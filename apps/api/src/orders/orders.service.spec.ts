@@ -767,10 +767,10 @@ describe('OrdersService', () => {
       'en',
     );
     expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledTimes(1);
-    const [invoiceInput] =
-      orderInvoiceDelivery.sendOrderInvoice.mock.calls[0] as [
-        Parameters<OrderInvoiceDeliveryPort['sendOrderInvoice']>[0],
-      ];
+    const [invoiceInput] = orderInvoiceDelivery.sendOrderInvoice.mock
+      .calls[0] as [
+      Parameters<OrderInvoiceDeliveryPort['sendOrderInvoice']>[0],
+    ];
     expect(invoiceInput).toMatchObject({
       to: 'invoice@example.com',
       locale: 'en',
