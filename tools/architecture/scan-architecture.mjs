@@ -4865,17 +4865,26 @@ if (ordersUberDirectDispatchBoundary) {
   );
   if (existsSync(fulfillmentProcessorPath)) {
     const source = readFileSync(fulfillmentProcessorPath, 'utf8');
+    const consumesPublicDispatcherDirectly =
+      source.includes("from '../../deliveries/public-api'") &&
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') &&
+      source.includes('UberDirectDeliveryDispatcherPort') &&
+      source.includes('private readonly uberDirectDispatcher') &&
+      source.includes('this.uberDirectDispatcher.createDelivery');
+    const delegatesToDeliveryDispatchUseCase =
+      source.includes("from '../order-delivery-dispatch.use-case'") &&
+      source.includes(
+        'private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase',
+      ) &&
+      source.includes('this.orderDeliveryDispatchUseCase.handle(payload)');
+
     if (
-      !source.includes("from '../../deliveries/public-api'") ||
-      !source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
-      !source.includes('UberDirectDeliveryDispatcherPort') ||
-      !source.includes('private readonly uberDirectDispatcher') ||
-      !source.includes('this.uberDirectDispatcher.createDelivery') ||
+      (!consumesPublicDispatcherDirectly && !delegatesToDeliveryDispatchUseCase) ||
       source.includes('deliveries/uber-direct.service') ||
       /\bUberDirectService\b/.test(source)
     ) {
       failures.push(
-        `FulfillmentProcessor must consume Uber Direct only through the Deliveries public dispatcher capability: ${boundary.fulfillmentProcessor}`,
+        `Orders fulfillment delivery dispatch must consume Uber Direct through the Deliveries public dispatcher capability, directly or through the internal delivery-dispatch use case: ${boundary.fulfillmentProcessor}`,
       );
     }
   }
