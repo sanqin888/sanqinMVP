@@ -322,7 +322,32 @@ describe('FulfillmentProcessor Uber Direct failure alert', () => {
     ).onPaid;
     await onPaid({ orderId: 'order-delivery-1' });
 
-    expect(createDelivery).toHaveBeenCalledTimes(1);
+    expect(createDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderRef: 'WEB-1001',
+        pickupCode: 'A123',
+        reference: 'WEB-1001',
+        totalCents: 2599,
+        items: [
+          {
+            name: 'Roujiamo',
+            quantity: 1,
+            priceCents: 1299,
+          },
+        ],
+        destination: {
+          name: 'Test Customer',
+          phone: '+14165550123',
+          addressLine1: '100 Yonge St',
+          addressLine2: undefined,
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M5C 2W1',
+          country: 'Canada',
+          instructions: undefined,
+        },
+      }),
+    );
     expect(listActiveAdminRecipients).toHaveBeenCalledTimes(1);
     expect(notifyDeliveryDispatchFailed).toHaveBeenCalledWith({
       recipients: [

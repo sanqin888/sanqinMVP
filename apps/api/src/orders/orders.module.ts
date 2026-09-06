@@ -6,7 +6,7 @@ import { OrderEventsBus } from './order-events.bus';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
-import { DeliveriesModule } from '../deliveries/deliveries.module';
+import { DeliveriesModule } from '../deliveries/public-api';
 import { MembershipModule } from '../membership/public-api';
 import { PromotionsModule } from '../promotions/public-api';
 import { LocationModule } from '../location/public-api';

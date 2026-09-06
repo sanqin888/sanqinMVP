@@ -2,6 +2,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { normalizeExternalOrderRef } from '../common/utils/external-id';
+import type {
+  UberDirectDeliveryDispatcherPort,
+  UberDirectDeliveryOptions,
+  UberDirectDeliveryResult,
+  UberDirectManifestItem,
+  UberDirectPickupDetails,
+} from './uber-direct-dispatch.contract';
 
 interface UberDirectOAuthResponse {
   access_token?: string;
@@ -19,69 +26,6 @@ type AxiosErrorLike = {
   message?: string;
   stack?: string;
 };
-
-export interface UberDirectDropoffDetails {
-  name: string;
-  phone: string;
-  company?: string;
-  addressLine1: string;
-  addressLine2?: string;
-  city: string;
-  province: string;
-  postalCode: string;
-  country?: string;
-  instructions?: string;
-  notes?: string;
-  latitude?: number;
-  longitude?: number;
-  tipCents?: number;
-}
-
-export interface UberDirectPickupDetails {
-  businessName?: string;
-  contactName?: string;
-  phone?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  province?: string;
-  postalCode?: string;
-  country?: string;
-  instructions?: string;
-  latitude?: number;
-  longitude?: number;
-}
-
-export interface UberDirectManifestItem {
-  name: string;
-  quantity: number;
-  priceCents?: number | null;
-}
-
-export interface UberDirectDeliveryOptions {
-  orderRef: string;
-  pickupCode?: string | null;
-  reference?: string | null;
-  totalCents: number;
-  items: UberDirectManifestItem[];
-  destination: UberDirectDropoffDetails;
-  pickup?: UberDirectPickupDetails;
-  pickupReadyAt?: Date;
-}
-
-/**
- * Uber Direct API 标准化后的返回结果：
- * - deliveryId: 必填，唯一标识这单配送
- * - status / trackingUrl: 可选
- * - deliveryCostCents: 我们实际要付给 Uber 的配送成本（单位：分），如果能从响应里解析到就带上
- */
-export interface UberDirectDeliveryResult {
-  deliveryId: string;
-  externalDeliveryId: string;
-  status?: string;
-  trackingUrl?: string;
-  deliveryCostCents?: number;
-}
 
 interface PickupConfig {
   businessName: string;
@@ -144,7 +88,7 @@ const splitName = (raw: string | undefined) => {
 };
 
 @Injectable()
-export class UberDirectService {
+export class UberDirectService implements UberDirectDeliveryDispatcherPort {
   private readonly logger = new Logger(UberDirectService.name);
 
   private readonly apiBase: string;

@@ -25,9 +25,10 @@ import {
 import { OrderEventsBus } from '../order-events.bus';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  UBER_DIRECT_DELIVERY_DISPATCHER,
+  type UberDirectDeliveryDispatcherPort,
   type UberDirectDropoffDetails,
-  UberDirectService,
-} from '../../deliveries/uber-direct.service';
+} from '../../deliveries/public-api';
 import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
 import type { OrderItemDto } from '../dto/order.dto';
@@ -89,7 +90,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       if (!destination) {
         throw new Error('DELIVERY_DESTINATION_REQUIRED');
       }
-      const response = await this.uberDirect.createDelivery({
+      const response = await this.uberDirectDispatcher.createDelivery({
         orderRef: order.clientRequestId ?? order.orderStableId,
         pickupCode: order.pickupCode ?? undefined,
         reference: order.clientRequestId ?? order.orderStableId,
@@ -195,7 +196,8 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly events: OrderEventsBus,
     private readonly prisma: PrismaService,
-    private readonly uberDirect: UberDirectService,
+    @Inject(UBER_DIRECT_DELIVERY_DISPATCHER)
+    private readonly uberDirectDispatcher: UberDirectDeliveryDispatcherPort,
     private readonly eventEmitter: EventEmitter2,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly orderLabelPlanService: OrderLabelPlanService,

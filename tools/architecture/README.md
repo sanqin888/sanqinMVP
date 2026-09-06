@@ -165,6 +165,13 @@ node tools/architecture/scan-architecture.mjs --report
   still permits the bounded concrete `LoyaltyService` / `MembershipService` preparation and
   transaction/mutation seam while rejecting expansion beyond the two existing member
   resolution and coupon-validation call sites;
+- Phase 5 Slice 4E keeps Uber Direct HTTP/provider implementation inside `deliveries/**`.
+  `FulfillmentProcessor` consumes only the token-backed `UBER_DIRECT_DELIVERY_DISPATCHER`
+  contract from `deliveries/public-api.ts`; `DeliveriesModule` may register the concrete
+  `UberDirectService` internally but must export only the dispatcher token. The scanner
+  rejects a concrete Uber Direct service import or deep `deliveries.module` composition from
+  Orders while preserving the current provider request/response and persistence-failure
+  semantics;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import
