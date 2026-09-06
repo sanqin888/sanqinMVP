@@ -409,11 +409,12 @@ describe('OrderLabelPlanService', () => {
         }),
       },
     };
+    const getOrderLabelConfigs = jest.fn();
     const catalogOrderFacts: CatalogOrderFactsReaderPort = {
       findHiddenMenuItemStableIds: jest.fn(),
       getOrderItemMaterializationFacts: jest.fn(),
       getActiveOrderItemMaterializationFact: jest.fn(),
-      getOrderLabelConfigs: jest.fn(),
+      getOrderLabelConfigs,
     };
     const service = new OrderLabelPlanService(
       prisma as never,
@@ -422,6 +423,6 @@ describe('OrderLabelPlanService', () => {
 
     const plan = await service.getByStableId('order-1');
     expect(plan.labels).toEqual([]);
-    expect(catalogOrderFacts.getOrderLabelConfigs).not.toHaveBeenCalled();
+    expect(getOrderLabelConfigs).not.toHaveBeenCalled();
   });
 });

@@ -557,7 +557,9 @@ export class OrdersService {
     }
 
     const hiddenItemStableIds =
-      await this.catalogOrderFacts.findHiddenMenuItemStableIds(productStableIds);
+      await this.catalogOrderFacts.findHiddenMenuItemStableIds(
+        productStableIds,
+      );
     if (dto.channel === Channel.web && hiddenItemStableIds.length > 0) {
       throw new BadRequestException(
         'hidden menu items are not available for customer ordering',

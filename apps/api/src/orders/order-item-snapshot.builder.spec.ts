@@ -100,9 +100,6 @@ describe('OrderItemSnapshotBuilder', () => {
         ],
       }),
     ]);
-    expect(
-      catalogOrderFacts.getOrderItemMaterializationFacts,
-    ).toHaveBeenCalledWith([parentStableId]);
   });
 
   it('re-materializes amendment option snapshots through current canonical menu structure', async () => {

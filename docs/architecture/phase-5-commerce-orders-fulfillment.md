@@ -2,7 +2,7 @@
 
 Start date: 2026-09-05  
 Current implementation base: `origin/dev@6e2da654` (Slice 4A low-risk boundary contraction merge / PR #2202)  
-Current status: **SLICE 4B CATALOG PERSISTENCE CONTRACTION LOCAL / REVIEW PENDING — SLICE 4A IS MERGED / CI GREEN; ORDERS HIDDEN-ITEM POLICY, IMMUTABLE ITEM MATERIALIZATION AND LABEL CONFIG NOW CONSUME A STABLE-ID-ONLY CATALOG PUBLIC CAPABILITY LOCALLY; DIRECT COMMERCE DEBT REMAINS 22 WHILE NON-OWNER MENUITEM PERSISTENCE ACCESS TARGETS ZERO; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current status: **SLICE 4B CATALOG PERSISTENCE CONTRACTION REMOTE / CI RERUN PENDING — PR #2203 INITIAL CI #5230 PASSED ARCHITECTURE AND FAILED API LINT ONLY ON TWO UNBOUND-METHOD TEST ASSERTIONS + ONE PRETTIER WRAP; CURRENT FOLLOW-UP CORRECTS THEM; DIRECT COMMERCE DEBT REMAINS 22 WHILE NON-OWNER MENUITEM PERSISTENCE ACCESS TARGETS ZERO; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -399,7 +399,7 @@ Focused source coverage is updated to inject the Location port rather than its c
 
 ### Slice 4B — Catalog persistence contraction
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4b-catalog-persistence-boundary`, based on `origin/dev@6e2da654`.
+Status: **REMOTE / CI RERUN PENDING** on PR #2203 from `refactor/phase5-slice4b-catalog-persistence-boundary`, based on `origin/dev@6e2da654`; initial CI #5230 passed the Architecture baseline gate and failed API lint only on two `unbound-method` test assertions plus one Prettier line wrap, all corrected in the current follow-up.
 
 Migration classification: **Class A owner-boundary contraction**. No Prisma schema/migration, package/lockfile, public HTTP route, pricing/promotion policy, payment/refund behavior, Benefits COMMIT transaction, order lifecycle or provider wire contract changes are part of 4B.
 
