@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
-import { normalizeEmail } from '../common/utils/email';
+import { normalizeOrderEmail } from './order-contact-normalization';
 import { normalizePhone } from '../common/utils/phone';
 import {
   Channel,
@@ -1280,7 +1280,7 @@ export class OrdersService {
     });
     const metadata = this.asRecord(checkoutIntent?.metadataJson);
     const verifiedContacts = this.asRecord(metadata?.verifiedContacts);
-    const verifiedEmail = normalizeEmail(
+    const verifiedEmail = normalizeOrderEmail(
       typeof verifiedContacts?.email === 'string'
         ? verifiedContacts.email
         : null,
@@ -1297,7 +1297,7 @@ export class OrdersService {
     const email =
       verifiedEmail ??
       memberEmail ??
-      (allowExternalContacts ? normalizeEmail(order.contactEmail) : null);
+      (allowExternalContacts ? normalizeOrderEmail(order.contactEmail) : null);
     const phone =
       verifiedPhone ??
       memberPhone ??

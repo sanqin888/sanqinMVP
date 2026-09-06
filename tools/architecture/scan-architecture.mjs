@@ -4061,15 +4061,13 @@ if (ordersMessagingBoundary) {
       !source.includes("from '../notifications/public-api'") ||
       !source.includes('ORDER_READY_NOTIFICATION') ||
       !source.includes('OrderReadyNotificationPort') ||
-      !source.includes('ORDER_INVOICE_DELIVERY') ||
-      !source.includes('OrderInvoiceDeliveryPort') ||
       source.includes("from '../notifications/notification.service'") ||
       source.includes("from '../email/email.service'") ||
       source.includes('NotificationService') ||
       source.includes('EmailService')
     ) {
       failures.push(
-        `OrdersService must consume order-ready and invoice delivery only through the Notifications public surface: ${boundary.ordersService}`,
+        `OrdersService must consume order-ready delivery only through the Notifications public surface: ${boundary.ordersService}`,
       );
     }
   }
@@ -5039,6 +5037,7 @@ if (ordersInvoiceUseCaseDecomposition) {
 
   for (const sourcePath of [
     boundary.useCase,
+    boundary.contactNormalization,
     boundary.ordersService,
     boundary.ordersController,
     boundary.ordersModule,
@@ -5060,6 +5059,7 @@ if (ordersInvoiceUseCaseDecomposition) {
       'ORDER_INVOICE_DELIVERY',
       'OrderInvoiceDeliveryPort',
       'sendInvoiceEmail',
+      'normalizeOrderEmail',
       'invalid_email',
     ]) {
       if (!source.includes(requiredSymbol)) {
@@ -5072,10 +5072,28 @@ if (ordersInvoiceUseCaseDecomposition) {
       source.includes('PrismaService') ||
       source.includes('@prisma/client') ||
       source.includes('OrdersService') ||
-      source.includes('PrintPosPayloadService')
+      source.includes('PrintPosPayloadService') ||
+      source.includes("../common/utils/email")
     ) {
       failures.push(
         `Orders invoice use case must depend on narrow capability ports rather than Prisma/OrdersService/concrete Print implementation: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const contactNormalizationPath = join(
+    REPOSITORY_ROOT,
+    boundary.contactNormalization,
+  );
+  if (existsSync(contactNormalizationPath)) {
+    const source = readFileSync(contactNormalizationPath, 'utf8');
+    if (
+      !source.includes("from '../common/utils/email'") ||
+      !source.includes('normalizeOrderEmail') ||
+      !source.includes('normalizeEmail(raw)')
+    ) {
+      failures.push(
+        `Orders contact normalization must keep the shared email normalization behind one local adapter: ${boundary.contactNormalization}`,
       );
     }
   }
@@ -5088,6 +5106,9 @@ if (ordersInvoiceUseCaseDecomposition) {
       source.includes('OrderInvoiceDeliveryPort') ||
       source.includes('OrderInvoicePayload') ||
       source.includes('PrintPosPayloadService') ||
+      source.includes("../common/utils/email") ||
+      !source.includes("from './order-contact-normalization'") ||
+      !source.includes('normalizeOrderEmail') ||
       /\bsendInvoiceEmail\s*\(/.test(source) ||
       /\bsendInvoice\s*\(/.test(source)
     ) {

@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 
-import { normalizeEmail } from '../common/utils/email';
+import { normalizeOrderEmail } from './order-contact-normalization';
 import {
   ORDER_INVOICE_DELIVERY,
   type OrderInvoiceDeliveryPort,
@@ -26,7 +26,7 @@ export class OrderInvoiceUseCase {
     email?: string | null;
     locale?: string;
   }): Promise<{ ok: boolean }> {
-    const normalizedEmail = normalizeEmail(params.email);
+    const normalizedEmail = normalizeOrderEmail(params.email);
     if (!normalizedEmail) {
       throw new BadRequestException('invalid_email');
     }
