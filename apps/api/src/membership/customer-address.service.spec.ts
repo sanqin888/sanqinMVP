@@ -1,8 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
+import { normalizeStableId } from '../common/utils/stable-id';
 import { CustomerService } from './customer.service';
 
+const ADDRESS_STABLE_ID = 'c1234567890abcdefghijklmn';
+const OTHER_ADDRESS_STABLE_ID = 'c0987654321abcdefghijklmn';
+
 const baseAddress = {
-  addressStableId: 'a-address-stable-1',
+  addressStableId: ADDRESS_STABLE_ID,
   label: 'Home',
   receiver: 'San Qin',
   phone: null,
@@ -49,7 +53,7 @@ describe('CustomerService addresses', () => {
         if (typeof addressStableId !== 'string') {
           throw new Error('addressStableId must be a string');
         }
-        expect(addressStableId).toMatch(/^a/);
+        expect(normalizeStableId(addressStableId)).toBe(addressStableId);
         return {
           ...baseAddress,
           ...input.data,
@@ -105,7 +109,7 @@ describe('CustomerService addresses', () => {
     await expect(
       service.setDefaultAddress({
         userStableId: 'customer-stable-1',
-        addressStableId: 'a-other-customer',
+        addressStableId: OTHER_ADDRESS_STABLE_ID,
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(transaction).not.toHaveBeenCalled();
@@ -122,7 +126,7 @@ describe('CustomerService addresses', () => {
           .fn()
           .mockResolvedValueOnce({
             id: 'address-db-id-1',
-            addressStableId: 'a-address-stable-1',
+            addressStableId: ADDRESS_STABLE_ID,
             userId: 'user-db-id',
             isDefault: true,
           })
@@ -135,7 +139,7 @@ describe('CustomerService addresses', () => {
     await expect(
       service.deleteAddress({
         userStableId: 'customer-stable-1',
-        addressStableId: 'a-address-stable-1',
+        addressStableId: ADDRESS_STABLE_ID,
       }),
     ).resolves.toEqual({ success: true });
 

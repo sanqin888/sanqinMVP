@@ -41,11 +41,6 @@ type CustomerProfileUpdate = {
   language?: CustomerLanguage;
 };
 
-const createStableId = (prefix: string): string => {
-  const base = generateStableId();
-  return `${prefix}${base.slice(1)}`;
-};
-
 @Injectable()
 export class CustomerService
   implements CustomerAdministrationPort, CustomerOrderContextReaderPort
@@ -529,7 +524,7 @@ export class CustomerService
       return tx.userAddress.create({
         data: {
           userId: userDbId,
-          addressStableId: createStableId('a'),
+          addressStableId: generateStableId(),
           ...normalized,
           isDefault: shouldDefault,
           placeId: params.placeId?.trim() || null,

@@ -20,7 +20,7 @@ semantics; it does not authorize a schema or migration change.
 
 | Area | Stable identities present |
 |---|---|
-| Identity and Store | `User.userStableId`, `Store.storeStableId`, `PosDevice.deviceStableId`, `UserInvite.inviteStableId`, `UserAddress.addressStableId` |
+| Identity and Store | `User.userStableId`, `Store.storeStableId`, `PosDevice.deviceStableId`, `UserInvite.inviteStableId`, `UserAddress.addressStableId` (canonical `c...` CUID; Slice 4C-A removes the historical application-only `a...` prefix rewrite) |
 | Orders and Offers | `Order.orderStableId`, `Coupon.couponStableId`, `CouponTemplate.couponStableId`, `CouponProgram.programStableId`, `PromotionRule.stableId`, `OrderAmendment.amendmentStableId` |
 | Catalog | `MenuCategory.stableId`, `MenuItem.stableId`, `MenuPackagingType.stableId`, `MenuDailySpecial.stableId`, `MenuOptionGroupTemplate.stableId`, `MenuOptionTemplateChoice.stableId` plus stable references for components/options |
 | Payments and Loyalty | `PaymentTransaction.attemptId`, `PaymentCheckoutAttempt.attemptId`, `PaymentCheckoutAttempt.orderStableId`, `LoyaltyLedger.ledgerStableId` |
@@ -44,6 +44,7 @@ semantics; it does not authorize a schema or migration change.
 | `Order.storeId` | Optional `Store.storeStableId` reference, despite the generic name | Expose as `storeStableId`; never treat as Store UUID |
 | `PaymentCheckoutAttempt.storeId` | Stable business store identity (documented in schema) | Expose/type as `storeStableId` |
 | `Order.userId` | Nullable internal User database identity, stored as PostgreSQL UUID after the Phase 4 rollout recovery | Keep repository/internal or rename/type as `UserDbId`; public contracts use stable identity |
+| `UserAddress.addressStableId` | Public Customer address identity. Schema default is already `cuid()`, but the historical application generator rewrote `c...` to `a...`; production audit on 2026-09-06 found 2/2 rows in that legacy shape | New writes use the canonical shared `c...` generator. Keep the global normalizer strict; repair the two audited rows deterministically by restoring only the first character after reviewed source rollout and explicit production-mutation approval |
 | `AccountingTransaction.orderId` and settlement `orderId` | Scalar string with no explicit identity space | Resolve owner and identity type before crossing a context boundary |
 | Uber persistence `storeId` | Required SanQ store stable identity; Prisma no longer supplies an implicit `"default"` value | Every new write must pass explicit store identity. Do not backfill Test Store/sandbox history for this contraction; remove those verification-era rows selectively during Uber Production Cutover Cleanup after verification approval. |
 | BusinessHour/Holiday `storeId` | Store DB UUID with legacy default UUID | Move public contracts to stable identity and keep conversion inside persistence |

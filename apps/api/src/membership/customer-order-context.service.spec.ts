@@ -78,7 +78,7 @@ describe('CustomerService order runtime context', () => {
       id: '8a3d4c0e-4750-4f6a-9138-000000000001',
     });
     prisma.userAddress.findFirst.mockResolvedValue({
-      addressStableId: 'a1234567890abcdefghijklmn',
+      addressStableId: 'c0987654321abcdefghijklmn',
       addressLine1: '4750 Yonge St',
       addressLine2: 'Unit 138',
       city: 'Toronto',
@@ -92,10 +92,10 @@ describe('CustomerService order runtime context', () => {
     await expect(
       service.getSavedDeliveryAddress({
         userStableId: 'c1234567890abcdefghijklmn',
-        addressStableId: 'a1234567890abcdefghijklmn',
+        addressStableId: 'c0987654321abcdefghijklmn',
       }),
     ).resolves.toEqual({
-      addressStableId: 'a1234567890abcdefghijklmn',
+      addressStableId: 'c0987654321abcdefghijklmn',
       addressLine1: '4750 Yonge St',
       addressLine2: 'Unit 138',
       city: 'Toronto',
@@ -108,7 +108,7 @@ describe('CustomerService order runtime context', () => {
     expect(prisma.userAddress.findFirst).toHaveBeenCalledWith({
       where: {
         userId: '8a3d4c0e-4750-4f6a-9138-000000000001',
-        addressStableId: 'a1234567890abcdefghijklmn',
+        addressStableId: 'c0987654321abcdefghijklmn',
       },
       select: {
         addressStableId: true,
