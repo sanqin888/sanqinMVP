@@ -177,6 +177,11 @@ node tools/architecture/scan-architecture.mjs --report
   and Fulfillment may not import POS DTOs; POS transport must consume the reader and payload
   type through `orders/public-api.ts`. The former POS-owned `print-pos-payload.dto.ts` stays
   deleted, and `OrdersModule` exports only the token-backed reader across the boundary;
+- Phase 5 Slice 5A begins Orders use-case decomposition by moving invoice delivery into the
+  internal `OrderInvoiceUseCase`. Both invoice routes must call that use case directly;
+  `OrdersService` may not regain `ORDER_INVOICE_DELIVERY`, the concrete print-payload service or
+  invoice methods. The use case itself must depend on `ORDER_PRINT_PAYLOAD_READER` and
+  `ORDER_INVOICE_DELIVERY` capabilities and must remain internal to `OrdersModule` composition;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

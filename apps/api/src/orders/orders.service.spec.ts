@@ -27,14 +27,10 @@ import type {
   CatalogOrderFactsReaderPort,
   CatalogOrderItemMaterializationFact,
 } from '../menu/public-api';
-import type {
-  OrderInvoiceDeliveryPort,
-  OrderReadyNotificationPort,
-} from '../notifications/public-api';
+import type { OrderReadyNotificationPort } from '../notifications/public-api';
 import { OrderEventsBus } from './order-events.bus';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
-import type { PrintPosPayloadService } from './print-pos-payload.service';
 import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import type {
   BrandStoreConfigReaderPort,
@@ -152,9 +148,7 @@ describe('OrdersService', () => {
   };
   let locationGeocoder: { geocode: jest.Mock };
   let orderReadyNotification: { notifyOrderReady: jest.Mock };
-  let orderInvoiceDelivery: { sendOrderInvoice: jest.Mock };
   let orderEventsBus: OrderEventsBus;
-  let printPosPayloadService: { getByStableId: jest.Mock };
   let orderItemSnapshotBuilder: OrderItemSnapshotBuilder;
   let emitOrderPaidVerified: jest.SpiedFunction<
     OrderEventsBus['emitOrderPaidVerified']
@@ -294,17 +288,7 @@ describe('OrdersService', () => {
       }),
     };
 
-    orderInvoiceDelivery = {
-      sendOrderInvoice: jest.fn().mockResolvedValue({
-        ok: true,
-        sendId: 'invoice-1',
-      }),
-    };
-
     orderEventsBus = new OrderEventsBus();
-    printPosPayloadService = {
-      getByStableId: jest.fn(),
-    };
     orderItemSnapshotBuilder = new OrderItemSnapshotBuilder(
       catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
     );
@@ -328,9 +312,7 @@ describe('OrdersService', () => {
       catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
       locationGeocoder as unknown as LocationGeocoderPort,
       orderReadyNotification as unknown as OrderReadyNotificationPort,
-      orderInvoiceDelivery as unknown as OrderInvoiceDeliveryPort,
       orderEventsBus,
-      printPosPayloadService as unknown as PrintPosPayloadService,
       orderItemSnapshotBuilder as unknown as OrderItemSnapshotBuilder,
     );
   });
@@ -723,64 +705,6 @@ describe('OrdersService', () => {
         }),
       ]),
     );
-  });
-
-  it('delivers invoice through the Messaging public port with an Orders-built receipt snapshot', async () => {
-    printPosPayloadService.getByStableId.mockResolvedValue({
-      locale: 'en',
-      orderNumber: 'WEB-INV-1',
-      customerName: 'Invoice Customer',
-      pickupCode: 'A101',
-      fulfillment: 'pickup',
-      paymentMethod: 'card',
-      orderNotes: null,
-      utensils: null,
-      snapshot: {
-        items: [],
-        subtotalCents: 1000,
-        displaySubtotalCents: 1000,
-        appliedDiscounts: [],
-        loyaltyRedeemCents: 0,
-        taxCents: 130,
-        orderTotalCents: 1130,
-        balancePaidCents: 0,
-        externalPaidCents: 1130,
-        totalCents: 1130,
-        creditCardSurchargeCents: 0,
-        discountCents: 0,
-        deliveryFeeCents: 0,
-        deliveryCostCents: 0,
-        deliverySubsidyCents: 0,
-      },
-    });
-
-    await expect(
-      service.sendInvoiceEmail({
-        orderStableId: 'cordinvoice001',
-        email: ' Invoice@example.com ',
-        locale: 'en',
-      }),
-    ).resolves.toEqual({ ok: true });
-
-    expect(printPosPayloadService.getByStableId).toHaveBeenCalledWith(
-      'cordinvoice001',
-      'en',
-    );
-    expect(orderInvoiceDelivery.sendOrderInvoice).toHaveBeenCalledTimes(1);
-    const [invoiceInput] = orderInvoiceDelivery.sendOrderInvoice.mock
-      .calls[0] as [
-      Parameters<OrderInvoiceDeliveryPort['sendOrderInvoice']>[0],
-    ];
-    expect(invoiceInput).toMatchObject({
-      to: 'invoice@example.com',
-      locale: 'en',
-      payload: {
-        locale: 'en',
-        orderNumber: 'WEB-INV-1',
-        fulfillment: 'pickup',
-        paymentMethod: 'card',
-      },
-    });
   });
 
   it('sends order-ready notification with phone when pickup order is marked ready and no email exists', async () => {

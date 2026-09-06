@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { AppLogger } from '../common/app-logger';
-import { normalizeEmail } from '../common/utils/email';
+import { normalizeOrderEmail } from './order-contact-normalization';
 import { normalizePhone } from '../common/utils/phone';
 import {
   Channel,
@@ -86,16 +86,12 @@ import {
   type LocationGeocoderPort,
 } from '../location/public-api';
 import {
-  ORDER_INVOICE_DELIVERY,
   ORDER_READY_NOTIFICATION,
-  type OrderInvoiceDeliveryPort,
-  type OrderInvoicePayload,
   type OrderReadyNotificationPort,
   type OrderReadyNotificationResult,
 } from '../notifications/public-api';
 import { OrderEventsBus } from './order-events.bus';
 import type { OrderDto, OrderItemDto } from './dto/order.dto';
-import { PrintPosPayloadService } from './print-pos-payload.service';
 import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import {
   BRAND_STORE_CONFIG_READER,
@@ -420,10 +416,7 @@ export class OrdersService {
     private readonly locationGeocoder: LocationGeocoderPort,
     @Inject(ORDER_READY_NOTIFICATION)
     private readonly orderReadyNotification: OrderReadyNotificationPort,
-    @Inject(ORDER_INVOICE_DELIVERY)
-    private readonly orderInvoiceDelivery: OrderInvoiceDeliveryPort,
     private readonly orderEventsBus: OrderEventsBus,
-    private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly orderItemSnapshotBuilder: OrderItemSnapshotBuilder,
   ) {}
 
@@ -1287,7 +1280,7 @@ export class OrdersService {
     });
     const metadata = this.asRecord(checkoutIntent?.metadataJson);
     const verifiedContacts = this.asRecord(metadata?.verifiedContacts);
-    const verifiedEmail = normalizeEmail(
+    const verifiedEmail = normalizeOrderEmail(
       typeof verifiedContacts?.email === 'string'
         ? verifiedContacts.email
         : null,
@@ -1304,7 +1297,7 @@ export class OrdersService {
     const email =
       verifiedEmail ??
       memberEmail ??
-      (allowExternalContacts ? normalizeEmail(order.contactEmail) : null);
+      (allowExternalContacts ? normalizeOrderEmail(order.contactEmail) : null);
     const phone =
       verifiedPhone ??
       memberPhone ??
@@ -3440,56 +3433,6 @@ export class OrdersService {
     const finalCents = cents > 0 ? cents : persistedSurcharge;
     if (finalCents <= 0) return null;
     return { cents: finalCents, rate };
-  }
-
-  private toOrderInvoiceFulfillment(
-    fulfillment: FulfillmentType,
-  ): OrderInvoicePayload['fulfillment'] {
-    switch (fulfillment) {
-      case FulfillmentType.pickup:
-        return 'pickup';
-      case FulfillmentType.dine_in:
-        return 'dine_in';
-      case FulfillmentType.delivery:
-        return 'delivery';
-      default:
-        throw new BadRequestException('unsupported_fulfillment_type');
-    }
-  }
-
-  async sendInvoiceEmail(params: {
-    orderStableId: string;
-    email?: string | null;
-    locale?: string;
-  }): Promise<{ ok: boolean }> {
-    return this.sendInvoice(params);
-  }
-
-  async sendInvoice(params: {
-    orderStableId: string;
-    email?: string | null;
-    locale?: string;
-  }): Promise<{ ok: boolean }> {
-    const normalizedEmail = normalizeEmail(params.email);
-    if (!normalizedEmail) {
-      throw new BadRequestException('invalid_email');
-    }
-
-    const payload = await this.printPosPayloadService.getByStableId(
-      params.orderStableId,
-      params.locale,
-    );
-    const invoicePayload: OrderInvoicePayload = {
-      ...payload,
-      fulfillment: this.toOrderInvoiceFulfillment(payload.fulfillment),
-    };
-    await this.orderInvoiceDelivery.sendOrderInvoice({
-      to: normalizedEmail,
-      payload: invoicePayload,
-      locale: params.locale,
-    });
-
-    return { ok: true };
   }
 
   async updateStatus(

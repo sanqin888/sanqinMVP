@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@24e7976d` (Slice 4E merge / PR #2207; production address-row repair remains separately gated)  
-Current status: **SLICE 4F FULFILLMENT / PRINT BOUNDARY CONTRACTION LOCAL / REVIEW PENDING — PRINT PAYLOAD OWNERSHIP MOVES TO THE ORDERS PUBLIC CONTRACT, POS CONSUMES A TOKEN-BACKED PAYLOAD READER, BOTH COMMERCE↔STORE-OPERATIONS LEGACY DIRECT EDGES CONTRACT TO 0; COMMERCE DIRECT DEBT 22 -> 20 AND STORE OPERATIONS 31 -> 29; PRINT WIRE / JOB / ACK / RETRY BEHAVIOR IS UNCHANGED**
+Current implementation base: `origin/dev@3cc775f1` (Slice 4F merge / PR #2208; production address-row repair remains separately gated)  
+Current status: **SLICE 5A ORDER INVOICE USE-CASE DECOMPOSITION LOCAL / REVIEW PENDING — INVOICE HTTP ROUTES CALL A DEDICATED `OrderInvoiceUseCase`; `OrdersService` NO LONGER OWNS INVOICE DELIVERY OR PRINT-PAYLOAD DEPENDENCIES; CROSS-CONTEXT DIRECT-DEBT BASELINES REMAIN COMMERCE 20 / STORE OPERATIONS 29; CREATE/FINALIZE/REFUND/AMENDMENT TRANSACTION SEMANTICS ARE UNCHANGED**
 
 ## Goal
 
@@ -18,7 +18,7 @@ Historical Slice-level active verification evidence from earlier phases remains 
 
 ## Entry state
 
-Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 4F local source state, direct-import totals are:
+Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 5A local source state, direct-import totals are:
 
 - payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
@@ -470,7 +470,7 @@ Phase-level closeout verification should retain one Uber Direct success path plu
 
 ### Slice 4F — Fulfillment / Print payload boundary contraction
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4f-print-boundary`, based on `origin/dev@24e7976d`.
+Status: **MERGED / CI GREEN** — PR #2208, final head `f6ca667c46d3a0e4783c6354ac9bdaea9f68569c`, squash merge `3cc775f141ab08180e8d8751a519dc89ea173a93`; PR CI #5247 passed API and Web.
 
 Migration classification: **Class A bidirectional public-boundary contraction**. No Prisma schema/migration, dependency/lockfile, POS HTTP route, printer-agent wire payload, PrintJob identity, target routing, ACK/retry semantics, Order lifecycle, payment/refund behavior or physical printing policy changes.
 
@@ -482,4 +482,16 @@ The measurable legacy graph contracts in both directions: `commerce-orders-fulfi
 
 Existing `PrintPosPayloadService` behavior tests continue to lock receipt/kitchen projection fields. Existing Print dispatch tests continue to lock `INITIAL`/`REPRINT`/`AMENDMENT`, target routing, durable job identity, dispatch claim and ACK/retry behavior; 4F changes only compile-time ownership and DI composition. Phase-level closeout verification therefore keeps the existing POS/Web/Uber receipt, kitchen and label printing scenarios without a standalone 4F production gate.
 
-Planned follow-on after Slice 4F is: **Orders use-case decomposition -> remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 5A — Order invoice use-case decomposition
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-a`, based on `origin/dev@3cc775f1`.
+
+Migration classification: **Class A same-context application decomposition**. No Prisma schema/migration, dependency/lockfile, HTTP route, invoice payload shape, email normalization rule, payment/refund behavior, Order lifecycle, PrintJob behavior or cross-context dependency direction changes.
+
+`OrderInvoiceUseCase` now owns the complete invoice-delivery application flow: normalize/validate the requested email, read the existing Orders-owned print projection through `ORDER_PRINT_PAYLOAD_READER`, preserve the fulfillment mapping and hand the unchanged payload to Notifications through `ORDER_INVOICE_DELIVERY`. The two existing invoice HTTP routes call this use case directly. `OrdersService` no longer injects `ORDER_INVOICE_DELIVERY`, no longer holds a concrete `PrintPosPayloadService`, and no longer exposes `sendInvoiceEmail()` / `sendInvoice()`.
+
+This is intentionally the first decomposition slice because both removed dependencies were exclusive to the invoice leaf and no create/finalize/refund/amendment transaction code participates. Focused use-case characterization preserves normalized recipient casing/whitespace, print-payload lookup and invoice-delivery input, plus the existing `invalid_email` rejection before any payload read. The central scanner prevents invoice delivery, concrete Print payload service or invoice methods from being reintroduced into `OrdersService`, requires both controller routes to stay on `OrderInvoiceUseCase`, and keeps the use case internal to Orders composition rather than exporting it as a cross-context service.
+
+Cross-context direct-import counts remain unchanged at Commerce **20** and Store Operations **29**; public SCC remains empty. Phase 3 Slice 2C atomicity is untouched: confirmed-payment finalization and normal Order creation still keep their existing Benefits transaction/mutation seam.
+
+Planned follow-on after Slice 5A is: **continue leaf/use-case decomposition (next readiness target: status/ready-notification versus pricing/quote separation) -> remaining controlled persistence seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

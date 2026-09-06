@@ -27,6 +27,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { FulfillmentType, DeliveryType } from '@prisma/client';
+import { OrderInvoiceUseCase } from './order-invoice.use-case';
 import { OrdersService } from './orders.service';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
@@ -123,7 +124,10 @@ class CreateLoyaltyOnlyOrderDto {
 
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly orderInvoiceUseCase: OrderInvoiceUseCase,
+  ) {}
 
   /**
    * 创建订单
@@ -266,7 +270,7 @@ export class OrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: { email?: string; locale?: string },
   ): Promise<{ ok: boolean }> {
-    return this.ordersService.sendInvoiceEmail({
+    return this.orderInvoiceUseCase.sendInvoiceEmail({
       orderStableId,
       email: body?.email,
       locale: body?.locale,
@@ -285,7 +289,7 @@ export class OrdersController {
     @Req() req: AuthedRequest,
     @Body() body: { locale?: string },
   ): Promise<{ ok: boolean }> {
-    return this.ordersService.sendInvoiceEmail({
+    return this.orderInvoiceUseCase.sendInvoiceEmail({
       orderStableId,
       email: req.user?.email ?? null,
       locale: body?.locale,

@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from './orders-prisma';
 import { OrdersController } from './orders.controller';
 import { OrderEventsBus } from './order-events.bus';
+import { OrderInvoiceUseCase } from './order-invoice.use-case';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
@@ -50,6 +51,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
   controllers: [OrdersController, AdminMemberOrdersController],
   providers: [
     OrderEventsBus,
+    OrderInvoiceUseCase,
     OrdersService,
     AdminMemberOrdersReadService,
     PosOrderReadService,
