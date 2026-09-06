@@ -1290,8 +1290,8 @@ is claimed per repository workflow.
 
 ### 2026-09-06 — Phase 5 Slice 4B: Catalog persistence contraction
 
-**PR/SHA:** PR #2203 / initial head `0087c07d` / lint-only follow-up pending push  
-**State:** REMOTE / CI RERUN PENDING — INITIAL CI #5230 ARCHITECTURE GATE PASSED; API LINT FAILED ONLY ON TWO `unbound-method` TEST ASSERTIONS + ONE PRETTIER LINE WRAP; CURRENT FOLLOW-UP CORRECTS THEM; NON-OWNER MENUITEM PERSISTENCE TARGET 0; COMMERCE DIRECT-DEBT BASELINE REMAINS 22  
+**PR/SHA:** PR #2203 / current head `0136d341` / final `tx.menuItem` contraction follow-up pending push  
+**State:** REMOTE / CI RERUN PENDING — CI #5231 PASSED ARCHITECTURE/LINT/BUILD/STRICT; API JEST EXPOSED ONE MISSED `tx.menuItem.findMany` READ IN `createInternal()`; CURRENT FOLLOW-UP MOVES IT THROUGH `CATALOG_ORDER_FACTS_READER` AND HARDENS THE SCANNER AGAINST ANY `.menuItem.` DELEGATE; NON-OWNER MENUITEM PERSISTENCE TARGET 0; COMMERCE DIRECT-DEBT BASELINE REMAINS 22  
 **Result:** Adds the Catalog-owned `CATALOG_ORDER_FACTS_READER` public capability for hidden-menu facts, immutable OrderItem materialization facts and current label/packaging configuration. The existing `CatalogAdminService` implements the port and is exposed through a token alias with `useExisting`, so Catalog retains one Prisma-backed owner and its Runtime direct debt does not increase. `OrdersService` preserves the existing Web-hidden/POS-allowed policy while replacing its direct `MenuItem` query. `OrderItemSnapshotBuilder` preserves canonical `optionsJson + componentsJson`, fixed/selectable component validation and amendment parity while removing Prisma/Catalog generated types and direct MenuItem reads. Its unreachable MenuItem/option DB-UUID fallback is not exported; legitimate create/amendment paths already use business stable IDs. `OrderLabelPlanService` preserves existing packaging/A-B/ALWAYS/AUTO decisions while reading current config through Catalog and replacing an ephemeral packaging-row UUID key with `packagingType.stableId`. Scanner guards prevent direct MenuItem persistence from returning and keep the public contract Prisma/concrete-service/DB-ID free. The direct-import numeric graph remains Commerce **22**, Catalog **15**, public SCC empty; this slice contracts persistence ownership rather than a counted legacy import edge. No Prisma schema/migration, dependency/lockfile, route, pricing/promotion, payment/refund, Benefits COMMIT transaction, lifecycle or provider-wire behavior changes. Focused tests are updated for hidden Web/POS policy, canonical item snapshots and existing label rules, with Catalog owner projection tests added; per repository workflow no local lint/build/test is claimed before user review.  
 **Details:** `apps/api/src/menu/catalog-order-facts-reader.contract.ts`, `apps/api/src/menu/catalog-order-facts.module.ts`, `apps/api/src/menu/catalog-admin.service.ts`, `apps/api/src/menu/public-api.ts`, `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/order-item-snapshot.builder.ts`, `apps/api/src/orders/order-label-plan.service.ts`, focused specs, `tools/architecture/context-baseline.json`, `tools/architecture/scan-architecture.mjs`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, and `docs/architecture/current-dependency-graph.md`.
 
@@ -1389,9 +1389,9 @@ is claimed per repository workflow.
   `09cdd74d`, with rerun CI #5228 passing: Orders Auth/Location access uses owner public surfaces, the obsolete
   OrdersService Uber Direct/Loyalty tail is removed, Commerce -> Brand/Store is `0`, Commerce -> Identity/Customer/Benefits
   is `2`, and Commerce total is **22**. Slice 4B is now **REMOTE / CI RERUN PENDING** on PR #2203 from
-  `refactor/phase5-slice4b-catalog-persistence-boundary`: initial CI #5230 passed Architecture and hit only lint-only
-  follow-up issues; Orders' Catalog reads use the stable-ID-only Catalog public capability and direct MenuItem persistence
-  in `orders/**` targets zero while the numeric Commerce baseline stays **22**.
+  `refactor/phase5-slice4b-catalog-persistence-boundary`: CI #5231 passed Architecture/lint/build/strict and API Jest
+  exposed one missed `tx.menuItem` persistence read, now moved through the Catalog public reader with the scanner hardened
+  against any `.menuItem.` delegate; direct MenuItem persistence in `orders/**` targets zero while Commerce stays **22**.
   Under the 2026-09-06 repository-wide cadence, Phase 5 runtime verification is performed once against the final merged
   Phase state immediately before closeout rather than after each Slice.
 - Payments/Clover: POS Terminal is pre-production and structurally available for

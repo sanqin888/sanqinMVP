@@ -4385,8 +4385,7 @@ if (ordersCatalogPersistenceBoundary) {
     if (
       !source.includes("from '../menu/public-api'") ||
       source.includes("from '../menu/catalog-admin.service'") ||
-      source.includes('prisma.menuItem') ||
-      source.includes('this.prisma.menuItem')
+      source.includes('.menuItem.')
     ) {
       failures.push(
         `Orders Catalog consumers must use only the Catalog public capability and must not read MenuItem persistence directly: ${sourcePath}`,

@@ -2582,6 +2582,15 @@ export class OrdersService {
     const productStableIds = Array.from(
       new Set(calculatedItems.map((item) => item.productStableId)),
     );
+    const hiddenItemStableIds =
+      await this.catalogOrderFacts.findHiddenMenuItemStableIds(
+        productStableIds,
+      );
+    if (dto.channel === Channel.web && hiddenItemStableIds.length > 0) {
+      throw new BadRequestException(
+        'hidden menu items are not available for customer ordering',
+      );
+    }
 
     const subtotalCents = calculatedSubtotal;
     const pricingConfig = await this.getStorePricingConfig();
@@ -2732,20 +2741,6 @@ export class OrdersService {
             const pickupCode =
               this.derivePickupCode(clientRequestId) ||
               (1000 + Math.floor(Math.random() * 9000)).toString();
-
-            const hiddenItems = await tx.menuItem.findMany({
-              where: {
-                stableId: { in: productStableIds },
-                deletedAt: null,
-                visibility: 'HIDDEN',
-              },
-              select: { stableId: true },
-            });
-            if (dto.channel === Channel.web && hiddenItems.length > 0) {
-              throw new BadRequestException(
-                'hidden menu items are not available for customer ordering',
-              );
-            }
 
             const couponInfo = await this.membership.validateCouponForOrder(
               {
