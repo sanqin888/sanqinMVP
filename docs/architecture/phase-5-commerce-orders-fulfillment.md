@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@39bfc09a` (Slice 1E merge)  
-Current status: **SLICE 2 SOURCE COMPLETE / LOCAL REVIEW PENDING — PRINT OWNS JOB IDENTITY/ROUTING/DISPATCH CLAIM/ACK, WINDOWS AGENT DEDUPES JOBID+TARGET, ORDERS NO LONGER READS PRINT PERSISTENCE, AND POS AMENDMENT PRINTING NOW COVERS KITCHEN/LABEL/CUSTOMER RECEIPT EFFECTS; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@515be0a6` (Slice 2 merge / PR #2199)  
+Current status: **PRE-SLICE 3 UBER DIRECT FAILURE-ALERT HARDENING LOCAL / REVIEW PENDING — SLICE 2 IS MERGED WITH PR CI GREEN; ACTIVE UBER DIRECT DELIVERY-CREATION FAILURE NOW ROUTES THROUGH IDENTITY/MESSAGING PUBLIC CAPABILITIES WITH EMAIL-FIRST + SMS FALLBACK; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -346,7 +346,7 @@ The affected Uber ACCEPT -> paid -> preparation -> AUTO, scheduled early-start, 
 
 ### Slice 2 — Print ownership / dispatch idempotency + amendment print recovery
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-print-dispatch-idempotency`, based on `origin/dev@39bfc09a`.
+Status: **MERGED / PR CI GREEN** — PR #2199, final head `fb8110b3`, squash merge `515be0a6`; PR CI #5215 passed. Runtime verification remains accumulated into the Phase 5 closeout gate.
 
 Migration classification: **Class C Print lifecycle/ownership hardening with no Prisma migration and no printer wire-contract cutover**. Orders/Fulfillment now hand Print only a business purpose (`INITIAL | REPRINT | AMENDMENT`), stable Order identity and immutable payload. The POS/Print owner alone derives persistent job identity and target routing: `INITIAL -> AUTO`, explicit reprints get fresh `REPRINT:<uuid>`, and amendment kitchen jobs get fresh `AMENDMENT:<uuid>`. Orders no longer supplies Print persistence `kind` values.
 
@@ -362,4 +362,14 @@ To prevent amendment ADD/SWAP from persisting an incomplete item structure, Orde
 
 Focused automated/architecture coverage records the Phase-level verification scope for: concurrent INITIAL handoff, claim-before-socket ordering, ACK/timeout terminality, stale DELIVERED recovery, printer-agent completed/in-flight dedupe, Orders-owned initial-print handoff checkpoint, Print-owned AUTO/REPRINT/AMENDMENT identities, payment-method-only RETENDER, kitchen amendment output including combo components, positive label-plan delta, and customer full-receipt reprint after amount/payment changes. No schema/migration, package/lockfile, Web Clover, Uber provider wire, pricing/promotion policy, or Benefits transaction semantics change in Slice 2. The existing context-edge counts/public SCC baseline are expected to remain unchanged.
 
-Planned follow-on after Slice 2 review/CI is: **Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Pre-Slice 3 hardening — active Uber Direct dispatch-failure alert
+
+Status: **LOCAL / REVIEW PENDING** on `fix/uber-direct-dispatch-failure-alert`, based on `origin/dev@515be0a6`.
+
+The Slice 3 readiness audit found that the old `OrdersService.notifyDeliveryDispatchFailureAlert()` helper had no caller and sat beside a separate uncalled priority-dispatch tail, while the real paid-order Uber Direct path in `FulfillmentProcessor.onPaid` only logged `UberDirectService.createDelivery()` failures. This batch wires the alert to that active failure path instead of reviving the dead helper.
+
+Ownership is explicit: Commerce decides that Uber Direct delivery creation failed and supplies only stable Order facts; Identity exposes active Admin notification recipients through `OPERATIONS_ALERT_RECIPIENTS` using `userStableId` rather than User DB UUID; Messaging exposes `DELIVERY_DISPATCH_FAILURE_NOTIFICATION`, renders bilingual templates and owns channel fallback. Each Admin is attempted by email first; SMS is used only when email is absent or its send fails. The alert itself is best-effort and cannot roll back or rewrite the already-paid Order. A provider-success/local-`externalDeliveryId` persistence failure is deliberately **not** labeled as a new Uber Direct order failure, because manual redispatch could create a duplicate provider delivery; that state remains separately logged for the later Uber Direct durability/reconciliation slice.
+
+The implementation adds no Prisma migration, dependency, external route or Uber Direct provider wire change. `OrdersModule` consumes `NotificationModule` through the Messaging public surface, contracting `commerce-orders-fulfillment -> messaging-notifications` direct debt **4 -> 3** and Commerce total outgoing direct debt **30 -> 29**; the monotonic baseline is tightened accordingly and the public SCC baseline remains empty. Focused source tests cover active provider-failure -> alert routing, stable Admin recipient mapping, email-success/no-SMS, and email-failure -> SMS fallback. Per repository workflow no local lint/build/test is claimed before user review.
+
+Planned follow-on after this hardening is: **Orders -> Messaging public boundary contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

@@ -51,6 +51,8 @@ describe('FulfillmentProcessor reprint store routing', () => {
       {
         getByStableId: getLabelPlanByStableId,
       } as never,
+      { listActiveAdminRecipients: jest.fn().mockResolvedValue([]) } as never,
+      { notifyDeliveryDispatchFailed: jest.fn() } as never,
     );
     return { processor, sendPrintJob, getLabelPlanByStableId };
   }
@@ -245,6 +247,168 @@ describe('FulfillmentProcessor reprint store routing', () => {
   });
 });
 
+describe('FulfillmentProcessor Uber Direct failure alert', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('routes an active Uber Direct create failure to the operations alert boundary', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const createDelivery = jest
+      .fn()
+      .mockRejectedValue(new Error('Uber Direct API error (500): unavailable'));
+    const listActiveAdminRecipients = jest.fn().mockResolvedValue([
+      {
+        userStableId: 'admin-stable-1',
+        email: 'admin@example.com',
+        phone: '+14165550000',
+        language: 'EN',
+      },
+    ]);
+    const notifyDeliveryDispatchFailed = jest
+      .fn()
+      .mockResolvedValue({ ok: true, sentCount: 1, failedCount: 0 });
+    const processor = new FulfillmentProcessor(
+      {} as never,
+      {
+        order: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'order-delivery-1',
+            orderStableId: 'corddelivery001',
+            clientRequestId: 'WEB-1001',
+            pickupCode: 'A123',
+            fulfillmentType: 'delivery',
+            deliveryProvider: 'UBER',
+            externalDeliveryId: null,
+            totalCents: 2599,
+            contactName: 'Customer',
+            contactPhone: '+14165550123',
+            items: [
+              {
+                displayName: 'Roujiamo',
+                productStableId: 'item-1',
+                qty: 1,
+                unitPriceCents: 1299,
+              },
+            ],
+          }),
+        },
+        checkoutIntent: {
+          findFirst: jest.fn().mockResolvedValue({
+            metadataJson: {
+              customer: {
+                firstName: 'Test',
+                lastName: 'Customer',
+                phone: '+14165550123',
+                addressLine1: '100 Yonge St',
+                city: 'Toronto',
+                province: 'ON',
+                postalCode: 'M5C 2W1',
+              },
+            },
+          }),
+        },
+      } as never,
+      { createDelivery } as never,
+      { emitAsync: jest.fn() } as never,
+      { getByStableId: jest.fn() } as never,
+      { getByStableId: jest.fn() } as never,
+      { listActiveAdminRecipients } as never,
+      { notifyDeliveryDispatchFailed } as never,
+    );
+
+    const onPaid = (
+      processor as unknown as {
+        onPaid: (payload: { orderId: string }) => Promise<void>;
+      }
+    ).onPaid;
+    await onPaid({ orderId: 'order-delivery-1' });
+
+    expect(createDelivery).toHaveBeenCalledTimes(1);
+    expect(listActiveAdminRecipients).toHaveBeenCalledTimes(1);
+    expect(notifyDeliveryDispatchFailed).toHaveBeenCalledWith({
+      recipients: [
+        {
+          userStableId: 'admin-stable-1',
+          email: 'admin@example.com',
+          phone: '+14165550000',
+          locale: 'en',
+        },
+      ],
+      orderNumber: 'WEB-1001',
+      deliveryProvider: 'Uber Direct',
+      errorMessage: 'Uber Direct API error (500): unavailable',
+      orderDetailUrl: 'https://sanq.ca/zh/order/corddelivery001',
+    });
+  });
+
+  it('does not label a provider-success/local-persistence failure as a new Uber Direct order failure', async () => {
+    const errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const notifyDeliveryDispatchFailed = jest.fn();
+    const processor = new FulfillmentProcessor(
+      {} as never,
+      {
+        order: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'order-delivery-2',
+            orderStableId: 'corddelivery002',
+            clientRequestId: 'WEB-1002',
+            pickupCode: 'B123',
+            fulfillmentType: 'delivery',
+            deliveryProvider: 'UBER',
+            externalDeliveryId: null,
+            totalCents: 1999,
+            contactName: 'Customer',
+            contactPhone: '+14165550124',
+            items: [],
+          }),
+          update: jest.fn().mockRejectedValue(new Error('database unavailable')),
+        },
+        checkoutIntent: {
+          findFirst: jest.fn().mockResolvedValue({
+            metadataJson: {
+              customer: {
+                firstName: 'Test',
+                phone: '+14165550124',
+                addressLine1: '100 Yonge St',
+                city: 'Toronto',
+                province: 'ON',
+                postalCode: 'M5C 2W1',
+              },
+            },
+          }),
+        },
+      } as never,
+      {
+        createDelivery: jest.fn().mockResolvedValue({
+          deliveryId: 'uber-delivery-1',
+          externalDeliveryId: 'uber-delivery-1',
+        }),
+      } as never,
+      { emitAsync: jest.fn() } as never,
+      { getByStableId: jest.fn() } as never,
+      { getByStableId: jest.fn() } as never,
+      { listActiveAdminRecipients: jest.fn() } as never,
+      { notifyDeliveryDispatchFailed } as never,
+    );
+
+    const onPaid = (
+      processor as unknown as {
+        onPaid: (payload: { orderId: string }) => Promise<void>;
+      }
+    ).onPaid;
+    await onPaid({ orderId: 'order-delivery-2' });
+
+    expect(notifyDeliveryDispatchFailed).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'uber_direct_delivery_created_persistence_failed',
+        orderStableId: 'corddelivery002',
+      }),
+    );
+  });
+});
+
 describe('FulfillmentProcessor accepted lifecycle printing', () => {
   const originalStoreId = process.env.STORE_ID;
 
@@ -284,6 +448,8 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
           labels: [],
         }),
       } as never,
+      { listActiveAdminRecipients: jest.fn().mockResolvedValue([]) } as never,
+      { notifyDeliveryDispatchFailed: jest.fn() } as never,
     );
 
     return {

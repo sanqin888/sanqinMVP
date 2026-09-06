@@ -122,6 +122,76 @@ describe('NotificationService.notifyCouponIssued', () => {
     expect(emailService.sendEmail).not.toHaveBeenCalled();
   });
 
+  it('delivery dispatch failure 默认优先邮件，邮件成功时不发送短信', async () => {
+    emailService.sendEmail.mockResolvedValue({ ok: true, sendId: 'alert-email' });
+
+    const result = await service.notifyDeliveryDispatchFailed({
+      recipients: [
+        {
+          userStableId: 'admin-stable-1',
+          email: 'admin@example.com',
+          phone: '+14165550000',
+          locale: 'en',
+        },
+      ],
+      orderNumber: 'WEB-1001',
+      deliveryProvider: 'Uber Direct',
+      errorMessage: 'provider unavailable',
+      orderDetailUrl: 'https://sanq.ca/zh/order/corddelivery001',
+    });
+
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(emailService.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'admin@example.com',
+        userStableId: 'admin-stable-1',
+        metadata: expect.objectContaining({
+          trigger: 'delivery_dispatch_failed',
+          orderNumber: 'WEB-1001',
+        }) as unknown,
+      }),
+    );
+    expect(smsService.sendSms).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: true, sentCount: 1, failedCount: 0 });
+  });
+
+  it('delivery dispatch failure 邮件失败后使用短信兜底', async () => {
+    emailService.sendEmail.mockResolvedValue({
+      ok: false,
+      error: 'email unavailable',
+    });
+    smsService.sendSms.mockResolvedValue({ ok: true, sendId: 'alert-sms' });
+
+    const result = await service.notifyDeliveryDispatchFailed({
+      recipients: [
+        {
+          userStableId: 'admin-stable-1',
+          email: 'admin@example.com',
+          phone: '+14165550000',
+          locale: 'zh',
+        },
+      ],
+      orderNumber: 'WEB-1002',
+      deliveryProvider: 'Uber Direct',
+      errorMessage: 'provider unavailable',
+      orderDetailUrl: 'https://sanq.ca/zh/order/corddelivery002',
+    });
+
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(smsService.sendSms).toHaveBeenCalledTimes(1);
+    expect(smsService.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phone: '+14165550000',
+        userStableId: 'admin-stable-1',
+        metadata: expect.objectContaining({
+          fallbackFrom: 'email',
+          fallbackReason: 'email unavailable',
+        }) as unknown,
+      }),
+    );
+    expect(result).toMatchObject({ ok: true, sentCount: 1, failedCount: 0 });
+  });
+
   it('order ready 邮件返回失败时改发短信并记录兜底原因', async () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')

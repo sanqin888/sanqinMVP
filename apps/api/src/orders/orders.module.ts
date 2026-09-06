@@ -10,7 +10,8 @@ import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { MembershipModule } from '../membership/public-api';
 import { PromotionsModule } from '../promotions/public-api';
 import { LocationModule } from '../location/location.module';
-import { NotificationModule } from '../notifications/notification.module';
+import { OperationsAlertRecipientModule } from '../auth/public-api';
+import { NotificationModule } from '../notifications/public-api';
 import { EmailModule } from '../email/email.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
@@ -39,6 +40,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     MembershipModule,
     PromotionsModule,
     LocationModule,
+    OperationsAlertRecipientModule,
     NotificationModule,
     EmailModule,
   ],

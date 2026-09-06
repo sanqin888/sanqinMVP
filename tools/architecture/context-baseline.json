@@ -568,7 +568,7 @@
     "commerce-orders-fulfillment -> architecture-foundation": 8,
     "commerce-orders-fulfillment -> brand-store": 2,
     "commerce-orders-fulfillment -> identity-customer-benefits": 4,
-    "commerce-orders-fulfillment -> messaging-notifications": 4,
+    "commerce-orders-fulfillment -> messaging-notifications": 3,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> store-operations-pos-print": 2,
     "external-channels -> architecture-foundation": 11,

@@ -10,6 +10,11 @@ import type {
   RegistrationWelcomeNotificationInput,
   SubscriptionWelcomeNotificationInput,
 } from './contracts/customer-lifecycle-notification.contract';
+import type {
+  DeliveryDispatchFailureNotificationInput,
+  DeliveryDispatchFailureNotificationPort,
+  DeliveryDispatchFailureNotificationResult,
+} from './contracts/delivery-dispatch-failure-notification.contract';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
 import { BusinessConfigService } from '../messaging/business-config.service';
@@ -93,7 +98,10 @@ class NotificationRateLimiter {
 
 @Injectable()
 export class NotificationService
-  implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort
+  implements
+    CouponIssuedNotificationPort,
+    CustomerLifecycleNotificationPort,
+    DeliveryDispatchFailureNotificationPort
 {
   private readonly logger = new Logger(NotificationService.name);
   private readonly marketingLimiter = new NotificationRateLimiter();
@@ -312,43 +320,25 @@ export class NotificationService
     });
   }
 
-  async notifyDeliveryDispatchFailed(params: {
-    recipients: Array<{
-      phone: string;
-      locale?: string | null;
-      userId?: string | null;
-    }>;
-    orderNumber: string;
-    deliveryProvider: string;
-    errorMessage: string;
-    orderDetailUrl: string;
-  }) {
+  async notifyDeliveryDispatchFailed(
+    params: DeliveryDispatchFailureNotificationInput,
+  ): Promise<DeliveryDispatchFailureNotificationResult> {
     const recipients = params.recipients
-      .map((recipient) => {
-        const phone = recipient.phone?.trim();
-        if (!phone) return null;
-        const locale: 'zh' | 'en' = recipient.locale
-          ?.toLowerCase()
-          .startsWith('zh')
-          ? 'zh'
-          : 'en';
-        return {
-          phone,
-          locale,
-          userId: recipient.userId ?? undefined,
-        };
-      })
-      .filter((recipient): recipient is NonNullable<typeof recipient> =>
-        Boolean(recipient),
-      );
+      .map((recipient) => ({
+        ...recipient,
+        email: recipient.email?.trim() || null,
+        phone: recipient.phone?.trim() || null,
+        locale: recipient.locale === 'zh' ? ('zh' as const) : ('en' as const),
+      }))
+      .filter((recipient) => Boolean(recipient.email || recipient.phone));
 
     if (recipients.length === 0) {
-      return { ok: false, reason: 'no_recipients' as const };
+      return { ok: false, reason: 'no_recipients' };
     }
 
     const uniqueRecipients = Array.from(
       new Map(
-        recipients.map((recipient) => [recipient.phone, recipient]),
+        recipients.map((recipient) => [recipient.userStableId, recipient]),
       ).values(),
     );
 
@@ -356,57 +346,82 @@ export class NotificationService
       await this.businessConfigService.getMessagingSnapshot('zh');
     const { baseVars: enBaseVars } =
       await this.businessConfigService.getMessagingSnapshot('en');
-
-    const messagesByLocale = {
-      zh: await this.templateRenderer.renderSms({
-        template: 'deliveryDispatchFailed',
-        locale: 'zh',
-        vars: {
-          ...zhBaseVars,
-          orderNumber: params.orderNumber,
-          deliveryProvider: params.deliveryProvider,
-          errorMessage: params.errorMessage,
-          orderDetailUrl: params.orderDetailUrl,
-        },
-      }),
-      en: await this.templateRenderer.renderSms({
-        template: 'deliveryDispatchFailed',
-        locale: 'en',
-        vars: {
-          ...enBaseVars,
-          orderNumber: params.orderNumber,
-          deliveryProvider: params.deliveryProvider,
-          errorMessage: params.errorMessage,
-          orderDetailUrl: params.orderDetailUrl,
-        },
-      }),
+    const varsByLocale = {
+      zh: {
+        ...zhBaseVars,
+        orderNumber: params.orderNumber,
+        deliveryProvider: params.deliveryProvider,
+        errorMessage: params.errorMessage,
+        orderDetailUrl: params.orderDetailUrl,
+      },
+      en: {
+        ...enBaseVars,
+        orderNumber: params.orderNumber,
+        deliveryProvider: params.deliveryProvider,
+        errorMessage: params.errorMessage,
+        orderDetailUrl: params.orderDetailUrl,
+      },
     };
-
-    const sendResults = await Promise.allSettled(
-      uniqueRecipients.map((recipient) =>
-        this.smsService.sendSms({
+    const sendResults = await Promise.all(
+      uniqueRecipients.map(async (recipient) => {
+        const locale = recipient.locale;
+        return this.sendEmailFirst({
+          email: recipient.email,
           phone: recipient.phone,
-          body: messagesByLocale[recipient.locale],
-          templateType: MessagingTemplateType.ORDER_READY,
-          locale: recipient.locale,
-          userId: recipient.userId,
-          metadata: {
-            type: 'delivery_dispatch_failed',
-            orderNumber: params.orderNumber,
-            deliveryProvider: params.deliveryProvider,
+          context: `delivery_dispatch_failed:${params.orderNumber}:${recipient.userStableId}`,
+          sendEmail: async () => {
+            const renderedEmail = await this.templateRenderer.renderEmail({
+              template: 'deliveryDispatchFailed',
+              locale,
+              vars: varsByLocale[locale],
+            });
+            return this.emailService.sendEmail({
+              to: recipient.email!,
+              subject: renderedEmail.subject,
+              html: renderedEmail.html,
+              text: renderedEmail.text,
+              tags: { type: 'delivery_dispatch_failed' },
+              locale: locale === 'zh' ? 'zh-CN' : 'en',
+              templateType: MessagingTemplateType.ORDER_READY,
+              userStableId: recipient.userStableId,
+              metadata: {
+                trigger: 'delivery_dispatch_failed',
+                orderNumber: params.orderNumber,
+                deliveryProvider: params.deliveryProvider,
+              },
+            });
           },
-        }),
-      ),
+          sendSms: async (fallbackReason) => {
+            const body = await this.templateRenderer.renderSms({
+              template: 'deliveryDispatchFailed',
+              locale,
+              vars: varsByLocale[locale],
+            });
+            return this.smsService.sendSms({
+              phone: recipient.phone!,
+              body,
+              templateType: MessagingTemplateType.ORDER_READY,
+              locale,
+              userStableId: recipient.userStableId,
+              metadata: {
+                type: 'delivery_dispatch_failed',
+                orderNumber: params.orderNumber,
+                deliveryProvider: params.deliveryProvider,
+                ...(fallbackReason
+                  ? { fallbackFrom: 'email', fallbackReason }
+                  : {}),
+              },
+            });
+          },
+        });
+      }),
     );
 
-    const sentCount = sendResults.filter(
-      (result) => result.status === 'fulfilled' && result.value.ok,
-    ).length;
-
+    const sentCount = sendResults.filter((result) => result.ok).length;
     const failedCount = sendResults.length - sentCount;
     if (failedCount > 0) {
       this.logger.warn(
-        `delivery dispatch alert sms partial failure: sent=${sentCount} failed=${failedCount}`,
+        `delivery dispatch alert partial failure: sent=${sentCount} failed=${failedCount}`,
       );
     }
 
