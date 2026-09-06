@@ -5455,6 +5455,106 @@ if (ordersPrepTimeQueryUseCaseDecomposition) {
   }
 }
 
+const ordersPublicSummaryQueryUseCaseDecomposition =
+  config.ordersPublicSummaryQueryUseCaseDecomposition ?? null;
+if (ordersPublicSummaryQueryUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersPublicSummaryQueryUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.ordersController,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders public-summary query use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderPublicSummaryQueryUseCase',
+      "from './orders-prisma'",
+      'LOYALTY_ORDER_USAGE_READER',
+      'this.prisma.order.findUnique',
+      'this.prisma.checkoutIntent.findFirst',
+      'buildOrderPricingDisplay',
+      'buildOrderItemComponentDisplaySnapshots',
+      'creditCardSurchargeCents',
+      'chargeStatusUnverified',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders public-summary query use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes("from './orders.service'") ||
+      source.includes('../loyalty/loyalty.service')
+    ) {
+      failures.push(
+        `OrderPublicSummaryQueryUseCase must own summary projection directly on Orders-local persistence plus the Loyalty public reader: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, boundary.ordersController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from './order-public-summary-query.use-case'") ||
+      !source.includes(
+        'private readonly orderPublicSummaryQueryUseCase: OrderPublicSummaryQueryUseCase',
+      ) ||
+      !source.includes(
+        'this.orderPublicSummaryQueryUseCase.getByStableId(orderStableId)',
+      )
+    ) {
+      failures.push(
+        `OrdersController public summary route must delegate to OrderPublicSummaryQueryUseCase: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      /\bgetPublicOrderSummary\s*\(/.test(source) ||
+      /\bgetCheckoutIntentPaymentMeta\s*\(/.test(source) ||
+      /\bresolveOrderCreditCardSurcharge\s*\(/.test(source) ||
+      /\bgetTotalDiscountCents\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must not regain public-summary projection policy after Slice 5E: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-public-summary-query.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderPublicSummaryQueryUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderPublicSummaryQueryUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderPublicSummaryQueryUseCase must stay an internal Orders query provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

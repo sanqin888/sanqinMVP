@@ -29,6 +29,7 @@ import {
 import { FulfillmentType, DeliveryType } from '@prisma/client';
 import { OrderInvoiceUseCase } from './order-invoice.use-case';
 import { OrderPrepTimeQueryUseCase } from './order-prep-time-query.use-case';
+import { OrderPublicSummaryQueryUseCase } from './order-public-summary-query.use-case';
 import { OrdersService } from './orders.service';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
@@ -129,6 +130,7 @@ export class OrdersController {
     private readonly ordersService: OrdersService,
     private readonly orderInvoiceUseCase: OrderInvoiceUseCase,
     private readonly orderPrepTimeQueryUseCase: OrderPrepTimeQueryUseCase,
+    private readonly orderPublicSummaryQueryUseCase: OrderPublicSummaryQueryUseCase,
   ) {}
 
   /**
@@ -260,7 +262,7 @@ export class OrdersController {
   getPublicSummary(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderSummaryDto> {
-    return this.ordersService.getPublicOrderSummary(orderStableId);
+    return this.orderPublicSummaryQueryUseCase.getByStableId(orderStableId);
   }
 
   /**

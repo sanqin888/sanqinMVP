@@ -7,6 +7,7 @@ import { OrderInvoiceUseCase } from './order-invoice.use-case';
 import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import { OrderDeliveryDispatchUseCase } from './order-delivery-dispatch.use-case';
 import { OrderPrepTimeQueryUseCase } from './order-prep-time-query.use-case';
+import { OrderPublicSummaryQueryUseCase } from './order-public-summary-query.use-case';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
@@ -58,6 +59,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     OrderReadyNotificationUseCase,
     OrderDeliveryDispatchUseCase,
     OrderPrepTimeQueryUseCase,
+    OrderPublicSummaryQueryUseCase,
     OrdersService,
     AdminMemberOrdersReadService,
     PosOrderReadService,
