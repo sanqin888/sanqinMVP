@@ -75,7 +75,9 @@ describe('OrderBenefitsReadService', () => {
   });
 
   it('returns only order-facing tender availability from stable member identity', async () => {
-    await expect(service.getAvailablePaymentTender(userStableId)).resolves.toEqual({
+    await expect(
+      service.getAvailablePaymentTender(userStableId),
+    ).resolves.toEqual({
       balanceCents: 875,
       maxRedeemableCents: 625,
     });

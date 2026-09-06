@@ -515,7 +515,9 @@ describe('OrdersService', () => {
 
   it('uses the Benefits-owned raw loyalty capacity for loyalty-only order eligibility', async () => {
     const userStableId = 'c2234567890abcdefghijklmn';
-    orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents.mockResolvedValue(999);
+    orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents.mockResolvedValue(
+      999,
+    );
 
     await expect(
       service.createLoyaltyOnlyOrder({
