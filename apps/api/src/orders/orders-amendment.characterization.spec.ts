@@ -40,16 +40,24 @@ describe('OrdersService amendment characterization', () => {
       .mockResolvedValueOnce(currentOrder)
       .mockResolvedValueOnce(finalOrder);
     const orderUpdate = jest.fn().mockResolvedValue({});
-    const amendmentCreate = jest.fn().mockResolvedValue({
-      id: '8a3d4c0e-4750-4f6a-9138-000000000103',
-      amendmentStableId: 'amendment_stable_1',
-      orderId: currentOrder.id,
+    let amendmentCreateInput: unknown;
+    const amendmentCreate = jest.fn((input: unknown) => {
+      amendmentCreateInput = input;
+      return Promise.resolve({
+        id: '8a3d4c0e-4750-4f6a-9138-000000000103',
+        amendmentStableId: 'amendment_stable_1',
+        orderId: currentOrder.id,
+      });
     });
     const amendmentItemCreateMany = jest.fn().mockResolvedValue({ count: 1 });
     const amendmentAggregate = jest.fn().mockResolvedValue({
       _sum: { refundCents: 0, redeemReturnCents: 0 },
     });
-    const amendmentUpdate = jest.fn().mockResolvedValue({});
+    let amendmentUpdateInput: unknown;
+    const amendmentUpdate = jest.fn((input: unknown) => {
+      amendmentUpdateInput = input;
+      return Promise.resolve({});
+    });
     const orderItemUpdate = jest.fn().mockResolvedValue({});
     const orderItemDelete = jest.fn().mockResolvedValue({});
     const orderItemCreate = jest.fn().mockResolvedValue({});
@@ -111,7 +119,7 @@ describe('OrdersService amendment characterization', () => {
     ).resolves.toEqual({ orderStableId: currentOrder.orderStableId });
 
     expect(transaction).toHaveBeenCalledTimes(1);
-    const amendmentCreateArgs = amendmentCreate.mock.calls[0]?.[0] as {
+    const amendmentCreateArgs = amendmentCreateInput as {
       data: {
         orderId: string;
         type: OrderAmendmentType;
@@ -158,7 +166,7 @@ describe('OrdersService amendment characterization', () => {
         paymentTotalCents: 1017,
       },
     });
-    const amendmentUpdateArgs = amendmentUpdate.mock.calls[0]?.[0] as {
+    const amendmentUpdateArgs = amendmentUpdateInput as {
       where: { id: string };
       data: {
         deltaCents: number;

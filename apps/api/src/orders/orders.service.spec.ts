@@ -1130,6 +1130,11 @@ describe('OrdersService', () => {
 
   it('keeps paid -> making as the same-process prep_started fast path after the guarded status write wins', async () => {
     const paidAt = new Date('2026-09-05T20:00:00.000Z');
+    let updateManyInput: unknown;
+    prisma.order.updateMany.mockImplementation((input: unknown) => {
+      updateManyInput = input;
+      return Promise.resolve({ count: 1 });
+    });
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'paid',
@@ -1152,7 +1157,7 @@ describe('OrdersService', () => {
       'making',
     );
 
-    const updateArgs = prisma.order.updateMany.mock.calls[0]?.[0] as {
+    const updateArgs = updateManyInput as {
       where: { id: string; status: string };
       data: { status: string; makingAt: unknown };
     };
