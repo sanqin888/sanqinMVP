@@ -62,17 +62,14 @@ describe('OrderInvoiceUseCase', () => {
       'en',
     );
     expect(sendOrderInvoice).toHaveBeenCalledTimes(1);
-    const [invoiceInput] = sendOrderInvoice.mock.calls[0];
-    expect(invoiceInput).toMatchObject({
+    const expectedInvoiceInput: Parameters<
+      OrderInvoiceDeliveryPort['sendOrderInvoice']
+    >[0] = {
       to: 'invoice@example.com',
       locale: 'en',
-      payload: {
-        locale: 'en',
-        orderNumber: 'WEB-INV-1',
-        fulfillment: 'pickup',
-        paymentMethod: 'card',
-      },
-    });
+      payload: createPrintPayload(),
+    };
+    expect(sendOrderInvoice).toHaveBeenCalledWith(expectedInvoiceInput);
   });
 
   it('rejects an invalid email before reading the print payload', async () => {
