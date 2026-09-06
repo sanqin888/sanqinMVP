@@ -55,8 +55,12 @@ describe('Order member stable identity persistence', () => {
       join(__dirname, './orders.service.ts'),
       'utf8',
     );
+    const orderQueryProjection = readFileSync(
+      join(__dirname, './order-query-projection.ts'),
+      'utf8',
+    );
 
-    expect(ordersService).toContain('userStableId: true');
+    expect(orderQueryProjection).toContain('userStableId: true');
     expect(ordersService).toContain(
       'const ownerUserStableId = order.userStableId ?? null;',
     );

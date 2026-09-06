@@ -100,7 +100,7 @@ import {
 import {
   buildTrustedStoreOrderWhere,
   orderDetailSelect,
-  toOrderDto,
+  toOrderDto as projectOrderDto,
   type OrderDetail,
   type OrderWithItems,
 } from './order-query-projection';
@@ -701,6 +701,10 @@ export class OrdersService {
       0,
       order.totalCents - Math.min(order.totalCents, settledBalanceCents),
     );
+  }
+
+  private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
+    return projectOrderDto(order);
   }
 
   private getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
@@ -1666,7 +1670,7 @@ export class OrdersService {
     });
     if (existing) {
       return {
-        order: toOrderDto(existing as OrderWithItems),
+        order: this.toOrderDto(existing as OrderWithItems),
         internalOrderId: existing.id,
       };
     }
@@ -1809,7 +1813,7 @@ export class OrdersService {
       );
       void this.handleOrderPaidSideEffects(created);
       return {
-        order: toOrderDto(created),
+        order: this.toOrderDto(created),
         internalOrderId: created.id,
       };
     } catch (error) {
@@ -1820,7 +1824,7 @@ export class OrdersService {
         });
         if (raced) {
           return {
-            order: toOrderDto(raced as OrderWithItems),
+            order: this.toOrderDto(raced as OrderWithItems),
             internalOrderId: raced.id,
           };
         }
@@ -1875,7 +1879,7 @@ export class OrdersService {
             where: { id: checkoutIntent.orderId },
             include: { items: true },
           });
-          if (existingOrder) return toOrderDto(existingOrder as OrderWithItems);
+          if (existingOrder) return this.toOrderDto(existingOrder as OrderWithItems);
 
           throw new ConflictException({
             code: 'ORDER_NOT_FOUND',
@@ -1935,7 +1939,7 @@ export class OrdersService {
       }
     }
 
-    return toOrderDto(order);
+    return this.toOrderDto(order);
   }
 
   async createForStore(
@@ -1958,7 +1962,7 @@ export class OrdersService {
       normalizedStoreStableId,
       { appendAcceptedLifecycle: dto.channel === Channel.in_store },
     );
-    return toOrderDto(order);
+    return this.toOrderDto(order);
   }
 
   async createInternal(
@@ -2642,7 +2646,7 @@ export class OrdersService {
     };
 
     const order = await this.createImmediatePaid(dto, dto.clientRequestId);
-    return toOrderDto(order);
+    return this.toOrderDto(order);
   }
 
   async createImmediatePaid(
@@ -2664,7 +2668,7 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
-    const dto = toOrderDto(order);
+    const dto = this.toOrderDto(order);
     return {
       ...dto,
       ...loyaltyUsage,
@@ -2691,7 +2695,7 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
-    const dto = toOrderDto(order);
+    const dto = this.toOrderDto(order);
     return {
       ...dto,
       ...loyaltyUsage,
@@ -2715,7 +2719,7 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
-    const dto = toOrderDto(order);
+    const dto = this.toOrderDto(order);
     return {
       order: {
         ...dto,
@@ -2736,7 +2740,7 @@ export class OrdersService {
     const resolved =
       await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return toOrderDto(updated);
+    return this.toOrderDto(updated);
   }
 
   async updateStatusForStore(
@@ -2749,7 +2753,7 @@ export class OrdersService {
       storeStableId,
     );
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return toOrderDto(updated);
+    return this.toOrderDto(updated);
   }
 
   async updateStatusInternal(
@@ -2981,7 +2985,7 @@ export class OrdersService {
     });
 
     return {
-      order: toOrderDto(updated),
+      order: this.toOrderDto(updated),
       outcome:
         updated.channel === Channel.ubereats
           ? 'pending_platform'
@@ -3473,7 +3477,7 @@ export class OrdersService {
       })) as OrderWithItems;
     });
 
-    return toOrderDto(updatedOrder);
+    return this.toOrderDto(updatedOrder);
   }
 
   /**
@@ -3495,11 +3499,11 @@ export class OrdersService {
         where: { id: resolved.id },
         include: { items: true },
       })) as OrderWithItems;
-      return toOrderDto(current);
+      return this.toOrderDto(current);
     }
 
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return toOrderDto(updated);
+    return this.toOrderDto(updated);
   }
 
   async advanceForStore(
@@ -3523,11 +3527,11 @@ export class OrdersService {
         where: { id: resolved.id },
         include: { items: true },
       })) as OrderWithItems;
-      return toOrderDto(current);
+      return this.toOrderDto(current);
     }
 
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return toOrderDto(updated);
+    return this.toOrderDto(updated);
   }
 
   private formatOrderLogContext(params?: {
