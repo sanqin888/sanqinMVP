@@ -28,7 +28,9 @@ describe('PosOrderOperationsService durable POS creation', () => {
         .mockResolvedValue({ outcome: 'activated' }),
     };
     const lifecycleOutbox = { requestDrain: jest.fn() };
-    const labelPlan = { getByStableId: jest.fn().mockResolvedValue({ labels: [] }) };
+    const labelPlan = {
+      getByStableId: jest.fn().mockResolvedValue({ labels: [] }),
+    };
     const service = new PosOrderOperationsService(
       orders as never,
       scheduling as never,

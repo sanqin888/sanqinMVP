@@ -374,10 +374,22 @@ describe('PosGateway durable print delivery', () => {
       requestedTargets: { customer: true },
       data: baseJob.payload,
     });
-    const reprintUpsert = posPrintJob.upsert.mock.calls.at(-1)?.[0] as {
-      where: { orderStableId_kind: { orderStableId: string; kind: string } };
-    };
-    expect(reprintUpsert.where.orderStableId_kind.orderStableId).toBe('stable-1');
+    const reprintUpsert = (
+      posPrintJob.upsert.mock.calls as Array<
+        [
+          {
+            where: {
+              orderStableId_kind: { orderStableId: string; kind: string };
+            };
+          },
+        ]
+      >
+    ).at(-1)?.[0];
+    expect(reprintUpsert).toBeDefined();
+    if (!reprintUpsert) throw new Error('reprint upsert missing');
+    expect(reprintUpsert.where.orderStableId_kind.orderStableId).toBe(
+      'stable-1',
+    );
     expect(reprintUpsert.where.orderStableId_kind.kind).toMatch(/^REPRINT:/);
   });
 
@@ -392,15 +404,25 @@ describe('PosGateway durable print delivery', () => {
       data: baseJob.payload,
     });
 
-    const amendmentUpsert = posPrintJob.upsert.mock.calls.at(-1)?.[0] as {
-      where: { orderStableId_kind: { kind: string } };
-      create: {
-        customerRequested: boolean;
-        kitchenRequested: boolean;
-        labelRequested: boolean;
-      };
-    };
-    expect(amendmentUpsert.where.orderStableId_kind.kind).toMatch(/^AMENDMENT:/);
+    const amendmentUpsert = (
+      posPrintJob.upsert.mock.calls as Array<
+        [
+          {
+            where: { orderStableId_kind: { kind: string } };
+            create: {
+              customerRequested: boolean;
+              kitchenRequested: boolean;
+              labelRequested: boolean;
+            };
+          },
+        ]
+      >
+    ).at(-1)?.[0];
+    expect(amendmentUpsert).toBeDefined();
+    if (!amendmentUpsert) throw new Error('amendment upsert missing');
+    expect(amendmentUpsert.where.orderStableId_kind.kind).toMatch(
+      /^AMENDMENT:/,
+    );
     expect(amendmentUpsert.create).toEqual(
       expect.objectContaining({
         customerRequested: false,

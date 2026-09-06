@@ -41,7 +41,9 @@ describe('POS printer dispatch idempotency boundary', () => {
     expect(agent).toContain('completedPrintDeliveries.has(deliveryKey)');
     expect(agent).toContain('inFlightPrintDeliveries.get(deliveryKey)');
     expect(agent).toContain('rememberCompletedPrintDelivery(jobId, target)');
-    expect(agent).toContain('fs.renameSync(tempFile, POS_PRINT_COMPLETION_FILE)');
+    expect(agent).toContain(
+      'fs.renameSync(tempFile, POS_PRINT_COMPLETION_FILE)',
+    );
     expect(agent).toContain('socket.on("PRINT_JOB"');
     expect(agent).toContain('socket.emit("PRINT_JOB_ACK"');
     expect(agent).not.toContain('deliveryId');

@@ -13,15 +13,17 @@ describe('PosPrintDispatchListener', () => {
       purpose: 'INITIAL',
       data: { orderNumber: '1001' },
     };
-    const enqueuePrintHandoff = jest
-      .fn()
-      .mockResolvedValue({ jobId: 'job-1' });
-    const listener = new PosPrintDispatchListener({ enqueuePrintHandoff } as never);
+    const enqueuePrintHandoff = jest.fn().mockResolvedValue({ jobId: 'job-1' });
+    const listener = new PosPrintDispatchListener({
+      enqueuePrintHandoff,
+    } as never);
 
     await expect(listener.dispatch(request)).resolves.toEqual({
       jobId: 'job-1',
     });
     expect(enqueuePrintHandoff).toHaveBeenCalledWith(request);
-    expect(ORDER_PRINT_HANDOFF_REQUESTED).toBe('orders.print-handoff.requested');
+    expect(ORDER_PRINT_HANDOFF_REQUESTED).toBe(
+      'orders.print-handoff.requested',
+    );
   });
 });

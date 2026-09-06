@@ -202,7 +202,7 @@ describe('FulfillmentProcessor reprint store routing', () => {
                   }),
                 ],
               }),
-            ]),
+            ]) as unknown,
           }) as unknown,
         }) as unknown,
       }),

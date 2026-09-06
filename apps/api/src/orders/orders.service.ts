@@ -1782,7 +1782,6 @@ export class OrdersService {
     return undefined;
   }
 
-
   private async ensureLoyaltyAccountWithTx(
     tx: Prisma.TransactionClient,
     userId: string,
@@ -1840,7 +1839,9 @@ export class OrdersService {
       ).values(),
     );
     const { specials: activeDailySpecials } =
-      await this.dailySpecialOffers.getActiveDailySpecials(dailySpecialSubjects);
+      await this.dailySpecialOffers.getActiveDailySpecials(
+        dailySpecialSubjects,
+      );
     const activeSpecialsByItemStableId = new Map<
       string,
       (typeof activeDailySpecials)[number]
@@ -3891,13 +3892,17 @@ export class OrdersService {
           )
         : [];
     if (canonicalAddItemSnapshots.length !== addItems.length) {
-      throw new ConflictException('amendment item snapshot preparation mismatch');
+      throw new ConflictException(
+        'amendment item snapshot preparation mismatch',
+      );
     }
     const preparedAddItemSnapshots = canonicalAddItemSnapshots.map(
       (snapshot, index) => {
         const addItem = addItems[index];
         if (!addItem) {
-          throw new ConflictException('amendment item snapshot preparation mismatch');
+          throw new ConflictException(
+            'amendment item snapshot preparation mismatch',
+          );
         }
         const unitPriceCents =
           typeof addItem.unitPriceCents === 'number' &&

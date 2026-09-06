@@ -111,7 +111,8 @@ export class OrderItemSnapshotBuilder {
         qty: Math.round(item.qty),
         normalizedProductId,
         selectionOptions:
-          item.options ?? this.restoreSelectionsFromSnapshot(item.optionsSnapshot),
+          item.options ??
+          this.restoreSelectionsFromSnapshot(item.optionsSnapshot),
       };
     });
 
@@ -318,7 +319,10 @@ export class OrderItemSnapshotBuilder {
         const context = optionLookup.get(optionId);
         if (!context) continue;
         const targetItemStableId = context.choice.targetItemStableId?.trim();
-        if (!targetItemStableId || expandedTargetItems.has(targetItemStableId)) {
+        if (
+          !targetItemStableId ||
+          expandedTargetItems.has(targetItemStableId)
+        ) {
           continue;
         }
         expandedTargetItems.add(targetItemStableId);
@@ -544,7 +548,11 @@ export class OrderItemSnapshotBuilder {
     if (!Array.isArray(value)) return undefined;
     const selections: Record<string, unknown> = {};
     for (const rawGroup of value) {
-      if (!rawGroup || typeof rawGroup !== 'object' || Array.isArray(rawGroup)) {
+      if (
+        !rawGroup ||
+        typeof rawGroup !== 'object' ||
+        Array.isArray(rawGroup)
+      ) {
         continue;
       }
       const group = rawGroup as Record<string, unknown>;
@@ -559,7 +567,11 @@ export class OrderItemSnapshotBuilder {
       if (!groupKey) continue;
       const choices = Array.isArray(group.choices) ? group.choices : [];
       const stableIds = choices.flatMap((rawChoice) => {
-        if (!rawChoice || typeof rawChoice !== 'object' || Array.isArray(rawChoice)) {
+        if (
+          !rawChoice ||
+          typeof rawChoice !== 'object' ||
+          Array.isArray(rawChoice)
+        ) {
           return [];
         }
         const stableId = (rawChoice as Record<string, unknown>).stableId;
@@ -601,7 +613,8 @@ export class OrderItemSnapshotBuilder {
     };
     for (const [groupKey, value] of Object.entries(options)) {
       if (groupKey === 'notes') continue;
-      if (Array.isArray(value)) value.forEach((entry) => pushOptionId(entry, groupKey));
+      if (Array.isArray(value))
+        value.forEach((entry) => pushOptionId(entry, groupKey));
       else pushOptionId(value, groupKey);
     }
     return refs;

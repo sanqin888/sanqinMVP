@@ -125,9 +125,7 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
       .mockResolvedValueOnce([event]);
     const fulfillment = jest
       .fn()
-      .mockRejectedValueOnce(
-        new Error('process crashed before handoff'),
-      )
+      .mockRejectedValueOnce(new Error('process crashed before handoff'))
       .mockResolvedValueOnce({ jobId: 'print-job-replay' });
     const { processor, transaction } = processorWith({
       queryRaw,

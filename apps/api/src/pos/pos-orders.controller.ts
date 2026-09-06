@@ -671,9 +671,9 @@ export class PosOrdersController {
         item.action === OrderAmendmentItemAction.VOID ||
         item.action === OrderAmendmentItemAction.ADD,
     );
-    let beforeLabelPlan:
-      | Awaited<ReturnType<PosOrderOperationsPort['getLabelPlanForStore']>>
-      | null = null;
+    let beforeLabelPlan: Awaited<
+      ReturnType<PosOrderOperationsPort['getLabelPlanForStore']>
+    > | null = null;
     if (hasItemChanges) {
       try {
         beforeLabelPlan = await this.orders.getLabelPlanForStore(
@@ -704,7 +704,8 @@ export class PosOrdersController {
       },
     );
 
-    const paymentMethodChanged = current.paymentMethod !== updated.paymentMethod;
+    const paymentMethodChanged =
+      current.paymentMethod !== updated.paymentMethod;
     const amountChanged =
       current.totalCents !== updated.totalCents ||
       current.paymentTotalCents !== updated.paymentTotalCents ||

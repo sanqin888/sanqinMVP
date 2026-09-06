@@ -232,7 +232,9 @@ describe('OrdersService amendment characterization', () => {
         }),
         update: jest.fn().mockResolvedValue({}),
       },
-      orderAmendmentItem: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      orderAmendmentItem: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       orderItem: {
         update: jest.fn(),
         delete: jest.fn(),
@@ -375,7 +377,8 @@ describe('OrdersService amendment characterization', () => {
     const service = Object.create(OrdersService.prototype) as OrdersService;
     Object.assign(service as unknown as Record<string, unknown>, {
       prisma: {
-        $transaction: (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+        $transaction: (work: (client: typeof tx) => Promise<unknown>) =>
+          work(tx),
       },
       loyalty: { applyAmendmentAdjustments: jest.fn() },
       resolveInternalOrderIdByStableIdOrThrow: jest.fn().mockResolvedValue({
@@ -420,7 +423,8 @@ describe('OrdersService amendment characterization', () => {
     const service = Object.create(OrdersService.prototype) as OrdersService;
     Object.assign(service as unknown as Record<string, unknown>, {
       prisma: {
-        $transaction: (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+        $transaction: (work: (client: typeof tx) => Promise<unknown>) =>
+          work(tx),
       },
       resolveInternalOrderIdByStableIdOrThrow: jest.fn().mockResolvedValue({
         id: '8a3d4c0e-4750-4f6a-9138-000000000311',

@@ -126,9 +126,9 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Durable prep_started handoff to the Print-owned unique initial job. */
-  async handleAcceptedLifecycle(
-    payload: { orderId: string },
-  ): Promise<OrderPrintHandoffResult | null> {
+  async handleAcceptedLifecycle(payload: {
+    orderId: string;
+  }): Promise<OrderPrintHandoffResult | null> {
     this.logger.log({
       event: 'accepted_order_processing_started',
       orderId: payload.orderId,
@@ -404,18 +404,19 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
                   amendmentOptionsKey,
             ) ??
             sourceItems.find(
-              (candidate) =>
-                candidate.productStableId === item.productStableId,
+              (candidate) => candidate.productStableId === item.productStableId,
             );
           const sourceQuantity = Math.max(1, sourceItem?.qty ?? quantity);
           const componentScale = quantity / sourceQuantity;
-          const components = (sourceItem?.components ?? []).map((component) => ({
-            ...component,
-            quantity: Math.max(
-              1,
-              Math.round(component.quantity * componentScale),
-            ),
-          }));
+          const components = (sourceItem?.components ?? []).map(
+            (component) => ({
+              ...component,
+              quantity: Math.max(
+                1,
+                Math.round(component.quantity * componentScale),
+              ),
+            }),
+          );
           return {
             productStableId: item.productStableId,
             nameZh: `${zhPrefix} ${baseZh}`,
@@ -440,9 +441,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         };
         if (payload.beforeLabelPlan) {
           try {
-            const afterLabelPlan = await this.orderLabelPlanService.getByStableId(
-              payload.orderStableId,
-            );
+            const afterLabelPlan =
+              await this.orderLabelPlanService.getByStableId(
+                payload.orderStableId,
+              );
             labelPlan = this.diffLabelPlans(
               payload.beforeLabelPlan,
               afterLabelPlan,

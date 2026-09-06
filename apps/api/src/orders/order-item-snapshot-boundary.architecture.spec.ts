@@ -24,7 +24,10 @@ describe('OrderItem snapshot ownership boundary', () => {
     expect(orders).toContain('this.orderItemSnapshotBuilder.buildMany');
     const amendment = orders.slice(
       orders.indexOf('async createAmendment('),
-      orders.indexOf('async advance(', orders.indexOf('async createAmendment(')),
+      orders.indexOf(
+        'async advance(',
+        orders.indexOf('async createAmendment('),
+      ),
     );
     expect(amendment).toContain('this.orderItemSnapshotBuilder.buildMany');
     expect(amendment).not.toContain('this.calculateLineItems(');
