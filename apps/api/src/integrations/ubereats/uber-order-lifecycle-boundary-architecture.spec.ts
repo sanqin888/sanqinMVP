@@ -47,9 +47,13 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
   it('keeps first-print preparation durable-only after Uber acceptance', () => {
     const ordersService = source('../../orders/orders.service.ts');
     const eventsBus = source('../../orders/order-events.bus.ts');
-    const fulfillment = source('../../orders/processors/fulfillment.processor.ts');
+    const fulfillment = source(
+      '../../orders/processors/fulfillment.processor.ts',
+    );
     const posOrders = source('../../pos/pos-orders.service.ts');
-    const posOperations = source('../../orders/pos-order-operations.service.ts');
+    const posOperations = source(
+      '../../orders/pos-order-operations.service.ts',
+    );
 
     expect(ordersService).not.toContain('emitOrderAccepted');
     expect(eventsBus).not.toContain('order.prep_started');

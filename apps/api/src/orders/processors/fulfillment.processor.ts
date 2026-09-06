@@ -1,4 +1,5 @@
 import {
+  Channel,
   DeliveryProvider,
   FulfillmentType,
   OrderAmendmentItemAction,

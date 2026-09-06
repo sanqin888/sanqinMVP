@@ -172,7 +172,8 @@ describe('PosOrderOperationsService durable POS creation', () => {
   });
 
   it('routes Uber paid -> making status through durable SCHEDULED preparation', async () => {
-    const { service, orders, scheduling, preparation, lifecycleOutbox } = setup();
+    const { service, orders, scheduling, preparation, lifecycleOutbox } =
+      setup();
     scheduling.findByStableIdForStore.mockResolvedValueOnce({
       orderStableId: 'cuberscheduled00000000000001',
       status: 'paid',
