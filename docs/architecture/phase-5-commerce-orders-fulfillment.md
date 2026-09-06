@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@c02c3bac` (Slice 4C-A source merge / PR #2205; production address-row repair remains separately gated)  
-Current status: **SLICE 4D BENEFITS RUNTIME READ CONTRACTION LOCAL / REVIEW PENDING — ORDERS QUOTE/WEB-TENDER/LOYALTY-ONLY ELIGIBILITY READS USE THE STABLE-ID BENEFITS PUBLIC CAPABILITY; DIRECT LOYALTYACCOUNT PERSISTENCE READS ARE REMOVED; THE EXISTING TRANSACTION/PREPARATION MUTATION SEAM IS PRESERVED; COMMERCE DIRECT-DEBT BASELINE REMAINS 22; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@a88d82f7` (Slice 4D merge / PR #2206; production address-row repair remains separately gated)  
+Current status: **SLICE 4E UBER DIRECT PROVIDER IMPLEMENTATION CONTRACTION LOCAL / REVIEW PENDING — FULFILLMENT CONSUMES A TOKEN-BACKED DELIVERIES DISPATCH PORT INSTEAD OF `UberDirectService`; PROVIDER WIRE / ALERT / LOCAL-PERSISTENCE-FAILURE SEMANTICS ARE UNCHANGED; COMMERCE DIRECT-DEBT BASELINE REMAINS 22; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -18,7 +18,7 @@ Historical Slice-level active verification evidence from earlier phases remains 
 
 ## Entry state
 
-Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 4C local source state, direct-import totals are:
+Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 4E local source state, direct-import totals are:
 
 - payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
@@ -64,7 +64,7 @@ This is a source inventory, not a claim that every listed access should be remov
 
 | Production file | Direct delegates / raw persistence | Ownership assessment |
 |---|---|---|
-| `orders.service.ts` | `order`, `checkoutIntent`, `loyaltyAccount`, `orderAmendment`, `orderAmendmentItem`, `orderItem`; `$transaction` | `order/orderItem/orderAmendment*` are Orders-owned. Slice 4B removes direct Catalog `menuItem` reads; Slice 4C removes direct Customer `user/userAddress` reads through the Customer-owned runtime context capability. `loyaltyAccount` remains Benefits leakage; `checkoutIntent` is Payments/Web-checkout persistence and is production-sensitive. |
+| `orders.service.ts` | `order`, `checkoutIntent`, `orderAmendment`, `orderAmendmentItem`, `orderItem`; `$transaction` | `order/orderItem/orderAmendment*` are Orders-owned. Slice 4B removes direct Catalog `menuItem` reads; Slice 4C removes direct Customer `user/userAddress` reads; Slice 4D removes the direct Benefits `loyaltyAccount` read. `checkoutIntent` is Payments/Web-checkout persistence and is production-sensitive. |
 | `order-ingestion.service.ts` | transaction-scoped `order`, `orderItem`, `uberOrderItemModifier` | Order persistence is owner-local; writing `uberOrderItemModifier` from the Orders ingestion service is provider-persistence coupling and requires a later controlled boundary decision. |
 | `order-scheduling-query.service.ts` | `order` | Orders-owned. |
 | `order-label-plan.service.ts` | `order` | `order` is owner-local. Slice 4B moves current packaging/label configuration reads behind the Catalog public capability. |
@@ -75,27 +75,25 @@ This is a source inventory, not a claim that every listed access should be remov
 | `processors/fulfillment.processor.ts` | `order`, `checkoutIntent` | Order read is local; checkout metadata dependency remains cross-owner. |
 | `processors/order-lifecycle-outbox.processor.ts` | `$transaction` + raw SQL across `OpsEvent`, `Order` | Durable Orders lifecycle reads only its own event/order facts and checkpoints successful INITIAL handoff as `order.initial_print_handoff`; Slice 2 removes the Print-owned `PosPrintJob` probe. |
 
-Unique non-Orders persistence surfaces still reached directly from the Orders tree after local Slice 4C are therefore:
+Unique non-Orders persistence surfaces still reached directly from the Orders tree after Slice 4D are therefore:
 
-- Benefits: `LoyaltyAccount`;
 - Payments / Web checkout: `CheckoutIntent`;
 - External/provider persistence: `UberOrderItemModifier`.
 
-Slice 4B removes Catalog `MenuItem`; Slice 4C removes Identity / Customer `User` and `UserAddress`. Slice 2 previously removed the Store Operations / Print `PosPrintJob` existence read from the Orders lifecycle query.
+Slice 4B removes Catalog `MenuItem`; Slice 4C removes Identity / Customer `User` and `UserAddress`; Slice 4D removes Benefits `LoyaltyAccount`. Slice 2 previously removed the Store Operations / Print `PosPrintJob` existence read from the Orders lifecycle query.
 
 ## Concrete service/module imports from the Orders tree
 
-The narrow public ports already in use are not listed as concrete-service debt here. The following concrete implementations remain directly imported by production Orders/Fulfillment code. `UberDirectService` currently lives under `deliveries/**`, which the scanner maps into the same Commerce context, so it does not consume a numeric cross-context allowance; it is still provider-specific implementation leakage relative to the target ownership model.
+The narrow public ports already in use are not listed as concrete-service debt here. After Slice 4E, the remaining concrete business-service imports in production Orders code are limited to the intentionally preserved transaction/preparation mutation seam; `FulfillmentProcessor` no longer imports the concrete Uber Direct provider implementation.
 
 `PrismaService` remains the broadest concrete infrastructure dependency: it is consumed directly by `orders.service.ts`, `order-ingestion.service.ts`, `order-scheduling-query.service.ts`, `order-label-plan.service.ts`, `print-pos-payload.service.ts`, `order-preparation.service.ts`, `pos-order-read.service.ts`, `processors/fulfillment.processor.ts`, and `processors/order-lifecycle-outbox.processor.ts`; `admin-member-orders-read.service.ts` consumes the same service through the local `orders-prisma.ts` re-export. This is why Commerce -> Runtime remains **10** even though some individual persistence accesses are valid Orders-owned data.
 
 | Consumer | Concrete dependency | Current purpose / classification |
 |---|---|---|
-| `OrdersService` | `LoyaltyService` | stable customer -> DB identity resolution, available tender, reservation/mutation/refund/amendment behavior not yet fully behind Benefits public capabilities |
-| `OrdersService` | `MembershipService` | coupon validation/reserve/commit/mark-used behavior |
-| `FulfillmentProcessor` | `UberDirectService` | paid-order Uber Direct dispatch; provider-specific implementation remains a later controlled Fulfillment concern |
+| `OrdersService` | `LoyaltyService` | prepared-payment identity plus transaction-/mutation-sensitive Loyalty reserve/commit/refund/amendment behavior deliberately preserved for atomicity |
+| `OrdersService` | `MembershipService` | transaction-/mutation-sensitive coupon validation/reserve/commit/mark-used behavior deliberately preserved for atomicity |
 
-After Slice 4C, composition still directly imports same-context `DeliveriesModule`; Location, Catalog order facts, Customer runtime reads, Notifications, Loyalty, Brand/Store config, Membership and Promotions are consumed through registered public surfaces. The broad `OrdersService` still consumes concrete Loyalty/Membership services in addition to narrower ports. Slice 4A removed the dead OrdersService Uber Direct tail and concrete Location import; Slice 4B removes Catalog Prisma types/delegates; Slice 4C removes Customer Prisma delegates from Orders.
+After Slice 4E, Deliveries composition is through `deliveries/public-api.ts`; Location, Catalog order facts, Customer runtime reads, Notifications, Loyalty, Brand/Store config, Membership, Promotions and Uber Direct dispatch are consumed through registered public surfaces/capabilities. The broad `OrdersService` still consumes concrete Loyalty/Membership services only at the deferred transaction/preparation seam. Slice 4A removed the dead OrdersService Uber Direct tail and concrete Location import; Slice 4B removed Catalog Prisma types/delegates; Slice 4C removed Customer Prisma delegates; Slice 4D removed Benefits runtime reads/direct LoyaltyAccount persistence; Slice 4E removes the active Fulfillment concrete Uber Direct dependency.
 
 For completeness, same-context concrete wiring found by the source audit is not classified as cross-owner debt by itself: `OrdersController -> OrdersService`; `PosOrderOperationsService -> OrdersService + OrderSchedulingQueryService`; `PosOrderReadService -> OrdersService`; `OrderLifecycleOutboxProcessor -> FulfillmentProcessor + OrderPreparationService`; `ScheduledOrderProcessor -> OrderPreparationService`; and `FulfillmentProcessor -> PrintPosPayloadService + OrderLabelPlanService`. These relationships still matter when `OrdersService` is later split, but Slice 0 does not manufacture interfaces around them merely to reduce concrete class references.
 
@@ -440,7 +438,7 @@ This repair changes no public route shape, dependency direction, scanner baselin
 
 ### Slice 4D — Benefits runtime read contraction / transaction-seam preservation
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4d`, based on `origin/dev@c02c3bac`.
+Status: **MERGED / CI GREEN** — PR #2206, final head `4c6795de89e775dffd3228d8c9d34f617bf1c936`, squash merge `a88d82f7b5dd9917dd4789e965fa252e1b3fda7d`; final PR CI #5242 passed API and Web.
 
 Migration classification: **Class A owner-boundary/runtime-read contraction**. No Prisma schema/migration, dependency/lockfile, public HTTP route, pricing/promotion policy, payment/refund behavior, order lifecycle, provider wire contract or Benefits reservation/COMMIT transaction semantics change.
 
@@ -454,4 +452,20 @@ Because the two concrete import statements remain for that preserved seam, the m
 
 Phase-level closeout verification must retain member coupon pricing, points redemption, Web stored-balance checkout and loyalty-only order scenarios. No standalone Slice 4D production checklist is required under the Phase 5 verification cadence.
 
-Planned follow-on after Slice 4D is: **remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 4E — Uber Direct provider implementation contraction
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4e`, based on `origin/dev@a88d82f7`.
+
+Migration classification: **Class A internal provider-boundary contraction**. No Prisma schema/migration, package/lockfile, public HTTP route, Uber Direct provider request/response wire shape, authentication mode, Order lifecycle, payment/refund behavior, dispatch-failure alert policy or external-delivery persistence semantics change.
+
+Deliveries now owns the token-backed `UBER_DIRECT_DELIVERY_DISPATCHER` contract. The public capability contains only the provider-facing delivery request/result facts already required by Fulfillment; `UberDirectService` implements that port internally and remains the sole HTTP/auth/response-normalization implementation. `DeliveriesModule` registers the token with `useExisting: UberDirectService` and exports only the token, so consumers cannot obtain the concrete service through module composition. `deliveries/public-api.ts` exports the dispatcher contract/types and `DeliveriesModule` but not `UberDirectService`.
+
+`FulfillmentProcessor` now injects `UberDirectDeliveryDispatcherPort` through `UBER_DIRECT_DELIVERY_DISPATCHER` and no longer imports `deliveries/uber-direct.service`. `OrdersModule` composes Deliveries through `deliveries/public-api.ts` instead of the deep `deliveries.module` path. Fulfillment still decides whether an Order is an eligible Uber delivery, constructs the same stable `orderRef` / pickup code / manifest / destination / pickup-ready facts, writes the returned `deliveryId` to `Order.externalDeliveryId`, and owns the existing failure alert behavior.
+
+The current provider-success/local-persistence-failure distinction is deliberately unchanged: once the dispatcher resolves successfully, a subsequent `Order.externalDeliveryId` write failure is logged as `uber_direct_delivery_created_persistence_failed` and is **not** treated as a fresh provider-create failure or automatically retried. The broader in-memory `order.paid.verified` durability/idempotency gap recorded by Slice 0 also remains deferred; 4E only hides the concrete provider implementation and does not create a new provider call, retry mechanism or durable dispatch outbox.
+
+Because `deliveries/**` and `orders/**` are both mapped to Commerce today, this contraction does not change the monotonic cross-context direct-import totals: Commerce remains **22** and the public SCC baseline remains empty. The architecture scanner instead locks the structural improvement: the public dispatch contract must stay framework/Prisma/Http/concrete-service/internal-Order-ID free; `DeliveriesModule` must export only the dispatcher token; `FulfillmentProcessor` may not regain `UberDirectService`; and `OrdersModule` may not deep-import `deliveries.module`. Existing `UberDirectService` characterization continues to lock provider payload/auth/response normalization, while focused Fulfillment coverage locks the request handed to the dispatcher and the existing failure/persistence-failure distinction.
+
+Phase-level closeout verification should retain one Uber Direct success path plus provider-create failure alert behavior when an appropriate test/sandbox delivery path is available. No standalone 4E production verification is required under the Phase 5 cadence.
+
+Planned follow-on after Slice 4E is: **Fulfillment / Print type-boundary contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.

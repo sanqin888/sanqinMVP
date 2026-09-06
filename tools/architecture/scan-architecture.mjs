@@ -4728,6 +4728,154 @@ if (ordersBenefitsRuntimeReadBoundary) {
   }
 }
 
+const ordersUberDirectDispatchBoundary =
+  config.ordersUberDirectDispatchBoundary ?? null;
+if (ordersUberDirectDispatchBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersUberDirectDispatchBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.ownerModule,
+    boundary.publicSurface,
+    boundary.fulfillmentProcessor,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Uber Direct dispatch boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'UBER_DIRECT_DELIVERY_DISPATCHER',
+      'UberDirectDeliveryDispatcherPort',
+      'UberDirectDeliveryOptions',
+      'UberDirectDeliveryResult',
+      'UberDirectDropoffDetails',
+      'createDelivery',
+      'orderRef',
+      'deliveryId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Uber Direct dispatch contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('HttpService') ||
+      source.includes('UberDirectService') ||
+      /\borderId\b/.test(source)
+    ) {
+      failures.push(
+        `Uber Direct dispatch contract must remain framework/persistence/concrete-service/internal-order-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    if (
+      !source.includes('implements UberDirectDeliveryDispatcherPort') ||
+      !source.includes("from './uber-direct-dispatch.contract'") ||
+      !source.includes('createDelivery(')
+    ) {
+      failures.push(
+        `Uber Direct owner service must implement the public dispatcher port: ${boundary.ownerService}`,
+      );
+    }
+  }
+
+  const ownerModulePath = join(REPOSITORY_ROOT, boundary.ownerModule);
+  if (existsSync(ownerModulePath)) {
+    const source = readFileSync(ownerModulePath, 'utf8');
+    if (
+      !source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      !source.includes('useExisting: UberDirectService') ||
+      !/exports:\s*\[[\s\S]*UBER_DIRECT_DELIVERY_DISPATCHER/.test(source) ||
+      /exports:\s*\[[\s\S]*UberDirectService/.test(source)
+    ) {
+      failures.push(
+        `DeliveriesModule must export only the token-backed Uber Direct dispatcher, not the concrete service: ${boundary.ownerModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'UBER_DIRECT_DELIVERY_DISPATCHER',
+      'UberDirectDeliveryDispatcherPort',
+      'UberDirectDeliveryOptions',
+      'UberDirectDeliveryResult',
+      'UberDirectDropoffDetails',
+      'DeliveriesModule',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Deliveries public surface is missing ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+    if (source.includes('UberDirectService')) {
+      failures.push(
+        `Deliveries public surface must not expose the concrete Uber Direct service: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const fulfillmentProcessorPath = join(
+    REPOSITORY_ROOT,
+    boundary.fulfillmentProcessor,
+  );
+  if (existsSync(fulfillmentProcessorPath)) {
+    const source = readFileSync(fulfillmentProcessorPath, 'utf8');
+    if (
+      !source.includes("from '../../deliveries/public-api'") ||
+      !source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      !source.includes('UberDirectDeliveryDispatcherPort') ||
+      !source.includes('private readonly uberDirectDispatcher') ||
+      !source.includes('this.uberDirectDispatcher.createDelivery') ||
+      source.includes('deliveries/uber-direct.service') ||
+      /\bUberDirectService\b/.test(source)
+    ) {
+      failures.push(
+        `FulfillmentProcessor must consume Uber Direct only through the Deliveries public dispatcher capability: ${boundary.fulfillmentProcessor}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../deliveries/public-api'") ||
+      !source.includes('DeliveriesModule') ||
+      source.includes("from '../deliveries/deliveries.module'")
+    ) {
+      failures.push(
+        `OrdersModule must compose Deliveries through its public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(
