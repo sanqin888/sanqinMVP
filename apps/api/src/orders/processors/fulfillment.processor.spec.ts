@@ -335,14 +335,17 @@ describe('FulfillmentProcessor Uber Direct failure alert', () => {
             priceCents: 1299,
           },
         ],
-        destination: expect.objectContaining({
+        destination: {
           name: 'Test Customer',
           phone: '+14165550123',
           addressLine1: '100 Yonge St',
+          addressLine2: undefined,
           city: 'Toronto',
           province: 'ON',
           postalCode: 'M5C 2W1',
-        }),
+          country: 'Canada',
+          instructions: undefined,
+        },
       }),
     );
     expect(listActiveAdminRecipients).toHaveBeenCalledTimes(1);

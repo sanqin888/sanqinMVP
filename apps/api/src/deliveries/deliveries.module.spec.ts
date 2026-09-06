@@ -15,7 +15,8 @@ describe('DeliveriesModule public dispatch capability', () => {
       providers: [
         {
           provide: TEST_UBER_DIRECT_CONSUMER,
-          useFactory: (dispatcher: UberDirectDeliveryDispatcherPort) => dispatcher,
+          useFactory: (dispatcher: UberDirectDeliveryDispatcherPort) =>
+            dispatcher,
           inject: [UBER_DIRECT_DELIVERY_DISPATCHER],
         },
       ],

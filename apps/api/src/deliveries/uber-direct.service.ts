@@ -6,7 +6,7 @@ import type {
   UberDirectDeliveryDispatcherPort,
   UberDirectDeliveryOptions,
   UberDirectDeliveryResult,
-  UberDirectDropoffDetails,
+  UberDirectManifestItem,
   UberDirectPickupDetails,
 } from './uber-direct-dispatch.contract';
 
