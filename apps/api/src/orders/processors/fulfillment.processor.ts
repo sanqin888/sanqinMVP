@@ -109,7 +109,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
   private readonly onAccepted = async (payload: { orderId: string }) => {
     try {
-      await this.handleAcceptedLifecycle(payload);
+      await this.handleAcceptedLifecycle({ ...payload, origin: 'memory' });
     } catch (error) {
       // The in-memory bus remains a best-effort fast path for same-process
       // orders. Durable lifecycle consumers call handleAcceptedLifecycle()
@@ -142,10 +142,14 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Durable Order-lifecycle entrypoint. Failures are rethrown so the outbox
-   * consumer can retain/retry the event instead of acknowledging lost work.
+   * Shared prep-started print materializer. In-store initial printing is valid
+   * only from the durable lifecycle; a same-process status event must not create
+   * a second initial-print path.
    */
-  async handleAcceptedLifecycle(payload: { orderId: string }): Promise<void> {
+  async handleAcceptedLifecycle(payload: {
+    orderId: string;
+    origin: 'memory' | 'durable';
+  }): Promise<void> {
     this.logger.log({
       event: 'accepted_order_processing_started',
       orderId: payload.orderId,
@@ -166,9 +170,9 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    if (order.channel === Channel.in_store) {
+    if (order.channel === Channel.in_store && payload.origin !== 'durable') {
       this.logger.log(
-        `[Fulfillment] Skip accepted auto print for in_store order: ${payload.orderId}`,
+        `[Fulfillment] Skip non-durable auto print for in_store order: ${payload.orderId}`,
       );
       return;
     }

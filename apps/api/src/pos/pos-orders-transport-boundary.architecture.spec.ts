@@ -37,6 +37,9 @@ describe('Orders ↔ POS transport boundary', () => {
     const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
     const service = read(resolve(POS_ROOT, 'pos-orders.service.ts'));
     const publicApi = read(resolve(ORDERS_ROOT, 'public-api.ts'));
+    const operationsContract = read(
+      resolve(ORDERS_ROOT, 'pos-order-operations.contract.ts'),
+    );
 
     for (const source of [canonical, service]) {
       expect(source).toContain("from '../orders/public-api'");
@@ -51,6 +54,8 @@ describe('Orders ↔ POS transport boundary', () => {
 
     expect(publicApi).toContain('POS_ORDER_OPERATIONS');
     expect(publicApi).toContain('PosOrderOperationsPort');
+    expect(operationsContract).toContain('activateImmediatePreparation');
+    expect(service).toContain('this.orders.activateImmediatePreparation');
   });
 
   it('keeps the canonical POS order routes on the POS transport', () => {

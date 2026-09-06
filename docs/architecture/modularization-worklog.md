@@ -1220,10 +1220,17 @@ is claimed per repository workflow.
 
 ### 2026-09-05 — Phase 5 Slice 1A: POS cash payment-summary snapshot readiness
 
-**PR/SHA:** local branch `refactor/phase5-slice1a-pos-cash-snapshot` based on `origin/dev@07311f74`  
-**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING — NO LIFECYCLE OR PRINT-TRIGGER CUTOVER  
+**PR/SHA:** PR #2194; head `a6abb191`; merge `db7a1de9`  
+**State:** MERGED / PR CI GREEN — CI #5195 passed; NO LIFECYCLE OR PRINT-TRIGGER CUTOVER IN 1A ITSELF  
 **Result:** Post-Slice-0 tracing showed current POS first print is still triggered by the browser through `/pos/orders/:orderStableId/print`, which is semantically an `order.reprint` / `REPRINT:<timestamp>`, followed by a separate `advanceOrder()` to `making`. Before that path can converge on durable `order.accepted -> order.prep_started -> AUTO`, the cash receipt's `cashReceivedCents` / `cashChangeCents` must be recoverable without the browser. Slice 1A adds optional `cashReceivedCents` to the shared CreateOrder contract and sends it only on POS cash creation. Orders accepts it only for authenticated in-store CASH orders, validates the amount against the server-calculated remaining cash tender, preserves the existing POS upward-to-5-cent cash collection rule, derives change server-side, and stores only `{ cashReceivedCents, cashChangeCents }` in the existing `Order.paymentBreakdownJson`. It deliberately does not write in-store `externalCents`, so current Web external-payment/refund reconstruction and in-store refund semantics are unchanged. `Order.totalCents`, tax, promotions, Benefits settlement, Order status and paid/making transitions remain unchanged. `PrintPosPayloadService` now recovers those persisted cash receipt facts into the same top-level payload fields already understood by the Windows printer agent; the existing transient `/print` cash fields remain usable by older PWA bundles until Slice 1B removes the first-print browser orchestration. Focused tests cover server-derived change with an exact Order total that requires 5-cent cash rounding, insufficient-cash rejection, and persisted print-payload recovery. No Prisma schema/migration, dependency, architecture allowance/SCC, Clover/Web Ecommerce provider path, Uber runtime, PrintJob kind or printer protocol change is included. No local lint/build/test is claimed per repository workflow.  
 **Details:** `libs/order/contracts.ts`, `apps/web/src/app/[locale]/(device)/store/pos/payment/page.tsx`, `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/print-pos-payload.service.ts`, `apps/api/src/pos/dto/print-pos-payload.dto.ts`, focused specs, `docs/architecture/phase-5-commerce-orders-fulfillment.md`, `docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-05 — Phase 5 Slice 1B: POS ordinary checkout durable lifecycle cutover
+
+**PR/SHA:** local branch `refactor/phase5-slice1b-pos-durable-lifecycle` based on `origin/dev@db7a1de9`  
+**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING — CONTROLLED POS CUTOVER; PRODUCTION VERIFICATION PENDING  
+**Result:** Replaced the ordinary in-store POS browser-owned first-print/status choreography with the existing durable Orders lifecycle. Authenticated `channel=in_store` creation now appends `orders.lifecycle/order.accepted` in the same Prisma transaction as the paid Order, using `order.accepted:<orderStableId>` with `skipDuplicates`. After that transaction returns, `PosOrderOperationsService` asks the existing `OrderLifecycleOutboxProcessor` to drain immediately; the normal 500 ms poll remains restart/failure recovery. The same consumer activates the Order through `OrderPreparationService`, which already writes `status=making + durable order.prep_started` atomically, then durable Fulfillment materializes the unique `AUTO` PrintJob. `FulfillmentProcessor` now distinguishes durable vs same-process origin so durable in-store prep can print while a non-durable in-store status event remains non-printing, preventing a second initial-print mechanism. The POS payment page no longer calls `printOrderCloud()` or `advanceOrder()` after creation; source regression coverage locks that contraction. If staff hit `/advance` during the brief `in_store + paid` window, POS now routes that case through the same store-scoped durable preparation capability instead of the generic direct state transition; only later states such as `making -> ready` keep the normal advance path. Explicit operator reprint and later staff advancement remain available through their existing routes and are not compatibility first-checkout paths. The user explicitly authorized no old-PWA compatibility for this cutover and will deploy in a non-business-hours window, load the new POS bundle, then actively test. No active compatibility record is introduced. No Prisma schema/migration, dependency, context graph/SCC allowance, Web Clover Ecommerce, POS Clover Terminal, Uber provider behavior, pricing, Benefits COMMIT or refund semantics are changed. Focused tests lock atomic accepted-fact creation, eager durable drain, `origin=durable`, in-store AUTO printing and browser removal of first `/print + /advance`. No local lint/build/test is claimed per repository workflow.  
+**Details:** `docs/architecture/phase-5-commerce-orders-fulfillment.md`, `docs/architecture/current-dependency-graph.md`, `apps/api/src/orders/orders.service.ts`, `apps/api/src/orders/pos-order-operations.service.ts`, `apps/api/src/orders/processors/order-lifecycle-outbox.processor.ts`, `apps/api/src/orders/processors/fulfillment.processor.ts`, focused API/Web specs, and the POS payment page.
 
 ## Current position
 
@@ -1291,12 +1298,13 @@ is claimed per repository workflow.
   cooldown and success behavior was verified separately. The POS Order Management 30-row historical-query defect
   found during verification is a separate post-Phase-4 hotfix and does not reopen the closed phase.
 - Phase 5: Slice 0 is **MERGED / CI GREEN** via PR #2193 / `07311f74`, including merged dev CI #5194. Slice 1A is
-  **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1a-pos-cash-snapshot`. It makes POS cash
-  `cashReceivedCents` / server-derived `cashChangeCents` recoverable from the existing Order payment-summary JSON,
-  preserving the current upward-to-5-cent cash collection rule without changing exact Order totals, refunds,
-  lifecycle transitions, PrintJob kinds, Web Clover or Uber runtime. Phase 5 execution is revised to converge the
-  four initial-print/lifecycle paths before Messaging contraction; Slice 1B is the planned POS
-  `REPRINT + advance -> durable accepted/prep_started/AUTO` cutover after 1A review/CI and production verification.
+  **MERGED / PR CI GREEN** via PR #2194 / `db7a1de9`, with CI #5195 passing. Slice 1B is **SOURCE COMPLETE / LOCAL
+  REVIEW PENDING** on `refactor/phase5-slice1b-pos-durable-lifecycle`: ordinary in-store POS creation now owns a
+  durable `order.accepted` fact in the Order transaction, the existing outbox is eagerly woken after commit, and
+  durable `prep_started` materializes the sole `AUTO` first print. The POS payment page no longer calls first
+  `printOrderCloud()` or first `advanceOrder()`. The user explicitly authorized a maintenance-window cutover with no
+  old-PWA compatibility. Context debt/SCC baselines remain unchanged; production verification is required before
+  Slice 1C begins.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

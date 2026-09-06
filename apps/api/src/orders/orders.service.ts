@@ -45,6 +45,11 @@ import {
   ORDER_STATUS_TRANSITIONS,
   OrderStatus,
 } from './order-status';
+import {
+  ORDER_ACCEPTED_LIFECYCLE_EVENT,
+  ORDER_LIFECYCLE_OUTBOX_SOURCE,
+  orderAcceptedIdempotencyKey,
+} from './order-lifecycle';
 import { generateStableId, normalizeStableId } from '../common/utils/stable-id';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import {
@@ -410,6 +415,10 @@ export type PreparedPaymentOrderSnapshot = {
 export type ConfirmedPaymentOrderResult = {
   order: OrderDto;
   internalOrderId: string;
+};
+
+type CreateInternalOptions = {
+  appendAcceptedLifecycle?: boolean;
 };
 
 @Injectable()
@@ -2932,6 +2941,7 @@ export class OrdersService {
       dto,
       undefined,
       normalizedStoreStableId,
+      { appendAcceptedLifecycle: dto.channel === Channel.in_store },
     );
     return this.toOrderDto(order);
   }
@@ -2940,6 +2950,7 @@ export class OrdersService {
     dto: CreateOrderInput,
     idempotencyKey?: string,
     authenticatedStoreStableId?: string,
+    options: CreateInternalOptions = {},
   ): Promise<OrderWithItems> {
     const contactPolicy = this.resolveContactPolicy(dto);
     const paymentMethod = this.resolvePaymentMethod(dto);
@@ -3504,6 +3515,18 @@ export class OrdersService {
                 userId,
                 couponId: couponInfo.coupon.id,
                 orderId,
+              });
+            }
+
+            if (options.appendAcceptedLifecycle) {
+              await tx.opsEvent.createMany({
+                data: {
+                  idempotencyKey: orderAcceptedIdempotencyKey(orderStableId),
+                  eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
+                  source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+                  payload: { orderStableId },
+                },
+                skipDuplicates: true,
               });
             }
 

@@ -140,6 +140,10 @@ export interface PosOrderOperationsPort {
     orderStableIds: string[],
     storeStableId: string,
   ): Promise<Map<string, 'IMMEDIATE' | 'SCHEDULED'>>;
+  activateImmediatePreparation(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<void>;
   activateScheduledPreparation(
     orderStableId: string,
     storeStableId: string,

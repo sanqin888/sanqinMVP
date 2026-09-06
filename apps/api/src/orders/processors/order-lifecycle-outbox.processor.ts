@@ -63,6 +63,14 @@ export class OrderLifecycleOutboxProcessor
     this.timer = null;
   }
 
+  /**
+   * Eagerly asks the same durable consumer to drain after a producer commits.
+   * If a poll is already running, the normal interval remains the recovery path.
+   */
+  requestDrain(): void {
+    void this.pollSafely();
+  }
+
   /** Public for deterministic worker/replay tests and operational draining. */
   async processOnce(limit = 25): Promise<number> {
     let completed = 0;
@@ -123,6 +131,7 @@ export class OrderLifecycleOutboxProcessor
 
       await this.fulfillment.handleAcceptedLifecycle({
         orderId: item.orderId,
+        origin: 'durable',
       });
       return true;
     });

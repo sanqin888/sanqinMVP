@@ -93,6 +93,9 @@ describe('OrdersService', () => {
       findFirst: jest.Mock;
       updateMany: jest.Mock;
     };
+    opsEvent: {
+      createMany: jest.Mock;
+    };
   };
   let brandStoreConfigReader: {
     getConfiguredStoreSnapshot: jest.Mock;
@@ -200,6 +203,9 @@ describe('OrdersService', () => {
       checkoutIntent: {
         findFirst: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      opsEvent: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -1295,6 +1301,7 @@ describe('OrdersService', () => {
           data: expect.objectContaining({ storeId: 'server-store' }) as unknown,
         }),
       );
+      expect(prisma.opsEvent.createMany).not.toHaveBeenCalled();
     } finally {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;
@@ -1304,17 +1311,23 @@ describe('OrdersService', () => {
   it('POS 门店建单持久化 authenticated storeStableId 而不是 deployment default', async () => {
     const originalStoreId = process.env.STORE_ID;
     process.env.STORE_ID = 'deployment-default-store';
-    prisma.order.create.mockResolvedValue({
-      id: 'pos-store-order',
-      orderStableId: 'pos-store-order-stable',
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      status: 'paid',
-      paidAt: new Date(),
-      createdAt: new Date(),
-      paymentMethod: 'CASH',
-      items: [],
-    });
+    let createdOrderStableId = '';
+    prisma.order.create.mockImplementation(
+      (args: { data: { orderStableId: string } }) => {
+        createdOrderStableId = args.data.orderStableId;
+        return Promise.resolve({
+          id: 'pos-store-order',
+          orderStableId: createdOrderStableId,
+          channel: 'in_store',
+          fulfillmentType: 'pickup',
+          status: 'paid',
+          paidAt: new Date(),
+          createdAt: new Date(),
+          paymentMethod: 'CASH',
+          items: [],
+        });
+      },
+    );
 
     try {
       await service.createForStore(
@@ -1335,6 +1348,16 @@ describe('OrdersService', () => {
           }) as unknown,
         }),
       );
+      expect(createdOrderStableId).toBeTruthy();
+      expect(prisma.opsEvent.createMany).toHaveBeenCalledWith({
+        data: {
+          idempotencyKey: `order.accepted:${createdOrderStableId}`,
+          eventName: 'order.accepted',
+          source: 'orders.lifecycle',
+          payload: { orderStableId: createdOrderStableId },
+        },
+        skipDuplicates: true,
+      });
     } finally {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;

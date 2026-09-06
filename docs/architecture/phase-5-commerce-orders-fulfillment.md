@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@07311f74` (Slice 0 merge)  
-Current status: **SLICE 1A SOURCE COMPLETE / LOCAL REVIEW PENDING — POS CASH SNAPSHOT READINESS; NO LIFECYCLE/PRINT-TRIGGER CUTOVER YET**
+Current implementation base: `origin/dev@db7a1de9` (Slice 1A merge)  
+Current status: **SLICE 1B SOURCE COMPLETE / LOCAL REVIEW PENDING — POS ORDINARY CHECKOUT CUT OVER TO DURABLE ACCEPTED/PREP_STARTED/AUTO; PRODUCTION VERIFICATION PENDING**
 
 ## Goal
 
@@ -191,7 +191,7 @@ Explicit operator reprints remain separate `REPRINT:*` operations, and amendment
 
 ### Slice 1A — POS cash payment-summary snapshot readiness
 
-Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1a-pos-cash-snapshot`.
+Status: **MERGED / PR CI GREEN** — PR #2194, head `a6abb191`, merge `db7a1de9`; PR CI #5195 passed. Production behavior remains intentionally unchanged by 1A itself.
 
 Migration classification: **backward-compatible additive contract/snapshot change**. No Prisma schema/migration, provider protocol, Order lifecycle transition, PrintJob identity, architecture allowance or context dependency direction changes.
 
@@ -206,4 +206,52 @@ Current POS cash collection computes `cashReceivedCents` and `cashChangeCents` o
 
 Focused characterization locks server-derived change, including a non-five-cent exact Order total, rejects insufficient cash, and proves print-payload recovery from persisted Order facts.
 
-Planned follow-on order is: **1B POS ordinary durable lifecycle cutover -> 1C Web/local durable lifecycle -> 1D POS Clover Terminal durable lifecycle -> 1E Uber convergence verification -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout**.
+### Slice 1B — POS ordinary checkout durable lifecycle cutover
+
+Status: **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase5-slice1b-pos-durable-lifecycle`.
+
+Migration classification: **Class C controlled critical cutover** for the store-facing POS fulfillment/printing path. The user explicitly authorized a maintenance-window cutover without preserving the old PWA first-print/first-advance sequence. No Prisma schema/migration, dependency, public route name, provider protocol or architecture allowance is changed.
+
+Canonical ordinary POS flow after 1B:
+
+```text
+POST /pos/orders
+  -> Order(status=paid) + durable orders.lifecycle/order.accepted in the same DB transaction
+  -> transaction commit
+  -> eager wake of the existing OrderLifecycleOutboxProcessor
+  -> OrderPreparationService
+  -> Order.status=making + durable order.prep_started in one Orders transaction
+  -> OrderLifecycleOutboxProcessor
+  -> FulfillmentProcessor durable origin
+  -> AUTO PrintJob
+  -> existing Print dispatch/retry/ACK path
+```
+
+The 500 ms lifecycle poll remains the crash/restart recovery path. The eager wake only asks the **same durable consumer** to drain after commit; it does not directly call preparation or print and therefore does not create a second business side-effect path.
+
+Behavioral contraction in the POS payment browser is atomic for the new deployed bundle: after successful `/pos/orders` creation it no longer calls `printOrderCloud()` and no longer calls `advanceOrder()`. The old sequence `create -> REPRINT:<timestamp> -> advance paid->making` is therefore retired as the canonical first-order path. `/pos/orders/:orderStableId/print` remains because it is the explicit operator reprint capability, and `/advance` remains because staff still use it for later order-state progression such as `making -> ready`; neither retained route is a first-checkout compatibility path. To close the small race where staff could press advance while a fresh in-store Order is still `paid`, `PosOrdersService.advance()` now routes only that `in_store + paid` case through store-scoped `activateImmediatePreparation()` instead of the generic direct status transition, then re-reads the Order. Thus `paid -> making` cannot bypass durable accepted/prep even when invoked manually.
+
+Orders appends `order.accepted` only for authenticated store-scoped `channel=in_store` creation. Store-scoped `ubereats` creation does not synthesize local acceptance; Uber external acceptance continues to own its existing durable accepted fact. Durable `prep_started` is now allowed to materialize AUTO printing for `in_store`, while the private same-process `OrderEventsBus` origin continues to skip in-store AUTO so a non-durable status event cannot form a second initial-print path.
+
+Focused regression coverage locks:
+
+- in-store `Order.create()` and `order.accepted` fact creation in the same mocked transaction path with the stable `order.accepted:<orderStableId>` idempotency key;
+- eager post-commit lifecycle drain through `PosOrderOperationsService`, plus store-scoped manual `in_store + paid` activation through the same durable preparation capability;
+- durable lifecycle consumers calling Fulfillment with explicit `origin=durable`;
+- durable in-store prep creating `kind=AUTO`, while memory-origin in-store prep remains non-printing;
+- the POS payment page retaining `/pos/orders` creation and cash receipt submission while containing neither `printOrderCloud()` nor `advanceOrder()`.
+
+No active compatibility entry is added: the user explicitly chose not to support old cached POS payment bundles after cutover. Operational rollout is therefore scoped to a non-business-hours maintenance window. Before the first test order, the POS page/PWA must be closed/reopened or otherwise confirmed to have loaded the new bundle. If a problem is discovered **before** any new canonical POS order is created, the prior deployment may be restored. After a new durable POS order has been created, prefer an immediate forward fix rather than reverting lifecycle semantics, because historical accepted/prep facts must not be rewritten or treated as failed.
+
+Production verification required before Slice 1C:
+
+1. cash pickup/dine-in order: one Order, automatic transition to `making`, exactly one initial customer/kitchen print, labels only when the label plan requires them, and correct persisted cash received/change;
+2. Store Balance + cash and points/discount combinations: exact charged/benefit amounts unchanged and one AUTO first print;
+3. printer offline/reconnect: Order still reaches `making`; existing durable AUTO/PrintJob retry resumes printing without manually re-submitting the order;
+4. explicit manual reprint from Order Management still creates another print without changing Order state;
+5. staff `advance` from `making -> ready` still works and does not create another AUTO initial job;
+6. inspect sanitized logs/DB as needed for one `order.accepted`, one `order.prep_started` and one `PosPrintJob(kind=AUTO)` for the test order.
+
+Slice 1B does not change Web Clover Ecommerce, POS Clover Terminal finalization, Uber wire/order-action behavior, refunds, Benefits COMMIT semantics, pricing/promotion calculation or the known Print socket-concurrency hardening debt.
+
+Planned follow-on order after 1B is production verified: **1C Web/local durable lifecycle -> 1D POS Clover Terminal durable lifecycle -> 1E Uber convergence verification -> Print ownership/idempotency -> Messaging contraction -> remaining Catalog/Customer/Benefits/provider contractions -> Orders use-case decomposition -> Phase 5 closeout**.

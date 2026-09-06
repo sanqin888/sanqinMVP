@@ -44,7 +44,10 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
 
     await expect(processor.processOnce(1)).resolves.toBe(1);
 
-    expect(fulfillment).toHaveBeenCalledWith({ orderId: 'order-a' });
+    expect(fulfillment).toHaveBeenCalledWith({
+      orderId: 'order-a',
+      origin: 'durable',
+    });
     const statement = sqlText(queryRaw.mock.calls[0][0]);
     expect(statement).toContain('FOR UPDATE OF event SKIP LOCKED');
     expect(statement).toContain('NOT EXISTS');
@@ -118,6 +121,22 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
 
     expect(transaction).toHaveBeenCalledTimes(2);
     expect(fulfillment).toHaveBeenCalledTimes(2);
+  });
+
+  it('requestDrain eagerly wakes the same durable consumer after producer commit', async () => {
+    const queryRaw = jest
+      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      .mockResolvedValue([]);
+    const { processor } = processorWith({ queryRaw });
+    const processOnce = jest
+      .spyOn(processor, 'processOnce')
+      .mockResolvedValue(0);
+
+    processor.requestDrain();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(processOnce).toHaveBeenCalledTimes(1);
   });
 
   it('stops when every prep_started event already has its durable AUTO print materialization', async () => {

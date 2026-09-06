@@ -80,6 +80,43 @@ export class OrderPreparationService {
     }
   }
 
+  async activateAcceptedImmediateOrderByStableId(
+    orderStableId: string,
+    storeStableId: string,
+    now = new Date(),
+  ): Promise<OrderPreparationActivationResult> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<LockedOrder[]>`
+          SELECT id::text AS id,
+            "orderStableId",
+            "clientRequestId",
+            channel::text AS channel,
+            status,
+            "fulfillmentTiming",
+            "scheduledReadyAt",
+            "prepStartAt",
+            "scheduleActivatedAt"
+          FROM "Order"
+          WHERE "orderStableId" = ${orderStableId}
+            AND "storeId" = ${storeStableId.trim()}
+          FOR UPDATE
+        `;
+        const order = rows[0];
+        if (!order) return this.missingResult(orderStableId);
+        return this.activateLocked(
+          tx,
+          order,
+          now,
+          OrderFulfillmentTiming.IMMEDIATE,
+        );
+      });
+    } catch (error) {
+      this.logFailure(orderStableId, error);
+      throw error;
+    }
+  }
+
   async activateScheduledOrderByStableId(
     orderStableId: string,
     storeStableId: string,

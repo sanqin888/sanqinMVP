@@ -19,6 +19,7 @@ describe('PosOrdersService', () => {
       getByStableIdForStore: jest.fn().mockResolvedValue(current),
       getExternalPaymentCents: jest.fn().mockResolvedValue(null),
       createFullRefund: jest.fn(),
+      activateImmediatePreparation: jest.fn().mockResolvedValue(undefined),
       advanceForStore: jest
         .fn()
         .mockResolvedValue({ ...current, status: 'ready' }),
@@ -90,7 +91,26 @@ describe('PosOrdersService', () => {
     );
   });
 
-  it('普通订单仅使用本地状态推进', async () => {
+  it('in_store paid 只通过 durable preparation 推进到 making', async () => {
+    const paid = order({ status: 'paid', channel: 'in_store' });
+    const making = order({ status: 'making', channel: 'in_store' });
+    const { service, orders } = setup(paid);
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce(paid)
+      .mockResolvedValueOnce(making);
+
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(making);
+
+    expect(orders.activateImmediatePreparation).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
+  });
+
+  it('普通 making 订单继续使用本地状态推进', async () => {
     const { service, orders, uberEats } = setup(order());
 
     await service.advance('4750_Yonge_Street', 'order_1');
