@@ -21,10 +21,13 @@ production payment facts are unchanged. The Web Clover path remains protected by
 default because it is actively processing production payments; however, if it
 becomes a documented critical modularization blocker, a narrowly scoped change is
 allowed after recording impact, alternatives and rollback/forward-fix handling.
-Every such Web-impacting change requires focused regression coverage and an explicit
-post-deployment active verification checklist, and is not production-verified until
-the user confirms those scenarios passed. Traffic cutover, compatibility deletion
-and settlement-based exit criteria remain separately gated.
+Every such Web-impacting change requires focused regression coverage and must record
+the payment scenarios/evidence that the owning Phase closeout verification will cover.
+A separate deployment/active-test cycle is not required after each modularization slice;
+instead the final merged Phase state receives one consolidated active verification pass
+before the Phase can be marked production-verified/closed. Traffic cutover, compatibility
+deletion and settlement-based exit criteria remain separately gated and can still require
+earlier explicit verification when their own exit criteria are reached.
 
 ## Closed history
 

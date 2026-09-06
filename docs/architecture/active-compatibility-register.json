@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "c47c2ca5",
-  "updatedAt": "2026-09-03",
+  "updatedAt": "2026-09-06",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -46,8 +46,8 @@
       "rollback": "Keep legacy Web routing available until the new Web consumer is accepted; traffic rollback must not rewrite historical facts",
       "exit_criteria": "Web cutover is explicitly accepted after required validation, one settlement cycle matches, and old calls are zero before compatibility deletion",
       "remove_pr": "Payments/Clover legacy Web contraction PR after guarded Web cutover acceptance",
-      "deadline": "Before Phase 5B Payments/Clover exit; production-path modularization may proceed earlier only when it is a documented critical blocker and the guarded active-verification requirements are met",
-      "governance_note": "Production Web Clover is protected by default, not absolutely frozen. A minimal Web-impacting modularization change is allowed when the production path is a critical progress blocker, after documenting impact, alternatives and rollback/forward-fix handling; focused regression coverage and post-deployment user-confirmed active payment verification are mandatory.",
+      "deadline": "Before Phase 5B Payments/Clover exit; production-path modularization may proceed earlier only when it is a documented critical blocker and the guarded regression/evidence requirements are met, with consolidated active verification required before the owning Phase closes",
+      "governance_note": "Production Web Clover is protected by default, not absolutely frozen. A minimal Web-impacting modularization change is allowed when the production path is a critical progress blocker, after documenting impact, alternatives and rollback/forward-fix handling. Focused regression coverage is mandatory for each affected Slice, while production active payment verification is consolidated against the final merged Phase state immediately before Phase closeout unless an earlier compatibility/cutover/settlement gate applies.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
       ]

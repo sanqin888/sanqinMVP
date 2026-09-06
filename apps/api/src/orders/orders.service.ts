@@ -2710,7 +2710,7 @@ export class OrdersService {
             ? PaymentMethod.CARD
             : PaymentMethod.STORE_BALANCE;
 
-        return (await tx.order.create({
+        const order = (await tx.order.create({
           data: {
             id: input.internalOrderId,
             status: 'paid',
@@ -2783,6 +2783,18 @@ export class OrdersService {
           },
           include: { items: true },
         })) as OrderWithItems;
+
+        await tx.opsEvent.createMany({
+          data: {
+            idempotencyKey: orderAcceptedIdempotencyKey(order.orderStableId),
+            eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
+            source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+            payload: { orderStableId: order.orderStableId },
+          },
+          skipDuplicates: true,
+        });
+
+        return order;
       });
 
       this.logger.log(

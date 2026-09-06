@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/unbound-method */
 import type { CreateOrderInput } from '@shared/order';
 
-import type { OrderDto } from '../orders/dto/order.dto';
+import type {
+  PosOrderDto,
+  PosOrderOperationsPort,
+} from '../orders/public-api';
 import type { OrdersService } from '../orders/orders.service';
-import type { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import type { TerminalPaymentService } from '../payments/application/create-payment-attempt.use-case';
 import type { PaymentTransactionRepository } from '../payments/application/payment-transaction.repository';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
@@ -32,7 +34,7 @@ const orderDto = {
   orderStableId: 'cpaymentorder1',
   orderNumber: 'SQ2608260001',
   pickupCode: '0001',
-} as OrderDto;
+} as PosOrderDto;
 
 const checkoutFixture = (
   overrides: Partial<PreparedPaymentCheckout> = {},
@@ -207,12 +209,11 @@ const createHarness = () => {
     getByStableId: jest.fn().mockResolvedValue(orderDto),
   } as unknown as jest.Mocked<OrdersService>;
 
-  const printPosPayloadService = {
-    getByStableId: jest.fn().mockResolvedValue({ order: {} }),
-  } as unknown as jest.Mocked<PrintPosPayloadService>;
+  const orderOperations = {
+    activateImmediatePreparation: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<PosOrderOperationsPort>;
 
   const posGateway = {
-    sendPrintJob: jest.fn().mockResolvedValue({}),
     publishCardPaymentStatus: jest.fn(),
   } as unknown as jest.Mocked<PosGateway>;
 
@@ -222,7 +223,7 @@ const createHarness = () => {
     terminalPayments,
     paymentTransactions,
     orders,
-    printPosPayloadService,
+    orderOperations,
     posGateway,
   );
 
@@ -233,7 +234,7 @@ const createHarness = () => {
     terminalPayments,
     paymentTransactions,
     orders,
-    printPosPayloadService,
+    orderOperations,
     posGateway,
     setCheckout(next: PreparedPaymentCheckout) {
       checkout = next;
@@ -297,12 +298,12 @@ describe('PosCardPaymentOrchestrationService', () => {
         chargedTotalCents: 720,
       }),
     );
-    expect(harness.posGateway.sendPrintJob).toHaveBeenCalledWith(
-      expect.objectContaining({ storeId: storeStableId }),
-    );
-    expect(harness.posGateway.sendPrintJob).not.toHaveBeenCalledWith(
-      expect.objectContaining({ storeId: storeDbId }),
-    );
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).toHaveBeenCalledWith('cpaymentorder1', storeStableId);
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).not.toHaveBeenCalledWith('cpaymentorder1', storeDbId);
     expect(harness.posGateway.publishCardPaymentStatus).toHaveBeenCalledWith(
       storeStableId,
       expect.objectContaining({ status: 'SUCCEEDED' }),
@@ -381,6 +382,9 @@ describe('PosCardPaymentOrchestrationService', () => {
         chargedTotalCents: 0,
       }),
     );
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).toHaveBeenCalledWith('cpaymentorder1', storeStableId);
     expect(result.status).toBe('SUCCEEDED');
   });
 
@@ -402,6 +406,9 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(
       harness.orders.createFromConfirmedPaymentSnapshot,
     ).not.toHaveBeenCalled();
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).not.toHaveBeenCalled();
     expect(result.status).toBe('DECLINED');
   });
 
@@ -422,6 +429,9 @@ describe('PosCardPaymentOrchestrationService', () => {
     ).not.toHaveBeenCalled();
     expect(
       harness.orders.createFromConfirmedPaymentSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
     ).not.toHaveBeenCalled();
     expect(result.status).toBe('UNKNOWN');
   });
@@ -546,10 +556,13 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(
       harness.orders.createFromConfirmedPaymentSnapshot,
     ).toHaveBeenCalledTimes(1);
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).toHaveBeenCalledWith('cpaymentorder1', storeStableId);
     expect(harness.featureConfig.isEnabled).not.toHaveBeenCalled();
   });
 
-  it('uses one deterministic print business key across duplicate finalization', async () => {
+  it('replays only the idempotent durable preparation command across duplicate finalization', async () => {
     const harness = createHarness();
     harness.setCheckout(
       checkoutFixture({
@@ -569,13 +582,11 @@ describe('PosCardPaymentOrchestrationService', () => {
       order: orderInput,
     });
 
-    expect(harness.posGateway.sendPrintJob).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ kind: 'PAYMENT_CHECKOUT:attempt-1' }),
-    );
-    expect(harness.posGateway.sendPrintJob).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ kind: 'PAYMENT_CHECKOUT:attempt-1' }),
-    );
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).toHaveBeenNthCalledWith(1, 'cpaymentorder1', storeStableId);
+    expect(
+      harness.orderOperations.activateImmediatePreparation,
+    ).toHaveBeenNthCalledWith(2, 'cpaymentorder1', storeStableId);
   });
 });
