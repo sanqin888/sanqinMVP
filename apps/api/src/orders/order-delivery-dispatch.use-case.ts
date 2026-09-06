@@ -96,7 +96,8 @@ export class OrderDeliveryDispatchUseCase {
 
       this.logger.log(`[Fulfillment] Uber dispatched: ${payload.orderId}`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       if (providerDeliveryCreated) {
         this.logger.error({
           event: 'uber_direct_delivery_created_persistence_failed',
@@ -150,7 +151,9 @@ export class OrderDeliveryDispatchUseCase {
             })),
             orderNumber: params.orderNumber,
             deliveryProvider: params.deliveryProvider,
-            errorMessage: params.errorMessage.replace(/\s+/g, ' ').slice(0, 240),
+            errorMessage: params.errorMessage
+              .replace(/\s+/g, ' ')
+              .slice(0, 240),
             orderDetailUrl: `${publicBaseUrl}/zh/order/${params.orderStableId}`,
           },
         );
@@ -168,7 +171,8 @@ export class OrderDeliveryDispatchUseCase {
       this.logger.error({
         event: 'delivery_dispatch_failure_alert_exception',
         orderStableId: params.orderStableId,
-        errorType: alertError instanceof Error ? alertError.name : 'UnknownError',
+        errorType:
+          alertError instanceof Error ? alertError.name : 'UnknownError',
       });
     }
   }
