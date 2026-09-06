@@ -534,7 +534,7 @@ No standalone Slice 5D production verification is required; the Phase-level clos
 
 ### Slice 5E — public order-summary query use-case decomposition
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-e`, based on `origin/dev@82c9d18f`.
+Status: **MERGED / CI GREEN** — PR #2213, final head `fcd3cb4d`, squash merge `a69f27b4`; final PR CI #5266 passed API and Web.
 
 Migration classification: **Class A same-context read-side application decomposition**. The fresh readiness audit first considered the POS external-payment query, but rejected it after confirming the shared `resolveExternalPaymentCents()` policy is also used inside `createFullRefund()` to classify Web zero-external refund behavior. 5E therefore selects the isolated public thank-you/order-summary projection instead, avoiding any payment/refund write-path change.
 
@@ -546,4 +546,20 @@ No Prisma schema/migration, dependency/lockfile, public route shape, payment cap
 
 No standalone Slice 5E production verification is required; Phase closeout should include opening a completed Web order thank-you/summary view and confirming subtotal/discount/tax/surcharge/payment split and item projection remain correct.
 
-Planned follow-on after Slice 5E is: **fresh readiness audit for remaining OrdersService read/write/payment/pricing seams -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 5F — POS order-management read-query decomposition
+
+Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-f`, based on `origin/dev@a69f27b4`.
+
+Migration classification: **Class A same-context read-side application decomposition**. The readiness audit selected the three isolated POS management list reads — `recent`, `searchForStore`, and `board` — and explicitly excluded `getByStableId*` because those reads are reused by status transitions, labels, POS orchestration and refund flows. Payment, refund/amendment, Benefits reservation/COMMIT, pricing and lifecycle writes remain untouched.
+
+`OrderManagementQueryUseCase` now owns the canonical store-scoped recent/history/board Prisma queries and their existing pagination/filter semantics. `PosOrderOperationsService` keeps the unchanged `POS_ORDER_OPERATIONS` public contract but delegates those three methods to the internal use case. `OrdersService` no longer exposes or owns those list-query methods.
+
+To avoid divergent DTO semantics, the existing order-detail select, canonical store filter and `toOrderDto` mapping have been moved into the Orders-local `order-query-projection.ts` helper. Existing write-side/read-by-id callers in `OrdersService` use that same helper, so this is a mechanical ownership move rather than a response-shape rewrite. `getByStableId`, `getByStableIdForStore`, `getByStableIdWithOwner`, status writes, refund/amendment, payment preparation and pricing remain in `OrdersService`.
+
+Focused characterization now lives with `OrderManagementQueryUseCase` and preserves canonical store scoping, management filters/pagination, and board time/item filters. The central scanner prevents recent/search/board policy from returning to `OrdersService`, requires `PosOrderOperationsService` delegation, reserves the shared projection helper, and keeps the use case internal to `OrdersModule`.
+
+No Prisma schema/migration, dependency/lockfile, public route or `POS_ORDER_OPERATIONS` contract shape, payment/refund behavior, pricing/promotion semantics, Order lifecycle write, PrintJob behavior or cross-context direct-import allowance changes are introduced. Numeric baselines remain Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, and public SCC remains empty.
+
+No standalone Slice 5F production verification is required. Phase-level closeout should cover POS recent list, management search/history filters and order board loading against the final merged Phase state.
+
+Planned follow-on after Slice 5F is: **Phase 5 closeout readiness audit of the remaining payment/pricing/refund/write seams -> consolidated Phase 5 deployment/active verification -> closeout**.

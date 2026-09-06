@@ -5555,6 +5555,116 @@ if (ordersPublicSummaryQueryUseCaseDecomposition) {
   }
 }
 
+const ordersManagementQueryUseCaseDecomposition =
+  config.ordersManagementQueryUseCaseDecomposition ?? null;
+if (ordersManagementQueryUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersManagementQueryUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.projection,
+    boundary.posOperations,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders management query use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderManagementQueryUseCase',
+      "from './orders-prisma'",
+      'buildTrustedStoreOrderWhere',
+      'toOrderDto',
+      'this.prisma.order.findMany',
+      'this.prisma.order.count',
+      'searchForStore',
+      'board',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders management query use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (source.includes("from './orders.service'")) {
+      failures.push(
+        `OrderManagementQueryUseCase must own POS list/search/board reads without delegating back to OrdersService: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const projectionPath = join(REPOSITORY_ROOT, boundary.projection);
+  if (existsSync(projectionPath)) {
+    const source = readFileSync(projectionPath, 'utf8');
+    if (
+      !source.includes('export function toOrderDto') ||
+      !source.includes('export function buildTrustedStoreOrderWhere') ||
+      !source.includes('export const orderDetailSelect')
+    ) {
+      failures.push(
+        `Orders query projection must centralize DTO and store-scope semantics for both read and write callers: ${boundary.projection}`,
+      );
+    }
+  }
+
+  const posOperationsPath = join(REPOSITORY_ROOT, boundary.posOperations);
+  if (existsSync(posOperationsPath)) {
+    const source = readFileSync(posOperationsPath, 'utf8');
+    if (
+      !source.includes("from './order-management-query.use-case'") ||
+      !source.includes(
+        'private readonly managementQuery: OrderManagementQueryUseCase',
+      ) ||
+      !source.includes('this.managementQuery.recent(') ||
+      !source.includes('this.managementQuery.searchForStore(') ||
+      !source.includes('this.managementQuery.board(')
+    ) {
+      failures.push(
+        `PosOrderOperationsService must delegate recent/search/board reads to OrderManagementQueryUseCase: ${boundary.posOperations}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      /\basync\s+recent\s*\(/.test(source) ||
+      /\basync\s+searchForStore\s*\(/.test(source) ||
+      /\basync\s+board\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must not regain POS management list/search/board query ownership after Slice 5F: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-management-query.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderManagementQueryUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderManagementQueryUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderManagementQueryUseCase must stay an internal Orders provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
 for (const [edge, count] of publicCounts.entries()) {
   if (edge.startsWith('architecture-foundation -> ')) {
     failures.push(

@@ -204,6 +204,12 @@ node tools/architecture/scan-architecture.mjs --report
   surcharge metadata interpretation or summary-only discount helpers. The use case stays on
   Orders-local persistence plus the existing Loyalty order-usage public reader and remains internal
   to `OrdersModule` composition;
+- Phase 5 Slice 5F moves POS recent/history/board list queries into the internal
+  `OrderManagementQueryUseCase`. `PosOrderOperationsService` keeps the public POS operations
+  contract but delegates these three reads to the use case. Store-scope validation and DTO
+  projection are centralized in `order-query-projection.ts` so write-side `OrdersService` callers
+  and management reads share one projection policy. `getByStableId*`, refund/amendment, payment,
+  pricing and lifecycle writes remain in `OrdersService`;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

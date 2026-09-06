@@ -62,10 +62,6 @@ import {
   CLIENT_REQUEST_ID_RE,
 } from '../common/utils/client-request-id';
 import {
-  buildOrderItemComponentDisplaySnapshots,
-  buildOrderItemParentDisplayOptions,
-} from './order-item-components';
-import {
   DAILY_SPECIAL_OFFERS,
   PROMOTION_CONTEXT_READER,
   evaluateOrderPromotions,
@@ -84,91 +80,29 @@ import {
 } from '../location/public-api';
 import { OrderEventsBus } from './order-events.bus';
 import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
-import type { OrderDto, OrderItemDto } from './dto/order.dto';
+import type { OrderDto } from './dto/order.dto';
 import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import {
   BRAND_STORE_CONFIG_READER,
   resolveConfiguredStoreStableId,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
-import { buildOrderPricingDisplay } from './order-pricing-display';
 import {
   resolveRequestedLoyaltyPoints,
   resolveRequestedLoyaltyRedeemCents,
 } from './orders-loyalty-redemption';
-import type {
-  PosOrderManagementPage,
-  PosOrderManagementQuery,
-} from './pos-order-operations.contract';
 import {
   CATALOG_ORDER_FACTS_READER,
   type CatalogOrderFactsReaderPort,
 } from '../menu/public-api';
 
-type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
-type OrderItemSnapshot = Prisma.OrderItemGetPayload<{
-  select: {
-    productStableId: true;
-    qty: true;
-    displayName: true;
-    nameEn: true;
-    nameZh: true;
-    unitPriceCents: true;
-    externalSpecialInstructions: true;
-    optionsJson: true;
-    componentsJson: true;
-  };
-}>;
-
-const orderDetailSelect = {
-  orderStableId: true,
-  clientRequestId: true,
-  status: true,
-  channel: true,
-  fulfillmentType: true,
-  paymentMethod: true,
-  pickupCode: true,
-  externalOrderNotes: true,
-  contactName: true,
-  contactEmail: true,
-  contactPhone: true,
-  deliveryType: true,
-  deliveryProvider: true,
-  deliveryEtaMinMinutes: true,
-  deliveryEtaMaxMinutes: true,
-  subtotalCents: true,
-  taxCents: true,
-  deliveryFeeCents: true,
-  deliveryCostCents: true,
-  deliverySubsidyCents: true,
-  totalCents: true,
-  paymentTotalCents: true,
-  creditCardSurchargeCents: true,
-  couponCodeSnapshot: true,
-  couponTitleSnapshot: true,
-  couponDiscountCents: true,
-  loyaltyRedeemCents: true,
-  subtotalAfterDiscountCents: true,
-  promotionSnapshot: true,
-  createdAt: true,
-  paidAt: true,
-  userStableId: true,
-  items: {
-    select: {
-      productStableId: true,
-      qty: true,
-      displayName: true,
-      nameEn: true,
-      nameZh: true,
-      unitPriceCents: true,
-      externalSpecialInstructions: true,
-      optionsJson: true,
-      componentsJson: true,
-    },
-  },
-} satisfies Prisma.OrderSelect;
-
-type OrderDetail = Prisma.OrderGetPayload<{ select: typeof orderDetailSelect }>;
+import {
+  buildTrustedStoreOrderWhere,
+  orderDetailSelect,
+  toOrderDto,
+  type OrderDetail,
+  type OrderWithItems,
+} from './order-query-projection';
 type OrderItemInput = NonNullable<CreateOrderInput['items']>[number] & {
   productId?: string;
   productStableId?: string;
@@ -768,131 +702,6 @@ export class OrdersService {
     );
   }
 
-  private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
-    const orderStableId = order.orderStableId;
-    const deliveryFeeCents = order.deliveryFeeCents ?? 0;
-    const deliveryCostCents = order.deliveryCostCents ?? 0;
-
-    if (!orderStableId) {
-      // 按你的业务前提 stableId 非空，这里属于数据异常
-      throw new BadRequestException('orderStableId missing');
-    }
-
-    const orderNumber = order.clientRequestId ?? orderStableId;
-    const deliverySubsidyCentsRaw = order.deliverySubsidyCents;
-    const deliverySubsidyCents =
-      typeof deliverySubsidyCentsRaw === 'number' &&
-      Number.isFinite(deliverySubsidyCentsRaw)
-        ? Math.max(0, Math.round(deliverySubsidyCentsRaw))
-        : Math.max(0, deliveryCostCents - deliveryFeeCents);
-
-    const rawItems: OrderItemSnapshot[] = Array.isArray(order.items)
-      ? (order.items as OrderItemSnapshot[])
-      : [];
-    const items: OrderItemDto[] = rawItems.map((it) => {
-      const components = buildOrderItemComponentDisplaySnapshots(
-        it.componentsJson,
-        it.qty,
-        it.optionsJson,
-      );
-      return {
-        productStableId: it.productStableId,
-        qty: it.qty,
-        displayName:
-          it.displayName || it.nameEn || it.nameZh || it.productStableId,
-        nameEn: it.nameEn ?? null,
-        nameZh: it.nameZh ?? null,
-        unitPriceCents: it.unitPriceCents ?? 0,
-        specialInstructions: it.externalSpecialInstructions?.trim() || null,
-        optionsJson: it.optionsJson ?? undefined,
-        componentsJson: it.componentsJson ?? undefined,
-        ...(components.length > 0
-          ? {
-              displayOptions: buildOrderItemParentDisplayOptions(
-                it.optionsJson,
-                components,
-              ),
-              components,
-            }
-          : {}),
-      };
-    });
-    const subtotalCents = order.subtotalCents ?? 0;
-    const loyaltyRedeemCents = order.loyaltyRedeemCents ?? 0;
-    const subtotalAfterDiscountCents =
-      order.subtotalAfterDiscountCents ??
-      Math.max(
-        0,
-        subtotalCents - (order.couponDiscountCents ?? 0) - loyaltyRedeemCents,
-      );
-    const pricingDisplay = buildOrderPricingDisplay({
-      effectiveSubtotalCents: subtotalCents,
-      promotionSnapshot: order.promotionSnapshot,
-      items: rawItems,
-      couponTitleSnapshot: order.couponTitleSnapshot ?? null,
-      couponDiscountCents: order.couponDiscountCents ?? 0,
-      loyaltyRedeemCents,
-      subtotalAfterDiscountCents,
-    });
-    const creditCardSurchargeCents = Math.max(
-      0,
-      order.creditCardSurchargeCents ?? 0,
-    );
-    const paymentTotalCents =
-      typeof order.paymentTotalCents === 'number' &&
-      Number.isFinite(order.paymentTotalCents) &&
-      order.paymentTotalCents > 0
-        ? Math.round(order.paymentTotalCents)
-        : (order.totalCents ?? 0) + creditCardSurchargeCents;
-
-    return {
-      orderStableId,
-      orderNumber,
-      clientRequestId: order.clientRequestId ?? null,
-
-      status: order.status,
-      channel: order.channel,
-      fulfillmentType: order.fulfillmentType,
-
-      paymentMethod: order.paymentMethod ?? null,
-
-      pickupCode: order.pickupCode ?? null,
-      orderNotes: order.externalOrderNotes?.trim() || null,
-
-      contactName: order.contactName ?? null,
-      contactEmail: order.contactEmail ?? null,
-      contactPhone: order.contactPhone ?? null,
-
-      deliveryType: order.deliveryType ?? null,
-      deliveryProvider: order.deliveryProvider ?? null,
-      deliveryEtaMinMinutes: order.deliveryEtaMinMinutes ?? null,
-      deliveryEtaMaxMinutes: order.deliveryEtaMaxMinutes ?? null,
-
-      subtotalCents,
-      displaySubtotalCents: pricingDisplay.displaySubtotalCents,
-      appliedDiscounts: pricingDisplay.discounts,
-      subtotalAfterDiscountCents,
-      taxCents: order.taxCents ?? 0,
-      deliveryFeeCents: order.deliveryFeeCents ?? 0,
-      deliveryCostCents,
-      deliverySubsidyCents,
-      totalCents: order.totalCents ?? 0,
-      paymentTotalCents,
-      creditCardSurchargeCents,
-
-      couponCodeSnapshot: order.couponCodeSnapshot ?? null,
-      couponTitleSnapshot: order.couponTitleSnapshot ?? null,
-      couponDiscountCents: order.couponDiscountCents ?? 0,
-
-      loyaltyRedeemCents: order.loyaltyRedeemCents ?? 0,
-
-      createdAt: order.createdAt.toISOString(),
-      paidAt: order.paidAt ? order.paidAt.toISOString() : null,
-
-      items,
-    };
-  }
-
   private getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
     balancePaidCents: number;
     pointsEarned: number;
@@ -958,19 +767,6 @@ export class OrdersService {
     );
   }
 
-  private trustedStoreOrderWhere(
-    storeStableId: string,
-  ): Prisma.OrderWhereInput {
-    const normalizedStoreStableId = storeStableId.trim();
-    if (!normalizedStoreStableId) {
-      throw new BadRequestException('storeStableId is required');
-    }
-
-    return {
-      storeId: normalizedStoreStableId,
-    };
-  }
-
   private async resolveInternalOrderIdByStableIdForStoreOrThrow(
     orderStableId: string,
     storeStableId: string,
@@ -987,7 +783,7 @@ export class OrdersService {
     const found = await client.order.findFirst({
       where: {
         orderStableId: value,
-        ...this.trustedStoreOrderWhere(storeStableId),
+        ...buildTrustedStoreOrderWhere(storeStableId),
       },
       select: { id: true, orderStableId: true, clientRequestId: true },
     });
@@ -1869,7 +1665,7 @@ export class OrdersService {
     });
     if (existing) {
       return {
-        order: this.toOrderDto(existing as OrderWithItems),
+        order: toOrderDto(existing as OrderWithItems),
         internalOrderId: existing.id,
       };
     }
@@ -2012,7 +1808,7 @@ export class OrdersService {
       );
       void this.handleOrderPaidSideEffects(created);
       return {
-        order: this.toOrderDto(created),
+        order: toOrderDto(created),
         internalOrderId: created.id,
       };
     } catch (error) {
@@ -2023,7 +1819,7 @@ export class OrdersService {
         });
         if (raced) {
           return {
-            order: this.toOrderDto(raced as OrderWithItems),
+            order: toOrderDto(raced as OrderWithItems),
             internalOrderId: raced.id,
           };
         }
@@ -2079,7 +1875,7 @@ export class OrdersService {
             include: { items: true },
           });
           if (existingOrder)
-            return this.toOrderDto(existingOrder as OrderWithItems);
+            return toOrderDto(existingOrder as OrderWithItems);
 
           throw new ConflictException({
             code: 'ORDER_NOT_FOUND',
@@ -2139,7 +1935,7 @@ export class OrdersService {
       }
     }
 
-    return this.toOrderDto(order);
+    return toOrderDto(order);
   }
 
   async createForStore(
@@ -2162,7 +1958,7 @@ export class OrdersService {
       normalizedStoreStableId,
       { appendAcceptedLifecycle: dto.channel === Channel.in_store },
     );
-    return this.toOrderDto(order);
+    return toOrderDto(order);
   }
 
   async createInternal(
@@ -2846,7 +2642,7 @@ export class OrdersService {
     };
 
     const order = await this.createImmediatePaid(dto, dto.clientRequestId);
-    return this.toOrderDto(order);
+    return toOrderDto(order);
   }
 
   async createImmediatePaid(
@@ -2856,114 +2652,6 @@ export class OrdersService {
     const created = await this.createInternal(dto, idempotencyKey);
     if (created.status === 'paid') return created;
     return this.updateStatusByInternalId(created.id, 'paid');
-  }
-
-  async recent(storeStableId: string, limit = 10): Promise<OrderDto[]> {
-    const orders = (await this.prisma.order.findMany({
-      where: this.trustedStoreOrderWhere(storeStableId),
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: { items: true },
-    })) as OrderWithItems[];
-
-    return orders.map((o) => this.toOrderDto(o));
-  }
-
-  async searchForStore(
-    storeStableId: string,
-    params: PosOrderManagementQuery,
-  ): Promise<PosOrderManagementPage> {
-    const requestedPage =
-      typeof params.page === 'number' && Number.isFinite(params.page)
-        ? Math.trunc(params.page)
-        : 1;
-    const requestedPageSize =
-      typeof params.pageSize === 'number' && Number.isFinite(params.pageSize)
-        ? Math.trunc(params.pageSize)
-        : 50;
-    const page = Math.max(1, requestedPage);
-    const pageSize = Math.max(1, Math.min(100, requestedPageSize));
-    const where: Prisma.OrderWhereInput =
-      this.trustedStoreOrderWhere(storeStableId);
-
-    if (params.statusIn && params.statusIn.length > 0) {
-      where.status = { in: params.statusIn };
-    }
-    if (params.channelIn && params.channelIn.length > 0) {
-      where.channel = { in: params.channelIn };
-    }
-    if (params.fulfillmentIn && params.fulfillmentIn.length > 0) {
-      where.fulfillmentType = { in: params.fulfillmentIn };
-    }
-    if (params.minTotalCents !== undefined) {
-      where.totalCents = { gte: Math.max(0, Math.trunc(params.minTotalCents)) };
-    }
-    if (params.createdAtGte || params.createdAtLt) {
-      where.createdAt = {
-        ...(params.createdAtGte ? { gte: params.createdAtGte } : {}),
-        ...(params.createdAtLt ? { lt: params.createdAtLt } : {}),
-      };
-    }
-
-    const [total, orders] = await Promise.all([
-      this.prisma.order.count({ where }),
-      this.prisma.order.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { orderStableId: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: { items: true },
-      }),
-    ]);
-
-    return {
-      orders: (orders as OrderWithItems[]).map((order) =>
-        this.toOrderDto(order),
-      ),
-      page,
-      pageSize,
-      total,
-      totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
-    };
-  }
-
-  async board(
-    storeStableId: string,
-    params: {
-      statusIn?: OrderStatus[];
-      channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
-      limit?: number;
-      sinceMinutes?: number;
-      requireItems?: boolean;
-    },
-  ): Promise<OrderDto[]> {
-    const {
-      statusIn,
-      channelIn,
-      limit = 50,
-      sinceMinutes = 24 * 60,
-      requireItems = true,
-    } = params;
-    const where: Prisma.OrderWhereInput =
-      this.trustedStoreOrderWhere(storeStableId);
-    if (statusIn && statusIn.length > 0) where.status = { in: statusIn };
-    if (channelIn && channelIn.length > 0) where.channel = { in: channelIn };
-    if (requireItems) {
-      where.items = { some: {} };
-    }
-    if (sinceMinutes > 0) {
-      const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
-      where.createdAt = { gte: since };
-    }
-
-    const orders = (await this.prisma.order.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: { items: true },
-    })) as OrderWithItems[];
-
-    return orders.map((o) => this.toOrderDto(o));
   }
 
   async getByStableId(orderStableId: string): Promise<OrderDto> {
@@ -2976,7 +2664,7 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
-    const dto = this.toOrderDto(order);
+    const dto = toOrderDto(order);
     return {
       ...dto,
       ...loyaltyUsage,
@@ -2994,7 +2682,7 @@ export class OrdersService {
     const order = (await this.prisma.order.findFirst({
       where: {
         orderStableId: orderStableId.trim(),
-        ...this.trustedStoreOrderWhere(storeStableId),
+        ...buildTrustedStoreOrderWhere(storeStableId),
       },
       select: orderDetailSelect,
     })) as OrderDetail | null;
@@ -3003,7 +2691,7 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
-    const dto = this.toOrderDto(order);
+    const dto = toOrderDto(order);
     return {
       ...dto,
       ...loyaltyUsage,
@@ -3027,7 +2715,7 @@ export class OrdersService {
     const loyaltyUsage = await this.getLoyaltyUsageByOrderStableId(
       order.orderStableId,
     );
-    const dto = this.toOrderDto(order);
+    const dto = toOrderDto(order);
     return {
       order: {
         ...dto,
@@ -3048,7 +2736,7 @@ export class OrdersService {
     const resolved =
       await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return this.toOrderDto(updated);
+    return toOrderDto(updated);
   }
 
   async updateStatusForStore(
@@ -3061,7 +2749,7 @@ export class OrdersService {
       storeStableId,
     );
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return this.toOrderDto(updated);
+    return toOrderDto(updated);
   }
 
   async updateStatusInternal(
@@ -3293,7 +2981,7 @@ export class OrdersService {
     });
 
     return {
-      order: this.toOrderDto(updated),
+      order: toOrderDto(updated),
       outcome:
         updated.channel === Channel.ubereats
           ? 'pending_platform'
@@ -3785,7 +3473,7 @@ export class OrdersService {
       })) as OrderWithItems;
     });
 
-    return this.toOrderDto(updatedOrder);
+    return toOrderDto(updatedOrder);
   }
 
   /**
@@ -3807,11 +3495,11 @@ export class OrdersService {
         where: { id: resolved.id },
         include: { items: true },
       })) as OrderWithItems;
-      return this.toOrderDto(current);
+      return toOrderDto(current);
     }
 
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return this.toOrderDto(updated);
+    return toOrderDto(updated);
   }
 
   async advanceForStore(
@@ -3835,11 +3523,11 @@ export class OrdersService {
         where: { id: resolved.id },
         include: { items: true },
       })) as OrderWithItems;
-      return this.toOrderDto(current);
+      return toOrderDto(current);
     }
 
     const updated = await this.updateStatusByInternalId(resolved.id, next);
-    return this.toOrderDto(updated);
+    return toOrderDto(updated);
   }
 
   private formatOrderLogContext(params?: {
