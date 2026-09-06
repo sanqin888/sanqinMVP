@@ -247,9 +247,12 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     const errorSpy = jest
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
-    const { runAccepted, sendPrintJob } = setupAccepted(null);
+    const { processor, sendPrintJob } = setupAccepted(null);
 
-    await runAccepted();
+    await processor.handleAcceptedLifecycle({
+      orderId: 'web-order-1',
+      origin: 'durable',
+    });
 
     expect(errorSpy).toHaveBeenCalledWith(
       expect.objectContaining({
