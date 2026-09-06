@@ -155,6 +155,16 @@ node tools/architecture/scan-architecture.mjs --report
   `orderStableId` and may not query the `loyaltyLedger` Prisma delegate directly. Loyalty Runtime
   access remains consolidated through `loyalty-prisma.ts`, and the existing
   `(orderId, type, sourceKey)` internal idempotency constraint remains unchanged;
+- Phase 5 Slice 4D reserves Orders runtime Benefits reads behind the stable-ID-only
+  `ORDER_BENEFITS_READER`. Quote/coupon/tender/loyalty-only eligibility reads may not
+  regain direct `LoyaltyAccount` persistence or concrete Loyalty tender conversion;
+  User/Coupon DB IDs stay inside the Benefits owner. The contract remains on the top-level
+  Benefits public barrel, while the Nest composition module is imported only from the
+  dedicated `benefits/public-api/order-benefits-read.module` subpath so the barrel cannot
+  eagerly recreate Auth/Loyalty/Promotions module-loading cycles. The scanner intentionally
+  still permits the bounded concrete `LoyaltyService` / `MembershipService` preparation and
+  transaction/mutation seam while rejecting expansion beyond the two existing member
+  resolution and coupon-validation call sites;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import
