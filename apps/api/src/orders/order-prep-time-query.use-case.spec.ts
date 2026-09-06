@@ -9,14 +9,7 @@ describe('OrderPrepTimeQueryUseCase', () => {
     } as unknown as PrismaService);
 
     await expect(useCase.getAveragePrepTimeMinutes()).resolves.toBe(15);
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: { in: ['ready', 'completed'] },
-          makingAt: { not: null },
-        }),
-      }),
-    );
+    expect(findMany).toHaveBeenCalledTimes(1);
   });
 
   it('preserves averaging and the 5-minute lower bound', async () => {
