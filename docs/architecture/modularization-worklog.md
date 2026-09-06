@@ -1143,8 +1143,8 @@ deployment readiness, migration/secret preflight, deployment and active verifica
 
 ### 2026-09-05 — Phase 4 rollout recovery: Order.userId UUID normalization
 
-**PR/SHA:** local branch `fix/phase4-order-user-id-uuid` from latest `origin/dev`  
-**State:** SOURCE / LOCAL REVIEW PENDING — PRODUCTION MIGRATION RECOVERY NOT YET RETRIED  
+**PR/SHA:** PR #2190 / final head `8392e42f` / squash merge `ccf0aee9`  
+**State:** PRODUCTION VERIFIED / CLOSED — PR CI #5182 + dev push CI #5183  
 **Result:** Consolidated Phase 4 migration deploy successfully applied
 `20260905134000_add_trusted_device_stable_id`, then failed on
 `20260905145500_add_order_user_stable_id` with PostgreSQL `42883` because production stores the retained internal
@@ -1155,14 +1155,36 @@ rewriting the failed migration history, this recovery adds ordered prerequisite
 `20260905144000_normalize_order_user_id_uuid`, changes Prisma `Order.userId` to `String? @db.Uuid`, validates
 existing text before converting with `USING "userId"::uuid`, and leaves the original 14:55 stable-ID migration
 untouched. No FK, NOT NULL, delete behavior, public contract, order-write behavior, dependency direction or SCC
-baseline changes are introduced. Characterization and architecture gates now reserve the UUID storage contract
-and the separate normalization migration. After review/CI/merge, production recovery must mark the failed 14:55
-migration rolled back, rebuild the shared API image, then deploy migrations so 14:40 runs before the retried 14:55
-and the pending Loyalty migrations. No production mutation is performed by this source batch.  
+baseline changes are introduced. Characterization and architecture gates reserve the UUID storage contract and
+the separate normalization migration. Production then marked the failed 14:55 attempt rolled back and successfully
+applied 14:40 UUID normalization, retried 14:55 Order stable-ID backfill, 19:30 Loyalty stable-ID backfill and 20:45
+Loyalty stable-ID index before activating the new API/Web/Uber worker. Read-only verification confirmed
+`Order.userId` is UUID, **45/45** member Orders have matching `userStableId` with **0** orphan/mismatch, and
+LoyaltyLedger has **89/89** order-linked stable IDs with **0** orphan/mismatch while **2** manual no-order rows remain
+NULL.  
 **Details:** `apps/api/prisma/schema.prisma`,
 `apps/api/prisma/migrations/20260905144000_normalize_order_user_id_uuid/migration.sql`,
 `apps/api/src/orders/order-user-stable-id.characterization.spec.ts`, `tools/architecture/context-baseline.json`,
 `tools/architecture/scan-architecture.mjs`, `docs/architecture/id-inventory.md`,
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`, `docs/architecture/current-dependency-graph.md`.
+
+### 2026-09-05 — Post-Phase-4 POS Order Management historical-query hotfix
+
+**PR/SHA:** local branch `fix/pos-order-management-history-query` from latest `origin/dev`  
+**State:** LOCAL / SOURCE REVIEW PENDING  
+**Result:** Phase 4 active verification exposed an unrelated POS Order Management defect: the page advertised
+full historical filtering but loaded only `fetchRecentOrders(30)` and applied date/status/channel/fulfillment/amount
+filters in the browser. Read-only production evidence showed **2469** store Orders still present; the 30th newest
+Order was 2026-09-03 18:38 and the 31st was 18:26, exactly explaining why earlier history appeared missing. The
+hotfix preserves `recent` and board semantics, adds an Orders-owned paginated `searchForStore` capability through
+the existing `POS_ORDER_OPERATIONS` boundary, validates/query-pushes the existing filters server-side, and pages at
+50 rows. The Web Order Management page now defaults/reset to the **current store-local day**, converts calendar-day
+boundaries to UTC with DST-aware timezone logic, and lets staff page through full history or select a historical
+date without downloading all Orders. No Prisma schema/migration, dependency, payment/refund rule, Uber wire flow,
+context direction, numeric architecture baseline or SCC allowance changes.  
+**Details:** `apps/api/src/orders/pos-order-operations.contract.ts`, `apps/api/src/orders/orders.service.ts`,
+`apps/api/src/pos/pos-orders.controller.ts`, `apps/web/src/lib/api/pos.ts`,
+`apps/web/src/app/[locale]/(device)/store/pos/orders/page.tsx`, `apps/web/src/lib/time/tz.ts`,
 `docs/architecture/phase-4-identity-customer-benefits-messaging.md`, `docs/architecture/current-dependency-graph.md`.
 
 ## Current position
@@ -1178,9 +1200,9 @@ and the pending Loyalty migrations. No production mutation is performed by this 
 - Phase 3 post-closeout governance tail: PR #2160 merged as `3a20c8c5` after CI #5080
   passed. Store temporary-close encoding ownership and monotonic baseline/SCC guards are
   in `dev`; runtime pause/Uber smoke verification has not yet been recorded.
-- Phase 4: **SLICE 0A + 0A POS HOTFIX + SLICE 0B PRODUCTION VERIFIED; SLICE 1 + 2A + 2B + 2C
-  + 2D + 2E-A + 2E-B + 3 + 4A + 4B + 4C + 4D-A + 4D-H + 4D-I + 5A + 5B + 6 MERGED/CI;
-  SOURCE GRAPH CLOSED; CONSOLIDATED DEPLOYMENT STARTED / PAUSED FOR ORDER.USERID UUID RECOVERY** on 2026-09-05. Slice 0A merged via PR #2163 / `aa302629`
+- Phase 4: **PRODUCTION VERIFIED / CLOSED** on 2026-09-05. All approved slices through Slice 6 are
+  merged/CI-green, the consolidated migration recovery and deployment completed, and active verification passed.
+  Slice 0A merged via PR #2163 / `aa302629`
   after CI #5092 and passed active Admin PromotionRule verification. The POS pricing hotfix
   merged via PR #2166 / `bb833550` after CI #5102 and passed active BOGO/manual-discount
   verification. Slice 0B merged via PR #2168 / `b2d42c32` after CI #5107 and active checks.
@@ -1223,10 +1245,13 @@ and the pending Loyalty migrations. No production mutation is performed by this 
   additive migration. Slice 6 final audit finds no further safe Phase 4 contraction and closes the source graph
   with the existing numeric baseline and empty public SCC. `MembershipService.getMemberSummary()` remains an
   explicit post-Phase-4 composite read-model/SCC deferral, and Phase 3 Slice 2C remains the transaction-sensitive
-  COMMIT deferral. Consolidated rollout has now started: the TrustedDevice migration is applied, but migration
-  execution is paused after the Order stable-ID migration failed on the historical TEXT/UUID mismatch. Resume only
-  after the UUID-normalization recovery hotfix is reviewed, CI-green and merged, then complete the remaining
-  migration sequence before activating the new API and beginning active verification.
+  COMMIT deferral. Consolidated rollout is complete: TrustedDevice **2/2** stable IDs are populated/unique;
+  `Order.userId` is UUID and **45/45** member Orders have matching `userStableId` with **0** orphan/mismatch;
+  LoyaltyLedger has **89/89** order-linked stable IDs with **0** orphan/mismatch while **2** manual no-order rows
+  remain NULL. Active member/Admin/OTP/points/balance/receipt/refund/POS-recharge checks completed without relevant
+  5xx/Prisma/OTP anomalies. Recharge SMS is N/A under the current email-first account mix; SMS Login 2FA negative,
+  cooldown and success behavior was verified separately. The POS Order Management 30-row historical-query defect
+  found during verification is a separate post-Phase-4 hotfix and does not reopen the closed phase.
 - Payments/Clover: POS Terminal is pre-production and structurally available for
   modularization; production Web Ecommerce is guarded but may be touched when it is
   a documented critical blocker under the active-verification rule.

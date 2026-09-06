@@ -18,6 +18,8 @@ export {
   type PosOrderFullRefundResult,
   type PosOrderFulfillmentTimingDto,
   type PosOrderJsonInput,
+  type PosOrderManagementPage,
+  type PosOrderManagementQuery,
   type PosOrderOperationsPort,
   type PosOrderPricingQuote,
   type PosScheduledOrderSummaryDto,

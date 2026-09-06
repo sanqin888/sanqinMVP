@@ -18,6 +18,48 @@ export async function fetchRecentOrders<T = unknown>(limit = 10) {
   );
 }
 
+export type PosOrderSearchParams = {
+  status?: string[];
+  channel?: string[];
+  fulfillment?: string[];
+  createdAtGte?: string;
+  createdAtLt?: string;
+  minTotalCents?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+export type PosOrderSearchPage<T> = {
+  orders: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export async function fetchPosOrderSearch<T = unknown>(
+  params: PosOrderSearchParams,
+) {
+  const qs = new URLSearchParams();
+  if (params.status?.length) qs.set("status", params.status.join(","));
+  if (params.channel?.length) qs.set("channel", params.channel.join(","));
+  if (params.fulfillment?.length) {
+    qs.set("fulfillment", params.fulfillment.join(","));
+  }
+  if (params.createdAtGte) qs.set("createdAtGte", params.createdAtGte);
+  if (params.createdAtLt) qs.set("createdAtLt", params.createdAtLt);
+  if (params.minTotalCents !== undefined) {
+    qs.set("minTotalCents", String(params.minTotalCents));
+  }
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.pageSize !== undefined) {
+    qs.set("pageSize", String(params.pageSize));
+  }
+  return apiFetch<PosOrderSearchPage<T>>(
+    `/pos/orders/search?${qs.toString()}`,
+  );
+}
+
 export async function fetchOrderById<T = unknown>(id: string) {
   return apiFetch<T>(`/pos/orders/${enc(id)}`);
 }
