@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@b8f838ff` (Slice 4B Catalog persistence contraction merge / PR #2203)  
-Current status: **SLICE 4C CUSTOMER RUNTIME READ CONTRACTION LOCAL / REVIEW PENDING — ORDERS `USER` / `USERADDRESS` PERSISTENCE READS ARE MOVED BEHIND THE CUSTOMER-OWNED STABLE-ID PUBLIC CAPABILITY; ORDER OWNER LOOKUP USES PERSISTED `ORDER.USERSTABLEID`; DIRECT COMMERCE DEBT REMAINS 22; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
+Current implementation base: `origin/dev@1f58f1a3` (Slice 4C Customer runtime read contraction merge / PR #2204)  
+Current status: **SLICE 4C-A USERADDRESS STABLE-ID CUID REPAIR LOCAL / REVIEW PENDING — NEW CUSTOMER ADDRESSES USE THE CANONICAL `c...` STABLE-ID GENERATOR; THE TWO HISTORICAL PRODUCTION `a...` ROWS REMAIN DATA-REPAIR PENDING; NO SCHEMA/MIGRATION OR DEPENDENCY-GRAPH CHANGE; PHASE 5 ACTIVE VERIFICATION REMAINS DEFERRED TO THE CONSOLIDATED CLOSEOUT GATE**
 
 ## Goal
 
@@ -414,7 +414,7 @@ Focused tests preserve hidden-item Web/POS behavior, normal/amendment immutable 
 
 ### Slice 4C — Customer runtime read contraction
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-slice4c-customer-runtime-read-boundary`, based on `origin/dev@b8f838ff`.
+Status: **MERGED / CI GREEN** — PR #2204, final head `3efd8930`, squash merge `1f58f1a3`; PR CI #5236 passed API and Web.
 
 Migration classification: **Class A owner-boundary contraction**. No Prisma schema/migration, dependency/lockfile, public HTTP route, pricing/promotion policy, payment/refund behavior, Benefits COMMIT transaction, lifecycle or provider-wire semantics change.
 
@@ -424,6 +424,18 @@ Orders retains all Commerce policy. Order-ready trusted-contact precedence, Web/
 
 Source search after 4C finds no `this.prisma.user` or `userAddress` access under `apps/api/src/orders/**`. The scanner locks the Customer public contract as framework/Prisma/concrete-service/DB-ID free and prevents Orders from regaining User/UserAddress delegates. The numeric direct-import baseline remains Commerce **22** because the remaining Commerce -> Identity direct debt is the concrete `LoyaltyService` + `MembershipService` transaction/runtime seam scheduled for 4D; this Slice contracts hidden persistence ownership rather than a counted direct-import edge. Public SCC remains empty.
 
-A separate pre-existing saved-address identity defect was discovered read-only during 4C: production currently has 2 `UserAddress.addressStableId` rows and both use the historical `a...` prefix, while Orders' existing `normalizeStableId()` accepts only `c...` CUIDs. 4C deliberately does **not** change that behavior because it is an independent functional compatibility fix rather than a boundary-only refactor; it should be handled separately after impact review.
+A separate pre-existing saved-address identity defect was discovered read-only during 4C: production currently has 2 `UserAddress.addressStableId` rows and both use the historical `a...` prefix, while Orders' existing `normalizeStableId()` accepts only canonical `c...` CUID values. 4C itself kept that defect out of the boundary-only refactor; the reviewed follow-up is tracked as Slice 4C-A below.
 
-Planned follow-on after Slice 4C is: **Slice 4D Benefits read contraction while preserving the existing transaction seam -> remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
+### Slice 4C-A — UserAddress canonical StableId repair
+
+Status: **LOCAL / REVIEW PENDING** on `fix/customer-address-stable-id-cuid`, based on `origin/dev@1f58f1a3`.
+
+Migration classification: **Class B persisted-identity repair with a very small deterministic data correction**. No Prisma schema or migration is required because `UserAddress.addressStableId` is already `@default(cuid())`; the defect is application code that generated a normal `c...` ID and then replaced its first character with `a`.
+
+The source fix deletes that address-only prefix rewrite and makes `CustomerService.createAddress()` use the same canonical `generateStableId()` used elsewhere. Focused Customer tests now require every newly generated address ID to round-trip through the shared `normalizeStableId()` used by Orders, and the Customer order-context fixtures use canonical `c...` stable IDs. Orders validation is intentionally **not** relaxed to accept `a...` values.
+
+Read-only production audit before implementation found exactly **2** `UserAddress` rows, both in the historical `a + 24 base36 characters` shape. `information_schema` shows no other typed `addressStableId` persistence column, all **12** current `CheckoutIntent.metadataJson` rows contain no `addressStableId` key, and none references either current address ID. Because the legacy generator was `a + generatedCuid.slice(1)`, the deterministic repair for each row is to restore only the first character from `a` to `c`; no random identity replacement is needed. The production mutation is **not** part of the local source phase and remains pending user review, remote CI/merge, deployment readiness, exact precondition checks, and explicit production-mutation approval.
+
+This repair changes no public route shape, dependency direction, scanner baseline, payment/provider behavior, order lifecycle, pricing, or Benefits transaction semantics. After source review/merge and the later two-row production repair, Phase 5 closeout verification must include selecting an existing saved delivery address and confirming Orders resolves it through `CUSTOMER_ORDER_CONTEXT_READER` rather than treating it as an untrusted free-form address.
+
+Planned follow-on after Slice 4C-A is: **Slice 4D Benefits read contraction while preserving the existing transaction seam -> remaining provider contraction -> Orders use-case decomposition -> Phase 5 closeout readiness audit -> consolidated Phase 5 deployment/active verification -> closeout**.
