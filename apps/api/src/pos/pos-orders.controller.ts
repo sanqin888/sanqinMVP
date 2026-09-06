@@ -100,7 +100,9 @@ function parseCsvQuery<T extends string>(
     .filter(Boolean);
   const invalid = values.find((value) => !allowed.has(value));
   if (invalid) {
-    throw new BadRequestException(`${field} contains unsupported value: ${invalid}`);
+    throw new BadRequestException(
+      `${field} contains unsupported value: ${invalid}`,
+    );
   }
   return values as T[];
 }

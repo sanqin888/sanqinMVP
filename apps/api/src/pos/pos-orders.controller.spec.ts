@@ -206,7 +206,7 @@ describe('PosOrdersController Uber orders', () => {
     });
   });
 
-  it('POS 订单管理拒绝非法筛选而不是把错误值传给 Prisma', async () => {
+  it('POS 订单管理拒绝非法筛选而不是把错误值传给 Prisma', () => {
     expect(() =>
       controller.search(
         posRequest,

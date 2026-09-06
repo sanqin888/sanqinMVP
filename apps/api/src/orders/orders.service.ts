@@ -3640,7 +3640,9 @@ export class OrdersService {
     ]);
 
     return {
-      orders: (orders as OrderWithItems[]).map((order) => this.toOrderDto(order)),
+      orders: (orders as OrderWithItems[]).map((order) =>
+        this.toOrderDto(order),
+      ),
       page,
       pageSize,
       total,
