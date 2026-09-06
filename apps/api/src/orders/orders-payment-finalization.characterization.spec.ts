@@ -109,15 +109,17 @@ function makeCreatedOrder(input: {
 describe('OrdersService confirmed-payment finalization characterization', () => {
   it('commits Benefits and Coupon reservations in the same transaction that creates the paid Order snapshot', async () => {
     const outerFindUnique = jest.fn().mockResolvedValue(null);
-    const orderCreate = jest.fn().mockImplementation(({ data }: { data: unknown }) =>
-      Promise.resolve(
-        makeCreatedOrder({
-          id: '8a3d4c0e-4750-4f6a-9138-000000000030',
-          orderStableId: 'order_stable_1',
-          data: data as Record<string, unknown>,
-        }),
-      ),
-    );
+    const orderCreate = jest
+      .fn()
+      .mockImplementation(({ data }: { data: unknown }) =>
+        Promise.resolve(
+          makeCreatedOrder({
+            id: '8a3d4c0e-4750-4f6a-9138-000000000030',
+            orderStableId: 'order_stable_1',
+            data: data as Record<string, unknown>,
+          }),
+        ),
+      );
     const tx = { order: { create: orderCreate } };
     const transaction = jest.fn(
       (work: (client: typeof tx) => Promise<unknown>) => work(tx),
@@ -147,13 +149,16 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       logger: { log: jest.fn() },
     });
 
-    const result = await service.createFromConfirmedPaymentSnapshot(snapshot(), {
-      attemptId: 'attempt-1',
-      internalOrderId: '8a3d4c0e-4750-4f6a-9138-000000000030',
-      orderStableId: 'order_stable_1',
-      cardSurchargeCents: 40,
-      chargedTotalCents: 870,
-    });
+    const result = await service.createFromConfirmedPaymentSnapshot(
+      snapshot(),
+      {
+        attemptId: 'attempt-1',
+        internalOrderId: '8a3d4c0e-4750-4f6a-9138-000000000030',
+        orderStableId: 'order_stable_1',
+        cardSurchargeCents: 40,
+        chargedTotalCents: 870,
+      },
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(commitTender).toHaveBeenCalledWith({
@@ -204,9 +209,7 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       }),
     );
     expect(paidSideEffects).toHaveBeenCalledTimes(1);
-    expect(result.internalOrderId).toBe(
-      '8a3d4c0e-4750-4f6a-9138-000000000030',
-    );
+    expect(result.internalOrderId).toBe('8a3d4c0e-4750-4f6a-9138-000000000030');
   });
 
   it('returns an already-created Order by orderStableId without recommitting reservations or replaying paid side effects', async () => {

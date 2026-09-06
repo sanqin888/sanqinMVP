@@ -21,9 +21,9 @@ describe('UberDirectService characterization', () => {
       UBER_DIRECT_STORE_COUNTRY: 'Canada',
       UBER_DIRECT_CURRENCY: 'CAD',
     };
-    jest.spyOn(Date, 'now').mockReturnValue(
-      new Date('2026-09-05T20:00:00.000Z').getTime(),
-    );
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date('2026-09-05T20:00:00.000Z').getTime());
   });
 
   afterEach(() => {

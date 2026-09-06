@@ -71,11 +71,13 @@ describe('OrdersService amendment characterization', () => {
     const transaction = jest.fn(
       (work: (client: typeof tx) => Promise<unknown>) => work(tx),
     );
-    const resolveInternalOrderIdByStableIdOrThrow = jest.fn().mockResolvedValue({
-      id: currentOrder.id,
-      orderStableId: currentOrder.orderStableId,
-      clientRequestId: null,
-    });
+    const resolveInternalOrderIdByStableIdOrThrow = jest
+      .fn()
+      .mockResolvedValue({
+        id: currentOrder.id,
+        orderStableId: currentOrder.orderStableId,
+        clientRequestId: null,
+      });
     const toOrderDto = jest.fn().mockReturnValue({
       orderStableId: currentOrder.orderStableId,
     });
@@ -109,14 +111,25 @@ describe('OrdersService amendment characterization', () => {
     ).resolves.toEqual({ orderStableId: currentOrder.orderStableId });
 
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(amendmentCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        orderId: currentOrder.id,
-        type: OrderAmendmentType.VOID_ITEM,
-        paymentMethod: PaymentMethod.CASH,
-        reason: 'item unavailable',
-      }),
-      select: { id: true, amendmentStableId: true, orderId: true },
+    const amendmentCreateArgs = amendmentCreate.mock.calls[0]?.[0] as {
+      data: {
+        orderId: string;
+        type: OrderAmendmentType;
+        paymentMethod: PaymentMethod;
+        reason: string;
+      };
+      select: { id: boolean; amendmentStableId: boolean; orderId: boolean };
+    };
+    expect(amendmentCreateArgs.data).toMatchObject({
+      orderId: currentOrder.id,
+      type: OrderAmendmentType.VOID_ITEM,
+      paymentMethod: PaymentMethod.CASH,
+      reason: 'item unavailable',
+    });
+    expect(amendmentCreateArgs.select).toEqual({
+      id: true,
+      amendmentStableId: true,
+      orderId: true,
     });
     expect(amendmentItemCreateMany).toHaveBeenCalledWith({
       data: [
@@ -145,14 +158,23 @@ describe('OrdersService amendment characterization', () => {
         paymentTotalCents: 1017,
       },
     });
-    expect(amendmentUpdate).toHaveBeenCalledWith({
-      where: { id: '8a3d4c0e-4750-4f6a-9138-000000000103' },
-      data: expect.objectContaining({
-        deltaCents: -1000,
-        refundCents: 1000,
-        additionalChargeCents: 0,
-        redeemReturnCents: 0,
-      }),
+    const amendmentUpdateArgs = amendmentUpdate.mock.calls[0]?.[0] as {
+      where: { id: string };
+      data: {
+        deltaCents: number;
+        refundCents: number;
+        additionalChargeCents: number;
+        redeemReturnCents: number;
+      };
+    };
+    expect(amendmentUpdateArgs.where).toEqual({
+      id: '8a3d4c0e-4750-4f6a-9138-000000000103',
+    });
+    expect(amendmentUpdateArgs.data).toMatchObject({
+      deltaCents: -1000,
+      refundCents: 1000,
+      additionalChargeCents: 0,
+      redeemReturnCents: 0,
     });
     expect(applyAmendmentAdjustments).not.toHaveBeenCalled();
   });

@@ -1152,16 +1152,16 @@ describe('OrdersService', () => {
       'making',
     );
 
-    expect(prisma.order.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: '8a3d4c0e-4750-4f6a-9138-000000000111',
-        status: 'paid',
-      },
-      data: expect.objectContaining({
-        status: 'making',
-        makingAt: expect.any(Date),
-      }),
+    const updateArgs = prisma.order.updateMany.mock.calls[0]?.[0] as {
+      where: { id: string; status: string };
+      data: { status: string; makingAt: unknown };
+    };
+    expect(updateArgs.where).toEqual({
+      id: '8a3d4c0e-4750-4f6a-9138-000000000111',
+      status: 'paid',
     });
+    expect(updateArgs.data.status).toBe('making');
+    expect(updateArgs.data.makingAt).toBeInstanceOf(Date);
     expect(emitOrderAccepted).toHaveBeenCalledTimes(1);
     expect(emitOrderAccepted).toHaveBeenCalledWith({
       orderId: '8a3d4c0e-4750-4f6a-9138-000000000111',
