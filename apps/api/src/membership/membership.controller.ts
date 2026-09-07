@@ -98,7 +98,8 @@ export class MembershipController {
       throw new BadRequestException('userStableId is required');
     }
 
-    const status = await this.customer.getMarketingSubscriptionStatus(userStableId);
+    const status =
+      await this.customer.getMarketingSubscriptionStatus(userStableId);
     if (status.marketingEmailOptIn) {
       return { ...status, offer: null };
     }
