@@ -194,6 +194,21 @@ describe('CustomerService marketing consent', () => {
     expect(couponTriggerService.issueProgramsForUser).not.toHaveBeenCalled();
   });
 
+  it('returns marketing subscription status from Customer ownership', async () => {
+    const { service, prisma } = createService();
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'member@example.com',
+      marketingEmailOptIn: false,
+    });
+
+    await expect(
+      service.getMarketingSubscriptionStatus('customer-stable-1'),
+    ).resolves.toEqual({
+      marketingEmailOptIn: false,
+      emailLinked: true,
+    });
+  });
+
   it('does not repeat welcome or benefit trigger when already opted in', async () => {
     const {
       service,

@@ -29,6 +29,35 @@ describe('CouponProgramTriggerService public boundary', () => {
     expect(findMany).toHaveBeenCalled();
   });
 
+  it('derives the eligible marketing offer count and value from active backend program data', async () => {
+    const user = { userStableId: 'customer-stable-1' };
+    const program = {
+      programStableId: 'marketing-program',
+      giftValue: '50',
+      items: [
+        { couponStableId: 'cml9t6a5h0002rz01c9peugcn', quantity: 2 },
+        { couponStableId: 'cml9sztca0001rz01xy6og79t', quantity: 3 },
+      ],
+    };
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue(user) },
+      couponProgram: { findMany: jest.fn().mockResolvedValue([program]) },
+    };
+    const eligibility = {
+      evaluate: jest.fn().mockResolvedValue({ canIssue: true }),
+    };
+    const service = new CouponProgramTriggerService(
+      prisma as never,
+      {} as never,
+      eligibility as never,
+      {} as never,
+    );
+
+    await expect(
+      service.getEligibleProgramOffer('MARKETING_OPT_IN', user.userStableId),
+    ).resolves.toEqual({ couponCount: 5, giftValue: '50' });
+  });
+
   it('requests coupon-issued messaging through the public port with an explicit snapshot', async () => {
     const user = {
       id: '11111111-1111-4111-8111-111111111111',

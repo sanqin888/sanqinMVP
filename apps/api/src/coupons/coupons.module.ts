@@ -15,6 +15,7 @@ import {
   COUPON_PROGRAM_ADMIN_ISSUER,
   COUPON_PROGRAM_CLAIMS,
   COUPON_PROGRAM_TRIGGER,
+  COUPON_PROGRAM_TRIGGER_OFFER_READER,
 } from '../benefits/contracts/coupon-program.contract';
 
 @Module({
@@ -43,6 +44,10 @@ import {
       useExisting: CouponProgramTriggerService,
     },
     {
+      provide: COUPON_PROGRAM_TRIGGER_OFFER_READER,
+      useExisting: CouponProgramTriggerService,
+    },
+    {
       provide: COUPON_PROGRAM_ADMIN_ISSUER,
       useExisting: CouponProgramIssuerService,
     },
@@ -52,6 +57,7 @@ import {
     COUPON_OFFER_ADMIN,
     COUPON_PROGRAM_CLAIMS,
     COUPON_PROGRAM_TRIGGER,
+    COUPON_PROGRAM_TRIGGER_OFFER_READER,
     COUPON_PROGRAM_ADMIN_ISSUER,
   ],
 })

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { type CouponProgram, type User } from '@prisma/client';
 import type {
+  CouponProgramTriggerOfferReaderPort,
   CouponProgramTriggerPort,
   CouponProgramTriggerType,
 } from '../benefits/contracts/coupon-program.contract';
@@ -11,9 +12,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponProgramEligibilityService } from './coupon-program-eligibility.service';
 import { CouponProgramIssuerService } from './coupon-program-issuer.service';
+import { parseProgramItems } from './coupon-program.utils';
 
 @Injectable()
-export class CouponProgramTriggerService implements CouponProgramTriggerPort {
+export class CouponProgramTriggerService
+  implements CouponProgramTriggerPort, CouponProgramTriggerOfferReaderPort
+{
   private readonly logger = new Logger(CouponProgramTriggerService.name);
 
   constructor(
@@ -53,6 +57,43 @@ export class CouponProgramTriggerService implements CouponProgramTriggerPort {
     }
 
     return { issuedCount };
+  }
+
+  async getEligibleProgramOffer(
+    triggerType: CouponProgramTriggerType,
+    userStableId: string,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId },
+      select: { userStableId: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const programs = await this.findActivePrograms(triggerType);
+    let couponCount = 0;
+    const giftValues = new Set<string>();
+
+    for (const program of programs) {
+      const eligibility = await this.eligibility.evaluate(
+        program,
+        user.userStableId,
+      );
+      if (!eligibility.canIssue) continue;
+
+      couponCount += parseProgramItems(program.items).reduce(
+        (sum, item) => sum + item.quantity,
+        0,
+      );
+      const giftValue = program.giftValue?.trim();
+      if (giftValue) giftValues.add(giftValue);
+    }
+
+    if (couponCount === 0 || giftValues.size !== 1) return null;
+
+    return {
+      couponCount,
+      giftValue: Array.from(giftValues)[0],
+    };
   }
 
   async issueBirthdayProgramsForMonth(targetDate = new Date()) {
