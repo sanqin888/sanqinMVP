@@ -17,6 +17,7 @@ describe('OrdersService.createFullRefund', () => {
   const amendmentUpsert = jest.fn();
   const amendmentUpdate = jest.fn();
   const orderUpdateMany = jest.fn();
+  const opsEventCreateMany = jest.fn();
   const rollbackOnRefund = jest.fn();
   const getOrderUsage = jest.fn();
   const tx = {
@@ -26,6 +27,7 @@ describe('OrdersService.createFullRefund', () => {
       upsert: amendmentUpsert,
       update: amendmentUpdate,
     },
+    opsEvent: { createMany: opsEventCreateMany },
   };
   let service: OrdersService;
 
@@ -35,6 +37,7 @@ describe('OrdersService.createFullRefund', () => {
     amendmentFindFirst.mockResolvedValue(null);
     amendmentUpsert.mockResolvedValue({ id: 'amendment_1' });
     orderUpdateMany.mockResolvedValue({ count: 1 });
+    opsEventCreateMany.mockResolvedValue({ count: 1 });
     rollbackOnRefund.mockResolvedValue(undefined);
     getOrderUsage.mockResolvedValue({ balancePaidCents: 0, pointsEarned: 0 });
     service = Object.create(OrdersService.prototype) as OrdersService;
@@ -92,6 +95,7 @@ describe('OrdersService.createFullRefund', () => {
       update: {},
     });
     expect(orderUpdateMany).not.toHaveBeenCalled();
+    expect(opsEventCreateMany).not.toHaveBeenCalled();
     expect(result.outcome).toBe('pending_platform');
     expect(result.order.status).toBe('completed');
   });
@@ -128,6 +132,18 @@ describe('OrdersService.createFullRefund', () => {
       expect(orderUpdateMany).toHaveBeenCalledWith({
         where: { id: baseOrder.id, status: { not: 'refunded' } },
         data: { status: 'refunded' },
+      });
+      expect(opsEventCreateMany).toHaveBeenCalledWith({
+        data: {
+          idempotencyKey: 'order.cancelled:order_1',
+          eventName: 'order.cancelled',
+          source: 'orders.lifecycle',
+          payload: {
+            orderStableId: 'order_1',
+            reason: '顾客取消',
+          },
+        },
+        skipDuplicates: true,
       });
       expect(result).toEqual(
         expect.objectContaining({

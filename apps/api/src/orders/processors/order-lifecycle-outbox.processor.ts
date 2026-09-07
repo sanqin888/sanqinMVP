@@ -7,9 +7,12 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
+  ORDER_CANCELLED_LIFECYCLE_EVENT,
+  ORDER_CANCELLATION_PRINT_HANDOFF_LIFECYCLE_EVENT,
   ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   ORDER_PREP_STARTED_LIFECYCLE_EVENT,
+  orderCancellationPrintHandoffIdempotencyKey,
   orderInitialPrintHandoffIdempotencyKey,
 } from '../order-lifecycle';
 import { OrderPreparationService } from '../order-preparation.service';
@@ -17,6 +20,8 @@ import { FulfillmentProcessor } from './fulfillment.processor';
 
 export {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
+  ORDER_CANCELLED_LIFECYCLE_EVENT,
+  ORDER_CANCELLATION_PRINT_HANDOFF_LIFECYCLE_EVENT,
   ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   ORDER_PREP_STARTED_LIFECYCLE_EVENT,
@@ -30,13 +35,20 @@ type DurableOrderEvent = {
   orderStableId: string;
 };
 
+type DurableOrderCancellationEvent = DurableOrderEvent & {
+  reason: string | null;
+  operatorName: string | null;
+};
+
 /**
  * API-process consumer for append-only Order lifecycle events.
  *
  * order.accepted is materialized into local preparation for immediate orders.
  * order.prep_started is handed to the Print owner, then checkpointed as
- * order.initial_print_handoff. Durable facts plus database locks make both stages
- * replayable after process restarts without reading Print-owned persistence.
+ * order.initial_print_handoff. Confirmed order.cancelled facts are handed to Print
+ * only after that initial handoff and checkpointed as order.cancellation_print_handoff.
+ * Durable facts plus database locks make every stage replayable after process
+ * restarts without reading Print-owned persistence.
  */
 @Injectable()
 export class OrderLifecycleOutboxProcessor
@@ -83,6 +95,10 @@ export class OrderLifecycleOutboxProcessor
         completed += 1;
         continue;
       }
+      if (await this.processCancellationLocked()) {
+        completed += 1;
+        continue;
+      }
       if (await this.processImmediateAcceptedLocked()) {
         completed += 1;
         continue;
@@ -121,6 +137,7 @@ export class OrderLifecycleOutboxProcessor
         WHERE event.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
           AND event."eventName" = ${ORDER_PREP_STARTED_LIFECYCLE_EVENT}
           AND event.payload->>'orderStableId' IS NOT NULL
+          AND orders.status <> 'refunded'::"OrderStatus"
           AND NOT EXISTS (
             SELECT 1 FROM "OpsEvent" handoff
             WHERE handoff.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
@@ -144,6 +161,61 @@ export class OrderLifecycleOutboxProcessor
             item.orderStableId,
           ),
           eventName: ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT,
+          source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+          payload: { orderStableId: item.orderStableId },
+        },
+        skipDuplicates: true,
+      });
+      return true;
+    });
+  }
+
+  private async processCancellationLocked(): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<DurableOrderCancellationEvent[]>`
+        SELECT event.id,
+          orders.id::text AS "orderId",
+          orders."orderStableId" AS "orderStableId",
+          event.payload->>'reason' AS reason,
+          event.payload->>'operatorName' AS "operatorName"
+        FROM "OpsEvent" event
+        JOIN "Order" orders
+          ON orders."orderStableId" = event.payload->>'orderStableId'
+        WHERE event.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
+          AND event."eventName" = ${ORDER_CANCELLED_LIFECYCLE_EVENT}
+          AND orders.status = 'refunded'::"OrderStatus"
+          AND EXISTS (
+            SELECT 1 FROM "OpsEvent" initial_handoff
+            WHERE initial_handoff.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
+              AND initial_handoff."eventName" = ${ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT}
+              AND initial_handoff.payload->>'orderStableId' = orders."orderStableId"
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM "OpsEvent" cancellation_handoff
+            WHERE cancellation_handoff.source = ${ORDER_LIFECYCLE_OUTBOX_SOURCE}
+              AND cancellation_handoff."eventName" = ${ORDER_CANCELLATION_PRINT_HANDOFF_LIFECYCLE_EVENT}
+              AND cancellation_handoff.payload->>'orderStableId' = orders."orderStableId"
+          )
+        ORDER BY event."createdAt" ASC, event.id ASC
+        FOR UPDATE OF event SKIP LOCKED
+        LIMIT 1
+      `;
+      const item = rows[0];
+      if (!item) return false;
+
+      const handoff = await this.fulfillment.handleCancellationLifecycle({
+        orderStableId: item.orderStableId,
+        reason: item.reason ?? 'Order cancellation confirmed',
+        operatorName: item.operatorName ?? undefined,
+      });
+      if (!handoff) return false;
+
+      await tx.opsEvent.createMany({
+        data: {
+          idempotencyKey: orderCancellationPrintHandoffIdempotencyKey(
+            item.orderStableId,
+          ),
+          eventName: ORDER_CANCELLATION_PRINT_HANDOFF_LIFECYCLE_EVENT,
           source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
           payload: { orderStableId: item.orderStableId },
         },
