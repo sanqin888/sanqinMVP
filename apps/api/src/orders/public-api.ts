@@ -35,6 +35,11 @@ export {
 } from './order-ingestion.contract';
 export { ORDER_INGESTION_PROVIDER } from './order-ingestion.provider';
 export {
+  ORDER_CANCELLED_LIFECYCLE_EVENT,
+  ORDER_LIFECYCLE_OUTBOX_SOURCE,
+  orderCancelledIdempotencyKey,
+} from './order-lifecycle';
+export {
   ORDER_PRINT_HANDOFF_REQUESTED,
   type OrderPrintHandoffRequest,
   type OrderPrintHandoffResult,

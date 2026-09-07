@@ -235,92 +235,89 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  @OnEvent('order.cancellation.print')
-  async handleOrderCancellationPrint(payload: {
+  async handleCancellationLifecycle(payload: {
     orderStableId: string;
     locale?: 'zh' | 'en';
     reason: string;
-    operatorName: string;
-  }) {
-    try {
-      const locale = payload.locale === 'en' ? 'en' : 'zh';
-      const basePayload = await this.printPosPayloadService.getByStableId(
-        payload.orderStableId,
-        locale,
-      );
-      const order = await this.prisma.order.findUnique({
-        where: { orderStableId: payload.orderStableId },
-        select: { id: true, storeId: true, status: true },
+    operatorName?: string;
+  }): Promise<OrderPrintHandoffResult | null> {
+    const locale = payload.locale === 'en' ? 'en' : 'zh';
+    const basePayload = await this.printPosPayloadService.getByStableId(
+      payload.orderStableId,
+      locale,
+    );
+    const order = await this.prisma.order.findUnique({
+      where: { orderStableId: payload.orderStableId },
+      select: { id: true, storeId: true, status: true },
+    });
+    if (!order) {
+      this.logger.error({
+        event: 'cancellation_print_order_missing',
+        orderStableId: payload.orderStableId,
       });
-      if (!order) {
-        this.logger.error({
-          event: 'cancellation_print_order_missing',
-          orderStableId: payload.orderStableId,
-        });
-        return;
-      }
-      if (order.status !== 'refunded') {
-        this.logger.warn({
-          event: 'cancellation_print_order_not_refunded',
-          orderStableId: payload.orderStableId,
-          status: order.status,
-        });
-        return;
-      }
+      return null;
+    }
+    if (order.status !== 'refunded') {
+      this.logger.warn({
+        event: 'cancellation_print_order_not_refunded',
+        orderStableId: payload.orderStableId,
+        status: order.status,
+      });
+      return null;
+    }
 
-      const storeId = order.storeId;
-      if (!storeId) {
-        this.logger.error({
-          event: 'cancellation_print_store_missing',
-          orderStableId: payload.orderStableId,
-          reason: 'STORE_ID_MISSING',
-        });
-        return;
-      }
+    const storeId = order.storeId;
+    if (!storeId) {
+      this.logger.error({
+        event: 'cancellation_print_store_missing',
+        orderStableId: payload.orderStableId,
+        reason: 'STORE_ID_MISSING',
+      });
+      return null;
+    }
 
-      const reason = payload.reason.trim();
-      const operatorName = payload.operatorName.trim();
-      const headerNote =
-        locale === 'zh'
+    const reason = payload.reason.trim() || 'Order cancellation confirmed';
+    const operatorName = payload.operatorName?.trim();
+    const headerNote =
+      locale === 'zh'
+        ? operatorName
           ? `原因: ${reason} / 操作人: ${operatorName}`
-          : `Reason: ${reason} / Operator: ${operatorName}`;
-      const headerItem = {
-        productStableId: '__order_cancellation__',
-        nameZh: '****** 整单取消 ******',
-        nameEn: '****** ORDER CANCELLED ******',
-        displayName: '****** 整单取消 / ORDER CANCELLED ******',
-        quantity: 1,
-        lineTotalCents: 0,
-        specialInstructions: headerNote,
-        options: null,
-        components: [],
+          : `原因: ${reason}`
+        : operatorName
+          ? `Reason: ${reason} / Operator: ${operatorName}`
+          : `Reason: ${reason}`;
+    const headerItem = {
+      productStableId: '__order_cancellation__',
+      nameZh: '****** 整单取消 ******',
+      nameEn: '****** ORDER CANCELLED ******',
+      displayName: '****** 整单取消 / ORDER CANCELLED ******',
+      quantity: 1,
+      lineTotalCents: 0,
+      specialInstructions: headerNote,
+      options: null,
+      components: [],
+    };
+    const cancelledItems = basePayload.snapshot.items.map((item) => {
+      const baseZh =
+        item.nameZh ?? item.displayName ?? item.nameEn ?? item.productStableId;
+      const baseEn =
+        item.nameEn ?? item.displayName ?? item.nameZh ?? item.productStableId;
+      return {
+        ...item,
+        nameZh: `[取消] ${baseZh}`,
+        nameEn: `[CANCEL] ${baseEn}`,
+        displayName: `[取消/CANCEL] ${item.displayName ?? baseEn}`,
       };
-      const cancelledItems = basePayload.snapshot.items.map((item) => {
-        const baseZh =
-          item.nameZh ??
-          item.displayName ??
-          item.nameEn ??
-          item.productStableId;
-        const baseEn =
-          item.nameEn ??
-          item.displayName ??
-          item.nameZh ??
-          item.productStableId;
-        return {
-          ...item,
-          nameZh: `[取消] ${baseZh}`,
-          nameEn: `[CANCEL] ${baseEn}`,
-          displayName: `[取消/CANCEL] ${item.displayName ?? baseEn}`,
-        };
-      });
-      const cancellationPayload: PrintPosPayloadDto = {
-        ...basePayload,
-        snapshot: {
-          ...basePayload.snapshot,
-          items: [headerItem, ...cancelledItems],
-        },
-      };
+    });
+    const cancellationPayload: PrintPosPayloadDto = {
+      ...basePayload,
+      snapshot: {
+        ...basePayload.snapshot,
+        items: [headerItem, ...cancelledItems],
+      },
+    };
 
+    try {
       const job = await this.handoffPrint({
         orderId: order.id,
         orderStableId: payload.orderStableId,
@@ -334,12 +331,14 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         storeId,
         jobId: job.jobId,
       });
+      return job;
     } catch (error) {
       this.logger.error({
         event: 'cancellation_print_job_failed',
         orderStableId: payload.orderStableId,
         errorType: error instanceof Error ? error.name : 'UnknownError',
       });
+      throw error;
     }
   }
 

@@ -136,10 +136,12 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const cancellationUpsert = jest.fn().mockResolvedValue({});
     const amendmentUpsert = jest.fn().mockResolvedValue({});
     const orderUpdate = jest.fn().mockResolvedValue({});
+    const opsEventCreateMany = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
       order: { findFirst, update: orderUpdate },
       uberOrderCancellation: { upsert: cancellationUpsert },
       orderAmendment: { upsert: amendmentUpsert },
+      opsEvent: { createMany: opsEventCreateMany },
     };
     const prisma = {
       $transaction: jest.fn(
@@ -201,6 +203,19 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     expect(orderUpdate).toHaveBeenCalledWith({
       where: { id: 'order-db-1' },
       data: { status: 'refunded' },
+    });
+    expect(opsEventCreateMany).toHaveBeenCalledWith({
+      data: {
+        idempotencyKey: 'order.cancelled:stable-1',
+        eventName: 'order.cancelled',
+        source: 'orders.lifecycle',
+        payload: {
+          orderStableId: 'stable-1',
+          reason: 'UBER_ORDER_FAILURE',
+          operatorName: 'Uber Eats',
+        },
+      },
+      skipDuplicates: true,
     });
     expect(log).toHaveBeenCalledWith({
       event: 'uber_order_cancelled',

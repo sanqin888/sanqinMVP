@@ -53,8 +53,10 @@ import {
 } from './order-status';
 import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
+  ORDER_CANCELLED_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   orderAcceptedIdempotencyKey,
+  orderCancelledIdempotencyKey,
 } from './order-lifecycle';
 import { generateStableId, normalizeStableId } from '../common/utils/stable-id';
 import {
@@ -2977,6 +2979,18 @@ export class OrdersService {
           update: {},
         });
       }
+      await tx.opsEvent.createMany({
+        data: {
+          idempotencyKey: orderCancelledIdempotencyKey(order.orderStableId),
+          eventName: ORDER_CANCELLED_LIFECYCLE_EVENT,
+          source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+          payload: {
+            orderStableId: order.orderStableId,
+            reason: params.reason.trim(),
+          },
+        },
+        skipDuplicates: true,
+      });
       const completed = await tx.order.findUnique({
         where: { id: order.id },
         include: { items: true },

@@ -136,7 +136,7 @@ describe('FulfillmentProcessor reprint store routing', () => {
   it('整单退款确认后创建 kitchen-only CANCELLATION，并把原菜品明确标记为取消', async () => {
     const { processor, sendPrintJob } = setup('order-store', 'refunded');
 
-    await processor.handleOrderCancellationPrint({
+    await processor.handleCancellationLifecycle({
       orderStableId: 'stable-1',
       reason: '顾客取消',
       operatorName: 'Staff',
@@ -174,7 +174,7 @@ describe('FulfillmentProcessor reprint store routing', () => {
       .mockImplementation(() => undefined);
     const { processor, sendPrintJob } = setup('order-store', 'making');
 
-    await processor.handleOrderCancellationPrint({
+    await processor.handleCancellationLifecycle({
       orderStableId: 'stable-1',
       reason: '顾客取消',
       operatorName: 'Staff',

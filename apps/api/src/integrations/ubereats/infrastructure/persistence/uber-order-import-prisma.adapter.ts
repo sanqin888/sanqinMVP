@@ -15,7 +15,10 @@ import {
   resolvePosConnectivityStatus,
 } from '../../../../common/pos-connectivity';
 import {
+  ORDER_CANCELLED_LIFECYCLE_EVENT,
   ORDER_INGESTION,
+  ORDER_LIFECYCLE_OUTBOX_SOURCE,
+  orderCancelledIdempotencyKey,
   type NormalizedOrderItem,
   type OrderIngestionPort,
 } from '../../../../orders/public-api';
@@ -154,6 +157,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         );
       await this.persistCancellation(tx, {
         orderId: order.id,
+        orderStableId: order.orderStableId,
         externalOrderId: input.externalOrderId,
         totalCents: order.totalCents,
         cursor: input.cursor,
@@ -310,6 +314,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         if (input.cancellation) {
           await this.persistCancellation(tx, {
             orderId: order.orderId,
+            orderStableId: order.orderStableId,
             externalOrderId: input.order.externalOrderId,
             totalCents: input.order.totalCents,
             cursor: input.cursor,
@@ -353,6 +358,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     tx: Prisma.TransactionClient,
     input: {
       orderId: string;
+      orderStableId: string;
       externalOrderId: string;
       totalCents: number;
       cursor: UberOrderEventCursor;
@@ -396,6 +402,22 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     await tx.order.update({
       where: { id: input.orderId },
       data: { status: OrderStatus.refunded },
+    });
+    await tx.opsEvent.createMany({
+      data: {
+        idempotencyKey: orderCancelledIdempotencyKey(input.orderStableId),
+        eventName: ORDER_CANCELLED_LIFECYCLE_EVENT,
+        source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
+        payload: {
+          orderStableId: input.orderStableId,
+          reason:
+            input.cancellation.reasonDetail ??
+            input.cancellation.reasonCode ??
+            'Uber cancellation confirmed',
+          operatorName: 'Uber Eats',
+        },
+      },
+      skipDuplicates: true,
     });
   }
 
