@@ -1468,6 +1468,12 @@ is claimed per repository workflow.
 **Architecture effect:** adds one explicit Benefits public read port; no deep import, direct persistence read from Web/Customer, scanner allowance, dependency manifest, or schema change.  
 **Details:** `apps/api/src/benefits/contracts/coupon-program.contract.ts`, `apps/api/src/membership/membership.controller.ts`, `apps/web/src/components/site/MarketingSubscriptionPrompt.tsx`.
 
+### 2026-09-07 — Member marketing-subscription prompt dismissal simplification
+
+**State:** LOCAL / REVIEW PENDING  
+**Result:** Removed the browser-local 30-day dismissal cooldown from `MarketingSubscriptionPrompt`. Dismissal now only hides the prompt for the current mounted customer-site shell; a later full reload or fresh mount may prompt again while the authenticated CUSTOMER remains unsubscribed and Benefits still returns an eligible offer. Marketing consent semantics, Customer ownership, Benefits eligibility/issuance, login/MFA behavior, Prisma schema/migrations, dependencies, and scanner allowances are unchanged.  
+**Details:** `apps/web/src/components/site/MarketingSubscriptionPrompt.tsx`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
+
 ### 2026-09-07 — Phase 5 closeout
 
 **PR/SHA:** final merged closeout source includes PR #2216 / `81b79148`, PR #2221 / `554a586d`, and PR #2222 / `5abcdb9d`  
