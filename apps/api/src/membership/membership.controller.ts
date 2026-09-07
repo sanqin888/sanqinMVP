@@ -30,6 +30,10 @@ import {
   IDENTITY_EMAIL_VERIFICATION,
   type IdentityEmailVerificationPort,
 } from '../auth/public-api';
+import {
+  COUPON_PROGRAM_TRIGGER_OFFER_READER,
+  type CouponProgramTriggerOfferReaderPort,
+} from '../benefits/public-api';
 
 type AuthedRequest = Request & {
   user?: { id?: string; userStableId?: string };
@@ -57,6 +61,8 @@ export class MembershipController {
     private readonly emailVerification: IdentityEmailVerificationPort,
     @Inject(ACCOUNT_SECURITY_ADMINISTRATION)
     private readonly accountSecurity: AccountSecurityAdministrationPort,
+    @Inject(COUPON_PROGRAM_TRIGGER_OFFER_READER)
+    private readonly couponProgramOfferReader: CouponProgramTriggerOfferReaderPort,
   ) {}
 
   private rethrowAccountSecurityError(error: unknown): never {
@@ -83,6 +89,25 @@ export class MembershipController {
       ...summary,
       referrerEmail: maskEmail(summary.referrerEmail),
     };
+  }
+
+  @Get('marketing-subscription-offer')
+  async marketingSubscriptionOffer(@Req() req: AuthedRequest) {
+    const userStableId = req.user?.userStableId;
+    if (!userStableId) {
+      throw new BadRequestException('userStableId is required');
+    }
+
+    const status = await this.customer.getMarketingSubscriptionStatus(userStableId);
+    if (status.marketingEmailOptIn) {
+      return { ...status, offer: null };
+    }
+
+    const offer = await this.couponProgramOfferReader.getEligibleProgramOffer(
+      'MARKETING_OPT_IN',
+      userStableId,
+    );
+    return { ...status, offer };
   }
 
   @Get('onboarding')
