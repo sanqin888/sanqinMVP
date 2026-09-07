@@ -1,4 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import type { PosCreateFullRefundInput } from '../pos/pos-orders.service';
 import { PosOrdersService } from '../pos/pos-orders.service';
@@ -16,6 +17,7 @@ export class PosFullRefundOrchestrationService {
   constructor(
     private readonly cardRefunds: PosCardRefundOrchestrationService,
     private readonly posOrders: PosOrdersService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async refundFullOrder(
@@ -34,12 +36,14 @@ export class PosFullRefundOrchestrationService {
     }
 
     if (managed.status === 'SUCCEEDED') {
-      return {
+      const result: PosFullRefundResult = {
         order: managed.order,
         outcome: 'refunded',
         managedPaymentStatus: managed.status,
         managedPaymentOperation: managed.operation ?? undefined,
       };
+      await this.emitCancellationPrint(orderStableId, input);
+      return result;
     }
 
     if (
@@ -62,6 +66,18 @@ export class PosFullRefundOrchestrationService {
         'Clover did not confirm the managed card refund. The order was not marked refunded.',
       paymentStatus: managed.status,
       paymentOperation: managed.operation,
+    });
+  }
+
+  private async emitCancellationPrint(
+    orderStableId: string,
+    input: PosCreateFullRefundInput,
+  ): Promise<void> {
+    await this.eventEmitter.emitAsync('order.cancellation.print', {
+      orderStableId,
+      locale: 'zh',
+      reason: input.reason,
+      operatorName: input.operatorName,
     });
   }
 }
