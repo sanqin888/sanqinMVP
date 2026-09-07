@@ -297,9 +297,15 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       };
       const cancelledItems = basePayload.snapshot.items.map((item) => {
         const baseZh =
-          item.nameZh ?? item.displayName ?? item.nameEn ?? item.productStableId;
+          item.nameZh ??
+          item.displayName ??
+          item.nameEn ??
+          item.productStableId;
         const baseEn =
-          item.nameEn ?? item.displayName ?? item.nameZh ?? item.productStableId;
+          item.nameEn ??
+          item.displayName ??
+          item.nameZh ??
+          item.productStableId;
         return {
           ...item,
           nameZh: `[取消] ${baseZh}`,

@@ -32,11 +32,7 @@ type PosSocketData = {
 };
 
 type PosPrintTarget = 'customer' | 'kitchen' | 'label';
-type PosPrintPurpose =
-  | 'INITIAL'
-  | 'REPRINT'
-  | 'AMENDMENT'
-  | 'CANCELLATION';
+type PosPrintPurpose = 'INITIAL' | 'REPRINT' | 'AMENDMENT' | 'CANCELLATION';
 type PosPrintTargets = {
   customer?: boolean;
   kitchen?: boolean;

@@ -61,7 +61,9 @@ describe('POS printer dispatch idempotency boundary', () => {
 
     expect(agent).toContain('formattedPayload.pickupCode');
     expect(agent).toContain('pickupCode: String(pickupCode || "")');
-    expect(labelScript).toContain('$pickupCode = Resolve-Text $payload.pickupCode');
+    expect(labelScript).toContain(
+      '$pickupCode = Resolve-Text $payload.pickupCode',
+    );
     expect(labelScript).toContain(
       '$pickupFormat.Alignment = [System.Drawing.StringAlignment]::Center',
     );
