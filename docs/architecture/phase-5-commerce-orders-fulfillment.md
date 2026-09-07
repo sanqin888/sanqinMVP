@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@a96214f9` (Slice 5F merge / PR #2214; production address-row repair remains separately gated)  
-Current status: **PHASE 5 SOURCE COMPLETE / CI GREEN; CLOSEOUT ACTIVE VERIFICATION IN PROGRESS — PR #2214 CI #5271 PASSED, REMAINING PAYMENT/PRICING/REFUND TRANSACTION SEAMS ARE INTENTIONALLY RETAINED; 4C-A PRODUCTION ADDRESS REPAIR REMAINS GATED; POS PURE-LOYALTY ZERO-EXTERNAL REGRESSION IS UNDER LOCAL REVIEW ON `fix/phase5-pos-loyalty-zero-tender`**
+Current implementation base: `origin/dev@5abcdb9d` (member marketing-subscription closeout adjunct / PR #2222; durable cancellation boundary PR #2221 and pure-loyalty regression PR #2216 are also merged; historical UserAddress repair is complete)  
+Current status: **PRODUCTION VERIFIED / CLOSED — POS PURE-LOYALTY ZERO-EXTERNAL REGRESSION IS PRODUCTION RE-VERIFIED; DURABLE CANCELLATION BOUNDARY IS MERGED / CI GREEN / PRODUCTION VERIFIED; 4C-A HISTORICAL USERADDRESS STABLE-ID REPAIR IS COMPLETE; MEMBER MARKETING-SUBSCRIPTION PROMPT IS MERGED / CI GREEN AS A CLOSEOUT ADJUNCT; REMAINING PAYMENT/PRICING/REFUND TRANSACTION SEAMS ARE INTENTIONALLY RETAINED**
 
 ## Goal
 
@@ -18,7 +18,7 @@ Historical Slice-level active verification evidence from earlier phases remains 
 
 ## Entry state
 
-Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current Slice 5B local source state, direct-import totals are:
+Phase 4 is **PRODUCTION VERIFIED / CLOSED**. The public SCC baseline is empty. On the current merged Phase 5 closeout source state, direct-import totals are:
 
 - payments-clover: **57** *(Slice 1D contracts Payments -> Commerce direct debt by 2)*
 - external-channels: **42**
@@ -426,15 +426,15 @@ A separate pre-existing saved-address identity defect was discovered read-only d
 
 ### Slice 4C-A — UserAddress canonical StableId repair
 
-Status: **SOURCE MERGED / CI GREEN; PRODUCTION DATA REPAIR STILL PENDING** — PR #2205, final head `227643935d6c8ad02e39ef1b91fff176c49bb204`, squash merge `c02c3bac`; PR CI #5238 passed API and Web. The separately gated two-row production correction has not been executed.
+Status: **MERGED / CI GREEN / PRODUCTION REPAIRED / VERIFIED** — PR #2205, final head `227643935d6c8ad02e39ef1b91fff176c49bb204`, squash merge `c02c3bac`; PR CI #5238 passed API and Web. The two historical `UserAddress.addressStableId` rows have been repaired in production to canonical `c...` StableIds and the closeout address-resolution check is complete.
 
 Migration classification: **Class B persisted-identity repair with a very small deterministic data correction**. No Prisma schema or migration is required because `UserAddress.addressStableId` is already `@default(cuid())`; the defect is application code that generated a normal `c...` ID and then replaced its first character with `a`.
 
 The source fix deletes that address-only prefix rewrite and makes `CustomerService.createAddress()` use the same canonical `generateStableId()` used elsewhere. Focused Customer tests now require every newly generated address ID to round-trip through the shared `normalizeStableId()` used by Orders, and the Customer order-context fixtures use canonical `c...` stable IDs. Orders validation is intentionally **not** relaxed to accept `a...` values.
 
-Read-only production audit before implementation found exactly **2** `UserAddress` rows, both in the historical `a + 24 base36 characters` shape. `information_schema` shows no other typed `addressStableId` persistence column, all **12** current `CheckoutIntent.metadataJson` rows contain no `addressStableId` key, and none references either current address ID. Because the legacy generator was `a + generatedCuid.slice(1)`, the deterministic repair for each row is to restore only the first character from `a` to `c`; no random identity replacement is needed. The production mutation is **not** part of the local source phase and remains pending user review, remote CI/merge, deployment readiness, exact precondition checks, and explicit production-mutation approval.
+Read-only production audit before implementation found exactly **2** `UserAddress` rows, both in the historical `a + 24 base36 characters` shape. `information_schema` shows no other typed `addressStableId` persistence column, all **12** current `CheckoutIntent.metadataJson` rows contain no `addressStableId` key, and none references either current address ID. Because the legacy generator was `a + generatedCuid.slice(1)`, the deterministic repair for each row was to restore only the first character from `a` to `c`; no random identity replacement was needed. That production repair is now complete and the saved-address resolution path has been verified.
 
-This repair changes no public route shape, dependency direction, scanner baseline, payment/provider behavior, order lifecycle, pricing, or Benefits transaction semantics. After source review/merge and the later two-row production repair, Phase 5 closeout verification must include selecting an existing saved delivery address and confirming Orders resolves it through `CUSTOMER_ORDER_CONTEXT_READER` rather than treating it as an untrusted free-form address.
+This repair changes no public route shape, dependency direction, scanner baseline, payment/provider behavior, order lifecycle, pricing, or Benefits transaction semantics. Phase 5 closeout verification has now confirmed an existing saved delivery address resolves through `CUSTOMER_ORDER_CONTEXT_READER` rather than being treated as an untrusted free-form address.
 
 ### Slice 4D — Benefits runtime read contraction / transaction-seam preservation
 
@@ -576,7 +576,7 @@ Production re-verification on 2026-09-07 confirmed a pure-loyalty zero-external 
 
 ### Closeout regression — POS full-refund kitchen cancellation print
 
-Status: **CI REPAIR / REVIEW PENDING** on `fix/phase5-durable-cancellation-boundary` (replacement for failed PR #2220).
+Status: **MERGED / CI GREEN / PRODUCTION VERIFIED** — replacement PR #2221, final head `46a589ac`, squash merge `554a586d`; PR CI #5293 passed API and Web. Production re-verification confirmed the durable cancellation boundary works across the API / `ubereats-worker` process split and the earlier API-local-event implementation remains superseded.
 
 Phase 5 closeout verification confirmed that POS full refund itself is correct but exposed a Print handoff gap: a normal in-store cash order completed INITIAL customer/kitchen printing, then `POST /pos/orders/:orderStableId/full-refund` returned `201`, persisted a confirmed `FULL_REFUND` amendment and moved the Order to `refunded`, but no subsequent kitchen print job was created. Read-only source review shows ordinary item/payment amendments emit `order.amendment.print`, while the dedicated full-refund orchestration returned after refund confirmation and had no cancellation-print event.
 
@@ -588,7 +588,7 @@ No Prisma schema/migration, dependency/lockfile, public HTTP route, Clover provi
 
 ### Closeout adjunct — member marketing-subscription prompt
 
-Status: **LOCAL / REVIEW PENDING** on `feat/phase5-member-subscription-optin-prompt`.
+Status: **MERGED / CI GREEN** — PR #2222, final head `00f0b2cd`, squash merge `5abcdb9d`; final PR CI #5296 passed API and Web after a formatting-only API lint follow-up.
 
 This closeout adjunct adds a customer-site prompt for authenticated CUSTOMER sessions whose Customer-owned `marketingEmailOptIn` is false. It does not change login, MFA, consent persistence, coupon issuance, or campaign persistence semantics. A new Benefits public read port previews the currently eligible `MARKETING_OPT_IN` automatic program; coupon quantity is derived from active program `items.quantity`, while the displayed gift value comes from backend `CouponProgram.giftValue`. Web therefore carries no hard-coded coupon count or reward amount. If the current eligible program set has no single unambiguous configured gift value, the backend returns no prompt offer rather than advertising an unverifiable value.
 
