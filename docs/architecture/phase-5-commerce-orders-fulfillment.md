@@ -1,8 +1,8 @@
 # Phase 5 — Commerce / Orders / Fulfillment Boundary Contraction
 
 Start date: 2026-09-05  
-Current implementation base: `origin/dev@3a37a625` (Slice 5A merge / PR #2209; production address-row repair remains separately gated)  
-Current status: **SLICE 5B READY-NOTIFICATION USE-CASE DECOMPOSITION LOCAL / REVIEW PENDING — SUCCESSFUL READY STATUS WRITES DELEGATE NON-BLOCKING CONTACT/LOCALE/NOTIFICATION/STRUCTURED-LOG ORCHESTRATION TO INTERNAL `OrderReadyNotificationUseCase`; `OrdersService` RETAINS STATUS TRANSITIONS AND PAID/REFUNDED SIDE EFFECTS; CROSS-CONTEXT DIRECT-DEBT BASELINES REMAIN COMMERCE 20 / STORE OPERATIONS 29**
+Current implementation base: `origin/dev@a96214f9` (Slice 5F merge / PR #2214; production address-row repair remains separately gated)  
+Current status: **PHASE 5 SOURCE COMPLETE / CI GREEN; CLOSEOUT ACTIVE VERIFICATION IN PROGRESS — PR #2214 CI #5271 PASSED, REMAINING PAYMENT/PRICING/REFUND TRANSACTION SEAMS ARE INTENTIONALLY RETAINED; 4C-A PRODUCTION ADDRESS REPAIR REMAINS GATED; POS PURE-LOYALTY ZERO-EXTERNAL REGRESSION IS UNDER LOCAL REVIEW ON `fix/phase5-pos-loyalty-zero-tender`**
 
 ## Goal
 
@@ -548,7 +548,7 @@ No standalone Slice 5E production verification is required; Phase closeout shoul
 
 ### Slice 5F — POS order-management read-query decomposition
 
-Status: **LOCAL / REVIEW PENDING** on `refactor/phase5-orders-usecase-decomposition-f`, based on `origin/dev@a69f27b4`.
+Status: **MERGED / CI GREEN** — PR #2214, final head `3450449e`, squash merge `a96214f9`; final PR CI #5271 passed API and Web.
 
 Migration classification: **Class A same-context read-side application decomposition**. The readiness audit selected the three isolated POS management list reads — `recent`, `searchForStore`, and `board` — and explicitly excluded `getByStableId*` because those reads are reused by status transitions, labels, POS orchestration and refund flows. Payment, refund/amendment, Benefits reservation/COMMIT, pricing and lifecycle writes remain untouched.
 
@@ -563,3 +563,13 @@ No Prisma schema/migration, dependency/lockfile, public route or `POS_ORDER_OPER
 No standalone Slice 5F production verification is required. Phase-level closeout should cover POS recent list, management search/history filters and order board loading against the final merged Phase state.
 
 Planned follow-on after Slice 5F is: **Phase 5 closeout readiness audit of the remaining payment/pricing/refund/write seams -> consolidated Phase 5 deployment/active verification -> closeout**.
+
+### Closeout regression — POS pure-loyalty zero-external tender routing
+
+Status: **LOCAL / REVIEW PENDING** on `fix/phase5-pos-loyalty-zero-tender`, based on `origin/dev@a96214f9`.
+
+Production verification surfaced one POS payment-routing regression: a member order fully covered by loyalty points displayed `0` due, but the browser kept `paymentMethod=cash`, opened the cash-received dialog with `0`, and then rejected confirmation because the cash dialog requires a positive received amount. The server quote and loyalty redemption amount were already correct; the defect is the browser-side classification `totalAfterPointsCents > 0 && remainingTotalCents === 0`, which recognizes full Store Balance coverage but excludes the pure-points case where `totalAfterPointsCents` itself becomes zero.
+
+The local fix broadens the existing internal-benefits classification to any zero remaining external tender actually covered by loyalty points and/or Store Balance. Such orders use the existing unified payment flow, which already treats `externalAmountCents === 0` as succeeded without starting a Clover provider sale and finalizes the immutable payment snapshot through the existing Benefits COMMIT + Order transaction. The request payment method remains the repository's current `STORE_BALANCE` internal-benefits classification; no new enum, public contract, API behavior, Clover provider path, Prisma schema/migration, refund rule, pricing rule or architecture edge is introduced. Cash orders with a positive external amount still use the cash dialog unchanged.
+
+Focused Web characterization prevents the old `totalAfterPointsCents > 0` guard from returning and requires zero-external loyalty coverage to participate in the unified internal-benefits route. Phase 5 closeout verification must re-run a pure loyalty-points POS order and confirm: displayed due is `0`, no cash-received dialog appears, no Clover sale is attempted, exactly one Order is created, loyalty points are committed, and the normal durable preparation/AUTO print lifecycle proceeds.
