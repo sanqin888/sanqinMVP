@@ -30,7 +30,11 @@ export class PosFullRefundOrchestrationService {
     );
 
     if (managed.mode === 'LEGACY_MANUAL_REQUIRED') {
-      return this.posOrders.createFullRefund(storeStableId, orderStableId, input);
+      return this.posOrders.createFullRefund(
+        storeStableId,
+        orderStableId,
+        input,
+      );
     }
 
     if (managed.status === 'SUCCEEDED') {
@@ -64,5 +68,4 @@ export class PosFullRefundOrchestrationService {
       paymentOperation: managed.operation,
     });
   }
-
 }

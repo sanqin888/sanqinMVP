@@ -158,8 +158,7 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
     );
     expect(createMany).toHaveBeenCalledWith({
       data: {
-        idempotencyKey:
-          'order.cancellation_print_handoff:stable-cancelled',
+        idempotencyKey: 'order.cancellation_print_handoff:stable-cancelled',
         eventName: 'order.cancellation_print_handoff',
         source: 'orders.lifecycle',
         payload: { orderStableId: 'stable-cancelled' },
