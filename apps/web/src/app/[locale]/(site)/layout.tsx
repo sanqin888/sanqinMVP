@@ -4,6 +4,7 @@ import Link from "next/link";
 import AnalyticsConsentControls from "@/components/AnalyticsConsentControls";
 import CustomerSiteHeader, { CustomerSiteShellBoundary } from "@/components/site/CustomerSiteHeader";
 import CustomerLocalePreferenceSync from "@/components/site/CustomerLocalePreferenceSync";
+import MarketingSubscriptionPrompt from "@/components/site/MarketingSubscriptionPrompt";
 
 export default async function SiteLayout({
   children,
@@ -75,6 +76,7 @@ export default async function SiteLayout({
       customerHeader={<CustomerSiteHeader locale={safeLocale} />}
       customerFooter={customerFooter}
       localePreferenceSync={<CustomerLocalePreferenceSync locale={safeLocale} />}
+      subscriptionPrompt={<MarketingSubscriptionPrompt locale={safeLocale} />}
     >
       {children}
     </CustomerSiteShellBoundary>

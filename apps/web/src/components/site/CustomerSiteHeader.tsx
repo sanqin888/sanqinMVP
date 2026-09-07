@@ -17,6 +17,7 @@ type CustomerSiteShellBoundaryProps = {
   customerHeader: ReactNode;
   customerFooter: ReactNode;
   localePreferenceSync: ReactNode;
+  subscriptionPrompt: ReactNode;
 };
 
 export function CustomerSiteShellBoundary({
@@ -24,6 +25,7 @@ export function CustomerSiteShellBoundary({
   customerHeader,
   customerFooter,
   localePreferenceSync,
+  subscriptionPrompt,
 }: CustomerSiteShellBoundaryProps) {
   const segments = useSelectedLayoutSegments();
   const isBackOfficeRoute = segments.includes("admin") || segments.includes("accounting");
@@ -37,6 +39,7 @@ export function CustomerSiteShellBoundary({
       <div className="min-h-screen bg-[#fffdfa] text-stone-900">
         {localePreferenceSync}
         {customerHeader}
+        {subscriptionPrompt}
 
         <main className="mx-auto w-full max-w-[1600px] px-4 py-0 sm:px-6 lg:px-8">
           {children}

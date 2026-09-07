@@ -55,6 +55,22 @@ export class CustomerService
     private readonly customerLifecycleNotification: CustomerLifecycleNotificationPort,
   ) {}
 
+  async getMarketingSubscriptionStatus(userStableId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId },
+      select: {
+        email: true,
+        marketingEmailOptIn: true,
+      },
+    });
+    if (!user) throw new NotFoundException('user not found');
+
+    return {
+      marketingEmailOptIn: user.marketingEmailOptIn ?? false,
+      emailLinked: Boolean(user.email),
+    };
+  }
+
   async getOnboardingStatus(userStableId: string) {
     const user = await this.prisma.user.findUnique({
       where: { userStableId },

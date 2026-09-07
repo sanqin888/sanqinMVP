@@ -1,5 +1,8 @@
 export const COUPON_PROGRAM_CLAIMS = Symbol('COUPON_PROGRAM_CLAIMS');
 export const COUPON_PROGRAM_TRIGGER = Symbol('COUPON_PROGRAM_TRIGGER');
+export const COUPON_PROGRAM_TRIGGER_OFFER_READER = Symbol(
+  'COUPON_PROGRAM_TRIGGER_OFFER_READER',
+);
 export const COUPON_PROGRAM_ADMIN_ISSUER = Symbol(
   'COUPON_PROGRAM_ADMIN_ISSUER',
 );
@@ -45,6 +48,11 @@ export interface CouponProgramClaimsPort {
   ): Promise<CouponProgramClaimResult>;
 }
 
+export type CouponProgramTriggerOffer = {
+  couponCount: number;
+  giftValue: string;
+};
+
 export interface CouponProgramTriggerPort {
   issueProgramsForUser(
     triggerType: CouponProgramTriggerType,
@@ -53,6 +61,13 @@ export interface CouponProgramTriggerPort {
   issueBirthdayProgramsForMonth(
     targetDate?: Date,
   ): Promise<{ issuedCount: number; userCount: number }>;
+}
+
+export interface CouponProgramTriggerOfferReaderPort {
+  getEligibleProgramOffer(
+    triggerType: CouponProgramTriggerType,
+    userStableId: string,
+  ): Promise<CouponProgramTriggerOffer | null>;
 }
 
 export type AdminCouponProgramIssueInput = {
