@@ -17,6 +17,7 @@ describe('OrdersService.createFullRefund', () => {
   const amendmentUpsert = jest.fn();
   const amendmentUpdate = jest.fn();
   const orderUpdateMany = jest.fn();
+  const opsEventCreateMany = jest.fn();
   const rollbackOnRefund = jest.fn();
   const getOrderUsage = jest.fn();
   const tx = {
@@ -26,6 +27,7 @@ describe('OrdersService.createFullRefund', () => {
       upsert: amendmentUpsert,
       update: amendmentUpdate,
     },
+    opsEvent: { createMany: opsEventCreateMany },
   };
   let service: OrdersService;
 
@@ -35,6 +37,7 @@ describe('OrdersService.createFullRefund', () => {
     amendmentFindFirst.mockResolvedValue(null);
     amendmentUpsert.mockResolvedValue({ id: 'amendment_1' });
     orderUpdateMany.mockResolvedValue({ count: 1 });
+    opsEventCreateMany.mockResolvedValue({ count: 1 });
     rollbackOnRefund.mockResolvedValue(undefined);
     getOrderUsage.mockResolvedValue({ balancePaidCents: 0, pointsEarned: 0 });
     service = Object.create(OrdersService.prototype) as OrdersService;

@@ -17,6 +17,7 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
   function processorWith(input: {
     queryRaw: jest.MockedFunction<RawTag>;
     fulfillment?: jest.Mock;
+    cancellation?: jest.Mock;
     activateImmediate?: jest.Mock;
   }) {
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
@@ -38,6 +39,9 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
         handleAcceptedLifecycle:
           input.fulfillment ??
           jest.fn().mockResolvedValue({ jobId: 'print-job-default' }),
+        handleCancellationLifecycle:
+          input.cancellation ??
+          jest.fn().mockResolvedValue({ jobId: 'cancel-job-default' }),
       } as never,
       {
         activateAcceptedImmediateOrder: input.activateImmediate ?? jest.fn(),
@@ -81,6 +85,7 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
     const queryRaw = jest
       .fn<ReturnType<RawTag>, Parameters<RawTag>>()
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([lifecycleEvent('immediate')]);
     const fulfillment = jest.fn();
     const activateImmediate = jest.fn().mockResolvedValue({
@@ -95,15 +100,16 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
     await expect(processor.processOnce(1)).resolves.toBe(1);
     expect(activateImmediate).toHaveBeenCalledWith('order-immediate');
     expect(fulfillment).not.toHaveBeenCalled();
-    const acceptedStatement = sqlText(queryRaw.mock.calls[1][0]);
+    const acceptedStatement = sqlText(queryRaw.mock.calls[2][0]);
     expect(acceptedStatement).toContain("'IMMEDIATE'");
-    expect(queryRaw.mock.calls[1]).toContain('order.prep_started');
-    expect(queryRaw.mock.calls[1]).toContain('order.accepted');
+    expect(queryRaw.mock.calls[2]).toContain('order.prep_started');
+    expect(queryRaw.mock.calls[2]).toContain('order.accepted');
   });
 
   it('never claims scheduled accepted orders in the immediate lifecycle stage', async () => {
     const queryRaw = jest
       .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
     const activateImmediate = jest.fn();
@@ -111,10 +117,55 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
 
     await expect(processor.processOnce(1)).resolves.toBe(0);
     expect(activateImmediate).not.toHaveBeenCalled();
-    const statement = sqlText(queryRaw.mock.calls[1][0]);
+    const statement = sqlText(queryRaw.mock.calls[2][0]);
     expect(statement).toContain(
       'orders."fulfillmentTiming" = \'IMMEDIATE\'::"OrderFulfillmentTiming"',
     );
+  });
+
+  it('hands confirmed cancellations to Print only after the initial print handoff exists', async () => {
+    const queryRaw = jest
+      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          ...lifecycleEvent('cancelled'),
+          reason: 'UBER_ORDER_FAILURE',
+          operatorName: 'Uber Eats',
+        },
+      ]);
+    const cancellation = jest.fn().mockResolvedValue({ jobId: 'cancel-job-1' });
+    const { processor, createMany } = processorWith({
+      queryRaw,
+      cancellation,
+    });
+
+    await expect(processor.processOnce(1)).resolves.toBe(1);
+
+    expect(cancellation).toHaveBeenCalledWith({
+      orderStableId: 'stable-cancelled',
+      reason: 'UBER_ORDER_FAILURE',
+      operatorName: 'Uber Eats',
+    });
+    const statement = sqlText(queryRaw.mock.calls[1][0]);
+    expect(statement).toContain('AND EXISTS');
+    expect(statement).toContain('AND NOT EXISTS');
+    expect(statement).toContain("orders.status = 'refunded'");
+    expect(queryRaw.mock.calls[1]).toContain('order.cancelled');
+    expect(queryRaw.mock.calls[1]).toContain('order.initial_print_handoff');
+    expect(queryRaw.mock.calls[1]).toContain(
+      'order.cancellation_print_handoff',
+    );
+    expect(createMany).toHaveBeenCalledWith({
+      data: {
+        idempotencyKey:
+          'order.cancellation_print_handoff:stable-cancelled',
+        eventName: 'order.cancellation_print_handoff',
+        source: 'orders.lifecycle',
+        payload: { orderStableId: 'stable-cancelled' },
+      },
+      skipDuplicates: true,
+    });
   });
 
   it('replays prep_started after a worker crash or transient fulfillment failure', async () => {
@@ -160,6 +211,7 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
   it('stops when every prep_started event already has its durable AUTO print materialization', async () => {
     const queryRaw = jest
       .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
     const fulfillment = jest.fn();
