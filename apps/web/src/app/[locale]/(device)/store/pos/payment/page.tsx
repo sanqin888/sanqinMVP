@@ -777,8 +777,12 @@ export default function StorePosPaymentPage() {
     return Math.round(earned * 100) / 100;
   }, [earnRate, effectiveSubtotalAfterPointsCents, memberInfo, tierMultipliers]);
 
-  // 判断是否全额余额支付（即剩余需支付为0）
-  const isFullyPaidByBalance = totalAfterPointsCents > 0 && remainingTotalCents === 0;
+  // 只要积分/余额已经覆盖全部应付，就走统一的 internal-benefits
+  // payment flow。纯积分订单的 totalAfterPointsCents 会直接变成 0，
+  // 不能继续保留为 CASH，否则确认收款会错误打开 0 元现金弹窗。
+  const isFullyPaidByInternalBenefits =
+    remainingTotalCents === 0 &&
+    (loyaltyRedeemCents > 0 || balanceToUseCents > 0);
 
   // 当选择 store_balance 支付方式时，必须全额支付
   const isBalanceSufficientForFullPayment = useMemo(() => {
@@ -787,15 +791,18 @@ export default function StorePosPaymentPage() {
     return balanceCents >= totalAfterPointsCents;
   }, [memberInfo, totalAfterPointsCents]);
 
-  // 如果是全额余额支付，自动切换到余额支付方式。
+  // 积分/余额已经覆盖全部应付时，统一切换到内部权益支付。
   useEffect(() => {
-    if (isFullyPaidByBalance && paymentMethod !== 'store_balance') {
+    if (isFullyPaidByInternalBenefits && paymentMethod !== 'store_balance') {
       setPaymentMethod('store_balance');
-    } else if (!isFullyPaidByBalance && paymentMethod === 'store_balance') {
-        // 若变成混合支付，默认改为现金，可继续切换为银行卡/微信支付宝。
-        setPaymentMethod('cash');
+    } else if (
+      !isFullyPaidByInternalBenefits &&
+      paymentMethod === 'store_balance'
+    ) {
+      // 若变成混合支付，默认改为现金，可继续切换为银行卡/微信支付宝。
+      setPaymentMethod('cash');
     }
-  }, [isFullyPaidByBalance, paymentMethod]);
+  }, [isFullyPaidByInternalBenefits, paymentMethod]);
 
   const computedSnapshot = useMemo(() => {
     if (!snapshot) return null;
@@ -987,7 +994,7 @@ export default function StorePosPaymentPage() {
     if (!computedSnapshot || !fulfillment) return null;
 
     let apiPaymentMethod: PaymentMethod = "CASH";
-    if (isFullyPaidByBalance) {
+    if (isFullyPaidByInternalBenefits) {
       apiPaymentMethod = "STORE_BALANCE";
     } else if (paymentMethod === "card") {
       apiPaymentMethod = "CARD";
@@ -1014,7 +1021,7 @@ export default function StorePosPaymentPage() {
     computedSnapshot,
     discountCents,
     fulfillment,
-    isFullyPaidByBalance,
+    isFullyPaidByInternalBenefits,
     memberInfo,
     paymentMethod,
     pointsToRedeem,
@@ -1351,7 +1358,7 @@ export default function StorePosPaymentPage() {
 
     const shouldUseUnifiedPayment =
       paymentMethod === "card" ||
-      (paymentMethod === "store_balance" && isFullyPaidByBalance);
+      (paymentMethod === "store_balance" && isFullyPaidByInternalBenefits);
     if (shouldUseUnifiedPayment) {
       if (cardConfirmInFlightRef.current) return;
       cardConfirmInFlightRef.current = true;
