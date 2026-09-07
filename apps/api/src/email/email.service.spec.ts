@@ -110,3 +110,37 @@ describe('EmailService member recharge verification email', () => {
     });
   });
 });
+
+describe('EmailService email verification code', () => {
+  const createService = () =>
+    new EmailService({} as never, {} as never, {} as never);
+
+  it.each([
+    ['en', 'Your verification code: 123456', 'This code expires in 10 minutes.'],
+    ['zh', '邮箱验证码：123456', '验证码将在 10 分钟后失效。'],
+  ])(
+    'sends %s verification as a 10-minute code without a dead verification link',
+    async (locale, codeText, expiryText) => {
+      const service = createService();
+      const sendEmail = jest.spyOn(service, 'sendEmail').mockResolvedValue({
+        ok: true,
+        sendId: 'send-verify',
+      });
+
+      await service.sendVerificationEmail({
+        to: 'member@example.com',
+        token: '123456',
+        locale,
+      });
+
+      const [message] = sendEmail.mock.calls[0];
+      expect(message.text).toContain(codeText);
+      expect(message.text).toContain(expiryText);
+      expect(message.html).toContain(expiryText);
+      expect(message.text).not.toContain('/verify-email');
+      expect(message.html).not.toContain('/verify-email');
+      expect(message.text).not.toContain('24');
+      expect(message.html).not.toContain('24');
+    },
+  );
+});
