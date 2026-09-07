@@ -314,6 +314,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         if (input.cancellation) {
           await this.persistCancellation(tx, {
             orderId: order.orderId,
+            orderStableId: order.orderStableId,
             externalOrderId: input.order.externalOrderId,
             totalCents: input.order.totalCents,
             cursor: input.cursor,
