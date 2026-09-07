@@ -1464,14 +1464,21 @@ is claimed per repository workflow.
 
 **PR/SHA:** PR #2222 / final head `00f0b2cd` / squash merge `5abcdb9d`  
 **State:** MERGED / CI GREEN — final PR CI #5296 passed API and Web after a formatting-only API lint follow-up  
-**Result:** Added a customer-site login/session prompt for unsubscribed members without changing Customer or Benefits persistence. Customer remains the owner of `marketingEmailOptIn`; Benefits exposes a new read-only public capability that previews the currently eligible `MARKETING_OPT_IN` automatic program. Coupon quantity is derived from active program item quantities and reward value is read from the backend program `giftValue`; Web contains no hard-coded coupon count or reward amount. Opt-in still uses the existing Customer consent command and existing Benefits trigger/issuance path. Prompt dismissal is browser-local for 30 days, so no Prisma schema/migration is introduced. The prompt is excluded from Admin/Accounting and incomplete MFA/login routes.  
+**Result:** Added a customer-site login/session prompt for unsubscribed members without changing Customer or Benefits persistence. Customer remains the owner of `marketingEmailOptIn`; Benefits exposes a new read-only public capability that previews the currently eligible `MARKETING_OPT_IN` automatic program. Coupon quantity is derived from active program item quantities and reward value is read from the backend program `giftValue`; Web contains no hard-coded coupon count or reward amount. Opt-in still uses the existing Customer consent command and existing Benefits trigger/issuance path. The prompt is excluded from Admin/Accounting and incomplete MFA/login routes; dismissal behavior was subsequently simplified in PR #2226 and then refined to a browser-local daily suppression in the follow-up below.  
 **Architecture effect:** adds one explicit Benefits public read port; no deep import, direct persistence read from Web/Customer, scanner allowance, dependency manifest, or schema change.  
 **Details:** `apps/api/src/benefits/contracts/coupon-program.contract.ts`, `apps/api/src/membership/membership.controller.ts`, `apps/web/src/components/site/MarketingSubscriptionPrompt.tsx`.
 
 ### 2026-09-07 — Member marketing-subscription prompt dismissal simplification
 
+**PR/SHA:** PR #2226 / squash merge `51c1ed6c`  
+**State:** MERGED / CI GREEN  
+**Result:** Removed the browser-local 30-day dismissal cooldown from `MarketingSubscriptionPrompt`. Dismissal became render-local only as an intermediate behavior; a later full reload or fresh mount could prompt again while the authenticated CUSTOMER remained unsubscribed and Benefits still returned an eligible offer. Marketing consent semantics, Customer ownership, Benefits eligibility/issuance, login/MFA behavior, Prisma schema/migrations, dependencies, and scanner allowances were unchanged.  
+**Details:** `apps/web/src/components/site/MarketingSubscriptionPrompt.tsx`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
+
+### 2026-09-07 — Member marketing-subscription prompt daily suppression
+
 **State:** LOCAL / REVIEW PENDING  
-**Result:** Removed the browser-local 30-day dismissal cooldown from `MarketingSubscriptionPrompt`. Dismissal now only hides the prompt for the current mounted customer-site shell; a later full reload or fresh mount may prompt again while the authenticated CUSTOMER remains unsubscribed and Benefits still returns an eligible offer. Marketing consent semantics, Customer ownership, Benefits eligibility/issuance, login/MFA behavior, Prisma schema/migrations, dependencies, and scanner allowances are unchanged.  
+**Result:** Refined the post-#2226 render-local dismissal into browser-local, per-user, local-calendar-day suppression. Closing the prompt records only the current local date; later reloads or fresh customer-site mounts on the same day remain quiet, while a later local date can prompt again if the CUSTOMER is still unsubscribed and Benefits still reports an eligible offer. Existing pre-#2226 timestamp values do not match the new `YYYY-MM-DD` value and therefore self-heal on the next dismissal. No Prisma schema/migration, dependency, consent, eligibility, issuance, login/MFA, or scanner-boundary change is introduced.  
 **Details:** `apps/web/src/components/site/MarketingSubscriptionPrompt.tsx`, `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
 
 ### 2026-09-07 — Phase 5 closeout
