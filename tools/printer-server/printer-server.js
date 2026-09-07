@@ -1400,7 +1400,7 @@ async function resolvePosDeviceCredentials() {
   return claimedCredentials;
 }
 
-async function printLabelPlanWithWindowsDriver(orderNumber, labelPlan) {
+async function printLabelPlanWithWindowsDriver(orderNumber, pickupCode, labelPlan) {
   const labels = Array.isArray(labelPlan?.labels) ? labelPlan.labels : [];
   if (labels.length === 0) return;
 
@@ -1420,6 +1420,7 @@ async function printLabelPlanWithWindowsDriver(orderNumber, labelPlan) {
   );
   const payload = {
     orderNumber: String(orderNumber || ""),
+    pickupCode: String(pickupCode || ""),
     labelWidthMm: Number(labelPlan?.labelWidthMm || 70),
     labelHeightMm: Number(labelPlan?.labelHeightMm || 30),
     labels,
@@ -1568,6 +1569,7 @@ async function startCloudAutoPrint() {
         if (targetLabel) {
           await printLabelPlanWithWindowsDriver(
             orderId,
+            formattedPayload.pickupCode,
             formattedPayload.labelPlan,
           );
         }

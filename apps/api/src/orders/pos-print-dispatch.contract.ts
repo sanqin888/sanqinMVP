@@ -1,6 +1,10 @@
 export const ORDER_PRINT_HANDOFF_REQUESTED = 'orders.print-handoff.requested';
 
-export type OrderPrintPurpose = 'INITIAL' | 'REPRINT' | 'AMENDMENT';
+export type OrderPrintPurpose =
+  | 'INITIAL'
+  | 'REPRINT'
+  | 'AMENDMENT'
+  | 'CANCELLATION';
 
 export type OrderPrintTargets = {
   customer?: boolean;

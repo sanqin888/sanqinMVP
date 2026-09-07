@@ -20,11 +20,50 @@ describe('FulfillmentProcessor reprint store routing', () => {
     jest.restoreAllMocks();
   });
 
-  function setup(storeId: string | null) {
+  function setup(storeId: string | null, status = 'refunded') {
     const sendPrintJob = jest.fn().mockResolvedValue({ jobId: 'job-1' });
     const emitAsync = jest.fn(async (_event: string, input: unknown) => {
       await sendPrintJob(input);
       return [{ jobId: 'job-1' }];
+    });
+    const getPrintPayloadByStableId = jest.fn().mockResolvedValue({
+      locale: 'zh',
+      orderNumber: '1001',
+      customerName: null,
+      pickupCode: 'A100',
+      fulfillment: 'pickup',
+      paymentMethod: 'cash',
+      orderNotes: null,
+      utensils: null,
+      snapshot: {
+        items: [
+          {
+            productStableId: 'item-1',
+            nameZh: '肉夹馍',
+            nameEn: 'Roujiamo',
+            displayName: '肉夹馍 / Roujiamo',
+            quantity: 2,
+            lineTotalCents: 1498,
+            specialInstructions: null,
+            options: null,
+            components: [],
+          },
+        ],
+        subtotalCents: 1498,
+        displaySubtotalCents: 0,
+        appliedDiscounts: [],
+        loyaltyRedeemCents: 0,
+        taxCents: 0,
+        orderTotalCents: 0,
+        balancePaidCents: 0,
+        externalPaidCents: 0,
+        totalCents: 0,
+        creditCardSurchargeCents: 0,
+        discountCents: 0,
+        deliveryFeeCents: 0,
+        deliveryCostCents: 0,
+        deliverySubsidyCents: 0,
+      },
     });
     const getLabelPlanByStableId = jest.fn().mockResolvedValue({
       labelWidthMm: 70,
@@ -38,22 +77,25 @@ describe('FulfillmentProcessor reprint store routing', () => {
           findUnique: jest.fn().mockResolvedValue({
             id: 'order-1',
             storeId,
+            status,
           }),
         },
       } as never,
       {} as never,
       { emitAsync } as never,
       {
-        getByStableId: jest.fn().mockResolvedValue({
-          orderNumber: '1001',
-          snapshot: { items: [] },
-        }),
+        getByStableId: getPrintPayloadByStableId,
       } as never,
       {
         getByStableId: getLabelPlanByStableId,
       } as never,
     );
-    return { processor, sendPrintJob, getLabelPlanByStableId };
+    return {
+      processor,
+      sendPrintJob,
+      getPrintPayloadByStableId,
+      getLabelPlanByStableId,
+    };
   }
 
   it('订单缺少 storeId 时拒绝猜测门店并停止重打派发', async () => {
@@ -89,6 +131,62 @@ describe('FulfillmentProcessor reprint store routing', () => {
         purpose: 'REPRINT',
       }),
     );
+  });
+
+  it('整单退款确认后创建 kitchen-only CANCELLATION，并把原菜品明确标记为取消', async () => {
+    const { processor, sendPrintJob } = setup('order-store', 'refunded');
+
+    await processor.handleOrderCancellationPrint({
+      orderStableId: 'stable-1',
+      reason: '顾客取消',
+      operatorName: 'Staff',
+    });
+
+    expect(sendPrintJob).toHaveBeenCalledTimes(1);
+    expect(sendPrintJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'CANCELLATION',
+        storeStableId: 'order-store',
+        data: expect.objectContaining({
+          snapshot: expect.objectContaining({
+            items: [
+              expect.objectContaining({
+                productStableId: '__order_cancellation__',
+                displayName: '****** 整单取消 / ORDER CANCELLED ******',
+                specialInstructions: '原因: 顾客取消 / 操作人: Staff',
+              }),
+              expect.objectContaining({
+                productStableId: 'item-1',
+                nameZh: '[取消] 肉夹馍',
+                nameEn: '[CANCEL] Roujiamo',
+                quantity: 2,
+              }),
+            ],
+          }) as unknown,
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('订单尚未进入 refunded 时不创建取消打印任务', async () => {
+    const warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const { processor, sendPrintJob } = setup('order-store', 'making');
+
+    await processor.handleOrderCancellationPrint({
+      orderStableId: 'stable-1',
+      reason: '顾客取消',
+      operatorName: 'Staff',
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'cancellation_print_order_not_refunded',
+        status: 'making',
+      }),
+    );
+    expect(sendPrintJob).not.toHaveBeenCalled();
   });
 
   it('改单打印缺少 storeId 时停止派发', async () => {

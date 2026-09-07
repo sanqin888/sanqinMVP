@@ -432,6 +432,45 @@ describe('PosGateway durable print delivery', () => {
     );
   });
 
+  it('CANCELLATION 使用每单唯一 job identity 且只请求 kitchen target', async () => {
+    const { gateway, posPrintJob } = setup();
+
+    await gateway.enqueuePrintHandoff({
+      orderId: 'order-1',
+      orderStableId: 'stable-1',
+      storeStableId: 'store-1',
+      purpose: 'CANCELLATION',
+      data: baseJob.payload,
+    });
+
+    const cancellationUpsert = (
+      posPrintJob.upsert.mock.calls as Array<
+        [
+          {
+            where: { orderStableId_kind: { kind: string } };
+            create: {
+              customerRequested: boolean;
+              kitchenRequested: boolean;
+              labelRequested: boolean;
+            };
+          },
+        ]
+      >
+    ).at(-1)?.[0];
+    expect(cancellationUpsert).toBeDefined();
+    if (!cancellationUpsert) throw new Error('cancellation upsert missing');
+    expect(cancellationUpsert.where.orderStableId_kind.kind).toBe(
+      'CANCELLATION',
+    );
+    expect(cancellationUpsert.create).toEqual(
+      expect.objectContaining({
+        customerRequested: false,
+        kitchenRequested: true,
+        labelRequested: false,
+      }),
+    );
+  });
+
   it('AMENDMENT 标签差额非空时同时请求 label target', async () => {
     const { gateway, posPrintJob } = setup();
 

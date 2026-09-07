@@ -148,8 +148,14 @@ describe('Orders ↔ POS transport boundary', () => {
     expect(listener).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
     expect(listener).toContain('this.posGateway.enqueuePrintHandoff(request)');
     expect(publicApi).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
-    expect(handoffContract).toContain("'INITIAL' | 'REPRINT' | 'AMENDMENT'");
+    expect(handoffContract).toContain("| 'INITIAL'");
+    expect(handoffContract).toContain("| 'REPRINT'");
+    expect(handoffContract).toContain("| 'AMENDMENT'");
+    expect(handoffContract).toContain("| 'CANCELLATION'");
     expect(handoffContract).not.toContain('kind: string');
     expect(gateway).toContain("if (purpose === 'INITIAL') return 'AUTO'");
+    expect(gateway).toContain(
+      "if (purpose === 'CANCELLATION') return 'CANCELLATION'",
+    );
   });
 });
