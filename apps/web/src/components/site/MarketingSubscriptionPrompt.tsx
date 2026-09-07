@@ -19,6 +19,34 @@ type MarketingSubscriptionOfferResponse = {
   } | null;
 };
 
+function dismissalKey(userStableId: string) {
+  return `sanq:marketing-subscription-prompt:dismissed:${userStableId}`;
+}
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function wasDismissedToday(userStableId: string) {
+  try {
+    return window.localStorage.getItem(dismissalKey(userStableId)) === localDateKey();
+  } catch {
+    return false;
+  }
+}
+
+function rememberDismissalToday(userStableId: string) {
+  try {
+    window.localStorage.setItem(dismissalKey(userStableId), localDateKey());
+  } catch {
+    // Storage can be unavailable in privacy-restricted browsers. Dismissal still
+    // applies to the current render through local component state.
+  }
+}
+
 function formatGiftValue(value: string) {
   const trimmed = value.trim();
   if (/^(?:CA)?\$/i.test(trimmed)) return trimmed;
@@ -51,6 +79,10 @@ export default function MarketingSubscriptionPrompt({ locale }: Props) {
     setError(null);
 
     if (!shouldCheck || !userStableId) return;
+    if (wasDismissedToday(userStableId)) {
+      setDismissed(true);
+      return;
+    }
 
     const controller = new AbortController();
     const loadOffer = async () => {
@@ -72,6 +104,7 @@ export default function MarketingSubscriptionPrompt({ locale }: Props) {
   }, [shouldCheck, userStableId]);
 
   const handleDismiss = () => {
+    if (userStableId) rememberDismissalToday(userStableId);
     setDismissed(true);
   };
 
