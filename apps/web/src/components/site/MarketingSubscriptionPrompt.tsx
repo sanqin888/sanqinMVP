@@ -19,26 +19,28 @@ type MarketingSubscriptionOfferResponse = {
   } | null;
 };
 
-const DISMISS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
-
 function dismissalKey(userStableId: string) {
   return `sanq:marketing-subscription-prompt:dismissed:${userStableId}`;
 }
 
-function wasRecentlyDismissed(userStableId: string) {
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function wasDismissedToday(userStableId: string) {
   try {
-    const raw = window.localStorage.getItem(dismissalKey(userStableId));
-    if (!raw) return false;
-    const dismissedAt = Number(raw);
-    return Number.isFinite(dismissedAt) && Date.now() - dismissedAt < DISMISS_COOLDOWN_MS;
+    return window.localStorage.getItem(dismissalKey(userStableId)) === localDateKey();
   } catch {
     return false;
   }
 }
 
-function rememberDismissal(userStableId: string) {
+function rememberDismissalToday(userStableId: string) {
   try {
-    window.localStorage.setItem(dismissalKey(userStableId), String(Date.now()));
+    window.localStorage.setItem(dismissalKey(userStableId), localDateKey());
   } catch {
     // Storage can be unavailable in privacy-restricted browsers. Dismissal still
     // applies to the current render through local component state.
@@ -77,7 +79,7 @@ export default function MarketingSubscriptionPrompt({ locale }: Props) {
     setError(null);
 
     if (!shouldCheck || !userStableId) return;
-    if (wasRecentlyDismissed(userStableId)) {
+    if (wasDismissedToday(userStableId)) {
       setDismissed(true);
       return;
     }
@@ -102,7 +104,7 @@ export default function MarketingSubscriptionPrompt({ locale }: Props) {
   }, [shouldCheck, userStableId]);
 
   const handleDismiss = () => {
-    if (userStableId) rememberDismissal(userStableId);
+    if (userStableId) rememberDismissalToday(userStableId);
     setDismissed(true);
   };
 

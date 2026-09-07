@@ -888,7 +888,6 @@ ${totalLines.join('\n')}`;
     name?: string | null;
     locale?: string;
   }) {
-    const verifyUrl = `${this.baseUrl}/verify-email?token=${params.token}`;
     const resolvedLocale = this.resolveLocale(params.locale);
     const greeting =
       resolvedLocale === 'zh'
@@ -902,23 +901,19 @@ ${totalLines.join('\n')}`;
       resolvedLocale === 'zh' ? '验证您的邮箱' : 'Verify your email';
     const text =
       resolvedLocale === 'zh'
-        ? `${greeting}\n\n邮箱验证码：${params.token}\n\n请点击以下链接验证邮箱：${verifyUrl}\n\n链接有效期为 24 小时。`
-        : `${greeting}\n\nYour verification code: ${params.token}\n\nPlease verify your email by visiting: ${verifyUrl}\n\nThis link expires in 24 hours.`;
+        ? `${greeting}\n\n邮箱验证码：${params.token}\n\n验证码将在 10 分钟后失效。`
+        : `${greeting}\n\nYour verification code: ${params.token}\n\nThis code expires in 10 minutes.`;
     const html =
       resolvedLocale === 'zh'
         ? `
       <p>${greeting}</p>
       <p>邮箱验证码：<strong>${params.token}</strong></p>
-      <p>请点击以下链接验证邮箱：</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p>链接有效期为 24 小时。</p>
+      <p>验证码将在 10 分钟后失效。</p>
     `
         : `
       <p>${greeting}</p>
       <p>Your verification code: <strong>${params.token}</strong></p>
-      <p>Please verify your email by clicking the link below:</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p>This link expires in 24 hours.</p>
+      <p>This code expires in 10 minutes.</p>
     `;
 
     return this.sendEmail({
